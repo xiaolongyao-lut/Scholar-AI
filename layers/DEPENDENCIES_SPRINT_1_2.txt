@@ -1,0 +1,17 @@
+# Sprint 1-2 必需依赖
+
+# 核心异步和 HTTP
+httpx>=0.24.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# PDF 支持（可选，但推荐）
+PyPDF2>=3.0.0
+# 或者
+pdfplumber>=0.10.0
+
+# Markdown 处理（可选）
+markdown>=3.4.0
+
+# 异步工具
+asyncio-contextmanager>=1.0.0

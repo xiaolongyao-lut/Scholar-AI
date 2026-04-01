@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+output/
+legacy_archive/
+github/
+
+.vs/
+.idea/
+.pytest_cache/
+
+test_output.txt
+final_test_result.txt
