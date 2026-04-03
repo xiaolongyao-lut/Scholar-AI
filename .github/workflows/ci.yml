@@ -34,17 +34,25 @@ jobs:
       - name: Compile Critical Modules
         run: |
           python -X utf8 -m py_compile \
+            "03_目标导向材料包脚本.py" \
+            "08_Word文档生成脚本.py" \
             rag_integration_entry.py \
             main_rag_workflow.py \
             layers/e_ragflow_retrieval_adapter.py \
             layers/g_synthesis_graphrag_bridge.py \
-            layers/v_eval_autorag_runner.py
+            layers/p_layer_presentation_word.py \
+            layers/v_eval_autorag_runner.py \
+            tests_semantic_themes.py
 
       - name: Run Integration And Adapter Tests
         run: |
           python -X utf8 -m unittest \
             test_ragflow_integration.py \
             test_adapter_improvements.py -v
+
+      - name: Run Semantic Themes Regression Tests
+        run: |
+          python -X utf8 -m unittest tests_semantic_themes.py -v
 
       - name: Run Focus Registry Regression Tests
         run: |

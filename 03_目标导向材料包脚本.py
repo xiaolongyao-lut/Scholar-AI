@@ -6,6 +6,10 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
+PREVIEW_LIMIT_SHORT = 180
+PREVIEW_LIMIT_MED = 220
+PREVIEW_LIMIT_LONG = 260
+
 
 def load_json(path: str | Path) -> dict[str, Any]:
     with open(path, 'r', encoding='utf-8') as f:
@@ -24,6 +28,27 @@ def short_text(text: str, limit: int = 220) -> str:
     return text[: limit - 1].rstrip() + '…'
 
 
+def safe_int(val: Any, default: int = 0) -> int:
+    try:
+        if val is None:
+            return default
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def stable_unique(items: list[str]) -> list[str]:
+    """Return items with stable first-seen ordering and empty values removed."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered
+
+
 def stable_marker_map(bound: dict[str, Any]) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for ref in bound.get('references', []) or []:
@@ -37,7 +62,7 @@ def stable_marker_map(bound: dict[str, Any]) -> dict[str, str]:
 
 def stable_ref_text_map(bound: dict[str, Any]) -> dict[str, str]:
     mapping: dict[str, str] = {}
-    for ref in bound.get('references', []) or []:
+    for ref in bound.get('references') or []:
         ref_number = ref.get('ref_number')
         if ref_number is None:
             continue
@@ -48,13 +73,11 @@ def stable_ref_text_map(bound: dict[str, Any]) -> dict[str, str]:
 
 def page_image_lookup(bound: dict[str, Any]) -> dict[tuple[int, int], dict[str, Any]]:
     out: dict[tuple[int, int], dict[str, Any]] = {}
-    for row in bound.get('page_images', []) or []:
-        try:
-            page = int(row.get('page', 0))
-            xref = int(row.get('xref', 0))
-        except Exception:
-            continue
-        out[(page, xref)] = row
+    for row in bound.get('page_images') or []:
+        page = safe_int(row.get('page'))
+        xref = safe_int(row.get('xref'))
+        if xref > 0:
+            out[(page, xref)] = row
     return out
 
 
@@ -97,20 +120,24 @@ def build_figure_card(fig: dict[str, Any], indexes: dict[str, dict[str, Any]], s
     base = indexes.get('figures', {}).get(fig_id, {})
     binding = indexes.get('figure_bindings', {}).get(fig_id, {})
     candidate_xrefs = binding.get('candidate_image_xrefs_on_page') or base.get('candidate_image_xrefs_on_page') or []
-    page = int(fig.get('page') or base.get('page') or 0)
+    page = safe_int(fig.get('page') or base.get('page'))
     page_image_candidates = []
     for xref in candidate_xrefs:
-        info = indexes.get('page_images', {}).get((page, int(xref)))
+        xref_int = safe_int(xref)
+        if xref_int <= 0:
+            continue
+
+        info = indexes.get('page_images', {}).get((page, xref_int))
         if info:
             page_image_candidates.append({
-                'xref': int(xref),
+                'xref': xref_int,
                 'image_path': info.get('image_path', ''),
                 'width': info.get('width'),
                 'height': info.get('height'),
                 'bboxes': info.get('bboxes', []),
             })
         else:
-            page_image_candidates.append({'xref': int(xref)})
+            page_image_candidates.append({'xref': xref_int})
     support_ids = fig.get('supporting_writing_point_ids', [])
     return {
         'figure_id': fig_id,
@@ -122,7 +149,7 @@ def build_figure_card(fig: dict[str, Any], indexes: dict[str, dict[str, Any]], s
         'goal_hits': fig.get('goal_hits', []),
         'selection_reason': fig.get('selection_reason', ''),
         'supporting_writing_point_ids': support_ids,
-        'supporting_claims': [selected_wp_map[wid]['claim'] for wid in support_ids if wid in selected_wp_map],
+        'supporting_claims': [selected_wp_map[wid].get('claim', '') for wid in support_ids if wid in selected_wp_map],
         'support_chunk_ids': binding.get('support_chunk_ids', []),
         'linked_chunk_ids': binding.get('linked_chunk_ids', []),
         'linked_parameter_ids': binding.get('linked_parameter_ids', []),
@@ -141,24 +168,25 @@ def build_table_card(tab: dict[str, Any], indexes: dict[str, dict[str, Any]], se
     base = indexes.get('tables', {}).get(tab_id, {})
     binding = indexes.get('table_bindings', {}).get(tab_id, {})
     support_ids = tab.get('supporting_writing_point_ids', [])
+    page = safe_int(tab.get('page') or base.get('page'))
     return {
         'table_id': tab_id,
         'table_number': base.get('table_number'),
-        'page': int(tab.get('page') or base.get('page') or 0),
+        'page': page,
         'caption': tab.get('caption') or base.get('caption', ''),
         'caption_prefix': base.get('caption_prefix', ''),
         'relevance_score': tab.get('relevance_score', 0.0),
         'goal_hits': tab.get('goal_hits', []),
         'selection_reason': tab.get('selection_reason', ''),
         'supporting_writing_point_ids': support_ids,
-        'supporting_claims': [selected_wp_map[wid]['claim'] for wid in support_ids if wid in selected_wp_map],
+        'supporting_claims': [selected_wp_map[wid].get('claim', '') for wid in support_ids if wid in selected_wp_map],
         'linked_chunk_ids': binding.get('linked_chunk_ids', []),
         'linked_parameter_ids': binding.get('linked_parameter_ids', []),
         'linked_result_ids': binding.get('linked_result_ids', []),
         'linked_reference_ids': binding.get('linked_reference_ids', []),
         'bbox': base.get('bbox'),
         'nearby_chunk_ids': base.get('nearby_chunk_ids', []),
-        'evidence_note': f"表证据页码 {int(tab.get('page') or base.get('page') or 0)}；当前写作点支撑数 {len(support_ids)}。",
+        'evidence_note': f"表证据页码 {page}；当前写作点支撑数 {len(support_ids)}。",
     }
 
 
@@ -170,7 +198,7 @@ def build_parameter_card(row: dict[str, Any], indexes: dict[str, dict[str, Any]]
         'page': row.get('page') or base.get('page'),
         'chunk_id': row.get('chunk_id') or base.get('chunk_id'),
         'text': text,
-        'text_preview': short_text(text, 180),
+        'text_preview': short_text(text, PREVIEW_LIMIT_SHORT),
         'relevance_score': row.get('relevance_score', 0.0),
         'goal_hits': row.get('goal_hits', []),
         'supporting_writing_point_ids': row.get('supporting_writing_point_ids', []),
@@ -189,7 +217,7 @@ def build_result_card(row: dict[str, Any], indexes: dict[str, dict[str, Any]]) -
         'page': row.get('page') or base.get('page'),
         'chunk_id': row.get('chunk_id') or base.get('chunk_id'),
         'text': text,
-        'text_preview': short_text(text, 180),
+        'text_preview': short_text(text, PREVIEW_LIMIT_SHORT),
         'relevance_score': row.get('relevance_score', 0.0),
         'goal_hits': row.get('goal_hits', []),
         'supporting_writing_point_ids': row.get('supporting_writing_point_ids', []),
@@ -207,18 +235,25 @@ def build_writing_point_card(wp: dict[str, Any], figure_cards: dict[str, dict[st
     linked_params = [parameter_cards[pid] for pid in wp.get('linked_parameters', []) if pid in parameter_cards]
     linked_results = [result_cards[rid] for rid in wp.get('linked_results', []) if rid in result_cards]
     original_markers = [x['raw_marker'] for x in linked_refs if x.get('raw_marker')]
+
+    linked_figure_ids = [x['figure_id'] for x in linked_figs]
+    linked_table_ids = [x['table_id'] for x in linked_tabs]
+    linked_parameter_ids = [x['parameter_id'] for x in linked_params]
+    linked_result_ids = [x['result_id'] for x in linked_results]
+    linked_reference_ids = [x['ref_id'] for x in linked_refs]
+
     evidence_bundle = {
-        'figure_ids': [x['figure_id'] for x in linked_figs],
-        'table_ids': [x['table_id'] for x in linked_tabs],
-        'parameter_ids': [x['parameter_id'] for x in linked_params],
-        'result_ids': [x['result_id'] for x in linked_results],
-        'reference_ids': [x['ref_id'] for x in linked_refs],
+        'figure_ids': linked_figure_ids,
+        'table_ids': linked_table_ids,
+        'parameter_ids': linked_parameter_ids,
+        'result_ids': linked_result_ids,
+        'reference_ids': linked_reference_ids,
     }
     return {
         'writing_point_id': wp['writing_point_id'],
         'claim': wp.get('claim') or wp.get('representative_claim', ''),
         'representative_claim': wp.get('representative_claim') or wp.get('claim', ''),
-        'claim_preview': short_text(wp.get('claim') or wp.get('representative_claim', ''), 220),
+        'claim_preview': short_text(wp.get('claim') or wp.get('representative_claim', ''), PREVIEW_LIMIT_MED),
         'point_type': wp.get('point_type', ''),
         'boundary_type': wp.get('boundary_type', ''),
         'boundary_note': wp.get('boundary_note', ''),
@@ -229,7 +264,7 @@ def build_writing_point_card(wp: dict[str, Any], figure_cards: dict[str, dict[st
         'section_title': wp.get('section_title', ''),
         'source_chunk_ids': wp.get('source_chunk_ids', []),
         'source_text': wp.get('source_text', ''),
-        'source_text_preview': short_text(wp.get('source_text', ''), 260),
+        'source_text_preview': short_text(wp.get('source_text', ''), PREVIEW_LIMIT_LONG),
         'causal_roles': wp.get('causal_roles', []),
         'goal_hits': wp.get('goal_hits', []),
         'goal_alignment_note': wp.get('goal_alignment_note', ''),
@@ -238,11 +273,11 @@ def build_writing_point_card(wp: dict[str, Any], figure_cards: dict[str, dict[st
         'analysis_confidence': wp.get('analysis_confidence', 0.0),
         'selection_reason': wp.get('selection_reason', ''),
         'support_count': wp.get('support_count', 0),
-        'linked_figure_ids': [x['figure_id'] for x in linked_figs],
-        'linked_table_ids': [x['table_id'] for x in linked_tabs],
-        'linked_parameter_ids': [x['parameter_id'] for x in linked_params],
-        'linked_result_ids': [x['result_id'] for x in linked_results],
-        'linked_reference_ids': [x['ref_id'] for x in linked_refs],
+        'linked_figure_ids': linked_figure_ids,
+        'linked_table_ids': linked_table_ids,
+        'linked_parameter_ids': linked_parameter_ids,
+        'linked_result_ids': linked_result_ids,
+        'linked_reference_ids': linked_reference_ids,
         'evidence_bundle_ids': wp.get('evidence_bundle_ids', []),
         'evidence_bundle': evidence_bundle,
         'evidence_summary': f"{len(linked_figs)} 图 / {len(linked_tabs)} 表 / {len(linked_params)} 参数 / {len(linked_results)} 结果 / {len(linked_refs)} 引用",
@@ -294,6 +329,82 @@ def build_writing_point_card(wp: dict[str, Any], figure_cards: dict[str, dict[st
     }
 
 
+def build_semantic_themes(writing_point_cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build deterministic semantic themes from writing-point cards.
+
+    Why:
+        Word 主文已经依赖 semantic_themes 作为主题化叙事入口，这里必须保证
+        输出稳定、真实反映已有证据簇，并避免为了凑数而制造伪主题。
+
+    Args:
+        writing_point_cards: 已完成证据绑定的写作点卡列表。
+
+    Returns:
+        主题列表；真实只有 1-2 个主题时返回真实数量，仅在主题过多时做合并。
+    """
+    if not writing_point_cards:
+        return []
+
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for wp in writing_point_cards:
+        section = wp.get('section_title') or wp.get('point_type') or '综合论述'
+        causal = '_'.join(sorted(wp.get('causal_roles', []))) or '无因果'
+        goal = '_'.join(sorted(wp.get('goal_hits', []))) or '通用目标'
+        key = f"{section} | {goal} | {causal}"
+        groups.setdefault(key, []).append(wp)
+
+    group_list = list(groups.items())
+
+    # 主题过多时合并最小簇，但不为凑最低主题数做强行拆分。
+    while len(group_list) > 6:
+        if len(group_list) < 2:
+            break
+        group_list.sort(key=lambda x: (len(x[1]), x[0]))
+        g1 = group_list.pop(0)
+        g2 = group_list.pop(0)
+        t1 = (g1[0].split('|')[0] if '|' in g1[0] else g1[0]).strip()
+        t2 = (g2[0].split('|')[0] if '|' in g2[0] else g2[0]).strip()
+        group_list.append((f"{t1}与{t2}", g1[1] + g2[1]))
+
+    def theme_weight(wps: list[dict[str, Any]]) -> tuple[float, int]:
+        relevance = sum(float(wp.get('relevance_score', 0.0) or 0.0) for wp in wps)
+        evidence = sum(float(wp.get('evidence_strength', 0.0) or 0.0) for wp in wps)
+        earliest_page = min((safe_int(wp.get('page')) for wp in wps), default=0)
+        return (relevance + evidence, earliest_page)
+
+    group_list.sort(key=lambda item: (-theme_weight(item[1])[0], theme_weight(item[1])[1], item[0]))
+
+    themes = []
+    for idx, (title_raw, wps) in enumerate(group_list, 1):
+        title = title_raw.split('|')[0].strip() if '|' in title_raw else title_raw.strip()
+        wp_ids = [wp['writing_point_id'] for wp in wps]
+        fig_ids = stable_unique([fid for wp in wps for fid in wp.get('linked_figure_ids', [])])
+        tab_ids = stable_unique([tid for wp in wps for tid in wp.get('linked_table_ids', [])])
+        ref_ids = stable_unique([rid for wp in wps for rid in wp.get('linked_reference_ids', [])])
+        param_ids = stable_unique([pid for wp in wps for pid in wp.get('linked_parameter_ids', [])])
+        result_ids = stable_unique([rid for wp in wps for rid in wp.get('linked_result_ids', [])])
+        top_claims = stable_unique([
+            short_text(wp.get('claim') or wp.get('representative_claim', ''), 80)
+            for wp in wps
+            if (wp.get('claim') or wp.get('representative_claim', ''))
+        ])[:2]
+        summary_tail = f"核心论点包括：{'；'.join(top_claims)}。" if top_claims else ""
+
+        themes.append({
+            'theme_id': f"theme_{idx:03d}",
+            'theme_title': title,
+            'summary': f"本主题围绕“{title}”展开论述，整合了 {len(wps)} 个关键写作点。{summary_tail}".strip(),
+            'order_score': round(theme_weight(wps)[0], 3),
+            'linked_writing_point_ids': wp_ids,
+            'linked_figure_ids': fig_ids,
+            'linked_table_ids': tab_ids,
+            'linked_reference_ids': ref_ids,
+            'linked_parameter_ids': param_ids,
+            'linked_result_ids': result_ids,
+        })
+    return themes
+
+
 def build_material_pack(analysis: dict[str, Any], bound: dict[str, Any] | None = None) -> dict[str, Any]:
     bound = bound or {}
     indexes = build_indexes(bound)
@@ -305,8 +416,10 @@ def build_material_pack(analysis: dict[str, Any], bound: dict[str, Any] | None =
     selected_results = analysis.get('selected_results', []) or []
     selected_writing_points = analysis.get('selected_writing_points', []) or []
 
-    figure_cards = {row['figure_id']: build_figure_card(row, indexes, {wp['writing_point_id']: wp for wp in selected_writing_points}) for row in selected_figures}
-    table_cards = {row['table_id']: build_table_card(row, indexes, {wp['writing_point_id']: wp for wp in selected_writing_points}) for row in selected_tables}
+    selected_wp_map = {wp['writing_point_id']: wp for wp in selected_writing_points}
+
+    figure_cards = {row['figure_id']: build_figure_card(row, indexes, selected_wp_map) for row in selected_figures}
+    table_cards = {row['table_id']: build_table_card(row, indexes, selected_wp_map) for row in selected_tables}
     reference_cards = {row['ref_id']: enrich_reference(row, indexes) for row in selected_references}
     parameter_cards = {row['parameter_id']: build_parameter_card(row, indexes) for row in selected_parameters}
     result_cards = {row['result_id']: build_result_card(row, indexes) for row in selected_results}
@@ -333,6 +446,8 @@ def build_material_pack(analysis: dict[str, Any], bound: dict[str, Any] | None =
             'evidence_summary': card['evidence_summary'],
         })
 
+    semantic_themes = build_semantic_themes(writing_point_cards)
+
     pack = {
         'goal': analysis.get('goal', ''),
         'goal_profile': analysis.get('goal_profile', {}),
@@ -346,13 +461,16 @@ def build_material_pack(analysis: dict[str, Any], bound: dict[str, Any] | None =
             'selected_parameters': len(parameter_cards),
             'selected_results': len(result_cards),
             'evidence_bundles': len(evidence_bundles),
+            'semantic_themes': len(semantic_themes),
         },
         'quality_gates': {
             'has_writing_points': bool(writing_point_cards),
             'has_figure_level_evidence': bool(figure_cards),
             'has_original_reference_markers': any(x.get('raw_marker') for x in reference_cards.values()),
             'has_boundary_notes': all(bool(x.get('boundary_note')) for x in writing_point_cards) if writing_point_cards else False,
+            'has_semantic_themes': bool(semantic_themes),
         },
+        'semantic_themes': semantic_themes,
         'writing_point_cards': writing_point_cards,
         'single_figure_cards': list(figure_cards.values()),
         'single_table_cards': list(table_cards.values()),
@@ -375,9 +493,18 @@ def build_human_markdown(pack: dict[str, Any]) -> str:
     lines.append(f"- 当前目标：{pack.get('goal', '')}")
     summary = pack.get('pack_summary', {})
     lines.append(
-        f"- 材料规模：{summary.get('selected_writing_points', 0)} 个写作点，{summary.get('selected_figures', 0)} 张图，{summary.get('selected_tables', 0)} 个表，{summary.get('selected_references', 0)} 条引用，{summary.get('selected_parameters', 0)} 条参数，{summary.get('selected_results', 0)} 条结果。"
+        f"- 材料规模：{summary.get('semantic_themes', 0)} 个业务主题，{summary.get('selected_writing_points', 0)} 个写作点，{summary.get('selected_figures', 0)} 张图，{summary.get('selected_tables', 0)} 个表，{summary.get('selected_references', 0)} 条引用，{summary.get('selected_parameters', 0)} 条参数，{summary.get('selected_results', 0)} 条结果。"
     )
     lines.append('')
+
+    if pack.get('semantic_themes'):
+        lines.append('## 语义主题')
+        lines.append('')
+        for theme in pack['semantic_themes']:
+            lines.append(f"### {theme['theme_id']} | {theme['theme_title']}")
+            lines.append(f"- 主题摘要：{theme.get('summary', '')}")
+            lines.append(f"- 包含写作点：{', '.join(theme.get('linked_writing_point_ids', []))}")
+            lines.append('')
 
     lines.append('## 写作点卡')
     lines.append('')
@@ -418,7 +545,7 @@ def build_human_markdown(pack: dict[str, Any]) -> str:
             lines.append(f"- 页面图像候选 xref：{', '.join(map(str, card['candidate_image_xrefs_on_page']))}")
         if card.get('page_image_candidates'):
             preview = '; '.join(
-                f"xref={x.get('xref')} path={Path(x.get('image_path', '')).name if x.get('image_path') else ''}" for x in card['page_image_candidates'][:4]
+                f"xref={x.get('xref')} path={Path(x['image_path']).name if x.get('image_path') else ''}" for x in card['page_image_candidates'][:4]
             )
             lines.append(f"- 候选图像对象：{preview}")
         lines.append('')
