@@ -1,0 +1,63 @@
+name: CI
+
+"on":
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests urllib3 httpx numpy pandas pyarrow pyyaml
+
+      - name: Compile Critical Modules
+        run: |
+          python -X utf8 -m py_compile \
+            rag_integration_entry.py \
+            main_rag_workflow.py \
+            layers/e_ragflow_retrieval_adapter.py \
+            layers/g_synthesis_graphrag_bridge.py \
+            layers/v_eval_autorag_runner.py
+
+      - name: Run Integration And Adapter Tests
+        run: |
+          python -X utf8 -m unittest \
+            test_ragflow_integration.py \
+            test_adapter_improvements.py -v
+
+      - name: Run Focus Registry Regression Tests
+        run: |
+          python -X utf8 quick_focus_registry_test.py
+          python -X utf8 focus_registry_smoke_test.py
+
+      - name: Run GraphRAG Acceptance
+        run: |
+          python -X utf8 -m layers.g_synthesis_graphrag_bridge
+
+      - name: Run AutoRAG Acceptance
+        run: |
+          python -X utf8 -m layers.v_eval_autorag_runner
+
+      - name: CLI Help Smoke Test
+        run: |
+          python -X utf8 rag_integration_entry.py --help
