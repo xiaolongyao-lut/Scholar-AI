@@ -44,6 +44,8 @@ if not _logger.hasHandlers():
     _logger.setLevel(logging.INFO)
 
 logger = _logger
+DEFAULT_EMBEDDING_BASE_URL = "https://api.siliconflow.cn/v1"
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
 
 
 class SemanticRouter:
@@ -73,8 +75,8 @@ class SemanticRouter:
         self,
         api_key: str,
         focus_points_path: str,
-        base_url: str = "https://api.siliconflow.cn/v1",
-        embedding_model: str = "BAAI/bge-m3",
+        base_url: str = DEFAULT_EMBEDDING_BASE_URL,
+        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
         timeout: float = 60.0,
         batch_size: int = 50,
         lazy_vectorize: bool = True
@@ -83,9 +85,9 @@ class SemanticRouter:
         初始化语义路由器
 
         Args:
-            api_key: 硅基流动 API key
+            api_key: embedding 服务 API key
             focus_points_path: focus_points.json 文件路径
-            base_url: 硅基流动 API 基础 URL
+            base_url: embedding API 基础 URL
             embedding_model: 向量模型名称（bge-m3 输出 1024 维）
             timeout: HTTP 超时时间（秒）
             batch_size: 向量化批大小
@@ -653,9 +655,9 @@ async def demo():
     """演示语义路由的效果"""
 
     # 获取 API key
-    api_key = os.environ.get('SILICONFLOW_API_KEY')
+    api_key = os.environ.get('SILICONFLOW_EMBEDDING_API_KEY') or os.environ.get('SILICONFLOW_API_KEY')
     if not api_key:
-        print("❌ 环境变量 SILICONFLOW_API_KEY 未设置")
+        print("❌ 环境变量 SILICONFLOW_API_KEY（或 SILICONFLOW_EMBEDDING_API_KEY）未设置")
         sys.exit(1)
 
     # 创建路由器
@@ -664,6 +666,8 @@ async def demo():
         router = SemanticRouter(
             api_key=api_key,
             focus_points_path='focus_points.json',
+            base_url=os.environ.get('SILICONFLOW_EMBEDDING_BASE_URL', DEFAULT_EMBEDDING_BASE_URL),
+            embedding_model=os.environ.get('SILICONFLOW_EMBEDDING_MODEL', DEFAULT_EMBEDDING_MODEL),
             lazy_vectorize=True
         )
     except (ValueError, FileNotFoundError) as e:

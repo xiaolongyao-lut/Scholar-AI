@@ -24,7 +24,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 # ─── YAML 解析 (pyyaml 可选, 内置 fallback) ─────────────────────
 try:
@@ -43,6 +43,124 @@ logger = logging.getLogger("rag_integration")
 
 # ─── 默认配置路径 ────────────────────────────────────────────────
 DEFAULT_CONFIG_PATH = os.path.join("config", "rag_integration_config.yaml")
+DEFAULT_LLM_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
+DEFAULT_LLM_MODEL = "ep-your-ark-endpoint"
+DEFAULT_LLM_API_KEY_ENV = "ARK_API_KEY"
+DEFAULT_EMBEDDING_BASE_URL = "https://api.siliconflow.cn/v1"
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
+DEFAULT_EMBEDDING_API_KEY_ENV = "SILICONFLOW_API_KEY"
+LEGACY_LLM_API_KEY_ENV_NAMES = ("SILICONFLOW_API_KEY",)
+LEGACY_EMBEDDING_API_KEY_ENV_NAMES = ("SILICONFLOW_EMBEDDING_API_KEY",)
+
+
+def _normalize_env_name(value: Any, default: str) -> str:
+    """返回规范化后的环境变量名。"""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return default
+
+
+def _resolve_from_env(
+    preferred_env_name: str,
+    legacy_env_names: Sequence[str] = (),
+) -> Optional[str]:
+    """按优先级从环境变量解析运行时值。"""
+    env_names = [preferred_env_name, *legacy_env_names]
+    for env_name in env_names:
+        if not env_name:
+            continue
+        value = os.environ.get(env_name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _resolve_config_or_env(
+    section: Dict[str, Any],
+    field_name: str,
+    env_name_field: str,
+    default_env_name: str,
+    legacy_env_names: Sequence[str] = (),
+    default_value: Optional[str] = None,
+) -> Optional[str]:
+    """
+    优先从环境变量读取配置，其次回退到 YAML 字段。
+
+    Why:
+        线上环境优先使用 Secrets，避免把运行时端点和模型强耦合到仓库
+        文件；同时保留 YAML 作为本地默认值与回退值。
+    """
+    env_name = _normalize_env_name(section.get(env_name_field), default_env_name)
+    env_value = _resolve_from_env(env_name, legacy_env_names)
+    if env_value is not None:
+        return env_value
+
+    raw_value = section.get(field_name, default_value)
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, str):
+        return raw_value.strip() or default_value
+    return str(raw_value)
+
+
+def _get_workflow_llm_settings(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """解析聊天模型配置。"""
+    workflow_cfg = cfg.get("workflow", {})
+    return {
+        "api_key": _resolve_from_env(
+            _normalize_env_name(
+                workflow_cfg.get("llm_api_key_env"),
+                DEFAULT_LLM_API_KEY_ENV,
+            ),
+            LEGACY_LLM_API_KEY_ENV_NAMES,
+        ),
+        "base_url": _resolve_config_or_env(
+            workflow_cfg,
+            "llm_base_url",
+            "llm_base_url_env",
+            "ARK_BASE_URL",
+            default_value=DEFAULT_LLM_BASE_URL,
+        ) or DEFAULT_LLM_BASE_URL,
+        "model": _resolve_config_or_env(
+            workflow_cfg,
+            "llm_model",
+            "llm_model_env",
+            "ARK_MODEL",
+            default_value=DEFAULT_LLM_MODEL,
+        ) or DEFAULT_LLM_MODEL,
+        "enable_requests_fallback": workflow_cfg.get("enable_requests_fallback", True),
+    }
+
+
+def _get_embedding_settings(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """解析 embedding 配置。"""
+    embedding_cfg = cfg.get("embedding", {})
+    return {
+        "api_key": _resolve_from_env(
+            _normalize_env_name(
+                embedding_cfg.get("api_key_env"),
+                DEFAULT_EMBEDDING_API_KEY_ENV,
+            ),
+            LEGACY_EMBEDDING_API_KEY_ENV_NAMES,
+        ),
+        "base_url": _resolve_config_or_env(
+            embedding_cfg,
+            "base_url",
+            "base_url_env",
+            "SILICONFLOW_EMBEDDING_BASE_URL",
+            default_value=DEFAULT_EMBEDDING_BASE_URL,
+        ) or DEFAULT_EMBEDDING_BASE_URL,
+        "model": _resolve_config_or_env(
+            embedding_cfg,
+            "model",
+            "model_env",
+            "SILICONFLOW_EMBEDDING_MODEL",
+            default_value=DEFAULT_EMBEDDING_MODEL,
+        ) or DEFAULT_EMBEDDING_MODEL,
+        "timeout": float(embedding_cfg.get("timeout", 60.0)),
+        "batch_size": int(embedding_cfg.get("batch_size", 50)),
+        "lazy_vectorize": bool(embedding_cfg.get("lazy_vectorize", True)),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -169,9 +287,10 @@ async def cmd_ask(cfg: Dict[str, Any], query: str, dataset_ids: Optional[list] =
     """
     workflow_cfg = cfg.get("workflow", {})
     ragflow_cfg = cfg.get("ragflow", {})
+    llm_settings = _get_workflow_llm_settings(cfg)
 
     # 初始化语义路由器 (简化: 若无 focus_points 则使用直通路由)
-    router = _create_passthrough_router()
+    router = _create_passthrough_router(cfg)
 
     # 初始化 RAGFlow 适配器
     adapter = _init_ragflow_adapter(cfg)
@@ -182,10 +301,10 @@ async def cmd_ask(cfg: Dict[str, Any], query: str, dataset_ids: Optional[list] =
     workflow = RAGWorkflow(
         semantic_router=router,
         ragflow_adapter=adapter,
-        api_key=os.environ.get("SILICONFLOW_API_KEY"),
-        base_url=workflow_cfg.get("llm_base_url", "https://api.siliconflow.cn/v1"),
-        model=workflow_cfg.get("llm_model", "deepseek-ai/DeepSeek-V3"),
-        enable_requests_fallback=workflow_cfg.get("enable_requests_fallback", True)
+        api_key=llm_settings["api_key"],
+        base_url=llm_settings["base_url"],
+        model=llm_settings["model"],
+        enable_requests_fallback=llm_settings["enable_requests_fallback"]
     )
 
     try:
@@ -283,18 +402,24 @@ def cmd_autorag_generate(cfg: Dict[str, Any], chunks_from: Optional[str] = None)
 # 辅助工具
 # ═══════════════════════════════════════════════════════════════════
 
-def _create_passthrough_router() -> Any:
+def _create_passthrough_router(cfg: Optional[Dict[str, Any]] = None) -> Any:
     """
     创建直通路由器 (当 focus_points.json 不可用时的兜底)。
     直接将查询关键词作为 focus points 返回。
     """
     try:
         from layers.semantic_router import SemanticRouter
-        api_key = os.environ.get("SILICONFLOW_API_KEY")
+        embedding_settings = _get_embedding_settings(cfg or {})
+        api_key = embedding_settings["api_key"]
         if api_key and Path("focus_points.json").exists():
             return SemanticRouter(
                 api_key=api_key,
-                focus_points_path="focus_points.json"
+                focus_points_path="focus_points.json",
+                base_url=embedding_settings["base_url"],
+                embedding_model=embedding_settings["model"],
+                timeout=embedding_settings["timeout"],
+                batch_size=embedding_settings["batch_size"],
+                lazy_vectorize=embedding_settings["lazy_vectorize"],
             )
     except Exception as exc:
         logger.debug("SemanticRouter not available, using passthrough: %s", exc)

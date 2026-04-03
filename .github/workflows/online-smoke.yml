@@ -30,10 +30,10 @@ jobs:
 
       - name: Validate Secrets
         env:
-          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
         run: |
-          if [ -z "${SILICONFLOW_API_KEY}" ]; then
-            echo "SILICONFLOW_API_KEY is required for Online Smoke."
+          if [ -z "${ARK_API_KEY}" ]; then
+            echo "ARK_API_KEY is required for Online Smoke."
             exit 1
           fi
 
@@ -45,7 +45,12 @@ jobs:
       - name: Run Live Ask Smoke Test
         env:
           PYTHONUTF8: "1"
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          ARK_BASE_URL: ${{ vars.ARK_BASE_URL }}
+          ARK_MODEL: ${{ vars.ARK_MODEL }}
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          SILICONFLOW_EMBEDDING_BASE_URL: ${{ vars.SILICONFLOW_EMBEDDING_BASE_URL }}
+          SILICONFLOW_EMBEDDING_MODEL: ${{ vars.SILICONFLOW_EMBEDDING_MODEL }}
         run: |
           python -X utf8 rag_integration_entry.py ask --query "${{ inputs.query }}" | tee online-smoke-output.txt
 

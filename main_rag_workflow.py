@@ -40,6 +40,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+DEFAULT_LLM_BASE_URL = os.environ.get("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
+DEFAULT_LLM_MODEL = os.environ.get("ARK_MODEL", "ep-your-ark-endpoint")
+LEGACY_LLM_API_ENV_NAMES = ("SILICONFLOW_API_KEY",)
 
 # 导入适配层
 from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
@@ -73,8 +76,8 @@ class RAGWorkflow:
         ragflow_adapter: Optional[RAGFlowAdapter] = None,  # RAGFlow 适配器
         local_data: Optional[Dict[str, Any]] = None,  # 本地兜底数据 (raw_extract)
         api_key: Optional[str] = None,
-        base_url: str = "https://api.siliconflow.cn/v1",
-        model: str = "deepseek-ai/DeepSeek-V3",
+        base_url: str = DEFAULT_LLM_BASE_URL,
+        model: str = DEFAULT_LLM_MODEL,
         llm_client: Optional[Any] = None,
         enable_requests_fallback: bool = True
     ):
@@ -85,7 +88,7 @@ class RAGWorkflow:
             semantic_router: SemanticRouter 实例
             ragflow_adapter: RAGFlowAdapter 实例
             local_data: 本地混合检索的兜底数据
-            api_key: 硅基流动 API key
+            api_key: 聊天模型 API key，优先支持 ARK_API_KEY，兼容旧的 SILICONFLOW_API_KEY
             base_url: API 基础 URL
             model: LLM 模型名称
             llm_client: 可注入的异步 LLM 客户端（测试或外部管理连接时使用）
@@ -94,7 +97,13 @@ class RAGWorkflow:
         self.router = semantic_router
         self.rag_adapter = ragflow_adapter
         self.local_data = local_data
-        self.api_key = api_key or os.environ.get('SILICONFLOW_API_KEY')
+        self.api_key = api_key or os.environ.get('ARK_API_KEY')
+        if not self.api_key:
+            for legacy_env_name in LEGACY_LLM_API_ENV_NAMES:
+                legacy_value = os.environ.get(legacy_env_name)
+                if legacy_value:
+                    self.api_key = legacy_value
+                    break
         self.base_url = base_url
         self.model = model
         self.enable_requests_fallback = enable_requests_fallback
@@ -459,17 +468,23 @@ async def demo():
     print("RAG 工作流演示")
     print("=" * 60)
     
-    api_key = os.environ.get('SILICONFLOW_API_KEY')
-    if not api_key:
-        print("❌ 未设置 SILICONFLOW_API_KEY")
+    embedding_api_key = os.environ.get('SILICONFLOW_API_KEY') or os.environ.get('SILICONFLOW_EMBEDDING_API_KEY')
+    llm_api_key = os.environ.get('ARK_API_KEY') or os.environ.get('SILICONFLOW_API_KEY')
+    if not embedding_api_key:
+        print("❌ 未设置 SILICONFLOW_API_KEY（或 SILICONFLOW_EMBEDDING_API_KEY）")
+        return
+    if not llm_api_key:
+        print("❌ 未设置 ARK_API_KEY（兼容旧的 SILICONFLOW_API_KEY）")
         return
     
     try:
         # 初始化语义路由器
         print("\n1️⃣ 初始化语义路由器...")
         router = SemanticRouter(
-            api_key=api_key,
-            focus_points_path='focus_points.json'
+            api_key=embedding_api_key,
+            focus_points_path='focus_points.json',
+            base_url=os.environ.get('SILICONFLOW_EMBEDDING_BASE_URL', 'https://api.siliconflow.cn/v1'),
+            embedding_model=os.environ.get('SILICONFLOW_EMBEDDING_MODEL', 'BAAI/bge-m3'),
         )
         print("✓ 路由器初始化完成")
         
@@ -477,7 +492,9 @@ async def demo():
         print("\n2️⃣ 初始化 RAG 工作流...")
         workflow = RAGWorkflow(
             semantic_router=router,
-            api_key=api_key
+            api_key=llm_api_key,
+            base_url=os.environ.get('ARK_BASE_URL', DEFAULT_LLM_BASE_URL),
+            model=os.environ.get('ARK_MODEL', DEFAULT_LLM_MODEL),
         )
         print("✓ 工作流初始化完成")
         

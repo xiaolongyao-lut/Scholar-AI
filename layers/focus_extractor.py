@@ -42,15 +42,15 @@ class FocusExtractor:
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.siliconflow.cn/v1",
-        model: str = "deepseek-ai/DeepSeek-V3",
+        base_url: str = "https://ark.cn-beijing.volces.com/api/v3",
+        model: str = "ep-your-ark-endpoint",
         timeout: float = 60.0
     ):
         """
         初始化提取器
         
         Args:
-            api_key: 硅基流动 API key
+            api_key: 聊天模型 API key
             base_url: API 基础 URL
             model: 使用的大模型名称
             timeout: HTTP 超时时间（秒）
@@ -62,7 +62,6 @@ class FocusExtractor:
         
         # 防卡死客户端
         self.client = httpx.AsyncClient(
-            proxies=None,
             timeout=self.timeout,
             limits=httpx.Limits(max_connections=5, max_keepalive_connections=2)
         )
@@ -364,13 +363,17 @@ async def main():
     args = parser.parse_args()
     
     # 获取 API key
-    api_key = os.environ.get('SILICONFLOW_API_KEY')
+    api_key = os.environ.get('ARK_API_KEY') or os.environ.get('SILICONFLOW_API_KEY')
     if not api_key:
-        logger.error("环境变量 SILICONFLOW_API_KEY 未设置")
+        logger.error("环境变量 ARK_API_KEY 未设置（兼容旧的 SILICONFLOW_API_KEY）")
         return
     
     # 创建提取器并运行
-    extractor = FocusExtractor(api_key=api_key)
+    extractor = FocusExtractor(
+        api_key=api_key,
+        base_url=os.environ.get('ARK_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3'),
+        model=os.environ.get('ARK_MODEL', 'ep-your-ark-endpoint')
+    )
     
     try:
         # 批量提取
