@@ -41,6 +41,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 导入适配层
+from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
+from layers.r_layer_hybrid_retriever import hybrid_search
+
 
 @dataclass
 class RAGResult:
@@ -66,31 +70,48 @@ class RAGWorkflow:
     def __init__(
         self,
         semantic_router: Any,  # SemanticRouter 实例
-        rag_instance: Optional[Any] = None,  # RAG-Anything 实例（可选，Sprint 3 中集成）
+        ragflow_adapter: Optional[RAGFlowAdapter] = None,  # RAGFlow 适配器
+        local_data: Optional[Dict[str, Any]] = None,  # 本地兜底数据 (raw_extract)
         api_key: Optional[str] = None,
         base_url: str = "https://api.siliconflow.cn/v1",
-        model: str = "deepseek-ai/DeepSeek-V3"
+        model: str = "deepseek-ai/DeepSeek-V3",
+        llm_client: Optional[Any] = None,
+        enable_requests_fallback: bool = True
     ):
         """
         初始化 RAG 工作流
         
         Args:
             semantic_router: SemanticRouter 实例
-            rag_instance: RAG-Anything 实例（可选）
+            ragflow_adapter: RAGFlowAdapter 实例
+            local_data: 本地混合检索的兜底数据
             api_key: 硅基流动 API key
             base_url: API 基础 URL
             model: LLM 模型名称
+            llm_client: 可注入的异步 LLM 客户端（测试或外部管理连接时使用）
+            enable_requests_fallback: 当异步客户端失败时，是否允许回退到 requests
         """
         self.router = semantic_router
-        self.rag = rag_instance
+        self.rag_adapter = ragflow_adapter
+        self.local_data = local_data
         self.api_key = api_key or os.environ.get('SILICONFLOW_API_KEY')
         self.base_url = base_url
         self.model = model
+        self.enable_requests_fallback = enable_requests_fallback
+        self._owns_llm_client = llm_client is None
         
+        # 如果未传入适配器但有环境变量，则尝试自动初始化
+        if not self.rag_adapter and os.environ.get('RAGFLOW_API_KEY'):
+            self.rag_adapter = RAGFlowAdapter(
+                api_key=os.environ.get('RAGFLOW_API_KEY'),
+                base_url=os.environ.get('RAGFLOW_BASE_URL', 'https://localhost:9380')
+            )
+
         # 防卡死 HTTP 客户端
-        if httpx:
+        if llm_client is not None:
+            self.client = llm_client
+        elif httpx:
             self.client = httpx.AsyncClient(
-                proxies=None,
                 timeout=60.0,
                 limits=httpx.Limits(max_connections=5, max_keepalive_connections=2)
             )
@@ -102,7 +123,8 @@ class RAGWorkflow:
         self,
         user_query: str,
         top_k_points: int = 3,
-        top_k_evidence: int = 5
+        top_k_evidence: int = 5,
+        dataset_ids: Optional[List[str]] = None
     ) -> RAGResult:
         """
         完整的查询流程
@@ -111,6 +133,7 @@ class RAGWorkflow:
             user_query: 用户的自然语言问题
             top_k_points: 返回的关注点数
             top_k_evidence: 返回的证据数
+            dataset_ids: RAGFlow 数据集 ID 列表
         
         Returns:
             RAGResult 对象，包含所有中间步骤和最终答案
@@ -153,13 +176,14 @@ class RAGWorkflow:
             logger.info(f"增强查询: {enhanced_query[:100]}...")
             
             # ========================================
-            # 第 3 步：RAG 混合检索（TODO: 集成 RAG-Anything）
+            # 第 3 步：RAG 混合检索 (RAGFlow 优先 + 本地兜底)
             # ========================================
             logger.info("[Step 3] RAG 混合检索")
             
             rag_evidence = await self._rag_search(
                 enhanced_query,
-                top_k=top_k_evidence
+                top_k=top_k_evidence,
+                dataset_ids=dataset_ids
             )
             
             trace['step_2_rag_search'] = {
@@ -242,40 +266,59 @@ class RAGWorkflow:
     async def _rag_search(
         self,
         enhanced_query: str,
-        top_k: int = 5
+        top_k: int = 5,
+        dataset_ids: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
-        调用 RAG-Anything 进行混合检索
-        
-        TODO: 集成实际的 RAG-Anything 调用
-        当前返回空列表（回退方案）
+        核心检索逻辑：
+        1. 尝试使用 RAGFlowAdapter 检索远程数据集
+        2. 如果失败或未配置，回退到本地 hybrid_search 检索 local_data
         """
-        if self.rag is None:
-            logger.warning("RAG-Anything 未初始化，返回空结果")
-            return []
+        results = []
         
-        try:
-            # TODO: 实现 RAG-Anything 的 aquery() 调用
-            # rag_results = await self.rag.aquery(
-            #     enhanced_query,
-            #     param=QueryParam(mode="hybrid", top_k=top_k)
-            # )
-            # return rag_results
-            
-            # 临时回退：返回模拟数据
-            logger.info("RAG-Anything 集成待实现，使用模拟数据")
-            return [
-                {
-                    "chunk_id": "chunk_001",
-                    "text": "这是一个模拟的检索结果...",
-                    "score": 0.85,
-                    "source": "mock"
-                }
-            ]
-            
-        except Exception as e:
-            logger.error(f"RAG 检索失败: {e}")
-            return []
+        # 策略 1: RAGFlow 检索
+        if self.rag_adapter and dataset_ids:
+            try:
+                logger.info(f"尝试 RAGFlow 检索 (datasets: {dataset_ids})")
+                results = self.rag_adapter.retrieve(
+                    question=enhanced_query,
+                    dataset_ids=dataset_ids,
+                    top_k=top_k
+                )
+                if results:
+                    logger.info(f"✓ RAGFlow 检索成功，获取 {len(results)} 条结果")
+                    return results
+            except Exception as e:
+                logger.error(f"RAGFlow 检索异常: {e}，准备进入兜底逻辑")
+
+        # 策略 2: 本地混合检索兜底
+        if self.local_data:
+            try:
+                logger.info("尝试本地混合检索兜底 (BM25 + Overlap)")
+                # hybrid_search 是同步的，如有性能需求可使用 run_in_executor
+                local_results = hybrid_search(
+                    raw_extract=self.local_data,
+                    query=enhanced_query,
+                    top_k=top_k
+                )
+                # 对齐字段格式
+                for res in local_results:
+                    results.append({
+                        "text": res.get("text", ""),
+                        "source": res.get("source", "local_file"),
+                        "score": res.get("hybrid_score", 0.0),
+                        "metadata": {"type": "local_fallback"}
+                    })
+                
+                if results:
+                    logger.info(f"✓ 本地劫持/兜底检索成功，获取 {len(results)} 条结果")
+                    return results
+            except Exception as e:
+                logger.error(f"本地兜底检索失败: {e}")
+
+        # 策略 3: 最终回退（空结果）
+        logger.warning("所有检索策略均未命中，返回空列表")
+        return []
     
     async def _generate_answer(
         self,
@@ -289,10 +332,6 @@ class RAGWorkflow:
         输入：用户问题 + 关注点 + RAG 证据
         输出：学术性的综合回答
         """
-        if not self.client or not self.api_key:
-            logger.warning("LLM 客户端未初始化")
-            return "LLM 服务不可用"
-        
         # 构造上下文
         context_str = "\n".join([
             f"- {ev.get('text', '').strip()[:100]}"
@@ -316,33 +355,55 @@ class RAGWorkflow:
 
 回答："""
         
-        try:
-            response = await self.client.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7,
-                    "max_tokens": 800
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"LLM API 失败: {response.status_code}")
-                return f"API 错误: {response.status_code}"
-            
-            result = response.json()
-            answer = result['choices'][0]['message']['content']
-            
-            return answer
-            
-        except Exception as e:
-            logger.error(f"生成答案失败: {e}")
-            return f"生成失败: {str(e)}"
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.7,
+            "max_tokens": 800
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        if not self.api_key:
+            logger.warning("未配置 LLM API key，跳过答案生成")
+            return "LLM 服务不可用"
+
+        # 尝试使用 httpx (异步)
+        if self.client:
+            try:
+                response = await self.client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload
+                )
+                if response.status_code == 200:
+                    return response.json()['choices'][0]['message']['content']
+                logger.error(f"LLM API (httpx) 失败: {response.status_code}")
+            except Exception as e:
+                logger.error(f"LLM API (httpx) 异常: {e}")
+
+        # 兜底：使用 requests (同步)
+        if self.enable_requests_fallback:
+            try:
+                import requests
+                logger.info("尝试使用 requests 进行 LLM 调用兜底")
+                response = requests.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
+                if response.status_code == 200:
+                    return response.json()['choices'][0]['message']['content']
+                return f"API 错误 (requests): {response.status_code}"
+            except Exception as e:
+                logger.error(f"LLM API (requests) 失败: {e}")
+                return f"生成失败: {str(e)}"
+
+        logger.warning("异步 LLM 客户端失败，且 requests 兜底已禁用")
+        return "LLM 服务不可用"
     
     def _calculate_confidence(
         self,
@@ -379,9 +440,11 @@ class RAGWorkflow:
         return min(1.0, score)
     
     async def close(self) -> None:
-        """关闭客户端"""
-        if self.client:
+        """关闭客户端和 RAGFlow 适配器资源"""
+        if self.client and self._owns_llm_client and hasattr(self.client, "aclose"):
             await self.client.aclose()
+        if self.rag_adapter:
+            self.rag_adapter.close()
 
 
 # ============================================================================
