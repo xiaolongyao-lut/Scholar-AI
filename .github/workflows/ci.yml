@@ -42,6 +42,7 @@ jobs:
             layers/g_synthesis_graphrag_bridge.py \
             layers/p_layer_presentation_word.py \
             layers/v_eval_autorag_runner.py \
+            test_claim_evidence_consistency.py \
             test_word_docx_smoke.py \
             tests_semantic_themes.py
 
@@ -53,7 +54,7 @@ jobs:
 
       - name: Run Semantic Themes Regression Tests
         run: |
-          python -X utf8 -m unittest tests_semantic_themes.py -v
+          python -X utf8 -m unittest tests_semantic_themes.py test_claim_evidence_consistency.py -v
 
       - name: Run Word Docx Smoke Test
         run: |

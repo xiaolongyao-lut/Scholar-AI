@@ -49,6 +49,20 @@ def stable_unique(items: list[str]) -> list[str]:
     return ordered
 
 
+def evidence_link_count(payload: dict[str, Any]) -> int:
+    """Return the count of linked evidence ids on a card-like payload."""
+    return sum(
+        len(payload.get(key, []) or [])
+        for key in (
+            'linked_figure_ids',
+            'linked_table_ids',
+            'linked_parameter_ids',
+            'linked_result_ids',
+            'linked_reference_ids',
+        )
+    )
+
+
 def stable_marker_map(bound: dict[str, Any]) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for ref in bound.get('references', []) or []:
@@ -405,6 +419,149 @@ def build_semantic_themes(writing_point_cards: list[dict[str, Any]]) -> list[dic
     return themes
 
 
+def build_consistency_report(
+    writing_point_cards: list[dict[str, Any]],
+    semantic_themes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build a deterministic claim-evidence consistency report for material packs.
+
+    Why:
+        主文生成已经基于 semantic_themes 和 writing_point_cards 出稿；在进入
+        Word 前，需要把“主张是否有证据”“主题是否真的挂到写作点”显式结构化。
+
+    Args:
+        writing_point_cards: 已完成证据绑定的写作点卡。
+        semantic_themes: 已聚类完成的主题卡。
+
+    Returns:
+        一个包含 summary、issues、writing_point_checks、theme_checks 的校验报告。
+    """
+    issues: list[dict[str, Any]] = []
+    writing_point_checks: list[dict[str, Any]] = []
+    theme_checks: list[dict[str, Any]] = []
+    writing_point_lookup = {
+        str(card.get('writing_point_id')): card
+        for card in writing_point_cards
+        if card.get('writing_point_id')
+    }
+
+    for card in writing_point_cards:
+        writing_point_id = str(card.get('writing_point_id', ''))
+        claim = str(card.get('claim') or card.get('representative_claim') or '').strip()
+        source_chunk_ids = stable_unique([str(item) for item in card.get('source_chunk_ids', []) or [] if item])
+        original_markers = stable_unique([str(item) for item in card.get('original_reference_markers', []) or [] if item])
+        linked_evidence_count = evidence_link_count(card)
+        has_supporting_evidence = bool(linked_evidence_count or source_chunk_ids or original_markers)
+        check = {
+            'writing_point_id': writing_point_id,
+            'claim_present': bool(claim),
+            'linked_evidence_count': linked_evidence_count,
+            'source_chunk_count': len(source_chunk_ids),
+            'reference_marker_count': len(original_markers),
+            'has_supporting_evidence': has_supporting_evidence,
+            'severity': 'ok',
+            'issues': [],
+        }
+        if not claim:
+            issue = {
+                'severity': 'error',
+                'scope': 'writing_point',
+                'id': writing_point_id,
+                'message': '写作点缺少 claim/representative_claim，无法建立可审阅主张。',
+            }
+            check['severity'] = 'error'
+            check['issues'].append(issue['message'])
+            issues.append(issue)
+        if not has_supporting_evidence:
+            issue = {
+                'severity': 'error',
+                'scope': 'writing_point',
+                'id': writing_point_id,
+                'message': '写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。',
+            }
+            check['severity'] = 'error'
+            check['issues'].append(issue['message'])
+            issues.append(issue)
+        elif not original_markers and linked_evidence_count == 0:
+            issue = {
+                'severity': 'warning',
+                'scope': 'writing_point',
+                'id': writing_point_id,
+                'message': '写作点仅保留 source_chunk 支撑，缺少显式图表/引用链路。',
+            }
+            if check['severity'] == 'ok':
+                check['severity'] = 'warning'
+            check['issues'].append(issue['message'])
+            issues.append(issue)
+        writing_point_checks.append(check)
+
+    for theme in semantic_themes:
+        theme_id = str(theme.get('theme_id', ''))
+        linked_writing_point_ids = stable_unique([str(item) for item in theme.get('linked_writing_point_ids', []) or [] if item])
+        missing_writing_points = [item for item in linked_writing_point_ids if item not in writing_point_lookup]
+        covered_cards = [writing_point_lookup[item] for item in linked_writing_point_ids if item in writing_point_lookup]
+        aggregated_evidence_count = sum(evidence_link_count(card) for card in covered_cards)
+        has_theme_evidence = bool(aggregated_evidence_count)
+        check = {
+            'theme_id': theme_id,
+            'theme_title': str(theme.get('theme_title', '')),
+            'linked_writing_point_count': len(linked_writing_point_ids),
+            'missing_writing_point_ids': missing_writing_points,
+            'aggregated_evidence_count': aggregated_evidence_count,
+            'has_supporting_evidence': has_theme_evidence,
+            'severity': 'ok',
+            'issues': [],
+        }
+        if not linked_writing_point_ids:
+            issue = {
+                'severity': 'error',
+                'scope': 'theme',
+                'id': theme_id,
+                'message': '主题未关联任何写作点，不能直接用于主文生成。',
+            }
+            check['severity'] = 'error'
+            check['issues'].append(issue['message'])
+            issues.append(issue)
+        if missing_writing_points:
+            issue = {
+                'severity': 'error',
+                'scope': 'theme',
+                'id': theme_id,
+                'message': f"主题引用了不存在的写作点: {', '.join(missing_writing_points)}。",
+            }
+            check['severity'] = 'error'
+            check['issues'].append(issue['message'])
+            issues.append(issue)
+        if linked_writing_point_ids and not has_theme_evidence:
+            issue = {
+                'severity': 'warning',
+                'scope': 'theme',
+                'id': theme_id,
+                'message': '主题下写作点缺少显式图表/参数/结果/引用链接，主文支撑较弱。',
+            }
+            if check['severity'] == 'ok':
+                check['severity'] = 'warning'
+            check['issues'].append(issue['message'])
+            issues.append(issue)
+        theme_checks.append(check)
+
+    error_count = sum(1 for issue in issues if issue['severity'] == 'error')
+    warning_count = sum(1 for issue in issues if issue['severity'] == 'warning')
+    return {
+        'summary': {
+            'writing_point_count': len(writing_point_cards),
+            'theme_count': len(semantic_themes),
+            'issue_count': len(issues),
+            'error_count': error_count,
+            'warning_count': warning_count,
+            'overall_pass': error_count == 0,
+        },
+        'issues': issues,
+        'writing_point_checks': writing_point_checks,
+        'theme_checks': theme_checks,
+    }
+
+
 def build_material_pack(analysis: dict[str, Any], bound: dict[str, Any] | None = None) -> dict[str, Any]:
     bound = bound or {}
     indexes = build_indexes(bound)
@@ -447,6 +604,8 @@ def build_material_pack(analysis: dict[str, Any], bound: dict[str, Any] | None =
         })
 
     semantic_themes = build_semantic_themes(writing_point_cards)
+    consistency_report = build_consistency_report(writing_point_cards, semantic_themes)
+    consistency_summary = consistency_report.get('summary', {})
 
     pack = {
         'goal': analysis.get('goal', ''),
@@ -462,6 +621,7 @@ def build_material_pack(analysis: dict[str, Any], bound: dict[str, Any] | None =
             'selected_results': len(result_cards),
             'evidence_bundles': len(evidence_bundles),
             'semantic_themes': len(semantic_themes),
+            'consistency_issues': consistency_summary.get('issue_count', 0),
         },
         'quality_gates': {
             'has_writing_points': bool(writing_point_cards),
@@ -469,7 +629,18 @@ def build_material_pack(analysis: dict[str, Any], bound: dict[str, Any] | None =
             'has_original_reference_markers': any(x.get('raw_marker') for x in reference_cards.values()),
             'has_boundary_notes': all(bool(x.get('boundary_note')) for x in writing_point_cards) if writing_point_cards else False,
             'has_semantic_themes': bool(semantic_themes),
+            'has_consistency_report': True,
+            'writing_points_have_supporting_evidence': all(
+                bool(item.get('has_supporting_evidence')) and item.get('claim_present', True)
+                for item in consistency_report.get('writing_point_checks', [])
+            ) if writing_point_cards else False,
+            'themes_have_linked_writing_points': all(
+                item.get('linked_writing_point_count', 0) > 0 and not item.get('missing_writing_point_ids')
+                for item in consistency_report.get('theme_checks', [])
+            ) if semantic_themes else False,
+            'consistency_pass': bool(consistency_summary.get('overall_pass', False)),
         },
+        'consistency_report': consistency_report,
         'semantic_themes': semantic_themes,
         'writing_point_cards': writing_point_cards,
         'single_figure_cards': list(figure_cards.values()),
@@ -505,6 +676,21 @@ def build_human_markdown(pack: dict[str, Any]) -> str:
             lines.append(f"- 主题摘要：{theme.get('summary', '')}")
             lines.append(f"- 包含写作点：{', '.join(theme.get('linked_writing_point_ids', []))}")
             lines.append('')
+
+    consistency_report = pack.get('consistency_report', {})
+    consistency_summary = consistency_report.get('summary', {})
+    if consistency_report:
+        lines.append('## 一致性校验')
+        lines.append('')
+        lines.append(
+            f"- 校验结论：{'PASS' if consistency_summary.get('overall_pass') else 'FAIL'}"
+            f"｜错误 {consistency_summary.get('error_count', 0)}｜警告 {consistency_summary.get('warning_count', 0)}"
+        )
+        for issue in consistency_report.get('issues', [])[:10]:
+            lines.append(
+                f"- [{issue.get('severity', 'info').upper()}] {issue.get('scope', '')}:{issue.get('id', '')} - {issue.get('message', '')}"
+            )
+        lines.append('')
 
     lines.append('## 写作点卡')
     lines.append('')
