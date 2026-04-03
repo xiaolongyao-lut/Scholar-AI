@@ -1,5 +1,7 @@
 # 文献处理器 v40.0 三阶段升级 - 快速入门指南
 
+> 本文聚焦传统 v40 流水线脚本；当前 RAG 集成入口请优先查看 `README.md` 与 `rag_integration_entry.py`。
+
 ## 🎯 5分钟快速开始
 
 ### 前置条件
@@ -13,7 +15,7 @@ export OPENAI_API_KEY="sk-your-key-here"
 
 #### 场景 1: 处理单篇 PDF (测试第一阶段)
 ```bash
-cd 写作材料包/代码/00_模块化流水线脚本
+cd <repo-root>
 
 python 00_Integrated_Pipeline_v40.0.py sample.pdf \
   --goal "提取工艺参数与组织性能关系" \

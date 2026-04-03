@@ -1,36 +1,43 @@
 # Modular Pipeline Script
 
-Academic literature processing pipeline workspace.
+Academic literature processing and retrieval workspace for the modular pipeline, semantic routing, and RAG integration stack.
 
 ## Scope
 
-This repository is intended to track the modular pipeline code under:
+This repository tracks:
 
-- `layers/`
 - numbered pipeline scripts such as `00_Batch_Process_Controller.py`
-- semantic routing and focus registry tests
-- key implementation documents
+- reusable layers under `layers/`
+- focus registry and semantic routing
+- RAGFlow / GraphRAG / AutoRAG integration entrypoints and tests
 
-The following local-only content is intentionally excluded from git:
+Local-only or generated content should stay outside git, especially:
 
 - `.env`
 - `output/`
 - `legacy_archive/`
-- `github/`
 - Python caches and local IDE metadata
 
-## Key Files
+## Key Entry Points
 
-- `layers/focus_registry.py`: canonical focus registry, dedupe, persistence
+- `main_rag_workflow.py`: primary RAG workflow orchestration
+- `rag_integration_entry.py`: unified CLI entry for `ask`, `graphrag`, and `autorag-generate`
+- `config/rag_integration_config.yaml`: integration configuration
+- `layers/focus_registry.py`: canonical focus registry, dedupe, and persistence
 - `layers/semantic_router.py`: semantic routing over the focus registry
-- `focus_registry_smoke_test.py`: end-to-end compatibility smoke tests
-- `quick_focus_registry_test.py`: fast local validation
-- `SEMANTIC_ROUTING_IMPLEMENTATION_PLAN.md`: implementation planning notes
-- `FOCUS_REGISTRY_DESIGN.md`: data model and persistence design
 
-## Local Validation
+## Validation
 
 ```powershell
-python .\quick_focus_registry_test.py
-python .\focus_registry_smoke_test.py
+python -X utf8 .\quick_focus_registry_test.py
+python -X utf8 .\focus_registry_smoke_test.py
+python -X utf8 -m unittest .\test_ragflow_integration.py .\test_adapter_improvements.py -v
+python -X utf8 .\rag_integration_entry.py --help
 ```
+
+## Retained Documents
+
+- `QUICK_START_v3.md`: usage-oriented walkthrough for the classic pipeline flow
+- `IMPLEMENTATION_GUIDE_v3_Phase123.md`: long-form implementation guide for the v40 pipeline
+- `FOCUS_REGISTRY_DESIGN.md`: focus registry schema and persistence design
+- `SEMANTIC_ROUTING_IMPLEMENTATION_PLAN.md`: semantic routing design and evolution notes
