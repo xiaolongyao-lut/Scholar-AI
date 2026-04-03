@@ -1,0 +1,81 @@
+name: Online Smoke
+
+"on":
+  workflow_dispatch:
+    inputs:
+      query:
+        description: "Smoke-test query for the live ask path"
+        required: false
+        default: "激光功率如何影响熔池中的氮传输？"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ask-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "requirements-ci.txt"
+
+      - name: Validate Secrets
+        env:
+          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+        run: |
+          if [ -z "${SILICONFLOW_API_KEY}" ]; then
+            echo "SILICONFLOW_API_KEY is required for Online Smoke."
+            exit 1
+          fi
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-ci.txt
+
+      - name: Run Live Ask Smoke Test
+        env:
+          PYTHONUTF8: "1"
+          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+        run: |
+          python -X utf8 rag_integration_entry.py ask --query "${{ inputs.query }}" | tee online-smoke-output.txt
+
+      - name: Validate Smoke Output
+        run: |
+          python -X utf8 - <<'PY'
+          from pathlib import Path
+
+          output_path = Path("online-smoke-output.txt")
+          text = output_path.read_text(encoding="utf-8")
+          required_markers = ["Query:", "Answer:", "Confidence:"]
+          for marker in required_markers:
+              if marker not in text:
+                  raise SystemExit(f"Missing expected marker: {marker}")
+
+          forbidden_markers = [
+              "LLM 服务不可用",
+              "发生错误:",
+              "API 错误 (requests):",
+              "生成失败:",
+          ]
+          for marker in forbidden_markers:
+              if marker in text:
+                  raise SystemExit(f"Unexpected failure marker found: {marker}")
+
+          print("Online smoke output validated.")
+          PY
+
+      - name: Upload Smoke Output
+        uses: actions/upload-artifact@v4
+        with:
+          name: online-smoke-output
+          path: online-smoke-output.txt
