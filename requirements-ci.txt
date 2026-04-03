@@ -1,0 +1,7 @@
+requests
+urllib3
+httpx
+numpy
+pandas
+pyarrow
+pyyaml
