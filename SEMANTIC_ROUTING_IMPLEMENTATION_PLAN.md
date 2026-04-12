@@ -1,63 +1,63 @@
-# 语义路由升级方案 (方向 A) - Sprint 实施计划
+﻿# 璇箟璺敱鍗囩骇鏂规 (鏂瑰悜 A) - Sprint 瀹炴柦璁″垝
 
-**目标**：将硬编码的 `GOAL_MAP` 升级为自动扩充 + 向量语义路由的系统  
-**工具链**：硅基流动 BAAI/bge-m3 向量 API + 大模型 API  
-**预期周期**：3 个 Sprint（1.5-2 周）  
-
----
-
-## 📋 Sprint 架构总览
-
-```
-现状（v40.0）
-├── 07_analysis_scoring_improved_v9.py
-│   └── GOAL_MAP (硬编码 14 个词)
-│       └── token_score() → 规则匹配
-└── layers/ (RAG 框架骨架)
-
-升级目标（v40.4）
-├── Sprint 1: 离线关注点库自动提取
-│   └── focus_extractor.py （新增）
-│       ├── 读取所有 PDF/Markdown 文献
-│       ├── 用大模型自动提取专业标签 (5-10/篇)
-│       └── 输出 focus_points.json (几千个标签)
-│
-├── Sprint 2: 向量语义路由核心层
-│   └── semantic_router.py （新增）
-│       ├── 读取 focus_points.json
-│       ├── 调用硅基流动 bge-m3 向量化所有标签
-│       ├── 缓存在内存中
-│       └── route_query() 毫秒级匹配
-│
-├── Sprint 3: 系统集成与优化
-│   ├── main_rag_workflow.py （新增） 
-│   │   ├── 导入 SemanticRouter
-│   │   ├── 用户输入 → 语义收束 → RAG-Anything 混合检索
-│   │   └── 返回精准的写作点
-│   ├── app.py （新增 Streamlit UI）
-│   │   └── 可视化整个收束和检索过程
-│   └── 集成到 00_Integrated_Pipeline_v40.0.py
-│       └── 使用新的语义路由作为前置拦截器
-```
+**鐩爣**锛氬皢纭紪鐮佺殑 `GOAL_MAP` 鍗囩骇涓鸿嚜鍔ㄦ墿鍏?+ 鍚戦噺璇箟璺敱鐨勭郴缁? 
+**宸ュ叿閾?*锛氱鍩烘祦鍔?BAAI/bge-m3 鍚戦噺 API + 澶фā鍨?API  
+**棰勬湡鍛ㄦ湡**锛? 涓?Sprint锛?.5-2 鍛級  
 
 ---
 
-## 🔄 Sprint 1：离线关注点库自动提取 (2-3 天)
+## 馃搵 Sprint 鏋舵瀯鎬昏
 
-### 文件：`layers/focus_extractor.py`
+```
+鐜扮姸锛坴40.0锛?
+鈹溾攢鈹€ 07_analysis_scoring_improved_v9.py
+鈹?  鈹斺攢鈹€ GOAL_MAP (纭紪鐮?14 涓瘝)
+鈹?      鈹斺攢鈹€ token_score() 鈫?瑙勫垯鍖归厤
+鈹斺攢鈹€ layers/ (RAG 妗嗘灦楠ㄦ灦)
 
-**核心职责**：
-- 遍历本地所有文献（PDF/Markdown）
-- 用大模型批量提取关键概念（去重后几千个）
-- 保存为 `focus_points.json`（只需运行一次）
+鍗囩骇鐩爣锛坴40.4锛?
+鈹溾攢鈹€ Sprint 1: 绂荤嚎鍏虫敞鐐瑰簱鑷姩鎻愬彇
+鈹?  鈹斺攢鈹€ focus_extractor.py 锛堟柊澧烇級
+鈹?      鈹溾攢鈹€ 璇诲彇鎵€鏈?PDF/Markdown 鏂囩尞
+鈹?      鈹溾攢鈹€ 鐢ㄥぇ妯″瀷鑷姩鎻愬彇涓撲笟鏍囩 (5-10/绡?
+鈹?      鈹斺攢鈹€ 杈撳嚭 focus_points.json (鍑犲崈涓爣绛?
+鈹?
+鈹溾攢鈹€ Sprint 2: 鍚戦噺璇箟璺敱鏍稿績灞?
+鈹?  鈹斺攢鈹€ semantic_router.py 锛堟柊澧烇級
+鈹?      鈹溾攢鈹€ 璇诲彇 focus_points.json
+鈹?      鈹溾攢鈹€ 璋冪敤纭呭熀娴佸姩 bge-m3 鍚戦噺鍖栨墍鏈夋爣绛?
+鈹?      鈹溾攢鈹€ 缂撳瓨鍦ㄥ唴瀛樹腑
+鈹?      鈹斺攢鈹€ route_query() 姣绾у尮閰?
+鈹?
+鈹溾攢鈹€ Sprint 3: 绯荤粺闆嗘垚涓庝紭鍖?
+鈹?  鈹溾攢鈹€ main_rag_workflow.py 锛堟柊澧烇級 
+鈹?  鈹?  鈹溾攢鈹€ 瀵煎叆 SemanticRouter
+鈹?  鈹?  鈹溾攢鈹€ 鐢ㄦ埛杈撳叆 鈫?璇箟鏀舵潫 鈫?RAG-Anything 娣峰悎妫€绱?
+鈹?  鈹?  鈹斺攢鈹€ 杩斿洖绮惧噯鐨勫啓浣滅偣
+鈹?  鈹溾攢鈹€ app.py 锛堟柊澧?Streamlit UI锛?
+鈹?  鈹?  鈹斺攢鈹€ 鍙鍖栨暣涓敹鏉熷拰妫€绱㈣繃绋?
+鈹?  鈹斺攢鈹€ 闆嗘垚鍒?00_Integrated_Pipeline_.py
+鈹?      鈹斺攢鈹€ 浣跨敤鏂扮殑璇箟璺敱浣滀负鍓嶇疆鎷︽埅鍣?
+```
 
-**实现要点**：
-1. **防卡死网络**：使用屏蔽代理的 `httpx.Client`
-2. **批处理**：减少 API 调用（5-10 篇/批）
-3. **去重合并**：关注点 + 同义词收敛
-4. **重试机制**：处理 API 失败
+---
 
-**伪代码结构**：
+## 馃攧 Sprint 1锛氱绾垮叧娉ㄧ偣搴撹嚜鍔ㄦ彁鍙?(2-3 澶?
+
+### 鏂囦欢锛歚layers/focus_extractor.py`
+
+**鏍稿績鑱岃矗**锛?
+- 閬嶅巻鏈湴鎵€鏈夋枃鐚紙PDF/Markdown锛?
+- 鐢ㄥぇ妯″瀷鎵归噺鎻愬彇鍏抽敭姒傚康锛堝幓閲嶅悗鍑犲崈涓級
+- 淇濆瓨涓?`focus_points.json`锛堝彧闇€杩愯涓€娆★級
+
+**瀹炵幇瑕佺偣**锛?
+1. **闃插崱姝荤綉缁?*锛氫娇鐢ㄥ睆钄戒唬鐞嗙殑 `httpx.Client`
+2. **鎵瑰鐞?*锛氬噺灏?API 璋冪敤锛?-10 绡?鎵癸級
+3. **鍘婚噸鍚堝苟**锛氬叧娉ㄧ偣 + 鍚屼箟璇嶆敹鏁?
+4. **閲嶈瘯鏈哄埗**锛氬鐞?API 澶辫触
+
+**浼唬鐮佺粨鏋?*锛?
 ```python
 class FocusExtractor:
     def __init__(self, api_key, base_url):
@@ -65,14 +65,14 @@ class FocusExtractor:
         self.api_key = api_key
         
     async def extract_from_document(self, doc_path: str) -> List[str]:
-        """提取单篇文献的 5-10 个核心标签"""
-        # 读取文件 → 截断至前 3000 tokens
-        # 调用大模型提示词：
-        #   "列出这篇文献的 5 到 10 个核心研究标签（名词短语）"
-        # 返回 ["参数优化", "热输入控制", "晶粒细化", ...]
+        """鎻愬彇鍗曠瘒鏂囩尞鐨?5-10 涓牳蹇冩爣绛?""
+        # 璇诲彇鏂囦欢 鈫?鎴柇鑷冲墠 3000 tokens
+        # 璋冪敤澶фā鍨嬫彁绀鸿瘝锛?
+        #   "鍒楀嚭杩欑瘒鏂囩尞鐨?5 鍒?10 涓牳蹇冪爺绌舵爣绛撅紙鍚嶈瘝鐭锛?
+        # 杩斿洖 ["鍙傛暟浼樺寲", "鐑緭鍏ユ帶鍒?, "鏅剁矑缁嗗寲", ...]
     
     async def batch_extract(self, doc_folder: str) -> Set[str]:
-        """批量提取所有文献并去重"""
+        """鎵归噺鎻愬彇鎵€鏈夋枃鐚苟鍘婚噸"""
         all_tags = set()
         for doc in os.listdir(doc_folder):
             tags = await self.extract_from_document(doc)
@@ -80,7 +80,7 @@ class FocusExtractor:
         return all_tags
     
     def save_focus_points(self, tags: Set[str], output_path: str):
-        """保存为 JSON 供后续模块使用"""
+        """淇濆瓨涓?JSON 渚涘悗缁ā鍧椾娇鐢?""
         with open(output_path, 'w') as f:
             json.dump({
                 'timestamp': datetime.now().isoformat(),
@@ -89,7 +89,7 @@ class FocusExtractor:
             }, f, ensure_ascii=False, indent=2)
 ```
 
-**运行方式**：
+**杩愯鏂瑰紡**锛?
 ```bash
 python -m layers.focus_extractor \
   --doc-folder "./papers" \
@@ -97,17 +97,17 @@ python -m layers.focus_extractor \
   --batch-size 5
 ```
 
-**输出文件**（`focus_points.json`）：
+**杈撳嚭鏂囦欢**锛坄focus_points.json`锛夛細
 ```json
 {
   "timestamp": "2026-04-01T10:30:00",
   "count": 2847,
   "points": [
-    "参数优化",
-    "热输入控制",
-    "晶粒细化",
-    "激光功率调制",
-    "熔池流动动力学",
+    "鍙傛暟浼樺寲",
+    "鐑緭鍏ユ帶鍒?,
+    "鏅剁矑缁嗗寲",
+    "婵€鍏夊姛鐜囪皟鍒?,
+    "鐔旀睜娴佸姩鍔ㄥ姏瀛?,
     ...
   ]
 }
@@ -115,132 +115,132 @@ python -m layers.focus_extractor \
 
 ---
 
-## 🧭 Sprint 2：向量语义路由核心层 (2-3 天)
+## 馃Л Sprint 2锛氬悜閲忚涔夎矾鐢辨牳蹇冨眰 (2-3 澶?
 
-### 文件：`layers/semantic_router.py`
+### 鏂囦欢锛歚layers/semantic_router.py`
 
-**核心职责**：
-- 将 `focus_points.json` 中的所有标签向量化
-- 在内存中维护向量缓存
-- 用户提问时，毫秒级匹配最相关的 3-5 个关注点
+**鏍稿績鑱岃矗**锛?
+- 灏?`focus_points.json` 涓殑鎵€鏈夋爣绛惧悜閲忓寲
+- 鍦ㄥ唴瀛樹腑缁存姢鍚戦噺缂撳瓨
+- 鐢ㄦ埛鎻愰棶鏃讹紝姣绾у尮閰嶆渶鐩稿叧鐨?3-5 涓叧娉ㄧ偣
 
-**实现要点**：
-1. **向量模型**：硅基流动 `BAAI/bge-m3`（中文优化）
-2. **批量向量化**：一次调用多个标签，减少 API 次数
-3. **缓存策略**：启动时加载，内存驻留
-4. **相似度计算**：余弦相似度（纯 numpy，毫秒级）
+**瀹炵幇瑕佺偣**锛?
+1. **鍚戦噺妯″瀷**锛氱鍩烘祦鍔?`BAAI/bge-m3`锛堜腑鏂囦紭鍖栵級
+2. **鎵归噺鍚戦噺鍖?*锛氫竴娆¤皟鐢ㄥ涓爣绛撅紝鍑忓皯 API 娆℃暟
+3. **缂撳瓨绛栫暐**锛氬惎鍔ㄦ椂鍔犺浇锛屽唴瀛橀┗鐣?
+4. **鐩镐技搴﹁绠?*锛氫綑寮︾浉浼煎害锛堢函 numpy锛屾绉掔骇锛?
 
-**伪代码结构**：
+**浼唬鐮佺粨鏋?*锛?
 ```python
 class SemanticRouter:
     def __init__(self, api_key, focus_points_path):
-        """初始化时一次性向量化所有关注点"""
+        """鍒濆鍖栨椂涓€娆℃€у悜閲忓寲鎵€鏈夊叧娉ㄧ偣"""
         self.api_key = api_key
         self.client = httpx.Client(proxies=None, timeout=60.0)
         
-        # 1. 加载关注点库
+        # 1. 鍔犺浇鍏虫敞鐐瑰簱
         with open(focus_points_path) as f:
             data = json.load(f)
             self.focus_points = data['points']  # List[str]
         
-        # 2. 批量向量化（调用硅基流动 bge-m3）
+        # 2. 鎵归噺鍚戦噺鍖栵紙璋冪敤纭呭熀娴佸姩 bge-m3锛?
         self.focus_vectors = self._batch_vectorize(self.focus_points)
-        # shape: (len(focus_points), 1024)  # bge-m3 输出 1024 维
+        # shape: (len(focus_points), 1024)  # bge-m3 杈撳嚭 1024 缁?
         
     def _batch_vectorize(self, texts: List[str], batch_size=50):
-        """批量调用向量 API（减少 API 次数）"""
+        """鎵归噺璋冪敤鍚戦噺 API锛堝噺灏?API 娆℃暟锛?""
         vectors = []
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i+batch_size]
-            # 调用硅基流动 API：/v1/embeddings
+            # 璋冪敤纭呭熀娴佸姩 API锛?v1/embeddings
             embeddings = call_siliconflow_embedding_api(batch)
             vectors.extend(embeddings)
         return np.array(vectors)
     
     def route_query(self, user_query: str, top_k: int = 3) -> List[str]:
         """
-        用户提问 → 收束到关注点
+        鐢ㄦ埛鎻愰棶 鈫?鏀舵潫鍒板叧娉ㄧ偣
         
-        例：
-        user_query = "这个实验里的温度参数是怎样影响的？"
-        返回 ["热输入控制", "冷却速率", "温度梯度"]
+        渚嬶細
+        user_query = "杩欎釜瀹為獙閲岀殑娓╁害鍙傛暟鏄€庢牱褰卞搷鐨勶紵"
+        杩斿洖 ["鐑緭鍏ユ帶鍒?, "鍐峰嵈閫熺巼", "娓╁害姊害"]
         """
-        # 1. 向量化用户查询（一次 API 调用）
+        # 1. 鍚戦噺鍖栫敤鎴锋煡璇紙涓€娆?API 璋冪敤锛?
         query_vector = call_siliconflow_embedding_api([user_query])[0]
         
-        # 2. 余弦相似度计算（纯 numpy，<1ms）
+        # 2. 浣欏鸡鐩镐技搴﹁绠楋紙绾?numpy锛?1ms锛?
         similarities = cosine_similarity([query_vector], self.focus_vectors)[0]
         
-        # 3. 取 top-k
+        # 3. 鍙?top-k
         top_indices = np.argsort(similarities)[-top_k:][::-1]
         top_points = [self.focus_points[i] for i in top_indices]
         
         return top_points
     
     def get_point_hierarchy(self) -> Dict[str, List[str]]:
-        """可选：按关键词聚类形成层级（用于 Coarse-to-Fine）"""
-        # 对所有关注点向量进行聚类（如 KMeans k=50）
-        # 返回层级结构供后续优化使用
+        """鍙€夛細鎸夊叧閿瘝鑱氱被褰㈡垚灞傜骇锛堢敤浜?Coarse-to-Fine锛?""
+        # 瀵规墍鏈夊叧娉ㄧ偣鍚戦噺杩涜鑱氱被锛堝 KMeans k=50锛?
+        # 杩斿洖灞傜骇缁撴瀯渚涘悗缁紭鍖栦娇鐢?
         pass
 ```
 
-**运行方式**：
+**杩愯鏂瑰紡**锛?
 ```bash
-# 初始化时（启动系统）
+# 鍒濆鍖栨椂锛堝惎鍔ㄧ郴缁燂級
 router = SemanticRouter(
     api_key=os.environ['SILICONFLOW_API_KEY'],
     focus_points_path='focus_points.json'
 )
 
-# 查询时
-top_points = router.route_query("温度如何影响晶粒形态？")
-# → ["温度梯度", "冷却速率", "参数优化"]
+# 鏌ヨ鏃?
+top_points = router.route_query("娓╁害濡備綍褰卞搷鏅剁矑褰㈡€侊紵")
+# 鈫?["娓╁害姊害", "鍐峰嵈閫熺巼", "鍙傛暟浼樺寲"]
 ```
 
-**关键优势**：
-- ✅ 毫秒级响应（向量已缓存）
-- ✅ 无需本地 GPU（调用云 API）
-- ✅ 自动适应新增的关注点（只需重新运行 `focus_extractor.py`）
-- ✅ 支持同义词和口语表达（向量语义）
+**鍏抽敭浼樺娍**锛?
+- 鉁?姣绾у搷搴旓紙鍚戦噺宸茬紦瀛橈級
+- 鉁?鏃犻渶鏈湴 GPU锛堣皟鐢ㄤ簯 API锛?
+- 鉁?鑷姩閫傚簲鏂板鐨勫叧娉ㄧ偣锛堝彧闇€閲嶆柊杩愯 `focus_extractor.py`锛?
+- 鉁?鏀寔鍚屼箟璇嶅拰鍙ｈ琛ㄨ揪锛堝悜閲忚涔夛級
 
 ---
 
-## 🔗 Sprint 3：系统集成与优化 (3-4 天)
+## 馃敆 Sprint 3锛氱郴缁熼泦鎴愪笌浼樺寲 (3-4 澶?
 
-### 3.1 文件：`main_rag_workflow.py`（核心集成点）
+### 3.1 鏂囦欢锛歚main_rag_workflow.py`锛堟牳蹇冮泦鎴愮偣锛?
 
-**职责**：
-1. 初始化 SemanticRouter
-2. 接收用户问题 → 调用路由器 → 获得精准关注点
-3. 拼接成增强查询词，发送给 RAG-Anything
-4. 返回最终的写作点集合
+**鑱岃矗**锛?
+1. 鍒濆鍖?SemanticRouter
+2. 鎺ユ敹鐢ㄦ埛闂 鈫?璋冪敤璺敱鍣?鈫?鑾峰緱绮惧噯鍏虫敞鐐?
+3. 鎷兼帴鎴愬寮烘煡璇㈣瘝锛屽彂閫佺粰 RAG-Anything
+4. 杩斿洖鏈€缁堢殑鍐欎綔鐐归泦鍚?
 
-**伪代码**：
+**浼唬鐮?*锛?
 ```python
 class RAGWorkflow:
     def __init__(self, rag_instance, semantic_router):
-        self.rag = rag_instance  # RAG-Anything 实例
+        self.rag = rag_instance  # RAG-Anything 瀹炰緥
         self.router = semantic_router
     
     async def ask_my_literature(self, user_query: str):
-        """完整的查询流程"""
+        """瀹屾暣鐨勬煡璇㈡祦绋?""
         
-        # 第 1 步：语义收束
+        # 绗?1 姝ワ細璇箟鏀舵潫
         focused_points = self.router.route_query(user_query, top_k=3)
         
-        # 第 2 步：构建增强查询词
+        # 绗?2 姝ワ細鏋勫缓澧炲己鏌ヨ璇?
         enhanced_query = (
-            f"基于关注点 {focused_points}，"
-            f"请从文献中检索并回答：{user_query}"
+            f"鍩轰簬鍏虫敞鐐?{focused_points}锛?
+            f"璇蜂粠鏂囩尞涓绱㈠苟鍥炵瓟锛歿user_query}"
         )
         
-        # 第 3 步：调用 RAG-Anything 混合检索
+        # 绗?3 姝ワ細璋冪敤 RAG-Anything 娣峰悎妫€绱?
         rag_results = await self.rag.aquery(
             enhanced_query,
             param=QueryParam(mode="hybrid", top_k=10)
         )
         
-        # 第 4 步：用大模型生成最终答案
+        # 绗?4 姝ワ細鐢ㄥぇ妯″瀷鐢熸垚鏈€缁堢瓟妗?
         final_answer = await self.generate_synthesis(
             user_query,
             focused_points,
@@ -251,7 +251,7 @@ class RAGWorkflow:
             'focused_points': focused_points,
             'rag_results': rag_results,
             'final_answer': final_answer,
-            'trace': {  # 可视化追踪
+            'trace': {  # 鍙鍖栬拷韪?
                 'user_query': user_query,
                 'enhanced_query': enhanced_query,
                 'routing_confidence': self.router.get_confidence(focused_points)
@@ -259,146 +259,146 @@ class RAGWorkflow:
         }
     
     async def generate_synthesis(self, query, points, rag_results):
-        """利用大模型进行最终合成"""
+        """鍒╃敤澶фā鍨嬭繘琛屾渶缁堝悎鎴?""
         prompt = f"""
-        用户问题：{query}
-        系统识别的关注点：{', '.join(points)}
-        检索到的相关文献段落：{rag_results[:500]}
+        鐢ㄦ埛闂锛歿query}
+        绯荤粺璇嗗埆鐨勫叧娉ㄧ偣锛歿', '.join(points)}
+        妫€绱㈠埌鐨勭浉鍏虫枃鐚钀斤細{rag_results[:500]}
         
-        请基于上述信息，生成一个学术性的回答。
+        璇峰熀浜庝笂杩颁俊鎭紝鐢熸垚涓€涓鏈€х殑鍥炵瓟銆?
         """
-        # 调用大模型 API
+        # 璋冪敤澶фā鍨?API
         response = await call_llm(prompt)
         return response
 ```
 
-**使用示例**：
+**浣跨敤绀轰緥**锛?
 ```python
-# 在 00_Integrated_Pipeline_v40.0.py 中集成
+# 鍦?00_Integrated_Pipeline_.py 涓泦鎴?
 workflow = RAGWorkflow(rag_instance, semantic_router)
 
-# 用户提问
+# 鐢ㄦ埛鎻愰棶
 result = await workflow.ask_my_literature(
-    "激光功率如何影响熔池中的氮传输？"
+    "婵€鍏夊姛鐜囧浣曞奖鍝嶇啍姹犱腑鐨勬爱浼犺緭锛?
 )
 
-print(f"识别的关注点: {result['focused_points']}")
-print(f"最终答案: {result['final_answer']}")
+print(f"璇嗗埆鐨勫叧娉ㄧ偣: {result['focused_points']}")
+print(f"鏈€缁堢瓟妗? {result['final_answer']}")
 ```
 
 ---
 
-### 3.2 文件：`app.py`（Streamlit UI）
+### 3.2 鏂囦欢锛歚app.py`锛圫treamlit UI锛?
 
-**职责**：
-- 可视化整个流程
-- 展示语义收束的中间步骤
-- 提供交互式查询界面
+**鑱岃矗**锛?
+- 鍙鍖栨暣涓祦绋?
+- 灞曠ず璇箟鏀舵潫鐨勪腑闂存楠?
+- 鎻愪緵浜や簰寮忔煡璇㈢晫闈?
 
-**关键组件**：
+**鍏抽敭缁勪欢**锛?
 ```python
 import streamlit as st
 
-st.set_page_config(page_title="文献语义检索系统", layout="wide")
+st.set_page_config(page_title="鏂囩尞璇箟妫€绱㈢郴缁?, layout="wide")
 
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.title("📚 文献语义智能检索")
-    user_query = st.text_area("输入您的问题", height=100)
+    st.title("馃摎 鏂囩尞璇箟鏅鸿兘妫€绱?)
+    user_query = st.text_area("杈撳叆鎮ㄧ殑闂", height=100)
     
-    if st.button("🔍 检索"):
-        with st.spinner("系统正在识别关注点..."):
-            # 调用语义路由器
+    if st.button("馃攳 妫€绱?):
+        with st.spinner("绯荤粺姝ｅ湪璇嗗埆鍏虫敞鐐?.."):
+            # 璋冪敤璇箟璺敱鍣?
             focused_points = router.route_query(user_query)
             
-            # 展示中间步骤
-            st.info(f"**✨ 系统已将您的提问语义收束为:**\n{', '.join(focused_points)}")
+            # 灞曠ず涓棿姝ラ
+            st.info(f"**鉁?绯荤粺宸插皢鎮ㄧ殑鎻愰棶璇箟鏀舵潫涓?**\n{', '.join(focused_points)}")
             
-            # 调用 RAG
-            with st.spinner("正在从文献库中检索证据..."):
+            # 璋冪敤 RAG
+            with st.spinner("姝ｅ湪浠庢枃鐚簱涓绱㈣瘉鎹?.."):
                 rag_results = await workflow.ask_my_literature(user_query)
             
-            # 流式输出答案
-            st.markdown("### 📖 文献综合分析结果")
-            with st.spinner("大模型正在生成回答..."):
+            # 娴佸紡杈撳嚭绛旀
+            st.markdown("### 馃摉 鏂囩尞缁煎悎鍒嗘瀽缁撴灉")
+            with st.spinner("澶фā鍨嬫鍦ㄧ敓鎴愬洖绛?.."):
                 for chunk in stream_llm_response(rag_results):
                     st.write(chunk)
 
 with col2:
-    st.sidebar.markdown("### ⚙️ 系统状态")
-    st.sidebar.metric("关注点库规模", len(router.focus_points))
-    st.sidebar.metric("向量维度", 1024)
-    st.sidebar.markdown("### 📊 路由信息")
+    st.sidebar.markdown("### 鈿欙笍 绯荤粺鐘舵€?)
+    st.sidebar.metric("鍏虫敞鐐瑰簱瑙勬ā", len(router.focus_points))
+    st.sidebar.metric("鍚戦噺缁村害", 1024)
+    st.sidebar.markdown("### 馃搳 璺敱淇℃伅")
     for point in focused_points:
-        st.sidebar.write(f"✓ {point}")
+        st.sidebar.write(f"鉁?{point}")
 ```
 
 ---
 
-### 3.3 集成到 `00_Integrated_Pipeline_v40.0.py`
+### 3.3 闆嗘垚鍒?`00_Integrated_Pipeline_.py`
 
-**改动点**：
+**鏀瑰姩鐐?*锛?
 
 ```python
-# 在文件开头添加
+# 鍦ㄦ枃浠跺紑澶存坊鍔?
 from layers.semantic_router import SemanticRouter
 from main_rag_workflow import RAGWorkflow
 
-# 在初始化函数中
+# 鍦ㄥ垵濮嬪寲鍑芥暟涓?
 async def init_system():
-    # 现有初始化...
+    # 鐜版湁鍒濆鍖?..
     rag = LightRAG(...)
     
-    # 新增：初始化语义路由器
+    # 鏂板锛氬垵濮嬪寲璇箟璺敱鍣?
     semantic_router = SemanticRouter(
         api_key=os.environ['SILICONFLOW_API_KEY'],
         focus_points_path='focus_points.json'
     )
     
-    # 新增：初始化 RAG 工作流
+    # 鏂板锛氬垵濮嬪寲 RAG 宸ヤ綔娴?
     workflow = RAGWorkflow(rag, semantic_router)
     
     return workflow
 
-# 在主查询函数中
+# 鍦ㄤ富鏌ヨ鍑芥暟涓?
 async def process_goal(user_input: str):
-    # 原有逻辑保留，但前置添加语义路由
+    # 鍘熸湁閫昏緫淇濈暀锛屼絾鍓嶇疆娣诲姞璇箟璺敱
     focused_points = workflow.router.route_query(user_input)
     
-    # 注入到原有的分析流程
+    # 娉ㄥ叆鍒板師鏈夌殑鍒嗘瀽娴佺▼
     goal_profile = infer_goal_profile(user_input)
-    goal_profile['focused_points'] = focused_points  # 额外信息
+    goal_profile['focused_points'] = focused_points  # 棰濆淇℃伅
     
-    # 后续调用 analyze_bound() 等函数时，可以利用这个信息
+    # 鍚庣画璋冪敤 analyze_bound() 绛夊嚱鏁版椂锛屽彲浠ュ埄鐢ㄨ繖涓俊鎭?
     ...
 ```
 
 ---
 
-## 📊 Sprint 实施时间表
+## 馃搳 Sprint 瀹炴柦鏃堕棿琛?
 
-| Sprint | 任务 | 工作量 | 交付物 |
+| Sprint | 浠诲姟 | 宸ヤ綔閲?| 浜や粯鐗?|
 |--------|------|--------|--------|
-| **1** | 离线关注点提取 | 2-3 天 | `focus_extractor.py` + `focus_points.json` |
-| **2** | 向量语义路由 | 2-3 天 | `semantic_router.py` + 缓存机制 |
-| **3a** | 系统集成 | 1-2 天 | `main_rag_workflow.py` + 改造主流程 |
-| **3b** | UI 与优化 | 1-2 天 | `app.py` + 性能调优 |
+| **1** | 绂荤嚎鍏虫敞鐐规彁鍙?| 2-3 澶?| `focus_extractor.py` + `focus_points.json` |
+| **2** | 鍚戦噺璇箟璺敱 | 2-3 澶?| `semantic_router.py` + 缂撳瓨鏈哄埗 |
+| **3a** | 绯荤粺闆嗘垚 | 1-2 澶?| `main_rag_workflow.py` + 鏀归€犱富娴佺▼ |
+| **3b** | UI 涓庝紭鍖?| 1-2 澶?| `app.py` + 鎬ц兘璋冧紭 |
 
-**总预期**：1.5-2 周内完成整个升级
+**鎬婚鏈?*锛?.5-2 鍛ㄥ唴瀹屾垚鏁翠釜鍗囩骇
 
 ---
 
-## 🔧 硅基流动 API 集成细节
+## 馃敡 纭呭熀娴佸姩 API 闆嗘垚缁嗚妭
 
-### 向量 API 调用示例
+### 鍚戦噺 API 璋冪敤绀轰緥
 
 ```python
 import httpx
 import json
 
 async def call_siliconflow_embedding(texts: List[str], api_key: str):
-    """调用硅基流动 bge-m3 向量化接口"""
+    """璋冪敤纭呭熀娴佸姩 bge-m3 鍚戦噺鍖栨帴鍙?""
     
     client = httpx.AsyncClient(proxies=None, timeout=60.0)
     
@@ -420,11 +420,11 @@ async def call_siliconflow_embedding(texts: List[str], api_key: str):
     return embeddings
 ```
 
-### 大模型 API 调用示例（保留防卡死机制）
+### 澶фā鍨?API 璋冪敤绀轰緥锛堜繚鐣欓槻鍗℃鏈哄埗锛?
 
 ```python
 async def call_siliconflow_llm(prompt: str, api_key: str):
-    """调用硅基流动大模型（已整合防卡死机制）"""
+    """璋冪敤纭呭熀娴佸姩澶фā鍨嬶紙宸叉暣鍚堥槻鍗℃鏈哄埗锛?""
     
     client = httpx.AsyncClient(proxies=None, timeout=60.0)
     
@@ -447,24 +447,25 @@ async def call_siliconflow_llm(prompt: str, api_key: str):
 
 ---
 
-## ✅ 验证清单
+## 鉁?楠岃瘉娓呭崟
 
-在启动 Sprint 1 前，请确认：
+鍦ㄥ惎鍔?Sprint 1 鍓嶏紝璇风‘璁わ細
 
-- [ ] 硅基流动账户已开通，有 API key
-- [ ] `focus_points.json` 所在文件夹已准备
-- [ ] `.env` 中设置了 `SILICONFLOW_API_KEY`
-- [ ] 理解三个新文件的职责边界
-- [ ] 现有的 `07_analysis_scoring_improved_v9.py` 暂时保留（作为 Fallback）
-
----
-
-## 🎯 关键里程碑
-
-- **Sprint 1 完成**：系统可以自动扩充关注点库（不再手工维护）
-- **Sprint 2 完成**：系统可以毫秒级语义匹配用户问题（替代规则匹配）
-- **Sprint 3 完成**：系统完全集成，用户无感知升级，质量显著提升
+- [ ] 纭呭熀娴佸姩璐︽埛宸插紑閫氾紝鏈?API key
+- [ ] `focus_points.json` 鎵€鍦ㄦ枃浠跺す宸插噯澶?
+- [ ] `.env` 涓缃簡 `SILICONFLOW_API_KEY`
+- [ ] 鐞嗚В涓変釜鏂版枃浠剁殑鑱岃矗杈圭晫
+- [ ] 鐜版湁鐨?`07_analysis_scoring_improved_v9.py` 鏆傛椂淇濈暀锛堜綔涓?Fallback锛?
 
 ---
 
-**准备好开始 Sprint 1 了吗？我可以直接给您 `focus_extractor.py` 的完整代码。**
+## 馃幆 鍏抽敭閲岀▼纰?
+
+- **Sprint 1 瀹屾垚**锛氱郴缁熷彲浠ヨ嚜鍔ㄦ墿鍏呭叧娉ㄧ偣搴擄紙涓嶅啀鎵嬪伐缁存姢锛?
+- **Sprint 2 瀹屾垚**锛氱郴缁熷彲浠ユ绉掔骇璇箟鍖归厤鐢ㄦ埛闂锛堟浛浠ｈ鍒欏尮閰嶏級
+- **Sprint 3 瀹屾垚**锛氱郴缁熷畬鍏ㄩ泦鎴愶紝鐢ㄦ埛鏃犳劅鐭ュ崌绾э紝璐ㄩ噺鏄捐憲鎻愬崌
+
+---
+
+**鍑嗗濂藉紑濮?Sprint 1 浜嗗悧锛熸垜鍙互鐩存帴缁欐偍 `focus_extractor.py` 鐨勫畬鏁翠唬鐮併€?*
+

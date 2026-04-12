@@ -281,7 +281,16 @@ def _init_autorag_runner(cfg: Dict[str, Any]) -> Optional[Any]:
 # CLI 命令处理器
 # ═══════════════════════════════════════════════════════════════════
 
-async def cmd_ask(cfg: Dict[str, Any], query: str, dataset_ids: Optional[list] = None) -> None:
+async def cmd_ask(
+    cfg: Dict[str, Any],
+    query: str,
+    dataset_ids: Optional[list] = None,
+    include_association: bool = False,
+    association_mode: str = "no_ai",
+    project_id: Optional[str] = None,
+    draft_id: Optional[str] = None,
+    section_id: Optional[str] = None,
+) -> None:
     """
     ask 命令: 通过 RAGWorkflow 执行完整的 RAG 问答流程。
     """
@@ -315,17 +324,27 @@ async def cmd_ask(cfg: Dict[str, Any], query: str, dataset_ids: Optional[list] =
             user_query=query,
             top_k_points=workflow_cfg.get("top_k_points", 3),
             top_k_evidence=workflow_cfg.get("top_k_evidence", 5),
-            dataset_ids=ids if ids else None
+            dataset_ids=ids if ids else None,
+            include_association=include_association,
+            association_mode=association_mode,
+            association_project_id=project_id,
+            association_draft_id=draft_id,
+            association_section_id=section_id,
         )
 
         # 输出结果
         print("\n" + "=" * 60)
         print(f"Query: {result.query}")
         print(f"Focus Points: {result.focused_points}")
+        print(f"Memory Hits: {len(result.memory_hits)}")
         print(f"Evidence Count: {len(result.rag_evidence)}")
         print(f"Confidence: {result.confidence_score:.2f}")
         print("-" * 60)
         print(f"Answer:\n{result.generated_answer}")
+        if result.association_bundle:
+            print("-" * 60)
+            print("Association:")
+            print(json.dumps(result.association_bundle, indent=2, ensure_ascii=False))
         print("=" * 60)
 
     finally:
@@ -460,6 +479,11 @@ Examples:
     ask_parser = subparsers.add_parser("ask", help="RAG Q&A workflow")
     ask_parser.add_argument("--query", required=True, help="User query")
     ask_parser.add_argument("--dataset-ids", nargs="*", help="RAGFlow dataset IDs")
+    ask_parser.add_argument("--with-association", action="store_true", help="Build associative writing bundle")
+    ask_parser.add_argument("--association-mode", choices=["no_ai", "ai"], default="no_ai", help="Association bundle mode")
+    ask_parser.add_argument("--project-id", help="Existing writing project ID for association context")
+    ask_parser.add_argument("--draft-id", help="Existing draft ID for association context")
+    ask_parser.add_argument("--section-id", help="Existing section ID for association context")
 
     # ── graphrag 子命令 ──
     graphrag_parser = subparsers.add_parser("graphrag", help="GraphRAG community query")
@@ -481,7 +505,18 @@ Examples:
 
     # 分发命令
     if args.command == "ask":
-        asyncio.run(cmd_ask(cfg, args.query, args.dataset_ids))
+        asyncio.run(
+            cmd_ask(
+                cfg,
+                args.query,
+                args.dataset_ids,
+                include_association=args.with_association,
+                association_mode=args.association_mode,
+                project_id=args.project_id,
+                draft_id=args.draft_id,
+                section_id=args.section_id,
+            )
+        )
 
     elif args.command == "graphrag":
         cmd_graphrag(cfg, args.query, args.level)

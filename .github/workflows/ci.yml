@@ -34,8 +34,8 @@ jobs:
       - name: Compile Critical Modules
         run: |
           python -X utf8 -m py_compile \
-            "03_目标导向材料包脚本.py" \
-            "08_Word文档生成脚本.py" \
+            material_bundler.py \
+            word_generator.py \
             rag_integration_entry.py \
             main_rag_workflow.py \
             layers/e_ragflow_retrieval_adapter.py \

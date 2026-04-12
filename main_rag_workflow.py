@@ -54,10 +54,12 @@ class RAGResult:
     """RAG 查询结果数据类"""
     query: str
     focused_points: List[str]
+    memory_hits: List[Dict[str, Any]]
     rag_evidence: List[Dict[str, Any]]
     generated_answer: str
     confidence_score: float
     trace: Dict[str, Any]
+    association_bundle: Optional[Dict[str, Any]] = None
 
 
 class RAGWorkflow:
@@ -79,7 +81,10 @@ class RAGWorkflow:
         base_url: str = DEFAULT_LLM_BASE_URL,
         model: str = DEFAULT_LLM_MODEL,
         llm_client: Optional[Any] = None,
-        enable_requests_fallback: bool = True
+        enable_requests_fallback: bool = True,
+        memory_adapter: Optional[Any] = None,
+        memory_wing: Optional[str] = None,
+        association_ai_adapter: Optional[Any] = None,
     ):
         """
         初始化 RAG 工作流
@@ -108,6 +113,11 @@ class RAGWorkflow:
         self.model = model
         self.enable_requests_fallback = enable_requests_fallback
         self._owns_llm_client = llm_client is None
+        self._memory_adapter = memory_adapter
+        self._memory_adapter_resolved = memory_adapter is not None
+        self._memory_wing = memory_wing
+        self._association_ai_adapter = association_ai_adapter
+        self._association_ai_adapter_resolved = association_ai_adapter is not None
         
         # 如果未传入适配器但有环境变量，则尝试自动初始化
         if not self.rag_adapter and os.environ.get('RAGFLOW_API_KEY'):
@@ -133,7 +143,12 @@ class RAGWorkflow:
         user_query: str,
         top_k_points: int = 3,
         top_k_evidence: int = 5,
-        dataset_ids: Optional[List[str]] = None
+        dataset_ids: Optional[List[str]] = None,
+        include_association: bool = False,
+        association_mode: str = "no_ai",
+        association_project_id: Optional[str] = None,
+        association_draft_id: Optional[str] = None,
+        association_section_id: Optional[str] = None,
     ) -> RAGResult:
         """
         完整的查询流程
@@ -148,9 +163,11 @@ class RAGWorkflow:
             RAGResult 对象，包含所有中间步骤和最终答案
         """
         trace = {
+            'step_0_memory': None,
             'step_1_routing': None,
             'step_2_rag_search': None,
-            'step_3_generation': None
+            'step_3_generation': None,
+            'step_4_association': None,
         }
         
         try:
@@ -171,6 +188,21 @@ class RAGWorkflow:
             }
             
             logger.info(f"✓ 识别关注点: {focused_points}")
+
+            # ========================================
+            # 第 1.5 步：长期记忆检索（可选）
+            # ========================================
+            memory_hits = self._retrieve_memory_hits(
+                user_query=user_query,
+                focused_points=focused_points,
+            )
+            trace['step_0_memory'] = {
+                'memory_hit_count': len(memory_hits),
+                'memory_enabled': bool(self._resolve_memory_adapter()),
+                'memory_wing': self._memory_wing,
+            }
+            if memory_hits:
+                logger.info(f"✓ 命中 {len(memory_hits)} 条 MemPalace 长期记忆")
             
             # ========================================
             # 第 2 步：构建增强查询词
@@ -211,7 +243,8 @@ class RAGWorkflow:
             generated_answer = await self._generate_answer(
                 user_query,
                 focused_points,
-                rag_evidence
+                rag_evidence,
+                memory_hits,
             )
             
             trace['step_3_generation'] = {
@@ -220,6 +253,41 @@ class RAGWorkflow:
             }
             
             logger.info(f"✓ 生成答案 ({len(generated_answer)} 字)")
+
+            association_bundle = None
+            if include_association:
+                logger.info("[Step 5] 构建联想写作 Bundle")
+                association_bundle = await self._build_association_bundle(
+                    user_query=user_query,
+                    focused_points=focused_points,
+                    rag_evidence=rag_evidence,
+                    memory_hits=memory_hits,
+                    generated_answer=generated_answer,
+                    mode=association_mode,
+                    project_id=association_project_id,
+                    draft_id=association_draft_id,
+                    section_id=association_section_id,
+                    analysis_payloads=self._collect_workflow_analysis_payloads(
+                        user_query=user_query,
+                        focused_points=focused_points,
+                        generated_answer=generated_answer,
+                        association_mode=association_mode,
+                    ),
+                )
+                trace['step_4_association'] = {
+                    'enabled': True,
+                    'mode': association_mode,
+                    'available': bool(association_bundle),
+                    'project_id': association_bundle.get('project_id') if association_bundle else association_project_id,
+                    'signal_count': len(association_bundle.get('related_signals', [])) if association_bundle else 0,
+                    'ai_enhanced': bool(association_bundle.get('ai_enhanced')) if association_bundle else False,
+                }
+            else:
+                trace['step_4_association'] = {
+                    'enabled': False,
+                    'mode': association_mode,
+                    'available': False,
+                }
             
             # ========================================
             # 组织最终结果
@@ -227,12 +295,14 @@ class RAGWorkflow:
             result = RAGResult(
                 query=user_query,
                 focused_points=focused_points,
+                memory_hits=memory_hits,
                 rag_evidence=rag_evidence,
                 generated_answer=generated_answer,
                 confidence_score=self._calculate_confidence(
                     focused_points, rag_evidence, generated_answer
                 ),
-                trace=trace
+                trace=trace,
+                association_bundle=association_bundle,
             )
             
             return result
@@ -244,10 +314,12 @@ class RAGWorkflow:
             return RAGResult(
                 query=user_query,
                 focused_points=[],
+                memory_hits=[],
                 rag_evidence=[],
                 generated_answer=f"发生错误: {str(e)}",
                 confidence_score=0.0,
-                trace={'error': str(e), **trace}
+                trace={'error': str(e), **trace},
+                association_bundle=None,
             )
     
     def _build_enhanced_query(
@@ -303,9 +375,9 @@ class RAGWorkflow:
         # 策略 2: 本地混合检索兜底
         if self.local_data:
             try:
-                logger.info("尝试本地混合检索兜底 (BM25 + Overlap)")
-                # hybrid_search 是同步的，如有性能需求可使用 run_in_executor
-                local_results = hybrid_search(
+                logger.info("尝试本地混合检索兜底 (BM25 + Overlap + Rerank)")
+                # P1: hybrid_search 现在是异步的
+                local_results = await hybrid_search(
                     raw_extract=self.local_data,
                     query=enhanced_query,
                     top_k=top_k
@@ -333,7 +405,8 @@ class RAGWorkflow:
         self,
         user_query: str,
         focused_points: List[str],
-        rag_evidence: List[Dict[str, Any]]
+        rag_evidence: List[Dict[str, Any]],
+        memory_hits: List[Dict[str, Any]],
     ) -> str:
         """
         调用大模型生成最终答案
@@ -346,6 +419,13 @@ class RAGWorkflow:
             f"- {ev.get('text', '').strip()[:100]}"
             for ev in rag_evidence[:3]
         ])
+        memory_str = "\n".join([
+            (
+                f"- [{hit.get('wing', 'unknown')}/{hit.get('room', 'unknown')}] "
+                f"{hit.get('text', '').strip()[:120]}"
+            )
+            for hit in memory_hits[:3]
+        ])
         
         prompt = f"""你是一个学术研究助手。请基于以下信息回答用户的问题。
 
@@ -353,14 +433,18 @@ class RAGWorkflow:
 
 相关研究重点：{', '.join(focused_points)}
 
+项目长期记忆：
+{memory_str if memory_str else '（无长期记忆命中）'}
+
 文献证据：
 {context_str if context_str else '（无关联证据）'}
 
 要求：
 1. 基于提供的证据进行回答
-2. 如果证据不足，明确说明
-3. 保持学术规范和严谨性
-4. 长度控制在 200-500 字
+2. 如果长期记忆与文献证据冲突，以文献证据为准，并明确指出冲突
+3. 如果证据不足，明确说明
+4. 保持学术规范和严谨性
+5. 长度控制在 200-500 字
 
 回答："""
         
@@ -413,6 +497,245 @@ class RAGWorkflow:
 
         logger.warning("异步 LLM 客户端失败，且 requests 兜底已禁用")
         return "LLM 服务不可用"
+
+    def _resolve_memory_adapter(self) -> Optional[Any]:
+        """Resolve the optional MemPalace adapter lazily."""
+        if self._memory_adapter_resolved:
+            return self._memory_adapter
+
+        self._memory_adapter_resolved = True
+        try:
+            from layers.m_layer_mempalace_memory import (
+                MempalaceMemoryAdapter,
+                load_mempalace_settings,
+            )
+
+            adapter = MempalaceMemoryAdapter(load_mempalace_settings())
+            if adapter.is_enabled():
+                self._memory_adapter = adapter
+            else:
+                self._memory_adapter = None
+        except Exception as exc:  # pragma: no cover - optional integration path
+            logger.warning("MemPalace adapter unavailable for RAG workflow: %s", exc)
+            self._memory_adapter = None
+        return self._memory_adapter
+
+    def _resolve_association_ai_adapter(self) -> Optional[Any]:
+        """Resolve the optional AI enhancer for association mode lazily."""
+        if self._association_ai_adapter_resolved:
+            return self._association_ai_adapter
+
+        self._association_ai_adapter_resolved = True
+        try:
+            from layers.ai_adapter import AIAdapter
+
+            self._association_ai_adapter = AIAdapter(
+                api_key=(
+                    os.environ.get("OPENAI_API_KEY")
+                    or os.environ.get("ARK_API_KEY")
+                    or os.environ.get("SILICONFLOW_API_KEY")
+                ),
+                base_url=os.environ.get("OPENAI_BASE_URL") or os.environ.get("ARK_BASE_URL"),
+                model=os.environ.get("OPENAI_MODEL") or os.environ.get("ARK_MODEL"),
+            )
+        except Exception as exc:  # pragma: no cover - optional integration path
+            logger.warning("Association AI adapter unavailable for workflow: %s", exc)
+            self._association_ai_adapter = None
+        return self._association_ai_adapter
+
+    async def _build_association_bundle(
+        self,
+        user_query: str,
+        focused_points: List[str],
+        rag_evidence: List[Dict[str, Any]],
+        memory_hits: List[Dict[str, Any]],
+        generated_answer: str,
+        mode: str,
+        project_id: Optional[str],
+        draft_id: Optional[str],
+        section_id: Optional[str],
+        analysis_payloads: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Build a writing association bundle from either project state or ephemeral context."""
+        try:
+            from writing_resources import (
+                build_association_bundle_from_runtime_context,
+                apply_analysis_enrichment_to_bundle,
+            )
+        except Exception as exc:  # pragma: no cover - defensive boundary
+            logger.warning("Writing resource layer unavailable for workflow association: %s", exc)
+            return None
+
+        # 1. Determine the appropriate draft seed based on mode
+        draft_seed = self._build_association_seed(
+            mode=mode,
+            user_query=user_query,
+            focused_points=focused_points,
+            rag_evidence=rag_evidence,
+            generated_answer=generated_answer,
+        )
+
+        try:
+            # 2. Build base bundle WITHOUT analysis enrichment first (to detect actual increment)
+            base_bundle, ephemeral_store = await asyncio.to_thread(
+                build_association_bundle_from_runtime_context,
+                query=user_query,
+                draft_seed=draft_seed,
+                focused_points=focused_points,
+                retrieval_hits=rag_evidence,
+                memory_hits=memory_hits,
+                mode=mode,
+                project_id=project_id,
+                draft_id=draft_id,
+                section_id=section_id,
+                analysis_payloads=None,  # Delayed
+                ai_adapter=self._resolve_association_ai_adapter(),
+            )
+
+            # 3. Apply enrichment and detect actual increment using unified helper
+            enriched_bundle, was_enriched = apply_analysis_enrichment_to_bundle(
+                base_bundle, analysis_payloads=analysis_payloads
+            )
+
+            bundle_dict = enriched_bundle.to_dict()
+            bundle_dict["ephemeral_project"] = ephemeral_store
+            bundle_dict["analysis_enriched"] = was_enriched
+            return bundle_dict
+
+        except ValueError as exc:
+            logger.warning("Association bundle build failed in workflow: %s", exc)
+            return None
+
+    def _build_association_seed(
+        self,
+        mode: str,
+        user_query: str,
+        focused_points: List[str],
+        rag_evidence: List[Dict[str, Any]],
+        generated_answer: str,
+    ) -> str:
+        """
+        Build a deterministic or generative draft seed based on the association mode.
+
+        Why:
+            Ensures 'no_ai' mode is decoupled from LLM hallucinations (generated_answer),
+            maintaining a pure grounded baseline. 'ai' mode can leverage richer
+            context from the generated response.
+        """
+        if mode == "ai":
+            return generated_answer.strip()
+
+        # Deterministic seed for 'no_ai'
+        parts = [f"Focus Query: {user_query}"]
+        if focused_points:
+            parts.append(f"Derived Research Points: {', '.join(focused_points)}")
+
+        # Include top 2 evidence fragments to ground the seed without generation
+        stable_evidence = []
+        for ev in rag_evidence[:2]:
+            text = str(ev.get("text", "")).strip()[:150]
+            if text:
+                stable_evidence.append(text)
+        
+        if stable_evidence:
+            parts.append("Grounded Evidence Base:\n" + "\n".join(f"- {e}" for e in stable_evidence))
+
+        return "\n\n".join(parts)
+
+    def _collect_workflow_analysis_payloads(
+        self,
+        user_query: str,
+        focused_points: List[str],
+        generated_answer: str,
+        association_mode: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Organize workflow runtime information into structured analysis payloads.
+
+        Why:
+            Provides a bridge for the associative writing assistant to pick up
+            simulated "research results" like semantic themes and reasoning
+            chains, enabling analytical enrichment even when not running the full
+            pipeline. The reasoning chain is only included for ai mode so the
+            no_ai baseline stays grounded and deterministic.
+        """
+        payloads: List[Dict[str, Any]] = []
+
+        # 1. Synthesize semantic themes from focused points
+        if focused_points:
+            themes = [
+                {
+                    "theme_title": str(point).strip(),
+                    "summary": f"Key theme identified during RAG routing for query: {user_query[:60]}",
+                }
+                for point in focused_points
+                if str(point).strip()
+            ]
+            if themes:
+                payloads.append({"semantic_themes": themes})
+
+        # 2. Extract a simulated reasoning chain from the answer
+        error_prefixes = ("发生错误", "LLM 服务不可用", "API 错误", "生成失败")
+        if (
+            str(association_mode or "").strip().lower() == "ai"
+            and generated_answer
+            and not any(generated_answer.startswith(p) for p in error_prefixes)
+        ):
+            payloads.append({
+                "reasoning_chain": {
+                    "final_conclusion": generated_answer[:300].strip().replace("\n", " "),
+                    "conflicts": [],
+                }
+            })
+
+        return payloads
+
+    def _retrieve_memory_hits(
+        self,
+        user_query: str,
+        focused_points: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Query MemPalace for supporting project memory without blocking retrieval."""
+        adapter = self._resolve_memory_adapter()
+        if adapter is None:
+            return []
+
+        search_terms: List[str] = []
+        if isinstance(user_query, str) and user_query.strip():
+            search_terms.append(user_query.strip())
+        if focused_points:
+            focus_query = " ".join(point.strip() for point in focused_points if isinstance(point, str) and point.strip())
+            if focus_query and focus_query not in search_terms:
+                search_terms.append(focus_query)
+
+        hits: List[Dict[str, Any]] = []
+        seen_keys: set[tuple[str, str, str]] = set()
+        for term in search_terms:
+            try:
+                search_result = adapter.search(query=term, wing=self._memory_wing)
+            except Exception as exc:  # pragma: no cover - defensive boundary
+                logger.warning("MemPalace search failed for query %s: %s", term, exc)
+                continue
+
+            if not getattr(search_result, "available", False):
+                continue
+
+            for hit in getattr(search_result, "results", []):
+                hit_dict = hit.to_dict() if hasattr(hit, "to_dict") else dict(hit)
+                normalized_text = " ".join(str(hit_dict.get("text", "")).split())
+                dedupe_key = (
+                    str(hit_dict.get("wing", "")).strip(),
+                    str(hit_dict.get("room", "")).strip(),
+                    str(hit_dict.get("source_file", "")).strip(),
+                    normalized_text,
+                )
+                if dedupe_key in seen_keys:
+                    continue
+                seen_keys.add(dedupe_key)
+                hits.append(hit_dict)
+                if len(hits) >= 3:
+                    return hits
+        return hits
     
     def _calculate_confidence(
         self,

@@ -1,0 +1,114 @@
+﻿{
+  "run_metadata": {
+    "run_id": "run_20260404_230328_260241",
+    "timestamp": "2026-04-04T23:03:28.403038",
+    "manifest": "benchmarks\\golden_cases\\manifest.json",
+    "pipeline_script": "00_Integrated_Pipeline_.py",
+    "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+    "cwd": "C:\\Users\\xiao\\source\\repos\\xiaolongyao-lut\\Modular-Pipeline-Script",
+    "selected_case_count": 1,
+    "regen_candidate": true,
+    "accept_golden": false,
+    "updated_cases": [],
+    "baseline_report": ""
+  },
+  "aggregate": {
+    "total_cases": 1,
+    "passed_cases": 1,
+    "warning_cases": 0,
+    "failed_cases": 0,
+    "status_counts": {
+      "passed": 1,
+      "warning": 0,
+      "failed": 0
+    },
+    "severity_counts": {
+      "CRITICAL": 0,
+      "WARNING": 0
+    },
+    "check_failure_counts": {},
+    "blocking_failures": 0,
+    "slowest_cases": [
+      {
+        "case_id": "replay_materials_19_01104",
+        "duration_seconds": 0.132,
+        "status": "passed"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "replay_materials_19_01104",
+      "split": "smoke",
+      "tags": [
+        "smoke",
+        "real_replay",
+        "material_pack"
+      ],
+      "started_at": "2026-04-04T23:03:28.262122",
+      "duration_seconds": 0.132,
+      "pipeline_ok": true,
+      "pipeline_error": "",
+      "status": "passed",
+      "critical_failures": 0,
+      "warning_failures": 0,
+      "artifact_results": [
+        {
+          "case_id": "replay_materials_19_01104",
+          "artifact": "02_writing_material_pack.json",
+          "expected_path": "benchmarks\\golden_cases\\replay_materials_19_01104\\expected\\02_writing_material_pack.json",
+          "actual_path": "benchmarks\\results\\run_20260404_230328_260241\\candidate\\replay_materials_19_01104\\02_writing_material_pack.json",
+          "status": "passed",
+          "critical_failures": 0,
+          "warning_failures": 0,
+          "rule_results": [
+            {
+              "path": "pack_summary.selected_writing_points",
+              "type": "min_value",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": 10,
+              "actual": 12
+            },
+            {
+              "path": "pack_summary.semantic_themes",
+              "type": "min_value",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": 3,
+              "actual": 5
+            },
+            {
+              "path": "quality_gates.has_semantic_themes",
+              "type": "equals",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": true,
+              "actual": true
+            },
+            {
+              "path": "metadata.detected_domain",
+              "type": "contains",
+              "severity": "WARNING",
+              "ok": true,
+              "message": "",
+              "expected": "review",
+              "actual": "review"
+            }
+          ],
+          "diff_path": ""
+        }
+      ],
+      "candidate_root": "benchmarks\\results\\run_20260404_230328_260241\\candidate\\replay_materials_19_01104",
+      "expected_root": "benchmarks\\golden_cases\\replay_materials_19_01104\\expected"
+    }
+  ],
+  "baseline_delta": {},
+  "report_paths": {
+    "json": "benchmarks\\results\\run_20260404_230328_260241\\reports\\benchmark_report.json",
+    "markdown": "benchmarks\\results\\run_20260404_230328_260241\\reports\\benchmark_report.md"
+  }
+}

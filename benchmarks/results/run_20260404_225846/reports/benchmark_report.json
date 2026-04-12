@@ -1,0 +1,118 @@
+﻿{
+  "run_metadata": {
+    "run_id": "run_20260404_225846",
+    "timestamp": "2026-04-04T22:58:46.323846",
+    "manifest": "benchmarks\\golden_cases\\manifest.json",
+    "pipeline_script": "00_Integrated_Pipeline_.py",
+    "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+    "cwd": "C:\\Users\\xiao\\source\\repos\\xiaolongyao-lut\\Modular-Pipeline-Script",
+    "selected_case_count": 1,
+    "regen_candidate": false,
+    "accept_golden": false,
+    "updated_cases": [],
+    "baseline_report": ""
+  },
+  "aggregate": {
+    "total_cases": 1,
+    "passed_cases": 1,
+    "warning_cases": 0,
+    "failed_cases": 0,
+    "status_counts": {
+      "passed": 1,
+      "warning": 0,
+      "failed": 0
+    },
+    "severity_counts": {
+      "CRITICAL": 0,
+      "WARNING": 0
+    },
+    "check_failure_counts": {},
+    "blocking_failures": 0,
+    "slowest_cases": [
+      {
+        "case_id": "smoke_material_pack_fixture",
+        "duration_seconds": 0.0,
+        "status": "passed"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "smoke_material_pack_fixture",
+      "split": "smoke",
+      "tags": [
+        "smoke",
+        "fixture",
+        "material_pack"
+      ],
+      "started_at": "2026-04-04T22:58:46.322823",
+      "duration_seconds": 0.0,
+      "pipeline_ok": true,
+      "pipeline_error": "",
+      "status": "passed",
+      "critical_failures": 0,
+      "warning_failures": 0,
+      "artifact_results": [
+        {
+          "case_id": "smoke_material_pack_fixture",
+          "artifact": "02_writing_material_pack.json",
+          "expected_path": "benchmarks\\golden_cases\\smoke_material_pack_fixture\\expected\\02_writing_material_pack.json",
+          "actual_path": "benchmarks\\golden_cases\\smoke_material_pack_fixture\\candidate\\02_writing_material_pack.json",
+          "status": "passed",
+          "critical_failures": 0,
+          "warning_failures": 0,
+          "rule_results": [
+            {
+              "path": "quality_gates.consistency_pass",
+              "type": "equals",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": true,
+              "actual": true
+            },
+            {
+              "path": "study_overview_paragraphs",
+              "type": "min_length",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": 1,
+              "actual": [
+                "This fixture ensures the smoke golden benchmark exercises the comparator and release gates."
+              ]
+            },
+            {
+              "path": "semantic_themes",
+              "type": "min_length",
+              "severity": "WARNING",
+              "ok": true,
+              "message": "",
+              "expected": 1,
+              "actual": [
+                {
+                  "linked_figure_ids": [
+                    "F01"
+                  ],
+                  "linked_writing_point_ids": [
+                    "WP01"
+                  ],
+                  "theme_id": "T01",
+                  "theme_title": "Laser Power Effects"
+                }
+              ]
+            }
+          ],
+          "diff_path": ""
+        }
+      ],
+      "candidate_root": "benchmarks\\golden_cases\\smoke_material_pack_fixture\\candidate",
+      "expected_root": "benchmarks\\golden_cases\\smoke_material_pack_fixture\\expected"
+    }
+  ],
+  "baseline_delta": {},
+  "report_paths": {
+    "json": "benchmarks\\results\\run_20260404_225846\\reports\\benchmark_report.json",
+    "markdown": "benchmarks\\results\\run_20260404_225846\\reports\\benchmark_report.md"
+  }
+}

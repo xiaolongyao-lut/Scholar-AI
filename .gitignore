@@ -10,6 +10,24 @@ legacy_archive/
 github/
 .rollback_snapshots/
 .backup_before_script_rename_*/
+.cache/
+_backups/
+scratch/
+scoring_reports/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.db
+*_facts.db
+*_state.db
+*_events.db
+*_output.json
+sync_output.json
+global_state.json
+calibration_results.json
+optimization_test_report.json
+BASELINE_METRICS.json
+jian.md
 
 .vs/
 .idea/

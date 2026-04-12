@@ -1,0 +1,39 @@
+﻿{
+  "run_metadata": {
+    "run_id": "run_20260404_225057",
+    "timestamp": "2026-04-04T22:50:57.047208",
+    "manifest": "benchmarks\\golden_cases\\manifest.json",
+    "pipeline_script": "00_Integrated_Pipeline_.py",
+    "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+    "cwd": "C:\\Users\\xiao\\source\\repos\\xiaolongyao-lut\\Modular-Pipeline-Script",
+    "selected_case_count": 0,
+    "regen_candidate": false,
+    "accept_golden": false,
+    "updated_cases": [],
+    "baseline_report": ""
+  },
+  "aggregate": {
+    "total_cases": 0,
+    "passed_cases": 0,
+    "warning_cases": 0,
+    "failed_cases": 0,
+    "status_counts": {
+      "passed": 0,
+      "warning": 0,
+      "failed": 0
+    },
+    "severity_counts": {
+      "CRITICAL": 0,
+      "WARNING": 0
+    },
+    "check_failure_counts": {},
+    "blocking_failures": 0,
+    "slowest_cases": []
+  },
+  "cases": [],
+  "baseline_delta": {},
+  "report_paths": {
+    "json": "benchmarks\\results\\run_20260404_225057\\reports\\benchmark_report.json",
+    "markdown": "benchmarks\\results\\run_20260404_225057\\reports\\benchmark_report.md"
+  }
+}

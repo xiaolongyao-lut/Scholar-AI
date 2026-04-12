@@ -1,0 +1,561 @@
+{
+  "project_view": {
+    "file_role": "run_master_project_view",
+    "version": "1.0.0",
+    "source_pdf": "C:\\Users\\xiao\\Desktop\\wenxianku\\materials-19-01104.pdf",
+    "source_pdf_name": "materials-19-01104.pdf",
+    "goal": "提取工艺参数与组织性能关系",
+    "project_identity": "Golden benchmark project-view replay harness",
+    "runtime_split": {
+      "planner": "project_view",
+      "writer": "human_view"
+    },
+    "hard_rules": {
+      "grounding": "use benchmark fixtures only"
+    },
+    "pipeline": [
+      "stage_01_extract",
+      "stage_02_binding",
+      "stage_07_analysis",
+      "stage_03_material_pack",
+      "stage_04_single_figures"
+    ],
+    "governance_sources": {
+      "project_view_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\governance\\project_view.json",
+      "prompt_md_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\governance\\prompt.md",
+      "prompt_json_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\governance\\prompt.json",
+      "changelog_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\governance\\changelog.md",
+      "route_summary_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\governance\\route_summary.md",
+      "user_profile_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\governance\\user_profile.md"
+    },
+    "stage_manifest": {
+      "stage_01_extract": {
+        "script_path": "",
+        "input_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\01_full_extract.json",
+        "status": "",
+        "key_counts": {
+          "sections": 0,
+          "chunks": 145,
+          "figures": 9,
+          "tables": 9,
+          "references": 0,
+          "parameter_candidates": 0,
+          "result_candidates": 0,
+          "page_images": 0
+        }
+      },
+      "stage_02_binding": {
+        "script_path": "",
+        "input_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\02_hybrid_retrieval.json",
+        "status": "hybrid_retrieval_ready",
+        "key_counts": {
+          "relation_edges": 0,
+          "figure_bindings": 0,
+          "table_bindings": 0,
+          "parameter_cards": 0,
+          "result_cards": 0
+        }
+      },
+      "stage_07_analysis": {
+        "script_path": "",
+        "input_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\03_analysis_report.json",
+        "status": "analysis_complete",
+        "goal": "提取工艺参数与组织性能关系",
+        "key_counts": {
+          "raw_writing_points": 0,
+          "writing_points": 75,
+          "selected_writing_points": 12,
+          "selected_figures": 6,
+          "selected_tables": 0,
+          "selected_references": 0,
+          "selected_parameters": 0,
+          "selected_results": 0
+        }
+      },
+      "stage_03_material_pack": {
+        "script_path": "",
+        "input_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\02_writing_material_pack.json",
+        "status": "",
+        "pack_summary": {}
+      },
+      "stage_04_single_figures": {
+        "script_path": "",
+        "input_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\input\\04_single_figure_pack.json",
+        "status": "ok",
+        "refinement_stats": {
+          "total_figure_cards": 6,
+          "with_primary_image": 6,
+          "with_raw_embedded_image": 6,
+          "with_page_crop": 6
+        }
+      }
+    },
+    "quality_gates": {
+      "has_writing_points": true,
+      "has_single_figure_cards": true,
+      "has_evidence_bundles": false,
+      "writing_points_have_boundary_notes": false,
+      "writing_points_keep_original_markers_field": false,
+      "refined_figure_count_matches_material_pack": true,
+      "refined_figures_have_primary_raw_images": true,
+      "overall_pass": false
+    },
+    "current_task_usable_subset": {
+      "goal": "提取工艺参数与组织性能关系",
+      "selected_writing_points": [
+        {
+          "writing_point_id": "wp080",
+          "claim": "Main effect Laser power (A) 6.256 3 3.901 3.490 Scanning speed (B) 0.015 3 0.009 3.490 Wire feeding speed (C) 0.124 3 0.077 3.490 Air pressure (D) 0.020 3 0.012 3.490 Interaction effect Laser power × Scanning speed (A × B) 5.782 9 16.05 8.020",
+          "point_type": "discussion",
+          "relevance_score": 0.9707,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 11,
+          "source_text": "Main effect Laser power (A) 6.256 3 3.901 3.490 Scanning speed (B) 0.015 3 0.009 3.490 Wire feeding speed (C) 0.124 3 0.077 3.490 Air pressure (D) 0.020 3 0.012 3.490 Interaction effect Laser power × Scanning speed (A × B) 5.782 9 16.05 8.020",
+          "linked_figures": [],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp046",
+          "claim": "To clarify the independent influence patterns of laser power, scanning speed, wire feeding speed, and air pressure on the porosity of 5356 aluminum alloy samples prepared by LWDED, as well as the influence weight of each parameter and the significance of interaction terms, single-factor experiments and orthogonal experiments were conducted.",
+          "point_type": "discussion",
+          "relevance_score": 0.9309,
+          "goal_hits": [
+            "parameter",
+            "power",
+            "speed"
+          ],
+          "page": 6,
+          "source_text": "induce severe mechanical disturbances on the melt pool surface, mechanically entraining external shielding gas or even ambient air into the interior. Additionally, an excessively high wire feeding speed introduces more hydrogen (from moisture or oxides absorbed on the wire surface) into the melt pool per unit time, directly increasing the probability of metallurgical pore formation. Air pressure directly affects the gas flow conditions above the melt pool. When the air pressure is insufficient to effectively shield the molten pool from the surrounding atmosphere, it leads to oxidation of the melt pool surface and entrainment of hydrogen from the air, triggering extensive hydrogen porosity. However, when the air pressure is too high, the high-velocity gas jet impinges on the melt pool surface, disrupting its steady state and entraining shielding gas into the molten pool, thereby forming pores. To clarify the independent influence patterns of laser power, scanning speed, wire feeding speed, and air pressure on the porosity of 5356 aluminum alloy samples prepared by LWDED, as well as the influence weight of each parameter and the significance of interaction terms, single-factor experiments and orthogonal experiments were conducted.",
+          "linked_figures": [],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp043",
+          "claim": "If the wire feeding speed is mismatched with the available heat input (e.g., high feed rate with insufficient energy), it can cause the wire to directly strike the melt pool or result in large droplets detaching into the pool.",
+          "point_type": "mechanism",
+          "relevance_score": 0.8699,
+          "goal_hits": [
+            "heat input",
+            "speed"
+          ],
+          "page": 5,
+          "source_text": "Before conducting experimental investigations into the effects of process parameters on porosity, it is necessary to establish a physical metallurgy foundation for understanding the fundamental mechanisms of pore formation during the LWDED process. For the 5356 Al-Mg alloy, porosity formation is not governed by a single factor but results from the multi-field coupling of melt pool dynamics, keyhole stability, gas entrapment, and solidification behavior. Laser power provides the thermal energy required to melt the substrate surface and establish a molten pool into which the fed wire is deposited. Laser power, together with scanning speed, determines the energy input. Due to the high reflectivity and high thermal conductivity of aluminum alloys, a sufficiently high laser power is required to maintain a stable molten pool. However, the 5356 alloy contains approximately 5% magnesium (Mg). Owing to the low boiling point of Mg, excessive laser power readily triggers intense vaporization of Mg elements. This vaporization not only causes loss of alloying elements but also generates strong metal vapor recoil pressure, which severely destabilizes the keyhole. Violent fluctuations or intermittent collapse of the keyhole can cause the keyhole tip to be closed off by molten metal flow, thereby forming pores. Simultaneously, scanning speed governs the solidification dynamics and bubble escape kinetics. Hydrogen exhibits high solubility in high-temperature liquid aluminum. When the scanning speed is excessively high, the solidification rate increases dramatically, and the solidification front advances rapidly. Consequently, precipitated hydrogen bubbles and entrapped shielding gas are “frozen” in the deposited layer before they can float out, leading to gas entrapment. Conversely, appropriately reducing the scanning speed significantly shortens the solidification time of the melt pool, providing sufficient time for bubbles to float and escape. Wire feeding speed not only determines the deposition rate but also controls the molten metal transfer mode. If the wire feeding speed is mismatched with the available heat input (e.g., high feed rate with insufficient energy), it can cause the wire to directly strike the melt pool or result in large droplets detaching into the pool. These unstable transfer modes",
+          "linked_figures": [
+            "f2"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp054",
+          "claim": "As scanning speed was progressively increased, the reduced laser interaction time brought the heat input to a reasonable level, thereby enhancing melt pool stability and leading to a continuous decline in porosity.",
+          "point_type": "mechanism",
+          "relevance_score": 0.8699,
+          "goal_hits": [
+            "heat input",
+            "speed"
+          ],
+          "page": 7,
+          "source_text": "Scanning speed serves as a critical process parameter in LWDED by governing the lasermaterial interaction time. It determines the solidification rate of the molten pool, thereby influencing gas escape efficiency and porosity formation [10]. In this work, laser power, wire feeding speed, and Air pressure were fixed at 1350 W, 130 cm/min, and 0.24 MPa, respectively. Preliminary trials indicated that scanning speeds below 450 mm/min resulted in excessive heat input, causing the melt pool to penetrate through the substrate. Consequently, this study focuses on scanning speeds ranging from 450 mm/min to 1150 mm/min. As depicted in Figure 4, when the scanning speed is set at 450 mm/min, the porosity is exhibited at a high level. This is attributed to the prolonged interaction between the laser and the substrate, which significantly increased the heat input per unit area. This excessive energy induced intense convective flow and fluctuations within the melt pool, exacerbating instability and facilitating the entrainment of ambient gas [35]. As scanning speed was progressively increased, the reduced laser interaction time brought the heat input to a reasonable level, thereby enhancing melt pool stability and leading to a continuous decline in porosity. The porosity reached a minimum at 850 mm/min; at this velocity, the solidification rate was moderate, affording gas bubbles sufficient time to float to the surface and escape prior to solidification. However, scanning speeds exceeding 850 mm/min resulted in a resurgence of porosity. This trend arises because excessive speeds shorten the solidification window [36], causing gas bubbles generated within the melt pool to become entrapped before they can escape. Furthermore, high scanning speeds may lead to insufficient interaction between the wire and the melt pool, increasing the incidence of localized lack-of-fusion defects and further elevating porosity.",
+          "linked_figures": [
+            "f4",
+            "f3",
+            "f4"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp050",
+          "claim": "This is attributed to insufficient heat input failing to achieve adequate fusion between the wire and the substrate, resulting in substantial lack-of-fusion defects and a shallow penetration depth under this condition [34].",
+          "point_type": "mechanism",
+          "relevance_score": 0.8581,
+          "goal_hits": [
+            "heat input",
+            "ratio"
+          ],
+          "page": 6,
+          "source_text": "Laser power governs the stability of keyhole behavior and the thermal distribution within the melt pool, thereby serving as the primary determinant of porosity formation in the LWDED process [9]. In the analysis, scanning speed, wire feeding speed, and Air pressure were fixed at 850 mm/min, 130 cm/min, and 0.24 MPa, respectively. Preliminary trials indicated that laser power levels below 700 W provided insufficient energy to fully melt the wire, resulting in wire adhesion to the substrate. Conversely, levels exceeding 1700 W caused excessive penetration. Consequently, this work focuses on the influence of laser power ranging from 700 to 1700 W. As shown in Figure 3, porosity exhibited at a relatively high level at 700 W. This is attributed to insufficient heat input failing to achieve adequate fusion between the wire and the substrate, resulting in substantial lack-of-fusion defects and a shallow penetration depth under this condition [34]. As laser power increased, molten metal progressively filled these void regions, and the melt depth deepened, resulting in a downward trend in porosity. The minimum porosity was achieved at 1350 W. In this regime, the wire metal transfer mode stabilized into a liquid bridge transfer mode characterized by a stable keyhole morphology, which allowed entrapped gas sufficient time to escape the melt pool [11]. However, as laser power exceeded 1350 W, a slight increase in porosity was observed. This phenomenon arises from excessive energy input, inducing keyhole oscillation. Intense vapor recoil pressure causes the periodic collapse of the keyhole walls, generating gas bubbles that are entrapped prior to solidification and manifest as pores [4].",
+          "linked_figures": [
+            "f3"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp060",
+          "claim": "In this work, laser power, scanning speed, and wire feeding speed were fixed at 1350 W, 850 mm/min, and 130 cm/min, respectively.",
+          "point_type": "discussion",
+          "relevance_score": 0.8455,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 8,
+          "source_text": "Air pressure regulates the shielding gas flux in the LWDED process. It prevents the oxidation of the melt pool and the entrainment of impurities into it, thereby governing porosity formation [12]. In this work, laser power, scanning speed, and wire feeding speed were fixed at 1350 W, 850 mm/min, and 130 cm/min, respectively. As depicted in Figure 6, porosity levels were significantly elevated at 0.05 MPa. At this pressure, the shielding gas flux was insufficient to effectively suppress the plasma plume generated by the laser-material interaction, resulting in the accumulation of a dense plasma plume above the melt pool [39]. This plume attenuates laser energy via refraction and scattering, thereby reducing the effective energy density delivered to the substrate and wire.",
+          "linked_figures": [
+            "f6",
+            "f5"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp065",
+          "claim": "Analysis of the experimental data revealed that a minimum porosity of 0.13% was achieved under the following optimized conditions: a laser power of 1450 W, a scanning speed of 650 mm/min, a wire feeding speed of 130 cm/min, and an air pressure of 0.2 MPa.",
+          "point_type": "result",
+          "relevance_score": 0.8455,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 9,
+          "source_text": "Although single-factor experiments evaluated the independent effects of laser power, scanning speed, wire feeding speed, and air pressure on porosity, significant interaction effects exist in additive manufacturing processes. Consequently, relying solely on univariate analysis is insufficient to capture the complex coupling mechanisms governing porosity. To address this limitation, an orthogonal experimental design was employed to further optimize the process parameter combinations [41]. The parameters selected for the four-factor, four-level orthogonal experiment are detailed in Table 2. This experimental phase investigated the combined effects of laser power, scanning speed, wire feeding speed, and air pressure on porosity; the corresponding results are presented in Table 3. Analysis of the experimental data revealed that a minimum porosity of 0.13% was achieved under the following optimized conditions: a laser power of 1450 W, a scanning speed of 650 mm/min, a wire feeding speed of 130 cm/min, and an air pressure of 0.2 MPa.",
+          "linked_figures": [
+            "f6"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp067",
+          "claim": "Laser power (W) 700, 950, 1200, 1450 Scanning speed (mm/min) 450, 650, 850, 1050 Wire feeding speed (cm/min) 80, 110, 140, 170 Air pressure (MPa) 0.05, 0.2, 0.32, 0.4",
+          "point_type": "discussion",
+          "relevance_score": 0.8455,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 9,
+          "source_text": "Laser power (W) 700, 950, 1200, 1450 Scanning speed (mm/min) 450, 650, 850, 1050 Wire feeding speed (cm/min) 80, 110, 140, 170 Air pressure (MPa) 0.05, 0.2, 0.32, 0.4",
+          "linked_figures": [
+            "f5",
+            "f6"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp072",
+          "claim": "Note: LP: laser power, SS: scanning speed, WFS: wire feeding speed, AP: air pressure.",
+          "point_type": "discussion",
+          "relevance_score": 0.8455,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 10,
+          "source_text": "Note: LP: laser power, SS: scanning speed, WFS: wire feeding speed, AP: air pressure.",
+          "linked_figures": [
+            "f6"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp073",
+          "claim": "Among them, laser power (R = 1.589) has the most significant effect on porosity, followed by wire feeding speed, while scanning speed and air pressure have relatively smaller effects on porosity.",
+          "point_type": "result",
+          "relevance_score": 0.8455,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 10,
+          "source_text": "Range analysis and variance analysis were used to comprehensively evaluate the influence of weight and the significance of process parameters on porosity. The range analysis results are shown in Table 4. The larger the range value (R), the more significant the effect of its numerical change on the experimental results. The relationship of range values (R) is: R Laser Power > R Wire Feeding Speed > R Scanning Speed > R Air Pressure. Among them, laser power (R = 1.589) has the most significant effect on porosity, followed by wire feeding speed, while scanning speed and air pressure have relatively smaller effects on porosity. The variance analysis results are shown in Table 5, further confirming that laser power has a significant effect on porosity (F = 3.901 > F-critical = 3.490). This is mainly attributed to laser power as the core of energy input, which directly determines the stability of the keyhole bottom and the solidification rate of the molten pool. In terms of interaction effects, laser power and scanning speed (A × B) is a strongly significant interaction term (Sum of squares = 5.782, F = 16.05 > F-critical = 8.020). The two jointly determine molten pool stability and gas escape efficiency by regulating the balance between energy input and solidification rate. Laser power and wire feeding speed (A × C) is a marginally significant interaction term (F = 5.93, close to F-critical = 8.020). The interaction terms of scanning speed × wire feeding speed (B × C), laser power × air pressure (A × D), scanning speed × air pressure (B × D), and wire feeding speed × air pressure (C × D) are all insignificant (F values far less than 8.020), with weak effects on porosity. In summary, the range analysis and variance analysis results are highly consistent, clarifying that laser power and its interaction with scanning speed are key to controlling sample porosity. This provides a theoretical basis for process optimization.",
+          "linked_figures": [],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp075",
+          "claim": "Laser power (W) 1.797 0.768 0.331 0.208 1.589 Scanning speed (cm/min) 0.821 0.744 0.752 0.787 0.077 Wire feeding speed (mm/min) 0.834 0.634 0.774 0.862 0.228",
+          "point_type": "discussion",
+          "relevance_score": 0.8455,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 10,
+          "source_text": "Laser power (W) 1.797 0.768 0.331 0.208 1.589 Scanning speed (cm/min) 0.821 0.744 0.752 0.787 0.077 Wire feeding speed (mm/min) 0.834 0.634 0.774 0.862 0.228",
+          "linked_figures": [],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp102",
+          "claim": "To verify the prediction capability of machine learning models for the process window, Figure 8 shows the porosity prediction maps of the four machine learning models when laser power (700~1700 W) and scanning speed (450~1150 mm/min) vary under a fixed wire feeding speed of 130 cm/min and an air pressure of 0.24 MPa.",
+          "point_type": "discussion",
+          "relevance_score": 0.8455,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 12,
+          "source_text": "To verify the prediction capability of machine learning models for the process window, Figure 8 shows the porosity prediction maps of the four machine learning models when laser power (700~1700 W) and scanning speed (450~1150 mm/min) vary under a fixed wire feeding speed of 130 cm/min and an air pressure of 0.24 MPa. The results show that the prediction results of the RF (Figure 8b) and XGBoost (Figure 8d) models have poor continuity [43], which can be attributed to their inherent characteristics as ensemble learning algorithms. The prediction results of SVR (Figure 8a) and GPR (Figure 8c) models have better continuity because they have stronger generalization capability than ensemble learning algorithms (such as RF and XGBoost) in handling small samples and nonlinear",
+          "linked_figures": [
+            "f8",
+            "f8"
+          ],
+          "linked_tables": []
+        }
+      ],
+      "selected_figures": [
+        {
+          "figure_id": "f2",
+          "figure_number": 2,
+          "page": 5,
+          "caption": "Figure 2. Porosity detection method. (a,b) Schematic diagram of the sample cutting method; (c) Cross-section of the sample.",
+          "supporting_writing_point_ids": [],
+          "raw_image_path": "figures/f2/f2_raw.png",
+          "page_crop_path": "figures/f2/f2_crop.png",
+          "selection_reason": ""
+        },
+        {
+          "figure_id": "f3",
+          "figure_number": 3,
+          "page": 7,
+          "caption": "Figure 3. Influence of Laser Power on Porosity. (a) 850 W; (b) 1350 W; (c) 1600 W.",
+          "supporting_writing_point_ids": [],
+          "raw_image_path": "figures/f3/f3_raw.png",
+          "page_crop_path": "figures/f3/f3_crop.png",
+          "selection_reason": ""
+        },
+        {
+          "figure_id": "f4",
+          "figure_number": 4,
+          "page": 7,
+          "caption": "Figure 4. Influence of Scanning Speed on Porosity. (a) 500 mm/min; (b) 850 mm/min; (c) 1100 mm/min.",
+          "supporting_writing_point_ids": [],
+          "raw_image_path": "figures/f4/f4_raw.png",
+          "page_crop_path": "figures/f4/f4_crop.png",
+          "selection_reason": ""
+        },
+        {
+          "figure_id": "f5",
+          "figure_number": 5,
+          "page": 8,
+          "caption": "Figure 5. Influence of Wire Feeding Speed on Porosity. (a) 80 cm/min; (b) 130 cm/min; (c) 180 cm/min.",
+          "supporting_writing_point_ids": [],
+          "raw_image_path": "figures/f5/f5_raw.png",
+          "page_crop_path": "figures/f5/f5_crop.png",
+          "selection_reason": ""
+        },
+        {
+          "figure_id": "f6",
+          "figure_number": 6,
+          "page": 9,
+          "caption": "Figure 6. Influence of Air Pressure on Porosity. (a) 0.05 MPa; (b) 0.2 MPa; (c) 0.32 MPa.",
+          "supporting_writing_point_ids": [],
+          "raw_image_path": "figures/f6/f6_raw.png",
+          "page_crop_path": "figures/f6/f6_crop.png",
+          "selection_reason": ""
+        },
+        {
+          "figure_id": "f8",
+          "figure_number": 8,
+          "page": 13,
+          "caption": "Figure 8. Porosity prediction maps generated by the different models at a wire feeding speed of 130 cm/min and an air pressure of 0.24 MPa. (The dashed black lines represent a set of contour lines corresponding to a constant value). (a) SVR; (b) RF; (c) GPR; (d) XGBoost.",
+          "supporting_writing_point_ids": [],
+          "raw_image_path": "figures/f8/f8_raw.png",
+          "page_crop_path": "figures/f8/f8_crop.png",
+          "selection_reason": ""
+        }
+      ],
+      "selected_tables": [],
+      "selected_parameters": [],
+      "selected_results": [],
+      "selected_references": []
+    },
+    "traceability_index": [
+      {
+        "writing_point_id": "wp080",
+        "claim": "Main effect Laser power (A) 6.256 3 3.901 3.490 Scanning speed (B) 0.015 3 0.009 3.490 Wire feeding speed (C) 0.124 3 0.077 3.490 Air pressure (D) 0.020 3 0.012 3.490 Interaction effect Laser power × Scanning speed (A × B) 5.782 9 16.05 8.020",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp046",
+        "claim": "To clarify the independent influence patterns of laser power, scanning speed, wire feeding speed, and air pressure on the porosity of 5356 aluminum alloy samples prepared by LWDED, as well as the influence weight of each parameter and the significance of interaction terms, single-factor experiments and orthogonal experiments were conducted.",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp043",
+        "claim": "If the wire feeding speed is mismatched with the available heat input (e.g., high feed rate with insufficient energy), it can cause the wire to directly strike the melt pool or result in large droplets detaching into the pool.",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp054",
+        "claim": "As scanning speed was progressively increased, the reduced laser interaction time brought the heat input to a reasonable level, thereby enhancing melt pool stability and leading to a continuous decline in porosity.",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp050",
+        "claim": "This is attributed to insufficient heat input failing to achieve adequate fusion between the wire and the substrate, resulting in substantial lack-of-fusion defects and a shallow penetration depth under this condition [34].",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp060",
+        "claim": "In this work, laser power, scanning speed, and wire feeding speed were fixed at 1350 W, 850 mm/min, and 130 cm/min, respectively.",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp065",
+        "claim": "Analysis of the experimental data revealed that a minimum porosity of 0.13% was achieved under the following optimized conditions: a laser power of 1450 W, a scanning speed of 650 mm/min, a wire feeding speed of 130 cm/min, and an air pressure of 0.2 MPa.",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp067",
+        "claim": "Laser power (W) 700, 950, 1200, 1450 Scanning speed (mm/min) 450, 650, 850, 1050 Wire feeding speed (cm/min) 80, 110, 140, 170 Air pressure (MPa) 0.05, 0.2, 0.32, 0.4",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp072",
+        "claim": "Note: LP: laser power, SS: scanning speed, WFS: wire feeding speed, AP: air pressure.",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp073",
+        "claim": "Among them, laser power (R = 1.589) has the most significant effect on porosity, followed by wire feeding speed, while scanning speed and air pressure have relatively smaller effects on porosity.",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp075",
+        "claim": "Laser power (W) 1.797 0.768 0.331 0.208 1.589 Scanning speed (cm/min) 0.821 0.744 0.752 0.787 0.077 Wire feeding speed (mm/min) 0.834 0.634 0.774 0.862 0.228",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      },
+      {
+        "writing_point_id": "wp102",
+        "claim": "To verify the prediction capability of machine learning models for the process window, Figure 8 shows the porosity prediction maps of the four machine learning models when laser power (700~1700 W) and scanning speed (450~1150 mm/min) vary under a fixed wire feeding speed of 130 cm/min and an air pressure of 0.24 MPa.",
+        "boundary_type": "",
+        "original_reference_markers": [],
+        "source_chunk_ids": [],
+        "linked_parameter_ids": [],
+        "linked_result_ids": [],
+        "linked_table_ids": [],
+        "figure_evidence": [],
+        "selection_reason": "",
+        "evidence_summary": ""
+      }
+    ],
+    "evidence_bundles": [],
+    "boundary_summary": {},
+    "stats": {
+      "extract_stats": {},
+      "binding_stats": {},
+      "analysis_stats": {
+        "writing_point_count": 75,
+        "selected_writing_point_count": 12,
+        "selected_figure_count": 6,
+        "selected_table_count": 0
+      },
+      "material_pack_summary": {},
+      "figure_refinement_stats": {
+        "total_figure_cards": 6,
+        "with_primary_image": 6,
+        "with_raw_embedded_image": 6,
+        "with_page_crop": 6
+      }
+    }
+  },
+  "human_view": "# 总文件（人看版）\n\n- 来源文献：materials-19-01104.pdf\n- 当前目标：提取工艺参数与组织性能关系\n- 角色定位：Golden benchmark project-view replay harness\n\n## 阶段状态\n- S01_extract：；sections=0；chunks=145；figures=9；tables=9；references=0；parameter_candidates=0；result_candidates=0；page_images=0\n- S02_binding：hybrid_retrieval_ready；relation_edges=0；figure_bindings=0；table_bindings=0；parameter_cards=0；result_cards=0\n- S07_analysis：analysis_complete；raw_writing_points=0；writing_points=75；selected_writing_points=12；selected_figures=6；selected_tables=0；selected_references=0；selected_parameters=0；selected_results=0\n- S03_material_pack：；\n- S04_single_figures：ok；total_figure_cards=6；with_primary_image=6；with_raw_embedded_image=6；with_page_crop=6\n\n## 质量门\n- has_writing_points：通过\n- has_single_figure_cards：通过\n- has_evidence_bundles：未通过\n- writing_points_have_boundary_notes：未通过\n- writing_points_keep_original_markers_field：未通过\n- refined_figure_count_matches_material_pack：通过\n- refined_figures_have_primary_raw_images：通过\n- overall_pass：未通过\n\n## 当前最可用写作点\n### 1. Main effect Laser power (A) 6.256 3 3.901 3.490 Scanning speed (B) 0.015 3 0.009 3.490 Wire feeding speed (C) 0.124 3 0.077 3.490 Air pressure (D) 0.020 3 0.012 3.490 Interaction effect Laser power × Scanning speed (A × B) 5.782 9 16.05 8.020\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 2. To clarify the independent influence patterns of laser power, scanning speed, wire feeding speed, and air pressure on the porosity of 5356 aluminum alloy samples prepared by LWDED, as well as the influence weight of each parameter and the significance of interaction terms, single-factor experiments and orthogonal experiments were conducted.\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 3. If the wire feeding speed is mismatched with the available heat input (e.g., high feed rate with insufficient energy), it can cause the wire to directly strike the melt pool or result in large droplets detaching into the pool.\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 4. As scanning speed was progressively increased, the reduced laser interaction time brought the heat input to a reasonable level, thereby enhancing melt pool stability and leading to a continuous decline in porosity.\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 5. This is attributed to insufficient heat input failing to achieve adequate fusion between the wire and the substrate, resulting in substantial lack-of-fusion defects and a shallow penetration depth under this condition [34].\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 6. In this work, laser power, scanning speed, and wire feeding speed were fixed at 1350 W, 850 mm/min, and 130 cm/min, respectively.\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 7. Analysis of the experimental data revealed that a minimum porosity of 0.13% was achieved under the following optimized conditions: a laser power of 1450 W, a scanning speed of 650 mm/min, a wire feeding speed of 130 cm/min, and an air pressure of 0.2 MPa.\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 8. Laser power (W) 700, 950, 1200, 1450 Scanning speed (mm/min) 450, 650, 850, 1050 Wire feeding speed (cm/min) 80, 110, 140, 170 Air pressure (MPa) 0.05, 0.2, 0.32, 0.4\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 9. Note: LP: laser power, SS: scanning speed, WFS: wire feeding speed, AP: air pressure.\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 10. Among them, laser power (R = 1.589) has the most significant effect on porosity, followed by wire feeding speed, while scanning speed and air pressure have relatively smaller effects on porosity.\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 11. Laser power (W) 1.797 0.768 0.331 0.208 1.589 Scanning speed (cm/min) 0.821 0.744 0.752 0.787 0.077 Wire feeding speed (mm/min) 0.834 0.634 0.774 0.862 0.228\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n### 12. To verify the prediction capability of machine learning models for the process window, Figure 8 shows the porosity prediction maps of the four machine learning models when laser power (700~1700 W) and scanning speed (450~1150 mm/min) vary under a fixed wire feeding speed of 130 cm/min and an air pressure of 0.24 MPa.\n- 边界：｜\n- 原始编号：无\n- 关联图：无；关联表：无\n- 关联参数：无；关联结果：无\n- 证据摘要：\n\n## 图级证据总览\n- f2 / Fig.2 / p.5\n  - 图题：Figure 2. Porosity detection method. (a,b) Schematic diagram of the sample cutting method; (c) Cross-section of the sample.\n  - 主图：figures/f2/f2_raw.png\n  - 辅助定位图：figures/f2/f2_crop.png\n  - 支撑写作点：无\n- f3 / Fig.3 / p.7\n  - 图题：Figure 3. Influence of Laser Power on Porosity. (a) 850 W; (b) 1350 W; (c) 1600 W.\n  - 主图：figures/f3/f3_raw.png\n  - 辅助定位图：figures/f3/f3_crop.png\n  - 支撑写作点：无\n- f4 / Fig.4 / p.7\n  - 图题：Figure 4. Influence of Scanning Speed on Porosity. (a) 500 mm/min; (b) 850 mm/min; (c) 1100 mm/min.\n  - 主图：figures/f4/f4_raw.png\n  - 辅助定位图：figures/f4/f4_crop.png\n  - 支撑写作点：无\n- f5 / Fig.5 / p.8\n  - 图题：Figure 5. Influence of Wire Feeding Speed on Porosity. (a) 80 cm/min; (b) 130 cm/min; (c) 180 cm/min.\n  - 主图：figures/f5/f5_raw.png\n  - 辅助定位图：figures/f5/f5_crop.png\n  - 支撑写作点：无\n- f6 / Fig.6 / p.9\n  - 图题：Figure 6. Influence of Air Pressure on Porosity. (a) 0.05 MPa; (b) 0.2 MPa; (c) 0.32 MPa.\n  - 主图：figures/f6/f6_raw.png\n  - 辅助定位图：figures/f6/f6_crop.png\n  - 支撑写作点：无\n- f8 / Fig.8 / p.13\n  - 图题：Figure 8. Porosity prediction maps generated by the different models at a wire feeding speed of 130 cm/min and an air pressure of 0.24 MPa. (The dashed black lines represent a set…\n  - 主图：figures/f8/f8_raw.png\n  - 辅助定位图：figures/f8/f8_crop.png\n  - 支撑写作点：无\n\n## 参数 / 结果 / 引用\n- 参数条目：0\n- 结果条目：0\n- 引用条目：0\n\n## 最后判断\n当前主链尚未完全通过质量门，建议先修补后再打包。\n",
+  "prompt_file": {
+    "prompt_md": "# Benchmark Prompt\n\nUse only the checked-in benchmark fixtures.\n",
+    "prompt_json": {
+      "hard_rules": {
+        "grounding": "use benchmark fixtures only"
+      },
+      "pipeline": [
+        "stage_01_extract",
+        "stage_02_binding",
+        "stage_07_analysis",
+        "stage_03_material_pack",
+        "stage_04_single_figures"
+      ]
+    },
+    "route_summary": "# Route Summary\n\n- Replay stage 05 from checked-in artifacts.\n",
+    "user_profile": "# User Profile\n\n- Benchmark operator\n"
+  },
+  "changelog": "# Changelog\n\n- Initial project-view replay golden.\n"
+}

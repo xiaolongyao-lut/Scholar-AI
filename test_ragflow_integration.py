@@ -9,6 +9,73 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from main_rag_workflow import RAGWorkflow, RAGResult
 from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
 
+
+class _StubMemoryHit:
+    """Deterministic MemPalace search hit for workflow tests."""
+
+    def __init__(self, text, wing, room, source_file, similarity):
+        self._payload = {
+            "text": text,
+            "wing": wing,
+            "room": room,
+            "source_file": source_file,
+            "similarity": similarity,
+        }
+
+    def to_dict(self):
+        return dict(self._payload)
+
+
+class _StubMemorySearchResponse:
+    """Typed-like response carrying deterministic memory hits."""
+
+    def __init__(self, results, available=True):
+        self.results = list(results)
+        self.available = available
+
+
+class _StubMemoryAdapter:
+    """Simple adapter stub that returns the same response for every query."""
+
+    def __init__(self, response):
+        self._response = response
+
+    def search(self, query, wing=None):
+        return self._response
+
+
+class _StubAssociationAIAdapter:
+    """Deterministic AI enhancer used to validate workflow AI mode."""
+
+    enabled = True
+
+    def enhance_writing_association(self, **kwargs):
+        related_signals = kwargs.get("related_signals", [])
+        source_ids = [signal.get("source_id", "") for signal in related_signals[:2]]
+        return {
+            "association_angles": [
+                {
+                    "title": "AI workflow bridge",
+                    "prompt": "Use the retrieved evidence and memory note to draft the next paragraph.",
+                    "supporting_source_ids": source_ids,
+                    "shared_terms": ["氮传输", "激光功率"],
+                    "confidence": 0.93,
+                }
+            ],
+            "continuation_prompts": [
+                "Draft the next paragraph by connecting the retrieved evidence with the memory hit."
+            ],
+            "evidence_gaps": [
+                {
+                    "gap": "缺少对限制条件的明确句子",
+                    "severity": "medium",
+                    "recommendation": "补一条说明该结论适用边界的句子",
+                }
+            ],
+            "recommended_memory_queries": ["氮传输 激光功率 限制条件"],
+        }
+
+
 class TestRAGFlowIntegration(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
@@ -125,6 +192,113 @@ class TestRAGFlowIntegration(unittest.IsolatedAsyncioTestCase):
         print(f"Fallback Source: {result.rag_evidence[0]['source']}")
         self.assertEqual(result.rag_evidence[0]['source'], "local_paper_01.pdf")
         self.assertEqual(result.trace['step_2_rag_search']['evidence_count'], 2)
+        await workflow.close()
+
+    async def test_memory_hits_preserve_distinct_chunks_from_same_source(self):
+        """长期记忆检索应保留同一源文件的不同片段，只去重完全重复的命中。"""
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.status_code = 200
+        mock_llm_response.json.return_value = {
+            "choices": [{"message": {"content": "结合长期记忆和证据的答案。"}}]
+        }
+        self.mock_llm_client.post.return_value = mock_llm_response
+
+        memory_hits = [
+            _StubMemoryHit("相同源文件中的第一段记忆。", "wing_modular_pipeline", "runtime-jobs", "memory-a.md", 0.95),
+            _StubMemoryHit("相同源文件中的第二段记忆。", "wing_modular_pipeline", "runtime-jobs", "memory-a.md", 0.91),
+            _StubMemoryHit("相同源文件中的第一段记忆。", "wing_modular_pipeline", "runtime-jobs", "memory-a.md", 0.95),
+        ]
+        memory_adapter = _StubMemoryAdapter(_StubMemorySearchResponse(memory_hits))
+
+        workflow = RAGWorkflow(
+            semantic_router=self.mock_router,
+            local_data=self.mock_local_data,
+            api_key=self.api_key,
+            llm_client=self.mock_llm_client,
+            enable_requests_fallback=False,
+            memory_adapter=memory_adapter,
+            memory_wing="wing_modular_pipeline",
+        )
+
+        result = await workflow.ask_my_literature("测试长期记忆命中")
+
+        self.assertEqual(len(result.memory_hits), 2)
+        self.assertEqual(
+            {hit["text"] for hit in result.memory_hits},
+            {"相同源文件中的第一段记忆。", "相同源文件中的第二段记忆。"},
+        )
+        self.assertEqual(result.trace["step_0_memory"]["memory_hit_count"], 2)
+        await workflow.close()
+
+    async def test_association_bundle_defaults_to_no_ai_mode(self):
+        """Workflow should expose a grounded no-AI association bundle when requested."""
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.status_code = 200
+        mock_llm_response.json.return_value = {
+            "choices": [{"message": {"content": "这是基于本地数据生成的答案。"}}]
+        }
+        self.mock_llm_client.post.return_value = mock_llm_response
+
+        workflow = RAGWorkflow(
+            semantic_router=self.mock_router,
+            local_data=self.mock_local_data,
+            api_key=self.api_key,
+            llm_client=self.mock_llm_client,
+            enable_requests_fallback=False,
+        )
+
+        result = await workflow.ask_my_literature(
+            "氮传输测试",
+            include_association=True,
+        )
+
+        self.assertIsNotNone(result.association_bundle)
+        self.assertEqual(result.association_bundle["mode"], "no_ai")
+        self.assertFalse(result.association_bundle["ai_enhanced"])
+        self.assertTrue(result.association_bundle["ephemeral_project"])
+        self.assertTrue(result.association_bundle["related_signals"])
+        await workflow.close()
+
+    async def test_association_bundle_supports_ai_mode(self):
+        """Workflow AI mode should enhance the association bundle while keeping evidence grounded."""
+
+        mock_llm_response = MagicMock()
+        mock_llm_response.status_code = 200
+        mock_llm_response.json.return_value = {
+            "choices": [{"message": {"content": "结合长期记忆和证据的答案。"}}]
+        }
+        self.mock_llm_client.post.return_value = mock_llm_response
+
+        memory_hits = [
+            _StubMemoryHit("关于氮传输限制条件的长期记忆。", "wing_modular_pipeline", "runtime-jobs", "memory-a.md", 0.95),
+        ]
+        memory_adapter = _StubMemoryAdapter(_StubMemorySearchResponse(memory_hits))
+
+        workflow = RAGWorkflow(
+            semantic_router=self.mock_router,
+            local_data=self.mock_local_data,
+            api_key=self.api_key,
+            llm_client=self.mock_llm_client,
+            enable_requests_fallback=False,
+            memory_adapter=memory_adapter,
+            association_ai_adapter=_StubAssociationAIAdapter(),
+        )
+
+        result = await workflow.ask_my_literature(
+            "氮传输测试",
+            include_association=True,
+            association_mode="ai",
+        )
+
+        self.assertIsNotNone(result.association_bundle)
+        self.assertEqual(result.association_bundle["mode"], "ai")
+        self.assertTrue(result.association_bundle["ai_enhanced"])
+        self.assertEqual(result.association_bundle["association_angles"][0]["title"], "AI workflow bridge")
+        self.assertTrue(
+            any(signal["source_type"] == "retrieval" for signal in result.association_bundle["related_signals"])
+        )
         await workflow.close()
 
 if __name__ == "__main__":

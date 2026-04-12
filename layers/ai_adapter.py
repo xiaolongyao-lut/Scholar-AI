@@ -4,7 +4,9 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+from layers.robust_parser import RobustJSONParser
 
 logger = logging.getLogger("AIAdapter")
 
@@ -39,6 +41,7 @@ class AIAdapter:
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: str = None):
         self.enabled = False
         self.client = None
+        self.parser = RobustJSONParser()
         
         if not HAS_OPENAI:
             logger.error("openai 库未安装。请运行: pip install openai")
@@ -104,16 +107,19 @@ class AIAdapter:
                 response_format={"type": "json_object"}
             )
             content = response.choices[0].message.content
-            # json_object force LLMs to output a json dict. So we expect {"claims": [...]} or a direct list if it follows instructions exactly, 
-            # let's safely parse it.
-            data = json.loads(content)
+            # 使用鲁棒的解析器代替 json.loads
+            data = self.parser.parse(content, fallback=[])
+            
             if isinstance(data, list):
                 return data
             elif isinstance(data, dict):
-                # Unpack if the LLM wrapped it into a dict
+                # 如果模型将结果包裹在字典中 (例如 {"claims": [...]}), 进行解包
                 for k, v in data.items():
                     if isinstance(v, list):
                         return v
+                # 如果字典本身就是一个 claim (不推荐但兼容)
+                if "claim" in data:
+                    return [data]
             return []
         except Exception as e:
             logger.error(f"提取 Claim 失败: {e}")
@@ -196,7 +202,7 @@ class AIAdapter:
                 response_format={"type": "json_object"}
             )
             content = response.choices[0].message.content
-            data = json.loads(content)
+            data = self.parser.parse(content, fallback=[])
             if isinstance(data, list):
                 return data
             elif isinstance(data, dict):
@@ -378,3 +384,183 @@ class AIAdapter:
                 "confidence": 0.0,
                 "justification": str(e)
             }
+
+    def enhance_writing_association(
+        self,
+        query: str,
+        focus_terms: List[str],
+        related_signals: List[Dict[str, Any]],
+        association_angles: List[Dict[str, Any]],
+        continuation_prompts: List[str],
+        evidence_gaps: List[Dict[str, Any]],
+        recommended_memory_queries: List[str],
+        angle_limit: int = 3,
+    ) -> Dict[str, Any]:
+        """
+        使用 LLM 在已有证据约束下增强联想写作输出。
+
+        Why:
+            AI 模式应该建立在可追溯证据之上，而不是替换掉无 AI 的稳定规则基线。
+            该接口只增强“角度/续写/缺口/后续检索”，不重排底层证据来源。
+        """
+        if not self.enabled:
+            return {}
+        if not isinstance(query, str) or not query.strip():
+            return {}
+
+        signal_payload: List[Dict[str, Any]] = []
+        for raw_signal in related_signals[:6]:
+            if not isinstance(raw_signal, dict):
+                continue
+            signal_payload.append(
+                {
+                    "source_id": str(raw_signal.get("source_id", "")).strip(),
+                    "source_type": str(raw_signal.get("source_type", "")).strip(),
+                    "title": str(raw_signal.get("title", "")).strip(),
+                    "excerpt": str(raw_signal.get("excerpt", "")).strip()[:220],
+                    "shared_terms": list(raw_signal.get("shared_terms", []))[:4],
+                    "rationale": str(raw_signal.get("rationale", "")).strip(),
+                    "score": raw_signal.get("score", 0.0),
+                }
+            )
+
+        baseline_payload = {
+            "focus_terms": list(focus_terms[:8]),
+            "association_angles": list(association_angles[:angle_limit]),
+            "continuation_prompts": list(continuation_prompts[:4]),
+            "evidence_gaps": list(evidence_gaps[:4]),
+            "recommended_memory_queries": list(recommended_memory_queries[:4]),
+        }
+
+        prompt = f"""你是“联想写作助手”的 AI 增强模式。
+你的任务是：在不脱离证据的前提下，增强当前写作查询的联想角度、续写提示、证据缺口和后续检索词。
+
+必须严格遵守：
+1. 只能基于提供的 related_signals 组织建议，不允许引入新的事实来源。
+2. association_angles 中的 supporting_source_ids 只能来自 related_signals 的 source_id。
+3. continuation_prompts 必须直接服务于下一段写作，而不是泛泛建议。
+4. evidence_gaps 只能指出“当前证据还缺什么”，不要虚构文献。
+5. 推荐输出要比 baseline 更贴近写作动作，但保持简洁、可执行。
+
+当前 query:
+{query}
+
+related_signals:
+{json.dumps(signal_payload, ensure_ascii=False)}
+
+baseline:
+{json.dumps(baseline_payload, ensure_ascii=False)}
+
+请只输出 JSON 对象，结构如下：
+{{
+  "association_angles": [
+    {{
+      "title": "string",
+      "prompt": "string",
+      "supporting_source_ids": ["source_id"],
+      "shared_terms": ["term"],
+      "confidence": 0.0
+    }}
+  ],
+  "continuation_prompts": ["string"],
+  "evidence_gaps": [
+    {{
+      "gap": "string",
+      "severity": "low|medium|high",
+      "recommendation": "string"
+    }}
+  ],
+  "recommended_memory_queries": ["string"]
+}}
+"""
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                response_format={"type": "json_object"},
+            )
+            content = response.choices[0].message.content
+            data = self.parser.parse(content, fallback={})
+            if not isinstance(data, dict):
+                return {}
+
+            known_source_ids = {
+                str(item.get("source_id", "")).strip()
+                for item in signal_payload
+                if str(item.get("source_id", "")).strip()
+            }
+
+            normalized_angles: List[Dict[str, Any]] = []
+            for index, raw_angle in enumerate(data.get("association_angles", []), start=1):
+                if not isinstance(raw_angle, dict):
+                    continue
+                prompt_text = str(raw_angle.get("prompt", "")).strip()
+                if not prompt_text:
+                    continue
+                supporting_source_ids = [
+                    source_id
+                    for source_id in (
+                        str(source_id).strip()
+                        for source_id in raw_angle.get("supporting_source_ids", [])
+                    )
+                    if source_id in known_source_ids
+                ]
+                shared_terms = [
+                    str(term).strip()
+                    for term in raw_angle.get("shared_terms", [])
+                    if str(term).strip()
+                ]
+                try:
+                    confidence = float(raw_angle.get("confidence", 0.0))
+                except (TypeError, ValueError):
+                    confidence = 0.0
+                normalized_angles.append(
+                    {
+                        "title": str(raw_angle.get("title", "")).strip() or f"AI Angle {index}",
+                        "prompt": prompt_text,
+                        "supporting_source_ids": supporting_source_ids,
+                        "shared_terms": shared_terms,
+                        "confidence": max(0.0, min(1.0, confidence)),
+                    }
+                )
+
+            normalized_prompts = [
+                str(item).strip()
+                for item in data.get("continuation_prompts", [])
+                if str(item).strip()
+            ]
+            normalized_gaps: List[Dict[str, str]] = []
+            for raw_gap in data.get("evidence_gaps", []):
+                if not isinstance(raw_gap, dict):
+                    continue
+                gap_text = str(raw_gap.get("gap", "")).strip()
+                recommendation = str(raw_gap.get("recommendation", "")).strip()
+                if not gap_text or not recommendation:
+                    continue
+                severity = str(raw_gap.get("severity", "medium")).strip().lower()
+                if severity not in {"low", "medium", "high"}:
+                    severity = "medium"
+                normalized_gaps.append(
+                    {
+                        "gap": gap_text,
+                        "severity": severity,
+                        "recommendation": recommendation,
+                    }
+                )
+
+            normalized_queries = [
+                str(item).strip()
+                for item in data.get("recommended_memory_queries", [])
+                if str(item).strip()
+            ]
+
+            return {
+                "association_angles": normalized_angles[:angle_limit],
+                "continuation_prompts": normalized_prompts[:4],
+                "evidence_gaps": normalized_gaps[:4],
+                "recommended_memory_queries": normalized_queries[:4],
+            }
+        except Exception as e:
+            logger.error(f"联想写作 AI 增强失败: {e}")
+            return {}

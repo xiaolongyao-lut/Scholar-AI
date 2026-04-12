@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent
-WORD_SCRIPT = REPO_ROOT / "08_Word文档生成脚本.py"
+WORD_SCRIPT = REPO_ROOT / "word_generator.py"
 
 
 class WordDocxSmokeTests(unittest.TestCase):

@@ -1,0 +1,1056 @@
+{
+  "goal": "提取激光氮化工艺参数与硬度耐磨性关系",
+  "goal_profile": {
+    "method_focus": false,
+    "image_focus": false,
+    "process_focus": false,
+    "performance_focus": false,
+    "mechanism_focus": false
+  },
+  "writing_points": [
+    {
+      "writing_point_id": "wp041",
+      "claim": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+      "point_type": "mechanism",
+      "relevance_score": 0.9241,
+      "goal_hits": [
+        "parameter",
+        "parameters",
+        "power",
+        "speed"
+      ],
+      "page": 2,
+      "source_text": "Ti–6Al–4V (Ti alloy with 6 wt.% Al and 4 wt.% V) samples of dimensions 60 mm × 30 mm × 5 mm were spark cut from plates. The samples were ground and polished successively with SiC papers of ﬁneness up to 800 grits. The plates were ﬁnally polished with 1 \u0002m diamond paste, degreased, rinsed in deionized water, and dried in cold air stream. Laser surface treatment of the samples was performed using a CW Nd:YAG laser system (Lumonics MW2000). Gas nitriding of the samples was carried out in a chamber which was continuously purged with nitrogen at a rate of 40 L/min to maintain a nitrogen atmosphere. As a balanced selection between energy density and processing efﬁciency, the laser spot diameter was set at 3 mm at the sample surface. To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s. After selecting the laser processing parameters that would result in nitriding without melting, repeated laser passes on the same track were performed with an aim of increasing the thickness of the nitrided layer.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp045",
+      "claim": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively).",
+      "point_type": "result",
+      "relevance_score": 0.69,
+      "goal_hits": [
+        "power",
+        "speed"
+      ],
+      "page": 2,
+      "source_text": "When a substrate is irradiated with a laser beam, part of the laser energy is absorbed and the surface layer is heated up. The temperature reached by the surface layer depends on a multitude of factors which may be grouped into materials properties and laser processing parameters. The former group includes the reﬂectivity of the surface at the laser wavelength and thermal properties of the substrate while the latter include the laser power P, spot diameter d and scanning speed v in the case of a CW laser. For a given substrate, the temperature reached by the surface layer depends on P, d and v in a complex manner [19]. In the present study, the laser spot diameter d was ﬁxed while P and v were varied with an aim of achieving efﬁcient nitriding without melting. Melted and nonmelted tracks were ﬁrst screened by the appearance of the laser tracks. The values of laser scanning speed that did not lead to melting for different laser powers are shown in Table 1. For laser power at 400 W, surface melting occurred even at the highest scanning speed (25 mm/s), and thus a laser power of 400 W was discarded in the selection. Examples of some melted tracks processed with a laser power of 400 W are shown in the optical images in Fig. 1. It could be observed that the width of the melt track is smaller than the laser beam diameter. This results from the Gaussian distribution of laser energy in the beam cross section, with about one-third of the beam having energy density high enough to melt the surface. For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively). At lower laser powers of 250 W and 200 W, the surface did not melt even at the lowest scanning speed of 1 mm/s. Examples of non-melted tracks processed with a laser power of 250 W are",
+      "linked_figures": [
+        "f1",
+        "f1"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp049",
+      "claim": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "point_type": "discussion",
+      "relevance_score": 0.69,
+      "goal_hits": [
+        "power",
+        "speed"
+      ],
+      "page": 3,
+      "source_text": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "linked_figures": [
+        "f1",
+        "f2"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp075",
+      "claim": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "point_type": "discussion",
+      "relevance_score": 0.69,
+      "goal_hits": [
+        "power",
+        "speed"
+      ],
+      "page": 6,
+      "source_text": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp019",
+      "claim": "selecting the laser processing parameters.",
+      "point_type": "discussion",
+      "relevance_score": 0.6682,
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "page": 1,
+      "source_text": "selecting the laser processing parameters. The nitrided surface was characterized by X-ray diffractometry (XRD), optical microscopy (OM), scanning-electron microscopy (SEM), and proﬁlometry. The",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp046",
+      "claim": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+      "point_type": "result",
+      "relevance_score": 0.6682,
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "page": 2,
+      "source_text": "As the nitride layer formed by diffusion nitriding is usually rather thin (around 1 \u0002m), its mechanical properties are best studied using nanoindentation. In the present paper a commercial nanoindenter system (Hysitron High-Load Indenter) with a Berkovich indenter was employed for acquiring the load–displacement curves upon loading and unloading for both the untreated sample and the nitrided sample. The nanoindentation hardness HN and the Young’s modulus E were derived from the curves using the built-in software. As the accuracy of indentation measurement depends on the smoothness of the surface, the samples were ﬁnally polished with 0.25 \u0002m diamond paste before nanoindentation experiment. Wear resistance was studied using a linearly reciprocating ball-on-slab sliding wear tester (TE99 Universal Wear Machine, Phoenix Tribology). A Ti–6Al–4V ball of diameter 6 mm was used in the test, with a load of 4.8 N, the stroke length being 10 mm and the reciprocating frequency, 0.5 Hz. The test duration was 240 s. This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test. After the wear test, the transverse cross-sectional area of the wear track was obtained using an optical proﬁler (Alicona IFM G4 3D-Optical Measuring System) at three",
+      "linked_figures": [
+        "f1"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp062",
+      "claim": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+      "point_type": "result",
+      "relevance_score": 0.6682,
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "page": 5,
+      "source_text": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved. The surface roughness",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp066",
+      "claim": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+      "point_type": "result",
+      "relevance_score": 0.6682,
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "page": 6,
+      "source_text": "The thickness of the nitrided layer could be increased by repeated pass on the laser track, but with diminishing effectiveness as the number of repetition increases, the optimal number of repeated pass being 5, with the thickness of nitrided layer reaching about 1.62 \u0002m. (3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate. (4) The wear resistance of the nitrided sample was about 8 times that of the untreated Ti–6Al–4V sample, the improvement being attributable to increase in hardness. The increase in hardness and wear resistance are comparable to those achieved by conventional laser nitriding involving melting.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp053",
+      "claim": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "point_type": "discussion",
+      "relevance_score": 0.475,
+      "goal_hits": [
+        "speed"
+      ],
+      "page": 3,
+      "source_text": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "linked_figures": [
+        "f2",
+        "f1"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp055",
+      "claim": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+      "point_type": "result",
+      "relevance_score": 0.475,
+      "goal_hits": [
+        "speed"
+      ],
+      "page": 3,
+      "source_text": "shown in the optical images in Fig. 2. The transverse cross-sections of a melted track and a non-melted track are shown in the SEM micrographs in Fig. 3. For the non-melted tracks in Fig. 2, it could be observed that the width and color of the tracks depend on the scanning speed. At higher scanning speed (10 mm/s), the energy deposited was small and the amount of nitride formed was small, resulting in a narrower and faint track. On the other hand, at a scanning speed of 1 mm/s, the track was wider and brightly golden in color, indicating the formation of a larger amount of nitride due to a longer laser interaction time. To form thicker nitride, repetition (or multi-pass) of laser",
+      "linked_figures": [
+        "f2",
+        "f3",
+        "f2",
+        "f3"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp001",
+      "claim": "Applied Surface Science 258 (2011) 436– 441",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Applied Surface Science 258 (2011) 436– 441",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp002",
+      "claim": "Contents lists available at SciVerse ScienceDirect",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Contents lists available at SciVerse ScienceDirect",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp004",
+      "claim": "jou rn al h om epa g e: www.elsevier.com/locate/apsusc",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "jou rn al h om epa g e: www.elsevier.com/locate/apsusc",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp005",
+      "claim": "Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp007",
+      "claim": "Hong Kong Polytechnic University, Hong Kong, China",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Hong Kong Polytechnic University, Hong Kong, China",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp008",
+      "claim": "Laser Processing Group, Advanced Manufacturing Technology Research Centre, Department of Industrial and Systems Engineering, The",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Laser Processing Group, Advanced Manufacturing Technology Research Centre, Department of Industrial and Systems Engineering, The",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp012",
+      "claim": "Owing to poor tribological properties, titanium (Ti) alloys are usually surface-treated to enhance their surface properties.",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Owing to poor tribological properties, titanium (Ti) alloys are usually surface-treated to enhance their surface properties. Laser surface nitriding, among others, is a common method employed to increase hardness",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp013",
+      "claim": "15 August 2011 Received in revised form 27 August 2011 Accepted",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "15 August 2011 Received in revised form 27 August 2011 Accepted",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp014",
+      "claim": "and wear resistance for Ti alloys.",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "and wear resistance for Ti alloys. Conventional laser nitriding involves surface melting of Ti alloys",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp015",
+      "claim": "27 August 2011 Available online 6 September 2011",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "27 August 2011 Available online 6 September 2011",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp016",
+      "claim": "in a nitrogen atmosphere.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "in a nitrogen atmosphere. This inevitably results in a roughened surface and post-treatment might be",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp017",
+      "claim": "required.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "required. The present study aims at laser diffusion nitriding Ti alloys without surface melting via carefully",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp020",
+      "claim": "nitride layer formed was about 1.62 \u0002m upon repeated passes.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "nitride layer formed was about 1.62 \u0002m upon repeated passes. The change in surface roughness resulting from laser diffusion nitriding was only minimal. Nanoindentation measurements revealed that the",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp021",
+      "claim": "hardness of the nitride layer was around 11.3 GPa, being about 2.3 times that of Ti–6Al–4V.",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "hardness of the nitride layer was around 11.3 GPa, being about 2.3 times that of Ti–6Al–4V. Ball-onslab",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp022",
+      "claim": "surface treatment Diffusion nitriding Roughness Hardness Wear",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "surface treatment Diffusion nitriding Roughness Hardness Wear",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp023",
+      "claim": "sliding wear test recorded a reduction in wear volume by about 8 times.",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "sliding wear test recorded a reduction in wear volume by about 8 times. The results of the present work thus demonstrate the feasibility of diffusion nitriding of Ti–6Al–4V by laser treatment for enhancing its",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp024",
+      "claim": "© 2011 Elsevier B.V.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "surface properties and performance. © 2011 Elsevier B.V. All rights reserved.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp026",
+      "claim": "However, the scope of applications of Ti alloys is somewhat limited by their poor tribological properties [1,2], and surface modiﬁcation of Ti alloys to improve tribological properties has been intensively studied and widely reported [3].",
+      "point_type": "background",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Titanium (Ti) alloys possess many desirable properties such as high speciﬁc strength and excellent corrosion resistance. By virtue of these properties, Ti alloys are widely used in various industries, including applications in aerospace, marine, sports equipment, and biomedicine. However, the scope of applications of Ti alloys is somewhat limited by their poor tribological properties [1,2], and surface modiﬁcation of Ti alloys to improve tribological properties has been intensively studied and widely reported [3]. Surface treatments to enhance the tribological properties of Ti alloys cover a wide range of techniques, such as spraying, plating, chemical conversion coating, physical vapor deposition, laser surface modiﬁcation, etc. [4–6], each with its own merits and limitations. Spraying and plating could form thick and hard layers on Ti substrates to improve wear resistance, but the bonding strength is usually not high [7,8]. On the other hand, surface ﬁlm formed by plasma ion implantation has no adhesion problem, but the thickness is too small (tens of nm) for general industrial applications [9]. Besides the treatment methods, surface layers of different nature and composition have been attempted. For Ti alloys, the surface layers are usually oxide (TiO2), carbide (TiC) or nitride (TiN). A TiO2 top layer with a hardened sub-layer of a few hundred \u0002m might be obtained",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp027",
+      "claim": "Nitriding may be divided into a number of major categories, such as plasma nitriding [12,13], ion-beam nitriding [14], gas nitriding [15] and laser gas nitriding [16–18].",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "by thermal oxidation at around 800–900 ◦C [10], while thick (a few hundred \u0002m) and porous TiO2 layers could be fabricated using micro-arc oxidation (MAO) or plasma electrolytic oxidation (PEO) [11]. On the other hand, a TiC layer of a few \u0002m could be obtained by thermal treatment of Ti alloys in a non-oxidizing and carburizing environment at around 1000 ◦C [7]. An even more common effective process for improving wear resistance of Ti alloys is nitriding. In addition to having a high solubility in Ti which results in solution strengthening, nitrogen forms TiN as the top layer, with suboxides beneath [2]. Nitriding may be divided into a number of major categories, such as plasma nitriding [12,13], ion-beam nitriding [14], gas nitriding [15] and laser gas nitriding [16–18]. In most of these methods, with the exception of laser treatment, the substrate bulk temperature reaches the range 400–1000 ◦C, which may compromise the bulk mechanical properties of Ti alloys. On the other hand, laser gas nitriding is a surface treatment process and the rise in substrate bulk temperature is small. Short treatment time and accuracy in control of the treatment location are additional advantages of laser nitriding, making it an attractive alternative to other nitriding processes. Conventional laser gas nitriding, however, involves surface melting of the substrate. This inevitably results in dimensional changes and also in a roughened surface after nitriding, and postnitriding polishing might be required. The present paper aims at laser nitriding Ti–6Al–4V, a widely used Ti alloy, without surface melting. By carefully selecting the laser processing parameters, the nitrogen atmosphere is expected to interact with the laser",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp028",
+      "claim": "Tel.: +852 2766 6629.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "∗Corresponding author. Tel.: +852 2766 6629. E-mail address: mfhcman@inet.polyu.edu.hk (H.C. Man).",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp029",
+      "claim": "0169-4332/$ – see front matter © 2011 Elsevier B.V.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "0169-4332/$ – see front matter © 2011 Elsevier B.V. All rights reserved. doi:10.1016/j.apsusc.2011.08.114",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp030",
+      "claim": "/ Applied Surface Science 258 (2011) 436– 441 437",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 2,
+      "source_text": "H.C. Man et al. / Applied Surface Science 258 (2011) 436– 441 437",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp032",
+      "claim": "irradiated Ti–6Al–4V surface via solid-state diffusion to form a surface layer of TiN.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 2,
+      "source_text": "irradiated Ti–6Al–4V surface via solid-state diffusion to form a surface layer of TiN. Such a solid-state laser nitriding process retains the advantages of laser gas nitriding without resulting in changes in dimensions or roughness.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp038",
+      "claim": "The wear volume was taken as the product of the cross-sectional area and the stroke length.",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 2,
+      "source_text": "sections, and the average value was calculated. The wear volume was taken as the product of the cross-sectional area and the stroke length.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp043",
+      "claim": "The phases present were identiﬁed by X-ray diffractometry (XRD, Bruker D8 Diffractometer) operating set at 40 kV and 40 mA, using CuK\u0003 radiation.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 2,
+      "source_text": "As a screening step, the surface appearance and morphology of the laser tracks on the samples were studied by optical microscopy (OM, Leica DM4000M) to see if melting had occurred or not. A surface proﬁlometer (Talysurf series 2) was used to measure the surface roughness of the samples with and without laser treatment. Cross sections of the laser tracks on the samples were prepared and analyzed by means of scanning-electron microscopy (SEM, JEOL JSM6490). The phases present were identiﬁed by X-ray diffractometry (XRD, Bruker D8 Diffractometer) operating set at 40 kV and 40 mA, using CuK\u0003 radiation.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp047",
+      "claim": "/ Applied Surface Science 258 (2011) 436– 441",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 3,
+      "source_text": "438 H.C. Man et al. / Applied Surface Science 258 (2011) 436– 441",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp052",
+      "claim": "Further repetition did not effectively increase the nitride thickness due to the barrier effect of the nitride layer on the diffusion of nitrogen to the substrate.",
+      "point_type": "mechanism",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 3,
+      "source_text": "scanning on the same track was performed. Fig. 4 shows the SEM cross-sectional views of samples with 1 pass and 5 repeated passes. As the number of pass increased, the thickness of the nitrided layer increased from 0.72 \u0002m for single pass to 1.62 \u0002m for 5 passes. Further repetition did not effectively increase the nitride thickness due to the barrier effect of the nitride layer on the diffusion of nitrogen to the substrate. Based on these observations, the optimal processing parameters selected for diffusion nitriding of Ti–6Al–4V are given in Table 2.",
+      "linked_figures": [
+        "f4",
+        "f4",
+        "f4"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp056",
+      "claim": "It could be observed that melting greatly increased the surface roughness Ra from 0.045 \u0002m for the untreated sample to 5.93 \u0002m for the melted track.",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 3,
+      "source_text": "Surface proﬁles were acquired on the laser tracks for studying the change in surface roughness resulting from laser nitriding. Fig. 5 shows typical proﬁles of the untreated sample, a melted track and a non-melted track with one and two passes. It could be observed that melting greatly increased the surface roughness Ra from 0.045 \u0002m for the untreated sample to 5.93 \u0002m for the melted track. The large increase in roughness resulting from surface melting and subsequent solidiﬁcation in conventional laser nitriding was commonly reported in the literature [20]. On the other hand, the surface roughness remained almost the same in diffusion nitriding without melting.",
+      "linked_figures": [
+        "f5",
+        "f5"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp057",
+      "claim": "/ Applied Surface Science 258 (2011) 436– 441 439",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 4,
+      "source_text": "H.C. Man et al. / Applied Surface Science 258 (2011) 436– 441 439",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp058",
+      "claim": "/ Applied Surface Science 258 (2011) 436– 441",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 5,
+      "source_text": "440 H.C. Man et al. / Applied Surface Science 258 (2011) 436– 441",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp059",
+      "claim": "and N begin to form, and with sufﬁcient supply of N, a layer of TiN will eventually be formed at the surface [21].",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 5,
+      "source_text": "and N begin to form, and with sufﬁcient supply of N, a layer of TiN will eventually be formed at the surface [21]. The reaction may be represented by:",
+      "linked_figures": [
+        "f8"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp061",
+      "claim": "6.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 5,
+      "source_text": "The XRD patterns of nitrided samples using the optimal set of parameters (Table 2) are shown in Fig. 6. Peaks belonging to TiN are clearly visible in addition to Ti peaks, evidencing the formation of a thin TiN layer on the sample. Some un-identiﬁable peaks are present, possibly from mixed nitrides or oxides. Nitrogen (N) has a high solubility in Ti and at elevated temperatures, and N diffuses rapidly into the surface of Ti to form an interstitial solution \u0003-Ti (N). When this interstitial solution is saturated, compounds of Ti",
+      "linked_figures": [
+        "f6",
+        "f8"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp063",
+      "claim": "/ Applied Surface Science 258 (2011) 436– 441 441",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 6,
+      "source_text": "H.C. Man et al. / Applied Surface Science 258 (2011) 436– 441 441",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp064",
+      "claim": "remained almost unchanged as there was no melting and solidiﬁcation.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 6,
+      "source_text": "remained almost unchanged as there was no melting and solidiﬁcation.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp067",
+      "claim": "In summary, results of the present study indicate that laser diffusion nitriding for Ti–6Al–4V is a feasible and effective process for improving the tribological properties of Ti alloys.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 6,
+      "source_text": "In summary, results of the present study indicate that laser diffusion nitriding for Ti–6Al–4V is a feasible and effective process for improving the tribological properties of Ti alloys.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp069",
+      "claim": "The work described in this paper was supported by a research grant (G-U577) from the Research Ofﬁce of the Hong Kong Polytechnic University, Hong Kong, China.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 6,
+      "source_text": "The work described in this paper was supported by a research grant (G-U577) from the Research Ofﬁce of the Hong Kong Polytechnic University, Hong Kong, China.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp071",
+      "claim": "[25], possibly due to substrate effect because the indentation depth reaches about 30% of the ﬁlm thickness in the present study.",
+      "point_type": "mechanism",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 6,
+      "source_text": "Nanoindentation technique is usually employed in the determination of the mechanical properties of a small volume of material because the indentation depth (and hence volume) is much smaller than that in conventional indentation measurements. In this method, the load–displacement curve is continuously recorded upon loading and unloading; the hardness HN is extracted from the loading part while the Young’s modulus E is extracted from the unloading part of the load–displacement curve [22]. Nanoindentation is particularly suitable for studying the mechanical properties of ﬁlms formed on a substrate. Accurate determination of such properties, however, is difﬁcult due to unavoidable substrate effect [23], and to surface roughness. A smaller indentation depth would reduce substrate effect, but magnify the roughness effect, and vice versa. Thus a compromise has to be made, and the appropriateness of selection is reﬂected in the quality of the load–displacement curves. Fig. 7 shows the nanoindentation curves for the Ti–6Al–4V substrate and sample diffusion nitrided using the parameters shown in Table 2. The hardness of the nitrided sample is about 2.3 times that of untreated Ti–6Al–4V. It should be pointed out that the measured hardness of nitrided samples in the present work is similar to that reported by Gil et al. [24], but lower than that reported by Ichimura et al. [25], possibly due to substrate effect because the indentation depth reaches about 30% of the ﬁlm thickness in the present study. It has been mentioned that to minimize substrate effect and so to obtain the properties of the ﬁlm only, the indentation depth has to be less than 10% of ﬁlm thickness [26]. In the present study, diffusion nitriding was performed with an aim of improving the wear resistance of Ti–6Al–4V. As the volume or mass loss was very small, weighing is not a proper method to assess the wear loss. Instead, a proﬁle across the wear track (typical wear tracks are shown in Fig. 8) was acquired at different sections. Typical proﬁles across the wear tracks are shown in Fig. 9. In the optical images shown in Fig. 8, a clearly visible track is formed on untreated Ti–6Al–4V while the wear track on the nitride sample is only barely visible. The transverse cross-sectional area of the wear track was approximately determined and the average value A of the cross-sections was obtained [27]. The average wear volume was obtained by multiplying A and L, where L is the track length. Based on such estimation, the average wear volume for untreated Ti–6Al–4V was 6.52 × 10−3 mm3 while that for the diffusion nitrided sample was 8.12 × 10−4 mm3. The wear volume or the wear rate was thus reduced by about 8 times, which is mainly attributable to the formation of a hard TiN layer. The improvement in wear resistance is comparable to that achieved in conventional laser gas nitriding [28], but without surface roughening and rippling due to melting in conventional laser gas nitriding [28].",
+      "linked_figures": [
+        "f7",
+        "f8",
+        "f9"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp073",
+      "claim": "Laser diffusion nitriding on Ti–Al–4V has been attempted with an aim of achieving nitriding without surface melting.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 6,
+      "source_text": "Laser diffusion nitriding on Ti–Al–4V has been attempted with an aim of achieving nitriding without surface melting.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp074",
+      "claim": "Budinski, Wear 151 (1991) 203.",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 6,
+      "source_text": "[1] W. Sha, S. Malinov, Titanium Alloys: Modelling of Microstructure, Properties and Applications, Woodhead Publishing, Cambridge, 2009. [2] K.G. Budinski, Wear 151 (1991) 203. [3] A. Zhecheva, W. Sha, S. Malinov, A. Long, Surf. Coat. Technol. 200 (2005) 2192. [4] A. Bloyce, P. Morton, T. Bell, ASM Handbook, vol. 5, ASM International, Materials Park, OH, 1994, p. 835. [5] F.J.C. Braga, R.F.C. Marques, E. de A. Filho, A.C. Guastaldi, Appl. Surf. Sci. 253 (2007) 9203. [6] Y. Gao, B. Gao, R. Wang, J. Wu, L.J. Zhang, Y.L. Hao, X.J. Tao, Appl. Surf. Sci. 255 (2009) 5009. [7] H. Gruner, in: D.M. Brunette, P. Tengvall, M. Textor, P. Thomsen (Eds.), Titanium in Medicine, Springer-Verlag, 2001, p. 376. [8] K.R. Newby, ASM Handbook, vol. 5, ASM International, Materials Park, OH, 1994, p.177. [9] M. Ikeyama, S. Nakao, H. Morikawa, Y. Yokogawa, L.S. Wielunski, R.A. Clissold, T. Bell, Surf. Coat. Technol. 128–129 (2000) 400. [10] P. Stratton, J. Boodey, Proceedings of the 1st International Surface Engineering Congress and the 13th IFHTSE Congress, ASM International, Materials Park, OH, 2003, p. 22. [11] A.L. Yerokhin, X. Nie, A. Leyland, A. Matthews, Surf. Coat. Technol. 130 (2000) 195. [12] B.S. Yilbas, A.Z. Sahin, A.Z. Al-Garni, S.A.M. Said, Z. Ahmed, B.J. Abdulaleem, M. Sami, Surf. Coat. Technol. 80 (1996) 287. [13] K.T. Rie, T. Stucky, R.A. Silva, E. Leitao, K. Bordji, J.Y. Jouzeau, D. Mainard, Surf. Coat. Technol. 74–75 (1995) 973. [14] V. Fouquet, L. Pichon, M. Drouet, A. Straboni, Appl. Surf. Sci. 252 (2004) 248. [15] J. Song, S. Kim, Y. Jeon, K. Kim, J. Korean Inst. Met. Mater. 40 (3) (2002) 285. [16] B. Januszewicz, L. Klimek, Mater. Sci. Technol. 26 (2010) 586. [17] B.S. Yilbas, C. Karatas, I. Uslan, O. Keles, I.Y. Usta, M. Ahsan, Appl. Surf. Sci. 252 (2006) 8557. [18] H.C. Man, Q. Wang, X. Guo, Opt. Lasers Eng. 48 (2010) 583. [19] W.M. Steen, Laser Material Processing, Springer-Verlag, 1991. [20] E.C. Santos, M. Morita, M. Shiomi, K. Osakada, M. Takahashi, Surf. Coat. Technol. 201 (2006) 1635. [21] S. Malinov, A. Zhecheva, W. Sha, Proceedings of the 1st International Surface Engineering Congress and the 13th IFHTSE Congress, ASM International, Materials Park, OH, 2003, p. 344. [22] W.C. Oliver, G.M. Pharr, J. Mater. Res. 7 (1992) 1564. [23] T.Y. Tsui, J. Vlassak, W.D. Nix, J. Mater. Res. 14 (1999) 2196. [24] F.J. Gil, R. Canedo, A. Padros, E. Sada, J. Biomater. Appl. 17 (2002) 31. [25] H. Ichimura, F.M. Rodriguez, A. Rodrigo, Surf. Coat. Technol. 127 (2000) 138. [26] R. Saha, W.D. Nix, Acta Mater. 50 (2002) 23. [27] ASTM Standard G133, 2005, Standard Test Method for Linearly Reciprocating Ball-on-Flat Sliding Wear, ASTM International, West Conshohocken, PA, 2003. [28] Y.Q. Fu, A.W. Batchelor, Wear 214 (1998) 83.",
+      "linked_figures": [],
+      "linked_tables": []
+    }
+  ],
+  "selected_writing_points": [
+    {
+      "writing_point_id": "wp041",
+      "claim": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+      "point_type": "mechanism",
+      "relevance_score": 0.9241,
+      "goal_hits": [
+        "parameter",
+        "parameters",
+        "power",
+        "speed"
+      ],
+      "page": 2,
+      "source_text": "Ti–6Al–4V (Ti alloy with 6 wt.% Al and 4 wt.% V) samples of dimensions 60 mm × 30 mm × 5 mm were spark cut from plates. The samples were ground and polished successively with SiC papers of ﬁneness up to 800 grits. The plates were ﬁnally polished with 1 \u0002m diamond paste, degreased, rinsed in deionized water, and dried in cold air stream. Laser surface treatment of the samples was performed using a CW Nd:YAG laser system (Lumonics MW2000). Gas nitriding of the samples was carried out in a chamber which was continuously purged with nitrogen at a rate of 40 L/min to maintain a nitrogen atmosphere. As a balanced selection between energy density and processing efﬁciency, the laser spot diameter was set at 3 mm at the sample surface. To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s. After selecting the laser processing parameters that would result in nitriding without melting, repeated laser passes on the same track were performed with an aim of increasing the thickness of the nitrided layer.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp045",
+      "claim": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively).",
+      "point_type": "result",
+      "relevance_score": 0.69,
+      "goal_hits": [
+        "power",
+        "speed"
+      ],
+      "page": 2,
+      "source_text": "When a substrate is irradiated with a laser beam, part of the laser energy is absorbed and the surface layer is heated up. The temperature reached by the surface layer depends on a multitude of factors which may be grouped into materials properties and laser processing parameters. The former group includes the reﬂectivity of the surface at the laser wavelength and thermal properties of the substrate while the latter include the laser power P, spot diameter d and scanning speed v in the case of a CW laser. For a given substrate, the temperature reached by the surface layer depends on P, d and v in a complex manner [19]. In the present study, the laser spot diameter d was ﬁxed while P and v were varied with an aim of achieving efﬁcient nitriding without melting. Melted and nonmelted tracks were ﬁrst screened by the appearance of the laser tracks. The values of laser scanning speed that did not lead to melting for different laser powers are shown in Table 1. For laser power at 400 W, surface melting occurred even at the highest scanning speed (25 mm/s), and thus a laser power of 400 W was discarded in the selection. Examples of some melted tracks processed with a laser power of 400 W are shown in the optical images in Fig. 1. It could be observed that the width of the melt track is smaller than the laser beam diameter. This results from the Gaussian distribution of laser energy in the beam cross section, with about one-third of the beam having energy density high enough to melt the surface. For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively). At lower laser powers of 250 W and 200 W, the surface did not melt even at the lowest scanning speed of 1 mm/s. Examples of non-melted tracks processed with a laser power of 250 W are",
+      "linked_figures": [
+        "f1",
+        "f1"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp049",
+      "claim": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "point_type": "discussion",
+      "relevance_score": 0.69,
+      "goal_hits": [
+        "power",
+        "speed"
+      ],
+      "page": 3,
+      "source_text": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "linked_figures": [
+        "f1",
+        "f2"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp075",
+      "claim": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "point_type": "discussion",
+      "relevance_score": 0.69,
+      "goal_hits": [
+        "power",
+        "speed"
+      ],
+      "page": 6,
+      "source_text": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp019",
+      "claim": "selecting the laser processing parameters.",
+      "point_type": "discussion",
+      "relevance_score": 0.6682,
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "page": 1,
+      "source_text": "selecting the laser processing parameters. The nitrided surface was characterized by X-ray diffractometry (XRD), optical microscopy (OM), scanning-electron microscopy (SEM), and proﬁlometry. The",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp046",
+      "claim": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+      "point_type": "result",
+      "relevance_score": 0.6682,
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "page": 2,
+      "source_text": "As the nitride layer formed by diffusion nitriding is usually rather thin (around 1 \u0002m), its mechanical properties are best studied using nanoindentation. In the present paper a commercial nanoindenter system (Hysitron High-Load Indenter) with a Berkovich indenter was employed for acquiring the load–displacement curves upon loading and unloading for both the untreated sample and the nitrided sample. The nanoindentation hardness HN and the Young’s modulus E were derived from the curves using the built-in software. As the accuracy of indentation measurement depends on the smoothness of the surface, the samples were ﬁnally polished with 0.25 \u0002m diamond paste before nanoindentation experiment. Wear resistance was studied using a linearly reciprocating ball-on-slab sliding wear tester (TE99 Universal Wear Machine, Phoenix Tribology). A Ti–6Al–4V ball of diameter 6 mm was used in the test, with a load of 4.8 N, the stroke length being 10 mm and the reciprocating frequency, 0.5 Hz. The test duration was 240 s. This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test. After the wear test, the transverse cross-sectional area of the wear track was obtained using an optical proﬁler (Alicona IFM G4 3D-Optical Measuring System) at three",
+      "linked_figures": [
+        "f1"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp062",
+      "claim": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+      "point_type": "result",
+      "relevance_score": 0.6682,
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "page": 5,
+      "source_text": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved. The surface roughness",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp066",
+      "claim": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+      "point_type": "result",
+      "relevance_score": 0.6682,
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "page": 6,
+      "source_text": "The thickness of the nitrided layer could be increased by repeated pass on the laser track, but with diminishing effectiveness as the number of repetition increases, the optimal number of repeated pass being 5, with the thickness of nitrided layer reaching about 1.62 \u0002m. (3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate. (4) The wear resistance of the nitrided sample was about 8 times that of the untreated Ti–6Al–4V sample, the improvement being attributable to increase in hardness. The increase in hardness and wear resistance are comparable to those achieved by conventional laser nitriding involving melting.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp053",
+      "claim": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "point_type": "discussion",
+      "relevance_score": 0.475,
+      "goal_hits": [
+        "speed"
+      ],
+      "page": 3,
+      "source_text": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "linked_figures": [
+        "f2",
+        "f1"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp055",
+      "claim": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+      "point_type": "result",
+      "relevance_score": 0.475,
+      "goal_hits": [
+        "speed"
+      ],
+      "page": 3,
+      "source_text": "shown in the optical images in Fig. 2. The transverse cross-sections of a melted track and a non-melted track are shown in the SEM micrographs in Fig. 3. For the non-melted tracks in Fig. 2, it could be observed that the width and color of the tracks depend on the scanning speed. At higher scanning speed (10 mm/s), the energy deposited was small and the amount of nitride formed was small, resulting in a narrower and faint track. On the other hand, at a scanning speed of 1 mm/s, the track was wider and brightly golden in color, indicating the formation of a larger amount of nitride due to a longer laser interaction time. To form thicker nitride, repetition (or multi-pass) of laser",
+      "linked_figures": [
+        "f2",
+        "f3",
+        "f2",
+        "f3"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp001",
+      "claim": "Applied Surface Science 258 (2011) 436– 441",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Applied Surface Science 258 (2011) 436– 441",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp002",
+      "claim": "Contents lists available at SciVerse ScienceDirect",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Contents lists available at SciVerse ScienceDirect",
+      "linked_figures": [],
+      "linked_tables": []
+    }
+  ],
+  "semantic_themes": [
+    {
+      "theme_title": "Discussion",
+      "summary": "Laser power 250 W Scanning speed 1 mm/s Diameter\n(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.\nselecting the laser processing par...",
+      "writing_points": [
+        {
+          "writing_point_id": "wp049",
+          "claim": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+          "point_type": "discussion",
+          "relevance_score": 0.69,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 3,
+          "source_text": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+          "linked_figures": [
+            "f1",
+            "f2"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp075",
+          "claim": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+          "point_type": "discussion",
+          "relevance_score": 0.69,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 6,
+          "source_text": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+          "linked_figures": [],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp019",
+          "claim": "selecting the laser processing parameters.",
+          "point_type": "discussion",
+          "relevance_score": 0.6682,
+          "goal_hits": [
+            "parameter",
+            "parameters"
+          ],
+          "page": 1,
+          "source_text": "selecting the laser processing parameters. The nitrided surface was characterized by X-ray diffractometry (XRD), optical microscopy (OM), scanning-electron microscopy (SEM), and proﬁlometry. The",
+          "linked_figures": [],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp053",
+          "claim": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+          "point_type": "discussion",
+          "relevance_score": 0.475,
+          "goal_hits": [
+            "speed"
+          ],
+          "page": 3,
+          "source_text": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+          "linked_figures": [
+            "f2",
+            "f1"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp001",
+          "claim": "Applied Surface Science 258 (2011) 436– 441",
+          "point_type": "discussion",
+          "relevance_score": 0.2689,
+          "goal_hits": [],
+          "page": 1,
+          "source_text": "Applied Surface Science 258 (2011) 436– 441",
+          "linked_figures": [],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp002",
+          "claim": "Contents lists available at SciVerse ScienceDirect",
+          "point_type": "discussion",
+          "relevance_score": 0.2689,
+          "goal_hits": [],
+          "page": 1,
+          "source_text": "Contents lists available at SciVerse ScienceDirect",
+          "linked_figures": [],
+          "linked_tables": []
+        }
+      ],
+      "linked_figure_ids": [
+        "f1",
+        "f2"
+      ],
+      "linked_table_ids": []
+    },
+    {
+      "theme_title": "Result",
+      "summary": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively).\nThis set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, wa...",
+      "writing_points": [
+        {
+          "writing_point_id": "wp045",
+          "claim": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively).",
+          "point_type": "result",
+          "relevance_score": 0.69,
+          "goal_hits": [
+            "power",
+            "speed"
+          ],
+          "page": 2,
+          "source_text": "When a substrate is irradiated with a laser beam, part of the laser energy is absorbed and the surface layer is heated up. The temperature reached by the surface layer depends on a multitude of factors which may be grouped into materials properties and laser processing parameters. The former group includes the reﬂectivity of the surface at the laser wavelength and thermal properties of the substrate while the latter include the laser power P, spot diameter d and scanning speed v in the case of a CW laser. For a given substrate, the temperature reached by the surface layer depends on P, d and v in a complex manner [19]. In the present study, the laser spot diameter d was ﬁxed while P and v were varied with an aim of achieving efﬁcient nitriding without melting. Melted and nonmelted tracks were ﬁrst screened by the appearance of the laser tracks. The values of laser scanning speed that did not lead to melting for different laser powers are shown in Table 1. For laser power at 400 W, surface melting occurred even at the highest scanning speed (25 mm/s), and thus a laser power of 400 W was discarded in the selection. Examples of some melted tracks processed with a laser power of 400 W are shown in the optical images in Fig. 1. It could be observed that the width of the melt track is smaller than the laser beam diameter. This results from the Gaussian distribution of laser energy in the beam cross section, with about one-third of the beam having energy density high enough to melt the surface. For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively). At lower laser powers of 250 W and 200 W, the surface did not melt even at the lowest scanning speed of 1 mm/s. Examples of non-melted tracks processed with a laser power of 250 W are",
+          "linked_figures": [
+            "f1",
+            "f1"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp046",
+          "claim": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+          "point_type": "result",
+          "relevance_score": 0.6682,
+          "goal_hits": [
+            "parameter",
+            "parameters"
+          ],
+          "page": 2,
+          "source_text": "As the nitride layer formed by diffusion nitriding is usually rather thin (around 1 \u0002m), its mechanical properties are best studied using nanoindentation. In the present paper a commercial nanoindenter system (Hysitron High-Load Indenter) with a Berkovich indenter was employed for acquiring the load–displacement curves upon loading and unloading for both the untreated sample and the nitrided sample. The nanoindentation hardness HN and the Young’s modulus E were derived from the curves using the built-in software. As the accuracy of indentation measurement depends on the smoothness of the surface, the samples were ﬁnally polished with 0.25 \u0002m diamond paste before nanoindentation experiment. Wear resistance was studied using a linearly reciprocating ball-on-slab sliding wear tester (TE99 Universal Wear Machine, Phoenix Tribology). A Ti–6Al–4V ball of diameter 6 mm was used in the test, with a load of 4.8 N, the stroke length being 10 mm and the reciprocating frequency, 0.5 Hz. The test duration was 240 s. This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test. After the wear test, the transverse cross-sectional area of the wear track was obtained using an optical proﬁler (Alicona IFM G4 3D-Optical Measuring System) at three",
+          "linked_figures": [
+            "f1"
+          ],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp062",
+          "claim": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+          "point_type": "result",
+          "relevance_score": 0.6682,
+          "goal_hits": [
+            "parameter",
+            "parameters"
+          ],
+          "page": 5,
+          "source_text": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved. The surface roughness",
+          "linked_figures": [],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp066",
+          "claim": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+          "point_type": "result",
+          "relevance_score": 0.6682,
+          "goal_hits": [
+            "parameter",
+            "parameters"
+          ],
+          "page": 6,
+          "source_text": "The thickness of the nitrided layer could be increased by repeated pass on the laser track, but with diminishing effectiveness as the number of repetition increases, the optimal number of repeated pass being 5, with the thickness of nitrided layer reaching about 1.62 \u0002m. (3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate. (4) The wear resistance of the nitrided sample was about 8 times that of the untreated Ti–6Al–4V sample, the improvement being attributable to increase in hardness. The increase in hardness and wear resistance are comparable to those achieved by conventional laser nitriding involving melting.",
+          "linked_figures": [],
+          "linked_tables": []
+        },
+        {
+          "writing_point_id": "wp055",
+          "claim": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+          "point_type": "result",
+          "relevance_score": 0.475,
+          "goal_hits": [
+            "speed"
+          ],
+          "page": 3,
+          "source_text": "shown in the optical images in Fig. 2. The transverse cross-sections of a melted track and a non-melted track are shown in the SEM micrographs in Fig. 3. For the non-melted tracks in Fig. 2, it could be observed that the width and color of the tracks depend on the scanning speed. At higher scanning speed (10 mm/s), the energy deposited was small and the amount of nitride formed was small, resulting in a narrower and faint track. On the other hand, at a scanning speed of 1 mm/s, the track was wider and brightly golden in color, indicating the formation of a larger amount of nitride due to a longer laser interaction time. To form thicker nitride, repetition (or multi-pass) of laser",
+          "linked_figures": [
+            "f2",
+            "f3",
+            "f2",
+            "f3"
+          ],
+          "linked_tables": []
+        }
+      ],
+      "linked_figure_ids": [
+        "f1",
+        "f2",
+        "f3"
+      ],
+      "linked_table_ids": []
+    },
+    {
+      "theme_title": "Mechanism",
+      "summary": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s....",
+      "writing_points": [
+        {
+          "writing_point_id": "wp041",
+          "claim": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+          "point_type": "mechanism",
+          "relevance_score": 0.9241,
+          "goal_hits": [
+            "parameter",
+            "parameters",
+            "power",
+            "speed"
+          ],
+          "page": 2,
+          "source_text": "Ti–6Al–4V (Ti alloy with 6 wt.% Al and 4 wt.% V) samples of dimensions 60 mm × 30 mm × 5 mm were spark cut from plates. The samples were ground and polished successively with SiC papers of ﬁneness up to 800 grits. The plates were ﬁnally polished with 1 \u0002m diamond paste, degreased, rinsed in deionized water, and dried in cold air stream. Laser surface treatment of the samples was performed using a CW Nd:YAG laser system (Lumonics MW2000). Gas nitriding of the samples was carried out in a chamber which was continuously purged with nitrogen at a rate of 40 L/min to maintain a nitrogen atmosphere. As a balanced selection between energy density and processing efﬁciency, the laser spot diameter was set at 3 mm at the sample surface. To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s. After selecting the laser processing parameters that would result in nitriding without melting, repeated laser passes on the same track were performed with an aim of increasing the thickness of the nitrided layer.",
+          "linked_figures": [],
+          "linked_tables": []
+        }
+      ],
+      "linked_figure_ids": [],
+      "linked_table_ids": []
+    }
+  ],
+  "selected_figures": [
+    {
+      "figure_id": "f1",
+      "figure_number": 1,
+      "page": 2,
+      "caption": "Fig. 1. Examples of melted tracks processed with laser power 400 W at scanning speed of 1 mm/s (left), 4 mm/s (middle) and 8 mm/s (right).",
+      "bbox": [
+        311.41,
+        729.1,
+        562.96,
+        744.04
+      ],
+      "relevance_score": 0.5
+    },
+    {
+      "figure_id": "f2",
+      "figure_number": 2,
+      "page": 3,
+      "caption": "Fig. 2. Examples of non-melted tracks processed with laser power 250 W at scanning",
+      "bbox": [
+        32.73,
+        244.04,
+        284.28,
+        258.99
+      ],
+      "relevance_score": 0.5
+    },
+    {
+      "figure_id": "f3",
+      "figure_number": 3,
+      "page": 3,
+      "caption": "Fig. 3. Transverse cross-sectional view of: (a) melted track (P = 300 W, v = 1 mm/s), and (b) non-melted track (P = 250 W, v = 1 mm/s).",
+      "bbox": [
+        93.15,
+        564.34,
+        493.34,
+        571.67
+      ],
+      "relevance_score": 0.5
+    }
+  ],
+  "selected_tables": [],
+  "selected_references": [],
+  "selected_parameters": [],
+  "selected_results": [],
+  "stats_analysis": {
+    "writing_point_count": 49,
+    "selected_writing_point_count": 12,
+    "selected_figure_count": 3,
+    "selected_table_count": 0
+  },
+  "status": "analysis_complete"
+}

@@ -1,4 +1,4 @@
-# Modular Pipeline Script
+﻿# Modular Pipeline Script
 
 Academic literature processing and retrieval workspace for the modular pipeline, semantic routing, and RAG integration stack.
 
@@ -6,7 +6,7 @@ Academic literature processing and retrieval workspace for the modular pipeline,
 
 This repository tracks:
 
-- numbered pipeline scripts such as `00_Batch_Process_Controller.py`
+- duty-driven scripts such as `batch_controller.py` and `pipeline_core.py`
 - reusable layers under `layers/`
 - evidence scoring and batch-processing modules under `modules/`
 - focus registry and semantic routing
@@ -53,7 +53,8 @@ python -X utf8 .\quick_focus_registry_test.py
 python -X utf8 .\focus_registry_smoke_test.py
 python -X utf8 -m unittest .\test_ragflow_integration.py .\test_adapter_improvements.py -v
 python -X utf8 .\rag_integration_entry.py --help
-python .\run_paper_scoring.py --help
+python .\integrated_pipeline.py --help
+python .\batch_controller.py --help
 python -m pytest .\tests\test_evidence_classifier.py .\tests\test_paper_processor.py -q
 python -m pytest .\tests\test_parallel_processor.py .\tests\test_scoring_plugin_system.py -q
 ```
@@ -76,7 +77,11 @@ python -X utf8 .\skills\skill_flow_adapter.py --strict
 
 ## Retained Documents
 
-- `QUICK_START_v3.md`: usage-oriented walkthrough for the classic pipeline flow
-- `IMPLEMENTATION_GUIDE_v3_Phase123.md`: long-form implementation guide for the v40 pipeline
+- `GETTING_STARTED.md`: usage-oriented walkthrough for the classic pipeline flow
+- `DEVELOPER_GUIDE.md`: long-form implementation guide for the classic and RAG entrypoints
+- `ARCHITECTURE.md`: current runtime and subsystem architecture map
+- `NAMING_AND_ARCHIVE_POLICY.md`: repository naming, archive, and AI-generated document rules
 - `FOCUS_REGISTRY_DESIGN.md`: focus registry schema and persistence design
 - `SEMANTIC_ROUTING_IMPLEMENTATION_PLAN.md`: semantic routing design and evolution notes
+- `docs/history/README.md`: archive layout for historical reports, plans, prompts, and diagnostics
+

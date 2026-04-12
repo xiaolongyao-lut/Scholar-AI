@@ -1,0 +1,55 @@
+wing: wing_modular_pipeline
+rooms:
+- name: benchmarks
+  description: Files from benchmarks/
+  keywords:
+  - benchmarks
+  - benchmarks
+- name: configuration
+  description: Files from config/
+  keywords:
+  - configuration
+  - config
+- name: frontend
+  description: Files from frontend/
+  keywords:
+  - frontend
+  - frontend
+- name: github
+  description: Files from github/
+  keywords:
+  - github
+  - github
+- name: layers
+  description: Files from layers/
+  keywords:
+  - layers
+  - layers
+- name: post_processors
+  description: Files from post_processors/
+  keywords:
+  - post_processors
+  - post_processors
+- name: skills
+  description: Files from skills/
+  keywords:
+  - skills
+  - skills
+- name: testing
+  description: Files from tests/
+  keywords:
+  - testing
+  - tests
+- name: thesis_renderer
+  description: Files from thesis_renderer/
+  keywords:
+  - thesis_renderer
+  - thesis_renderer
+- name: backend
+  description: Files from services/
+  keywords:
+  - backend
+  - services
+- name: general
+  description: Files that don't fit other rooms
+  keywords: []

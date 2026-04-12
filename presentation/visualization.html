@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>研发逻辑引擎 - P3 因果知识图谱</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        #cy {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(30, 41, 59, 0.8);
+            padding: 15px 25px;
+            border-radius: 12px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 300px;
+            max-height: 400px;
+            background: rgba(30, 41, 59, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: none;
+        }
+        h1 { margin: 0; font-size: 1.2rem; color: #38bdf8; }
+        p { font-size: 0.9rem; color: #94a3b8; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Modular Research Graph (P3)</h1>
+    <p>交互式因果推演图谱 | 节点: 焊接实体 | 边线: 逻辑谓词</p>
+</div>
+
+<div id="info-panel" class="info-panel">
+    <h3 id="panel-title">Details</h3>
+    <div id="panel-content"></div>
+</div>
+
+<div id="cy"></div>
+
+<script>
+    // 模拟从后台注入的数据 (正式运行由 p3_exporter 生成)
+    const dagData = {
+        "nodes": [
+            {"data": {"id": "Laser_Power", "label": "激光功率", "type": "param"}},
+            {"data": {"id": "Melt_Depth", "label": "熔深", "type": "result"}},
+            {"data": {"id": "Cooling_Rate", "label": "冷却速率", "type": "inter"}},
+            {"data": {"id": "Microstructure", "label": "显微组织", "type": "result"}}
+        ],
+        "edges": [
+            {"data": {"source": "Laser_Power", "target": "Melt_Depth", "label": "增加", "conf": 0.95}},
+            {"data": {"source": "Laser_Power", "target": "Cooling_Rate", "label": "改变", "conf": 0.85}},
+            {"data": {"source": "Cooling_Rate", "target": "Microstructure", "label": "控制", "conf": 0.92}}
+        ]
+    };
+
+    const cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements: dagData,
+        style: [
+            {
+                selector: 'node',
+                style: {
+                    'background-color': '#38bdf8',
+                    'label': 'data(label)',
+                    'color': '#fff',
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'font-size': '12px',
+                    'width': '60px',
+                    'height': '60px',
+                    'border-width': 2,
+                    'border-color': '#1e293b'
+                }
+            },
+            {
+                selector: 'edge',
+                style: {
+                    'width': 3,
+                    'line-color': '#94a3b8',
+                    'target-arrow-color': '#94a3b8',
+                    'target-arrow-shape': 'triangle',
+                    'curve-style': 'bezier',
+                    'label': 'data(label)',
+                    'font-size': '10px',
+                    'color': '#cbd5e1',
+                    'text-rotation': 'autorotate'
+                }
+            },
+            {
+                selector: 'node[type="result"]',
+                style: { 'background-color': '#fbbf24' }
+            }
+        ],
+        layout: {
+            name: 'cose',
+            animate: true
+        }
+    });
+
+    cy.on('tap', 'node', function(evt){
+        const node = evt.target;
+        const panel = document.getElementById('info-panel');
+        document.getElementById('panel-title').innerText = node.data('label');
+        document.getElementById('panel-content').innerHTML = `
+            <p>ID: ${node.id()}</p>
+            <p>类型: ${node.data('type') === 'param' ? '工艺参数' : '研究结果'}</p>
+            <hr style="border:0; border-top:1px solid #334155">
+            <p>关联声明: 3 条</p>
+        `;
+        panel.style.display = 'block';
+    });
+
+</script>
+</body>
+</html>

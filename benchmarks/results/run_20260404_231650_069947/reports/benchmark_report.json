@@ -1,0 +1,572 @@
+﻿{
+  "run_metadata": {
+    "run_id": "run_20260404_231650_069947",
+    "timestamp": "2026-04-04T23:16:50.334838",
+    "manifest": "benchmarks\\golden_cases\\manifest.json",
+    "pipeline_script": "00_Integrated_Pipeline_.py",
+    "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+    "cwd": "C:\\Users\\xiao\\source\\repos\\xiaolongyao-lut\\Modular-Pipeline-Script",
+    "selected_case_count": 2,
+    "regen_candidate": true,
+    "accept_golden": false,
+    "updated_cases": [],
+    "baseline_report": ""
+  },
+  "aggregate": {
+    "total_cases": 2,
+    "passed_cases": 2,
+    "warning_cases": 0,
+    "failed_cases": 0,
+    "status_counts": {
+      "passed": 2,
+      "warning": 0,
+      "failed": 0
+    },
+    "severity_counts": {
+      "CRITICAL": 0,
+      "WARNING": 0
+    },
+    "check_failure_counts": {},
+    "blocking_failures": 0,
+    "slowest_cases": [
+      {
+        "case_id": "replay_man_2011",
+        "duration_seconds": 0.135,
+        "status": "passed"
+      },
+      {
+        "case_id": "replay_project_view_man_2011",
+        "duration_seconds": 0.114,
+        "status": "passed"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "replay_man_2011",
+      "split": "core",
+      "tags": [
+        "core",
+        "real_replay",
+        "material_pack"
+      ],
+      "started_at": "2026-04-04T23:16:50.072200",
+      "duration_seconds": 0.135,
+      "pipeline_ok": true,
+      "pipeline_error": "",
+      "status": "passed",
+      "critical_failures": 0,
+      "warning_failures": 0,
+      "artifact_results": [
+        {
+          "case_id": "replay_man_2011",
+          "artifact": "02_writing_material_pack.json",
+          "expected_path": "benchmarks\\golden_cases\\replay_man_2011\\expected\\02_writing_material_pack.json",
+          "actual_path": "benchmarks\\results\\run_20260404_231650_069947\\candidate\\replay_man_2011\\02_writing_material_pack.json",
+          "status": "passed",
+          "critical_failures": 0,
+          "warning_failures": 0,
+          "rule_results": [
+            {
+              "path": "pack_summary.selected_writing_points",
+              "type": "min_value",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": 10,
+              "actual": 12
+            },
+            {
+              "path": "pack_summary.semantic_themes",
+              "type": "min_value",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": 4,
+              "actual": 6
+            },
+            {
+              "path": "quality_gates.has_semantic_themes",
+              "type": "equals",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": true,
+              "actual": true
+            },
+            {
+              "path": "metadata.detected_domain",
+              "type": "contains",
+              "severity": "WARNING",
+              "ok": true,
+              "message": "",
+              "expected": "experimental",
+              "actual": "experimental"
+            }
+          ],
+          "diff_path": ""
+        }
+      ],
+      "candidate_root": "benchmarks\\results\\run_20260404_231650_069947\\candidate\\replay_man_2011",
+      "expected_root": "benchmarks\\golden_cases\\replay_man_2011\\expected"
+    },
+    {
+      "case_id": "replay_project_view_man_2011",
+      "split": "core",
+      "tags": [
+        "core",
+        "real_replay",
+        "project_view"
+      ],
+      "started_at": "2026-04-04T23:16:50.215221",
+      "duration_seconds": 0.114,
+      "pipeline_ok": true,
+      "pipeline_error": "",
+      "status": "passed",
+      "critical_failures": 0,
+      "warning_failures": 0,
+      "artifact_results": [
+        {
+          "case_id": "replay_project_view_man_2011",
+          "artifact": "run_master_椤圭洰鐪嬬増.json",
+          "expected_path": "benchmarks\\golden_cases\\replay_project_view_man_2011\\expected\\run_master_椤圭洰鐪嬬増.json",
+          "actual_path": "benchmarks\\results\\run_20260404_231650_069947\\candidate\\replay_project_view_man_2011\\run_master_椤圭洰鐪嬬増.json",
+          "status": "passed",
+          "critical_failures": 0,
+          "warning_failures": 0,
+          "rule_results": [
+            {
+              "path": "project_identity",
+              "type": "equals",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": "Golden benchmark project-view replay harness (core)",
+              "actual": "Golden benchmark project-view replay harness (core)"
+            },
+            {
+              "path": "quality_gates.has_writing_points",
+              "type": "equals",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": true,
+              "actual": true
+            },
+            {
+              "path": "quality_gates.refined_figure_count_matches_material_pack",
+              "type": "equals",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": true,
+              "actual": true
+            },
+            {
+              "path": "current_task_usable_subset.selected_writing_points",
+              "type": "min_length",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": 10,
+              "actual": [
+                {
+                  "claim": "To determine the processing parameters that would result in ef铿乧ient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+                  "goal_hits": [
+                    "parameter",
+                    "parameters",
+                    "power",
+                    "speed"
+                  ],
+                  "linked_figures": [],
+                  "linked_tables": [],
+                  "page": 2,
+                  "point_type": "mechanism",
+                  "relevance_score": 0.9241,
+                  "source_text": "Ti鈥?Al鈥?V (Ti alloy with 6 wt.% Al and 4 wt.% V) samples of dimensions 60 mm 脳 30 mm 脳 5 mm were spark cut from plates. The samples were ground and polished successively with SiC papers of 铿乶eness up to 800 grits. The plates were 铿乶ally polished with 1 \u0002m diamond paste, degreased, rinsed in deionized water, and dried in cold air stream. Laser surface treatment of the samples was performed using a CW Nd:YAG laser system (Lumonics MW2000). Gas nitriding of the samples was carried out in a chamber which was continuously purged with nitrogen at a rate of 40 L/min to maintain a nitrogen atmosphere. As a balanced selection between energy density and processing ef铿乧iency, the laser spot diameter was set at 3 mm at the sample surface. To determine the processing parameters that would result in ef铿乧ient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s. After selecting the laser processing parameters that would result in nitriding without melting, repeated laser passes on the same track were performed with an aim of increasing the thickness of the nitrided layer.",
+                  "writing_point_id": "wp041"
+                },
+                {
+                  "claim": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (鈮?6 and 鈮?2 mm/s, respectively).",
+                  "goal_hits": [
+                    "power",
+                    "speed"
+                  ],
+                  "linked_figures": [
+                    "f1",
+                    "f1"
+                  ],
+                  "linked_tables": [],
+                  "page": 2,
+                  "point_type": "result",
+                  "relevance_score": 0.69,
+                  "source_text": "When a substrate is irradiated with a laser beam, part of the laser energy is absorbed and the surface layer is heated up. The temperature reached by the surface layer depends on a multitude of factors which may be grouped into materials properties and laser processing parameters. The former group includes the re铿俥ctivity of the surface at the laser wavelength and thermal properties of the substrate while the latter include the laser power P, spot diameter d and scanning speed v in the case of a CW laser. For a given substrate, the temperature reached by the surface layer depends on P, d and v in a complex manner [19]. In the present study, the laser spot diameter d was 铿亁ed while P and v were varied with an aim of achieving ef铿乧ient nitriding without melting. Melted and nonmelted tracks were 铿乺st screened by the appearance of the laser tracks. The values of laser scanning speed that did not lead to melting for different laser powers are shown in Table 1. For laser power at 400 W, surface melting occurred even at the highest scanning speed (25 mm/s), and thus a laser power of 400 W was discarded in the selection. Examples of some melted tracks processed with a laser power of 400 W are shown in the optical images in Fig. 1. It could be observed that the width of the melt track is smaller than the laser beam diameter. This results from the Gaussian distribution of laser energy in the beam cross section, with about one-third of the beam having energy density high enough to melt the surface. For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (鈮?6 and 鈮?2 mm/s, respectively). At lower laser powers of 250 W and 200 W, the surface did not melt even at the lowest scanning speed of 1 mm/s. Examples of non-melted tracks processed with a laser power of 250 W are",
+                  "writing_point_id": "wp045"
+                },
+                {
+                  "claim": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+                  "goal_hits": [
+                    "power",
+                    "speed"
+                  ],
+                  "linked_figures": [
+                    "f1",
+                    "f2"
+                  ],
+                  "linked_tables": [],
+                  "page": 3,
+                  "point_type": "discussion",
+                  "relevance_score": 0.69,
+                  "source_text": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+                  "writing_point_id": "wp049"
+                },
+                {
+                  "claim": "(1) With the laser spot diameter and nitrogen 铿俹w rate 铿亁ed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving ef铿乧ient solid-state diffusion nitriding.",
+                  "goal_hits": [
+                    "power",
+                    "speed"
+                  ],
+                  "linked_figures": [],
+                  "linked_tables": [],
+                  "page": 6,
+                  "point_type": "discussion",
+                  "relevance_score": 0.69,
+                  "source_text": "(1) With the laser spot diameter and nitrogen 铿俹w rate 铿亁ed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving ef铿乧ient solid-state diffusion nitriding.",
+                  "writing_point_id": "wp075"
+                },
+                {
+                  "claim": "selecting the laser processing parameters.",
+                  "goal_hits": [
+                    "parameter",
+                    "parameters"
+                  ],
+                  "linked_figures": [],
+                  "linked_tables": [],
+                  "page": 1,
+                  "point_type": "discussion",
+                  "relevance_score": 0.6682,
+                  "source_text": "selecting the laser processing parameters. The nitrided surface was characterized by X-ray diffractometry (XRD), optical microscopy (OM), scanning-electron microscopy (SEM), and pro铿乴ometry. The",
+                  "writing_point_id": "wp019"
+                },
+                {
+                  "claim": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+                  "goal_hits": [
+                    "parameter",
+                    "parameters"
+                  ],
+                  "linked_figures": [
+                    "f1"
+                  ],
+                  "linked_tables": [],
+                  "page": 2,
+                  "point_type": "result",
+                  "relevance_score": 0.6682,
+                  "source_text": "As the nitride layer formed by diffusion nitriding is usually rather thin (around 1 \u0002m), its mechanical properties are best studied using nanoindentation. In the present paper a commercial nanoindenter system (Hysitron High-Load Indenter) with a Berkovich indenter was employed for acquiring the load鈥揹isplacement curves upon loading and unloading for both the untreated sample and the nitrided sample. The nanoindentation hardness HN and the Young鈥檚 modulus E were derived from the curves using the built-in software. As the accuracy of indentation measurement depends on the smoothness of the surface, the samples were 铿乶ally polished with 0.25 \u0002m diamond paste before nanoindentation experiment. Wear resistance was studied using a linearly reciprocating ball-on-slab sliding wear tester (TE99 Universal Wear Machine, Phoenix Tribology). A Ti鈥?Al鈥?V ball of diameter 6 mm was used in the test, with a load of 4.8 N, the stroke length being 10 mm and the reciprocating frequency, 0.5 Hz. The test duration was 240 s. This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test. After the wear test, the transverse cross-sectional area of the wear track was obtained using an optical pro铿乴er (Alicona IFM G4 3D-Optical Measuring System) at three",
+                  "writing_point_id": "wp046"
+                },
+                {
+                  "claim": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+                  "goal_hits": [
+                    "parameter",
+                    "parameters"
+                  ],
+                  "linked_figures": [],
+                  "linked_tables": [],
+                  "page": 5,
+                  "point_type": "result",
+                  "relevance_score": 0.6682,
+                  "source_text": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved. The surface roughness",
+                  "writing_point_id": "wp062"
+                },
+                {
+                  "claim": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+                  "goal_hits": [
+                    "parameter",
+                    "parameters"
+                  ],
+                  "linked_figures": [],
+                  "linked_tables": [],
+                  "page": 6,
+                  "point_type": "result",
+                  "relevance_score": 0.6682,
+                  "source_text": "The thickness of the nitrided layer could be increased by repeated pass on the laser track, but with diminishing effectiveness as the number of repetition increases, the optimal number of repeated pass being 5, with the thickness of nitrided layer reaching about 1.62 \u0002m. (3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate. (4) The wear resistance of the nitrided sample was about 8 times that of the untreated Ti鈥?Al鈥?V sample, the improvement being attributable to increase in hardness. The increase in hardness and wear resistance are comparable to those achieved by conventional laser nitriding involving melting.",
+                  "writing_point_id": "wp066"
+                },
+                {
+                  "claim": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+                  "goal_hits": [
+                    "speed"
+                  ],
+                  "linked_figures": [
+                    "f2",
+                    "f1"
+                  ],
+                  "linked_tables": [],
+                  "page": 3,
+                  "point_type": "discussion",
+                  "relevance_score": 0.475,
+                  "source_text": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+                  "writing_point_id": "wp053"
+                },
+                {
+                  "claim": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+                  "goal_hits": [
+                    "speed"
+                  ],
+                  "linked_figures": [
+                    "f2",
+                    "f3",
+                    "f2",
+                    "f3"
+                  ],
+                  "linked_tables": [],
+                  "page": 3,
+                  "point_type": "result",
+                  "relevance_score": 0.475,
+                  "source_text": "shown in the optical images in Fig. 2. The transverse cross-sections of a melted track and a non-melted track are shown in the SEM micrographs in Fig. 3. For the non-melted tracks in Fig. 2, it could be observed that the width and color of the tracks depend on the scanning speed. At higher scanning speed (10 mm/s), the energy deposited was small and the amount of nitride formed was small, resulting in a narrower and faint track. On the other hand, at a scanning speed of 1 mm/s, the track was wider and brightly golden in color, indicating the formation of a larger amount of nitride due to a longer laser interaction time. To form thicker nitride, repetition (or multi-pass) of laser",
+                  "writing_point_id": "wp055"
+                },
+                {
+                  "claim": "Applied Surface Science 258 (2011) 436鈥?441",
+                  "goal_hits": [],
+                  "linked_figures": [],
+                  "linked_tables": [],
+                  "page": 1,
+                  "point_type": "discussion",
+                  "relevance_score": 0.2689,
+                  "source_text": "Applied Surface Science 258 (2011) 436鈥?441",
+                  "writing_point_id": "wp001"
+                },
+                {
+                  "claim": "Contents lists available at SciVerse ScienceDirect",
+                  "goal_hits": [],
+                  "linked_figures": [],
+                  "linked_tables": [],
+                  "page": 1,
+                  "point_type": "discussion",
+                  "relevance_score": 0.2689,
+                  "source_text": "Contents lists available at SciVerse ScienceDirect",
+                  "writing_point_id": "wp002"
+                }
+              ]
+            },
+            {
+              "path": "current_task_usable_subset.selected_figures",
+              "type": "min_length",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": 3,
+              "actual": [
+                {
+                  "caption": "Fig. 1. Examples of melted tracks processed with laser power 400 W at scanning speed of 1 mm/s (left), 4 mm/s (middle) and 8 mm/s (right).",
+                  "figure_id": "f1",
+                  "figure_number": 1,
+                  "page": 2,
+                  "page_crop_path": "<VOLATILE>",
+                  "raw_image_path": "<VOLATILE>",
+                  "selection_reason": "",
+                  "supporting_writing_point_ids": []
+                },
+                {
+                  "caption": "Fig. 2. Examples of non-melted tracks processed with laser power 250 W at scanning",
+                  "figure_id": "f2",
+                  "figure_number": 2,
+                  "page": 3,
+                  "page_crop_path": "<VOLATILE>",
+                  "raw_image_path": "<VOLATILE>",
+                  "selection_reason": "",
+                  "supporting_writing_point_ids": []
+                },
+                {
+                  "caption": "Fig. 3. Transverse cross-sectional view of: (a) melted track (P = 300 W, v = 1 mm/s), and (b) non-melted track (P = 250 W, v = 1 mm/s).",
+                  "figure_id": "f3",
+                  "figure_number": 3,
+                  "page": 3,
+                  "page_crop_path": "<VOLATILE>",
+                  "raw_image_path": "<VOLATILE>",
+                  "selection_reason": "",
+                  "supporting_writing_point_ids": []
+                }
+              ]
+            },
+            {
+              "path": "traceability_index",
+              "type": "min_length",
+              "severity": "CRITICAL",
+              "ok": true,
+              "message": "",
+              "expected": 10,
+              "actual": [
+                {
+                  "boundary_type": "",
+                  "claim": "To determine the processing parameters that would result in ef铿乧ient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp041"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (鈮?6 and 鈮?2 mm/s, respectively).",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp045"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp049"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "(1) With the laser spot diameter and nitrogen 铿俹w rate 铿亁ed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving ef铿乧ient solid-state diffusion nitriding.",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp075"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "selecting the laser processing parameters.",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp019"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp046"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp062"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp066"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp053"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp055"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "Applied Surface Science 258 (2011) 436鈥?441",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp001"
+                },
+                {
+                  "boundary_type": "",
+                  "claim": "Contents lists available at SciVerse ScienceDirect",
+                  "evidence_summary": "",
+                  "figure_evidence": [],
+                  "linked_parameter_ids": [],
+                  "linked_result_ids": [],
+                  "linked_table_ids": [],
+                  "original_reference_markers": [],
+                  "selection_reason": "",
+                  "source_chunk_ids": [],
+                  "writing_point_id": "wp002"
+                }
+              ]
+            }
+          ],
+          "diff_path": ""
+        }
+      ],
+      "candidate_root": "benchmarks\\results\\run_20260404_231650_069947\\candidate\\replay_project_view_man_2011",
+      "expected_root": "benchmarks\\golden_cases\\replay_project_view_man_2011\\expected"
+    }
+  ],
+  "baseline_delta": {},
+  "report_paths": {
+    "json": "benchmarks\\results\\run_20260404_231650_069947\\reports\\benchmark_report.json",
+    "markdown": "benchmarks\\results\\run_20260404_231650_069947\\reports\\benchmark_report.md"
+  }
+}

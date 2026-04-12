@@ -48,3 +48,16 @@ workflow:
   llm_base_url: "https://ark.cn-beijing.volces.com/api/v3"
   llm_model: "ep-your-ark-endpoint"
   enable_requests_fallback: true
+
+# ─── MemPalace 长期记忆层 ───────────────────────────────────────────────
+mempalace:
+  enabled: true
+  vendor_repo_path: "./github/mempalace-3.0.0"
+  palace_path: "./output/mempalace/palace"
+  collection_name: "mempalace_drawers"
+  default_wing: "wing_modular_pipeline"
+  default_room: "runtime-jobs"
+  search_limit: 3
+  max_content_chars: 4000
+  auto_sync_runtime_jobs: true
+  identity_path: "./output/mempalace/identity.txt"
