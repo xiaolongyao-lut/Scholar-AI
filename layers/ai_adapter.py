@@ -42,9 +42,11 @@ class AIAdapter:
         self.enabled = False
         self.client = None
         self.parser = RobustJSONParser()
+        self.llm_status = "disabled_uninitialized"
         
         if not HAS_OPENAI:
-            logger.error("openai 库未安装。请运行: pip install openai")
+            logger.warning("openai 库未安装，AI 增强将自动降级到无 LLM 模式。")
+            self.llm_status = "disabled_missing_dependency"
             return
 
         # 尝试加载环境变量
@@ -66,9 +68,11 @@ class AIAdapter:
                 timeout=60.0
             )
             self.enabled = True
-            logger.info(f"AIAdapter 启用成功。模型: {self.model}")
+            self.llm_status = "enabled"
+            logger.info("AIAdapter 启用成功。模型: %s", self.model)
         else:
             self.client = None
+            self.llm_status = "disabled_missing_api_key"
             logger.warning("AIAdapter 未启用: 缺失 API_KEY。")
 
     def extract_claims(self, text: str, goal: str) -> List[Dict[str, Any]]:

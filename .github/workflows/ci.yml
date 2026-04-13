@@ -64,6 +64,19 @@ jobs:
           python -X utf8 quick_focus_registry_test.py
           python -X utf8 focus_registry_smoke_test.py
 
+      - name: Run SQLite Maintenance Regression Tests
+        run: |
+          python -X utf8 -m pytest \
+            tests/test_sqlite_maintenance.py \
+            tests/test_writing_runtime_persistence.py \
+            tests/test_writing_resource_persistence.py -q
+
+      - name: Run Pipeline Core Regression Tests
+        run: |
+          python -X utf8 -m pytest \
+            test_pipeline_core_contract_regression.py \
+            tests/test_pipeline_observability.py -q
+
       - name: Run GraphRAG Acceptance
         run: |
           python -X utf8 -m layers.g_synthesis_graphrag_bridge

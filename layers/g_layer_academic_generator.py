@@ -74,10 +74,20 @@ class AcademicScorer:
     Now integrated with AIAdapter for LLM-powered semantic understanding.
     """
 
-    def __init__(self, goal: str, enable_llm: bool = True, api_key: Optional[str] = None, base_url: Optional[str] = None, model: str = "gpt-4o-mini"):
+    def __init__(self, goal: str, enable_llm: bool = True, api_key: Optional[str] = None, base_url: Optional[str] = None, model: str = "gpt-4o-mini", cache_manager=None):
         self.goal = goal
-        self.ai_adapter = AIAdapter(api_key=api_key, base_url=base_url, model=model) if enable_llm else None
-        self.use_llm = enable_llm and (self.ai_adapter and self.ai_adapter.enabled)
+        if enable_llm:
+            self.ai_adapter = AIAdapter(api_key=api_key, base_url=base_url, model=model)
+            if self.ai_adapter and self.ai_adapter.enabled:
+                self.llm_status = "enabled"
+            else:
+                self.llm_status = getattr(self.ai_adapter, "llm_status", "disabled_unavailable")
+        else:
+            self.ai_adapter = None
+            self.llm_status = "disabled_by_config"
+
+        self.use_llm = self.llm_status == "enabled"
+        self.cache_manager = cache_manager
 
     @staticmethod
     def normalize_text(text: str) -> str:
@@ -253,7 +263,7 @@ class AcademicScorer:
 
         return enhancements
 
-    def _synthesize_themes(self, selected_points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _synthesize_themes(self, selected_points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         [v40.2] 将离散的论点聚类为学术主题，并生成合成摘要。
         """
@@ -276,9 +286,15 @@ class AcademicScorer:
             combined_text = "\n".join([p['claim'] for p in points])
             summary = ""
             if self.use_llm:
-                prompt = f"请根据以下关于'{theme_name}'的研究论点，合成一段连贯的学术综述（约150字）：\n{combined_text}"
+                prompt_text = f"基于以下关于'{theme_name}'的研究论点合成学术综述:\n{combined_text}"
                 try:
-                    summary = self.ai_adapter.complete(prompt)
+                    summary = None
+                    if self.cache_manager:
+                        summary = await self.cache_manager.fetch(query=prompt_text, domain="academic_summary")
+                    if not summary:
+                        summary = self.ai_adapter.complete(prompt_text)
+                        if self.cache_manager and summary:
+                            await self.cache_manager.commit(query=prompt_text, result=summary, domain="academic_summary", confidence=0.9)
                 except:
                     summary = combined_text[:300] + "..."
             else:
@@ -331,11 +347,19 @@ class AcademicScorer:
             logging.getLogger(__name__).debug(f"多模态校验失败: {e}")
             return writing_point.get('relevance_score', 0.5)
 
-    def analyze_bound_data(self, bound_data: Dict[str, Any], topk: int = 12) -> Dict[str, Any]:
+    async def analyze_bound_data(self, bound_data: Dict[str, Any], topk: int = 12) -> Dict[str, Any]:
         """
         Core analysis pipeline: scores and ranks all entities based on the goal.
-        Now with LLM-powered semantic analysis and multimodal verification.
+        Now with LLM-powered semantic analysis, multimodal verification and Multi-layer caching.
         """
+        if self.cache_manager:
+            # 建立整体分析指纹
+            doc_info = str(len(bound_data.get('chunks', []))) + str(len(bound_data.get('figures', [])))
+            cached_res = await self.cache_manager.fetch(query=self.goal + "|" + doc_info, domain="academic_scoring")
+            if cached_res:
+                logging.getLogger(__name__).info("⚡ G-Layer 命中整体学术打分缓存，跳过高能耗分析。")
+                return cached_res
+
         raw_terms, phrase_terms, goal_weights = self.expand_goal(self.goal)
         profile = self.infer_goal_profile(self.goal)
 
@@ -420,10 +444,11 @@ class AcademicScorer:
         ]
 
         # 4. 主题化合成 [NEW v40.2]
-        semantic_themes = self._synthesize_themes(selected_points)
+        semantic_themes = await self._synthesize_themes(selected_points)
 
-        return {
+        final_res = {
             'goal': self.goal,
+            'llm_status': self.llm_status,
             'goal_profile': profile,
             'writing_points': sorted_points,
             'selected_writing_points': selected_points,
@@ -441,3 +466,9 @@ class AcademicScorer:
             },
             'status': 'analysis_complete'
         }
+
+        if self.cache_manager:
+            # 学术打分极高价值，触发强沉淀
+            await self.cache_manager.commit(query=self.goal + "|" + doc_info, result=final_res, domain="academic_scoring", confidence=0.88)
+            
+        return final_res
