@@ -66,6 +66,26 @@ MODEL_REFERENCE_CUES = re.compile(r'\b(hunt\s+cet\s+model|hunt\s+model|cet\s+mod
 DEFINITION_HEAVY_CUES = re.compile(r'\b(generally|typically|is considered\s+equiaxed|is considered\s+columnar|can be defined as|is defined as|is likely to be\s+(?:equiaxed|columnar)|serves as a criterion|used as a criterion)\b', re.I)
 METHOD_LISTING_CUES = re.compile(r'\b(samples? were produced using|laser power of|scan speed of|spot size of|batch size of|optimizer was|epochs? of|using a laser power|using .* scan speed|step sizes? of|finer step sizes?|electropolish|ground and polished|etch(?:ed|ing)|sample preparation)\b', re.I)
 
+# ── Hard-reject noise filter (applied before scoring to skip publisher/metadata blocks) ──
+_GLAYER_NOISE_SKIP_RE = re.compile(
+    r'contents?\s+lists?\s+available'
+    r'|journal\s+homepage'
+    r'|www\.[a-z0-9\-]+\.(com|org|net|edu)'
+    r'|available\s+online\s+\d'
+    r'|\breceived\s*:\s*\d'
+    r'|\baccepted\s*:\s*\d'
+    r'|©\s*20\d\d'
+    r'|all\s+rights?\s+reserved'
+    r'|\belsevier\s+(?:b\.v\.|ltd|inc|science)'
+    r'|\bspringer\s+(?:nature|verlag)'
+    r'|\bwiley\s+(?:periodicals?|online)'
+    r'|\bsciencedirect\b'
+    r'|doi\s*:\s*10\.\d{4,}'
+    r'|published\s+by\s+elsevier'
+    r'|peer\s+review\s+under',
+    re.I,
+)
+
 
 class AcademicScorer:
     """
@@ -367,6 +387,10 @@ class AcademicScorer:
         for idx, chunk in enumerate(bound_data.get('chunks', []), start=1):
             text = chunk.get('text', '')
             if len(text) < 40: continue
+
+            # Hard-reject publisher metadata / noise blocks before scoring
+            if _GLAYER_NOISE_SKIP_RE.search(text):
+                continue
 
             claim = self.best_claim_selection(text, chunk.get('page', 0), goal_weights, phrase_terms)
             p_type = self.classify_point_type(chunk.get('section_title', ''), claim, chunk.get('page', 0), profile)

@@ -107,6 +107,96 @@ TABLE_PREFIX_RE = re.compile(r'^(Table\s*\d+[A-Za-z]?[\.:]?)', re.I)
 FIGURE_MENTION_RE = re.compile(r'\b(?:Fig(?:ure)?\.?)[\s\u00A0]*(\d+)\b', re.I)
 TABLE_MENTION_RE = re.compile(r'\bTable[\s\u00A0]*(\d+)\b', re.I)
 
+# ── Section header detection ───────────────────────────────────────────────────
+# Matches common academic section names (with optional leading number)
+SECTION_HEADER_RE = re.compile(
+    r'^(?:\d+(?:\.\d+)*\.?\s+)?'
+    r'(?:abstract|introduction|background|'
+    r'related\s+work|literature\s+review|state\s+of\s+the\s+art|'
+    r'materials?\s+and\s+methods?|methods?|methodology|experimental\s+(?:section|procedure|setup)?|'
+    r'experimental|results?\s+(?:and\s+discussion)?|findings?|'
+    r'discussion|conclusions?|summary|'
+    r'acknowledgem?ents?|references?|bibliography|appendix|'
+    r'theoretical\s+(?:framework|background)|data\s+and\s+methods?|'
+    r'study\s+(?:area|design)|limitations?|implications?|'
+    r'future\s+(?:work|research|directions?)|'
+    r'supplementary|supporting\s+information|'
+    r'conflict\s+of\s+interest|funding|'
+    r'statistical\s+analysis|data\s+analysis|'
+    r'sample\s+(?:preparation|collection)|participants?|subjects?)\s*[:.]?\s*$',
+    re.I,
+)
+
+# Matches numbered sections like "2. Methods" or "3.1 Data collection"
+NUMBERED_SECTION_RE = re.compile(
+    r'^(\d+(?:\.\d+)*)\s+([A-Z][A-Za-z\s\-]{2,60})\s*$'
+)
+
+# ── Noise block patterns ───────────────────────────────────────────────────────
+_NOISE_PATTERNS: list[re.Pattern] = [
+    re.compile(r'contents?\s+lists?\s+available', re.I),
+    re.compile(r'journal\s+homepage\s*:', re.I),
+    re.compile(r'www\.[a-z0-9\-]+\.(com|org|net|edu|ac)\b', re.I),
+    re.compile(r'^\s*(?:https?|ftp)://', re.I),
+    re.compile(r'available\s+online\s+\d', re.I),
+    re.compile(r'\breceived\s*:\s*\d', re.I),
+    re.compile(r'\baccepted\s*:\s*\d', re.I),
+    re.compile(r'\brevised\s*:\s*\d', re.I),
+    re.compile(r'^\s*©\s*20\d\d', re.I),
+    re.compile(r'\ball\s+rights?\s+reserved\b', re.I),
+    re.compile(r'\belsevier\s+(?:b\.v\.|ltd|inc|science)\b', re.I),
+    re.compile(r'\bspringer\s+(?:nature|verlag|science)\b', re.I),
+    re.compile(r'\bwiley\s+(?:periodicals?|online|blackwell)\b', re.I),
+    re.compile(r'\btaylor\s+&\s+francis\b', re.I),
+    re.compile(r'\bsciencedirect\b', re.I),
+    re.compile(r'^\s*keywords?\s*:', re.I),
+    re.compile(r'^\s*(?:a\s+r\s+t\s+i\s+c\s+l\s+e|i\s+n\s+f\s+o)\s*$', re.I),
+    re.compile(r'^\s*\d{1,3}\s*$'),  # Standalone page numbers
+    re.compile(r'^\s*[-–—]{3,}\s*$'),  # Divider lines
+    re.compile(r'doi\s*:\s*10\.\d{4,}', re.I),
+    re.compile(r'\bpublished\s+by\s+elsevier\b', re.I),
+    re.compile(r'\bopen\s+access\b.*\bcc\s+by\b', re.I),
+    re.compile(r'\bpeer\s+review\b.*\bunder\s+responsibility\b', re.I),
+]
+
+
+def _is_noise_block(text: str) -> bool:
+    """Return True if the text block is likely non-content noise."""
+    stripped = text.strip()
+    if not stripped:
+        return True
+    for pat in _NOISE_PATTERNS:
+        if pat.search(stripped):
+            return True
+    # Mostly non-alphabetic short blocks (separators, page refs, etc.)
+    alpha_ratio = sum(1 for c in stripped if c.isalpha()) / max(1, len(stripped))
+    if alpha_ratio < 0.35 and len(stripped) < 60:
+        return True
+    return False
+
+
+def _detect_section_header(text: str, max_font: float, body_font: float) -> str | None:
+    """Return section name if *text* looks like a section header, else None."""
+    stripped = text.strip()
+    # Section headers are short
+    if not stripped or len(stripped) > 120:
+        return None
+    # Exact keyword match
+    if SECTION_HEADER_RE.match(stripped):
+        # Normalise to title-case for readability
+        return stripped.split('\n')[0].strip().title()
+    # Numbered section pattern: "2. Methods", "3.1 Data collection"
+    m = NUMBERED_SECTION_RE.match(stripped)
+    if m:
+        return m.group(2).strip().title()
+    # Font-size heuristic: noticeably larger than body text AND short
+    if body_font > 0 and max_font >= body_font * 1.18 and len(stripped) <= 80:
+        # Only if it reads like a title (first word capitalised, no verb endings typical of sentences)
+        first_word = stripped.split()[0] if stripped.split() else ""
+        if first_word and first_word[0].isupper() and not stripped.endswith(('.', '?', '!')):
+            return stripped.title()
+    return None
+
 def normalize_ws(text: str) -> str:
     text = text.replace('\xa0', ' ').replace('-\n', '')
     return re.sub(r'\s+', ' ', text).strip()
@@ -166,7 +256,12 @@ def full_extract(pdf_path: str) -> dict[str, Any]:
     doc = fitz.open(str(pdf_path))
     chunks, figures, tables = [], [], []
     all_blocks = [parse_blocks(doc[i]) for i in range(len(doc))]
-    
+
+    # Pre-compute body font size: median non-zero font size across all blocks
+    all_fonts = [b['max_font'] for page_blocks in all_blocks for b in page_blocks if b['max_font'] > 0]
+    all_fonts.sort()
+    body_font = all_fonts[len(all_fonts) // 2] if all_fonts else 11.0
+
     # 1. 提取图注/表注
     used_indices = {}
     for i in range(len(doc)):
@@ -176,21 +271,37 @@ def full_extract(pdf_path: str) -> dict[str, Any]:
         for f in figs: f['page'] = i+1; figures.append(f)
         for t in tabs: t['page'] = i+1; tables.append(t)
 
-    # 2. 提取正文块并识别提及
+    # 2. 提取正文块，检测章节，过滤噪声
+    current_section = "Introduction"  # default before any header is found
     for i in range(len(doc)):
         page_idx = i + 1
         for b in all_blocks[i]:
             if b['block_index'] in used_indices.get(page_idx, set()): continue
             text = normalize_ws(b['text'])
-            if len(text) < 10: continue
+            if not text or len(text) < 15: continue
+
+            # --- Section header detection ---
+            detected = _detect_section_header(text, b['max_font'], body_font)
+            if detected:
+                current_section = detected
+                continue  # Don't create a chunk for the header itself
+
+            # --- Noise filter ---
+            if _is_noise_block(text):
+                continue
+
+            # Skip very short chunks (< 40 chars) — too little semantic content
+            if len(text) < 40:
+                continue
+
             chunks.append({
                 "chunk_id": f"c{len(chunks)+1:04d}",
                 "text": text, "page": page_idx, "bbox": b['bbox'],
                 "mentioned_figures": sorted({int(n) for n in FIGURE_MENTION_RE.findall(text)}),
                 "mentioned_tables": sorted({int(n) for n in TABLE_MENTION_RE.findall(text)}),
-                "section_title": "Page Content"
+                "section_title": current_section
             })
-            
+
     # 3. 建立空间邻近关系
     attach_nearby_chunks(figures, chunks, 'figure')
     attach_nearby_chunks(tables, chunks, 'table')
