@@ -43,8 +43,99 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("Pipeline_Core")
 
+# P3 因果推理层（可选，失败不阻断管线）
+try:
+    from layers.p3_causal_engine import CausalEngine
+    _P3_AVAILABLE = True
+except ImportError:
+    _P3_AVAILABLE = False
+
+# M-Layer 记忆层（可选）
+try:
+    from layers.m_layer_mempalace_memory import MempalaceAdapter
+    _MEMPALACE_AVAILABLE = True
+except ImportError:
+    _MEMPALACE_AVAILABLE = False
+
+# TOLF 撒饵捕鱼引擎（可选，失败不阻断管线）
+try:
+    from layers.tolf_engine import TOLFEngine
+    import numpy as _np
+    _TOLF_AVAILABLE = True
+except ImportError:
+    _TOLF_AVAILABLE = False
+
 WINDOWS_INVALID_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
 MAX_SAFE_COMPONENT_LEN = 120
+
+# 因果关系指示词（用于从 writing_point 提取三元组）
+_CAUSAL_INDICATORS = re.compile(
+    r'(导致|引起|促进|抑制|增强|降低|提高|改善|恶化|影响|决定|'
+    r'causes?|leads?\s+to|results?\s+in|increases?|decreases?|enhances?|'
+    r'inhibits?|improves?|affects?|determines?)',
+    re.IGNORECASE
+)
+
+_MECHANISM_SPLITTERS = re.compile(
+    r'(通过|由于|因为|使得|从而|进而|导致|引起|'
+    r'through|due\s+to|because|thereby|resulting\s+in|leading\s+to)',
+    re.IGNORECASE
+)
+
+
+def _extract_triplets_from_writing_points(writing_points: list[dict]) -> list[tuple[str, str, str]]:
+    """从 G-Layer writing_points 中提取因果三元组 (subject, predicate, object)。
+
+    策略：
+    - result/mechanism 类型：基于因果指示词切分
+    - 其他类型：基于句式结构提取
+    - 保守提取：宁可少不可错
+    """
+    triplets = []
+    for wp in writing_points:
+        claim = wp.get("claim", "")
+        p_type = wp.get("point_type", "")
+        if not claim or len(claim) < 10:
+            continue
+
+        # 策略1：按因果指示词切分
+        parts = _MECHANISM_SPLITTERS.split(claim, maxsplit=1)
+        if len(parts) >= 3:
+            subject = parts[0].strip().rstrip("，,。.")[:80]
+            predicate = parts[1].strip()[:20]
+            obj = parts[2].strip().rstrip("，,。.")[:80]
+            if len(subject) > 3 and len(obj) > 3:
+                triplets.append((subject, predicate, obj))
+                continue
+
+        # 策略2：按因果指示词定位
+        match = _CAUSAL_INDICATORS.search(claim)
+        if match:
+            subject = claim[:match.start()].strip().rstrip("，,。.")[:80]
+            predicate = match.group().strip()[:20]
+            obj = claim[match.end():].strip().rstrip("，,。.")[:80]
+            if len(subject) > 3 and len(obj) > 3:
+                triplets.append((subject, predicate, obj))
+                continue
+
+        # 策略3：对 mechanism/result 类型，用 point_type 作为隐含谓词
+        if p_type in ("mechanism", "result") and len(claim) > 20:
+            mid = len(claim) // 2
+            # 找最近的标点作为自然切分点
+            for offset in range(min(20, mid)):
+                for pos in (mid + offset, mid - offset):
+                    if 0 < pos < len(claim) and claim[pos] in "，,;；":
+                        subject = claim[:pos].strip()[:80]
+                        obj = claim[pos + 1:].strip()[:80]
+                        if len(subject) > 3 and len(obj) > 3:
+                            pred = "causes" if p_type == "mechanism" else "produces"
+                            triplets.append((subject, pred, obj))
+                            break
+                else:
+                    continue
+                break
+
+    return triplets
 
 
 def _resolve_maybe_awaitable(value: Any) -> Any:
@@ -144,6 +235,118 @@ def run_pipeline(pdf_path: str, goal: str, output_dir: str = "output", observer:
         with open(scoring_json, 'w', encoding='utf-8') as f:
             json.dump({'scoring': scoring_results, 'view': project_view}, f, ensure_ascii=False, indent=2, default=str)
 
+        # --- P3: 因果推理引擎 ---
+        causal_dag = None
+        if _P3_AVAILABLE:
+            try:
+                if observer: observer.on_phase_start("causal_reasoning", pipeline_id)
+                logger.info(">>> [P3-Layer] 正在提取因果推理链...")
+                wp_list = scoring_results.get("writing_points", [])
+                triplets = _extract_triplets_from_writing_points(wp_list)
+                if triplets:
+                    engine = CausalEngine(max_depth=6)
+                    chains = engine.extract_chains(triplets)
+                    causal_dag = engine.build_inference_dag(chains)
+                    causal_dag["triplet_count"] = len(triplets)
+                    causal_dag["chain_count"] = len(chains)
+                    # 持久化因果图
+                    causal_json = out_dir / "04_causal_dag.json"
+                    with open(causal_json, 'w', encoding='utf-8') as f:
+                        json.dump(causal_dag, f, ensure_ascii=False, indent=2, default=str)
+                    logger.info(">>> [P3-Layer] 因果推理完成: %d 三元组 → %d 链路", len(triplets), len(chains))
+                else:
+                    logger.info(">>> [P3-Layer] 未提取到因果三元组，跳过因果推理")
+                if observer: observer.on_phase_success("causal_reasoning", pipeline_id, {
+                    "triplet_count": len(triplets), "chain_count": len(chains) if triplets else 0
+                })
+            except Exception as e:
+                logger.warning(">>> [P3-Layer] 因果推理出错（不阻断管线）: %s", e)
+                if observer: observer.on_phase_success("causal_reasoning", pipeline_id, {"skipped": True, "reason": str(e)})
+
+        # --- TOLF: 撒饵捕鱼算法（可选，embedding 驱动的文献精准捕捞）---
+        tolf_fish = []
+        if _TOLF_AVAILABLE:
+            try:
+                if observer: observer.on_phase_start("tolf", pipeline_id)
+                logger.info(">>> [TOLF] 正在执行撒饵捕鱼算法...")
+                _chunks = raw_extract.get("chunks", [])
+                if len(_chunks) >= 3:
+                    # 获取 embedding API 配置（沿用与 semantic_router 相同的环境变量）
+                    _api_key = os.environ.get("SILICONFLOW_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+                    _base_url = os.environ.get("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
+                    _emb_model = os.environ.get("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
+                    if _api_key:
+                        import urllib.request as _ureq
+                        # 生成 chunk embeddings（批量）
+                        def _call_embed(texts: list) -> list:
+                            payload = json.dumps({
+                                "model": _emb_model,
+                                "input": texts,
+                                "encoding_format": "float",
+                            }).encode()
+                            req = _ureq.Request(
+                                f"{_base_url.rstrip('/')}/embeddings",
+                                data=payload,
+                                headers={
+                                    "Content-Type": "application/json",
+                                    "Authorization": f"Bearer {_api_key}",
+                                },
+                            )
+                            with _ureq.urlopen(req, timeout=30) as resp:
+                                data = json.loads(resp.read())
+                            return [item["embedding"] for item in data["data"]]
+
+                        # 提取 chunk 文本（最多 200 个块，每个截取 512 字）
+                        _MAX_TOLF_CHUNKS = 200
+                        _tolf_chunks = _chunks[:_MAX_TOLF_CHUNKS]
+                        _texts = [c.get("content", "")[:512] for c in _tolf_chunks]
+
+                        # 生成 aspect query embeddings（4 个）
+                        _engine = TOLFEngine()
+                        _aspect_q = _engine.generate_aspect_queries(goal)
+                        _aspect_texts = list(_aspect_q.values())  # K/S/R/V
+
+                        # 批量调用 embedding API（合并一次请求）
+                        _all_texts = _texts + _aspect_texts
+                        _BATCH = 64
+                        _all_embs = []
+                        for _bi in range(0, len(_all_texts), _BATCH):
+                            _all_embs.extend(_call_embed(_all_texts[_bi: _bi + _BATCH]))
+
+                        _chunk_embs = _np.array(_all_embs[:len(_texts)], dtype=_np.float32)
+                        _aspect_embs = _np.array(_all_embs[len(_texts):], dtype=_np.float32)
+
+                        # 执行 TOLF
+                        _fish_results = _engine.run(
+                            goal, _tolf_chunks, _chunk_embs, _aspect_embs
+                        )
+                        tolf_fish = [
+                            {
+                                "chunk_id": r.chunk_id,
+                                "activation_score": round(r.activation_score, 4),
+                                "evidence_score": round(r.evidence_score, 4),
+                                "point_type": r.point_type,
+                                "in_convex_hull": r.in_convex_hull,
+                                "content": r.content[:300],
+                            }
+                            for r in _fish_results
+                        ]
+                        logger.info(">>> [TOLF] 捕捞完成: %d 个命中块", len(tolf_fish))
+                        if observer: observer.on_phase_success("tolf", pipeline_id, {"fish_count": len(tolf_fish)})
+                    else:
+                        logger.info(">>> [TOLF] 未配置 API Key，跳过捕鱼算法")
+                        if observer: observer.on_phase_success("tolf", pipeline_id, {"skipped": True, "reason": "no_api_key"})
+                else:
+                    logger.info(">>> [TOLF] chunk 数量不足（%d），跳过捕鱼算法", len(_chunks))
+                    if observer: observer.on_phase_success("tolf", pipeline_id, {"skipped": True, "reason": "too_few_chunks"})
+            except (AttributeError, ImportError, KeyError, OSError, RuntimeError, TypeError, ValueError) as _e:
+                logger.warning(">>> [TOLF] 撒饵捕鱼出错（不阻断管线）: %s", _e)
+                if observer:
+                    try:
+                        observer.on_phase_success("tolf", pipeline_id, {"skipped": True, "reason": str(_e)})
+                    except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError):
+                        pass
+
         logger.info(">>> [K-Layer] 正在构建写作材料包...")
         material_pack = build_material_pack(scoring_results, bound_contract)
         material_pack.setdefault("paper_title", pdf_path.stem)
@@ -152,6 +355,10 @@ def run_pipeline(pdf_path: str, goal: str, output_dir: str = "output", observer:
         material_pack.setdefault("goal", goal)
         material_pack["pipeline_id"] = pipeline_id
         material_pack["llm_status"] = scoring_results.get("llm_status", getattr(scorer, "llm_status", "unknown"))
+        if causal_dag:
+            material_pack["causal_dag"] = causal_dag
+        if tolf_fish:
+            material_pack["tolf_fish"] = tolf_fish
 
         # Backward-compatible aliases expected by downstream bundlers.
         material_pack.setdefault("selected_figures", list(material_pack.get("single_figure_cards", [])))
@@ -183,6 +390,69 @@ def run_pipeline(pdf_path: str, goal: str, output_dir: str = "output", observer:
         p_layer.generate_docx_report(material_json, docx_path)
         if observer: observer.on_phase_success("presentation", pipeline_id, {"path": str(docx_path)})
 
+        # --- M-Layer: 记忆入库（可选，不阻断管线） ---
+        memory_status = "skipped"
+        if _MEMPALACE_AVAILABLE:
+            try:
+                logger.info(">>> [M-Layer] 正在将知识存入记忆宫殿...")
+                mem = MempalaceAdapter()
+                if mem.is_enabled():
+                    wp_list = scoring_results.get("writing_points", [])
+                    stored_count = 0
+                    for wp in wp_list:
+                        claim = wp.get("claim", "")
+                        if not claim or len(claim) < 10:
+                            continue
+                        content = (
+                            f"[{wp.get('point_type', 'claim')}] {claim}\n"
+                            f"来源: {pdf_path.stem} (p.{wp.get('page', '?')})\n"
+                            f"相关度: {wp.get('relevance_score', 0):.2f}"
+                        )
+                        mem.add_memory(
+                            wing="literature",
+                            room=goal or "general",
+                            content=content,
+                            source_file=str(pdf_path),
+                            metadata={
+                                "paper_title": pdf_path.stem,
+                                "pipeline_id": pipeline_id,
+                                "writing_point_id": wp.get("writing_point_id", ""),
+                                "point_type": wp.get("point_type", ""),
+                                "relevance_score": wp.get("relevance_score", 0),
+                            },
+                        )
+                        stored_count += 1
+                    # 存入因果关系
+                    if causal_dag:
+                        for link in causal_dag.get("links", []):
+                            content = (
+                                f"[causal] {link['source']} --{link.get('relation', '→')}--> {link['target']}\n"
+                                f"置信度: {link.get('confidence', 0):.2f}\n"
+                                f"来源: {pdf_path.stem}"
+                            )
+                            mem.add_memory(
+                                wing="literature",
+                                room=goal or "general",
+                                content=content,
+                                source_file=str(pdf_path),
+                                metadata={
+                                    "paper_title": pdf_path.stem,
+                                    "pipeline_id": pipeline_id,
+                                    "fact_type": "causal_relation",
+                                    "source_entity": link["source"],
+                                    "target_entity": link["target"],
+                                    "relation": link.get("relation", ""),
+                                },
+                            )
+                            stored_count += 1
+                    memory_status = f"stored_{stored_count}"
+                    logger.info(">>> [M-Layer] 记忆入库完成: %d 条知识", stored_count)
+                else:
+                    memory_status = "disabled"
+            except Exception as e:
+                logger.warning(">>> [M-Layer] 记忆入库出错（不阻断管线）: %s", e)
+                memory_status = f"error: {e}"
+
         duration = (datetime.now() - start_time).total_seconds()
         logger.info("处理完成！耗时: %.2fs", duration)
 
@@ -209,7 +479,10 @@ def run_pipeline(pdf_path: str, goal: str, output_dir: str = "output", observer:
                 "retrieval_payload": _json_safe_copy(retrieval_payload),
                 "scoring_payload": _json_safe_copy(scoring_payload),
                 "analysis_payloads": [_json_safe_copy(scoring_payload)],
+                "causal_dag": _json_safe_copy(causal_dag) if causal_dag else None,
+                "tolf_fish": _json_safe_copy(tolf_fish) if tolf_fish else [],
             },
+            "memory_status": memory_status,
         }
     except (AttributeError, ImportError, KeyError, OSError, RuntimeError, TypeError, ValueError) as e:
         logger.error("流水线执行失败: %s", e)
