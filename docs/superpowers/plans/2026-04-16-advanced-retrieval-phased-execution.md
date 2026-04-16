@@ -368,7 +368,7 @@ git commit -m "feat(retrieval): Phase 0-3 advanced retrieval upgrade"
 - Modify: `eval_retrieval_runtime.py`
 - Test: `tests/test_reranker.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/test_reranker.py
@@ -399,7 +399,7 @@ def test_reranker_handles_empty():
     assert rerank("query", [], api_key=None) == []
 ```
 
-- [ ] **Step 2: 实现 Reranker 客户端**
+- [x] **Step 2: 实现 Reranker 客户端**
 
 ```python
 # reranker_client.py — 核心设计
@@ -422,7 +422,7 @@ def rerank(query, candidates, **kwargs) -> list[dict]:
     """同步包装器"""
 ```
 
-- [ ] **Step 3: 接入 eval 流程**
+- [x] **Step 3: 接入 eval 流程**
 
 修改 `eval_retrieval_runtime.py`:
 - `_retrieve()` 最后一步: 三路 RRF 合并后 → `rerank(query, top_30)` → 取 top_k
@@ -441,25 +441,38 @@ async def _retrieve(..., use_rerank: bool = True):
     return merged[:top_k]
 ```
 
-- [ ] **Step 4: 跑测试并通过**
+- [x] **Step 4: 跑测试并通过**
 
-Run: `pytest tests/test_reranker.py tests/test_dense_rrf_retrieval.py -v`
+Run: `pytest tests/test_reranker.py tests/test_eval_runtime.py tests/test_dense_rrf_retrieval.py tests/test_graph_keyword_retriever.py tests/test_chunk_structure.py tests/test_llm_provider_routing.py -q`
 
-- [ ] **Step 5: 运行评测并验收**
+结果：`26 passed`
+
+- [x] **Step 5: 运行评测并验收**
 
 Run: `python eval_retrieval_runtime.py --queries eval_queries_v2.0.jsonl`
 
 门禁：Recall@5 ≥ 0.28 且 MRR ≥ 0.20
 
-预期结果：
+实测结果（2026-04-16，414q × 1656 chunks，A/B 对比）：
 
-| 指标 | Phase 2 (Tier 1) | Phase 4 (Reranker) | 预期提升 |
-|------|-------------------|--------------------|---------|
-| Recall@5 | 0.1932 | 0.30~0.35 | +55~80% |
-| MRR | 0.1231 | 0.22~0.28 | +80~130% |
-| P95 Latency | 69ms | ~200ms | +190%（Reranker API 延迟） |
+| 指标 | no-rerank | with-rerank | 变化 |
+|------|-----------|-------------|------|
+| Recall@1 | 0.0531 | **0.0870** | +63.8% |
+| Recall@3 | 0.1715 | **0.2150** | +25.4% |
+| Recall@5 | 0.2005 | **0.3019** | +50.6% |
+| Recall@10 | 0.3140 | **0.3961** | +26.1% |
+| MRR | 0.1245 | **0.1762** | +41.5% |
+| Avg Latency | 72.18ms | **3320.37ms** | +4499% |
+| P95 Latency | 93.07ms | **5078.88ms** | +5358% |
 
-> 延迟会增加，但精度提升远大于延迟代价。可通过减少候选数（30→20）调优。
+Per-difficulty (with-rerank):
+- hard: Recall@5=0.2857, MRR=0.1973
+- medium: Recall@5=0.3224, MRR=0.1890
+- simple: Recall@5=0.2857, MRR=0.1590
+
+> 验收结论：Recall@5 门禁（≥0.28）✅ 通过；MRR 门禁（≥0.20）❌ 未达标。
+> 原因：Reranker API 存在间歇性失败（日志出现 fallback），且全量串行调用导致延迟显著升高。
+> 下一步：优先做 Phase 4.1 稳定性调优（重试 + 超时 + 候选数压缩），再复测 MRR 门禁。
 
 - [ ] **Step 6: Commit**
 

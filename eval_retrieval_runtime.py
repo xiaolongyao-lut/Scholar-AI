@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import json
 import time
 from pathlib import Path
@@ -21,6 +22,11 @@ try:
     from chunk_vector_store import ChunkVectorStore
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
     ChunkVectorStore = None
+
+try:
+    from reranker_client import rerank_async
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
+    rerank_async = None
 
 
 def _calculate_mrr(relevance_list: list[bool]) -> float:
@@ -140,6 +146,8 @@ async def _retrieve(
     keyword_graph: dict[str, Any] | None = None,
     vector_store: Any | None = None,
     query_vec: Any | None = None,
+    use_rerank: bool = True,
+    rerank_top_n: int = 30,
 ) -> list[dict[str, Any]]:
     hybrid_hits: list[dict[str, Any]] = []
     graph_hits: list[dict[str, Any]] = []
@@ -165,7 +173,13 @@ async def _retrieve(
         except (RuntimeError, TypeError, ValueError):
             dense_hits = []
 
-    return _rrf_fuse([hybrid_hits, graph_hits, dense_hits], top_k=top_k)
+    merged_hits = _rrf_fuse([hybrid_hits, graph_hits, dense_hits], top_k=max(top_k, rerank_top_n))
+    if use_rerank and rerank_async and merged_hits:
+        try:
+            return await rerank_async(query_text, merged_hits[:rerank_top_n], top_k=top_k)
+        except (RuntimeError, TypeError, ValueError):
+            pass
+    return merged_hits[:top_k]
 
 
 async def _dense_retrieve_precomputed(
@@ -212,6 +226,8 @@ def run_eval(
     queries_path: str = "eval_queries_v1.0.jsonl",
     output_path: str = "BASELINE_METRICS.json",
     top_k: int = 10,
+    use_rerank: bool = True,
+    rerank_top_n: int = 30,
 ) -> dict[str, Any]:
     queries = _load_queries(Path(queries_path))
     corpus = _load_retrieval_corpus()
@@ -225,7 +241,14 @@ def run_eval(
 
     # Run async portion (build vector store + batch embed queries + retrieve) in one event loop
     results = asyncio.run(
-        _run_eval_async(queries, corpus, keyword_graph, top_k)
+        _run_eval_async(
+            queries,
+            corpus,
+            keyword_graph,
+            top_k,
+            use_rerank=use_rerank,
+            rerank_top_n=rerank_top_n,
+        )
     )
 
     summary = aggregate_metrics(results)
@@ -246,6 +269,9 @@ async def _run_eval_async(
     corpus: dict[str, Any],
     keyword_graph: dict[str, Any] | None,
     top_k: int,
+    *,
+    use_rerank: bool,
+    rerank_top_n: int,
 ) -> list[dict[str, Any]]:
     """Async eval loop — single event-loop, batch query embedding."""
 
@@ -282,6 +308,8 @@ async def _run_eval_async(
             keyword_graph=keyword_graph,
             vector_store=vector_store,
             query_vec=query_vecs[i],
+            use_rerank=use_rerank,
+            rerank_top_n=rerank_top_n,
         )
         latency_ms = (time.perf_counter() - t0) * 1000
 
@@ -310,7 +338,21 @@ async def _run_eval_async(
 
 
 if __name__ == "__main__":
-    final_metrics = run_eval()
+    parser = argparse.ArgumentParser(description="Run retrieval evaluation.")
+    parser.add_argument("--queries", default="eval_queries_v1.0.jsonl")
+    parser.add_argument("--output", default="BASELINE_METRICS.json")
+    parser.add_argument("--top-k", type=int, default=10)
+    parser.add_argument("--rerank-top-n", type=int, default=30)
+    parser.add_argument("--no-rerank", action="store_true")
+    args = parser.parse_args()
+
+    final_metrics = run_eval(
+        queries_path=args.queries,
+        output_path=args.output,
+        top_k=args.top_k,
+        use_rerank=not args.no_rerank,
+        rerank_top_n=args.rerank_top_n,
+    )
     agg = final_metrics.get("aggregated_metrics", {})
     print("Evaluation completed.")
     print(

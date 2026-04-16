@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from typing import Any
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_RERANKER_URL = "https://api.siliconflow.cn/v1/rerank"
+DEFAULT_RERANKER_MODEL = "Qwen/Qwen3-Reranker-8B"
+
+
+def _normalize_text(text: str) -> str:
+    return " ".join((text or "").replace("\xa0", " ").split()).strip()
+
+
+def _extract_document(item: dict[str, Any]) -> str:
+    return _normalize_text(
+        str(
+            item.get("content")
+            or item.get("claim")
+            or item.get("text")
+            or item.get("source_text")
+            or item.get("raw_content")
+            or ""
+        )
+    )
+
+
+def _fallback_score(item: dict[str, Any]) -> float:
+    for key in ("rerank_score", "rrf_score", "hybrid_score", "dense_score"):
+        value = item.get(key)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return 0.0
+
+
+def _apply_fallback(candidates: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
+    preserved: list[dict[str, Any]] = []
+    for item in candidates[:top_k]:
+        updated = dict(item)
+        updated["rerank_score"] = _fallback_score(item)
+        preserved.append(updated)
+    return preserved
+
+
+async def rerank_async(
+    query: str,
+    candidates: list[dict[str, Any]],
+    top_k: int = 10,
+    api_key: str | None = None,
+    *,
+    base_url: str | None = None,
+    model: str | None = None,
+) -> list[dict[str, Any]]:
+    """Rerank retrieval candidates via SiliconFlow, with graceful fallback."""
+    if not candidates or top_k <= 0:
+        return []
+
+    resolved_api_key = api_key or os.getenv("SILICONFLOW_RERANK_API_KEY") or os.getenv("SILICONFLOW_API_KEY")
+    resolved_base_url = base_url or os.getenv("SILICONFLOW_RERANK_BASE_URL", DEFAULT_RERANKER_URL)
+    resolved_model = model or os.getenv("SILICONFLOW_RERANK_MODEL", DEFAULT_RERANKER_MODEL)
+
+    documents = [_extract_document(item) for item in candidates]
+    valid_pairs = [(idx, doc) for idx, doc in enumerate(documents) if doc]
+    if not valid_pairs:
+        return _apply_fallback(candidates, top_k)
+
+    if not resolved_api_key:
+        return _apply_fallback(candidates, top_k)
+
+    payload = {
+        "model": resolved_model,
+        "query": query,
+        "documents": [doc for _, doc in valid_pairs],
+        "top_n": min(top_k, len(valid_pairs)),
+        "return_documents": False,
+    }
+    headers = {
+        "Authorization": f"Bearer {resolved_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            response = await client.post(resolved_base_url, headers=headers, json=payload)
+        if response.status_code != 200:
+            logger.warning("Reranker API %s: %s", response.status_code, response.text[:240])
+            return _apply_fallback(candidates, top_k)
+
+        body = response.json() if hasattr(response, "json") else {}
+        result_items = body.get("results", []) if isinstance(body, dict) else []
+        if not isinstance(result_items, list) or not result_items:
+            return _apply_fallback(candidates, top_k)
+
+        score_by_original_index: dict[int, float] = {}
+        original_indices = [idx for idx, _ in valid_pairs]
+        for raw in result_items:
+            if not isinstance(raw, dict):
+                continue
+            rerank_index = raw.get("index")
+            score = raw.get("relevance_score")
+            if not isinstance(rerank_index, int) or not isinstance(score, (int, float)):
+                continue
+            if 0 <= rerank_index < len(original_indices):
+                score_by_original_index[original_indices[rerank_index]] = float(score)
+
+        reranked: list[dict[str, Any]] = []
+        for idx, item in enumerate(candidates):
+            updated = dict(item)
+            updated["rerank_score"] = score_by_original_index.get(idx, _fallback_score(item))
+            reranked.append(updated)
+
+        reranked.sort(key=lambda item: item.get("rerank_score", 0.0), reverse=True)
+        return reranked[:top_k]
+    except Exception as exc:  # pragma: no cover - network/path safety
+        logger.warning("Reranker API failed, using fallback: %s", exc)
+        return _apply_fallback(candidates, top_k)
+
+
+def rerank(
+    query: str,
+    candidates: list[dict[str, Any]],
+    top_k: int = 10,
+    api_key: str | None = None,
+    *,
+    base_url: str | None = None,
+    model: str | None = None,
+) -> list[dict[str, Any]]:
+    return asyncio.run(
+        rerank_async(
+            query,
+            candidates,
+            top_k=top_k,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+        )
+    )

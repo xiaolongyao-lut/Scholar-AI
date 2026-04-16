@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-04-16 20:25:28",
+  "total_queries": 414,
+  "aggregated_metrics": {
+    "recall_at_1": 0.0531,
+    "recall_at_3": 0.1715,
+    "recall_at_5": 0.2005,
+    "recall_at_10": 0.314,
+    "mrr": 0.1245,
+    "avg_latency_ms": 72.18,
+    "p95_latency_ms": 93.07
+  },
+  "per_difficulty": {
+    "hard": {
+      "count": 42,
+      "recall_at_5": 0.1905,
+      "mrr": 0.1107
+    },
+    "medium": {
+      "count": 183,
+      "recall_at_5": 0.2459,
+      "mrr": 0.146
+    },
+    "simple": {
+      "count": 189,
+      "recall_at_5": 0.1587,
+      "mrr": 0.1066
+    }
+  }
+}
