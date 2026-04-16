@@ -34,12 +34,15 @@ import networkx as nx
 import numpy as np
 from scipy.spatial import ConvexHull, QhullError
 
-try:
-    import umap  # noqa: F401 — 可选依赖, MAQ 降维需要
+def _check_umap_available() -> bool:
+    """懒检查 umap 是否可用，避免模块级 import 拖慢启动速度。"""
+    try:
+        import importlib.util
+        return importlib.util.find_spec('umap') is not None
+    except Exception:
+        return False
 
-    _UMAP_AVAILABLE = True
-except ImportError:
-    _UMAP_AVAILABLE = False
+_UMAP_AVAILABLE: Optional[bool] = None  # None = 尚未检查
 
 logger = logging.getLogger(__name__)
 
@@ -239,11 +242,16 @@ class MAQWeightEngine:
         Raises:
             RuntimeError: umap-learn 未安装时抛出
         """
+        global _UMAP_AVAILABLE
+        if _UMAP_AVAILABLE is None:
+            _UMAP_AVAILABLE = _check_umap_available()
         if not _UMAP_AVAILABLE:
             raise RuntimeError(
                 "MAQ-Retrieval 的 UMAP 降维需要 umap-learn，"
                 "请执行: pip install umap-learn"
             )
+
+        import umap  # 懒加载：仅在实际调用时才触发 7s 初始化
 
         n_corpus = len(corpus_embeddings)
         all_data = np.vstack([corpus_embeddings, vertex_points])
