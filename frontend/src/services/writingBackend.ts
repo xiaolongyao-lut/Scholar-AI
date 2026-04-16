@@ -115,6 +115,30 @@ export class WritingBackendService {
     await this.client.delete(`/resources/project/${projectId}`);
   }
 
+  /**
+   * Update the source folder path for a project.
+   * Chunks and docs will be stored under {source_folder}/.scholarai/ going forward.
+   */
+  async updateProjectSourceFolder(projectId: string, sourceFolder: string): Promise<WritingProject> {
+    const response = await this.client.put<WritingProject>(
+      `/resources/project/${projectId}/source-folder`,
+      null,
+      { params: { source_folder: sourceFolder } }
+    );
+    return response.data;
+  }
+
+  /**
+   * Scan all literature files in the project's source_folder and index any
+   * that haven't been indexed yet. Returns counts of indexed/skipped/failed files.
+   */
+  async scanProjectFolder(projectId: string): Promise<{ indexed: number; skipped: number; failed: number; folder: string }> {
+    const response = await this.client.post<{ indexed: number; skipped: number; failed: number; folder: string }>(
+      `/resources/project/${projectId}/scan-folder`
+    );
+    return response.data;
+  }
+
   // =========================================================================
   // Section Operations
   // =========================================================================

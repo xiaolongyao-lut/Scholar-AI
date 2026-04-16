@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FileText,
   Layers,
@@ -56,6 +56,88 @@ const BATCH_TEMPLATE_KEY = 'batch_submit_templates_v1';
 const MAX_TEMPLATE_COUNT = 5;
 const MAX_HISTORY_COUNT = 10;
 
+// ─── Friendly loading message system ─────────────────────────────────────────
+
+/** Witty research-themed loading messages, shown in rotation while processing */
+const LOADING_QUIPS: string[] = [
+  '正在阅读三千篇文献，可能需要片刻……',
+  '正在比较各学派的研究结论是否互相矛盾……',
+  '尝试理解作者在注脚里真正想说的话……',
+  '正在计算哪篇文章被引用了多少次……',
+  '拼命翻阅近十年的研究趋势……',
+  '正在为每个论点寻找旗鼓相当的对立观点……',
+  '分析中，研究员已就位……',
+  '正在整理凌乱的参考文献列表……',
+  '向量空间中，语义在慢慢浮现……',
+  '数据降维中，知识版图正在成形……',
+  '正在检查文献之间是否存在隐藏的联系……',
+  '统计模型已上阵，稍等结果出炉……',
+  '正在将高维思维投影到可读平面……',
+  '寻找文献间最短的学术距离……',
+  '等待群集分析完成，这很值得……',
+];
+
+/** Map raw progress (0-100) to a human-readable phase label */
+function progressToPhase(progress: number): string {
+  if (progress < 5)  return '准备中';
+  if (progress < 20) return '读取文献';
+  if (progress < 45) return '深度分析';
+  if (progress < 65) return '知识建模';
+  if (progress < 85) return '降维聚类';
+  if (progress < 98) return '整合输出';
+  return '收尾中';
+}
+
+/** Format seconds into a readable "x分y秒" string */
+function formatSeconds(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  if (m === 0) return `约 ${sec} 秒`;
+  if (sec === 0) return `约 ${m} 分钟`;
+  return `约 ${m} 分 ${sec} 秒`;
+}
+
+/**
+ * Returns a cycling witty message and an estimated remaining time string.
+ * Messages rotate every 4.5 seconds while the task is running.
+ */
+function useFriendlyProgress(
+  isRunning: boolean,
+  progress: number,
+  startTimeRef: React.MutableRefObject<number | null>
+): { quip: string; eta: string } {
+  const [quipIndex, setQuipIndex] = useState(() => Math.floor(Math.random() * LOADING_QUIPS.length));
+  const [elapsed, setElapsed] = useState(0);
+
+  // rotate quip every 4.5s
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = window.setInterval(() => {
+      setQuipIndex(i => (i + 1) % LOADING_QUIPS.length);
+    }, 4500);
+    return () => window.clearInterval(id);
+  }, [isRunning]);
+
+  // track elapsed time
+  useEffect(() => {
+    if (!isRunning) { setElapsed(0); return; }
+    const id = window.setInterval(() => {
+      if (startTimeRef.current != null) {
+        setElapsed((Date.now() - startTimeRef.current) / 1000);
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [isRunning, startTimeRef]);
+
+  const eta = useMemo(() => {
+    if (!isRunning || progress <= 0 || elapsed <= 0) return '';
+    const remaining = (elapsed / progress) * (100 - progress);
+    return formatSeconds(remaining);
+  }, [isRunning, progress, elapsed]);
+
+  return { quip: LOADING_QUIPS[quipIndex], eta };
+}
+
 export function VolumeAnalysis() {
   const { t } = useI18n();
   const initialWorkspace = loadSettings().workspace.localStoragePath || 'batch_output';
@@ -79,6 +161,10 @@ export function VolumeAnalysis() {
     goal: 'Conclusion Extraction',
     batch_size: 13,
   });
+
+  const taskStartTimeRef = useRef<number | null>(null);
+  const isRunning = batchTask != null && batchTask.status !== 'succeeded' && batchTask.status !== 'failed';
+  const { quip, eta } = useFriendlyProgress(isRunning, batchTask?.progress ?? 0, taskStartTimeRef);
 
   const svc = useMemo(() => getWritingBackendService(), []);
 
@@ -171,6 +257,7 @@ export function VolumeAnalysis() {
         batch_size: batchForm.batch_size,
       });
       localStorage.setItem('latest_batch_task_id', resp.task_id);
+      taskStartTimeRef.current = null; // reset so ETA is measured from first run transition
       setBatchTaskId(resp.task_id);
       setBatchTask({
         task_id: resp.task_id,
@@ -261,6 +348,13 @@ export function VolumeAnalysis() {
       try {
         const status = await svc.getBatchTaskStatus(batchTaskId);
         if (cancelled) return;
+        // Record when task first transitions to running so we can estimate ETA
+        if (status.status === 'running' && taskStartTimeRef.current == null) {
+          taskStartTimeRef.current = Date.now();
+        }
+        if (status.status === 'succeeded' || status.status === 'failed') {
+          taskStartTimeRef.current = null;
+        }
         setBatchTask(status);
         setTaskHistory(prev => {
           const idx = prev.findIndex(item => item.task_id === status.task_id);
@@ -349,25 +443,59 @@ export function VolumeAnalysis() {
           {t('volume.workflow_badge')}
         </div>
         {batchTask && (
-          <div className="mt-3 rounded-lg border border-outline-variant/40 bg-surface-high/40 p-3">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-label text-foreground/70">
+          <div className="mt-3 rounded-lg border border-outline-variant/40 bg-surface-high/40 p-3 space-y-2">
+            {/* Status badge row */}
+            <div className="flex flex-wrap items-center gap-2">
               <span className={cn(
-                'px-2 py-0.5 rounded-full text-[10px] font-medium',
+                'px-2 py-0.5 rounded-full text-[10px] font-medium font-label',
                 batchTask.status === 'succeeded'
                   ? 'bg-emerald-50 text-emerald-700'
                   : batchTask.status === 'failed'
                     ? 'bg-red-50 text-red-700'
                     : 'bg-primary/10 text-primary'
               )}>
-                batch · {batchTask.status}
+                {batchTask.status === 'succeeded' ? '✓ 已完成'
+                  : batchTask.status === 'failed' ? '✗ 失败'
+                  : batchTask.status === 'queued' ? '等待中'
+                  : '分析中'}
               </span>
-              <span>{batchTask.stage || 'running'}</span>
-              <span className="tabular-nums">{Math.round(batchTask.progress || 0)}%</span>
-              {batchTask.error && (
-                <span className="text-red-600 line-clamp-1">{batchTask.error}</span>
+              {isRunning && (
+                <>
+                  <span className="text-[11px] font-label text-foreground/60">
+                    {progressToPhase(batchTask.progress ?? 0)}
+                  </span>
+                  <span className="text-[11px] font-label text-foreground/40 tabular-nums ml-auto">
+                    {Math.round(batchTask.progress || 0)}%{eta ? ` · 剩余 ${eta}` : ''}
+                  </span>
+                </>
+              )}
+              {!isRunning && (
+                <span className="text-[11px] font-label text-foreground/40 tabular-nums ml-auto">
+                  {Math.round(batchTask.progress || 0)}%
+                </span>
               )}
             </div>
-            <div className="mt-2 h-1.5 rounded-full bg-surface-high overflow-hidden">
+
+            {/* Friendly message row — only while running */}
+            {isRunning && (
+              <div className="flex items-center gap-2 min-h-[1.5rem]">
+                <Loader2 size={11} className="animate-spin text-primary/60 flex-shrink-0" />
+                <span
+                  key={quip}
+                  className="text-[11px] font-label text-foreground/55 italic transition-opacity duration-500"
+                >
+                  {quip}
+                </span>
+              </div>
+            )}
+
+            {/* Error row */}
+            {batchTask.error && (
+              <span className="text-[11px] font-label text-red-600 line-clamp-2">{batchTask.error}</span>
+            )}
+
+            {/* Progress bar */}
+            <div className="h-1.5 rounded-full bg-surface-high overflow-hidden">
               <div className="h-full grid grid-cols-20 gap-px">
                 {Array.from({ length: 20 }, (_, idx) => {
                   const active = idx < Math.round(Math.max(0, Math.min(100, batchTask.progress || 0)) / 5);
@@ -375,7 +503,7 @@ export function VolumeAnalysis() {
                     <span
                       key={`segment-${idx}`}
                       className={cn(
-                        'h-full rounded-[1px] transition-colors',
+                        'h-full rounded-[1px] transition-colors duration-300',
                         active
                           ? (batchTask.status === 'failed' ? 'bg-red-500' : 'bg-primary')
                           : 'bg-transparent'

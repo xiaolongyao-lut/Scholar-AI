@@ -32,24 +32,59 @@ logger = logging.getLogger("ResourcesRouter")
 router = APIRouter(prefix="/resources", tags=["Resources"])
 _ai_adapter_instance: Any | None = None
 
-# Document content store — persists uploaded file content for RAG
+# Document content store — default location (overridden when project has source_folder)
 _DOC_STORE_DIR = Path(__file__).resolve().parent.parent / "output" / "doc_store"
 _DOC_STORE_DIR.mkdir(parents=True, exist_ok=True)
 
-# Chunk store — persists document chunks for retrieval
+# Chunk store — default location (overridden when project has source_folder)
 _CHUNK_STORE_DIR = Path(__file__).resolve().parent.parent / "output" / "chunk_store"
 _CHUNK_STORE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Sub-directory name used when storing data alongside literature files
+_SCHOLAR_SUBDIR = ".scholarai"
 
 # Chunking settings (learned from open-webui / quivr-core)
 CHUNK_SIZE = 800       # chars per chunk
 CHUNK_OVERLAP = 150    # overlap chars between adjacent chunks
 MAX_CHUNKS_PER_MATERIAL = 5  # max chunks returned per document in RAG search (was 2)
 
+# Supported file extensions for folder scanning
+_SCAN_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md"}
+
+
+def _get_project_source_folder(project_id: str) -> str:
+    """Return the source_folder stored in the project's metadata (or empty string)."""
+    try:
+        from writing_resources import get_writing_resource_store
+        store = get_writing_resource_store()
+        project = store.get_project(project_id)
+        if project:
+            return str(project.metadata.get("source_folder", "")).strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _resolve_data_dir(project_id: str) -> tuple[Path, Path]:
+    """Return (doc_store_dir, chunk_store_dir) for a project.
+
+    When a project has a source_folder, both stores are placed in
+    ``{source_folder}/.scholarai/`` so the index lives alongside
+    the literature files and can be moved/backed-up with them.
+    """
+    source_folder = _get_project_source_folder(project_id)
+    if source_folder:
+        base = Path(source_folder).expanduser().resolve() / _SCHOLAR_SUBDIR
+        base.mkdir(parents=True, exist_ok=True)
+        return base, base
+    return _DOC_STORE_DIR, _CHUNK_STORE_DIR
+
 
 def _get_doc_store_path(project_id: str) -> Path:
     """Return the JSON doc store path for a given project."""
     safe_id = "".join(c for c in project_id if c.isalnum() or c in "_-")
-    return _DOC_STORE_DIR / f"{safe_id}.json"
+    doc_dir, _ = _resolve_data_dir(project_id)
+    return doc_dir / f"{safe_id}.json"
 
 
 def _load_doc_store(project_id: str) -> dict[str, dict[str, str]]:
@@ -60,25 +95,32 @@ def _load_doc_store(project_id: str) -> dict[str, dict[str, str]]:
             return json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             pass
+    # Fallback: check default location (in case project was migrated)
+    fallback = _DOC_STORE_DIR / f"{''.join(c for c in project_id if c.isalnum() or c in '_-')}.json"
+    if fallback.exists() and fallback != path:
+        try:
+            return json.loads(fallback.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
     return {}
 
 
 def _save_doc_store(project_id: str, store: dict[str, dict[str, str]]) -> None:
     """Persist document content store."""
     path = _get_doc_store_path(project_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
 # Chunk store helpers — splits documents into overlapping chunks for RAG
-# Learned from quivr-core (RecursiveCharacterTextSplitter) and
-# open-webui (Markdown header pre-split + character splitter)
 # ---------------------------------------------------------------------------
 
 def _get_chunk_store_path(project_id: str) -> Path:
     """Return the JSON chunk store path for a given project."""
     safe_id = "".join(c for c in project_id if c.isalnum() or c in "_-")
-    return _CHUNK_STORE_DIR / f"{safe_id}.json"
+    _, chunk_dir = _resolve_data_dir(project_id)
+    return chunk_dir / f"{safe_id}_chunks.json"
 
 
 def _load_chunk_store(project_id: str) -> dict[str, list[dict[str, Any]]]:
@@ -89,12 +131,21 @@ def _load_chunk_store(project_id: str) -> dict[str, list[dict[str, Any]]]:
             return json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             pass
+    # Fallback: legacy filename without _chunks suffix
+    safe_id = "".join(c for c in project_id if c.isalnum() or c in "_-")
+    fallback = _CHUNK_STORE_DIR / f"{safe_id}.json"
+    if fallback.exists() and fallback != path:
+        try:
+            return json.loads(fallback.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
     return {}
 
 
 def _save_chunk_store(project_id: str, store: dict[str, list[dict[str, Any]]]) -> None:
     """Persist chunk store."""
     path = _get_chunk_store_path(project_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
 
 
@@ -692,8 +743,17 @@ async def create_project(request: CreateProjectRequest) -> ProjectPayload:
         content_type=content_type,
         user_id=request.user_id,
         tags=request.tags,
+        metadata={"source_folder": request.source_folder} if request.source_folder else {},
     )
-    return ProjectPayload(**project.to_dict())
+    d = project.to_dict()
+    d["source_folder"] = str(project.metadata.get("source_folder", ""))
+    # If a source_folder is provided, create the .scholarai subdirectory upfront
+    if request.source_folder:
+        try:
+            (Path(request.source_folder).expanduser().resolve() / _SCHOLAR_SUBDIR).mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning("Could not create .scholarai dir in source_folder: %s", exc)
+    return ProjectPayload(**d)
 
 
 @router.get("/project/{project_id}", response_model=ProjectPayload)
@@ -703,7 +763,9 @@ async def get_project(project_id: str) -> ProjectPayload:
     project = store.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-    return ProjectPayload(**project.to_dict())
+    d = project.to_dict()
+    d["source_folder"] = str(project.metadata.get("source_folder", ""))
+    return ProjectPayload(**d)
 
 
 @router.get("/projects", response_model=list[ProjectPayload])
@@ -715,7 +777,11 @@ async def list_projects(
     """List all projects, optionally filtered by user. Supports pagination via query params."""
     store = get_writing_resource_store()
     projects = store.list_projects(user_id=user_id)
-    all_payloads = [ProjectPayload(**p.to_dict()) for p in projects]
+    all_payloads = []
+    for p in projects:
+        d = p.to_dict()
+        d["source_folder"] = str(p.metadata.get("source_folder", ""))
+        all_payloads.append(ProjectPayload(**d))
     # Pagination is opt-in: if caller doesn't pass page/page_size, returns full list
     return all_payloads
 
@@ -736,7 +802,38 @@ async def update_project_status(
     project = store.update_project_status(project_id, project_status)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-    return ProjectPayload(**project.to_dict())
+    d = project.to_dict()
+    d["source_folder"] = str(project.metadata.get("source_folder", ""))
+    return ProjectPayload(**d)
+
+
+@router.put("/project/{project_id}/source-folder")
+async def update_project_source_folder(
+    project_id: str,
+    source_folder: str = Query(..., description="绝对路径，留空则恢复默认存储位置"),
+) -> ProjectPayload:
+    """Update the source_folder of a project.
+
+    When set, chunk / doc store JSON files will be saved inside
+    ``{source_folder}/.scholarai/`` alongside the user's literature files.
+    """
+    store = get_writing_resource_store()
+    project = store.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    new_metadata = dict(project.metadata)
+    new_metadata["source_folder"] = source_folder.strip()
+    updated = store.update_project(project_id, metadata=new_metadata)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update project metadata")
+    if source_folder.strip():
+        try:
+            (Path(source_folder.strip()).expanduser().resolve() / _SCHOLAR_SUBDIR).mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning("Could not create .scholarai dir: %s", exc)
+    d = updated.to_dict()
+    d["source_folder"] = str(updated.metadata.get("source_folder", ""))
+    return ProjectPayload(**d)
 
 
 @router.delete("/project/{project_id}")
@@ -760,6 +857,89 @@ async def delete_project(project_id: str) -> dict[str, str]:
         except OSError:
             logger.warning("Failed to remove chunk_store file: %s", chunk_store_path)
     return {"status": "deleted", "project_id": project_id}
+
+
+@router.post("/project/{project_id}/scan-folder")
+async def scan_project_folder(project_id: str) -> dict[str, Any]:
+    """Scan the project's source_folder and ingest all literature files.
+
+    Reads all supported files (.pdf, .docx, .doc, .txt, .md) from the project's
+    source_folder and indexes them into the knowledge base.  Already-indexed
+    files (same filename) are skipped.  Returns a summary of what was processed.
+    """
+    store = _ensure_upload_project(project_id)
+    project_obj = get_writing_resource_store().get_project(project_id)
+    if not project_obj:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    source_folder = str(project_obj.metadata.get("source_folder", "")).strip()
+    if not source_folder:
+        raise HTTPException(
+            status_code=400,
+            detail="该项目没有设置文献文件夹（source_folder）。请先在项目设置中指定文件夹路径。",
+        )
+    folder_path = Path(source_folder).expanduser().resolve()
+    if not folder_path.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"文件夹不存在或无法访问：{folder_path}",
+        )
+
+    # Collect candidate files
+    candidates = [
+        f for f in folder_path.iterdir()
+        if f.is_file() and f.suffix.lower() in _SCAN_EXTENSIONS
+    ]
+
+    # Get already-indexed titles to skip duplicates
+    existing_doc_store = _load_doc_store(project_id)
+    existing_titles = {v["title"] for v in existing_doc_store.values()}
+
+    results: list[dict[str, Any]] = []
+    total_chunks = 0
+    skipped = 0
+    failed = 0
+
+    for file_path in candidates:
+        filename = file_path.name
+        if filename in existing_titles:
+            skipped += 1
+            results.append({"title": filename, "status": "skipped", "reason": "已索引"})
+            continue
+        try:
+            raw = file_path.read_bytes()
+
+            # Reuse the existing content extractor
+            class _FakeUpload:
+                def __init__(self, name: str, data: bytes):
+                    self.filename = name
+                    self._data = data
+                async def read(self) -> bytes:
+                    return self._data
+
+            content = _truncate_document_content(_extract_document_content(filename, raw))
+            normalized = str(content or "").strip()
+            if not normalized or normalized.startswith("["):
+                failed += 1
+                results.append({"title": filename, "status": "error", "reason": "无法提取文本"})
+                continue
+
+            result = _persist_uploaded_document(project_id, filename, content, store=store)
+            total_chunks += int(result.get("chunks") or 0)
+            results.append({"title": filename, "status": "ok", "chunks": result.get("chunks")})
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            results.append({"title": filename, "status": "error", "reason": str(exc)})
+
+    return {
+        "project_id": project_id,
+        "folder": str(folder_path),
+        "total_files": len(candidates),
+        "indexed": len(candidates) - skipped - failed,
+        "skipped": skipped,
+        "failed": failed,
+        "total_chunks": total_chunks,
+        "results": results,
+    }
 
 
 @router.post("/section", response_model=SectionPayload)

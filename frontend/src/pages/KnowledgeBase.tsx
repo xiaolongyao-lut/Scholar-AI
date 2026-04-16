@@ -100,9 +100,21 @@ export function KnowledgeBase() {
   const [uploadSummary, setUploadSummary] = useState<UploadBatchResult | null>(null);
   const [uploadSelection, setUploadSelection] = useState<string[]>([]);
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<{ indexed: number; skipped: number; failed: number; folder: string } | null>(null);
+  const [projectSourceFolder, setProjectSourceFolder] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const { activeProjectId } = useWriting();
+
+  // Fetch project's source_folder when activeProjectId changes
+  useEffect(() => {
+    if (!activeProjectId) { setProjectSourceFolder(''); return; }
+    const baseUrl = getApiBaseUrl();
+    axios.get(`${baseUrl}/resources/project/${activeProjectId}`, { timeout: 8000 })
+      .then(res => setProjectSourceFolder((res.data as { source_folder?: string }).source_folder ?? ''))
+      .catch(() => setProjectSourceFolder(''));
+  }, [activeProjectId]);
 
   const loadMaterials = useCallback(async () => {
     if (!activeProjectId) {
@@ -146,6 +158,23 @@ export function KnowledgeBase() {
   useEffect(() => {
     void loadMaterials();
   }, [loadMaterials]);
+
+  const handleScanFolder = useCallback(async () => {
+    if (!activeProjectId || scanning) return;
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const baseUrl = getApiBaseUrl();
+      const { data } = await axios.post(`${baseUrl}/resources/project/${activeProjectId}/scan-folder`, {}, { timeout: 300000 });
+      setScanResult({ indexed: data.indexed, skipped: data.skipped, failed: data.failed, folder: data.folder });
+      await loadMaterials();
+    } catch (err: unknown) {
+      const msg = formatAxiosError(err);
+      setScanResult({ indexed: 0, skipped: 0, failed: 0, folder: msg });
+    } finally {
+      setScanning(false);
+    }
+  }, [activeProjectId, scanning, loadMaterials]);
 
   const handleUploadFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0 || !activeProjectId) {
@@ -250,6 +279,19 @@ export function KnowledgeBase() {
             <RefreshCw size={14} />
             {t('common.refresh')}
           </button>
+          {/* Scan folder button — only visible when project has a source_folder */}
+          {projectSourceFolder && (
+            <button
+              type="button"
+              onClick={() => void handleScanFolder()}
+              disabled={scanning || uploading || !activeProjectId}
+              title={`扫描文件夹: ${projectSourceFolder}`}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-emerald-300/60 bg-emerald-50/40 text-sm font-label text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {scanning ? <Loader2 size={14} className="animate-spin" /> : <FolderOpen size={14} />}
+              {scanning ? '扫描中…' : '扫描文献文件夹'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => folderInputRef.current?.click()}
@@ -270,6 +312,30 @@ export function KnowledgeBase() {
           </button>
         </div>
       </div>
+
+      {/* Source folder info bar */}
+      {activeProjectId && projectSourceFolder && (
+        <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50/50 border border-emerald-200/60 text-xs font-label">
+          <FolderOpen size={13} className="text-emerald-600 flex-shrink-0" />
+          <span className="text-emerald-700 font-medium">文献文件夹：</span>
+          <code className="text-emerald-600 font-mono truncate flex-1">{projectSourceFolder}</code>
+          <span className="text-emerald-500/70 ml-1 flex-shrink-0">切片存在 .scholarai/ 子目录</span>
+        </div>
+      )}
+      {scanResult && (
+        <div className={`mb-4 flex items-start gap-2 px-3 py-2 rounded-lg text-xs font-label ${
+          scanResult.failed > 0 && scanResult.indexed === 0 ? 'bg-red-50 border border-red-200/60 text-red-700' : 'bg-emerald-50/50 border border-emerald-200/60 text-emerald-700'
+        }`}>
+          <CheckCircle2 size={13} className="flex-shrink-0 mt-0.5" />
+          <span>
+            扫描完成：<strong>{scanResult.indexed}</strong> 个新文件已索引，
+            {scanResult.skipped > 0 && <> <strong>{scanResult.skipped}</strong> 个已跳过，</>}
+            {scanResult.failed > 0 && <> <strong>{scanResult.failed}</strong> 个失败，</>}
+            文件夹: {scanResult.folder}
+          </span>
+          <button type="button" className="ml-auto" onClick={() => setScanResult(null)}>×</button>
+        </div>
+      )}
 
       {!activeProjectId ? (
         <div className="glass-card rounded-xl p-8 text-center">

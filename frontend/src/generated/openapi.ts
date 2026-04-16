@@ -1457,6 +1457,12 @@ export interface components {
             title: string;
             /** User Id */
             user_id?: string | null;
+            /**
+             * Source Folder
+             * @description Optional: local folder path where literature files are stored
+             * @default
+             */
+            source_folder: string;
         };
         /**
          * CreateSectionRequest
@@ -2046,6 +2052,12 @@ export interface components {
             updated_at: string;
             /** User Id */
             user_id?: string | null;
+            /**
+             * Source Folder
+             * @description User-specified folder for literature files & chunk storage
+             * @default
+             */
+            source_folder: string;
         };
         /**
          * RecommendationEvidencePayload

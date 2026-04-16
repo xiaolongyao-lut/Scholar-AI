@@ -424,18 +424,21 @@ export function WritingCanvas({
                 animate={{ opacity: 1 }}
                 className="w-full relative"
               >
-                <textarea
-                  ref={textareaRef}
-                  value={draft?.content || ''}
-                  onChange={(e) => {
-                    setDraft(prev => prev ? {...prev, content: e.target.value} : null);
-                    setIsDirty(true);
-                    setSessionStatus('idle');
-                    setSessionMessage(null);
-                  }}
-                  className="w-full h-[80vh] bg-transparent resize-none font-doc text-base leading-loose focus:outline-none placeholder:text-foreground/20 custom-scrollbar"
-                  placeholder={t('writing.placeholder')}
-                />
+                {/* Paper card — gives a clear white writing surface */}
+                <div className="rounded-sm border border-outline-variant/60 bg-white dark:bg-surface-lowest shadow-[0_2px_12px_0_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_0_rgba(0,0,0,0.25)] px-10 py-8 min-h-[80vh]">
+                  <textarea
+                    ref={textareaRef}
+                    value={draft?.content || ''}
+                    onChange={(e) => {
+                      setDraft(prev => prev ? {...prev, content: e.target.value} : null);
+                      setIsDirty(true);
+                      setSessionStatus('idle');
+                      setSessionMessage(null);
+                    }}
+                    className="w-full h-full min-h-[72vh] bg-transparent resize-none font-doc text-base leading-loose focus:outline-none placeholder:text-foreground/20 custom-scrollbar text-gray-800 dark:text-foreground"
+                    placeholder={t('writing.placeholder')}
+                  />
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

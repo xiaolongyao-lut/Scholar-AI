@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Folder, Clock, CheckCircle2, AlertCircle, Loader2, ChevronRight, Search, Upload, X, Trash2, CheckSquare, Square } from 'lucide-react';
+import { Plus, Folder, Clock, CheckCircle2, AlertCircle, Loader2, ChevronRight, Search, Upload, X, Trash2, CheckSquare, Square, FolderOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
@@ -50,6 +50,7 @@ export function Projects() {
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [newFolder, setNewFolder] = useState('');
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loadError, setLoadError] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -161,10 +162,12 @@ export function Projects() {
         title: newTitle.trim(),
         description: newDesc.trim(),
         content_type: 'general',
+        source_folder: newFolder.trim(),
       });
       setShowCreateDialog(false);
       setNewTitle('');
       setNewDesc('');
+      setNewFolder('');
       setActiveProjectId(created.project_id);
       await loadProjects();
       navigate('/writing/draft');
@@ -291,11 +294,29 @@ export function Projects() {
                     className="w-full bg-surface-high rounded-lg px-3 py-2.5 border border-outline-variant/50 text-sm font-label text-foreground focus:outline-none focus:border-primary/40 transition-colors resize-none"
                   />
                 </div>
+                <div>
+                  <label htmlFor="new-project-folder" className="font-label text-xs font-medium text-foreground/70 mb-1.5 flex items-center gap-1.5">
+                    <FolderOpen size={13} className="text-foreground/50" />
+                    文献文件夹路径
+                    <span className="text-foreground/30 font-normal">（可选）</span>
+                  </label>
+                  <input
+                    id="new-project-folder"
+                    value={newFolder}
+                    onChange={e => setNewFolder(e.target.value)}
+                    placeholder="例：C:\Users\xiao\Documents\papers"
+                    aria-label="文献文件夹路径"
+                    className="w-full bg-surface-high rounded-lg px-3 py-2.5 border border-outline-variant/50 text-sm font-label text-foreground focus:outline-none focus:border-primary/40 transition-colors font-mono"
+                  />
+                  <p className="text-[11px] text-foreground/40 mt-1 font-label leading-relaxed">
+                    设置后，切片数据将保存在该文件夹的 <code className="bg-surface-high px-1 rounded">.scholarai/</code> 子目录中，与文献文件放在一起
+                  </p>
+                </div>
                 {loadError && <p className="text-red-500 text-xs font-label">{loadError}</p>}
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => { setShowCreateDialog(false); setNewTitle(''); setNewDesc(''); setLoadError(''); }}
+                    onClick={() => { setShowCreateDialog(false); setNewTitle(''); setNewDesc(''); setNewFolder(''); setLoadError(''); }}
                     disabled={creating}
                     className="px-4 py-2 text-sm font-label font-medium text-foreground/50 hover:text-foreground transition-colors"
                   >

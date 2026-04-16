@@ -28,6 +28,7 @@ class ProjectPayload(BaseModel):
     updated_at: str
     user_id: Optional[str] = None
     tags: List[str]
+    source_folder: str = ""  # User-specified folder for literature files & chunk storage
 
 
 class SectionPayload(BaseModel):
@@ -146,6 +147,7 @@ class CreateProjectRequest(BaseModel):
     content_type: str = "general"  # academic, technical, creative, business, general
     user_id: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+    source_folder: str = ""  # Optional: local folder path where literature files are stored
 
 
 class CreateSectionRequest(BaseModel):
