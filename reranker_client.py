@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 import logging
 import os
 from typing import Any
@@ -55,6 +57,7 @@ async def rerank_async(
     *,
     base_url: str | None = None,
     model: str | None = None,
+    semaphore: asyncio.Semaphore | None = None,
 ) -> list[dict[str, Any]]:
     """Rerank retrieval candidates via SiliconFlow, with graceful fallback."""
     if not candidates or top_k <= 0:
@@ -84,41 +87,52 @@ async def rerank_async(
         "Content-Type": "application/json",
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(resolved_base_url, headers=headers, json=payload)
-        if response.status_code != 200:
-            logger.warning("Reranker API %s: %s", response.status_code, response.text[:240])
-            return _apply_fallback(candidates, top_k)
+    _ctx = semaphore if semaphore is not None else contextlib.nullcontext()
+    async with _ctx:
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    response = await client.post(resolved_base_url, headers=headers, json=payload)
+                if response.status_code != 200:
+                    logger.warning("Reranker API %s: %s", response.status_code, response.text[:240])
+                    return _apply_fallback(candidates, top_k)
 
-        body = response.json() if hasattr(response, "json") else {}
-        result_items = body.get("results", []) if isinstance(body, dict) else []
-        if not isinstance(result_items, list) or not result_items:
-            return _apply_fallback(candidates, top_k)
+                body = response.json() if hasattr(response, "json") else {}
+                result_items = body.get("results", []) if isinstance(body, dict) else []
+                if not isinstance(result_items, list) or not result_items:
+                    return _apply_fallback(candidates, top_k)
 
-        score_by_original_index: dict[int, float] = {}
-        original_indices = [idx for idx, _ in valid_pairs]
-        for raw in result_items:
-            if not isinstance(raw, dict):
-                continue
-            rerank_index = raw.get("index")
-            score = raw.get("relevance_score")
-            if not isinstance(rerank_index, int) or not isinstance(score, (int, float)):
-                continue
-            if 0 <= rerank_index < len(original_indices):
-                score_by_original_index[original_indices[rerank_index]] = float(score)
+                score_by_original_index: dict[int, float] = {}
+                original_indices = [idx for idx, _ in valid_pairs]
+                for raw in result_items:
+                    if not isinstance(raw, dict):
+                        continue
+                    rerank_index = raw.get("index")
+                    score = raw.get("relevance_score")
+                    if not isinstance(rerank_index, int) or not isinstance(score, (int, float)):
+                        continue
+                    if 0 <= rerank_index < len(original_indices):
+                        score_by_original_index[original_indices[rerank_index]] = float(score)
 
-        reranked: list[dict[str, Any]] = []
-        for idx, item in enumerate(candidates):
-            updated = dict(item)
-            updated["rerank_score"] = score_by_original_index.get(idx, _fallback_score(item))
-            reranked.append(updated)
+                reranked: list[dict[str, Any]] = []
+                for idx, item in enumerate(candidates):
+                    updated = dict(item)
+                    updated["rerank_score"] = score_by_original_index.get(idx, _fallback_score(item))
+                    reranked.append(updated)
 
-        reranked.sort(key=lambda item: item.get("rerank_score", 0.0), reverse=True)
-        return reranked[:top_k]
-    except Exception as exc:  # pragma: no cover - network/path safety
-        logger.warning("Reranker API failed, using fallback: %s", exc)
-        return _apply_fallback(candidates, top_k)
+                reranked.sort(key=lambda item: item.get("rerank_score", 0.0), reverse=True)
+                return reranked[:top_k]
+
+            except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.TimeoutException) as exc:
+                if attempt < 2:
+                    await asyncio.sleep(0.5 * (2 ** attempt))  # 0.5s, 1.0s
+                    continue
+                logger.warning("Reranker API failed after 3 attempts: %s", exc)
+                return _apply_fallback(candidates, top_k)
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, AttributeError) as exc:  # pragma: no cover - unexpected parse errors
+                logger.warning("Reranker API failed: %s", exc)
+                return _apply_fallback(candidates, top_k)
+    return _apply_fallback(candidates, top_k)
 
 
 def rerank(

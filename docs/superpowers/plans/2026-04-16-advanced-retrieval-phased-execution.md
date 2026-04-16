@@ -474,12 +474,30 @@ Per-difficulty (with-rerank):
 > 原因：Reranker API 存在间歇性失败（日志出现 fallback），且全量串行调用导致延迟显著升高。
 > 下一步：优先做 Phase 4.1 稳定性调优（重试 + 超时 + 候选数压缩），再复测 MRR 门禁。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit** — `f48be75`
 
-```bash
-git add reranker_client.py eval_retrieval_runtime.py tests/test_reranker.py BASELINE_METRICS.json
-git commit -m "feat(reranker): Phase 4 — cross-encoder reranking via Qwen3-Reranker-8B"
-```
+---
+
+### Task 5.1: Phase 4.1 — Reranker 稳定性调优
+
+**改动**：
+1. `reranker_client.py`: 加 3 次 retry（指数退避 0.5s/1.0s），timeout 45→15s，semaphore 参数透传
+2. `eval_retrieval_runtime.py`: 顺序 for 循环 → `asyncio.gather` 全并发 + `asyncio.Semaphore(8)` 限流，`rerank_top_n` 默认 30→20
+3. `tests/test_reranker.py`: 为 `test_rerank_preserves_order_without_api_key` / `test_rerank_respects_top_k_without_api_key` 加 `monkeypatch.delenv` 确保与环境无关
+
+**Phase 4.1 eval 结果（414 queries，rerank_top_n=20，semaphore=8，3x retry）：**
+
+| 指标 | Phase 4 with-rerank | Phase 4.1 with-rerank | 变化 |
+|------|---------------------|----------------------|------|
+| Recall@1 | 0.0870 | **0.0749** | -14% |
+| Recall@3 | 0.2150 | **0.2150** | 0% |
+| Recall@5 | 0.3019 | **0.2995** | -0.8% |
+| Recall@10 | 0.3961 | **0.4010** | +1.2% |
+| MRR | 0.1762 | **0.1719** | -2.4% |
+| 吞吐量（估计总时间） | ~23min（串行） | **~3min**（并发） | -87% |
+
+> 验收结论：Recall@5 门禁（≥0.28）✅ 通过；MRR 门禁（≥0.20）❌ 仍未达标（0.1719）。
+> 分析：top_n=20 轻微拖累 MRR，并发大幅降低总耗时；MRR gap（0.20-0.1719=0.028）留待 Phase 5 查询扩展来弥补。
 
 ---
 

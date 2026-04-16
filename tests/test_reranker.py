@@ -40,7 +40,9 @@ class _StubAsyncClient:
         )
 
 
-def test_rerank_preserves_order_without_api_key():
+def test_rerank_preserves_order_without_api_key(monkeypatch):
+    monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
+    monkeypatch.delenv("SILICONFLOW_RERANK_API_KEY", raising=False)
     from reranker_client import rerank
 
     candidates = [
@@ -56,7 +58,9 @@ def test_rerank_preserves_order_without_api_key():
     assert result[0]["rerank_score"] == candidates[0]["rrf_score"]
 
 
-def test_rerank_respects_top_k_without_api_key():
+def test_rerank_respects_top_k_without_api_key(monkeypatch):
+    monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
+    monkeypatch.delenv("SILICONFLOW_RERANK_API_KEY", raising=False)
     from reranker_client import rerank
 
     candidates = [{"chunk_id": f"c{i}", "content": f"text {i}", "rrf_score": 1.0 / (i + 1)} for i in range(20)]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -147,7 +148,8 @@ async def _retrieve(
     vector_store: Any | None = None,
     query_vec: Any | None = None,
     use_rerank: bool = True,
-    rerank_top_n: int = 30,
+    rerank_top_n: int = 20,
+    rerank_semaphore: Any | None = None,
 ) -> list[dict[str, Any]]:
     hybrid_hits: list[dict[str, Any]] = []
     graph_hits: list[dict[str, Any]] = []
@@ -176,7 +178,9 @@ async def _retrieve(
     merged_hits = _rrf_fuse([hybrid_hits, graph_hits, dense_hits], top_k=max(top_k, rerank_top_n))
     if use_rerank and rerank_async and merged_hits:
         try:
-            return await rerank_async(query_text, merged_hits[:rerank_top_n], top_k=top_k)
+            return await rerank_async(
+                query_text, merged_hits[:rerank_top_n], top_k=top_k, semaphore=rerank_semaphore
+            )
         except (RuntimeError, TypeError, ValueError):
             pass
     return merged_hits[:top_k]
@@ -292,8 +296,11 @@ async def _run_eval_async(
         except (RuntimeError, TypeError, ValueError):
             pass
 
-    results: list[dict[str, Any]] = []
-    for i, q in enumerate(queries):
+    rerank_semaphore = asyncio.Semaphore(
+        int(os.getenv("SILICONFLOW_RERANK_CONCURRENCY", "8"))
+    ) if use_rerank else None
+
+    async def _eval_one(i: int, q: dict[str, Any]) -> dict[str, Any]:
         query_text = query_texts[i]
         difficulty = str(q.get("difficulty_level", "unknown"))
         evidence = q.get("evidence_set", []) if isinstance(q.get("evidence_set", []), list) else []
@@ -310,6 +317,7 @@ async def _run_eval_async(
             query_vec=query_vecs[i],
             use_rerank=use_rerank,
             rerank_top_n=rerank_top_n,
+            rerank_semaphore=rerank_semaphore,
         )
         latency_ms = (time.perf_counter() - t0) * 1000
 
@@ -321,19 +329,20 @@ async def _run_eval_async(
             candidate_ids = _extract_candidate_doc_ids(hit)
             relevance_list.append(bool(candidate_ids.intersection(expected_doc_ids)))
 
-        results.append(
-            {
-                "query_id": q.get("query_id"),
-                "difficulty": difficulty,
-                "latency_ms": latency_ms,
-                "recall_at_1": _calculate_recall_at_k(relevance_list, 1),
-                "recall_at_3": _calculate_recall_at_k(relevance_list, 3),
-                "recall_at_5": _calculate_recall_at_k(relevance_list, 5),
-                "recall_at_10": _calculate_recall_at_k(relevance_list, 10),
-                "mrr": _calculate_mrr(relevance_list),
-            }
-        )
+        return {
+            "query_id": q.get("query_id"),
+            "difficulty": difficulty,
+            "latency_ms": latency_ms,
+            "recall_at_1": _calculate_recall_at_k(relevance_list, 1),
+            "recall_at_3": _calculate_recall_at_k(relevance_list, 3),
+            "recall_at_5": _calculate_recall_at_k(relevance_list, 5),
+            "recall_at_10": _calculate_recall_at_k(relevance_list, 10),
+            "mrr": _calculate_mrr(relevance_list),
+        }
 
+    results: list[dict[str, Any]] = list(
+        await asyncio.gather(*[_eval_one(i, q) for i, q in enumerate(queries)])
+    )
     return results
 
 
@@ -342,7 +351,7 @@ if __name__ == "__main__":
     parser.add_argument("--queries", default="eval_queries_v1.0.jsonl")
     parser.add_argument("--output", default="BASELINE_METRICS.json")
     parser.add_argument("--top-k", type=int, default=10)
-    parser.add_argument("--rerank-top-n", type=int, default=30)
+    parser.add_argument("--rerank-top-n", type=int, default=20)
     parser.add_argument("--no-rerank", action="store_true")
     args = parser.parse_args()
 
