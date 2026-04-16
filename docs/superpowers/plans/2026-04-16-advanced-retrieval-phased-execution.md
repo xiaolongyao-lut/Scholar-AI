@@ -279,11 +279,11 @@ Expected: hard 子集 Recall@5 在 Phase 2 基础上提升 ≥20%，simple/mediu
 - Hard subset: `Recall@5=0.1429`（相较 Phase 1 hard=0.0476，提升约 200%）
 - Simple/Medium: `0.1111 / 0.1475`，无显著退化
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
-git add graph_keyword_retriever.py eval_retrieval_runtime.py tests/test_graph_keyword_retriever.py BASELINE_METRICS.json
-git commit -m "feat(graph): add keyword bipartite retrieval and 3-way fusion"
+git commit -m "feat(retrieval): Phase 0-3 advanced retrieval upgrade"
+# → 1403057 (16 files changed, 2479 insertions)
 ```
 
 ---
@@ -320,3 +320,454 @@ git commit -m "feat(graph): add keyword bipartite retrieval and 3-way fusion"
 - [x] Phase 1 已完成（结构感知切块 + 语料对齐 + 评测基线 Recall@5=4.83%）
 - [x] Phase 2 已完成（BGE-m3 dense retrieval + 三路 RRF，Recall@5: 0.1304→0.1932 +48%，MRR +34%）
 - [x] Phase 3 已完成（关键词二部图 + RRF 融合 + 指标验收）
+- [x] **Tier 1 全部完成，已提交 `1403057`**
+
+---
+
+---
+
+# Tier 2: 精准检索（目标 Recall@5 ≥ 0.45, MRR ≥ 0.30）
+
+> **升级定位**：Tier 1 解决了"能检索"和"多路融合"，但 Recall@5=19.3% 意味着 80% 的相关文档仍被遗漏。
+> Tier 2 聚焦"检索精度"，通过 Reranker 重排、查询理解增强、上下文切块三个维度将指标翻倍。
+
+**Tier 2 起点基线（Tier 1 终点）：**
+
+| 指标 | 值 |
+|------|----|
+| Recall@5 | 0.1932 |
+| MRR | 0.1231 |
+| P95 Latency | 69ms |
+| 策略 | BM25 + Dense(BGE-m3) + Graph，三路 RRF(k=60) |
+
+---
+
+## File Structure (Tier 2)
+
+- Create: `reranker_client.py`（Phase 4 — Reranker API 客户端）
+- Modify: `eval_retrieval_runtime.py`（Phase 4/5 — 接入 rerank + 查询扩展）
+- Create: `query_expander.py`（Phase 5 — 查询改写/翻译/HyDE）
+- Create: `contextual_chunker.py`（Phase 6 — 上下文增强切块）
+- Modify: `chunk_vector_store.py`（Phase 6 — 重建 embedding 缓存）
+- Create: `tests/test_reranker.py`
+- Create: `tests/test_query_expander.py`
+- Create: `tests/test_contextual_chunker.py`
+
+---
+
+### Task 5: Phase 4 — Cross-Encoder Reranker 重排
+
+> **ROI 最高**：已有 `Qwen/Qwen3-Reranker-8B` API (SiliconFlow)，仅需 ~50 行代码接入。
+> 预期效果：Recall@5 从 0.19 → 0.30~0.35（+55~80%），MRR 从 0.12 → 0.22~0.28。
+
+**原理**：当前三路 RRF 只做了"粗排"（BM25 词匹配 + 余弦相似度 + 图关键词）。Cross-Encoder 会把 query 和每个候选 chunk 拼接后过一个完整的 Transformer，产出精细的相关性分数，显著优于双塔模型的独立编码。
+
+**Files:**
+
+- Create: `reranker_client.py`
+- Modify: `eval_retrieval_runtime.py`
+- Test: `tests/test_reranker.py`
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+# tests/test_reranker.py
+
+def test_reranker_reorders_candidates():
+    """Reranker 应该把高相关的 chunk 排到前面"""
+    from reranker_client import rerank
+
+    query = "海洋碳循环的主要机制"
+    candidates = [
+        {"chunk_id": "c1", "content": "完全无关的天气预报内容"},
+        {"chunk_id": "c2", "content": "海洋生物泵是碳循环的核心驱动力"},
+        {"chunk_id": "c3", "content": "随机噪音文本"},
+    ]
+    # 无 API key 时应优雅降级，保持原序
+    result = rerank(query, candidates, api_key=None)
+    assert len(result) == 3
+    assert all("rerank_score" in r for r in result)
+
+def test_reranker_respects_top_k():
+    from reranker_client import rerank
+    candidates = [{"chunk_id": f"c{i}", "content": f"text {i}"} for i in range(20)]
+    result = rerank("query", candidates, top_k=5, api_key=None)
+    assert len(result) == 5
+
+def test_reranker_handles_empty():
+    from reranker_client import rerank
+    assert rerank("query", [], api_key=None) == []
+```
+
+- [ ] **Step 2: 实现 Reranker 客户端**
+
+```python
+# reranker_client.py — 核心设计
+
+RERANKER_MODEL = "Qwen/Qwen3-Reranker-8B"
+RERANKER_URL = "https://api.siliconflow.cn/v1/rerank"
+
+async def rerank_async(
+    query: str,
+    candidates: list[dict],
+    top_k: int = 10,
+    api_key: str | None = None,
+) -> list[dict]:
+    """
+    调用 SiliconFlow Reranker API 对候选 chunk 重排。
+    无 API key 时保持原序并填充 rerank_score=0.0（优雅降级）。
+    """
+
+def rerank(query, candidates, **kwargs) -> list[dict]:
+    """同步包装器"""
+```
+
+- [ ] **Step 3: 接入 eval 流程**
+
+修改 `eval_retrieval_runtime.py`:
+- `_retrieve()` 最后一步: 三路 RRF 合并后 → `rerank(query, top_30)` → 取 top_k
+- 新增 `--no-rerank` 参数可关闭，用于 A/B 对比
+
+```python
+# eval_retrieval_runtime.py 改动要点:
+async def _retrieve(..., use_rerank: bool = True):
+    ...
+    merged = rrf_merge([hybrid_hits, graph_hits, dense_hits], k=60)
+
+    # Phase 4: Cross-Encoder rerank
+    if use_rerank and os.environ.get("SILICONFLOW_API_KEY"):
+        merged = await rerank_async(query, merged[:30], top_k=top_k)
+    
+    return merged[:top_k]
+```
+
+- [ ] **Step 4: 跑测试并通过**
+
+Run: `pytest tests/test_reranker.py tests/test_dense_rrf_retrieval.py -v`
+
+- [ ] **Step 5: 运行评测并验收**
+
+Run: `python eval_retrieval_runtime.py --queries eval_queries_v2.0.jsonl`
+
+门禁：Recall@5 ≥ 0.28 且 MRR ≥ 0.20
+
+预期结果：
+
+| 指标 | Phase 2 (Tier 1) | Phase 4 (Reranker) | 预期提升 |
+|------|-------------------|--------------------|---------|
+| Recall@5 | 0.1932 | 0.30~0.35 | +55~80% |
+| MRR | 0.1231 | 0.22~0.28 | +80~130% |
+| P95 Latency | 69ms | ~200ms | +190%（Reranker API 延迟） |
+
+> 延迟会增加，但精度提升远大于延迟代价。可通过减少候选数（30→20）调优。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add reranker_client.py eval_retrieval_runtime.py tests/test_reranker.py BASELINE_METRICS.json
+git commit -m "feat(reranker): Phase 4 — cross-encoder reranking via Qwen3-Reranker-8B"
+```
+
+---
+
+### Task 6: Phase 5 — 查询扩展与跨语言增强
+
+> **解决核心痛点**：中文 query ↔ 英文 chunk 的语义鸿沟、短查询信息不足。
+> 预期效果：Recall@5 从 0.30 → 0.40~0.45（+30~50%），hard 子集提升最显著。
+
+**三种策略（可叠加）：**
+
+| 策略 | 原理 | 成本 | 适用 |
+|------|------|------|------|
+| **Query Translation** | 中文 query → 英文翻译，双语并行检索 | 1 次 LLM | 中英混合语料（本项目核心场景） |
+| **Multi-Query** | 1 个 query → 3~5 个语义变体 | 1 次 LLM | 短查询、模糊查询 |
+| **HyDE** | LLM 生成"假设答案"，用假设答案做 embedding 检索 | 1 次 LLM + 1 次 embed | 领域术语不匹配 |
+
+**Files:**
+
+- Create: `query_expander.py`
+- Modify: `eval_retrieval_runtime.py`
+- Test: `tests/test_query_expander.py`
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+# tests/test_query_expander.py
+
+def test_translate_query_returns_translation():
+    from query_expander import translate_query
+    result = translate_query("海洋碳循环的主要驱动因素", api_key=None)
+    # 无 API key 时返回原文（优雅降级）
+    assert result == "海洋碳循环的主要驱动因素"
+
+def test_multi_query_returns_variants():
+    from query_expander import expand_multi_query
+    variants = expand_multi_query("碳循环机制", api_key=None)
+    assert isinstance(variants, list)
+    assert len(variants) >= 1
+    assert "碳循环机制" in variants  # 原始 query 始终保留
+
+def test_hyde_returns_hypothetical_doc():
+    from query_expander import generate_hyde
+    doc = generate_hyde("什么是生物泵", api_key=None)
+    assert isinstance(doc, str)
+    assert len(doc) > 0
+```
+
+- [ ] **Step 2: 实现查询扩展模块**
+
+```python
+# query_expander.py — 核心设计
+
+async def translate_query_async(query: str, api_key: str | None = None) -> str:
+    """
+    中→英翻译。使用 Volcano 端点（成本最低）。
+    无 API key 时返回原文。
+    """
+
+async def expand_multi_query_async(
+    query: str, n: int = 3, api_key: str | None = None
+) -> list[str]:
+    """
+    生成 n 个查询变体（含原始 query）。
+    Prompt: "将以下查询改写为 {n} 个不同表述，保持语义一致"
+    """
+
+async def generate_hyde_async(query: str, api_key: str | None = None) -> str:
+    """
+    HyDE: 生成一段假设性文档片段，用于 embedding 检索。
+    Prompt: "假设你是一位海洋科学专家，请写一段 150 字的文本回答以下问题："
+    """
+
+# 同步包装器
+def translate_query(query, **kw) -> str: ...
+def expand_multi_query(query, **kw) -> list[str]: ...
+def generate_hyde(query, **kw) -> str: ...
+```
+
+- [ ] **Step 3: 接入 eval 流程**
+
+修改 `eval_retrieval_runtime.py`:
+
+```python
+async def _retrieve_with_expansion(query, ...) -> list[dict]:
+    """
+    1. translate_query → 英文 query
+    2. 对中文原文 + 英文翻译各执行一次 _retrieve()
+    3. RRF 合并两路结果
+    4. rerank(合并结果, top_k)
+    """
+
+# 完整管线: query → translate → parallel retrieve → merge → rerank → top_k
+```
+
+- [ ] **Step 4: 跑测试并通过**
+
+Run: `pytest tests/test_query_expander.py -v`
+
+- [ ] **Step 5: 运行评测并验收**
+
+门禁：Recall@5 ≥ 0.40 且 hard 子集 Recall@5 ≥ 0.35
+
+预期结果：
+
+| 指标 | Phase 4 (Reranker) | Phase 5 (查询扩展) | 预期提升 |
+|------|--------------------|--------------------|---------|
+| Recall@5 | 0.30~0.35 | 0.40~0.45 | +25~35% |
+| MRR | 0.22~0.28 | 0.30~0.35 | +20~30% |
+| hard R@5 | ~0.25 | ≥0.35 | +40% |
+| Avg Latency | ~200ms | ~400ms | +100%（多一次 LLM + 并行检索） |
+
+> 延迟翻倍但可接受。生产环境可根据 query 语言自动选择是否启用翻译。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add query_expander.py eval_retrieval_runtime.py tests/test_query_expander.py BASELINE_METRICS.json
+git commit -m "feat(query): Phase 5 — query expansion + cross-lingual retrieval"
+```
+
+---
+
+### Task 7: Phase 6 — Contextual Retrieval（上下文增强切块）
+
+> **长线收益**：参考 Anthropic Contextual Retrieval 方案，给每个 chunk 添加文档级上下文后重新 embedding。
+> 预期效果：Recall@5 再 +10~15%，达到 Tier 2 目标上限。
+
+**原理**：
+
+```
+当前 chunk:
+  "方法：采用 ABC 技术处理样品，在 25°C 下培养 72 小时..."
+
+增强后 chunk:
+  "[本文研究南海深层水中颗粒有机碳的垂直分布特征，
+   使用沉积物捕获器在 200-4000m 水深采集样品]
+   方法：采用 ABC 技术处理样品，在 25°C 下培养 72 小时..."
+```
+
+增强后的 embedding 更"知道"这个 chunk 属于哪篇论文、讨论什么主题，跨文档区分度更高。
+
+**Files:**
+
+- Create: `contextual_chunker.py`
+- Modify: `chunk_vector_store.py`（重建缓存）
+- Test: `tests/test_contextual_chunker.py`
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+# tests/test_contextual_chunker.py
+
+def test_contextual_prefix_added():
+    from contextual_chunker import add_context_prefix
+
+    chunk = {"content": "方法：采用 ABC 技术", "material_id": "m1"}
+    doc_summary = "本文研究海洋碳循环"
+    result = add_context_prefix(chunk, doc_summary)
+    assert result["content"].startswith("[")
+    assert "海洋碳循环" in result["content"]
+    assert "ABC 技术" in result["content"]
+
+def test_contextual_preserves_original():
+    from contextual_chunker import add_context_prefix
+
+    chunk = {"content": "原始内容", "material_id": "m1", "chunk_id": "c1"}
+    result = add_context_prefix(chunk, "摘要")
+    assert result["raw_content"] == "原始内容"  # 保留原文
+    assert result["chunk_id"] == "c1"  # 元数据不丢失
+
+def test_batch_contextualize():
+    from contextual_chunker import batch_contextualize
+
+    chunks = [
+        {"content": f"chunk {i}", "material_id": "m1"} for i in range(5)
+    ]
+    # 无 API key 时跳过摘要生成，返回原始 chunk
+    result = batch_contextualize(chunks, api_key=None)
+    assert len(result) == 5
+```
+
+- [ ] **Step 2: 实现上下文增强模块**
+
+```python
+# contextual_chunker.py — 核心设计
+
+async def summarize_document_async(
+    chunks: list[dict],
+    api_key: str | None = None,
+) -> str:
+    """
+    将同一 material_id 的所有 chunk 拼接，
+    调用 LLM 生成 2-3 句文档级摘要。
+    缓存到 output/doc_summaries.json（避免重复调用）。
+    """
+
+def add_context_prefix(chunk: dict, doc_summary: str) -> dict:
+    """
+    在 chunk.content 前面拼接 [doc_summary] 前缀。
+    保留 raw_content 字段存储原始文本。
+    """
+
+async def batch_contextualize_async(
+    chunks: list[dict],
+    api_key: str | None = None,
+) -> list[dict]:
+    """
+    1. 按 material_id 分组
+    2. 每组生成一个文档摘要
+    3. 对每个 chunk 添加上下文前缀
+    """
+
+def batch_contextualize(chunks, **kw) -> list[dict]: ...
+```
+
+- [ ] **Step 3: 重建 embedding 缓存**
+
+```python
+# 修改 chunk_vector_store.py:
+# build() 方法检测 chunk.content 是否含 [context] 前缀
+# 若有，清除旧缓存并重新调用 SiliconFlow 嵌入 API
+# 缓存文件: output/embedding_cache/corpus_embeddings_contextual.npy
+```
+
+- [ ] **Step 4: 跑测试并通过**
+
+Run: `pytest tests/test_contextual_chunker.py -v`
+
+- [ ] **Step 5: 运行评测并验收**
+
+门禁：Recall@5 ≥ 0.45 且 MRR ≥ 0.30
+
+预期结果：
+
+| 指标 | Phase 5 (查询扩展) | Phase 6 (上下文切块) | 预期提升 |
+|------|--------------------|--------------------|---------|
+| Recall@5 | 0.40~0.45 | 0.45~0.52 | +10~15% |
+| MRR | 0.30~0.35 | 0.33~0.38 | +8~12% |
+| hard R@5 | ≥0.35 | ≥0.42 | +20% |
+
+> 这一步需要重新构建 embedding 缓存（~1656 chunks × API 调用），
+> 首次运行较慢（约 5-10 分钟），后续使用缓存。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add contextual_chunker.py chunk_vector_store.py tests/test_contextual_chunker.py \
+  BASELINE_METRICS.json output/embedding_cache/
+git commit -m "feat(context): Phase 6 — contextual retrieval with doc-level summaries"
+```
+
+---
+
+## Tier 2 阶段产出物
+
+- **Phase 4 产出**：Reranker A/B 对比报告（开/关 rerank 的指标差异）
+- **Phase 5 产出**：跨语言检索对比报告 + hard 子集提升分析
+- **Phase 6 产出**：上下文增强前后 embedding 质量对比 + 最终 Tier 2 指标
+
+---
+
+## Tier 2 执行顺序与门禁
+
+1. Phase 4 → Phase 5 → Phase 6（严格顺序，每阶段依赖上一阶段基线）
+2. Phase 4 门禁：Recall@5 ≥ 0.28 且 MRR ≥ 0.20
+3. Phase 5 门禁：Recall@5 ≥ 0.40 且 hard R@5 ≥ 0.35
+4. Phase 6 门禁：Recall@5 ≥ 0.45 且 MRR ≥ 0.30
+5. 任一阶段未达标：分析原因 → 调参重试 → 仍不达标则标记为"当前语料上限"并停止
+
+---
+
+## Tier 2 回滚规则
+
+- Phase 4 回滚：`--no-rerank` 关闭 reranker，回退到 RRF 粗排
+- Phase 5 回滚：`--no-expansion` 关闭查询扩展，仅用原始 query
+- Phase 6 回滚：切回旧 embedding 缓存文件 `corpus_embeddings.npy`
+
+---
+
+## Tier 2 ROI 与成本对比
+
+```
+Phase 4 (Reranker)     ████████████████░░░░  ROI ★★★★★  ~50 行代码  延迟 +130ms
+Phase 5 (查询扩展)     ██████████████░░░░░░  ROI ★★★★   ~120 行代码 延迟 +200ms + LLM 费用
+Phase 6 (上下文切块)   ██████████░░░░░░░░░░  ROI ★★★     ~80 行代码  一次性重建 embedding
+```
+
+---
+
+## 全局指标演进路线图
+
+```
+Phase    策略                      Recall@5    MRR       状态
+───────────────────────────────────────────────────────────────
+P0       评测闭环                  -           -         ✅ Done
+P1       结构感知切块              0.0483      0.0483    ✅ Done
+P3       BM25 + Graph              0.1304      0.0920    ✅ Done
+P2       + Dense(BGE-m3) RRF       0.1932      0.1231    ✅ Done
+─────────────── Tier 1 ↑ ──────────────────────────────────────
+P4       + Reranker                ~0.32       ~0.25     ⬜ Next
+P5       + 查询扩展/翻译           ~0.42       ~0.32     ⬜ Planned
+P6       + 上下文增强切块          ~0.48       ~0.35     ⬜ Planned
+─────────────── Tier 2 ↑ ──────────────────────────────────────
+```
