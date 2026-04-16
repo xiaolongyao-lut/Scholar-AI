@@ -138,3 +138,5 @@ c:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.venv-1\Scripts\python.exe .
 - Keep documentation aligned with the active runtime names before changing CI or smoke tests.
 - Prefer static imports for entrypoint wrappers unless dynamic loading is strictly required.
 - When changing batch or volume contracts, update `system_verification.py` and the smoke tests in the same change.
+- Use `sqlite_maintenance.py` for SQLite health checks, checkpointing, vacuuming, backup, and restore.
+- The writing runtime and resource stores default to `output/writing_runtime_state.sqlite3` and `output/writing_resources_state.sqlite3` unless overridden by `WRITING_RUNTIME_DB_PATH` or `WRITING_RESOURCE_DB_PATH`.

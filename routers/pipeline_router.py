@@ -8,18 +8,19 @@ import os
 import time
 from pathlib import Path
 from uuid import uuid4
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException
 from models import (
     PipelineRequest,
     PipelineTaskSubmitResponse,
     PipelineTaskStatusResponse,
     TaskState,
+    BatchProcessRequest,
 )
 
 logger = logging.getLogger("PipelineRouter")
-router = APIRouter(tags=["Pipeline"])
+router = APIRouter(tags=["Pipeline"], prefix="/pipeline")
 
 # Global task cache (moved from main adapter)
 TASKS: dict[str, dict[str, Any]] = {}
@@ -79,8 +80,8 @@ def _run_pipeline_core(request: PipelineRequest) -> dict[str, Any]:
     try:
         from integrated_pipeline import run_pipeline
         from python_adapter_server import get_pipeline_observer
-    except ImportError:
-        raise HTTPException(status_code=501, detail="Pipeline engine not available in this environment")
+    except ImportError as exc:
+        raise HTTPException(status_code=501, detail="Pipeline engine not available in this environment") from exc
 
     input_path = str(request.input_path).strip()
     goal = str(request.goal).strip()
@@ -108,7 +109,7 @@ def _read_json_file(path: Path) -> dict[str, Any]:
         with open(path, "r", encoding="utf-8") as handle:
             data = json.load(handle)
         return data if isinstance(data, dict) else {}
-    except Exception as exc:
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         logger.warning("Failed to load pipeline artifact %s: %s", path, exc)
         return {}
 
@@ -121,10 +122,26 @@ def _trim_text(value: Any, limit: int = 220) -> str:
     return text[: max(0, limit - 3)].rstrip() + "..."
 
 
-def _collect_pipeline_retrieval_hits(output_dir: str) -> tuple[list[str], list[dict[str, Any]]]:
-    """Read retrieval artifacts emitted by the pipeline and normalize them for association use."""
-    output_root = Path(output_dir)
-    retrieval_payload = _read_json_file(output_root / "02_hybrid_retrieval.json")
+def _extract_pipeline_artifacts(pipeline_result: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Return a shallow copy of any in-memory pipeline artifacts."""
+    if not isinstance(pipeline_result, Mapping):
+        return {}
+
+    artifacts: dict[str, Any] = {}
+    raw_artifacts = pipeline_result.get("artifacts")
+    if isinstance(raw_artifacts, Mapping):
+        artifacts.update(dict(raw_artifacts))
+
+    for key in ("retrieval_payload", "scoring_payload", "analysis_payloads", "focus_points"):
+        value = pipeline_result.get(key)
+        if value is not None and key not in artifacts:
+            artifacts[key] = value
+
+    return artifacts
+
+
+def _normalize_retrieval_payload(retrieval_payload: Mapping[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
+    """Normalize retrieval payload fields into focus points and hits."""
     raw_focus_points = retrieval_payload.get("focus_points", [])
     focus_points = [
         str(item).strip()
@@ -164,6 +181,21 @@ def _collect_pipeline_retrieval_hits(output_dir: str) -> tuple[list[str], list[d
                 }
             )
     return focus_points, retrieval_hits
+
+
+def _collect_pipeline_retrieval_hits(
+    output_dir: str,
+    pipeline_result: Mapping[str, Any] | None = None,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Read retrieval artifacts emitted by the pipeline and normalize them for association use."""
+    artifacts = _extract_pipeline_artifacts(pipeline_result)
+    retrieval_payload = artifacts.get("retrieval_payload")
+    if isinstance(retrieval_payload, Mapping):
+        return _normalize_retrieval_payload(retrieval_payload)
+
+    output_root = Path(output_dir)
+    retrieval_payload = _read_json_file(output_root / "02_hybrid_retrieval.json")
+    return _normalize_retrieval_payload(retrieval_payload)
 
 
 def _collect_scoring_hits(scoring_payload: Mapping[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
@@ -232,19 +264,37 @@ def _collect_scoring_hits(scoring_payload: Mapping[str, Any]) -> tuple[list[str]
     return focus_points, scoring_hits
 
 
-def _collect_pipeline_analysis_payloads(output_dir: str) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
+def _collect_pipeline_analysis_payloads(
+    output_dir: str,
+    pipeline_result: Mapping[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     """Load optional analysis artifacts that can enrich writing association output."""
     output_root = Path(output_dir)
     analysis_payloads: list[dict[str, Any]] = []
     focus_points: list[str] = []
     retrieval_hits: list[dict[str, Any]] = []
 
-    scoring_payload = _read_json_file(output_root / "03_academic_scoring.json")
-    if scoring_payload:
-        analysis_payloads.append(scoring_payload)
-        scoring_focus, scoring_hits = _collect_scoring_hits(scoring_payload)
-        focus_points.extend(scoring_focus)
-        retrieval_hits.extend(scoring_hits)
+    artifacts = _extract_pipeline_artifacts(pipeline_result)
+    raw_analysis_payloads = artifacts.get("analysis_payloads")
+    if isinstance(raw_analysis_payloads, list):
+        for payload in raw_analysis_payloads:
+            if not isinstance(payload, Mapping):
+                continue
+            payload_dict = dict(payload)
+            analysis_payloads.append(payload_dict)
+            scoring_focus, scoring_hits = _collect_scoring_hits(payload_dict)
+            focus_points.extend(scoring_focus)
+            retrieval_hits.extend(scoring_hits)
+    else:
+        scoring_payload = artifacts.get("scoring_payload")
+        if not isinstance(scoring_payload, Mapping):
+            scoring_payload = _read_json_file(output_root / "03_academic_scoring.json")
+        if scoring_payload:
+            payload_dict = dict(scoring_payload)
+            analysis_payloads.append(payload_dict)
+            scoring_focus, scoring_hits = _collect_scoring_hits(payload_dict)
+            focus_points.extend(scoring_focus)
+            retrieval_hits.extend(scoring_hits)
 
     for filename in (
         "04_reasoning_chain.json",
@@ -302,7 +352,7 @@ def _resolve_pipeline_memory_hits(request: PipelineRequest, association_query: s
         return []
     try:
         from python_adapter_server import get_memory_adapter
-    except Exception as exc:
+    except ImportError as exc:
         logger.warning("Memory adapter unavailable for pipeline association: %s", exc)
         return []
 
@@ -317,7 +367,7 @@ def _resolve_pipeline_memory_hits(request: PipelineRequest, association_query: s
             room=request.association_room,
             limit=request.association_memory_limit,
         )
-    except Exception as exc:
+    except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.warning("Pipeline association memory lookup failed: %s", exc)
         return []
 
@@ -343,7 +393,7 @@ def _resolve_pipeline_ai_adapter() -> Any | None:
         from routers.resources_router import get_ai_adapter
 
         return get_ai_adapter()
-    except Exception as exc:
+    except ImportError as exc:
         logger.warning("Association AI adapter unavailable for pipeline: %s", exc)
         return None
 
@@ -365,7 +415,7 @@ def _build_pipeline_association_bundle(
             build_association_bundle_from_runtime_context,
             apply_analysis_enrichment_to_bundle,
         )
-    except Exception as exc:
+    except ImportError as exc:
         logger.warning("Writing resource layer unavailable for pipeline association: %s", exc)
         return None
 
@@ -374,8 +424,8 @@ def _build_pipeline_association_bundle(
         if isinstance(request.association_query, str) and request.association_query.strip()
         else request.goal.strip()
     )
-    focus_points, retrieval_hits = _collect_pipeline_retrieval_hits(output_dir)
-    analysis_payloads, analysis_focus_points, analysis_hits = _collect_pipeline_analysis_payloads(output_dir)
+    focus_points, retrieval_hits = _collect_pipeline_retrieval_hits(output_dir, pipeline_result)
+    analysis_payloads, analysis_focus_points, analysis_hits = _collect_pipeline_analysis_payloads(output_dir, pipeline_result)
     merged_focus_points = list(
         dict.fromkeys([*focus_points, *[point for point in analysis_focus_points if point]])
     )
@@ -404,7 +454,7 @@ def _build_pipeline_association_bundle(
             base_bundle, analysis_payloads=analysis_payloads
         )
 
-    except Exception as exc:
+    except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.warning("Pipeline association bundle build failed: %s", exc)
         return None
 
@@ -442,7 +492,17 @@ async def _run_pipeline_async(task_id: str, request: PipelineRequest) -> None:
             TASKS[task_id]["error"] = None
             TASKS[task_id]["updated_at"] = _now_ts()
             await _cleanup_tasks_locked()
-    except Exception as exc:
+    except HTTPException as exc:
+        logger.error("Async pipeline task failed with HTTPException: %s", exc, exc_info=True)
+        async with TASKS_LOCK:
+            TASKS[task_id]["status"] = TaskState.failed.value
+            TASKS[task_id]["progress"] = 1.0
+            TASKS[task_id]["stage"] = "failed"
+            TASKS[task_id]["result"] = None
+            TASKS[task_id]["error"] = str(exc.detail)
+            TASKS[task_id]["updated_at"] = _now_ts()
+            await _cleanup_tasks_locked()
+    except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.error("Async pipeline task failed: %s", exc, exc_info=True)
         async with TASKS_LOCK:
             TASKS[task_id]["status"] = TaskState.failed.value
@@ -460,7 +520,7 @@ async def run_pipeline_endpoint(request: PipelineRequest) -> dict[str, Any]:
     logger.info("Received pipeline request for %s", request.input_path)
     try:
         return await asyncio.to_thread(_run_pipeline_sync, request)
-    except Exception as exc:
+    except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.error("Pipeline execution failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -501,3 +561,98 @@ async def get_pipeline_task_status(task_id: str) -> PipelineTaskStatusResponse:
             result=task.get("result"),
             error=task.get("error"),
         )
+
+
+async def _update_batch_task_progress(task_id: str, progress: float, stage: str) -> None:
+    """Update batch task progress from controller callbacks."""
+    async with TASKS_LOCK:
+        task = TASKS.get(task_id)
+        if task is None:
+            return
+        if str(task.get("status")) != TaskState.running.value:
+            return
+        task["progress"] = max(0.0, min(100.0, float(progress)))
+        if stage:
+            task["stage"] = stage
+        task["updated_at"] = _now_ts()
+
+
+async def _run_batch_processing_task(task_id: str, pdf_folder: str, output_root: str, 
+                                      goal: str, batch_size: int = 13) -> None:
+    """Execute batch processing in async context and update task state."""
+    try:
+        async with TASKS_LOCK:
+            TASKS[task_id]["status"] = TaskState.running.value
+            TASKS[task_id]["stage"] = "Processing PDFs"
+            TASKS[task_id]["progress"] = 0.0
+            TASKS[task_id]["updated_at"] = _now_ts()
+        
+        # Import batch controller
+        from batch_controller import BatchProcessController
+
+        loop = asyncio.get_running_loop()
+
+        def _progress_callback(raw_progress: float, stage: str) -> None:
+            value = float(raw_progress)
+            normalized = value * 100.0 if 0.0 <= value <= 1.0 else value
+            loop.call_soon_threadsafe(
+                asyncio.create_task,
+                _update_batch_task_progress(task_id, normalized, stage),
+            )
+        
+        # Run batch processing in thread pool
+        def _batch_sync():
+            controller = BatchProcessController(
+                pdf_folder=pdf_folder,
+                output_root=output_root,
+                goal=goal,
+                batch_size=batch_size,
+                enable_llm=True,
+                progress_callback=_progress_callback,
+            )
+            report = controller.process_batch()
+            return report
+        
+        report = await asyncio.to_thread(_batch_sync)
+        
+        async with TASKS_LOCK:
+            TASKS[task_id]["status"] = TaskState.succeeded.value
+            TASKS[task_id]["stage"] = "Completed"
+            TASKS[task_id]["progress"] = 100.0
+            TASKS[task_id]["result"] = {
+                "batch_report": report,
+                "message": "Batch processing completed successfully"
+            }
+            TASKS[task_id]["updated_at"] = _now_ts()
+            await _cleanup_tasks_locked()
+    except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        logger.error("Batch processing task %s failed: %s", task_id, exc, exc_info=True)
+        async with TASKS_LOCK:
+            TASKS[task_id]["status"] = TaskState.failed.value
+            TASKS[task_id]["stage"] = "Failed"
+            TASKS[task_id]["error"] = str(exc)
+            TASKS[task_id]["updated_at"] = _now_ts()
+            await _cleanup_tasks_locked()
+
+
+@router.post("/batch/submit", response_model=PipelineTaskSubmitResponse)
+async def submit_batch_processing(request: BatchProcessRequest) -> PipelineTaskSubmitResponse:
+    """Submit a batch PDF processing job."""
+    logger.info("Received batch processing request for folder %s", request.pdf_folder)
+    task_id = uuid4().hex
+    async with TASKS_LOCK:
+        await _cleanup_tasks_locked()
+        TASKS[task_id] = {
+            "status": TaskState.queued.value,
+            "progress": 0.0,
+            "stage": "queued",
+            "result": None,
+            "error": None,
+            "updated_at": _now_ts(),
+            "task_type": "batch_processing",
+            "pdf_folder": request.pdf_folder,
+            "output_root": request.output_root,
+        }
+    asyncio.create_task(_run_batch_processing_task(task_id, request.pdf_folder, request.output_root, request.goal, request.batch_size))
+    return PipelineTaskSubmitResponse(task_id=task_id, status=TaskState.queued.value)
+

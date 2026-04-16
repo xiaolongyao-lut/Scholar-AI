@@ -183,6 +183,10 @@ class WritingSkillService:
         if not skill_id or not self._registry.has(skill_id):
             raise ValueError(f"Skill not found for action: {action_id}")
         
+        return self.run_skill(skill_id=skill_id, input_text=input_text, scope=scope, output_mode=output_mode)
+
+    def run_skill(self, skill_id, input_text, scope=None, output_mode=None):
+        """Run a skill directly by skill ID."""
         return self._run_skill(skill_id=skill_id, input_text=input_text, scope=scope, output_mode=output_mode)
     
     def _run_skill(self, skill_id, input_text, scope=None, output_mode=None):

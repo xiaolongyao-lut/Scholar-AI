@@ -142,9 +142,10 @@ class RecoveryRecommendationEngine:
         self.telemetry = get_recovery_telemetry()
 
     def generate_recommendations(self, request: RecommendationRequest) -> RecommendationsResult:
-        start_time = utc_now()
-        
-        # Load evidence
+        with self.telemetry.trace("recovery.generate_recommendations", job_id=request.job_id) as span:
+            start_time = utc_now()
+            
+            # Load evidence
         events = self._load_events(request.job_id)
         facts = self._load_facts(request.job_id)
         
@@ -197,6 +198,10 @@ class RecoveryRecommendationEngine:
             generation_duration_ms=duration_ms
         )
         
+        span.set_attribute("alternatives_count", len(alternatives))
+        span.set_attribute("has_recommendation", primary is not None)
+        span.set_attribute("total_evidence", result.total_evidence_considered)
+        
         # Record metrics for observability
         self.metrics.record_recommendation_generation(
             request_id=result.request_id,
@@ -213,13 +218,6 @@ class RecoveryRecommendationEngine:
                 "fact": len(facts),
                 "memory": len(memory_hit_ids)
             }
-        )
-        
-        # Record trace span for observability
-        self.metrics.record_trace_span(
-            name="generate_recommendations",
-            duration_ms=duration_ms,
-            error=False
         )
         
         self._emit_recommendation_audit(result, request)

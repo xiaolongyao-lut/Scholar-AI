@@ -24,6 +24,7 @@ from datetime_utils import utc_now_iso_z
 from recovery_autopilot_policy import AutopilotPolicy
 from canonical_event_store import CanonicalEventStore
 from memory_fact_store import MemoryFactStore
+from recovery_telemetry import get_recovery_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +90,12 @@ class AutopilotControlPlane:
         Returns:
             True if successfully enabled, False if already enabled
         """
-        if self._state == ControlPlaneState.ENABLED:
-            logger.warning(f"Autopilot already enabled; request from {operator_id}")
-            return False
+        telemetry = get_recovery_telemetry()
+        with telemetry.trace("autopilot.control.enable", operator_id=operator_id, policy_id=policy.policy_id) as span:
+            if self._state == ControlPlaneState.ENABLED:
+                logger.warning(f"Autopilot already enabled; request from {operator_id}")
+                span.set_attribute("status", "already_enabled")
+                return False
         
         # Create and log canonical event (primary audit trail)
         from uuid import uuid4
@@ -135,9 +139,12 @@ class AutopilotControlPlane:
         Returns:
             True if successfully disabled, False if already disabled
         """
-        if self._state == ControlPlaneState.DISABLED:
-            logger.warning(f"Autopilot already disabled; request from {operator_id}")
-            return False
+        telemetry = get_recovery_telemetry()
+        with telemetry.trace("autopilot.control.disable", operator_id=operator_id) as span:
+            if self._state == ControlPlaneState.DISABLED:
+                logger.warning(f"Autopilot already disabled; request from {operator_id}")
+                span.set_attribute("status", "already_disabled")
+                return False
         
         # Create and log canonical event (primary audit trail)
         from uuid import uuid4
@@ -180,9 +187,12 @@ class AutopilotControlPlane:
         Returns:
             True if emergency stop triggered, False if already stopped
         """
-        if self._state == ControlPlaneState.EMERGENCY_STOPPED:
-            logger.warning(f"Autopilot already in emergency stop; request from {operator_id}")
-            return False
+        telemetry = get_recovery_telemetry()
+        with telemetry.trace("autopilot.control.emergency_stop", operator_id=operator_id) as span:
+            if self._state == ControlPlaneState.EMERGENCY_STOPPED:
+                logger.warning(f"Autopilot already in emergency stop; request from {operator_id}")
+                span.set_attribute("status", "already_stopped")
+                return False
         
         prev_state = self._state
         
@@ -226,9 +236,12 @@ class AutopilotControlPlane:
         Returns:
             True if successfully resumed, False if not in emergency stop
         """
-        if self._state != ControlPlaneState.EMERGENCY_STOPPED:
-            logger.warning(f"Autopilot not in emergency stop; resume request from {operator_id}")
-            return False
+        telemetry = get_recovery_telemetry()
+        with telemetry.trace("autopilot.control.resume_from_emergency", operator_id=operator_id) as span:
+            if self._state != ControlPlaneState.EMERGENCY_STOPPED:
+                logger.warning(f"Autopilot not in emergency stop; resume request from {operator_id}")
+                span.set_attribute("status", "not_stopped")
+                return False
         
         # Create and log canonical event (primary audit trail)
         from uuid import uuid4
@@ -275,9 +288,12 @@ class AutopilotControlPlane:
         Returns:
             True if policy updated, False if not enabled
         """
-        if self._state != ControlPlaneState.ENABLED:
-            logger.warning(f"Cannot change policy when not enabled; request from {operator_id}")
-            return False
+        telemetry = get_recovery_telemetry()
+        with telemetry.trace("autopilot.control.set_policy", operator_id=operator_id, new_policy_id=policy.policy_id) as span:
+            if self._state != ControlPlaneState.ENABLED:
+                logger.warning(f"Cannot change policy when not enabled; request from {operator_id}")
+                span.set_attribute("status", "not_enabled")
+                return False
         
         # Create and log canonical event (primary audit trail)
         from uuid import uuid4

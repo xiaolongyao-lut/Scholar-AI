@@ -531,12 +531,12 @@ class RAGWorkflow:
 
             self._association_ai_adapter = AIAdapter(
                 api_key=(
-                    os.environ.get("OPENAI_API_KEY")
-                    or os.environ.get("ARK_API_KEY")
+                    os.environ.get("ARK_API_KEY")
+                    or os.environ.get("OPENAI_API_KEY")
                     or os.environ.get("SILICONFLOW_API_KEY")
                 ),
-                base_url=os.environ.get("OPENAI_BASE_URL") or os.environ.get("ARK_BASE_URL"),
-                model=os.environ.get("OPENAI_MODEL") or os.environ.get("ARK_MODEL"),
+                base_url=os.environ.get("ARK_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
+                model=os.environ.get("ARK_MODEL") or os.environ.get("OPENAI_MODEL"),
             )
         except Exception as exc:  # pragma: no cover - optional integration path
             logger.warning("Association AI adapter unavailable for workflow: %s", exc)

@@ -1,0 +1,41 @@
+{
+  "schema_version": "v2.graph-aware",
+  "source_pdf": "C:\\Users\\xiao\\Desktop\\wenxianku\\Dice_Pyramid_Cards_Large.pdf",
+  "goal": "Conclusion Extraction",
+  "stage_manifest": {
+    "stage_01_extract": {
+      "status": "unknown",
+      "key_counts": {
+        "sections": 0,
+        "chunks": 0,
+        "figures": 0,
+        "tables": 0
+      }
+    },
+    "stage_02_binding": {
+      "status": "binding_ready",
+      "key_counts": {
+        "relation_edges": 0,
+        "evidence_clusters": 0
+      }
+    },
+    "stage_03_analysis": {
+      "status": "analysis_complete",
+      "goal": "Conclusion Extraction",
+      "writing_points": 0
+    }
+  },
+  "quality_gates": {
+    "has_writing_points": false,
+    "has_evidence_links": false,
+    "has_clusters": false,
+    "writing_points_have_boundary_notes": true,
+    "overall_pass": false
+  },
+  "writing_points": [],
+  "figures": [],
+  "tables": [],
+  "parameters": [],
+  "results": [],
+  "references": []
+}

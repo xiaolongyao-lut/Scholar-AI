@@ -1,0 +1,5 @@
+@prefix welding: <http://welding.knowledge.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+welding:LaserPower welding:Increases welding:MeltDepth ;
+    welding:confidence 0.95^^xsd:float .

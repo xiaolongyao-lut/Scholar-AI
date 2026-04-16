@@ -1,68 +1,68 @@
-import os
-import shutil
 import hashlib
 import json
-import time
+import shutil
 from pathlib import Path
+from typing import Any
 
-def compute_sha256(filepath):
+from datetime_utils import utc_now_iso_z
+from sqlite_maintenance import backup_report
+
+
+BASELINE_SNAPSHOT_ID = "v1.0-baseline"
+BASELINE_ROOT = Path("_backups/v1.0-baseline")
+LEGACY_METADATA_FILES = ("eval_queries_v1.0.jsonl", "BASELINE_METRICS.json")
+
+
+def compute_sha256(filepath: Path) -> str:
     hasher = hashlib.sha256()
-    with open(filepath, "rb") as f:
+    with filepath.open("rb") as f:
         while chunk := f.read(8192):
             hasher.update(chunk)
     return hasher.hexdigest()
 
-def create_snapshot():
-    backup_root = Path("_backups/v1.0-baseline")
-    backup_root.mkdir(parents=True, exist_ok=True)
-    
-    (backup_root / "databases").mkdir(exist_ok=True)
-    (backup_root / "metadata").mkdir(exist_ok=True)
-    
-    db_info = {}
-    # 核心数据库
-    for db in ["harness_canonical_events.db", "harness_facts.db", "harness_state.db"]:
-        src = Path(db)
+
+def _copy_metadata_files(backup_root: Path) -> dict[str, dict[str, Any]]:
+    metadata_root = backup_root / "metadata"
+    metadata_root.mkdir(parents=True, exist_ok=True)
+
+    metadata_info: dict[str, dict[str, Any]] = {}
+    for filename in LEGACY_METADATA_FILES:
+        src = Path(filename)
         if src.exists():
-            dst = backup_root / "databases" / db
+            dst = metadata_root / filename
             shutil.copy2(src, dst)
-            db_info[db] = {
+            metadata_info[filename] = {
+                "checksum": compute_sha256(dst),
+                "backup_path": str(dst),
                 "size_bytes": dst.stat().st_size,
-                "checksum": compute_sha256(dst)
             }
-            
-    metadata_info = {}
-    # 核心配置文件和生成物
-    for f in ["eval_queries_v1.0.jsonl", "BASELINE_METRICS.json"]:
-        src = Path(f)
-        if src.exists():
-            dst = backup_root / "metadata" / f
-            shutil.copy2(src, dst)
-            metadata_info[f] = {
-                "checksum": compute_sha256(dst)
-            }
-    
+    return metadata_info
+
+
+def create_snapshot() -> dict[str, Any]:
+    BASELINE_ROOT.mkdir(parents=True, exist_ok=True)
+
+    database_manifest = backup_report(BASELINE_ROOT, target_scope="both", snapshot_id=BASELINE_SNAPSHOT_ID)
+    metadata_info = _copy_metadata_files(BASELINE_ROOT)
+
     manifest = {
-        "snapshot_id": "v1.0-baseline",
-        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "databases": db_info,
+        "snapshot_id": BASELINE_SNAPSHOT_ID,
+        "created_at": utc_now_iso_z(),
+        "databases": database_manifest["databases"],
         "metadata": metadata_info,
         "verification": {
-            "all_files_present": True
-        }
+            "all_files_present": all(Path(entry["backup_path"]).exists() for entry in database_manifest["databases"].values())
+            and all((BASELINE_ROOT / "metadata" / name).exists() for name in metadata_info),
+        },
+        "sqlite_manifest_path": database_manifest["manifest_path"],
+        "managed_targets": database_manifest["targets"],
     }
     
-    with open(backup_root / "BASELINE_SNAPSHOT_MANIFEST.json", "w", encoding="utf-8") as f:
+    with open(BASELINE_ROOT / "BASELINE_SNAPSHOT_MANIFEST.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
-        
-    print(f"Snapshot v1.0-baseline created at {backup_root}")
-    
-    # 尝试创建 Git Tag
-    try:
-        os.system('git tag -a v1.0-baseline-snapshot -m "P0 Baseline Snapshot"')
-        print("Git tag v1.0-baseline-snapshot created.")
-    except:
-        print("Warning: Failed to create git tag.")
 
+    print(f"Snapshot {BASELINE_SNAPSHOT_ID} created at {BASELINE_ROOT}")
+    return manifest
+    
 if __name__ == "__main__":
     create_snapshot()

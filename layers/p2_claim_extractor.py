@@ -73,7 +73,7 @@ class ClaimExtractor:
         if self.cache:
             self.cache.save_claims(
                 chunk_sig, 
-                [c.__dict__ for c in final_claims],
+                [c.model_dump() if hasattr(c, 'model_dump') else c.__dict__ for c in final_claims],
                 metadata={"doc_id": source.doc_id, "llm_model": "integrated"}
             )
         

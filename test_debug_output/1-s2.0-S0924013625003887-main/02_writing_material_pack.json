@@ -1,0 +1,1207 @@
+{
+  "goal": "Conclusion Extraction",
+  "goal_profile": {
+    "method_focus": false,
+    "image_focus": false,
+    "process_focus": false,
+    "performance_focus": false,
+    "mechanism_focus": false
+  },
+  "status": "ok",
+  "pipeline_stage": "S3_target_material_packaging",
+  "pack_summary": {
+    "selected_writing_points": 12,
+    "selected_figures": 1,
+    "selected_tables": 0,
+    "selected_references": 0,
+    "selected_parameters": 0,
+    "selected_results": 0,
+    "evidence_bundles": 12,
+    "semantic_themes": 3
+  },
+  "quality_gates": {
+    "has_writing_points": true,
+    "has_figure_level_evidence": true,
+    "has_original_reference_markers": false,
+    "has_boundary_notes": false,
+    "has_semantic_themes": true
+  },
+  "semantic_themes": [
+    {
+      "theme_id": "theme_001",
+      "theme_title": "discussion",
+      "summary": "本主题围绕“discussion”展开论述，整合了 9 个关键写作点。核心论点包括：346 (2025) 119098；Contents lists available at ScienceDirect。",
+      "order_score": 2.42,
+      "linked_writing_point_ids": [
+        "wp001",
+        "wp002",
+        "wp004",
+        "wp006",
+        "wp009",
+        "wp012",
+        "wp017",
+        "wp018",
+        "wp019"
+      ],
+      "linked_figure_ids": [
+        "f1"
+      ],
+      "linked_table_ids": [],
+      "linked_reference_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": []
+    },
+    {
+      "theme_id": "theme_002",
+      "theme_title": "mechanism",
+      "summary": "本主题围绕“mechanism”展开论述，整合了 2 个关键写作点。核心论点包括：With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction…；complex microstructures and intrinsic anisotropy may lead to distinct behaviors…。",
+      "order_score": 0.538,
+      "linked_writing_point_ids": [
+        "wp013",
+        "wp015"
+      ],
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_reference_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": []
+    },
+    {
+      "theme_id": "theme_003",
+      "theme_title": "result",
+      "summary": "本主题围绕“result”展开论述，整合了 1 个关键写作点。核心论点包括：These charac­ teristics enhance the strength [8,9] and high-temperature perform…。",
+      "order_score": 0.269,
+      "linked_writing_point_ids": [
+        "wp016"
+      ],
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_reference_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": []
+    }
+  ],
+  "writing_point_cards": [
+    {
+      "writing_point_id": "wp001",
+      "claim": "346 (2025) 119098",
+      "representative_claim": "346 (2025) 119098",
+      "claim_preview": "346 (2025) 119098",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Journal of Materials Processing Tech. 346 (2025) 119098",
+      "source_text_preview": "Journal of Materials Processing Tech. 346 (2025) 119098",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp002",
+      "claim": "Contents lists available at ScienceDirect",
+      "representative_claim": "Contents lists available at ScienceDirect",
+      "claim_preview": "Contents lists available at ScienceDirect",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Contents lists available at ScienceDirect",
+      "source_text_preview": "Contents lists available at ScienceDirect",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp004",
+      "claim": "journal homepage: www.elsevier.com/locate/jmatprotec",
+      "representative_claim": "journal homepage: www.elsevier.com/locate/jmatprotec",
+      "claim_preview": "journal homepage: www.elsevier.com/locate/jmatprotec",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "journal homepage: www.elsevier.com/locate/jmatprotec",
+      "source_text_preview": "journal homepage: www.elsevier.com/locate/jmatprotec",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp006",
+      "claim": "Microstructural evolution and strengthening mechanisms of gas tungsten arc welded nickel-based superalloy joints processed by laser powder bed fusion: Effects of welding direction and heat input",
+      "representative_claim": "Microstructural evolution and strengthening mechanisms of gas tungsten arc welded nickel-based superalloy joints processed by laser powder bed fusion: Effects of welding direction and heat input",
+      "claim_preview": "Microstructural evolution and strengthening mechanisms of gas tungsten arc welded nickel-based superalloy joints processed by laser powder bed fusion: Effects of welding direction and heat input",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Microstructural evolution and strengthening mechanisms of gas tungsten arc welded nickel-based superalloy joints processed by laser powder bed fusion: Effects of welding direction and heat input",
+      "source_text_preview": "Microstructural evolution and strengthening mechanisms of gas tungsten arc welded nickel-based superalloy joints processed by laser powder bed fusion: Effects of welding direction and heat input",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [
+        "f1"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [
+          "f1"
+        ],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "1 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [
+        {
+          "figure_id": "f1",
+          "page": 2,
+          "caption": "Fig. 1. Schematic of the autogenous gas tungsten arc welding of laser powder bed fusion-produced ZGH4142 superalloy. Direction A corresponds to the build direction, direction B is the scanning direction, and direction C corresponds to the thickness direction. The red and blue dashed boxes indicate welding along di­ rections A and B, respectively.",
+          "relevance_score": 0.5
+        }
+      ],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp009",
+      "claim": "a State Key Laboratory of Precision Welding & Joining of Materials and Structures, Harbin Institute of Technology, Harbin 150001, China b Suzhou Laboratory, No.388, Ruoshui Street, SIP, Jiangsu 215123, China c Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engineering, Shanghai Jiao Tong University, Shanghai 200240, China",
+      "representative_claim": "a State Key Laboratory of Precision Welding & Joining of Materials and Structures, Harbin Institute of Technology, Harbin 150001, China b Suzhou Laboratory, No.388, Ruoshui Street, SIP, Jiangsu 215123, China c Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engineering, Shanghai Jiao Tong University, Shanghai 200240, China",
+      "claim_preview": "a State Key Laboratory of Precision Welding & Joining of Materials and Structures, Harbin Institute of Technology, Harbin 150001, China b Suzhou Laboratory, No.388, Ruoshui Street, SIP, Jiangsu 215123, China c Shanghai…",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "a State Key Laboratory of Precision Welding & Joining of Materials and Structures, Harbin Institute of Technology, Harbin 150001, China b Suzhou Laboratory, No.388, Ruoshui Street, SIP, Jiangsu 215123, China c Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engineering, Shanghai Jiao Tong University, Shanghai 200240, China",
+      "source_text_preview": "a State Key Laboratory of Precision Welding & Joining of Materials and Structures, Harbin Institute of Technology, Harbin 150001, China b Suzhou Laboratory, No.388, Ruoshui Street, SIP, Jiangsu 215123, China c Shanghai Key Laboratory of Advanced High-Temperat…",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp012",
+      "claim": "Keywords: Nickel-based superalloy Laser powder bed fusion Gas tungsten arc welding Microstructure evolution Mechanical properties",
+      "representative_claim": "Keywords: Nickel-based superalloy Laser powder bed fusion Gas tungsten arc welding Microstructure evolution Mechanical properties",
+      "claim_preview": "Keywords: Nickel-based superalloy Laser powder bed fusion Gas tungsten arc welding Microstructure evolution Mechanical properties",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Keywords: Nickel-based superalloy Laser powder bed fusion Gas tungsten arc welding Microstructure evolution Mechanical properties",
+      "source_text_preview": "Keywords: Nickel-based superalloy Laser powder bed fusion Gas tungsten arc welding Microstructure evolution Mechanical properties",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [
+        "f1"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [
+          "f1"
+        ],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "1 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [
+        {
+          "figure_id": "f1",
+          "page": 2,
+          "caption": "Fig. 1. Schematic of the autogenous gas tungsten arc welding of laser powder bed fusion-produced ZGH4142 superalloy. Direction A corresponds to the build direction, direction B is the scanning direction, and direction C corresponds to the thickness direction. The red and blue dashed boxes indicate welding along di­ rections A and B, respectively.",
+          "relevance_score": 0.5
+        }
+      ],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp013",
+      "claim": "With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction increased from 14 % to 33 %, shifting the dominant strengthening mechanism from grain refinement to dislocation strengthening.",
+      "representative_claim": "With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction increased from 14 % to 33 %, shifting the dominant strengthening mechanism from grain refinement to dislocation strengthening.",
+      "claim_preview": "With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction increased from 14 % to 33 %, shifting the dominant strengthening mechanism from grain refinement to dislocation strengthening.",
+      "point_type": "mechanism",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Laser powder bed fusion (LPBF) imparts nickel-based superalloys with unique non-equilibrium microstructural features; however, their influence on the welding microstructure evolution and mechanical performance remains insufficiently understood. In this study, autogenous gas tungsten arc welding was applied to precipitation- strengthened ZGH4142 superalloy fabricated by LPBF. Microstructural characterization combined with finite element simulation was used to systematically clarify the effects of heat input and welding direction on the structure and properties of the welded joint. The results revealed that the weld morphology and pool geometry enlarged with increasing heat input, and fine equiaxed grains in the weld center transformed to coarse equiaxed ones. With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction increased from 14 % to 33 %, shifting the dominant strengthening mechanism from grain refinement to dislocation strengthening. The joints exhibited a typical “M-shaped” hardness profile, with the heat-affected zone (HAZ) and weld zone (WZ) showing the highest and lowest hardness, respectively. Quantitative strengthening analysis indicated that the base metal and WZ were mainly governed by solid-solution strengthening, and the HAZ exhibited predominantly dislocation strengthening. Electron backscattered diffraction analysis further revealed that the grain orientation and low- angle grain boundary fractions were sensitive to the welding direction, reflecting the intrinsic anisotropy of the LPBF-processed alloys. These findings provide fundamental insights and practical guidance for welding evaluation and process optimization of additively manufactured nickel-based superalloys.",
+      "source_text_preview": "Laser powder bed fusion (LPBF) imparts nickel-based superalloys with unique non-equilibrium microstructural features; however, their influence on the welding microstructure evolution and mechanical performance remains insufficiently understood. In this study,…",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp015",
+      "claim": "complex microstructures and intrinsic anisotropy may lead to distinct behaviors during subsequent welding and service compared with con­ ventional cast-and-wrought alloys, and a systematic understanding of their weldability remains limited.",
+      "representative_claim": "complex microstructures and intrinsic anisotropy may lead to distinct behaviors during subsequent welding and service compared with con­ ventional cast-and-wrought alloys, and a systematic understanding of their weldability remains limited.",
+      "claim_preview": "complex microstructures and intrinsic anisotropy may lead to distinct behaviors during subsequent welding and service compared with con­ ventional cast-and-wrought alloys, and a systematic understanding of their weldabi…",
+      "point_type": "mechanism",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "complex microstructures and intrinsic anisotropy may lead to distinct behaviors during subsequent welding and service compared with con­ ventional cast-and-wrought alloys, and a systematic understanding of their weldability remains limited.",
+      "source_text_preview": "complex microstructures and intrinsic anisotropy may lead to distinct behaviors during subsequent welding and service compared with con­ ventional cast-and-wrought alloys, and a systematic understanding of their weldability remains limited.",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp016",
+      "claim": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+      "representative_claim": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+      "claim_preview": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+      "point_type": "result",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Laser powder bed fusion (LPBF [1]), a representative technique of metal additive manufacturing, enables the fabrication of complex structures with high precision owing to its high energy density, rapid solidification, and layer-by-layer deposition [2,3]. The LPBF process imparts unique non-equilibrium microstructural features to alloys [4,5], such as cellular sub-grains, strong crystallographic texture, high dislo­ cation density, and supersaturated solid solution [6,7]. These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13]. However, such",
+      "source_text_preview": "Laser powder bed fusion (LPBF [1]), a representative technique of metal additive manufacturing, enables the fabrication of complex structures with high precision owing to its high energy density, rapid solidification, and layer-by-layer deposition [2,3]. The…",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp017",
+      "claim": "Precipitation-strengthened super­ alloys rely on γ′ (Ni3(Al, Ti, Ta)) as the primary strengthening phase [15], which provides excellent creep resistance and long-term stability under elevated temperatures [16].",
+      "representative_claim": "Precipitation-strengthened super­ alloys rely on γ′ (Ni3(Al, Ti, Ta)) as the primary strengthening phase [15], which provides excellent creep resistance and long-term stability under elevated temperatures [16].",
+      "claim_preview": "Precipitation-strengthened super­ alloys rely on γ′ (Ni3(Al, Ti, Ta)) as the primary strengthening phase [15], which provides excellent creep resistance and long-term stability under elevated temperatures [16].",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Nickel-based superalloys [14] are important high-temperature structural materials with extensive applications in aerospace, power generation, chemical processing, etc. Precipitation-strengthened super­ alloys rely on γ′ (Ni3(Al, Ti, Ta)) as the primary strengthening phase [15], which provides excellent creep resistance and long-term stability under elevated temperatures [16]. Conventional weldability assess­ ments typically estimate the hot-cracking susceptibility based on the Al + Ti + Ta content [17], which is valid for cast-and-wrought alloys but",
+      "source_text_preview": "Nickel-based superalloys [14] are important high-temperature structural materials with extensive applications in aerospace, power generation, chemical processing, etc. Precipitation-strengthened super­ alloys rely on γ′ (Ni3(Al, Ti, Ta)) as the primary streng…",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp018",
+      "claim": "* Corresponding author at: Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engi­ neering, Shanghai Jiao Tong University, Shanghai 200240, China.",
+      "representative_claim": "* Corresponding author at: Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engi­ neering, Shanghai Jiao Tong University, Shanghai 200240, China.",
+      "claim_preview": "* Corresponding author at: Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engi­ neering, Shanghai Jiao Tong University, Shanghai 200240, China.",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "* Corresponding author at: Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engi­ neering, Shanghai Jiao Tong University, Shanghai 200240, China.",
+      "source_text_preview": "* Corresponding author at: Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engi­ neering, Shanghai Jiao Tong University, Shanghai 200240, China.",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp019",
+      "claim": "** Corresponding author.",
+      "representative_claim": "** Corresponding author.",
+      "claim_preview": "** Corresponding author.",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "** Corresponding author. E-mail addresses: glzhu@sjtu.edu.cn (G. Zhu), sblin@hit.edu.cn (S. Lin).",
+      "source_text_preview": "** Corresponding author. E-mail addresses: glzhu@sjtu.edu.cn (G. Zhu), sblin@hit.edu.cn (S. Lin).",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    }
+  ],
+  "single_figure_cards": [],
+  "single_table_cards": [],
+  "selected_parameter_cards": [],
+  "selected_result_cards": [],
+  "reference_directory_with_original_markers": [],
+  "evidence_bundles": [
+    {
+      "bundle_id": "bundle::wp001",
+      "writing_point_id": "wp001",
+      "claim": "346 (2025) 119098",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp002",
+      "writing_point_id": "wp002",
+      "claim": "Contents lists available at ScienceDirect",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp004",
+      "writing_point_id": "wp004",
+      "claim": "journal homepage: www.elsevier.com/locate/jmatprotec",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp006",
+      "writing_point_id": "wp006",
+      "claim": "Microstructural evolution and strengthening mechanisms of gas tungsten arc welded nickel-based superalloy joints processed by laser powder bed fusion: Effects of welding direction and heat input",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [
+        "f1"
+      ],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "1 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp009",
+      "writing_point_id": "wp009",
+      "claim": "a State Key Laboratory of Precision Welding & Joining of Materials and Structures, Harbin Institute of Technology, Harbin 150001, China b Suzhou Laboratory, No.388, Ruoshui Street, SIP, Jiangsu 215123, China c Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engineering, Shanghai Jiao Tong University, Shanghai 200240, China",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp012",
+      "writing_point_id": "wp012",
+      "claim": "Keywords: Nickel-based superalloy Laser powder bed fusion Gas tungsten arc welding Microstructure evolution Mechanical properties",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [
+        "f1"
+      ],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "1 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp013",
+      "writing_point_id": "wp013",
+      "claim": "With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction increased from 14 % to 33 %, shifting the dominant strengthening mechanism from grain refinement to dislocation strengthening.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp015",
+      "writing_point_id": "wp015",
+      "claim": "complex microstructures and intrinsic anisotropy may lead to distinct behaviors during subsequent welding and service compared with con­ ventional cast-and-wrought alloys, and a systematic understanding of their weldability remains limited.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp016",
+      "writing_point_id": "wp016",
+      "claim": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp017",
+      "writing_point_id": "wp017",
+      "claim": "Precipitation-strengthened super­ alloys rely on γ′ (Ni3(Al, Ti, Ta)) as the primary strengthening phase [15], which provides excellent creep resistance and long-term stability under elevated temperatures [16].",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp018",
+      "writing_point_id": "wp018",
+      "claim": "* Corresponding author at: Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engi­ neering, Shanghai Jiao Tong University, Shanghai 200240, China.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp019",
+      "writing_point_id": "wp019",
+      "claim": "** Corresponding author.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    }
+  ],
+  "boundary_summary": {},
+  "stats_analysis": {
+    "writing_point_count": 100,
+    "selected_writing_point_count": 12,
+    "selected_figure_count": 1,
+    "selected_table_count": 0
+  },
+  "source_analysis_status": "analysis_complete",
+  "source_pdf": "",
+  "paper_title": "1-s2.0-S0924013625003887-main",
+  "schema_version": "v3.academic-synthesis",
+  "pipeline_id": "1-s2.0-S0924013625003887-main",
+  "llm_status": "disabled_missing_dependency",
+  "causal_dag": {
+    "nodes": [
+      {
+        "id": "d weld­ ability when fabricated using LPBF [10]"
+      },
+      {
+        "id": "complex microstructures and intrinsic anisotropy may"
+      },
+      {
+        "id": "This distribution is consistent with the microstructural features: coarse grains"
+      },
+      {
+        "id": "from 16 to 30 nm, and the volume fraction in­ creases from 10 % to 30 %"
+      },
+      {
+        "id": "With"
+      },
+      {
+        "id": "The heat input and cooling rate strongly"
+      },
+      {
+        "id": "as calculated from the nanoindentation load–displacement data (Fig."
+      },
+      {
+        "id": "grain coarsening and dislocation annihi­ lation;"
+      },
+      {
+        "id": "underscoring the critical role of γ′ pre­ cipitation in strengthening."
+      },
+      {
+        "id": "in the heat input, the secondary dendrite arm spacing (λ₂) increases from 5.39 t"
+      },
+      {
+        "id": "the morphology and distribution of precipitates [42]"
+      },
+      {
+        "id": "microstrain [43] and increased dislocation density [44]"
+      },
+      {
+        "id": "The fine-grained microstructure, high dislocation density, and anisotropy of LPB"
+      },
+      {
+        "id": "During the LPBF process, the alloy is subjected to repeated non- equilibrium the"
+      },
+      {
+        "id": "in the heat input enlarged the molten pool (Fig"
+      },
+      {
+        "id": "Thus"
+      },
+      {
+        "id": "exhibited partial dissolution of cellular structures and coarsening of MC carbid"
+      },
+      {
+        "id": "while compressive stresses (~160 MPa) were concentrated in the HAZ (Fig."
+      },
+      {
+        "id": "the strength [8,9] and high-temperature performance [10] of nickel-based superal"
+      },
+      {
+        "id": "Strengthening in the HAZ resulted from γ′ precipitation and increased dislocatio"
+      },
+      {
+        "id": "~400,000 ele­ ments"
+      },
+      {
+        "id": "of grain coarsening and reduced dislocation density"
+      },
+      {
+        "id": "enlarging the weld pool"
+      },
+      {
+        "id": "Lower cooling rates promote segregation of low-solubility elements at the interd"
+      },
+      {
+        "id": "In addition, the size of the γ′ precipitate"
+      },
+      {
+        "id": "The discrepancy may be attributed to methodological differences: nanoindentation"
+      },
+      {
+        "id": "d their volume fraction (Fig"
+      },
+      {
+        "id": "Under the B1 condition, the yield strengths of BM, HAZ, and WZ"
+      },
+      {
+        "id": "entirely different crack susceptibility and microstructural evolution during wel"
+      },
+      {
+        "id": "while tensile testing captures the bulk mechanical behavior, which is more sensi"
+      },
+      {
+        "id": "while the pre-existing nanoscale MC carbides at the cell walls coarsen into subm"
+      },
+      {
+        "id": "low hardness, while dense γ′ pre­ cipitation and higher dislocation density in t"
+      },
+      {
+        "id": "forming coarse granular or rod- like MC carbides [46] (Fig."
+      },
+      {
+        "id": "where r0 is the precipitate radius at time t0"
+      },
+      {
+        "id": "distinct behaviors during subsequent welding and service compared with con­ vent"
+      },
+      {
+        "id": "With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction"
+      },
+      {
+        "id": "The reduced cooling rates at higher heat inputs promoted growth of γ′ precipitat"
+      },
+      {
+        "id": "pronounced anisotropy in the microstructure and mechanical properties"
+      },
+      {
+        "id": "d from 14 % to 33 %, shifting the dominant strengthening mechanism from grain re"
+      },
+      {
+        "id": "elevates the temperature, reduces surface tension, and enhances metal fluidity a"
+      },
+      {
+        "id": "The geometric model (200 × 100 × 5 mm³) was meshed using free tetrahedral elemen"
+      },
+      {
+        "id": "11, partial dissolution of the cellular structures occur near the fusion line"
+      },
+      {
+        "id": "the weld center exhibited strength loss"
+      },
+      {
+        "id": "In terms of stress distribution, tensile residual stresses (~600 MPa) were forme"
+      },
+      {
+        "id": "The regions near the fusion line, which approached the alloy liquidus (~1383 ◦C)"
+      },
+      {
+        "id": "These charac­ teristics"
+      },
+      {
+        "id": "during cooling induce residual stresses"
+      },
+      {
+        "id": "The hardness mapping covered BM"
+      },
+      {
+        "id": "where k is the material constant (750 MPa⋅μm1/2[62])"
+      },
+      {
+        "id": "the arc energy density and arc pressure, which promotes lateral expansion of the"
+      },
+      {
+        "id": "and d is the average grain size."
+      },
+      {
+        "id": "A higher heat input"
+      },
+      {
+        "id": "15) highlighted that the HAZ exhibited the highest hardness"
+      },
+      {
+        "id": "Recent studies have shown that precipitation-strengthened superalloys such as IN"
+      },
+      {
+        "id": "HAZ, FZ, and weld zone (WZ)."
+      },
+      {
+        "id": "r is the radius at time t, and k is the coarsening rate constant."
+      }
+    ],
+    "links": [
+      {
+        "source": "With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction",
+        "target": "d from 14 % to 33 %, shifting the dominant strengthening mechanism from grain re",
+        "relation": "increase",
+        "confidence": 0.95
+      },
+      {
+        "source": "complex microstructures and intrinsic anisotropy may",
+        "target": "distinct behaviors during subsequent welding and service compared with con­ vent",
+        "relation": "lead to",
+        "confidence": 0.95
+      },
+      {
+        "source": "These charac­ teristics",
+        "target": "the strength [8,9] and high-temperature performance [10] of nickel-based superal",
+        "relation": "enhance",
+        "confidence": 0.95
+      },
+      {
+        "source": "Recent studies have shown that precipitation-strengthened superalloys such as IN",
+        "target": "d weld­ ability when fabricated using LPBF [10]",
+        "relation": "improve",
+        "confidence": 0.95
+      },
+      {
+        "source": "The fine-grained microstructure, high dislocation density, and anisotropy of LPB",
+        "target": "entirely different crack susceptibility and microstructural evolution during wel",
+        "relation": "lead to",
+        "confidence": 0.95
+      },
+      {
+        "source": "During the LPBF process, the alloy is subjected to repeated non- equilibrium the",
+        "target": "pronounced anisotropy in the microstructure and mechanical properties",
+        "relation": "leads to",
+        "confidence": 0.95
+      },
+      {
+        "source": "The hardness mapping covered BM",
+        "target": "HAZ, FZ, and weld zone (WZ).",
+        "relation": "produces",
+        "confidence": 0.95
+      },
+      {
+        "source": "elevates the temperature, reduces surface tension, and enhances metal fluidity a",
+        "target": "enlarging the weld pool",
+        "relation": "thereby",
+        "confidence": 0.95
+      },
+      {
+        "source": "A higher heat input",
+        "target": "the arc energy density and arc pressure, which promotes lateral expansion of the",
+        "relation": "enhances",
+        "confidence": 0.95
+      },
+      {
+        "source": "The geometric model (200 × 100 × 5 mm³) was meshed using free tetrahedral elemen",
+        "target": "~400,000 ele­ ments",
+        "relation": "resulting in",
+        "confidence": 0.95
+      },
+      {
+        "source": "during cooling induce residual stresses",
+        "target": "microstrain [43] and increased dislocation density [44]",
+        "relation": "leading to",
+        "confidence": 0.95
+      },
+      {
+        "source": "With",
+        "target": "in the heat input, the secondary dendrite arm spacing (λ₂) increases from 5.39 t",
+        "relation": "increase",
+        "confidence": 0.95
+      },
+      {
+        "source": "The heat input and cooling rate strongly",
+        "target": "the morphology and distribution of precipitates [42]",
+        "relation": "affect",
+        "confidence": 0.95
+      },
+      {
+        "source": "Lower cooling rates promote segregation of low-solubility elements at the interd",
+        "target": "forming coarse granular or rod- like MC carbides [46] (Fig.",
+        "relation": "causes",
+        "confidence": 0.95
+      },
+      {
+        "source": "11, partial dissolution of the cellular structures occur near the fusion line",
+        "target": "while the pre-existing nanoscale MC carbides at the cell walls coarsen into subm",
+        "relation": "produces",
+        "confidence": 0.95
+      },
+      {
+        "source": "In addition, the size of the γ′ precipitate",
+        "target": "from 16 to 30 nm, and the volume fraction in­ creases from 10 % to 30 %",
+        "relation": "increases",
+        "confidence": 0.95
+      },
+      {
+        "source": "where r0 is the precipitate radius at time t0",
+        "target": "r is the radius at time t, and k is the coarsening rate constant.",
+        "relation": "produces",
+        "confidence": 0.95
+      },
+      {
+        "source": "The discrepancy may be attributed to methodological differences: nanoindentation",
+        "target": "while tensile testing captures the bulk mechanical behavior, which is more sensi",
+        "relation": "causes",
+        "confidence": 0.95
+      },
+      {
+        "source": "This distribution is consistent with the microstructural features: coarse grains",
+        "target": "low hardness, while dense γ′ pre­ cipitation and higher dislocation density in t",
+        "relation": "causes",
+        "confidence": 0.95
+      },
+      {
+        "source": "Thus",
+        "target": "in the heat input enlarged the molten pool (Fig",
+        "relation": "increases",
+        "confidence": 0.95
+      },
+      {
+        "source": "The reduced cooling rates at higher heat inputs promoted growth of γ′ precipitat",
+        "target": "d their volume fraction (Fig",
+        "relation": "increase",
+        "confidence": 0.95
+      },
+      {
+        "source": "In terms of stress distribution, tensile residual stresses (~600 MPa) were forme",
+        "target": "while compressive stresses (~160 MPa) were concentrated in the HAZ (Fig.",
+        "relation": "produces",
+        "confidence": 0.95
+      },
+      {
+        "source": "15) highlighted that the HAZ exhibited the highest hardness",
+        "target": "underscoring the critical role of γ′ pre­ cipitation in strengthening.",
+        "relation": "produces",
+        "confidence": 0.95
+      },
+      {
+        "source": "where k is the material constant (750 MPa⋅μm1/2[62])",
+        "target": "and d is the average grain size.",
+        "relation": "produces",
+        "confidence": 0.95
+      },
+      {
+        "source": "The regions near the fusion line, which approached the alloy liquidus (~1383 ◦C)",
+        "target": "exhibited partial dissolution of cellular structures and coarsening of MC carbid",
+        "relation": "produces",
+        "confidence": 0.95
+      },
+      {
+        "source": "Under the B1 condition, the yield strengths of BM, HAZ, and WZ",
+        "target": "as calculated from the nanoindentation load–displacement data (Fig.",
+        "relation": "produces",
+        "confidence": 0.95
+      },
+      {
+        "source": "the weld center exhibited strength loss",
+        "target": "grain coarsening and dislocation annihi­ lation;",
+        "relation": "due to",
+        "confidence": 0.95
+      },
+      {
+        "source": "Strengthening in the HAZ resulted from γ′ precipitation and increased dislocatio",
+        "target": "of grain coarsening and reduced dislocation density",
+        "relation": "because",
+        "confidence": 0.95
+      }
+    ],
+    "triplet_count": 28,
+    "chain_count": 28
+  },
+  "selected_figures": [
+    {
+      "figure_id": "f1",
+      "figure_number": 1,
+      "page": 2,
+      "caption": "Fig. 1. Schematic of the autogenous gas tungsten arc welding of laser powder bed fusion-produced ZGH4142 superalloy. Direction A corresponds to the build direction, direction B is the scanning direction, and direction C corresponds to the thickness direction. The red and blue dashed boxes indicate welding along di­ rections A and B, respectively.",
+      "caption_prefix": "",
+      "relevance_score": 0.5,
+      "goal_hits": [],
+      "selection_reason": "",
+      "supporting_writing_point_ids": [],
+      "supporting_claims": [],
+      "support_chunk_ids": [],
+      "linked_chunk_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "bbox": [
+        37.59,
+        321.86,
+        559.76,
+        352.7
+      ],
+      "candidate_image_xrefs_on_page": [],
+      "page_image_candidates": [],
+      "nearby_chunk_ids": [
+        "c0027",
+        "c0025",
+        "c0026"
+      ],
+      "evidence_note": "图证据页码 2；当前写作点支撑数 0。"
+    }
+  ],
+  "selected_tables": [],
+  "selected_references": []
+}

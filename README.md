@@ -1,4 +1,4 @@
-﻿# Modular Pipeline Script
+# Modular Pipeline Script
 
 Academic literature processing and retrieval workspace for the modular pipeline, semantic routing, and RAG integration stack.
 
@@ -46,6 +46,59 @@ Core runtime modules:
 
 Verification coverage for the package lives under `tests/`, including classifier, processor, plugin wiring, parallel execution, and observability behavior.
 
+## Optional LLM Mode
+
+### Quick Setup (No LLM Required)
+
+By default, the pipeline **does not require OpenAI** or any LLM. Run immediately:
+
+```bash
+python batch_controller.py c:\Users\xiao\Desktop\wenxianku
+```
+
+Check the output JSON for `"llm_status": "disabled_missing_dependency"` — this is normal and expected.
+
+### Enable LLM-Enhanced Mode
+
+If you want AI-powered analysis (claim mining, mechanism extraction, etc.):
+
+1. **Install OpenAI client:**
+   ```bash
+   pip install openai
+   ```
+
+2. **Get API Key:**
+   - Sign up at https://platform.openai.com
+   - Create an API key and copy it
+
+3. **Configure .env:**
+   ```
+   OPENAI_API_KEY=sk-your-key-here
+   OPENAI_BASE_URL=https://api.openai.com/v1
+   OPENAI_MODEL=gpt-4o-mini
+   ```
+
+4. **Run pipeline:**
+   ```bash
+   python batch_controller.py c:\Users\xiao\Desktop\wenxianku
+   ```
+
+Check output JSON for `"llm_status": "enabled"`.
+
+### LLM Status Field Reference
+
+- `"enabled"`: All LLM features active.
+- `"disabled_missing_dependency"`: `openai` library not installed → `pip install openai`
+- `"disabled_missing_api_key"`: Library present, but no API key → Fill .env and restart
+- `"disabled_by_config"`: User explicitly disabled via `enable_llm=False`
+
+### Performance & Cost
+
+| Mode | Speed | Cost | Quality |
+|------|-------|------|---------|
+| **With LLM** | ~2-5s per PDF | ~$0.01-0.05 per PDF | High (GPT enrichment) |
+| **Without LLM** | ~0.5-1s per PDF | Free | Good (rule-based) |
+
 ## Validation
 
 ```powershell
@@ -80,8 +133,9 @@ python -X utf8 .\skills\skill_flow_adapter.py --strict
 - `GETTING_STARTED.md`: usage-oriented walkthrough for the classic pipeline flow
 - `DEVELOPER_GUIDE.md`: long-form implementation guide for the classic and RAG entrypoints
 - `ARCHITECTURE.md`: current runtime and subsystem architecture map
+- `frontend_design.md`: canonical frontend design spec for the writing-centered light glassmorphism UI
 - `NAMING_AND_ARCHIVE_POLICY.md`: repository naming, archive, and AI-generated document rules
 - `FOCUS_REGISTRY_DESIGN.md`: focus registry schema and persistence design
-- `SEMANTIC_ROUTING_IMPLEMENTATION_PLAN.md`: semantic routing design and evolution notes
+- [semantic_routing_plan](docs/history/plans/2026-04-12_semantic-routing-plan.md): historical semantic routing design and evolution notes
 - `docs/history/README.md`: archive layout for historical reports, plans, prompts, and diagnostics
 

@@ -77,6 +77,11 @@ jobs:
             test_pipeline_core_contract_regression.py \
             tests/test_pipeline_observability.py -q
 
+      - name: Run Batch Controller Smoke Test
+        run: |
+          python -X utf8 -m pytest \
+            tests/test_batch_controller_smoke.py -q --tb=short
+
       - name: Run GraphRAG Acceptance
         run: |
           python -X utf8 -m layers.g_synthesis_graphrag_bridge

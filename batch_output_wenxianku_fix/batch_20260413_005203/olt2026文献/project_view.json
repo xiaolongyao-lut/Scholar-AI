@@ -1,0 +1,174 @@
+{
+  "schema_version": "v2.graph-aware",
+  "source_pdf": "C:\\Users\\xiao\\Desktop\\wenxianku\\olt2026文献.pdf",
+  "goal": "Conclusion Extraction",
+  "stage_manifest": {
+    "stage_01_extract": {
+      "status": "unknown",
+      "key_counts": {
+        "sections": 0,
+        "chunks": 169,
+        "figures": 30,
+        "tables": 3
+      }
+    },
+    "stage_02_binding": {
+      "status": "binding_ready",
+      "key_counts": {
+        "relation_edges": 108,
+        "evidence_clusters": 0
+      }
+    },
+    "stage_03_analysis": {
+      "status": "analysis_complete",
+      "goal": "Conclusion Extraction",
+      "writing_points": 127
+    }
+  },
+  "quality_gates": {
+    "has_writing_points": true,
+    "has_evidence_links": true,
+    "has_clusters": false,
+    "writing_points_have_boundary_notes": false,
+    "overall_pass": false
+  },
+  "writing_points": [
+    {
+      "writing_point_id": "wp001",
+      "claim": "Optics & Laser Technology 200 (2026) 115100",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Optics & Laser Technology 200 (2026) 115100",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp002",
+      "claim": "Contents lists available at ScienceDirect",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Contents lists available at ScienceDirect",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp004",
+      "claim": "journal homepage: www.elsevier.com/locate/optlastec",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "journal homepage: www.elsevier.com/locate/optlastec",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp006",
+      "claim": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp009",
+      "claim": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp012",
+      "claim": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp013",
+      "claim": "This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures.",
+      "point_type": "mechanism",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Zinc-Aluminum-Magnesium (Zn-Al-Mg) coated steel is an emerging environmentally friendly material with excellent corrosion resistance and self-repairing corrosion protection property. However, the presence of the Zn- Al-Mg coating poses significant challenges during welding, including severe coating evaporation, complex metallurgical reactions, coating cracking in the heat-affected zone (HAZ), elemental segregation, and micro­ structural inhomogeneity. In this study, a novel spatio-temporal beam shaping strategy-combining full domain power modulation with galvanometer-scanning laser was proposed to achieve precise control of the molten pool through synergistic energy and mechanical coupling. High-quality laser lap joints of Zn-Al-Mg coated steel were successfully obtained. The effects of laser power modulation amplitude on molten pool dynamics, spatter behavior, weld formation, and microstructure were systematically investigated. The results demonstrate that the tailored beam shaping strategy enhances molten pool stability, reduces spatter, and improves weld morphology. Quantitative analysis reveals that at a 40% power modulation amplitude, the maximum weld surface depression depth is reduced by 22.6%, and the HAZ width decreases by 23.9% compared to the unmodulated process, effectively mitigating coating cracking. Furthermore, the average grain size in the weld zone is refined by 22.5% (decreasing from 46.6 μm to 36.1 μm), while the proportion of high-angle grain boundaries (HAGBs) increases by 13.37%. This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures. Moreover, the formation mechanism of equiaxed grains and grain refinement behavior under different modulation amplitudes were analyzed based on classical nucleation and growth theory. This work provides an effective approach for stabilizing the laser welding process and optimizing the microstructure and mechanical performance of Zn-Al-Mg coated steels.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp015",
+      "claim": "However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4].",
+      "point_type": "background",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "damaged area [2]. However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4]. Currently, it is primarily used in the form of prefabricated profiles, which cannot meet the production demands of large-scale structural components, significantly limiting its industrial-scale application.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp016",
+      "claim": "Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2].",
+      "point_type": "mechanism",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Zn-Al-Mg coated steel is a novel environmentally friendly coating material. Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2]. The Zn-Al-Mg coating possesses a unique self-repairing corrosion protection property against cut-edge corrosion, attributed to the formation of a passivation film. This feature provides superior pro­ tection for both incisions and surface scratches. Unlike traditional galvanized coatings, when Zn-Al-Mg steel is sheared or scratched, a dense passivation film (composed of Zn-Al-Mg oxides and carbonates) forms on the exposed substrate. This passivation layer effectively blocks the infiltration of corrosive media, thereby “sealing” and “repairing” the",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp017",
+      "claim": "This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6].",
+      "point_type": "mechanism",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "The welding of Zn-Al-Mg coated steel faces three major challenges. First, low-boiling-point elements such as zinc (Zn) and magnesium (Mg) evaporate intensely during laser welding, generating high-pressure metal vapor that violently disrupts the molten pool and keyhole stabil­ ity. This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6]. Second, zinc (Zn), aluminum (Al), and magnesium (Mg) can react with iron (Fe), carbon (C), and oxygen (O) in the molten pool to form various inter­ metallic compounds (e.g., Fe-Zn-Al phases, MgZn2), which are prone to microcrack initiation under external loads or residual welding stresses,",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp018",
+      "claim": "* Corresponding author.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "* Corresponding author. E-mail address: shiyu@lut.edu.cn (Y. Shi).",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp019",
+      "claim": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025;",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025; Received in revised form 3 March 2026; Accepted 8 March 2026",
+      "linked_figures": [],
+      "linked_tables": []
+    }
+  ],
+  "figures": [],
+  "tables": [],
+  "parameters": [],
+  "results": [],
+  "references": []
+}

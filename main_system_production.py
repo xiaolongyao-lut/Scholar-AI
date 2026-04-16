@@ -9,6 +9,7 @@ from layers.pipeline_orchestrator import PipelineOrchestrator
 from layers.adaptive_batch_processor import AdaptiveBatchProcessor
 from layers.conflict_resolver import ConflictResolver, ConflictValue
 from layers.multi_layer_cache import MultiLayerCacheManager
+from layers.m_layer_mempalace_memory import MempalaceMemoryAdapter, load_mempalace_settings
 
 # 配置系统级日志
 logging.basicConfig(
@@ -31,8 +32,18 @@ class ModularResearchEngineV2:
         self.orchestrator = PipelineOrchestrator()
         self.batch_manager = AdaptiveBatchProcessor()
         self.conflict_resolver = ConflictResolver()
-        self.cache_manager = MultiLayerCacheManager() if enable_cache else None
-        
+        if enable_cache:
+            adapter = None
+            try:
+                settings = load_mempalace_settings()
+                if settings.enabled:
+                    adapter = MempalaceMemoryAdapter(settings)
+            except Exception as e:
+                logger.warning(f"MemPalace L3 能力降级: {e}")
+            self.cache_manager = MultiLayerCacheManager(mempalace_adapter=adapter)
+        else:
+            self.cache_manager = None
+            
         logger.info("Modular Research Engine V2 初始化完成。")
 
     async def run_batch_discovery(self, pdf_dir: str):

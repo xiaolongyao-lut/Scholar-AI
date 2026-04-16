@@ -1,0 +1,22 @@
+{
+  "schema_version": "v3.volume-deep-analysis",
+  "volume_id": "V01",
+  "generated_at": "2026-04-13T00:52:09",
+  "analysis_generated_at": 1776304981.1032863,
+  "analysis_results": {
+    "report": "batch_output_wenxianku_fix/volume_V01/02_volume_deep_analysis_report_V01.json",
+    "conflict": "batch_output_wenxianku_fix/volume_V01/03_conflict_analysis_V01.json",
+    "trend": "batch_output_wenxianku_fix/volume_V01/04_technology_trends_V01.json",
+    "master_index": "batch_output_wenxianku_fix/volume_V01/05_master_global_index_V01.json"
+  },
+  "statistics": {
+    "paper_count": 13,
+    "writing_point_count": 132,
+    "figure_count": 0,
+    "reference_count": 0,
+    "tracked_parameter_count": 9,
+    "high_conflict_count": 5,
+    "consensus_count": 1
+  },
+  "status": "deep_analysis_complete"
+}

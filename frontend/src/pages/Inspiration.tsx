@@ -3,6 +3,7 @@ import { Lightbulb, Search, RefreshCw, ChevronRight, Tag, BookOpen, Loader2, Ale
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
+import { useWriting } from '@/contexts/WritingContext';
 import { getInspirationService } from '@/services/inspirationService';
 import type { InspirationSpark, ContinuationContext } from '@/types/writing';
 
@@ -175,6 +176,7 @@ function ContextDrawer({
 /* ── Main Page ── */
 export function Inspiration() {
   const { t } = useI18n();
+  const { activeProjectId } = useWriting();
   const [query, setQuery] = useState('');
   const [sparks, setSparks] = useState<InspirationSpark[]>([]);
   const [loading, setLoading] = useState(false);
@@ -192,7 +194,7 @@ export function Inspiration() {
     setSelectedSpark(null);
     try {
       const service = getInspirationService();
-      const results = await service.generateSparks(q, 20);
+      const results = await service.generateSparks(q, 20, activeProjectId ?? undefined);
       setSparks(results);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

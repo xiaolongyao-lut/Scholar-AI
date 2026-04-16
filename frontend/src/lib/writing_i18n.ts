@@ -1,4 +1,4 @@
-import type { ManuscriptSection } from '@/types/resources';
+import type { ManuscriptSection } from '@/types/writing';
 
 export function getLocalizedSectionTitle(sec: ManuscriptSection, lang: string, t: (key: string) => string): string {
   if (lang === 'zh') return sec.titleZh || t('writing.section');

@@ -1,0 +1,719 @@
+{
+  "scoring": {
+    "goal": "Conclusion Extraction",
+    "llm_status": "disabled_missing_dependency",
+    "goal_profile": {
+      "method_focus": false,
+      "image_focus": false,
+      "process_focus": false,
+      "performance_focus": false,
+      "mechanism_focus": false
+    },
+    "writing_points": [
+      {
+        "writing_point_id": "wp001",
+        "claim": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp006",
+        "claim": "Ryan Brooke, Duyao Zhang, Dong Qiu ，et al.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Ryan Brooke, Duyao Zhang, Dong Qiu ，et al. Compositional criteria to predict",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp007",
+        "claim": "columnar to equiaxed transitions in metal additive manufacturing[J].",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "columnar to equiaxed transitions in metal additive manufacturing[J]. Nature",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp014",
+        "claim": "向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp017",
+        "claim": "造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp019",
+        "claim": "图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 K的条件下制备的Ti-Fe (a,",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 K的条件下制备的Ti-Fe (a,",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp020",
+        "claim": "b)、Ti-Cu-Fe (c, d) 和Ti-Cu (e, f) 合金。a–e图为基于电子背散射衍射数据重构的母相β晶粒。EBSD重构结",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "b)、Ti-Cu-Fe (c, d) 和Ti-Cu (e, f) 合金。a–e图为基于电子背散射衍射数据重构的母相β晶粒。EBSD重构结",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp021",
+        "claim": "果采用AztecCrystal软件生成。f图为背散射电子图像，展示了由过共析Ti2Cu勾勒出的母相β晶粒。需注意的",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "果采用AztecCrystal软件生成。f图为背散射电子图像，展示了由过共析Ti2Cu勾勒出的母相β晶粒。需注意的",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp023",
+        "claim": "从图1a–d可以观察到，Ti-Fe和Ti-Cu-Fe合金分别具有相似的晶粒形貌。较低Q",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "从图1a–d可以观察到，Ti-Fe和Ti-Cu-Fe合金分别具有相似的晶粒形貌。较低Q",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp024",
+        "claim": "值的合金（Ti-4Fe和Ti-2.4Cu-2.4Fe）具有相近的平均晶粒尺寸，且均为柱状晶与",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "值的合金（Ti-4Fe和Ti-2.4Cu-2.4Fe）具有相近的平均晶粒尺寸，且均为柱状晶与",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp025",
+        "claim": "等轴晶共存的混合组织。而在较高Q值下，Ti-8Fe和Ti-4.7Cu-4.7Fe合金则呈现全",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "等轴晶共存的混合组织。而在较高Q值下，Ti-8Fe和Ti-4.7Cu-4.7Fe合金则呈现全",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp029",
+        "claim": "图2.采用与方法部分所述相同工艺制备的Ti-4Fe和Ti-12Mo合金在不同功率下的EBSD重构结果。EBSD重构",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "图2.采用与方法部分所述相同工艺制备的Ti-4Fe和Ti-12Mo合金在不同功率下的EBSD重构结果。EBSD重构",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp030",
+        "claim": "使用Aztec Crystal软件生成。a Ti-4Fe，600 W功率制备；b Ti-4Fe，1200 W功率制备；c Ti-12Mo，600",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "使用Aztec Crystal软件生成。a Ti-4Fe，600 W功率制备；b Ti-4Fe，1200 W功率制备；c Ti-12Mo，600",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp031",
+        "claim": "W功率制备；d Ti-12Mo，1200 W功率制备。图中Q为生长限制因子，P为过冷参数。",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "W功率制备；d Ti-12Mo，1200 W功率制备。图中Q为生长限制因子，P为过冷参数。",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp033",
+        "claim": "全等轴晶组织，而在1200 W功率下则观察到粗大的柱状晶组织。在600 W制备的",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "全等轴晶组织，而在1200 W功率下则观察到粗大的柱状晶组织。在600 W制备的",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp034",
+        "claim": "Ti-4Fe样品（图2a）中存在少量部分熔化的钛粉末，但这些粉末似乎并非晶粒细化",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "Ti-4Fe样品（图2a）中存在少量部分熔化的钛粉末，但这些粉末似乎并非晶粒细化",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp036",
+        "claim": "研究也显示了类似的结果。Ti-12Mo合金虽然具有比Ti-4Fe更高的Q值，但其P值",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "研究也显示了类似的结果。Ti-12Mo合金虽然具有比Ti-4Fe更高的Q值，但其P值",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp037",
+        "claim": "却低得多。如图2c、d所示，Ti-12Mo合金在600 W和1200 W的功率下均呈现柱",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "却低得多。如图2c、d所示，Ti-12Mo合金在600 W和1200 W的功率下均呈现柱",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp042",
+        "claim": "高P/Q值的钛合金更易形成全等轴晶组织，低P/Q值则为柱晶等轴晶混合组织；Ti-",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "高P/Q值的钛合金更易形成全等轴晶组织，低P/Q值则为柱晶等轴晶混合组织；Ti-",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp048",
+        "claim": "https://doi.org/10.1038/s41467-025-60162-0",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "https://doi.org/10.1038/s41467-025-60162-0",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp049",
+        "claim": "相应的结果以“Compositional criteria to predict columnar to equiaxed transitions in",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "相应的结果以“Compositional criteria to predict columnar to equiaxed transitions in",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp050",
+        "claim": "metal additive manufacturing”为题发表在nature communication上，文章的通讯作者为",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "metal additive manufacturing”为题发表在nature communication上，文章的通讯作者为",
+        "linked_figures": [],
+        "linked_tables": []
+      }
+    ],
+    "selected_writing_points": [
+      {
+        "writing_point_id": "wp001",
+        "claim": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp006",
+        "claim": "Ryan Brooke, Duyao Zhang, Dong Qiu ，et al.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Ryan Brooke, Duyao Zhang, Dong Qiu ，et al. Compositional criteria to predict",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp007",
+        "claim": "columnar to equiaxed transitions in metal additive manufacturing[J].",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "columnar to equiaxed transitions in metal additive manufacturing[J]. Nature",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp014",
+        "claim": "向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp017",
+        "claim": "造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp019",
+        "claim": "图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 K的条件下制备的Ti-Fe (a,",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 K的条件下制备的Ti-Fe (a,",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp020",
+        "claim": "b)、Ti-Cu-Fe (c, d) 和Ti-Cu (e, f) 合金。a–e图为基于电子背散射衍射数据重构的母相β晶粒。EBSD重构结",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "b)、Ti-Cu-Fe (c, d) 和Ti-Cu (e, f) 合金。a–e图为基于电子背散射衍射数据重构的母相β晶粒。EBSD重构结",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp021",
+        "claim": "果采用AztecCrystal软件生成。f图为背散射电子图像，展示了由过共析Ti2Cu勾勒出的母相β晶粒。需注意的",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "果采用AztecCrystal软件生成。f图为背散射电子图像，展示了由过共析Ti2Cu勾勒出的母相β晶粒。需注意的",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp023",
+        "claim": "从图1a–d可以观察到，Ti-Fe和Ti-Cu-Fe合金分别具有相似的晶粒形貌。较低Q",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "从图1a–d可以观察到，Ti-Fe和Ti-Cu-Fe合金分别具有相似的晶粒形貌。较低Q",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp024",
+        "claim": "值的合金（Ti-4Fe和Ti-2.4Cu-2.4Fe）具有相近的平均晶粒尺寸，且均为柱状晶与",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "值的合金（Ti-4Fe和Ti-2.4Cu-2.4Fe）具有相近的平均晶粒尺寸，且均为柱状晶与",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp025",
+        "claim": "等轴晶共存的混合组织。而在较高Q值下，Ti-8Fe和Ti-4.7Cu-4.7Fe合金则呈现全",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "等轴晶共存的混合组织。而在较高Q值下，Ti-8Fe和Ti-4.7Cu-4.7Fe合金则呈现全",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp029",
+        "claim": "图2.采用与方法部分所述相同工艺制备的Ti-4Fe和Ti-12Mo合金在不同功率下的EBSD重构结果。EBSD重构",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "图2.采用与方法部分所述相同工艺制备的Ti-4Fe和Ti-12Mo合金在不同功率下的EBSD重构结果。EBSD重构",
+        "linked_figures": [],
+        "linked_tables": []
+      }
+    ],
+    "semantic_themes": [
+      {
+        "theme_title": "Discussion",
+        "summary": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变\nRyan Brooke, Duyao Zhang, Dong Qiu ，et al.\ncolumnar to equiaxed transitions in metal additive manufacturing[J].\n向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数\n造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端\n图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 ...",
+        "writing_points": [
+          {
+            "writing_point_id": "wp001",
+            "claim": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp006",
+            "claim": "Ryan Brooke, Duyao Zhang, Dong Qiu ，et al.",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "Ryan Brooke, Duyao Zhang, Dong Qiu ，et al. Compositional criteria to predict",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp007",
+            "claim": "columnar to equiaxed transitions in metal additive manufacturing[J].",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "columnar to equiaxed transitions in metal additive manufacturing[J]. Nature",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp014",
+            "claim": "向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp017",
+            "claim": "造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp019",
+            "claim": "图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 K的条件下制备的Ti-Fe (a,",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 2,
+            "source_text": "图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 K的条件下制备的Ti-Fe (a,",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp020",
+            "claim": "b)、Ti-Cu-Fe (c, d) 和Ti-Cu (e, f) 合金。a–e图为基于电子背散射衍射数据重构的母相β晶粒。EBSD重构结",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 2,
+            "source_text": "b)、Ti-Cu-Fe (c, d) 和Ti-Cu (e, f) 合金。a–e图为基于电子背散射衍射数据重构的母相β晶粒。EBSD重构结",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp021",
+            "claim": "果采用AztecCrystal软件生成。f图为背散射电子图像，展示了由过共析Ti2Cu勾勒出的母相β晶粒。需注意的",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 2,
+            "source_text": "果采用AztecCrystal软件生成。f图为背散射电子图像，展示了由过共析Ti2Cu勾勒出的母相β晶粒。需注意的",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp023",
+            "claim": "从图1a–d可以观察到，Ti-Fe和Ti-Cu-Fe合金分别具有相似的晶粒形貌。较低Q",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 2,
+            "source_text": "从图1a–d可以观察到，Ti-Fe和Ti-Cu-Fe合金分别具有相似的晶粒形貌。较低Q",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp024",
+            "claim": "值的合金（Ti-4Fe和Ti-2.4Cu-2.4Fe）具有相近的平均晶粒尺寸，且均为柱状晶与",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 2,
+            "source_text": "值的合金（Ti-4Fe和Ti-2.4Cu-2.4Fe）具有相近的平均晶粒尺寸，且均为柱状晶与",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp025",
+            "claim": "等轴晶共存的混合组织。而在较高Q值下，Ti-8Fe和Ti-4.7Cu-4.7Fe合金则呈现全",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 2,
+            "source_text": "等轴晶共存的混合组织。而在较高Q值下，Ti-8Fe和Ti-4.7Cu-4.7Fe合金则呈现全",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp029",
+            "claim": "图2.采用与方法部分所述相同工艺制备的Ti-4Fe和Ti-12Mo合金在不同功率下的EBSD重构结果。EBSD重构",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 2,
+            "source_text": "图2.采用与方法部分所述相同工艺制备的Ti-4Fe和Ti-12Mo合金在不同功率下的EBSD重构结果。EBSD重构",
+            "linked_figures": [],
+            "linked_tables": []
+          }
+        ],
+        "linked_figure_ids": [],
+        "linked_table_ids": []
+      }
+    ],
+    "selected_figures": [],
+    "selected_tables": [],
+    "selected_references": [],
+    "selected_parameters": [],
+    "selected_results": [],
+    "stats_analysis": {
+      "writing_point_count": 22,
+      "selected_writing_point_count": 12,
+      "selected_figure_count": 0,
+      "selected_table_count": 0
+    },
+    "status": "analysis_complete"
+  },
+  "view": {
+    "schema_version": "v2.graph-aware",
+    "source_pdf": "C:\\Users\\xiao\\Desktop\\wenxianku\\Nature Communications｜晶型调控新依据！成分判据....pdf",
+    "goal": "Conclusion Extraction",
+    "stage_manifest": {
+      "stage_01_extract": {
+        "status": "unknown",
+        "key_counts": {
+          "sections": 0,
+          "chunks": 51,
+          "figures": 0,
+          "tables": 0
+        }
+      },
+      "stage_02_binding": {
+        "status": "binding_ready",
+        "key_counts": {
+          "relation_edges": 0,
+          "evidence_clusters": 0
+        }
+      },
+      "stage_03_analysis": {
+        "status": "analysis_complete",
+        "goal": "Conclusion Extraction",
+        "writing_points": 22
+      }
+    },
+    "quality_gates": {
+      "has_writing_points": true,
+      "has_evidence_links": false,
+      "has_clusters": false,
+      "writing_points_have_boundary_notes": false,
+      "overall_pass": false
+    },
+    "writing_points": [
+      {
+        "writing_point_id": "wp001",
+        "claim": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp006",
+        "claim": "Ryan Brooke, Duyao Zhang, Dong Qiu ，et al.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Ryan Brooke, Duyao Zhang, Dong Qiu ，et al. Compositional criteria to predict",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp007",
+        "claim": "columnar to equiaxed transitions in metal additive manufacturing[J].",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "columnar to equiaxed transitions in metal additive manufacturing[J]. Nature",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp014",
+        "claim": "向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp017",
+        "claim": "造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp019",
+        "claim": "图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 K的条件下制备的Ti-Fe (a,",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 K的条件下制备的Ti-Fe (a,",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp020",
+        "claim": "b)、Ti-Cu-Fe (c, d) 和Ti-Cu (e, f) 合金。a–e图为基于电子背散射衍射数据重构的母相β晶粒。EBSD重构结",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "b)、Ti-Cu-Fe (c, d) 和Ti-Cu (e, f) 合金。a–e图为基于电子背散射衍射数据重构的母相β晶粒。EBSD重构结",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp021",
+        "claim": "果采用AztecCrystal软件生成。f图为背散射电子图像，展示了由过共析Ti2Cu勾勒出的母相β晶粒。需注意的",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "果采用AztecCrystal软件生成。f图为背散射电子图像，展示了由过共析Ti2Cu勾勒出的母相β晶粒。需注意的",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp023",
+        "claim": "从图1a–d可以观察到，Ti-Fe和Ti-Cu-Fe合金分别具有相似的晶粒形貌。较低Q",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "从图1a–d可以观察到，Ti-Fe和Ti-Cu-Fe合金分别具有相似的晶粒形貌。较低Q",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp024",
+        "claim": "值的合金（Ti-4Fe和Ti-2.4Cu-2.4Fe）具有相近的平均晶粒尺寸，且均为柱状晶与",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "值的合金（Ti-4Fe和Ti-2.4Cu-2.4Fe）具有相近的平均晶粒尺寸，且均为柱状晶与",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp025",
+        "claim": "等轴晶共存的混合组织。而在较高Q值下，Ti-8Fe和Ti-4.7Cu-4.7Fe合金则呈现全",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "等轴晶共存的混合组织。而在较高Q值下，Ti-8Fe和Ti-4.7Cu-4.7Fe合金则呈现全",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp029",
+        "claim": "图2.采用与方法部分所述相同工艺制备的Ti-4Fe和Ti-12Mo合金在不同功率下的EBSD重构结果。EBSD重构",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "图2.采用与方法部分所述相同工艺制备的Ti-4Fe和Ti-12Mo合金在不同功率下的EBSD重构结果。EBSD重构",
+        "linked_figures": [],
+        "linked_tables": []
+      }
+    ],
+    "figures": [],
+    "tables": [],
+    "parameters": [],
+    "results": [],
+    "references": []
+  }
+}

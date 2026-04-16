@@ -10,24 +10,44 @@
  */
 
 import axios, { AxiosInstance } from "axios";
+import { getApiBaseUrl } from "./apiBaseUrl";
 import {
   WritingProject,
   WritingSection,
+  WritingMaterialResource,
   WritingDraft,
   WritingRevision,
   BuildAssociationRequest,
   WritingAssociationBundle,
   CreateProjectRequest,
   CreateSectionRequest,
+  CreateMaterialRequest,
   CreateDraftRequest,
   SaveDraftRequest,
   ProjectStatus,
+  WritingActionResource,
+  ProjectExportFormat,
+  ProjectExportResult,
+  ProjectStats,
+  GlobalStats,
+  VolumeSummary,
+  VolumeAnalysisResult,
+  BatchDeleteRequest,
+  BatchDeleteResult,
+  UpdateProjectRequest,
+  UpdateSectionRequest,
+  ModelInfo,
 } from "../types/resources";
+import {
+  CreateJobRequest,
+  WritingArtifact,
+  WritingJob,
+} from "../types/runtime";
 
 export class WritingBackendService {
   private readonly client: AxiosInstance;
 
-  constructor(baseURL: string = "http://localhost:8000") {
+  constructor(baseURL: string = getApiBaseUrl()) {
     this.client = axios.create({
       baseURL,
       headers: {
@@ -86,6 +106,13 @@ export class WritingBackendService {
       { params: { status: status } }
     );
     return response.data;
+  }
+
+  /**
+   * Delete a project and all its associated resources.
+   */
+  async deleteProject(projectId: string): Promise<void> {
+    await this.client.delete(`/resources/project/${projectId}`);
   }
 
   // =========================================================================
@@ -156,7 +183,9 @@ export class WritingBackendService {
     projectId: string,
     sectionId?: string
   ): Promise<WritingDraft[]> {
-    const params: any = { project_id: projectId };
+    const params: { project_id: string; section_id?: string } = {
+      project_id: projectId,
+    };
     if (sectionId) {
       params.section_id = sectionId;
     }
@@ -238,18 +267,20 @@ export class WritingBackendService {
   // Capability & Action Operations
   // =========================================================================
 
-  async listWritingActions(): Promise<any[]> {
-    const response = await this.client.get("/skills");
+  async listWritingActions(): Promise<WritingActionResource[]> {
+    const response = await this.client.get<WritingActionResource[]>("/actions");
     return response.data;
   }
 
-  async runWritingAction(payload: any): Promise<any> {
-    const response = await this.client.post("/runtime/job", payload);
+  async runWritingAction(payload: CreateJobRequest): Promise<WritingJob> {
+    const response = await this.client.post<WritingJob>("/runtime/job", payload);
     return response.data;
   }
 
-  async getTransformResult(jobId: string): Promise<any> {
-    const response = await this.client.get(`/runtime/job/${jobId}/artifacts`);
+  async getTransformResult(jobId: string): Promise<WritingArtifact[]> {
+    const response = await this.client.get<WritingArtifact[]>(
+      `/runtime/job/${jobId}/artifacts`
+    );
     return response.data;
   }
 
@@ -257,10 +288,248 @@ export class WritingBackendService {
   // Material Operations (Knowledge Base)
   // =========================================================================
 
-  async listMaterials(projectId: string): Promise<any[]> {
-    const response = await this.client.get("/resources/materials", {
+  async createMaterial(
+    request: CreateMaterialRequest
+  ): Promise<WritingMaterialResource> {
+    const response = await this.client.post<WritingMaterialResource>(
+      "/resources/material",
+      request
+    );
+    return response.data;
+  }
+
+  async listMaterials(projectId: string): Promise<WritingMaterialResource[]> {
+    const response = await this.client.get<WritingMaterialResource[]>(
+      "/resources/materials",
+      {
       params: { project_id: projectId },
-    });
+      }
+    );
+    return response.data;
+  }
+
+  // =========================================================================
+  // Delete Operations
+  // =========================================================================
+
+  /**
+   * Delete a single material.
+   */
+  async deleteMaterial(materialId: string): Promise<void> {
+    await this.client.delete(`/resources/material/${materialId}`);
+  }
+
+  /**
+   * Batch delete materials.
+   */
+  async batchDeleteMaterials(
+    materialIds: string[]
+  ): Promise<BatchDeleteResult> {
+    const response = await this.client.post<BatchDeleteResult>(
+      "/resources/materials/batch-delete",
+      { material_ids: materialIds }
+    );
+    return response.data;
+  }
+
+  /**
+   * Delete a draft.
+   */
+  async deleteDraft(draftId: string): Promise<void> {
+    await this.client.delete(`/resources/draft/${draftId}`);
+  }
+
+  /**
+   * Delete a section.
+   */
+  async deleteSection(sectionId: string): Promise<void> {
+    await this.client.delete(`/resources/section/${sectionId}`);
+  }
+
+  // =========================================================================
+  // Update Operations
+  // =========================================================================
+
+  /**
+   * Update project fields (title, description, tags).
+   */
+  async updateProject(
+    projectId: string,
+    request: UpdateProjectRequest
+  ): Promise<WritingProject> {
+    const response = await this.client.put<WritingProject>(
+      `/resources/project/${projectId}`,
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Update section fields (title, description, order).
+   */
+  async updateSection(
+    sectionId: string,
+    request: UpdateSectionRequest
+  ): Promise<WritingSection> {
+    const response = await this.client.put<WritingSection>(
+      `/resources/section/${sectionId}`,
+      request
+    );
+    return response.data;
+  }
+
+  // =========================================================================
+  // Export Operations
+  // =========================================================================
+
+  /**
+   * Export project content in the given format.
+   */
+  async exportProject(
+    projectId: string,
+    format: ProjectExportFormat = "markdown"
+  ): Promise<ProjectExportResult> {
+    const response = await this.client.get<ProjectExportResult>(
+      `/resources/project/${projectId}/export`,
+      { params: { format } }
+    );
+    return response.data;
+  }
+
+  // =========================================================================
+  // Statistics Operations
+  // =========================================================================
+
+  /**
+   * Get statistics for a specific project.
+   */
+  async getProjectStats(projectId: string): Promise<ProjectStats> {
+    const response = await this.client.get<ProjectStats>(
+      `/resources/project/${projectId}/stats`
+    );
+    return response.data;
+  }
+
+  /**
+   * Get global statistics across all projects.
+   */
+  async getGlobalStats(): Promise<GlobalStats> {
+    const response = await this.client.get<GlobalStats>(
+      "/resources/stats/overview"
+    );
+    return response.data;
+  }
+
+  // =========================================================================
+  // Volume / Cross-paper Analysis Operations
+  // =========================================================================
+
+  async listVolumes(): Promise<{ total: number; volumes: VolumeSummary[] }> {
+    const response = await this.client.get<{ total: number; volumes: VolumeSummary[] }>(
+      "/volumes"
+    );
+    return response.data;
+  }
+
+  async getVolumeAnalysis(
+    volumeKey: string,
+    refresh: boolean = false
+  ): Promise<VolumeAnalysisResult> {
+    const response = await this.client.get<VolumeAnalysisResult>(
+      `/volumes/${volumeKey}/analysis`,
+      { params: { refresh } }
+    );
+    return response.data;
+  }
+
+  // =========================================================================
+  // Batch Processing Operations
+  // =========================================================================
+
+  /**
+   * Preview or execute historical dirty-data cleanup.
+   */
+  async cleanupHistoricalData(dryRun: boolean): Promise<{
+    dry_run: boolean;
+    preview: {
+      duplicate_project_count: number;
+      empty_material_count: number;
+      duplicate_projects: Array<Record<string, unknown>>;
+      empty_materials: Array<Record<string, unknown>>;
+    };
+    deleted: {
+      duplicate_project_count: number;
+      empty_material_count: number;
+      duplicate_projects: string[];
+      empty_materials: string[];
+    };
+  }> {
+    const response = await this.client.post<{
+      dry_run: boolean;
+      preview: {
+        duplicate_project_count: number;
+        empty_material_count: number;
+        duplicate_projects: Array<Record<string, unknown>>;
+        empty_materials: Array<Record<string, unknown>>;
+      };
+      deleted: {
+        duplicate_project_count: number;
+        empty_material_count: number;
+        duplicate_projects: string[];
+        empty_materials: string[];
+      };
+    }>("/resources/maintenance/cleanup", { dry_run: dryRun });
+    return response.data;
+  }
+
+  /**
+   * Submit a batch PDF processing job.
+   * Returns a task_id for polling status.
+   */
+  async submitBatchProcessing(request: {
+    pdf_folder: string;
+    output_root: string;
+    goal: string;
+    batch_size?: number;
+  }): Promise<{ task_id: string; status: string }> {
+    const response = await this.client.post<{ task_id: string; status: string }>(
+      "/pipeline/batch/submit",
+      request
+    );
+    return response.data;
+  }
+
+  /**
+   * Get status of a batch processing task.
+   */
+  async getBatchTaskStatus(taskId: string): Promise<{
+    task_id: string;
+    status: string;
+    progress: number;
+    stage: string;
+    result?: Record<string, unknown>;
+    error?: string;
+  }> {
+    const response = await this.client.get<{
+      task_id: string;
+      status: string;
+      progress: number;
+      stage: string;
+      result?: Record<string, unknown>;
+      error?: string;
+    }>(`/pipeline/task/${taskId}`);
+    return response.data;
+  }
+
+  // =========================================================================
+  // Chat / Model Operations
+  // =========================================================================
+
+  /**
+   * List supported LLM models.
+   */
+  async listModels(): Promise<ModelInfo[]> {
+    const response = await this.client.get<ModelInfo[]>("/chat/models");
     return response.data;
   }
 }

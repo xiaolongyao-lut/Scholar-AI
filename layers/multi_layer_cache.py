@@ -107,8 +107,23 @@ class L2SQLiteCache:
                     "INSERT OR REPLACE INTO universal_cache (fingerprint, query_text, result_json, ttl_seconds) VALUES (?, ?, ?, ?)",
                     (key, query, json.dumps(result, ensure_ascii=False), ttl)
                 )
+            # 随机触发容量清理
+            import random
+            if random.random() < 0.05:
+                self.prune()
         except Exception as e:
             logger.error(f"L2 写入异常: {e}")
+
+    def prune(self, max_records: int = 5000):
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "DELETE FROM universal_cache WHERE fingerprint NOT IN (SELECT fingerprint FROM universal_cache ORDER BY accessed_at DESC, hit_count DESC LIMIT ?)",
+                    (max_records,)
+                )
+                conn.execute("DELETE FROM universal_cache WHERE strftime('%s', 'now') - strftime('%s', accessed_at) > ttl_seconds")
+        except Exception as e:
+            logger.error(f"L2 容量清理异常: {e}")
 
 class MultiLayerCacheManager:
     """三层缓存管理器：统筹 L1/L2/L3 调度。"""
@@ -136,14 +151,40 @@ class MultiLayerCacheManager:
 
         # 3. 尝试 L3 (如果有)
         if self.l3:
-            # 此处待集成 MemPalace 的语义相似度检索
-            pass
-            
+            try:
+                l3_res = self.l3.search(query=query, wing="research_assistant", room=domain, limit=1)
+                if getattr(l3_res, 'available', False) and l3_res.results:
+                    top_hit = l3_res.results[0]
+                    # 置信度阈值验证，避免语义漂移的错误命中
+                    if top_hit.similarity >= 0.85:
+                        self.stats["hits"] += 1; self.stats["l3"] += 1
+                        try:
+                            val = json.loads(top_hit.text)
+                        except Exception:
+                            val = top_hit.text
+                        self.l2.set(key, query, val)
+                        self.l1.set(key, val)
+                        return val
+            except Exception as e:
+                logger.error(f"L3 读取异常: {e}")
+
         self.stats["misses"] += 1
         return None
 
-    async def commit(self, query: str, result: Any, focus: List[str] = None, domain: str = "general"):
+    async def commit(self, query: str, result: Any, focus: List[str] = None, domain: str = "general", confidence: float = 1.0):
         key = QueryFingerprint.generate(query, focus, domain)
         self.l1.set(key, result)
         self.l2.set(key, query, result)
         # 高价值结果逻辑 (如 confidence > 0.8) 可在此触发 L3 永久化
+        if self.l3 and confidence >= 0.85:
+            try:
+                content_str = json.dumps(result, ensure_ascii=False) if not isinstance(result, str) else result
+                self.l3.add_memory(
+                    wing="research_assistant",
+                    room=domain,
+                    content=content_str,
+                    source_file="L3_cache_transfer",
+                    added_by="multi_layer_cache"
+                )
+            except Exception as e:
+                logger.error(f"L3 写入异常: {e}")

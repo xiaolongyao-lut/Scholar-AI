@@ -6,6 +6,7 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
+import { getApiBaseUrl } from './apiBaseUrl';
 import {
   WritingSession,
   WritingJob,
@@ -16,6 +17,8 @@ import {
   JobStatusDetail,
   WritingRuntimeClient,
   EventType,
+  JobStatus,
+  JobEventQueryOptions,
 } from '../types/runtime';
 
 export class HttpWritingRuntimeClient implements WritingRuntimeClient {
@@ -27,7 +30,7 @@ export class HttpWritingRuntimeClient implements WritingRuntimeClient {
   > = new Map();
   private eventPollers: Map<string, NodeJS.Timeout> = new Map();
 
-  constructor(baseUrl: string = 'http://127.0.0.1:8000') {
+  constructor(baseUrl: string = getApiBaseUrl()) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.http = axios.create({
       baseURL: this.baseUrl,
@@ -76,9 +79,19 @@ export class HttpWritingRuntimeClient implements WritingRuntimeClient {
     return response.data;
   }
 
-  async getJobEvents(jobId: string): Promise<WritingEvent[]> {
+  async getJobEvents(
+    jobId: string,
+    options: JobEventQueryOptions = {}
+  ): Promise<WritingEvent[]> {
     const response = await this.http.get<WritingEvent[]>(
-      `/runtime/job/${jobId}/events`
+      `/runtime/job/${jobId}/events`,
+      {
+        params: {
+          since_timestamp: options.sinceTimestamp ?? undefined,
+          after_event_id: options.afterEventId ?? undefined,
+          limit: options.limit ?? undefined,
+        },
+      }
     );
     return response.data;
   }
@@ -94,32 +107,32 @@ export class HttpWritingRuntimeClient implements WritingRuntimeClient {
   // Job Lifecycle Control
   // ==========================================================================
 
-  async startJob(jobId: string): Promise<{ job_id: string; status: string }> {
-    const response = await this.http.post(
+  async startJob(jobId: string): Promise<{ job_id: string; status: JobStatus }> {
+    const response = await this.http.post<{ job_id: string; status: JobStatus }>(
       `/runtime/job/${jobId}/start`,
       {}
     );
     return response.data;
   }
 
-  async pauseJob(jobId: string): Promise<{ job_id: string; status: string }> {
-    const response = await this.http.post(
+  async pauseJob(jobId: string): Promise<{ job_id: string; status: JobStatus }> {
+    const response = await this.http.post<{ job_id: string; status: JobStatus }>(
       `/runtime/job/${jobId}/pause`,
       {}
     );
     return response.data;
   }
 
-  async resumeJob(jobId: string): Promise<{ job_id: string; status: string }> {
-    const response = await this.http.post(
+  async resumeJob(jobId: string): Promise<{ job_id: string; status: JobStatus }> {
+    const response = await this.http.post<{ job_id: string; status: JobStatus }>(
       `/runtime/job/${jobId}/resume`,
       {}
     );
     return response.data;
   }
 
-  async cancelJob(jobId: string): Promise<{ job_id: string; status: string }> {
-    const response = await this.http.post(
+  async cancelJob(jobId: string): Promise<{ job_id: string; status: JobStatus }> {
+    const response = await this.http.post<{ job_id: string; status: JobStatus }>(
       `/runtime/job/${jobId}/cancel`,
       {}
     );

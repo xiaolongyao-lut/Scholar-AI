@@ -13,14 +13,8 @@ Tests core runtime functionality:
 
 import asyncio
 import pytest
-from datetime import datetime
-from uuid import uuid4
 
-from writing_runtime import (
-    WritingRuntime,
-    get_writing_runtime,
-    JobExecutionContext,
-)
+from writing_runtime import WritingRuntime
 from harness_protocols import (
     SessionMode,
     JobKind,
@@ -29,6 +23,7 @@ from harness_protocols import (
     ArtifactType,
     ApprovalStatus,
 )
+from skills.runtime import SkillRunResult, ExecutionStatus
 
 
 class TestWritingRuntimeSessions:
@@ -61,9 +56,9 @@ class TestWritingRuntimeSessions:
     def test_list_sessions(self):
         """Test listing sessions."""
         runtime = WritingRuntime()
-        session1 = runtime.create_session(mode=SessionMode.PROMPT, user_id="user_1")
-        session2 = runtime.create_session(mode=SessionMode.SKILL, user_id="user_2")
-        session3 = runtime.create_session(mode=SessionMode.HYBRID, user_id="user_1")
+        _session1 = runtime.create_session(mode=SessionMode.PROMPT, user_id="user_1")
+        _session2 = runtime.create_session(mode=SessionMode.SKILL, user_id="user_2")
+        _session3 = runtime.create_session(mode=SessionMode.HYBRID, user_id="user_1")
 
         all_sessions = runtime.list_sessions()
         assert len(all_sessions) == 3
@@ -121,11 +116,11 @@ class TestWritingRuntimeJobs:
         runtime = WritingRuntime()
         session = runtime.create_session(mode=SessionMode.SKILL)
         
-        job1 = runtime.create_job(
+        _job1 = runtime.create_job(
             session_id=session.session_id,
             kind=JobKind.PROMPT_ACTION,
         )
-        job2 = runtime.create_job(
+        _job2 = runtime.create_job(
             session_id=session.session_id,
             kind=JobKind.SKILL_ACTION,
         )
@@ -226,6 +221,88 @@ class TestWritingRuntimeJobLifecycle:
         assert failed.status == JobStatus.FAILED
         assert failed.error == "Test error"
 
+    @pytest.mark.asyncio
+    async def test_start_job_with_skill_result_executor_completes_job(self):
+        """Test that a skill result returned from the executor finalizes the job."""
+        runtime = WritingRuntime()
+        session = runtime.create_session(mode=SessionMode.SKILL)
+        job = runtime.create_job(
+            session_id=session.session_id,
+            kind=JobKind.SKILL_ACTION,
+            input_text="Rewrite this paragraph",
+            skill_id="skill_rewrite",
+        )
+
+        async def executor(executing_job):
+            return SkillRunResult(
+                job_id=f"external_{executing_job.job_id}",
+                skill_id="skill_rewrite",
+                status=ExecutionStatus.SUCCESS,
+                input_text=executing_job.input_text,
+                output_text="Rewritten paragraph",
+                execution_time_ms=17,
+                warnings=["all good"],
+            )
+
+        final_job = await runtime.start_job(job.job_id, executor=executor)
+
+        assert final_job.status == JobStatus.COMPLETED
+        assert final_job.completed_at is not None
+
+        artifacts = runtime.get_job_artifacts(job.job_id)
+        assert len(artifacts) == 1
+        assert artifacts[0].artifact_type == ArtifactType.TRANSFORMED_TEXT
+        assert artifacts[0].content["job_id"] == job.job_id
+        assert artifacts[0].content["output_text"] == "Rewritten paragraph"
+        assert artifacts[0].metadata["source_skill_job_id"].startswith("external_")
+
+        events = runtime.get_job_events(job.job_id)
+        assert [event.event_type for event in events] == [
+            EventType.JOB_CREATED,
+            EventType.JOB_STARTED,
+            EventType.JOB_COMPLETED,
+        ]
+
+    @pytest.mark.asyncio
+    async def test_start_job_with_failed_skill_result_executor_marks_failed(self):
+        """Test that a failed skill result returned from the executor marks the job failed."""
+        runtime = WritingRuntime()
+        session = runtime.create_session(mode=SessionMode.SKILL)
+        job = runtime.create_job(
+            session_id=session.session_id,
+            kind=JobKind.SKILL_ACTION,
+            input_text="Rewrite this paragraph",
+            skill_id="skill_rewrite",
+        )
+
+        async def executor(executing_job):
+            return SkillRunResult(
+                job_id=f"external_{executing_job.job_id}",
+                skill_id="skill_rewrite",
+                status=ExecutionStatus.FAILED,
+                input_text=executing_job.input_text,
+                output_text="",
+                warnings=["boom"],
+            )
+
+        final_job = await runtime.start_job(job.job_id, executor=executor)
+
+        assert final_job.status == JobStatus.FAILED
+        assert final_job.error == "boom"
+
+        artifacts = runtime.get_job_artifacts(job.job_id)
+        assert len(artifacts) == 1
+        assert artifacts[0].artifact_type == ArtifactType.AUDIT_RECORD
+        assert artifacts[0].content["job_id"] == job.job_id
+        assert artifacts[0].content["status"] == ExecutionStatus.FAILED.value
+
+        events = runtime.get_job_events(job.job_id)
+        assert [event.event_type for event in events] == [
+            EventType.JOB_CREATED,
+            EventType.JOB_STARTED,
+            EventType.JOB_FAILED,
+        ]
+
 
 class TestWritingRuntimeEvents:
     """Test event management."""
@@ -264,6 +341,35 @@ class TestWritingRuntimeEvents:
         assert EventType.JOB_STARTED in event_types
         assert EventType.JOB_COMPLETED in event_types
 
+    def test_get_job_events_supports_cursor_and_limit(self):
+        """Test incremental event polling semantics and stable sort order."""
+        runtime = WritingRuntime()
+        session = runtime.create_session(mode=SessionMode.SKILL)
+        job = runtime.create_job(
+            session_id=session.session_id,
+            kind=JobKind.PROMPT_ACTION,
+        )
+
+        asyncio.run(runtime.start_job(job.job_id))
+        asyncio.run(runtime.complete_job(job.job_id, result="done"))
+
+        ordered_events = runtime.get_job_events(job.job_id)
+        assert [event.event_type for event in ordered_events] == [
+            EventType.JOB_CREATED,
+            EventType.JOB_STARTED,
+            EventType.JOB_COMPLETED,
+        ]
+
+        cursor_events = runtime.get_job_events(
+            job.job_id,
+            since_timestamp=ordered_events[1].timestamp,
+            after_event_id=ordered_events[1].event_id,
+        )
+        assert [event.event_id for event in cursor_events] == [ordered_events[2].event_id]
+
+        limited_events = runtime.get_job_events(job.job_id, limit=1)
+        assert [event.event_id for event in limited_events] == [ordered_events[0].event_id]
+
     def test_event_subscription(self):
         """Test event subscription."""
         runtime = WritingRuntime()
@@ -276,7 +382,7 @@ class TestWritingRuntimeEvents:
 
         runtime.subscribe_to_events(session.session_id, on_event)
         
-        job = runtime.create_job(
+        _job = runtime.create_job(
             session_id=session.session_id,
             kind=JobKind.PROMPT_ACTION,
         )
@@ -358,9 +464,9 @@ class TestWritingRuntimeCompatibility:
         runtime = WritingRuntime()
         session = runtime.create_session(mode=SessionMode.PROMPT)
 
-        async def dummy_executor(job):
+        async def dummy_executor(_job):
             """Dummy executor for testing."""
-            pass
+            return None
 
         result = await runtime.execute_action(
             session_id=session.session_id,

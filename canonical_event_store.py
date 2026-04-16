@@ -20,6 +20,7 @@ from typing import Any
 from datetime_utils import utc_now_iso_z
 from harness_store import HarnessStore
 from harness_canonical_events import CanonicalEvent
+from recovery_telemetry import get_recovery_telemetry
 
 
 class CanonicalEventStore:
@@ -115,39 +116,42 @@ class CanonicalEventStore:
         Raises:
             sqlite3.IntegrityError: If event_id already exists (duplicate)
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
-                INSERT INTO canonical_events (
-                    event_id, correlation_id, timestamp, session_id, job_id, user_id,
-                    aggregate_type, aggregate_id, event_type, payload, actor_id, actor_type,
-                    severity, previous_state, new_state, error_code, error_message, source
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                event.event_id,
-                event.correlation_id,
-                event.timestamp,
-                event.session_id,
-                event.job_id,
-                event.user_id,
-                event.aggregate_type,
-                event.aggregate_id,
-                event.event_type,
-                json.dumps(event.payload),
-                event.actor_id,
-                event.actor_type,
-                event.severity,
-                json.dumps(event.previous_state) if event.previous_state else None,
-                json.dumps(event.new_state) if event.new_state else None,
-                event.error_code,
-                event.error_message,
-                event.source,
-            ))
-            conn.commit()
-        finally:
-            conn.close()
+        telemetry = get_recovery_telemetry()
+        with telemetry.trace("store.append_event", event_type=event.event_type, aggregate_id=event.aggregate_id, event_id=event.event_id) as span:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            try:
+                cursor.execute("""
+                    INSERT INTO canonical_events (
+                        event_id, correlation_id, timestamp, session_id, job_id, user_id,
+                        aggregate_type, aggregate_id, event_type, payload, actor_id, actor_type,
+                        severity, previous_state, new_state, error_code, error_message, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    event.event_id,
+                    event.correlation_id,
+                    event.timestamp,
+                    event.session_id,
+                    event.job_id,
+                    event.user_id,
+                    event.aggregate_type,
+                    event.aggregate_id,
+                    event.event_type,
+                    json.dumps(event.payload),
+                    event.actor_id,
+                    event.actor_type,
+                    event.severity,
+                    json.dumps(event.previous_state) if event.previous_state else None,
+                    json.dumps(event.new_state) if event.new_state else None,
+                    event.error_code,
+                    event.error_message,
+                    event.source,
+                ))
+                conn.commit()
+                span.set_attribute("rows_inserted", cursor.rowcount)
+            finally:
+                conn.close()
     
     def get_event_by_id(self, event_id: str) -> CanonicalEvent | None:
         """
@@ -183,20 +187,22 @@ class CanonicalEventStore:
         Returns:
             List of CanonicalEvent objects in chronological order
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
-                SELECT * FROM canonical_events 
-                WHERE job_id = ? 
-                ORDER BY timestamp ASC
-            """, (job_id,))
-            rows = cursor.fetchall()
+        telemetry = get_recovery_telemetry()
+        with telemetry.trace("store.get_job_timeline", job_id=job_id) as span:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
             
-            return [self._row_to_event(row, cursor.description) for row in rows]
-        finally:
-            conn.close()
+            try:
+                cursor.execute("""
+                    SELECT * FROM canonical_events 
+                    WHERE job_id = ? 
+                    ORDER BY timestamp ASC
+                """, (job_id,))
+                rows = cursor.fetchall()
+                span.set_attribute("timeline_length", len(rows))
+                return [self._row_to_event(row, cursor.description) for row in rows]
+            finally:
+                conn.close()
     
     def get_session_timeline(self, session_id: str) -> list[CanonicalEvent]:
         """

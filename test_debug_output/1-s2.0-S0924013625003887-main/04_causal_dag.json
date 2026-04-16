@@ -1,0 +1,344 @@
+{
+  "nodes": [
+    {
+      "id": "d weld­ ability when fabricated using LPBF [10]"
+    },
+    {
+      "id": "complex microstructures and intrinsic anisotropy may"
+    },
+    {
+      "id": "This distribution is consistent with the microstructural features: coarse grains"
+    },
+    {
+      "id": "from 16 to 30 nm, and the volume fraction in­ creases from 10 % to 30 %"
+    },
+    {
+      "id": "With"
+    },
+    {
+      "id": "The heat input and cooling rate strongly"
+    },
+    {
+      "id": "as calculated from the nanoindentation load–displacement data (Fig."
+    },
+    {
+      "id": "grain coarsening and dislocation annihi­ lation;"
+    },
+    {
+      "id": "underscoring the critical role of γ′ pre­ cipitation in strengthening."
+    },
+    {
+      "id": "in the heat input, the secondary dendrite arm spacing (λ₂) increases from 5.39 t"
+    },
+    {
+      "id": "the morphology and distribution of precipitates [42]"
+    },
+    {
+      "id": "microstrain [43] and increased dislocation density [44]"
+    },
+    {
+      "id": "The fine-grained microstructure, high dislocation density, and anisotropy of LPB"
+    },
+    {
+      "id": "During the LPBF process, the alloy is subjected to repeated non- equilibrium the"
+    },
+    {
+      "id": "in the heat input enlarged the molten pool (Fig"
+    },
+    {
+      "id": "Thus"
+    },
+    {
+      "id": "exhibited partial dissolution of cellular structures and coarsening of MC carbid"
+    },
+    {
+      "id": "while compressive stresses (~160 MPa) were concentrated in the HAZ (Fig."
+    },
+    {
+      "id": "the strength [8,9] and high-temperature performance [10] of nickel-based superal"
+    },
+    {
+      "id": "Strengthening in the HAZ resulted from γ′ precipitation and increased dislocatio"
+    },
+    {
+      "id": "~400,000 ele­ ments"
+    },
+    {
+      "id": "of grain coarsening and reduced dislocation density"
+    },
+    {
+      "id": "enlarging the weld pool"
+    },
+    {
+      "id": "Lower cooling rates promote segregation of low-solubility elements at the interd"
+    },
+    {
+      "id": "In addition, the size of the γ′ precipitate"
+    },
+    {
+      "id": "The discrepancy may be attributed to methodological differences: nanoindentation"
+    },
+    {
+      "id": "d their volume fraction (Fig"
+    },
+    {
+      "id": "Under the B1 condition, the yield strengths of BM, HAZ, and WZ"
+    },
+    {
+      "id": "entirely different crack susceptibility and microstructural evolution during wel"
+    },
+    {
+      "id": "while tensile testing captures the bulk mechanical behavior, which is more sensi"
+    },
+    {
+      "id": "while the pre-existing nanoscale MC carbides at the cell walls coarsen into subm"
+    },
+    {
+      "id": "low hardness, while dense γ′ pre­ cipitation and higher dislocation density in t"
+    },
+    {
+      "id": "forming coarse granular or rod- like MC carbides [46] (Fig."
+    },
+    {
+      "id": "where r0 is the precipitate radius at time t0"
+    },
+    {
+      "id": "distinct behaviors during subsequent welding and service compared with con­ vent"
+    },
+    {
+      "id": "With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction"
+    },
+    {
+      "id": "The reduced cooling rates at higher heat inputs promoted growth of γ′ precipitat"
+    },
+    {
+      "id": "pronounced anisotropy in the microstructure and mechanical properties"
+    },
+    {
+      "id": "d from 14 % to 33 %, shifting the dominant strengthening mechanism from grain re"
+    },
+    {
+      "id": "elevates the temperature, reduces surface tension, and enhances metal fluidity a"
+    },
+    {
+      "id": "The geometric model (200 × 100 × 5 mm³) was meshed using free tetrahedral elemen"
+    },
+    {
+      "id": "11, partial dissolution of the cellular structures occur near the fusion line"
+    },
+    {
+      "id": "the weld center exhibited strength loss"
+    },
+    {
+      "id": "In terms of stress distribution, tensile residual stresses (~600 MPa) were forme"
+    },
+    {
+      "id": "The regions near the fusion line, which approached the alloy liquidus (~1383 ◦C)"
+    },
+    {
+      "id": "These charac­ teristics"
+    },
+    {
+      "id": "during cooling induce residual stresses"
+    },
+    {
+      "id": "The hardness mapping covered BM"
+    },
+    {
+      "id": "where k is the material constant (750 MPa⋅μm1/2[62])"
+    },
+    {
+      "id": "the arc energy density and arc pressure, which promotes lateral expansion of the"
+    },
+    {
+      "id": "and d is the average grain size."
+    },
+    {
+      "id": "A higher heat input"
+    },
+    {
+      "id": "15) highlighted that the HAZ exhibited the highest hardness"
+    },
+    {
+      "id": "Recent studies have shown that precipitation-strengthened superalloys such as IN"
+    },
+    {
+      "id": "HAZ, FZ, and weld zone (WZ)."
+    },
+    {
+      "id": "r is the radius at time t, and k is the coarsening rate constant."
+    }
+  ],
+  "links": [
+    {
+      "source": "With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction",
+      "target": "d from 14 % to 33 %, shifting the dominant strengthening mechanism from grain re",
+      "relation": "increase",
+      "confidence": 0.95
+    },
+    {
+      "source": "complex microstructures and intrinsic anisotropy may",
+      "target": "distinct behaviors during subsequent welding and service compared with con­ vent",
+      "relation": "lead to",
+      "confidence": 0.95
+    },
+    {
+      "source": "These charac­ teristics",
+      "target": "the strength [8,9] and high-temperature performance [10] of nickel-based superal",
+      "relation": "enhance",
+      "confidence": 0.95
+    },
+    {
+      "source": "Recent studies have shown that precipitation-strengthened superalloys such as IN",
+      "target": "d weld­ ability when fabricated using LPBF [10]",
+      "relation": "improve",
+      "confidence": 0.95
+    },
+    {
+      "source": "The fine-grained microstructure, high dislocation density, and anisotropy of LPB",
+      "target": "entirely different crack susceptibility and microstructural evolution during wel",
+      "relation": "lead to",
+      "confidence": 0.95
+    },
+    {
+      "source": "During the LPBF process, the alloy is subjected to repeated non- equilibrium the",
+      "target": "pronounced anisotropy in the microstructure and mechanical properties",
+      "relation": "leads to",
+      "confidence": 0.95
+    },
+    {
+      "source": "The hardness mapping covered BM",
+      "target": "HAZ, FZ, and weld zone (WZ).",
+      "relation": "produces",
+      "confidence": 0.95
+    },
+    {
+      "source": "elevates the temperature, reduces surface tension, and enhances metal fluidity a",
+      "target": "enlarging the weld pool",
+      "relation": "thereby",
+      "confidence": 0.95
+    },
+    {
+      "source": "A higher heat input",
+      "target": "the arc energy density and arc pressure, which promotes lateral expansion of the",
+      "relation": "enhances",
+      "confidence": 0.95
+    },
+    {
+      "source": "The geometric model (200 × 100 × 5 mm³) was meshed using free tetrahedral elemen",
+      "target": "~400,000 ele­ ments",
+      "relation": "resulting in",
+      "confidence": 0.95
+    },
+    {
+      "source": "during cooling induce residual stresses",
+      "target": "microstrain [43] and increased dislocation density [44]",
+      "relation": "leading to",
+      "confidence": 0.95
+    },
+    {
+      "source": "With",
+      "target": "in the heat input, the secondary dendrite arm spacing (λ₂) increases from 5.39 t",
+      "relation": "increase",
+      "confidence": 0.95
+    },
+    {
+      "source": "The heat input and cooling rate strongly",
+      "target": "the morphology and distribution of precipitates [42]",
+      "relation": "affect",
+      "confidence": 0.95
+    },
+    {
+      "source": "Lower cooling rates promote segregation of low-solubility elements at the interd",
+      "target": "forming coarse granular or rod- like MC carbides [46] (Fig.",
+      "relation": "causes",
+      "confidence": 0.95
+    },
+    {
+      "source": "11, partial dissolution of the cellular structures occur near the fusion line",
+      "target": "while the pre-existing nanoscale MC carbides at the cell walls coarsen into subm",
+      "relation": "produces",
+      "confidence": 0.95
+    },
+    {
+      "source": "In addition, the size of the γ′ precipitate",
+      "target": "from 16 to 30 nm, and the volume fraction in­ creases from 10 % to 30 %",
+      "relation": "increases",
+      "confidence": 0.95
+    },
+    {
+      "source": "where r0 is the precipitate radius at time t0",
+      "target": "r is the radius at time t, and k is the coarsening rate constant.",
+      "relation": "produces",
+      "confidence": 0.95
+    },
+    {
+      "source": "The discrepancy may be attributed to methodological differences: nanoindentation",
+      "target": "while tensile testing captures the bulk mechanical behavior, which is more sensi",
+      "relation": "causes",
+      "confidence": 0.95
+    },
+    {
+      "source": "This distribution is consistent with the microstructural features: coarse grains",
+      "target": "low hardness, while dense γ′ pre­ cipitation and higher dislocation density in t",
+      "relation": "causes",
+      "confidence": 0.95
+    },
+    {
+      "source": "Thus",
+      "target": "in the heat input enlarged the molten pool (Fig",
+      "relation": "increases",
+      "confidence": 0.95
+    },
+    {
+      "source": "The reduced cooling rates at higher heat inputs promoted growth of γ′ precipitat",
+      "target": "d their volume fraction (Fig",
+      "relation": "increase",
+      "confidence": 0.95
+    },
+    {
+      "source": "In terms of stress distribution, tensile residual stresses (~600 MPa) were forme",
+      "target": "while compressive stresses (~160 MPa) were concentrated in the HAZ (Fig.",
+      "relation": "produces",
+      "confidence": 0.95
+    },
+    {
+      "source": "15) highlighted that the HAZ exhibited the highest hardness",
+      "target": "underscoring the critical role of γ′ pre­ cipitation in strengthening.",
+      "relation": "produces",
+      "confidence": 0.95
+    },
+    {
+      "source": "where k is the material constant (750 MPa⋅μm1/2[62])",
+      "target": "and d is the average grain size.",
+      "relation": "produces",
+      "confidence": 0.95
+    },
+    {
+      "source": "The regions near the fusion line, which approached the alloy liquidus (~1383 ◦C)",
+      "target": "exhibited partial dissolution of cellular structures and coarsening of MC carbid",
+      "relation": "produces",
+      "confidence": 0.95
+    },
+    {
+      "source": "Under the B1 condition, the yield strengths of BM, HAZ, and WZ",
+      "target": "as calculated from the nanoindentation load–displacement data (Fig.",
+      "relation": "produces",
+      "confidence": 0.95
+    },
+    {
+      "source": "the weld center exhibited strength loss",
+      "target": "grain coarsening and dislocation annihi­ lation;",
+      "relation": "due to",
+      "confidence": 0.95
+    },
+    {
+      "source": "Strengthening in the HAZ resulted from γ′ precipitation and increased dislocatio",
+      "target": "of grain coarsening and reduced dislocation density",
+      "relation": "because",
+      "confidence": 0.95
+    }
+  ],
+  "triplet_count": 28,
+  "chain_count": 28
+}

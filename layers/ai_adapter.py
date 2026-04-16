@@ -43,7 +43,11 @@ class AIAdapter:
         self.client = None
         self.parser = RobustJSONParser()
         self.llm_status = "disabled_uninitialized"
-        
+        self.provider_name = "none"
+        self.model = model or "gpt-4o-mini"
+        self.base_url = base_url
+        self.api_key = None
+
         if not HAS_OPENAI:
             logger.warning("openai 库未安装，AI 增强将自动降级到无 LLM 模式。")
             self.llm_status = "disabled_missing_dependency"
@@ -56,24 +60,107 @@ class AIAdapter:
         except ImportError:
             self._load_env_fallback()
 
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
-        self.base_url = base_url or os.environ.get("OPENAI_BASE_URL")
-        self.model = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        def _valid_env_value(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+            normalized = value.strip()
+            if not normalized:
+                return None
+            placeholders = {
+                "your_openai_api_key_here",
+                "your_ark_api_key_here",
+                "your_siliconflow_api_key_here",
+                "__YOUR_API_KEY__",
+                "__YOUR_ARK_API_KEY__",
+                "__YOUR_SILICONFLOW_API_KEY__",
+            }
+            if normalized in placeholders:
+                return None
+            return normalized
+
+        # Provider registry — priority order: ARK → OpenAI-compatible → SiliconFlow generic
+        # Each tuple: (display_name, key_env, url_env, default_url, model_env, default_model)
+        # Resolving api_key / base_url / model from the SAME provider keeps the client coherent.
+        _PROVIDER_REGISTRY = [
+            (
+                "ARK",
+                "ARK_API_KEY",
+                "ARK_BASE_URL",
+                "https://ark.cn-beijing.volces.com/api/v3",
+                "ARK_MODEL",
+                None,  # model is mandatory for ARK — no safe default
+            ),
+            (
+                "OpenAI",
+                "OPENAI_API_KEY",
+                "OPENAI_BASE_URL",
+                None,  # official OpenAI endpoint (SDK default)
+                "OPENAI_MODEL",
+                "gpt-4o-mini",
+            ),
+            (
+                "SiliconFlow",
+                "SILICONFLOW_API_KEY",
+                "SILICONFLOW_EMBEDDING_BASE_URL",
+                "https://api.siliconflow.cn/v1",
+                "SILICONFLOW_EMBEDDING_MODEL",
+                "BAAI/bge-m3",
+            ),
+        ]
+
+        self.provider_name = "none"
+        self.api_key = None
+        self.base_url = base_url  # honour explicit arg regardless of provider
+        self.model = model
+
+        # 1) Explicit key arg takes absolute priority
+        _explicit_key = _valid_env_value(api_key)
+        if _explicit_key:
+            self.provider_name = "custom"
+            self.api_key = _explicit_key
+            self.base_url = base_url
+            self.model = model or "gpt-4o-mini"
+        else:
+            # 2) Walk registry; stop at first provider whose key is present
+            for prov_name, key_env, url_env, default_url, model_env, default_model in _PROVIDER_REGISTRY:
+                resolved_key = _valid_env_value(os.environ.get(key_env))
+                if resolved_key:
+                    self.provider_name = prov_name
+                    self.api_key = resolved_key
+                    self.base_url = base_url or os.environ.get(url_env) or default_url
+                    self.model = model or os.environ.get(model_env) or default_model
+                    break
+
         self.enabled = False
 
         if self.api_key:
             self.client = openai.OpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url,
-                timeout=60.0
+                timeout=60.0,
             )
             self.enabled = True
             self.llm_status = "enabled"
-            logger.info("AIAdapter 启用成功。模型: %s", self.model)
+            logger.info(
+                "AIAdapter 启用成功。提供商: %s, 模型: %s, base_url: %s",
+                self.provider_name,
+                self.model,
+                self.base_url or "(SDK默认)",
+            )
         else:
             self.client = None
             self.llm_status = "disabled_missing_api_key"
-            logger.warning("AIAdapter 未启用: 缺失 API_KEY。")
+            logger.warning("AIAdapter 未启用: 未找到有效的 API_KEY (已尝试 ARK / OpenAI / SiliconFlow)。")
+
+    def provider_info(self) -> Dict[str, Any]:
+        """返回当前激活的提供商信息（用于诊断日志，不包含 key 值）。"""
+        return {
+            "provider": self.provider_name,
+            "model": self.model,
+            "base_url": self.base_url or "(SDK默认)",
+            "enabled": self.enabled,
+            "status": self.llm_status,
+        }
 
     def extract_claims(self, text: str, goal: str) -> List[Dict[str, Any]]:
         """

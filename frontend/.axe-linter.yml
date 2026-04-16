@@ -1,0 +1,9 @@
+# axe Accessibility Linter configuration
+# Disables strict static-analysis checks for ARIA token values in JSX.
+# React JSX expressions like aria-expanded={bool} and aria-pressed={bool}
+# are semantically valid WAI-ARIA patterns at runtime; the static checker
+# cannot evaluate JSX expressions so it incorrectly reports them as invalid.
+axe-linter:
+  enabled: true
+  rules:
+    aria-valid-attr-value: false

@@ -15,6 +15,7 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          container: "hsl(var(--primary) / 0.12)",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -40,6 +41,26 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        /* M3 Surface Containers */
+        surface: {
+          DEFAULT: "hsl(var(--surface))",
+          lowest: "hsl(var(--surface-lowest))",
+          low: "hsl(var(--surface-low))",
+          container: "hsl(var(--surface-default))",
+          high: "hsl(var(--surface-high))",
+          highest: "hsl(var(--surface-highest))",
+        },
+        outline: {
+          DEFAULT: "hsl(var(--outline))",
+          variant: "hsl(var(--outline-variant))",
+        },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -60,10 +81,15 @@ export default {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
+      maxWidth: {
+        writing: "720px",
+      },
       fontFamily: {
-        headline: ["Outfit", "sans-serif"],
-        doc: ["Inter", "serif"],
-        label: ["Inter", "sans-serif"],
+        display: ["Inter", "Noto Sans SC", "sans-serif"],
+        headline: ["Inter", "Noto Sans SC", "sans-serif"],
+        body: ["Inter", "Noto Sans SC", "sans-serif"],
+        doc: ["Georgia", "STSong", "Songti SC", "SimSun", "serif"],
+        label: ["Inter", "Noto Sans SC", "sans-serif"],
       },
     },
   },

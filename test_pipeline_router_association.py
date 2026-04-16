@@ -193,7 +193,7 @@ class TestPipelineAssociationRouter:
                     ],
                 }
 
-        def stub_run_pipeline_core(request):
+        def stub_run_pipeline_core(_request):
             return {
                 "status": "success",
                 "output_dir": str(output_dir),
@@ -274,7 +274,6 @@ class TestPipelineAssociationRouter:
         from models import PipelineRequest, TaskState
         from routers import pipeline_router
 
-        task_id = "async_assoc_task"
         request = PipelineRequest(
             input_path="demo.pdf",
             goal="improve literature review transitions",
@@ -283,17 +282,22 @@ class TestPipelineAssociationRouter:
         )
 
         async def run_test() -> dict[str, object]:
-            async with pipeline_router.TASKS_LOCK:
-                pipeline_router.TASKS[task_id] = {
-                    "status": TaskState.queued.value,
-                    "progress": 0.0,
-                    "stage": "queued",
-                    "result": None,
-                    "error": None,
-                    "updated_at": pipeline_router._now_ts(),
-                }
+            captured: dict[str, object] = {}
 
-            await pipeline_router._run_pipeline_async(task_id, request)
+            def fake_create_task(coro):
+                captured["coro"] = coro
+                return object()
+
+            with patch.object(pipeline_router.asyncio, "create_task", side_effect=fake_create_task):
+                submit_response = await pipeline_router.run_pipeline_async_endpoint(request)
+
+            task_id = submit_response.task_id
+            assert task_id
+            assert "coro" in captured
+            async with pipeline_router.TASKS_LOCK:
+                assert pipeline_router.TASKS[task_id]["status"] == TaskState.queued.value
+
+            await captured["coro"]
             async with pipeline_router.TASKS_LOCK:
                 return dict(pipeline_router.TASKS[task_id])
 
@@ -327,3 +331,113 @@ class TestPipelineAssociationRouter:
         
         # If payload is present but yields no extra angles/gaps, analysis_enriched should be False
         assert bundle["analysis_enriched"] is False, "Should be False if no actionable increments were found"
+
+    def test_pipeline_run_prefers_in_memory_artifacts(self, client_and_output_dir):
+        """Pipeline association should use in-memory artifacts before falling back to disk JSON."""
+        client, output_dir = client_and_output_dir
+        from routers import pipeline_router
+
+        artifact_payload = {
+            "focus_points": ["contextual retrieval", "transition writing"],
+            "retrieval_payload": {
+                "status": "hybrid_retrieval_ready",
+                "focus_points": ["contextual retrieval", "transition writing"],
+                "top_chunks": [
+                    {
+                        "id": "chunk_1",
+                        "text": "Retrieved evidence shows contextual retrieval improves transition quality.",
+                        "source": "paper_a.pdf",
+                        "hybrid_score": 0.88,
+                    }
+                ],
+            },
+            "scoring_payload": {
+                "scoring": {
+                    "selected_writing_points": [
+                        {
+                            "writing_point_id": "wp001",
+                            "claim": "Grounded retrieval improves transition quality when evidence is explicit.",
+                            "point_type": "discussion",
+                            "relevance_score": 0.91,
+                            "goal_hits": ["grounded retrieval", "transition quality"],
+                        }
+                    ],
+                    "semantic_themes": [
+                        {
+                            "theme_title": "Grounding",
+                            "summary": "Grounded retrieval helps structure the review bridge and bound claims.",
+                            "writing_points": [],
+                        }
+                    ],
+                },
+                "view": {},
+            },
+            "analysis_payloads": [
+                {
+                    "scoring": {
+                        "selected_writing_points": [
+                            {
+                                "writing_point_id": "wp001",
+                                "claim": "Grounded retrieval improves transition quality when evidence is explicit.",
+                                "point_type": "discussion",
+                                "relevance_score": 0.91,
+                                "goal_hits": ["grounded retrieval", "transition quality"],
+                            }
+                        ],
+                        "semantic_themes": [
+                            {
+                                "theme_title": "Grounding",
+                                "summary": "Grounded retrieval helps structure the review bridge and bound claims.",
+                                "writing_points": [],
+                            }
+                        ],
+                    },
+                    "view": {},
+                }
+            ],
+        }
+
+        read_calls: list[str] = []
+
+        def fake_read_json_file(path: Path) -> dict[str, object]:
+            read_calls.append(path.name)
+            return {}
+
+        def stub_run_pipeline_core(_request):
+            return {
+                "status": "success",
+                "output_dir": str(output_dir),
+                "docx": str(output_dir / "demo_doc_report.docx"),
+                "duration": 1.23,
+                "artifacts": artifact_payload,
+            }
+
+        # Preserve the existing disk-based artifact fixture, but the router should not need the 02/03 files.
+        with patch.object(pipeline_router, "_run_pipeline_core", side_effect=stub_run_pipeline_core), patch.object(
+            pipeline_router,
+            "_read_json_file",
+            side_effect=fake_read_json_file,
+        ), patch.object(
+            pipeline_router,
+            "_resolve_pipeline_memory_hits",
+            return_value=[],
+        ), patch.object(
+            pipeline_router,
+            "_resolve_pipeline_ai_adapter",
+            return_value=None,
+        ):
+            response = client.post(
+                "/run",
+                json={
+                    "input_path": "demo.pdf",
+                    "goal": "improve literature review transitions",
+                    "include_association": True,
+                    "association_mode": "no_ai",
+                },
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["association_bundle"]["mode"] == "no_ai"
+        assert "02_hybrid_retrieval.json" not in read_calls
+        assert "03_academic_scoring.json" not in read_calls

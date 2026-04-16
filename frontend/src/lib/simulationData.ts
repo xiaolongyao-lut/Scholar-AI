@@ -1,4 +1,4 @@
-import { ManuscriptSection, WritingMaterial } from '@/types/resources';
+import { ManuscriptSection, WritingMaterial } from '@/types/writing';
 
 export const getSimulationSectionsForProject = (projectId: string): ManuscriptSection[] => {
   return [

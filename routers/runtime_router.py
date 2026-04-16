@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Runtime API Router - Manages writing sessions, jobs, and execution control."""
 
+import asyncio
 import logging
 from typing import Any, List
 from fastapi import APIRouter, HTTPException, Query
@@ -22,6 +23,38 @@ def get_runtime():
     """Import and return the writing runtime service."""
     from writing_runtime import get_writing_runtime
     return get_writing_runtime()
+
+
+def _build_job_executor(job):
+    """Build an async executor for skill-backed jobs when references are available."""
+    if not getattr(job, "action_id", None) and not getattr(job, "skill_id", None):
+        return None
+
+    from skills.service import get_writing_skill_service
+
+    service = get_writing_skill_service()
+
+    async def _executor(current_job):
+        target_job = current_job or job
+        if getattr(target_job, "action_id", None):
+            return await asyncio.to_thread(
+                service.run_legacy_action,
+                target_job.action_id,
+                target_job.input_text,
+                target_job.scope,
+                target_job.output_mode,
+            )
+        if getattr(target_job, "skill_id", None):
+            return await asyncio.to_thread(
+                service.run_skill,
+                target_job.skill_id,
+                target_job.input_text,
+                target_job.scope,
+                target_job.output_mode,
+            )
+        return None
+
+    return _executor
 
 
 @router.post("/session", response_model=SessionPayload)
@@ -104,11 +137,18 @@ async def get_job_status(job_id: str) -> JobStatusPayload:
 async def start_job(job_id: str) -> dict[str, Any]:
     """Start executing a job."""
     runtime = get_runtime()
+    job = runtime.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    executor = _build_job_executor(job)
     try:
-        job = await runtime.start_job(job_id)
+        await runtime.start_job(job_id, executor=executor)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"job_id": job.job_id, "status": job.status.value}
+
+    current_job = runtime.get_job(job_id) or job
+    return {"job_id": current_job.job_id, "status": current_job.status.value}
 
 
 @router.post("/job/{job_id}/pause")
@@ -145,10 +185,20 @@ async def cancel_job(job_id: str) -> dict[str, Any]:
 
 
 @router.get("/job/{job_id}/events", response_model=List[EventPayload])
-async def get_job_events(job_id: str) -> List[EventPayload]:
-    """Get all events for a job."""
+async def get_job_events(
+    job_id: str,
+    since_timestamp: str | None = Query(default=None),
+    after_event_id: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> List[EventPayload]:
+    """Get all events for a job, optionally filtered for polling."""
     runtime = get_runtime()
-    events = runtime.get_job_events(job_id)
+    events = runtime.get_job_events(
+        job_id,
+        since_timestamp=since_timestamp,
+        after_event_id=after_event_id,
+        limit=limit,
+    )
     return [EventPayload(**e.to_dict()) for e in events]
 
 

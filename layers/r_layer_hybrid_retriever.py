@@ -88,15 +88,23 @@ class HybridRetrieverWithRerank:
     P1 WBS 1.3.2: 检索 + 重排 完整流程
     """
     
-    def __init__(self, use_reranker: bool = True):
+    def __init__(self, use_reranker: bool = True, cache_manager=None):
         self.base_retriever = ContextAwareRetriever()
         self.use_reranker = use_reranker
-        self.api_key = os.getenv("ARK_API_KEY") or os.getenv("SILICONFLOW_API_KEY")
+        self.rerank_api_key = os.getenv("SILICONFLOW_RERANK_API_KEY") or os.getenv("SILICONFLOW_API_KEY")
+        self.rerank_base_url = os.getenv("SILICONFLOW_RERANK_BASE_URL", "https://api.siliconflow.cn/v1/rerank")
+        self.rerank_model = os.getenv("SILICONFLOW_RERANK_MODEL", "Qwen/Qwen3-Reranker-8B")
+        self.cache_manager = cache_manager
 
-    async def search(self, raw_data: Dict[str, Any], query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+    async def search(self, raw_data: Dict[str, Any], query: str, top_k: int = 10, focus_keywords: List[str] = None) -> List[Dict[str, Any]]:
         """
-        完整流程: 混合检索 → 重排
+        完整流程: 混合检索 → 重排 (P4 增强版: 前置命中查询)
         """
+        if self.cache_manager:
+            cached = await self.cache_manager.fetch(query, focus=focus_keywords, domain="retrieval")
+            if cached:
+                logger.info(f"⚡ 检索层缓存命中，直接返回结果: {query[:15]}...")
+                return cached[:top_k]
         # Step 1: 混合粗排 (Top 50)
         candidates = await self.base_retriever.hybrid_search(raw_data, query, top_k=50)
         
@@ -104,29 +112,89 @@ class HybridRetrieverWithRerank:
             return []
 
         # Step 2: 重排
-        if self.use_reranker and self.api_key:
+        if self.use_reranker and self.rerank_api_key:
             try:
                 candidates = await self._rerank_with_api(query, candidates)
             except Exception as e:
                 logger.warning(f"Reranker API failed, using fallback: {e}")
                 candidates = self._rerank_local(query, candidates)
         
-        return candidates[:top_k]
+        final_results = candidates[:top_k]
+        
+        if self.cache_manager and final_results:
+            # 记录查询特征，并作为新条目加入缓存
+            await self.cache_manager.commit(query=query, result=final_results, focus=focus_keywords, domain="retrieval", confidence=0.8) # 检索本身不代表结论强度，置信度设为安全值
+            
+        return final_results
 
     async def _rerank_with_api(self, query: str, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """模拟调用 BGE-Reranker API"""
-        # 实际实现应调用 SiliconFlow / ARK
-        for it in candidates:
-            it['rerank_score'] = it.get('hybrid_score', 0) * 1.2
-        candidates.sort(key=lambda x: x.get('rerank_score', 0), reverse=True)
-        return candidates
+        """调用 SiliconFlow rerank API 对候选结果进行精排。"""
+        documents = [
+            normalize_text(
+                item.get("claim")
+                or item.get("text")
+                or item.get("source_text")
+                or ""
+            )
+            for item in candidates
+        ]
+        documents = [doc for doc in documents if doc]
+        if not documents:
+            return self._rerank_local(query, candidates)
+
+        headers = {
+            "Authorization": f"Bearer {self.rerank_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.rerank_model,
+            "query": query,
+            "documents": documents,
+            "top_n": len(documents),
+            "return_documents": False,
+        }
+
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            response = await client.post(self.rerank_base_url, headers=headers, json=payload)
+
+        if response.status_code != 200:
+            raise RuntimeError(f"rerank http {response.status_code}: {response.text[:240]}")
+
+        try:
+            body = response.json()
+        except Exception:
+            body = {}
+        result_items = body.get("results", []) if isinstance(body, dict) else []
+        if not isinstance(result_items, list) or not result_items:
+            raise RuntimeError("rerank response missing results")
+
+        # Map by original index for stable reorder
+        score_by_index: Dict[int, float] = {}
+        for raw in result_items:
+            if not isinstance(raw, dict):
+                continue
+            idx = raw.get("index")
+            score = raw.get("relevance_score")
+            if isinstance(idx, int) and isinstance(score, (int, float)):
+                score_by_index[idx] = float(score)
+
+        if not score_by_index:
+            raise RuntimeError("rerank response has no valid index/score pairs")
+
+        reranked: List[Dict[str, Any]] = []
+        for idx, item in enumerate(candidates):
+            updated = dict(item)
+            updated["rerank_score"] = score_by_index.get(idx, float(item.get("hybrid_score", 0.0)))
+            reranked.append(updated)
+
+        reranked.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
+        return reranked
 
     def _rerank_local(self, query: str, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """本地回退精排"""
         return sorted(candidates, key=lambda x: x.get('hybrid_score', 0), reverse=True)
 
-# 保持对旧接口的兼容，但内部由类驱动
 _retriever_instance = HybridRetrieverWithRerank()
 
 async def hybrid_search(raw_extract: dict[str, Any], query: str, top_k: int = 12, focus_keywords: list[str] = None) -> list[dict[str, Any]]:
-    return await _retriever_instance.search(raw_data=raw_extract, query=query, top_k=top_k)
+    return await _retriever_instance.search(raw_data=raw_extract, query=query, top_k=top_k, focus_keywords=focus_keywords)

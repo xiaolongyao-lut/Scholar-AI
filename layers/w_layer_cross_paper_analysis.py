@@ -405,7 +405,10 @@ class CrossPaperAnalyzer:
         try:
             report = {
                 'schema_version': 'v3.cross-paper-aware',
+                'analysis_version': '1.0',  # P1 enhancement: version tracking
+                'w_layer_version': '1.1',   # P1 enhancement: W-Layer version
                 'generated_at': datetime.now().isoformat(),
+                'analysis_generated_at': datetime.now().isoformat(),  # P1: explicit timestamp
                 'master_index': self.index_builder.build_master_index(),
                 'conflict_summary': {
                     'total_parameters_tracked': len(self.conflict_detector.parameter_claims),
@@ -438,7 +441,8 @@ def main():
             bundle = json.load(f)
 
         analyzer = CrossPaperAnalyzer()
-        result = analyzer.analyze_volume_bundle(bundle, Path(args.volume_bundle))
+        # 使用 asyncio.run() 正确执行异步方法
+        result = asyncio.run(analyzer.analyze_volume_bundle(bundle, Path(args.volume_bundle)))
         analyzer.generate_final_report(Path(args.output))
 
         print(json.dumps({

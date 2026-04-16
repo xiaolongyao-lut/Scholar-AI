@@ -1,0 +1,190 @@
+{
+  "schema_version": "v2.graph-aware",
+  "source_pdf": "C:\\Users\\xiao\\Desktop\\wenxianku\\materials-19-01104.pdf",
+  "goal": "Conclusion Extraction",
+  "stage_manifest": {
+    "stage_01_extract": {
+      "status": "unknown",
+      "key_counts": {
+        "sections": 0,
+        "chunks": 145,
+        "figures": 9,
+        "tables": 9
+      }
+    },
+    "stage_02_binding": {
+      "status": "binding_ready",
+      "key_counts": {
+        "relation_edges": 47,
+        "evidence_clusters": 0
+      }
+    },
+    "stage_03_analysis": {
+      "status": "analysis_complete",
+      "goal": "Conclusion Extraction",
+      "writing_points": 75
+    }
+  },
+  "quality_gates": {
+    "has_writing_points": true,
+    "has_evidence_links": true,
+    "has_clusters": false,
+    "writing_points_have_boundary_notes": false,
+    "overall_pass": false
+  },
+  "writing_points": [
+    {
+      "writing_point_id": "wp001",
+      "claim": "Article Laser Wire Directed Energy Deposition of 5356 Aluminum Alloy: Process Parameter Optimization and Porosity Prediction",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Article Laser Wire Directed Energy Deposition of 5356 Aluminum Alloy: Process Parameter Optimization and Porosity Prediction",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp002",
+      "claim": "Xiangfei Zhang, Yujia Mei, Huomu Yang * and Shouhuan Zhou",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Xiangfei Zhang, Yujia Mei, Huomu Yang * and Shouhuan Zhou",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp003",
+      "claim": "18202883187@163.com (X.Z.);",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "College of Electronics and Information Engineering, Sichuan University, Chengdu 610065, China; 18202883187@163.com (X.Z.); 17802379558@163.com (Y.M.); zhoush@scu.edu.cn (S.Z.) * Correspondence: scuyhm@163.com",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp004",
+      "claim": "Among them, the SVR model exhibited the best predictive performance, achieving an R2 of 0.8960, an RMSE of 0.19, and an MAE of 0.15, outperforming the other three models.",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Laser wire directed energy deposition (LWDED) has garnered significant attention for the fabrication of large metallic components. However, the complex coupling effects among its process parameters pose challenges for porosity control. Optimizing parameter combinations to effectively minimize porosity is therefore critical to the broader adoption of this technology. In this study, systematic experiments and modeling were conducted to optimize the LWDED process parameters and predict porosity. First, single-factor and orthogonal experiments were performed to evaluate the individual effects of laser power, scanning speed, wire feeding speed, and air pressure on porosity. Subsequently, range analysis and analysis of variance were employed to determine the influence of each parameter and the significance of their interactions. Four machine learning models—SVR, RF, GPR, and XGBoost—were then trained and compared. Among them, the SVR model exhibited the best predictive performance, achieving an R2 of 0.8960, an RMSE of 0.19, and an MAE of 0.15, outperforming the other three models. Based on this, the SVR model was further utilized to establish the mapping between process parameters and porosity. Contour maps and three-dimensional surface plots were generated to visualize porosity variation patterns under interacting parameters. Validation experiments showed that the maximum relative error between model predictions and experimental measurements was 0.514%, with an average error of 0.251%. This study provides a reliable reference for selecting low-porosity parameter combinations in the LWDED fabrication of 5356 aluminum alloy components.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp005",
+      "claim": "5356 aluminum alloy;",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Keywords: laser wire directional energy deposition; 5356 aluminum alloy; porosity; machine learning",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp018",
+      "claim": "5356 aluminum alloy, a representative aluminum-magnesium alloy, is characterized by low density, high strength, and excellent corrosion resistance [1], making it an ideal candidate for the fabrication of large, lightweight, and geometrically complex components [2].",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Currently, industries such as aerospace, automotive manufacturing, and rail transit are undergoing rapid technological advancement, driving an increasing demand for large metallic components that offer both lightweight and high-strength properties. 5356 aluminum alloy, a representative aluminum-magnesium alloy, is characterized by low density, high strength, and excellent corrosion resistance [1], making it an ideal candidate for the fabrication of large, lightweight, and geometrically complex components [2]. Laser wire directed energy deposition (LWDED), a key branch of additive manufacturing (AM), offers distinct advantages, including high material utilization, superior deposition efficiency, and the capacity to produce large-scale structures [3]. These attributes render LWDED highly promising for the efficient fabrication of large 5356 aluminum alloy components. Consequently, the application of",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp019",
+      "claim": "Materials 2026, 19, 1104 https://doi.org/10.3390/ma19061104",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Materials 2026, 19, 1104 https://doi.org/10.3390/ma19061104",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp021",
+      "claim": "Research shows that pores can be reduced by optimizing process parameters, but the mechanism by which the LWDED process parameters control pore formation is complex [8].",
+      "point_type": "mechanism",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 2,
+      "source_text": "LWDED in the production of high-performance large aluminum alloy parts has emerged as a research focus within the field of additive manufacturing. LWDED technology for fabricating 5356 aluminum alloy components is prone to producing metallurgical pores and process-induced pores [4]. Pore defects can significantly reduce key properties such as hardness, shear strength, and corrosion resistance of components. In severe cases, they can lead to component failure [5]. The solubility of hydrogen in liquid aluminum increases with temperature. When the molten pool enters the solidification stage, where temperature drops rapidly, hydrogen solubility decreases. Hydrogen is then released from liquid aluminum to form bubbles [6]. Bubbles that fail to escape in time are trapped and form metallurgical pores. The formation of process-induced pores is closely related to the stability of the keyhole during laser deep penetration welding. When the keyhole tip is sealed by molten metal flow, it separates to form process-induced pores [7]. Research shows that pores can be reduced by optimizing process parameters, but the mechanism by which the LWDED process parameters control pore formation is complex [8]. For example, laser power reduces porosity by maintaining keyhole stability [9]. Scanning speed reduces porosity by controlling the molten pool solidification rate [10]. Wire feeding speed reduces porosity by controlling the wire transfer mode to maintain molten pool and keyhole stability [7,11]. Air pressure controls shielding gas flow to prevent impurities from ambient air from being drawn into the molten pool, thereby reducing porosity [12]. Additionally, interactions exist among these parameters. For instance, the interaction between laser power and scanning speed affects the balance between heat input and solidification rate. The interaction between laser power and wire feeding speed changes the energy-to-material ratio. These interactions significantly increase the difficulty of optimizing parameter combinations to reduce porosity. Therefore, effectively optimizing process parameters to fabricate low-porosity aluminum alloy components is a current research focus. Establishing a mapping relationship between process parameter combinations and porosity is key to achieving high-quality printing of 5356 aluminum alloy via LWDED. Traditional process optimization relies primarily on statistical modeling methods, such as analysis of variance (ANOVA), response surface methodology (RSM), and the Taguchi method, which build predictive models between process parameters and target outputs from limited experimental data. Javidrad et al. [13] combined ANOVA and RSM for multi-objective optimization, successfully identifying optimal laser power, scanning speed, and powder feed rate for laser powder directed energy deposition (LPDED) of Inconel 738LC, balancing porosity against deposition efficiency. Xiao et al. [14] applied Taguchi experimental design to co-optimize laser power, scanning speed, powder feed rate, and shielding gas flow rate, improving the density of B4C/Al composites fabricated by LPDED. In fused deposition modeling (FDM), Saad et al. [15] combined RSM with particle swarm optimization (PSO) to optimize process parameters for flexural strength. Although these traditional methods are technically mature, they still depend on accumulated experience and extensive trial-and-error experiments [16], and struggle to handle the complexity of multi-parameter coupling [17]. In recent years, machine learning (ML) has shown great potential in process optimization and defect prediction for additive manufacturing, owing to its strong nonlinear fitting capability and ability to extract complex features [18,19]. Existing studies have covered a wide range of processes, including wire arc additive manufacturing (WAAM), fused deposition modeling (FDM), laser powder directed energy deposition (LPDED), and laser powder bed fusion (LPBF). Researchers have used algorithms such as GPR, XGBoost, NN, ANN, and GBDT to build models linking process parameters to part geometry [20], surface quality [21], relative density [22–24], flexural strength [15], and porosity [25,26].",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp024",
+      "claim": "Range analysis and variance analysis are combined to reveal multi-parameter interaction mechanisms and clarify the dominant role of laser power and the significance of key interaction terms.",
+      "point_type": "result",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 3,
+      "source_text": "Furthermore, contour plots and 3D surface visualizations have enabled researchers to intuitively reveal the interactions among multiple parameters. Combined with heuristic search methods such as PSO, self-adaptive harmony search (SAHS), and genetic algorithms (GA), these approaches have enabled precise identification of optimal parameter combinations within constrained search spaces. For LWDED specifically, Liu et al. [27] used GPR and a naive Bayes classifier to systematically predict the geometric features, microstructure, and surface quality of Ti-6Al-4V deposited layers. Abuabiah et al. [28] established a regression model via ANOVA to optimize the deposition quality of Inconel 718. However, despite the widespread application of these optimization frameworks across various additive manufacturing processes, no study has yet reported machine learning-based porosity modeling or contour plot analysis for 5356 aluminum alloy fabricated by LWDED. Given the considerable application potential of LWDED technology and 5356 aluminum alloy, it is both necessary and timely to draw on established optimization frameworks from the broader additive manufacturing field and introduce machine learning for porosity-oriented process optimization in LWDED. This study takes the development of low-porosity 5356 aluminum alloy LWDED components as the core objective and conducts process parameter optimization research. First, the variation patterns of porosity under the independent action of core parameters such as laser power, scanning speed, wire feeding speed, and air pressure are clarified through the controlled variable method. Then, the optimal process parameter combination is screened through orthogonal experiments. Range analysis and variance analysis are combined to reveal multi-parameter interaction mechanisms and clarify the dominant role of laser power and the significance of key interaction terms. Finally, a machine learning prediction model is built based on experimental data. Contour maps and 3D surface plots are used to show the variation patterns of porosity under multi-parameter interactions.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp026",
+      "claim": "Therefore, the wire feed angle is fixed at 45◦.",
+      "point_type": "mechanism",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 3,
+      "source_text": "As mentioned above, the four process parameters of laser power, scanning speed, wire feeding speed, and air pressure are particularly important for their effects on pores. Besides these core parameters, process parameters such as wire feed angle and defocusing distance also affect forming quality. However, these parameters are more oriented toward “forming accuracy” rather than being dominant factors for “pore defects”. Their optimization ranges are also narrow. For example, wire feed angle selection is generally 15◦, 30◦, 45◦, 60◦, and 75◦. Existing research has confirmed that 45◦is the optimal wire feed angle [3]. Therefore, the wire feed angle is fixed at 45◦. Defocusing distance can be divided into three cases: positive defocusing, negative defocusing, and zero defocusing [29]. Positive defocusing provides better forming quality with uniform and attractive morphology. Therefore, positive defocusing is selected with a focal distance of 5 mm. In summary, the four core process parameters of laser power, wire feeding speed, scanning speed, and air pressure are selected for experiments to study their influence patterns on the porosity of 5356 aluminum alloy LWDED. The experimental setup and porosity detection method will be described in detail below.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp028",
+      "claim": "The substrate is a 5356 aluminum alloy plate with dimensions of 100 mm × 50 mm × 5 mm.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 3,
+      "source_text": "The LWDED equipment (Han’s Laser, Shenzhen, China) used in the experiment is shown in Figure 1. It mainly consists of the LWDED system, wire feeder, and shielding gas system. The LWDED system includes a fiber laser (output wavelength 1070 nm) and a three-dimensional moving platform. The metal wire material selected is 5356 aluminum alloy wire with a diameter of 0.8 mm. The substrate is a 5356 aluminum alloy plate with dimensions of 100 mm × 50 mm × 5 mm. The chemical element composition of both is",
+      "linked_figures": [
+        "f1"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp031",
+      "claim": "To avoid damage to the laser head from aluminum alloy reflecting the laser, the laser beam is focused on the substrate surface at a 45◦inclination angle to form a molten pool.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 4,
+      "source_text": "shown in Table 1 [30]. Before the experiment, anhydrous ethanol was used to clean oil and moisture from the substrate surface to avoid impurities being drawn into the molten pool during deposition to form pores. The wire is fed into the molten pool through off-axis wire feeding. To avoid damage to the laser head from aluminum alloy reflecting the laser, the laser beam is focused on the substrate surface at a 45◦inclination angle to form a molten pool. Throughout the deposition process, high-purity argon gas is used as shielding gas. It can both prevent component oxidation and blow away plasma that accumulates above the molten pool during deposition.",
+      "linked_figures": [],
+      "linked_tables": []
+    }
+  ],
+  "figures": [
+    {
+      "figure_id": "f1",
+      "figure_number": 1,
+      "page": 4,
+      "caption": "Figure 1. The LWDED experimental setup.",
+      "bbox": [
+        166.39,
+        427.86,
+        335.68,
+        436.91
+      ],
+      "relevance_score": 0.5
+    }
+  ],
+  "tables": [],
+  "parameters": [],
+  "results": [],
+  "references": []
+}

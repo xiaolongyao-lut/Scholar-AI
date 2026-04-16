@@ -1,0 +1,2032 @@
+{
+  "scoring": {
+    "goal": "Conclusion Extraction",
+    "goal_profile": {
+      "method_focus": false,
+      "image_focus": false,
+      "process_focus": false,
+      "performance_focus": false,
+      "mechanism_focus": false
+    },
+    "writing_points": [
+      {
+        "writing_point_id": "wp001",
+        "claim": "Optics & Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Optics & Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp002",
+        "claim": "Contents lists available at ScienceDirect",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Contents lists available at ScienceDirect",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp004",
+        "claim": "journal homepage: www.elsevier.com/locate/optlastec",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "journal homepage: www.elsevier.com/locate/optlastec",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp006",
+        "claim": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp009",
+        "claim": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp012",
+        "claim": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp013",
+        "claim": "This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Zinc-Aluminum-Magnesium (Zn-Al-Mg) coated steel is an emerging environmentally friendly material with excellent corrosion resistance and self-repairing corrosion protection property. However, the presence of the Zn- Al-Mg coating poses significant challenges during welding, including severe coating evaporation, complex metallurgical reactions, coating cracking in the heat-affected zone (HAZ), elemental segregation, and micro­ structural inhomogeneity. In this study, a novel spatio-temporal beam shaping strategy-combining full domain power modulation with galvanometer-scanning laser was proposed to achieve precise control of the molten pool through synergistic energy and mechanical coupling. High-quality laser lap joints of Zn-Al-Mg coated steel were successfully obtained. The effects of laser power modulation amplitude on molten pool dynamics, spatter behavior, weld formation, and microstructure were systematically investigated. The results demonstrate that the tailored beam shaping strategy enhances molten pool stability, reduces spatter, and improves weld morphology. Quantitative analysis reveals that at a 40% power modulation amplitude, the maximum weld surface depression depth is reduced by 22.6%, and the HAZ width decreases by 23.9% compared to the unmodulated process, effectively mitigating coating cracking. Furthermore, the average grain size in the weld zone is refined by 22.5% (decreasing from 46.6 μm to 36.1 μm), while the proportion of high-angle grain boundaries (HAGBs) increases by 13.37%. This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures. Moreover, the formation mechanism of equiaxed grains and grain refinement behavior under different modulation amplitudes were analyzed based on classical nucleation and growth theory. This work provides an effective approach for stabilizing the laser welding process and optimizing the microstructure and mechanical performance of Zn-Al-Mg coated steels.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp015",
+        "claim": "However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4].",
+        "point_type": "background",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "damaged area [2]. However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4]. Currently, it is primarily used in the form of prefabricated profiles, which cannot meet the production demands of large-scale structural components, significantly limiting its industrial-scale application.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp016",
+        "claim": "Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2].",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Zn-Al-Mg coated steel is a novel environmentally friendly coating material. Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2]. The Zn-Al-Mg coating possesses a unique self-repairing corrosion protection property against cut-edge corrosion, attributed to the formation of a passivation film. This feature provides superior pro­ tection for both incisions and surface scratches. Unlike traditional galvanized coatings, when Zn-Al-Mg steel is sheared or scratched, a dense passivation film (composed of Zn-Al-Mg oxides and carbonates) forms on the exposed substrate. This passivation layer effectively blocks the infiltration of corrosive media, thereby “sealing” and “repairing” the",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp017",
+        "claim": "This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6].",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "The welding of Zn-Al-Mg coated steel faces three major challenges. First, low-boiling-point elements such as zinc (Zn) and magnesium (Mg) evaporate intensely during laser welding, generating high-pressure metal vapor that violently disrupts the molten pool and keyhole stabil­ ity. This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6]. Second, zinc (Zn), aluminum (Al), and magnesium (Mg) can react with iron (Fe), carbon (C), and oxygen (O) in the molten pool to form various inter­ metallic compounds (e.g., Fe-Zn-Al phases, MgZn2), which are prone to microcrack initiation under external loads or residual welding stresses,",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp018",
+        "claim": "* Corresponding author.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "* Corresponding author. E-mail address: shiyu@lut.edu.cn (Y. Shi).",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp019",
+        "claim": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025;",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025; Received in revised form 3 March 2026; Accepted 8 March 2026",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp020",
+        "claim": "Available online 12 March 2026 0030-3992/© 2026 Elsevier Ltd.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Available online 12 March 2026 0030-3992/© 2026 Elsevier Ltd. All rights are reserved, including those for text and data mining, AI training, and similar technologies.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp021",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp022",
+        "claim": "Therefore, the development of a new laser heat source with high energy modulation flexibility is urgently needed.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "compromises weld penetration and process efficiency. It remains chal­ lenging to simultaneously balance the stress state and weld quality. Therefore, the development of a new laser heat source with high energy modulation flexibility is urgently needed.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp023",
+        "claim": "In addition, due to the high hardness of the Zn-Al-Mg coating, the heat-affected zones (HAZ) on both sides of the weld are prone to surface coating cracking under thermal stresses, which reduces the corrosion resistance of the welded area.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "negatively impacting the mechanical performance of the weld [7,8]. Furthermore, Al tends to segregate near the weld surface and fusion line, promoting δ-ferrite coarsening and the formation of coarse primary ferrite grains. This results in elemental segregation, microstructural heterogeneity, and compositional inhomogeneity in the weld, signifi­ cantly reducing joint mechanical properties [9,10]. In addition, due to the high hardness of the Zn-Al-Mg coating, the heat-affected zones (HAZ) on both sides of the weld are prone to surface coating cracking under thermal stresses, which reduces the corrosion resistance of the welded area. These welding issues make the stable welding of Zn-Al-Mg coated steel a persistent challenge and severely hinder its broader application and industrial promotion.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp024",
+        "claim": "It effectively suppresses welding defects such as spatter, porosity, and cracking, thereby improving joint quality [26–28].",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "In response to the complex requirements of multi-process optimiza­ tion in the laser lap welding of Zn-Al-Mg coated steel, this study pro­ poses a novel spatio-temporal beam shaping strategy based on “full domain power modulation combined with galvanometer-scanning laser”, which couples beam oscillation in the spatial dimension with power modulation in the temporal dimension. A laser welding system was developed that integrates the advantages of both temporal and spatial beam shaping, enabling precise control of the molten pool through thermo-mechanical coupling. By implementing a modulation pattern with higher central and lower peripheral power, the energy is redistributed within the molten pool, allowing stress regulation in the HAZ without sacrificing thermal efficiency or weld formation quality. This enables coordinated control of coating evaporation, molten pool metallurgy, and elemental segregation. Preliminary experimental results have demonstrated that the system allows for fine-tuning of the laser energy distribution to match the energy field requirements, significantly expanding the ability to control molten pool behavior and weld morphology. It effectively suppresses welding defects such as spatter, porosity, and cracking, thereby improving joint quality [26–28].",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp025",
+        "claim": "Oscillating laser beams also introduce a stirring effect on the molten pool, which helps to homogenize the distribution of aluminum and improve the hardness uniformity of the weld [14].",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "Mechanical grinding to remove the surface coating is a commonly used pretreatment method for welding coated steels, as it effectively avoids the negative effects caused by the coating [11]. However, this approach introduces an additional processing step and increases manufacturing costs. Beam oscillation techniques, such as circular or eight patterns, have been shown to homogenize laser energy distribu­ tion, reduce laser energy density and temperature gradients in the molten pool, thereby enhancing the stability of both the molten pool and keyhole, and reducing spatter formation [12,13]. Oscillating laser beams also introduce a stirring effect on the molten pool, which helps to homogenize the distribution of aluminum and improve the hardness uniformity of the weld [14]. In addition, methods such as pulsed laser, power-modulated laser, and optimized process parameters can also improve the distribution and content of aluminum, mitigating the adverse effects of coating elements on the weld without incurring the high costs of traditional mechanical grinding [15]. However, these techniques still face limitations in comprehensively addressing the multiple challenges encountered in the laser welding of Zn-Al-Mg coated steels, including severe coating evaporation, complex metallurgical re­ actions, high residual stresses in the heat-affected zone (HAZ), elemental segregation, and microstructural inhomogeneity.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp026",
+        "claim": "this continuous stir­ ring effectively fragments dendrites and suppresses aluminum segrega­ tion, which is crucial for the elemental homogenization of the Zn-Al-Mg coated steel molten pool.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "In the preliminary stage of this study, four different oscillation tra­ jectories (linear, 8-shaped, infinity, and circular) were compared. Experimental results indicated that, unlike asymmetric trajectories, the circular oscillation trajectory possesses a unique central symmetry. This geometric characteristic ensures a more isotropic and uniform distri­ bution of laser energy at the edges of the molten pool, thereby pre­ venting localized overheating or lack of fusion. Furthermore, circular oscillation induces a stable rotational vortex flow; this continuous stir­ ring effectively fragments dendrites and suppresses aluminum segrega­ tion, which is crucial for the elemental homogenization of the Zn-Al-Mg coated steel molten pool.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp027",
+        "claim": "In terms of both mathematical modeling and practical control, it facilitates the synthesis of a controllable uniform energy field resembling a Gaussian distribu­ tion, a feat difficult to achieve precisely with complex trajectories like the 8-shaped pattern.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "Additionally, the circular trajectory synergizes perfectly with gradient power modulation (high center, low edge). In terms of both mathematical modeling and practical control, it facilitates the synthesis of a controllable uniform energy field resembling a Gaussian distribu­ tion, a feat difficult to achieve precisely with complex trajectories like the 8-shaped pattern. However, under the conventional circular oscil­ lation mode, a significant energy gradient persists between the peaks at the periphery and the center of the molten pool, exhibiting a charac­ teristic 'dual-peak' energy distribution. For Zn-Al-Mg coated steel, this edge-concentrated energy induces excessive thermal stress within the heat-affected zone (HAZ), which directly leads to coating cracking and elemental burnout. Therefore, in this study, the circular oscillation pattern was selected as the baseline trajectory for the beam shaping strategy. A gradient power modulation mode (characterized by high power at the center and low power at the edges) was implemented to reduce the laser power at the lateral sides, thereby homogenizing the laser energy distribution. This strategy not only preserves the coating in the HAZ (solving the cracking issue) but also decreases the overall temperature gradient (improving weld formation), serving as a tailored solution specifically designed to address the metallurgical challenges of Zn-Al-Mg alloys.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp028",
+        "claim": "In this work, the effects of the proposed beam shaping strategy on laser energy distribution, weld formation quality, and microstructural evolution in Zn-Al-Mg coated steel lap welding were investigated.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "In this work, the effects of the proposed beam shaping strategy on laser energy distribution, weld formation quality, and microstructural evolution in Zn-Al-Mg coated steel lap welding were investigated. High- speed imaging was employed to capture spatter characteristics and molten pool dynamics, while electron backscatter diffraction (EBSD) was used to analyze weld microstructures. The mechanisms by which this strategy mitigates HAZ coating cracking and refines microstructures were also elucidated. This study provides both technical guidance and theoretical support for the control of welding process stability and the regulation of microstructure and properties in Zn-Al-Mg coated steels.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp029",
+        "claim": "Adjusting the laser beam's input power waveform or spatial profile to achieve a desired intensity distribution allows for multidimensional improvement of joint perfor­ mance [20,21].",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 2,
+        "source_text": "Laser beam shaping has become one of the commonly used tech­ niques for regulating energy distribution in the laser welding of coated steels. It can effectively reduce welding defects, improve weld forma­ tion, and enhance weld performance [16]. Traditional single-laser welding generally exhibits a Gaussian energy distribution, where the energy peak at the center of the beam is significantly higher than at the edges. This results in steep temperature gradients and unstable molten pool behavior, making the process prone to porosity and cracking [17–19]. By modulating the laser beam in temporal or spatial di­ mensions, process stability can be significantly improved, defects sup­ pressed, and weld morphology enhanced. Adjusting the laser beam's input power waveform or spatial profile to achieve a desired intensity distribution allows for multidimensional improvement of joint perfor­ mance [20,21]. Compared with Gaussian beams, shaped beams with uniform energy distribution significantly reduce internal thermal gra­ dients, thereby enhancing molten pool stability. Moreover, beam oscil­ lation facilitates the escape of trapped gas bubbles, reducing porosity, and refines grains to promote uniform phase distribution within the fusion zone, ultimately improving weld microstructure and joint quality [22,23]. Compared with constant-power laser welding, sinusoidally modulated laser welding has also been shown to enhance keyhole sta­ bility, improve weld formation, and increase tensile strength and elon­ gation of the joint [24,25]. In summary, laser beam shaping effectively reduces welding defects, improves weld quality, and enhances joint performance. However, existing laser heat source designs are often limited to one-dimensional (temporal or spatial) modulation and lack flexibility in controlling the complex physical and metallurgical pro­ cesses involved in Zn-Al-Mg coated steel welding. They are insufficient to holistically regulate the evaporation of Zn, Al, and Mg, their distri­ bution, and interfacial reactions within the molten pool, nor can they effectively resolve elemental segregation and microstructural coars­ ening. Furthermore, existing laser systems typically rely on reducing overall heat input to regulate thermal stresses in the HAZ, which",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp030",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp032",
+        "claim": "The tests were carried out at a crosshead speed of 1 mm/min, and the tensile strength was determined by taking the average value of the three specimens under the same welding condition.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "dimensions of 10 mm × 10 mm. Cross-sectional weld morphology was observed using an LSM800 laser scanning confocal microscope. Tensile tests were performed using a universal testing machine (Model 1232AJ), with the specimen dimensions illustrated in Fig. 1(b). To ensure the reliability of the results, three repeated tensile tests were conducted for each parameter set (T0, T2, and T4). The tests were carried out at a crosshead speed of 1 mm/min, and the tensile strength was determined by taking the average value of the three specimens under the same welding condition. The weld microstructure was examined by a FEI Quanta FEG 450 scanning electron microscope (SEM), and elemental distribution in the weld microstructure was analyzed using an energy dispersive spectroscopy (EDS) system. Additionally, electron back­ scatter diffraction (EBSD) analysis of the weld cross-sections was con­ ducted using an Oxford NordlysMax3 EBSD system to characterize grain size distribution and grain orientation.",
+        "linked_figures": [
+          "f1"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp034",
+        "claim": "The coating thickness was approximately 30–35 μm, and the composition of the coating was Zn-11%Al-3%Mg-0.2%Si-Re.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "In this study, Zn-Al-Mg coated steel sheets with dimensions of 150 mm × 50 mm × 1.5 mm were used as the experimental material. The coating thickness was approximately 30–35 μm, and the composition of the coating was Zn-11%Al-3%Mg-0.2%Si-Re. The substrate was a low- carbon steel designated as SCS51D, with its chemical composition lis­ ted in Table 1. High-purity argon gas (99.999%) was used as the shielding gas during welding, with a flow rate of 15 L/min. Laser lap welding was performed using a galvanometer-based laser welding sys­ tem with full domain power modulation developed by the current research group at Lanzhou University of Technology. A schematic dia­ gram of the welding process is shown in Fig. 1. The galvanometer laser head was tilted at an angle of 10◦in the welding direction to prevent laser reflection from damaging internal optical components. A butt joint configuration without beveling was adopted, and the assembly gap was controlled to be less than 0.2 mm. Before welding, the sample surfaces were cleaned with acetone to remove contaminants such as dirt and grease.",
+        "linked_figures": [
+          "f1"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp036",
+        "claim": "The motion trajectory of the laser beam can be expressed by the following equation (1) [29]: { x(t) = x0 + vht + Asin(2πft + φx) y(t) = y0 + Asin ( 2πft + φy",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "To compare the variations in energy distribution of weld seams under different laser power modulation amplitudes, a laser energy density distribution model was developed using MATLAB software. During welding, the laser beam scans along a circular trajectory while simultaneously moving forward. The motion trajectory of the laser beam can be expressed by the following equation (1) [29]: { x(t) = x0 + vht + Asin(2πft + φx) y(t) = y0 + Asin ( 2πft + φy",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp037",
+        "claim": "2(a), the size of the circles represents the magnitude of the laser power.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "The spatio-temporal beam shaping strategy employed in this study coupled beam oscillation in the spatial dimension with power modula­ tion in the temporal dimension. A galvanometer scanning system was utilized to execute high-frequency circular scanning, where the laser output power was synchronized with the phase position of the beam along the circular trajectory. We specifically used a “Gradient Power Mode”, where higher power was applied at the weld center (front and rear of the trajectory) and lower power was applied at the weld edges (sides of the trajectory). As illustrated in Fig. 2(a), the size of the circles represents the magnitude of the laser power. High power was applied when the beam is at the front and rear of the trajectory (weld center line) to ensure penetration, while low power was applied at the sides (weld edges) to reduce thermal stress on the HAZ. The modulation intensity was defined by the amplitude parameter (Tn), where T4 represented a 40% power reduction at the edges compared to the center.",
+        "linked_figures": [
+          "f2"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp038",
+        "claim": "φx and φy are the initial phase angles of the laser beam in the x-direction and y- direction, respectively, with a phase difference of φx-φy = π/2 to ensure a circular scanning path.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "where x(t) and y(t) are the instantaneous horizontal and vertical posi­ tions of the laser beam in the coordinate system, respectively. x0 and y0 denote the initial horizontal and vertical coordinates of the laser beam position. vh represents the welding speed and t indicates the welding time. A is the scanning amplitude and f is the scanning frequency. φx and φy are the initial phase angles of the laser beam in the x-direction and y- direction, respectively, with a phase difference of φx-φy = π/2 to ensure a circular scanning path.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp039",
+        "claim": "The actual motion velocity v(t) of the laser beam is jointly deter­ mined by the scanning frequency, scanning trajectory, scanning ampli­ tude, and welding speed, which can be expressed by formula (2): ⎧ ⎪ ⎨",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "The actual motion velocity v(t) of the laser beam is jointly deter­ mined by the scanning frequency, scanning trajectory, scanning ampli­ tude, and welding speed, which can be expressed by formula (2): ⎧ ⎪ ⎨",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp040",
+        "claim": "vx = vh + 2Aπfcos(2πft + φx) vy = 2Aπfcos ( 2πft + φy",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "vx = vh + 2Aπfcos(2πft + φx) vy = 2Aπfcos ( 2πft + φy",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp041",
+        "claim": "v(t) = ̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅ vx 2 + vy 2 √ (2)",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "v(t) = ̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅ vx 2 + vy 2 √ (2)",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp042",
+        "claim": "The velocity components vx and vy represent the motion velocity components of the laser beam in the x and y directions, respectively, and can be obtained by taking the time derivatives of the trajectory functions x(t) and y(t).",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "The velocity components vx and vy represent the motion velocity components of the laser beam in the x and y directions, respectively, and can be obtained by taking the time derivatives of the trajectory functions x(t) and y(t).",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp043",
+        "claim": "Three welding experiments were conducted using three different laser power modulation amplitudes of 0%, 20%, and 40%, correspond­ ing respectively to conventional galvanometer laser (no modulation), 20% power modulation, and 40% power modulation.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "Three welding experiments were conducted using three different laser power modulation amplitudes of 0%, 20%, and 40%, correspond­ ing respectively to conventional galvanometer laser (no modulation), 20% power modulation, and 40% power modulation. These conditions were labeled as T0, T2, and T4. The scanning trajectories and power modulation waveforms are shown in Fig. 2. Within one circular scanning cycle of the galvanometer laser, the laser power at 36 phase points was controlled. The laser power at each phase point was calculated as the product of the set power coefficient at that phase, a power factor of 60%, and the total laser output power of 6 kW. The power factor defines the baseline output power as a percentage of the maximum laser power (6 kW). A power factor of 60% was selected, corresponding to an effective power of 3.6 kW, which was optimized through preliminary experiments to ensure full penetration while preventing burn-through and excessive coating evaporation. Specifically, a maximum power cap of 3.6 kW was applied in the modulation mode. The power configuration exhibits symmetry for every quarter scanning cycle (90◦). The modulated power values for the 10 phase points (starting from 0◦) within the initial quarter range (0◦-90◦) are detailed in Table 2, and the power values for the remaining points follow the symmetric waveform patterns shown in Fig. 2(b), (c), and (d). The welding speed was set to 30 mm/s, the scanning trajectory was circular with a radius of 0.5 mm, and the scanning frequency was 150 Hz.",
+        "linked_figures": [
+          "f2"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp045",
+        "claim": "The modulated laser power gradually decreases from the center toward both sides, exhibiting an overall linear decreasing trend.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "Under the gradient power modulation mode, within one circular scanning cycle along the welding direction, the laser power at 36 phase points is modulated according to predefined power coefficients. The modulated laser power gradually decreases from the center toward both sides, exhibiting an overall linear decreasing trend. The modulated laser power can be expressed by Equation (3): ⎧ ⎪ ⎪ ⎪ ⎨",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp049",
+        "claim": "After welding, the weld surface morphology was photographed and metallographic specimens were prepared.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "After welding, the weld surface morphology was photographed and metallographic specimens were prepared. Wire electrical discharge machining (EDM) was used to cut samples from the weld with",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp051",
+        "claim": "where P(t) represents the modulated laser power at time t, P denotes the total output power of the laser (6 kW);",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "where P(t) represents the modulated laser power at time t, P denotes the total output power of the laser (6 kW); p0 indicates the actual laser power utilization factor; Tn is the gradient power modulation amplitude.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp052",
+        "claim": "Base Metal 0.06 0.03 0.26 0.009 0.002 Bal.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "Base Metal 0.06 0.03 0.26 0.009 0.002 Bal.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp053",
+        "claim": "Based on relevant studies and considering the thermophysical",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 3,
+        "source_text": "Based on relevant studies and considering the thermophysical",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp054",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 4,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [
+          "f1"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp056",
+        "claim": "Power factor/% 60 60 60 60 60 60 60 60 60 60 T0 single point power/kW 3.6 3.6 3.6 3.6 3.6 3.6 3.6 3.6 3.6 3.6 T2 single point power/kW 2.88 2.96 3.04 3.12 3.2 3.28 3.36 3.44 3.52 3.6 T4 single point power/kW 2.16 2.32 2.48 2.64 2.8 2.96 3.12 3.28 3.44 3.6",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 4,
+        "source_text": "Power factor/% 60 60 60 60 60 60 60 60 60 60 T0 single point power/kW 3.6 3.6 3.6 3.6 3.6 3.6 3.6 3.6 3.6 3.6 T2 single point power/kW 2.88 2.96 3.04 3.12 3.2 3.28 3.36 3.44 3.52 3.6 T4 single point power/kW 2.16 2.32 2.48 2.64 2.8 2.96 3.12 3.28 3.44 3.6",
+        "linked_figures": [
+          "f2"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp057",
+        "claim": "The optimized energy distribution function for the laser beam focal position during galvanometer laser welding can be expressed by formula (4) [30]:",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 4,
+        "source_text": "properties of the materials, the energy distribution model was modified. The optimized energy distribution function for the laser beam focal position during galvanometer laser welding can be expressed by formula (4) [30]:",
+        "linked_figures": [
+          "f2"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp058",
+        "claim": "α represents the thermal diffusivity of the material (1.2 × 10-5m2⋅ s−1);",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 4,
+        "source_text": "where Q represents the energy distribution at the laser beam focal po­ sition; η denotes the laser absorption rate of the material; P(t) indicates the modulated laser power at time t; α represents the thermal diffusivity of the material (1.2 × 10-5m2⋅ s−1); and r0 is the laser spot diameter.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp061",
+        "claim": "By substituting Equations (1), (2), and (3) into Equation (4) and integrating over time t, the energy distribution on the weld surface under the gradient power modulation mode can be expressed by",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 4,
+        "source_text": "By substituting Equations (1), (2), and (3) into Equation (4) and integrating over time t, the energy distribution on the weld surface under the gradient power modulation mode can be expressed by",
+        "linked_figures": [
+          "f4"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp062",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 5,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp066",
+        "claim": "By adjusting the laser power modulation amplitude Tn in Equation (3), the energy distribution on the weld surface under different laser power modulation amplitudes can be obtained.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 5,
+        "source_text": "where E(x,y) represents the energy distribution on the weld surface, Q(x, y,t) denotes the energy distribution when the laser beam moves to the coordinate position (x,y) at time t, and T is one scanning cycle. By adjusting the laser power modulation amplitude Tn in Equation (3), the energy distribution on the weld surface under different laser power modulation amplitudes can be obtained.",
+        "linked_figures": [
+          "f3",
+          "f4",
+          "f5",
+          "f6"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp067",
+        "claim": "Moreover, the decrease in maximum peak energy density helps to reduce the maximum temperature within the molten pool, suppress elemental burn-off, enhance molten pool stability, and ultimately improve weld quality.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 5,
+        "source_text": "gradually decreases with increasing modulation amplitude. This reduces the difference between the maximum peak energy density at the weld sides and the central energy density, thereby decreasing the energy density gradient within the weld. Since the magnitude of laser energy density reflects, to some extent, the molten pool temperature, a reduc­ tion in the energy gradient contributes to lowering the temperature gradient in the molten pool and mitigating thermal stresses. Moreover, the decrease in maximum peak energy density helps to reduce the maximum temperature within the molten pool, suppress elemental burn-off, enhance molten pool stability, and ultimately improve weld quality.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp069",
+        "claim": "With increasing laser power modulation amplitude, the weld surface became smoother and flatter, the amount of molten and eroded coating residues on both sides of the weld gradually decreased, and the cracks in the base metal surface were progressively reduced.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 5,
+        "source_text": "The surface morphologies of welds under different laser power modulation amplitudes are shown in Fig. 6. The weld surface exhibited a bright metallic appearance with straight edges, accompanied by a small amount of spatter distributed on both sides of the weld. The coating near the weld surface was melted and eroded, leaving yellow–white mixed residues on both sides of the weld. In addition, coating cracks were observed in the base metal regions adjacent to both the top and bottom sides of the weld, forming irregular crack-like patterns. A small number of spatter particles were also present on the backside of the weld. With increasing laser power modulation amplitude, the weld surface became smoother and flatter, the amount of molten and eroded coating residues on both sides of the weld gradually decreased, and the cracks in the base metal surface were progressively reduced. These results indicate that increasing the laser power modulation amplitude can effectively miti­ gate coating ablation and cracking along both sides of the weld.",
+        "linked_figures": [
+          "f6",
+          "f3",
+          "f4"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp070",
+        "claim": "It can be observed that, with increasing modulation amplitude, the surface depression at the top of the weld gradually decreases, and the weld cross-sectional profile transitions from a narrow-top and wide-bottom “H” shape to a wide-top and narrow-bottom “H” shape.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 5,
+        "source_text": "The cross-sectional morphologies of welds under different laser power modulation amplitudes are shown in Fig. 7(a), (b) and (c). It can be observed that, with increasing modulation amplitude, the surface depression at the top of the weld gradually decreases, and the weld cross-sectional profile transitions from a narrow-top and wide-bottom “H” shape to a wide-top and narrow-bottom “H” shape.",
+        "linked_figures": [
+          "f7",
+          "f4",
+          "f4",
+          "f6"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp071",
+        "claim": "5, the maximum peak energy density is represented by a black line, while the central energy density is repre­ sented by a red line.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 5,
+        "source_text": "To analyze the variation trend of weld energy density under different laser power modulation amplitudes, the maximum peak energy density on the right side of the weld and the central energy density value were selected for comparative analysis under three modulation conditions. The results are shown in Fig. 5, the maximum peak energy density is represented by a black line, while the central energy density is repre­ sented by a red line. It can be observed that the central energy density of the weld exhibits little variation among the three modulation ampli­ tudes, whereas the maximum peak energy density on the right side",
+        "linked_figures": [
+          "f5",
+          "f4"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp072",
+        "claim": "In this case, the keyhole depth is relatively large, and the laser penetration capability is strong.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 5,
+        "source_text": "When the modulation amplitude is 0%, corresponding to the con­ ventional galvanometer laser mode, the laser power remains constant throughout the entire scanning cycle. In this case, the keyhole depth is relatively large, and the laser penetration capability is strong. A sub­ stantial portion of the laser energy penetrates deeply into the lower half of the molten pool, resulting in a higher energy absorption in this region and consequently producing a wider lower weld zone. By contrast, when the laser power modulation mode is applied, the laser energy density on",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp073",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 6,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp074",
+        "claim": "Instead, more energy is distributed in the upper molten pool, while the energy absorbed by the lower molten pool decreases, leading to a reduction in the weld width at the lower region.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 6,
+        "source_text": "capability weakens, and less laser energy is transmitted into the lower molten pool. Instead, more energy is distributed in the upper molten pool, while the energy absorbed by the lower molten pool decreases, leading to a reduction in the weld width at the lower region. This redistribution effect becomes more pronounced as the modulation amplitude continues to increase. Moreover, the reduced energy distri­ bution at both sides of the weld also decreases the effect of the laser on the heat-affected zone (HAZ), thereby narrowing the HAZ width.",
+        "linked_figures": [
+          "f4",
+          "f5"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp075",
+        "claim": "both sides of the molten pool decreases.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 6,
+        "source_text": "both sides of the molten pool decreases. As the laser beam scans to the side regions of the weld, the keyhole depth is reduced, penetration",
+        "linked_figures": [
+          "f4",
+          "f5",
+          "f6"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp076",
+        "claim": "Although the instantaneous speed exhibits a periodic fluctuation of approximately 3.6% within a scanning cycle due to the superimposition of the welding velocity, this variation is negligible.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 6,
+        "source_text": "Due to the rapid cooling in laser welding, high strain rates are induced, and thermal stresses mainly originate from localized plastic deformation. Based on thermo-elastic–plastic theory, the thermal stress in the HAZ can be approximately evaluated. The actual beam movement speed is the vector sum of the welding speed and the scanning speed, calculated based on Equations (1) and (2). Although the instantaneous speed exhibits a periodic fluctuation of approximately 3.6% within a scanning cycle due to the superimposition of the welding velocity, this variation is negligible. Therefore, for the purpose of energy density calculation, the average beam speed of 842.13 mm/s was utilized. the laser heat source can be approximated as a continuously moving line source. The peak temperature in the HAZ can then be calculated using Rosenthal’s heat conduction equation (6) together with the empirical",
+        "linked_figures": [
+          "f4",
+          "f5"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp077",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp078",
+        "claim": "the width of the HAZ is progressively reduced.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "the width of the HAZ is progressively reduced.",
+        "linked_figures": [
+          "f7"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp079",
+        "claim": "formula (7) for temperature rise in the HAZ: ⎧ ⎪ ⎪ ⎪ ⎨",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "formula (7) for temperature rise in the HAZ: ⎧ ⎪ ⎪ ⎪ ⎨",
+        "linked_figures": [
+          "f7"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp083",
+        "claim": "ΔT ≈Q λt • f ( y ̅̅̅̅̅̅̅̅̅̅̅ ktheat √ ) (7)",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "ΔT ≈Q λt • f ( y ̅̅̅̅̅̅̅̅̅̅̅ ktheat √ ) (7)",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp084",
+        "claim": "T0 is the room tem­ perature (25 ℃), Q is the line energy density, λ is the thermal conduc­ tivity, which is approximately 50 W/(m⋅K) for low-carbon steel, t is the plate thickness (1.5 mm), and k is the thermal diffusivity of the low- carbon steel substrate(1.2 × 10-5m2/s).",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "where y is the distance from the weld centerline; T0 is the room tem­ perature (25 ℃), Q is the line energy density, λ is the thermal conduc­ tivity, which is approximately 50 W/(m⋅K) for low-carbon steel, t is the plate thickness (1.5 mm), and k is the thermal diffusivity of the low- carbon steel substrate(1.2 × 10-5m2/s). P denotes the average modu­ lated laser power per unit length. L0 and v represent the actual trajectory length and the average speed of the oscillating laser, respectively.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp085",
+        "claim": "The thermal stress can be calculated using the following equation (8): { ε = αΔT",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "The thermal stress can be calculated using the following equation (8): { ε = αΔT",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp087",
+        "claim": "where ε represents the thermal strain, α is the coefficient of thermal expansion(12 × 10-6/K), σ denotes the elastic thermal stress;",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "where ε represents the thermal strain, α is the coefficient of thermal expansion(12 × 10-6/K), σ denotes the elastic thermal stress; and E is the elastic modulus (200 GPa).",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp088",
+        "claim": "Taking the heat-affected zone (HAZ) at 1.5 mm from the weld centerline as an example, calculations based on the above equations show that, under the T0 mode, the theoretical peak temperature of the HAZ is approximately 250 ◦C, while the instantaneous elastic thermal stress reaches 540 MPa, which exceeds the yield strength of low-carbon steel (350 MPa).",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "Taking the heat-affected zone (HAZ) at 1.5 mm from the weld centerline as an example, calculations based on the above equations show that, under the T0 mode, the theoretical peak temperature of the HAZ is approximately 250 ◦C, while the instantaneous elastic thermal stress reaches 540 MPa, which exceeds the yield strength of low-carbon steel (350 MPa). As a result, local plastic deformation occurs in the HAZ, leading to cracking of the Zn-Al-Mg coating on the surface.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp089",
+        "claim": "In the T2 mode, power modulation reduces the energy deposition at the edges of the molten pool by 20%.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "In the T2 mode, power modulation reduces the energy deposition at the edges of the molten pool by 20%. Consequently, the theoretical peak temperature and instantaneous elastic thermal stress of the HAZ are calculated to be 205 ◦C and 432 MPa, respectively. Although the thermal stress is reduced, it still exceeds the yield strength of low-carbon steel (350 MPa), meaning that local plastic deformation remains present in parts of the HAZ, causing coating cracking.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp090",
+        "claim": "In contrast, the maximum depression depths under T2 and T4 modes were reduced to 368 μm and 336 μm, representing de­ creases of 15.2% and 22.6%, respectively, compared with T0.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "To analyze the effect of laser power modulation amplitude on weld surface formation quality, the three-dimensional (3D) morphology of weld surfaces under different modulation amplitudes was characterized using a 3D measuring microscope. The results are shown in Fig. 8. Fig. 8 (a-1), (b-1), and (c-1) present the 3D height distribution maps of the weld surface, in which the color variation indicates surface height dif­ ferences. Darker colors (from red to blue, representing high to low) correspond to greater depression depths. Under all three modes, weld surfaces exhibited varying degrees of depression, with the color distri­ bution indicating a gradual decrease in surface height from the edges toward the center. As the modulation amplitude increased, the surface depression depth decreased. Specifically, in the T0 mode, the weld surface exhibited the most significant depression, with a maximum depth of 434 μm. In contrast, the maximum depression depths under T2 and T4 modes were reduced to 368 μm and 336 μm, representing de­ creases of 15.2% and 22.6%, respectively, compared with T0. These results indicate that a higher modulation amplitude enhances molten pool stability, thereby effectively improving the surface depression of the weld. In addition, both transverse and longitudinal surface profiles and roughness of the weld region were evaluated. Fig. 8(a-2), (b-2), and (c-2) show the transverse profile curves of the weld surface under different modulation amplitudes. In the T0 mode, the weld surface exhibited severe depression and poor symmetry in the profile curve. With increasing modulation amplitude, the weld surface profile became progressively smoother and more symmetric. In particular, under the T4 mode, the average transverse height difference decreased from 402.6 μm in the T0 mode to 286.6 μm, corresponding to a 28.8% reduction. Fig. 8 (a-3), (b-3), and (c-3) display the longitudinal roughness curves of the weld surface. In the T0 mode, the roughness curve showed large fluc­ tuations, pronounced undulations, and overall higher roughness, indi­ cating poor surface quality. With increasing modulation amplitude, the surface roughness improved as the fluctuation amplitude gradually decreased, although some high-frequency fluctuations were still present, indicating moderate surface flatness. When the modulation amplitude increased to 40%, the longitudinal roughness curve exhibited the smallest fluctuation amplitude and a smoother overall profile, suggest­ ing the best weld surface quality. In summary, increasing the laser power modulation amplitude reduces weld surface depression, decreases sur­ face roughness, and effectively improves the overall surface formation quality of the weld.",
+        "linked_figures": [
+          "f8"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp092",
+        "claim": "Since the thermal stress does not exceed the yield strength of low-carbon steel (350 MPa), no plastic deformation occurs in the HAZ, and cracking of the surface Zn-Al-Mg coating is effectively suppressed.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "In contrast, in the T4 mode, where the edge energy deposition is reduced by 40%, the theoretical peak temperature and instantaneous elastic thermal stress of the HAZ decrease to 160 ◦C and 324 MPa, respectively. Since the thermal stress does not exceed the yield strength of low-carbon steel (350 MPa), no plastic deformation occurs in the HAZ, and cracking of the surface Zn-Al-Mg coating is effectively suppressed.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp093",
+        "claim": "With increasing laser power modulation amplitude, the weld top surface width gradually increases, the weld bottom surface width decreases, and",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "The variations in the top and bottom weld widths as well as the heat- affected zone (HAZ) width under different laser power modulation amplitudes are shown in Fig. 7(d). The three welding conditions, T0, T2, and T4, correspond to conventional galvanometer laser welding, 20% power modulation, and 40% power modulation, respectively. With increasing laser power modulation amplitude, the weld top surface width gradually increases, the weld bottom surface width decreases, and",
+        "linked_figures": [
+          "f7",
+          "f7",
+          "f4",
+          "f6",
+          "f7"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp094",
+        "claim": "This is attributed to the reduction in maximum peak energy density with higher modulation amplitude, which decreases the peak molten pool temperature, modifies the thermal field, reduces the",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 7,
+        "source_text": "To further investigate the regulation mechanism of molten pool dy­ namics under different laser power modulation amplitudes, high-speed imaging was employed to capture the transient evolution of the molten pool at three modulation conditions (T0, T2, and T4). The results are shown in Fig. 9. As observed in Fig. 9(a-1), (b-1), and (c-1), with increasing modulation amplitude, the molten pool shape gradually changes from an elongated droplet-like form to a shorter droplet-like form. This is attributed to the reduction in maximum peak energy density with higher modulation amplitude, which decreases the peak molten pool temperature, modifies the thermal field, reduces the",
+        "linked_figures": [
+          "f9"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp095",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 8,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [
+          "f8"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp096",
+        "claim": "temperature gradient, and decreases the molten pool size.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 8,
+        "source_text": "temperature gradient, and decreases the molten pool size.",
+        "linked_figures": [
+          "f9",
+          "f9"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp097",
+        "claim": "decrease.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 8,
+        "source_text": "decrease. Furthermore, with the increase in power modulation ampli­ tude, the laser energy applied to the sidewall metal of the molten pool decreases. This reduction effectively mitigates the melting and evapo­ ration of both the sidewall metal and the coating. Consequently, the amount of coating ablation residues on both sides of the weld gradually decreases, confirming the effective control of edge heat input.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp098",
+        "claim": "9(c-2), the spatter is effectively sup­ pressed, which indicates an improvement in the stability of both the molten pool and the keyhole.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 8,
+        "source_text": "As shown in Fig. 9(a-2), under the unmodulated T0 mode, significant ejection of spatter particles (circled in red) is observed, indicating vio­ lent fluctuations and periodic collapse of the keyhole induced by excessive heat input at the trajectory edges. In contrast, with the in­ crease of modulation amplitude, the T4 mode exhibits a markedly more stable process. As depicted in Fig. 9(c-2), the spatter is effectively sup­ pressed, which indicates an improvement in the stability of both the molten pool and the keyhole.",
+        "linked_figures": [
+          "f9",
+          "f9",
+          "f10"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp099",
+        "claim": "These results indicate that adjusting the laser power modulation amplitude can effectively suppress Zn-Al-Mg coating evaporation, enhance molten pool stability, reduce spatter and coating ablation on both sides of the weld, and significantly improve weld formation quality.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 8,
+        "source_text": "These results indicate that adjusting the laser power modulation amplitude can effectively suppress Zn-Al-Mg coating evaporation, enhance molten pool stability, reduce spatter and coating ablation on both sides of the weld, and significantly improve weld formation quality.",
+        "linked_figures": [
+          "f10",
+          "f9"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp100",
+        "claim": "9(a-4), (b-4), and (c-4) were selected for comparison, as they capture the plasma plume perpendicular to the camera axis, revealing its full side profile.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 8,
+        "source_text": "Due to the dynamic rotation of the laser beam, the projection of the plasma plume varies with the viewing angle. To accurately evaluate the variation in plume size, Fig. 9(a-4), (b-4), and (c-4) were selected for comparison, as they capture the plasma plume perpendicular to the camera axis, revealing its full side profile. By comparing Fig. 9(a-4), (b- 4), and (c-4), it is clearly evident that as the power modulation ampli­ tude increases from T0 to T4, both the height of the plume and the area of high luminosity (indicating high plasma concentration) significantly",
+        "linked_figures": [
+          "f9",
+          "f9",
+          "f10"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp101",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 9,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [
+          "f10"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp102",
+        "claim": "3.4.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 9,
+        "source_text": "3.4. Microstructural and mechanical properties analysis",
+        "linked_figures": [
+          "f10",
+          "f11"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp103",
+        "claim": "10(d)), the gradient power modulation effectively lowers the vaporization rate of the coating and the rate of pressure rise within the keyhole, leading to a reduction in keyhole depth.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 9,
+        "source_text": "keyhole moves towards the front wall of the molten pool, the intense recoil pressure forces the molten metal on the front wall to surge up­ wards. Consequently, a large volume of liquid metal is ejected outwards, driven by the metal vapor plume, resulting in substantial spatter gen­ eration and a large ejection angle (approximately 40◦), indicating an unstable welding process. In contrast, in the T4 mode (as depicted in the revised Fig. 10(d)), the gradient power modulation effectively lowers the vaporization rate of the coating and the rate of pressure rise within the keyhole, leading to a reduction in keyhole depth. This geometric change alters the hydrodynamic flow path: the majority of the squeezed liquid metal on the keyhole front wall is redirected downwards and towards the rear of the molten pool (indicated by the thickened arrows), rather than being ejected upwards. This redirection of momentum significantly reduces the upward flux of molten metal, resulting in a narrower ejection angle (approximately 24◦) and a marked suppression of spatter quantity (reduced by approximately 40–50%).",
+        "linked_figures": [
+          "f10",
+          "f10",
+          "f11"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp104",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 10,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp105",
+        "claim": "In the T4 mode, Al segregation is signifi­ cantly suppressed, and the Al distribution is homogenized, accompanied by microstructural refinement in the fusion line region.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 10,
+        "source_text": "primary ferrite grains and deteriorating the mechanical properties of the weld fusion line. With increasing modulation amplitude, the distribution of Al becomes more uniform. In the T4 mode, Al segregation is signifi­ cantly suppressed, and the Al distribution is homogenized, accompanied by microstructural refinement in the fusion line region. These results indicate that power modulation effectively promotes the diffusion of alloying elements and interfacial alloying reactions, suppresses the formation of brittle phases at the fusion line, and contributes to improving the metallurgical bonding quality and reliability of the joint.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp106",
+        "claim": "This is because increasing the power modulation amplitude changes the energy distribution in the molten pool, reduces the peak energy density at the weld sides, and lowers the influence of laser energy on the HAZ, resulting in a narrower HAZ.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 10,
+        "source_text": "zone (HAZ) under T0, T2, and T4 modes, respectively. It can be seen that the HAZ microstructure is similar to that of the base metal, consisting of ferrite and pearlite, but the HAZ microstructure appears finer. With increasing modulation amplitude, the HAZ width gradually decreases. Specifically, the HAZ width is 585 μm under the T0 mode, which de­ creases to 445 μm under the T4 mode, corresponding to a 23.9% reduction. This is because increasing the power modulation amplitude changes the energy distribution in the molten pool, reduces the peak energy density at the weld sides, and lowers the influence of laser energy on the HAZ, resulting in a narrower HAZ.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp107",
+        "claim": "Zn and Mg were excluded from the analysis as they largely evaporate due to their low boiling points, leaving negligible residues that hardly affect the weld properties.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 10,
+        "source_text": "Zn and Mg were excluded from the analysis as they largely evaporate due to their low boiling points, leaving negligible residues that hardly affect the weld properties. Conversely, Al, with a high boiling point of 2327 ◦C, is largely retained in the molten pool. It tends to segregate near the fusion line and upper surface, promoting the formation of coarse primary δ-ferrite grains and causing microstructural inhomogeneity. Thus, the analysis focused on the distribution of Al under various power modulation amplitudes.",
+        "linked_figures": [
+          "f12"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp108",
+        "claim": "To analyze the effect of laser power modulation amplitude on the grain size of weld microstructures, EBSD characterization was con­ ducted to examine the morphology and grain size evolution of welds under different modulation amplitudes.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 10,
+        "source_text": "To analyze the effect of laser power modulation amplitude on the grain size of weld microstructures, EBSD characterization was con­ ducted to examine the morphology and grain size evolution of welds under different modulation amplitudes. The results are shown in Fig. 13. Fig. 13(a), (b) and (c) compare the grain structures in different weld regions under T0, T2, and T4 modes, respectively. Fig. 13(a-1), (b-1) and (c-1) present the overall morphologies of the weld zones, while Fig. 13 (a-2), (b-2) and (c-2) show the inverse pole figure (IPF) maps of the overall weld morphologies. Fig. 13(a-3), (b-3) and (c-3) display the IPF maps of the weld center regions, Fig. 13(a-4), (b-4) and (c-4) present the IPF maps of the fusion line regions. From the figure, it can be observed that the microstructure of the weld region was composed of an equiaxed grain zone in the weld center and a columnar grain zone adjacent to the fusion line.",
+        "linked_figures": [
+          "f13",
+          "f12",
+          "f11",
+          "f12",
+          "f13",
+          "f14"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp109",
+        "claim": "Therefore, the change in grain growth direction indicates a variation in the depth of the",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 10,
+        "source_text": "Variation in the laser power modulation amplitude can alter the grain growth direction within the weld. With increasing modulation amplitude, the grain size of the weld gradually decreases, and the overall grain growth direction of the weld changes from an inclined downward orientation to a more horizontal orientation. During welding, the growth direction of grains in the molten pool is primarily influenced by the temperature gradient, and grains tend to grow toward the high- temperature region at the weld center along the maximum tempera­ ture gradient [32]. In laser welding, the bottom of the keyhole is usually the high-temperature region within the molten pool. Therefore, the change in grain growth direction indicates a variation in the depth of the",
+        "linked_figures": [
+          "f12"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp110",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 11,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp111",
+        "claim": "As the modulation amplitude increases, the peak energy den­ sity in the molten pool decreases, and the keyhole depth becomes shallower.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 11,
+        "source_text": "keyhole. As the modulation amplitude increases, the peak energy den­ sity in the molten pool decreases, and the keyhole depth becomes shallower. This upward shift of the maximum temperature gradient causes the grain growth direction to gradually change from an inclined downward orientation to a horizontal orientation.",
+        "linked_figures": [
+          "f13"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp112",
+        "claim": "This is because increasing the power modulation amplitude alters the energy distribution within the molten pool, reduces the peak energy density on both sides of the weld, and weakens the ef­ fect of thermal cycles in the HAZ.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 11,
+        "source_text": "As shown in Fig. 13(a-4), (b-4) and (c-4), the grain size in the weld region near the fusion line and in the HAZ decreases with increasing modulation amplitude. This is because increasing the power modulation amplitude alters the energy distribution within the molten pool, reduces the peak energy density on both sides of the weld, and weakens the ef­ fect of thermal cycles in the HAZ. Consequently, grain growth in the HAZ is inhibited, leading to finer grains.",
+        "linked_figures": [
+          "f13",
+          "f13"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp113",
+        "claim": "Compared to the case without power modulation, when the modulation amplitude was increased to 40%, the proportion of large grains (greater than 120 μm) in the weld decreased from 4.3% to 0.8%, while the proportion of grains smaller than 100 μm increased from 92.9% to 98.6%, representing a 5.7% increase.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 11,
+        "source_text": "Compared to the case without power modulation, when the modulation amplitude was increased to 40%, the proportion of large grains (greater than 120 μm) in the weld decreased from 4.3% to 0.8%, while the proportion of grains smaller than 100 μm increased from 92.9% to 98.6%, representing a 5.7% increase. Furthermore, the proportion of grains smaller than 50 μm increased from 62.5% to 75.9%, an improvement of 13.4%, as shown in Fig. 14(d). Compared to conven­ tional galvanometer laser welding, the power modulation mode signif­ icantly promotes grain refinement and increases the proportion of equiaxed grains in the weld zone. Moreover, as the modulation ampli­ tude increases, the proportion of equiaxed grains increases corre­ spondingly, leading to more effective grain refinement.",
+        "linked_figures": [
+          "f14",
+          "f13",
+          "f14",
+          "f15"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp114",
+        "claim": "According to the international standard ISO 13067 (2011), grain size measurements were carried out using Electron Back Scatter Diffraction (EBSD).",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 11,
+        "source_text": "According to the international standard ISO 13067 (2011), grain size measurements were carried out using Electron Back Scatter Diffraction (EBSD). The average grain size of the weld was calculated using an area- weighted method. The formula for calculating the average grain size is given as follows:",
+        "linked_figures": [
+          "f15"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp117",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 12,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [
+          "f15"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp118",
+        "claim": "As the modulation amplitude increases, the fraction of HAGBs gradually increases, thereby enhancing the weld's resistance to hot cracking and improving overall joint reliability.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 12,
+        "source_text": "Power-modulated galvanometer laser welding can optimize the grain boundary structure by increasing the proportion and number of HAGBs. As the modulation amplitude increases, the fraction of HAGBs gradually increases, thereby enhancing the weld's resistance to hot cracking and improving overall joint reliability.",
+        "linked_figures": [
+          "f15",
+          "f17",
+          "f16"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp119",
+        "claim": "This suggests that laser power modulation facilitates the reduction of grain deformation and enhances the degree of recrystalli­ zation, with the improvement becoming more pronounced at higher modulation amplitudes.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 12,
+        "source_text": "to 40%, the maximum GOS value in the weld decreases from 8.69077 to 6.8409. This suggests that laser power modulation facilitates the reduction of grain deformation and enhances the degree of recrystalli­ zation, with the improvement becoming more pronounced at higher modulation amplitudes.",
+        "linked_figures": [
+          "f15",
+          "f17",
+          "f16",
+          "f13",
+          "f15",
+          "f14",
+          "f16"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp120",
+        "claim": "Due to the relatively low heat input in laser welding, the laser energy has a minimal effect on the heat-affected zone (HAZ), resulting in lower stress levels in this region.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 12,
+        "source_text": "As the laser power modulation amplitude increases, the green re­ gions become more uniformly distributed, suggesting that power mod­ ulation helps regulate the internal stress distribution in the weld. Due to the relatively low heat input in laser welding, the laser energy has a minimal effect on the heat-affected zone (HAZ), resulting in lower stress levels in this region. The grain orientation spread (GOS) maps reflect the average misorientation within each grain and the average deviation from all measured values. A higher GOS value indicates significant lat­ tice distortion and higher dislocation density, while a lower GOS value suggests more uniform strain distribution within the grains. GOS is commonly used to assess grain deformation and recrystallization behavior [36]. From the GOS maps, it is evident that the GOS values within the welds are relatively high. However, as the power modulation amplitude increases, the maximum GOS value gradually decreases, indicating a reduction in lattice strain within the weld microstructure. Specifically, when the power modulation amplitude increases from 0%",
+        "linked_figures": [
+          "f17",
+          "f16"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp121",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp122",
+        "claim": "Tensile specimen Tensile strength (MPa) Elongation (%) Fracture location",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "Tensile specimen Tensile strength (MPa) Elongation (%) Fracture location",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp123",
+        "claim": "T0 354.02 ± 3.67 17.88 ± 1.06 Base material T2 366.09 ± 3.19 18.69 ± 1.09 Base material T4 366.50 ± 2.78 18.73 ± 1.01 Base material BM 346.32 ± 1.81 26.76 ± 0.87 Base material",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "T0 354.02 ± 3.67 17.88 ± 1.06 Base material T2 366.09 ± 3.19 18.69 ± 1.09 Base material T4 366.50 ± 2.78 18.73 ± 1.01 Base material BM 346.32 ± 1.81 26.76 ± 0.87 Base material",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp124",
+        "claim": "For the T4 mode, the maximum tensile strength and elongation were 366.50 MPa and 18.73%, respectively—only marginal improvements over the T2 mode.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "under T0, representing an increase of 4.53%. For the T4 mode, the maximum tensile strength and elongation were 366.50 MPa and 18.73%, respectively—only marginal improvements over the T2 mode. Compared with the T0 mode, the tensile strength and elongation increased by 3.53% and 4.75%, respectively.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp125",
+        "claim": "Mechanism of microstructure refinement",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "3.5. Mechanism of microstructure refinement",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp126",
+        "claim": "However, when Al segregates locally and its concentration increases, Al-rich ferrite may form in the fusion zone, leading to localized increases in hardness.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "weld zone gradually increases. The average weld hardness values under T0, T2, and T4 modes are 171.3 HV, 173.4 HV, and 174.3 HV, respec­ tively—all higher than that of the base metal. The hardness across the welded joint increases from the base metal region toward the weld center, forming a “π”-shaped distribution. During welding, the Zn-Al-Mg coating melts and flows into the molten pool, allowing Al from the coating to enter the weld metal. The presence of Al can influence the weld microstructure and mechanical properties. As a ferrite-forming element, Al generally remains in solid solution in the matrix when its concentration is below 4%, contributing to solid solution strengthening, grain refinement, and improved strength and hardness. However, when Al segregates locally and its concentration increases, Al-rich ferrite may form in the fusion zone, leading to localized increases in hardness. Yoon et al. [37] reported that Al segregation in the weld metal caused by the dissolution of Al from the coating can affect phase transformation and ferrite formation at the fusion boundary and within the fusion zone. In addition, Wang et al. [14] found that beam oscillation can enhance the stirring of the molten pool, promoting a more uniform distribution of Al in the weld and improving hardness uniformity. Therefore, as the laser power modulation amplitude increases, the distribution of Al within the weld becomes more uniform, contributing to the gradual increase in average weld hardness.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp127",
+        "claim": "(10) [38]:",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "According to classical nucleation and growth theory, the phase transformation process can be understood as the formation of critical- sized nuclei and their subsequent growth. The nucleation rate directly governs the kinetics of the phase transformation, and its expression is given by Eq. (10) [38]:",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp131",
+        "claim": "In the T2 and T4 modes, the average HAZ hardness increases to 148.0 HV and 159.7 HV, respectively.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "Furthermore, increasing the modulation amplitude effectively miti­ gates softening in the heat-affected zone (HAZ) and improves its me­ chanical properties. Under the T0 mode, the average HAZ hardness is 146.2 HV, lower than that of the base metal, indicating softening. In the T2 and T4 modes, the average HAZ hardness increases to 148.0 HV and 159.7 HV, respectively. As the modulation amplitude increases, the HAZ width decreases, and the average hardness increases. When the modu­ lation amplitude reaches 40%, the average HAZ hardness (149.8 HV) exceeds that of the base metal.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp132",
+        "claim": "A larger ΔT leads to a smaller ΔG*, resulting in a higher nucleation rate, which favors the formation of a greater number of fine equiaxed grains.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "where N0 is a constant factor, σ is the solid–liquid interfacial energy, ΔT is the undercooling, QL is the activation energy for diffusion in the liquid phase, f0 is the atomic vibration frequency, C0 is the material density, KB is the Boltzmann constant, Tm is the melting point of the material, and ΔG* is the critical nucleation energy. According to the nucleation rate equation, the nucleation rate primarily depends on the critical nucle­ ation energy ΔG*, which in turn is determined by the undercooling ΔT. A larger ΔT leads to a smaller ΔG*, resulting in a higher nucleation rate, which favors the formation of a greater number of fine equiaxed grains. Therefore, without altering the solute composition, increasing the undercooling is one of the key strategies to promote the formation of equiaxed grains.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp133",
+        "claim": "(11) [39]:",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "Furthermore, constitutional supercooling occurs ahead of the solid­ ification front. Its magnitude can be expressed by Eq. (11) [39]:",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp134",
+        "claim": "18, the average tensile strength and elongation of the BM are 346.32 MPa and 26.76%, respectively.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 13,
+        "source_text": "The tensile test results of laser-welded Zn-Al-Mg coated steel joints under different laser power modulation amplitudes are shown in Fig. 18 (a), the corresponding ultimate tensile strength and elongation are compared in Fig. 18(b). And the specific data are shown in Table 3. The results indicate that increasing the laser power modulation amplitude is beneficial for enhancing the mechanical properties of the welded joints. As shown in Fig. 18, the average tensile strength and elongation of the BM are 346.32 MPa and 26.76%, respectively. The tensile strengths of all welded joints under different modulation modes are higher than that of the base metal, and fracture during tensile testing consistently occurred in the base metal region. Under the T2 mode, the tensile specimen exhibited a maximum tensile strength of 366.09 MPa, which is 3.41% higher than that under the T0 mode (354.02 MPa). The elonga­ tion also improved, reaching 18.69% under T2, compared to 17.88%",
+        "linked_figures": [
+          "f18",
+          "f18",
+          "f18"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp137",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp138",
+        "claim": "The criterion for Constitutional Supercooling is expressed as follows [39]:",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "The criterion for Constitutional Supercooling is expressed as follows [39]:",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp140",
+        "claim": "(12), assuming other parameters remain approximately constant, a smaller temperature gradient (GL) allows for a larger degree of constitutional supercooling ahead of the solid–liquid interface, which is more likely to induce the columnar-to-equiaxed transition (CET).",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "where mL represents the slope of the liquidus line, K0 is the equilibrium partition coefficient, GL denotes the temperature gradient in the liquid phase, DL is the solute diffusion coefficient in the liquid, R is the crystal growth rate and C0 denotes the initial solute concentration. According to the constitutional supercooling criterion expressed in Eq. (12), assuming other parameters remain approximately constant, a smaller temperature gradient (GL) allows for a larger degree of constitutional supercooling ahead of the solid–liquid interface, which is more likely to induce the columnar-to-equiaxed transition (CET).",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp141",
+        "claim": "It effec­ tively lowers the maximum peak energy density at the weld sides and reduces the disparity between the edge and center energy densities.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "In the specific laser welding process of this study, power modulation alters the spatial energy distribution within the molten pool. It effec­ tively lowers the maximum peak energy density at the weld sides and reduces the disparity between the edge and center energy densities. This macroscopically manifests as a reduction in the transverse temperature gradient, thereby enhancing the available constitutional supercooling.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp142",
+        "claim": "The spatial extent of the constitutional supercooling zone can be characterized by its width, Δx, which is calculated using [28]:",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "The spatial extent of the constitutional supercooling zone can be characterized by its width, Δx, which is calculated using [28]:",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp144",
+        "claim": "(13), under a constant welding speed, the width of the constitutional supercooling zone, Δx, is primarily governed by the combined effects of GL and R.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "As indicated by Eq. (13), under a constant welding speed, the width of the constitutional supercooling zone, Δx, is primarily governed by the combined effects of GL and R. A smaller temperature gradient and a higher interface growth rate result in a larger Δx. This implies a wider spatial region for the nucleation and growth of equiaxed grains, thereby facilitating the formation of a higher proportion of equiaxed grains.",
+        "linked_figures": [
+          "f19"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp145",
+        "claim": "This framework provides a physical basis for understanding the Columnar-to-Equiaxed Transition (CET) mechanism observed in this study.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "It should be noted that Eqs. (10) – (13) are presented not for quan­ titative calculation, but to establish a classical theoretical framework for interpreting the experimental findings. Specifically, they are employed to qualitatively analyze the evolutionary trends of the weld solidifica­ tion microstructure under varying temperature gradient conditions induced by different power modulation amplitudes. This framework provides a physical basis for understanding the Columnar-to-Equiaxed Transition (CET) mechanism observed in this study.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp146",
+        "claim": "[40], a circularly oscillating laser beam can generate a more stable flow field, which helps reduce the temperature gradient and increase the solidification rate.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "pool decreases, the pool length shortens, and the molten pool shape changes from an elongated droplet to a shorter one. This reduces the longitudinal temperature gradient and further alters the energy distri­ bution within the molten pool, thereby optimizing the solidification conditions of the liquid metal. According to the results of Chen et al. [40], a circularly oscillating laser beam can generate a more stable flow field, which helps reduce the temperature gradient and increase the solidification rate. The rotating laser beam stirs the molten pool, form­ ing a stable vortex flow that accelerates the molten metal movement and periodically drives surrounding liquid metal toward the rear of the pool. Additionally, the rotating keyhole causes periodic temperature fluctu­ ations at the solid–liquid interface near the pool boundary, leading to the stagnation, fragmentation, or remelting of columnar dendrites and suppressing their growth. Meanwhile, the rotating vortex flow drives fragmented dendrite pieces into the molten pool interior, providing additional nucleation sites for the formation of equiaxed grains and thus expanding the equiaxed zone.",
+        "linked_figures": [
+          "f19"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp147",
+        "claim": "Simultaneously, due to the diminished molten pool di­ mensions and the accelerated cooling rate, the equivalent solidification rate (R) is enhanced.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "By integrating the classical theories discussed above, the influence of power modulation on the weld microstructure can be interpreted from the perspective of thermodynamic and kinetic pathways. Increasing the laser power modulation amplitude modifies the spatial energy distri­ bution within the molten pool, leading to a reduction in the temperature gradient (G). Simultaneously, due to the diminished molten pool di­ mensions and the accelerated cooling rate, the equivalent solidification rate (R) is enhanced. Consequently, the G/R ratio decreases, while the cooling rate (G⋅R) increases.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp148",
+        "claim": "This ensures that the power at the front of the molten pool is greater than that at the sides, compen­ sating for the energy loss due to melting of the solid base metal and improving keyhole stability, thereby suppressing process-induced porosity caused by keyhole instability.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "In conventional galvanometer laser welding, when the rotating laser beam moves to the front of the molten pool, most of the energy is consumed in melting the solid metal, leaving insufficient energy to sustain the keyhole, resulting in keyhole instability. In contrast, the modulated laser employs a gradient power mode with higher power in the center and lower power at the edges. This ensures that the power at the front of the molten pool is greater than that at the sides, compen­ sating for the energy loss due to melting of the solid base metal and improving keyhole stability, thereby suppressing process-induced porosity caused by keyhole instability.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp149",
+        "claim": "A reduction in G/R promotes the columnar-to-equiaxed transition (CET), whereas an increase in G⋅R contributes to grain refinement.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "Based on this analysis and the findings of Chen et al. [40], a sche­ matic diagram illustrating the solidification mode transition of the weld microstructure is presented in Fig. 19. The microstructural evolution during weld solidification is intimately associated with both G and R. A reduction in G/R promotes the columnar-to-equiaxed transition (CET), whereas an increase in G⋅R contributes to grain refinement. Therefore, by adjusting the laser power modulation amplitude, a synergistic regu­ lation of G and R can be achieved qualitatively (without the need for explicit solutions to Eqs. (10)–(13). This mechanism effectively pro­ motes the formation of fine equiaxed grains. This theoretical analysis is consistent with the EBSD results observed in this study, specifically the increased fraction of equiaxed grains, reduced average grain size, and higher proportion of high-angle grain boundaries (HAGBs).",
+        "linked_figures": [
+          "f19",
+          "f19"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp150",
+        "claim": "As the modulation amplitude increases, the transverse temperature gradient of the molten",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "According to the above analysis, Fig. 20 illustrates the molten pool flow behavior and the formation process of equiaxed grains under different laser power modulation amplitudes. As the modulation amplitude increases, the transverse temperature gradient of the molten",
+        "linked_figures": [
+          "f20",
+          "f20"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp151",
+        "claim": "This is favorable for the formation and stabilization of nuclei while suppressing the crystal growth rate, thereby leading to the formation of a greater number of fine",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 14,
+        "source_text": "In summary, laser power modulation can reduce the temperature gradient in the molten pool, which helps to increase the nucleation rate, enhance the degree and width of constitutional supercooling, and pro­ mote the nucleation of equiaxed grains. With increasing modulation amplitude, the energy distribution within the molten pool is further altered, resulting in a further decrease in temperature gradient and a reduction in peak molten pool temperature. This is favorable for the formation and stabilization of nuclei while suppressing the crystal growth rate, thereby leading to the formation of a greater number of fine",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp152",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 15,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp153",
+        "claim": "Under the combined effects of laser power modulation and galvanometer-based laser beam oscillation, a larger area of equiaxed grain zone with finer grains is formed in the weld.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 15,
+        "source_text": "grains. Under the combined effects of laser power modulation and galvanometer-based laser beam oscillation, a larger area of equiaxed grain zone with finer grains is formed in the weld.",
+        "linked_figures": [
+          "f20",
+          "f20"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp155",
+        "claim": "Furthermore, the HAZ softening is effectively alleviated, with the average hardness increasing from 146.2 HV (unmodulated) to 159.7 HV, surpassing the base metal hardness (149.8 HV).",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 15,
+        "source_text": "the modulation amplitude facilitates the suppression of Al element segregation at the fusion line, thereby improving the homogeneity of the weld microstructure and properties. (4) Increasing the laser power modulation amplitude contributes to mitigating softening in the HAZ and improving the mechanical properties of the welded joint. Compared with the T0 mode, under the T4 mode, the tensile strength and elongation of the welded joint increases by 3.53% and 4.75%, respectively. Furthermore, the HAZ softening is effectively alleviated, with the average hardness increasing from 146.2 HV (unmodulated) to 159.7 HV, surpassing the base metal hardness (149.8 HV).",
+        "linked_figures": [
+          "f20"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp156",
+        "claim": "CRediT authorship contribution statement",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 15,
+        "source_text": "CRediT authorship contribution statement",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp157",
+        "claim": "This study systematically investigates the effects of different laser power modulation amplitudes under a spatio-temporal beam shaping strategy on the weld formation, Al element distribution, microstructural evolution, and mechanical properties of laser stitch welded Zn-Al-Mg coated steel.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 15,
+        "source_text": "This study systematically investigates the effects of different laser power modulation amplitudes under a spatio-temporal beam shaping strategy on the weld formation, Al element distribution, microstructural evolution, and mechanical properties of laser stitch welded Zn-Al-Mg coated steel. The relationships between laser energy distribution, molten pool flow behavior, and microstructural evolution under different modulation amplitudes are analyzed. The main conclusions are as follows:",
+        "linked_figures": [
+          "f20"
+        ],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp158",
+        "claim": "Junze Lu: Resources, Methodology, Investigation, Data curation, Conceptualization.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 15,
+        "source_text": "Junze Lu: Resources, Methodology, Investigation, Data curation, Conceptualization. Yu Shi: Project administration, Funding acquisition, Formal analysis. Yufen Gu: Writing – review & editing, Formal analysis. Gang Zhang: Writing – review & editing.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp160",
+        "claim": "The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 15,
+        "source_text": "The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp162",
+        "claim": "24ZD13GA018), the National Natural Science Foundation of China (grant No.52265050), the Gansu Provincial Department of Education: Postgraduate “Innova­ tion Star” Program (grant No.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 15,
+        "source_text": "This work was supported by the Gansu Province Key Research and Development Program (grant No. 26YFGA025), the Science and Tech­ nology Program Project of Gansu Province (grant No. 24ZD13GA018), the National Natural Science Foundation of China (grant No.52265050), the Gansu Provincial Department of Education: Postgraduate “Innova­ tion Star” Program (grant No. 2025CXZX-487). The authors are grateful for the support.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp165",
+        "claim": "the spatter amount is reduced by approximately 40–50%, and the spatter ejection angle decreases from 40◦to 24◦, ensuring superior sur­ face formation quality.",
+        "point_type": "result",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 15,
+        "source_text": "(1) Laser power modulation alters the laser energy distribution, significantly improving weld formation quality and weakening the thermal effect on the heat-affected zone (HAZ) by reducing the peak energy density at the weld sides. Compared with the unmodulated process (T0 mode), under the 40% modulation amplitude (T4 mode), the maximum weld surface depression depth is reduced by 22.6%, the HAZ width decreases by 23.9%, and coating cracking is effectively mitigated, thereby preserving the self-repairing corrosion resistance of the material. (2) The optimized energy distribution lowers the temperature gradient within the molten pool and stabilized the keyhole dy­ namics. The T4 mode significantly reduces the keyhole depth and alleviates the violent interaction between high-pressure metal vapor and the molten pool. This results in a stable flow field and a substantial reduction in spatter ejection intensity; the spatter amount is reduced by approximately 40–50%, and the spatter ejection angle decreases from 40◦to 24◦, ensuring superior sur­ face formation quality. (3) Increasing the laser power modulation amplitude promotes the expansion of the constitutional supercooling zone, facilitating the nucleation of equiaxed grains and refining the weld microstruc­ ture. Compared with the unmodulated process (T0 mode), under the 40% modulation amplitude (T4 mode), the average grain size in the weld zone is refined from 46.6 μm to 36.1 μm, representing a reduction of 22.5%. Additionally, the proportion of high-angle grain boundaries (HAGBs) increases by 13.37%, enhancing the weld's resistance to crack propagation. Furthermore, increasing",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp166",
+        "claim": "Optics and Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 16,
+        "source_text": "J. Lu et al. Optics and Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp168",
+        "claim": "125 (2023) 563–576, https://doi.org/10.1007/s00170-022- 10586-5.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 16,
+        "source_text": "[20] Z. Kuang, J. Li, S. Edwardson, W. Perrie, D. Liu, G. Dearden, Ultrafast laser beam shaping for material processing at imaging plane by geometric masks using a spatial light modulator, Opt. Laser. Eng. 70 (2015) 1–5, https://doi.org/10.1016/j. optlaseng.2015.02.004. [21] A. Metel, M. Stebulyanin, S. Fedorov, A. Okunkova, Power density distribution for laser additive manufacturing (slm): potential, Fund. Adv. Appl. Technol. 7 (2018) 5, https://doi.org/10.3390/technologies7010005. [22] Z. Wang, J. Oliveira, Z. Zeng, X. Bu, B. Peng, X. Shao, Laser beam oscillating welding of 5a06 aluminum alloys: microstructure, porosity and mechanical properties, Opt. Laser Technol. 111 (2019) 58–65, https://doi.org/10.1016/j. optlastec.2018.09.036. [23] S. Li, G. Mi, C. Wang, A study on laser beam oscillating welding characteristics for the 5083 aluminum alloy: morphology, microstructure and mechanical properties, J. Manuf. Process. 53 (2020) 12–20, https://doi.org/10.1016/j. jmapro.2020.01.018. [24] M. Zhang, J. Wu, C. Mao, B. Cheng, H.M. Shakhawat, H. Li, K. Wang, J. Zhang, Y. Hu, Z. Bi, Impact of power modulation on weld appearance and mechanical properties during laser welding of Az31b magnesium alloy, Opt. Laser Technol. 156 (2022) 108490, https://doi.org/10.1016/j.optlastec.2022.108490. [25] P. Jiang, H. Dong, Y. Cai, M. Gao, Effects of laser power modulation on keyhole behavior and energy absorptivity for laser welding of magnesium alloy Az31, Int. J. Adv. Manuf. Technol. 125 (2023) 563–576, https://doi.org/10.1007/s00170-022- 10586-5. [26] J. Han, Y. Shi, G. Zhang, Power modulation and its effect on microstructural evolution during laser oscillating welding of steel to aluminum alloy, J. Adhes. Sci. Technol. 10 (2024) 4175–4189, https://doi.org/10.1080/ 01694243.2024.2366419. [27] J. Han, Y. Shi, J. Guo, K. Volodymyr, W. Le, F. Dai, Porosity inhibition of aluminum alloy by power-modulated laser welding and mechanism analysis, J. Manuf. Process. 102 (2023) 827–838, https://doi.org/10.1016/j.jmapro.2023.08.001. [28] J. Han, Y. Shi, G. Zhang, K. Volodymyr, W. Le, Minimizing defects and controlling the morphology of laser welded aluminum alloys using power modulation-based laser beam oscillation, J. Manuf. Process. 83 (2022) 49–59, https://doi.org/ 10.1016/j.jmapro.2022.08.031. [29] M. Schweier, J. Heins, M. Haubold, M. Zaeh, Spatter formation in laser welding with beam oscillation, Phys. Procedia 41 (2013) 20–30, https://doi.org/10.1016/j. phpro.2013.03.047. [30] F. Hugger, K. Hofmann, S. Kohl, M. Dobler, M. Schmidt, Spatter formation in laser beam welding using laser beam oscillation, Weld. World 59 (2015) 165–172, https://doi.org/10.1007/s40194-014-0189-9. [31] Y. Wang, P. Jiang, J. Zhao, S. Geng, B. Xu, Effects of energy density attenuation on the stability of keyhole and molten pool during deep penetration laser welding process: a combined numerical and experimental study, Int. J. Heat Mass Transf. 176 (2021) 121410, https://doi.org/10.1016/j.ijheatmasstransfer.2021.121410. [32] L. Wang, Y. Wei, J. Chen, W. Zhao, Macro-micro modeling and simulation on columnar grains growth in the laser welding pool of aluminum alloy, Int. J. Heat Mass Transf. 123 (2018) 826–838, https://doi.org/10.1016/j. ijheatmasstransfer.2018.03.037. [33] Y. Huang, X. Gao, B. Ma, G. Liu, N. Zhang, Y. Zhang, D. You, Optimization of weld strength for laser welding of steel to Pmma using taguchi design method, Opt. Laser Technol. 136 (2021) 106726, https://doi.org/10.1016/j.optlastec.2020.106726. [34] Z. Jiang, X. Chen, H. Li, Z. Lei, Y. Chen, S. Wu, Y. Wang, Grain refinement and laser energy distribution during laser oscillating welding of invar alloy, Mater. Des. 186 (2020) 108195, https://doi.org/10.1016/j.matdes.2019.108195. [35] W. Xu, Z. Jiang, J. Zhang, W. Tao, X. Zhang, S. Yang, Direct laser-filler wire welding of Al–si coated 22mnb5 steel without removing the Al–si coating, J. Mater. Res. Technol. 24 (2023) 2265–2278, https://doi.org/10.1016/j.jmrt.2023.03.138. [36] W. Lin, F. Li, X. Hua, Z. Zhang, Laser welding Al–si coated hot stamping steel in conduction mode: weld formation and Al-rich microstructure, J. Mater. Res. Technol. 19 (2022) 4282–4295, https://doi.org/10.1016/j.jmrt.2022.07.012. [37] T. Yoon, M. Oh, H. Shin, C. Kang, Comparison of microstructure and phase transformation of laser-welded joints in Al-10wt%si-coated boron steel before and after hot stamping, Mater Charact 128 (2017) 195–202, https://doi.org/10.1016/j. matchar.2017.02.007. [38] J.W. Christian, The theory of transformations in metals and alloys, Pergamon 422–479 (2002), https://doi.org/10.1016/B978-008044019-4/50014-3. [39] C. Stelian, Numerical analysis of constitutional supercooling during directional solidification of alloys, J. Mater. Sci. 47 (2012) 3454–3462, https://doi.org/ 10.1007/s10853-011-6193-1. [40] C. Chen, H. Zhou, C. Wang, L. Liu, Y. Zhang, K. Zhang, Laser welding of ultra-high strength steel with different oscillating modes, J. Manuf. Process. 68 (2021) 761–769, https://doi.org/10.1016/j.jmapro.2021.06.004.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp169",
+        "claim": "31 (2022) 1346–1357, https://doi.org/10.1007/s11665- 021-06291-1.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 16,
+        "source_text": "[1] T. Gu, Y. Liu, C. Peng, P. Zhang, Z. Wang, The Inhibition effect of Ultraviolet Illumination on a simulated extremely cold atmospheric corrosion for Zinc- aluminum-magnesium coating, J. Mater. Res. Technol. 22 (2023) 3319–3330, https://doi.org/10.1016/j.jmrt.2022.12.176. [2] T. Prosek, J. Hagstr¨om, D. Persson, N. Fuertes, F. Lindberg, O. Chocholatý, C. Tax´en, J. ˇSer´ak, D. Thierry, Effect of the microstructure of Zn-al and Zn-al-mg model alloys on corrosion stability, Corros. Sci. 110 (2016) 71–81, https://doi.org/ 10.1016/j.corsci.2016.04.022. [3] X. Chen, X. Peng, X. Yuan, Z. Xiong, Y. Lu, S. Lu, J. Peng, Effect of zinc aluminum magnesium coating on spot-welding joint properties of Hc340lad + Zm steel, Appl. Sci. 12 (2022) 9072, https://doi.org/10.3390/app12189072. [4] T. Prosek, A. Nazarov, F. Goodwin, J. ˇSer´ak, D. Thierry, Improving corrosion stability of znalmg by alloying for protection of Car bodies, Surf. Coat. Technol. 306 (2016) 439–447, https://doi.org/10.1016/j.surfcoat.2016.03.062. [5] Y. Hao, N. Chen, H. Wang, B.E. Carlson, F. Lu, Effect of zinc vapor forces on spattering in partial penetration laser welding of zinc-coated steels, J. Mater. Process. Technol. 298 (2021) 117282, https://doi.org/10.1016/j. jmatprotec.2021.117282. [6] Y. Hao, L. Li, Y. Sun, C. Shao, F. Lu, Dynamic behavior of keyhole and molten pool under different oscillation paths for galvanized steel laser welding, Int. J. Heat Mass Transf. 192 (2022) 122947, https://doi.org/10.1016/j. ijheatmasstransfer.2022.122947. [7] R. Cao, J. Chang, Q. Huang, X. Zhang, Y. Yan, J. Chen, Behaviors and effects of Zn coating on welding-brazing process of Al-steel and Mg-steel dissimilar metals, J. Manuf. Process. 31 (2018) 674–688, https://doi.org/10.1016/j. jmapro.2018.01.001. [8] D. Zhang, Y. Qin, F. Zhao, M. Liang, Microstructure and mechanical properties of laser welded Al-si coated 22mnb5 hot stamping steel and galvanized steel, J. Mater. Eng. Perform. 31 (2022) 1346–1357, https://doi.org/10.1007/s11665- 021-06291-1. [9] Y. Sun, L. Wu, C. Tan, W. Zhou, B. Chen, X. Song, H. Zhao, J. Feng, Influence of Al- si coating on microstructure and mechanical properties of fiber laser welded 22mnb5 Steel, Opt. Laser Technol. 116 (2019) 117–127, https://doi.org/10.1016/ j.optlastec.2019.03.024. [10] W. Xu, S. Yang, W. Tao, J. Zhang, H. Luo, Effect of Al-si coating removal state on microstructure and mechanical properties of laser welded 22mnb5 steel, J. Mater. Eng. Perform. 32 (2023) 4205–4215, https://doi.org/10.1007/s11665-022-07401- 3. [11] J. Moon, P. Seo, C. Kang, A study on mechanical properties of laser-welded blank of a boron sheet steel by laser ablation variable of Al-si coating layer, Int. J. Precis. Eng. Manuf. 14 (2013) 283–288, https://doi.org/10.1007/s12541-013-0039-5. [12] Z. Wan, H. Wang, J. Li, J. Solomon, N. Chen, B. Carlson, Effect of beam oscillation frequency on spattering in remote laser stitch welding of thin-gage zinc-coated steel with keyhole penetration, J. Mater. Process. Technol. 302 (2022) 117482, https://doi.org/10.1016/j.jmatprotec.2021.117482. [13] Y. Hao, H. Wang, Y. Sun, L. Li, Y. Wu, F. Lu, The evaporation behavior of zinc and its effect on spattering in laser overlap welding of galvanized steels, J. Mater. Process. Technol. 306 (2022) 117625, https://doi.org/10.1016/j. jmatprotec.2022.117625. [14] X. Wang, L. Xiong, F. Teng, R. Liu, Y. Du, X. Xu, Y. Xing, D. Lv, X. Li, Study on Al migration, microstructure and hardness in fusion zone of Al-si coated press- hardened steel by various laser powers, Mater. Today Commun. 36 (2023) 106881, https://doi.org/10.1016/j.mtcomm.2023.106881. [15] J. Sun, Z. Han, F. Xu, X. Wang, H. Cui, F. Lu, The segregation control of coating element for pulse fiber laser welding of Al-Si coated 22MnB5 steel, J. Mater. Process. Technol. 286 (2020) 116833, https://doi.org/10.1016/j. jmatprotec.2020.116833. [16] S. Jabar, V.V. Pamarthi, Q. Hayat, M.H. Khan, H.R. Kotadia, P. Franciosa, A review of beam shaping approaches for near-infrared continuous-wave laser welding in e- mobility applications, Opt. Laser Technol. 192 (2025) 114000, https://doi.org/ 10.1016/j.optlastec.2025.114000. [17] J. Bi, L. Wu, S. Li, Z. Yang, X. Jia, M.D. Starostenkov, G. Dong, Beam shaping technology and its application in metal laser additive manufacturing: a review, J. Mater. Res. Technol. 26 (2023) 4606–4628, https://doi.org/10.1016/j. jmrt.2023.08.037. [18] J. Cai, Y. Wei, Z. Ouyang, X. Liu, H. Jin, J. Chen, Investigation on clockwise circular oscillating laser welding for the 5a06-h112 aluminum alloy: energy distribution, seam appearance, microstructure, and mechanical properties, Opt. Laser Technol. 176 (2024) 111026, https://doi.org/10.1016/j. optlastec.2024.111026. [19] L. Wang, M. Gao, X. Zeng, Experiment and prediction of weld morphology for laser oscillating welding of Aa6061 aluminium alloy, Sci. Technol. Weld. Join. 20 (2019) 334–341, 10.13621718.2018.1551853.",
+        "linked_figures": [],
+        "linked_tables": []
+      }
+    ],
+    "selected_writing_points": [
+      {
+        "writing_point_id": "wp001",
+        "claim": "Optics & Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Optics & Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp002",
+        "claim": "Contents lists available at ScienceDirect",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Contents lists available at ScienceDirect",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp004",
+        "claim": "journal homepage: www.elsevier.com/locate/optlastec",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "journal homepage: www.elsevier.com/locate/optlastec",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp006",
+        "claim": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp009",
+        "claim": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp012",
+        "claim": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp013",
+        "claim": "This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Zinc-Aluminum-Magnesium (Zn-Al-Mg) coated steel is an emerging environmentally friendly material with excellent corrosion resistance and self-repairing corrosion protection property. However, the presence of the Zn- Al-Mg coating poses significant challenges during welding, including severe coating evaporation, complex metallurgical reactions, coating cracking in the heat-affected zone (HAZ), elemental segregation, and micro­ structural inhomogeneity. In this study, a novel spatio-temporal beam shaping strategy-combining full domain power modulation with galvanometer-scanning laser was proposed to achieve precise control of the molten pool through synergistic energy and mechanical coupling. High-quality laser lap joints of Zn-Al-Mg coated steel were successfully obtained. The effects of laser power modulation amplitude on molten pool dynamics, spatter behavior, weld formation, and microstructure were systematically investigated. The results demonstrate that the tailored beam shaping strategy enhances molten pool stability, reduces spatter, and improves weld morphology. Quantitative analysis reveals that at a 40% power modulation amplitude, the maximum weld surface depression depth is reduced by 22.6%, and the HAZ width decreases by 23.9% compared to the unmodulated process, effectively mitigating coating cracking. Furthermore, the average grain size in the weld zone is refined by 22.5% (decreasing from 46.6 μm to 36.1 μm), while the proportion of high-angle grain boundaries (HAGBs) increases by 13.37%. This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures. Moreover, the formation mechanism of equiaxed grains and grain refinement behavior under different modulation amplitudes were analyzed based on classical nucleation and growth theory. This work provides an effective approach for stabilizing the laser welding process and optimizing the microstructure and mechanical performance of Zn-Al-Mg coated steels.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp015",
+        "claim": "However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4].",
+        "point_type": "background",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "damaged area [2]. However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4]. Currently, it is primarily used in the form of prefabricated profiles, which cannot meet the production demands of large-scale structural components, significantly limiting its industrial-scale application.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp016",
+        "claim": "Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2].",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Zn-Al-Mg coated steel is a novel environmentally friendly coating material. Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2]. The Zn-Al-Mg coating possesses a unique self-repairing corrosion protection property against cut-edge corrosion, attributed to the formation of a passivation film. This feature provides superior pro­ tection for both incisions and surface scratches. Unlike traditional galvanized coatings, when Zn-Al-Mg steel is sheared or scratched, a dense passivation film (composed of Zn-Al-Mg oxides and carbonates) forms on the exposed substrate. This passivation layer effectively blocks the infiltration of corrosive media, thereby “sealing” and “repairing” the",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp017",
+        "claim": "This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6].",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "The welding of Zn-Al-Mg coated steel faces three major challenges. First, low-boiling-point elements such as zinc (Zn) and magnesium (Mg) evaporate intensely during laser welding, generating high-pressure metal vapor that violently disrupts the molten pool and keyhole stabil­ ity. This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6]. Second, zinc (Zn), aluminum (Al), and magnesium (Mg) can react with iron (Fe), carbon (C), and oxygen (O) in the molten pool to form various inter­ metallic compounds (e.g., Fe-Zn-Al phases, MgZn2), which are prone to microcrack initiation under external loads or residual welding stresses,",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp018",
+        "claim": "* Corresponding author.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "* Corresponding author. E-mail address: shiyu@lut.edu.cn (Y. Shi).",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp019",
+        "claim": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025;",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025; Received in revised form 3 March 2026; Accepted 8 March 2026",
+        "linked_figures": [],
+        "linked_tables": []
+      }
+    ],
+    "semantic_themes": [
+      {
+        "theme_title": "Discussion",
+        "summary": "Optics & Laser Technology 200 (2026) 115100\nContents lists available at ScienceDirect\njournal homepage: www.elsevier.com/locate/optlastec\nSpatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel\nState Key Laboratory of Adv...",
+        "writing_points": [
+          {
+            "writing_point_id": "wp001",
+            "claim": "Optics & Laser Technology 200 (2026) 115100",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "Optics & Laser Technology 200 (2026) 115100",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp002",
+            "claim": "Contents lists available at ScienceDirect",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "Contents lists available at ScienceDirect",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp004",
+            "claim": "journal homepage: www.elsevier.com/locate/optlastec",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "journal homepage: www.elsevier.com/locate/optlastec",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp006",
+            "claim": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp009",
+            "claim": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp012",
+            "claim": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp018",
+            "claim": "* Corresponding author.",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "* Corresponding author. E-mail address: shiyu@lut.edu.cn (Y. Shi).",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp019",
+            "claim": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025;",
+            "point_type": "discussion",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025; Received in revised form 3 March 2026; Accepted 8 March 2026",
+            "linked_figures": [],
+            "linked_tables": []
+          }
+        ],
+        "linked_figure_ids": [],
+        "linked_table_ids": []
+      },
+      {
+        "theme_title": "Mechanism",
+        "summary": "This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures.\nDue to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in v...",
+        "writing_points": [
+          {
+            "writing_point_id": "wp013",
+            "claim": "This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures.",
+            "point_type": "mechanism",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "Zinc-Aluminum-Magnesium (Zn-Al-Mg) coated steel is an emerging environmentally friendly material with excellent corrosion resistance and self-repairing corrosion protection property. However, the presence of the Zn- Al-Mg coating poses significant challenges during welding, including severe coating evaporation, complex metallurgical reactions, coating cracking in the heat-affected zone (HAZ), elemental segregation, and micro­ structural inhomogeneity. In this study, a novel spatio-temporal beam shaping strategy-combining full domain power modulation with galvanometer-scanning laser was proposed to achieve precise control of the molten pool through synergistic energy and mechanical coupling. High-quality laser lap joints of Zn-Al-Mg coated steel were successfully obtained. The effects of laser power modulation amplitude on molten pool dynamics, spatter behavior, weld formation, and microstructure were systematically investigated. The results demonstrate that the tailored beam shaping strategy enhances molten pool stability, reduces spatter, and improves weld morphology. Quantitative analysis reveals that at a 40% power modulation amplitude, the maximum weld surface depression depth is reduced by 22.6%, and the HAZ width decreases by 23.9% compared to the unmodulated process, effectively mitigating coating cracking. Furthermore, the average grain size in the weld zone is refined by 22.5% (decreasing from 46.6 μm to 36.1 μm), while the proportion of high-angle grain boundaries (HAGBs) increases by 13.37%. This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures. Moreover, the formation mechanism of equiaxed grains and grain refinement behavior under different modulation amplitudes were analyzed based on classical nucleation and growth theory. This work provides an effective approach for stabilizing the laser welding process and optimizing the microstructure and mechanical performance of Zn-Al-Mg coated steels.",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp016",
+            "claim": "Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2].",
+            "point_type": "mechanism",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "Zn-Al-Mg coated steel is a novel environmentally friendly coating material. Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2]. The Zn-Al-Mg coating possesses a unique self-repairing corrosion protection property against cut-edge corrosion, attributed to the formation of a passivation film. This feature provides superior pro­ tection for both incisions and surface scratches. Unlike traditional galvanized coatings, when Zn-Al-Mg steel is sheared or scratched, a dense passivation film (composed of Zn-Al-Mg oxides and carbonates) forms on the exposed substrate. This passivation layer effectively blocks the infiltration of corrosive media, thereby “sealing” and “repairing” the",
+            "linked_figures": [],
+            "linked_tables": []
+          },
+          {
+            "writing_point_id": "wp017",
+            "claim": "This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6].",
+            "point_type": "mechanism",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "The welding of Zn-Al-Mg coated steel faces three major challenges. First, low-boiling-point elements such as zinc (Zn) and magnesium (Mg) evaporate intensely during laser welding, generating high-pressure metal vapor that violently disrupts the molten pool and keyhole stabil­ ity. This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6]. Second, zinc (Zn), aluminum (Al), and magnesium (Mg) can react with iron (Fe), carbon (C), and oxygen (O) in the molten pool to form various inter­ metallic compounds (e.g., Fe-Zn-Al phases, MgZn2), which are prone to microcrack initiation under external loads or residual welding stresses,",
+            "linked_figures": [],
+            "linked_tables": []
+          }
+        ],
+        "linked_figure_ids": [],
+        "linked_table_ids": []
+      },
+      {
+        "theme_title": "Background",
+        "summary": "However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4]....",
+        "writing_points": [
+          {
+            "writing_point_id": "wp015",
+            "claim": "However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4].",
+            "point_type": "background",
+            "relevance_score": 0.2689,
+            "goal_hits": [],
+            "page": 1,
+            "source_text": "damaged area [2]. However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4]. Currently, it is primarily used in the form of prefabricated profiles, which cannot meet the production demands of large-scale structural components, significantly limiting its industrial-scale application.",
+            "linked_figures": [],
+            "linked_tables": []
+          }
+        ],
+        "linked_figure_ids": [],
+        "linked_table_ids": []
+      }
+    ],
+    "selected_figures": [],
+    "selected_tables": [],
+    "selected_references": [],
+    "selected_parameters": [],
+    "selected_results": [],
+    "stats_analysis": {
+      "writing_point_count": 127,
+      "selected_writing_point_count": 12,
+      "selected_figure_count": 0,
+      "selected_table_count": 0
+    },
+    "status": "analysis_complete"
+  },
+  "view": {
+    "schema_version": "v2.graph-aware",
+    "source_pdf": "C:\\Users\\xiao\\Desktop\\wenxianku\\olt2026文献.pdf",
+    "goal": "Conclusion Extraction",
+    "stage_manifest": {
+      "stage_01_extract": {
+        "status": "unknown",
+        "key_counts": {
+          "sections": 0,
+          "chunks": 169,
+          "figures": 30,
+          "tables": 3
+        }
+      },
+      "stage_02_binding": {
+        "status": "binding_ready",
+        "key_counts": {
+          "relation_edges": 108,
+          "evidence_clusters": 0
+        }
+      },
+      "stage_03_analysis": {
+        "status": "analysis_complete",
+        "goal": "Conclusion Extraction",
+        "writing_points": 127
+      }
+    },
+    "quality_gates": {
+      "has_writing_points": true,
+      "has_evidence_links": true,
+      "has_clusters": false,
+      "writing_points_have_boundary_notes": false,
+      "overall_pass": false
+    },
+    "writing_points": [
+      {
+        "writing_point_id": "wp001",
+        "claim": "Optics & Laser Technology 200 (2026) 115100",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Optics & Laser Technology 200 (2026) 115100",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp002",
+        "claim": "Contents lists available at ScienceDirect",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Contents lists available at ScienceDirect",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp004",
+        "claim": "journal homepage: www.elsevier.com/locate/optlastec",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "journal homepage: www.elsevier.com/locate/optlastec",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp006",
+        "claim": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Spatio-temporal beam shaping for optimized weld formation and microstructural control in laser tailor welding of Zn-Al-Mg coated steel",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp009",
+        "claim": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "State Key Laboratory of Advanced Processing and Recycling Non-ferrous Metals, Lanzhou University of Technology, Lanzhou 730050, PR China",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp012",
+        "claim": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Keywords: Zn-Al-Mg coated steel Laser welding Beam shaping Weld seam formation Weld microstructure",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp013",
+        "claim": "This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures.",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Zinc-Aluminum-Magnesium (Zn-Al-Mg) coated steel is an emerging environmentally friendly material with excellent corrosion resistance and self-repairing corrosion protection property. However, the presence of the Zn- Al-Mg coating poses significant challenges during welding, including severe coating evaporation, complex metallurgical reactions, coating cracking in the heat-affected zone (HAZ), elemental segregation, and micro­ structural inhomogeneity. In this study, a novel spatio-temporal beam shaping strategy-combining full domain power modulation with galvanometer-scanning laser was proposed to achieve precise control of the molten pool through synergistic energy and mechanical coupling. High-quality laser lap joints of Zn-Al-Mg coated steel were successfully obtained. The effects of laser power modulation amplitude on molten pool dynamics, spatter behavior, weld formation, and microstructure were systematically investigated. The results demonstrate that the tailored beam shaping strategy enhances molten pool stability, reduces spatter, and improves weld morphology. Quantitative analysis reveals that at a 40% power modulation amplitude, the maximum weld surface depression depth is reduced by 22.6%, and the HAZ width decreases by 23.9% compared to the unmodulated process, effectively mitigating coating cracking. Furthermore, the average grain size in the weld zone is refined by 22.5% (decreasing from 46.6 μm to 36.1 μm), while the proportion of high-angle grain boundaries (HAGBs) increases by 13.37%. This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures. Moreover, the formation mechanism of equiaxed grains and grain refinement behavior under different modulation amplitudes were analyzed based on classical nucleation and growth theory. This work provides an effective approach for stabilizing the laser welding process and optimizing the microstructure and mechanical performance of Zn-Al-Mg coated steels.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp015",
+        "claim": "However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4].",
+        "point_type": "background",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "damaged area [2]. However, due to the structural characteristics of the Zn-Al-Mg coating, the material is challenging to weld [3,4]. Currently, it is primarily used in the form of prefabricated profiles, which cannot meet the production demands of large-scale structural components, significantly limiting its industrial-scale application.",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp016",
+        "claim": "Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2].",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "Zn-Al-Mg coated steel is a novel environmentally friendly coating material. Due to its excellent corrosion resistance, self-healing proper­ ties, and superior anti-rust performance, it has gradually replaced some stainless steels and aluminum alloys in various engineering applications, including photovoltaic brackets, rail transportation, and construction sectors [1,2]. The Zn-Al-Mg coating possesses a unique self-repairing corrosion protection property against cut-edge corrosion, attributed to the formation of a passivation film. This feature provides superior pro­ tection for both incisions and surface scratches. Unlike traditional galvanized coatings, when Zn-Al-Mg steel is sheared or scratched, a dense passivation film (composed of Zn-Al-Mg oxides and carbonates) forms on the exposed substrate. This passivation layer effectively blocks the infiltration of corrosive media, thereby “sealing” and “repairing” the",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp017",
+        "claim": "This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6].",
+        "point_type": "mechanism",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "The welding of Zn-Al-Mg coated steel faces three major challenges. First, low-boiling-point elements such as zinc (Zn) and magnesium (Mg) evaporate intensely during laser welding, generating high-pressure metal vapor that violently disrupts the molten pool and keyhole stabil­ ity. This leads to welding defects such as spatter, undercutting, and porosity, severely compromising joint formation quality [5,6]. Second, zinc (Zn), aluminum (Al), and magnesium (Mg) can react with iron (Fe), carbon (C), and oxygen (O) in the molten pool to form various inter­ metallic compounds (e.g., Fe-Zn-Al phases, MgZn2), which are prone to microcrack initiation under external loads or residual welding stresses,",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp018",
+        "claim": "* Corresponding author.",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "* Corresponding author. E-mail address: shiyu@lut.edu.cn (Y. Shi).",
+        "linked_figures": [],
+        "linked_tables": []
+      },
+      {
+        "writing_point_id": "wp019",
+        "claim": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025;",
+        "point_type": "discussion",
+        "relevance_score": 0.2689,
+        "goal_hits": [],
+        "page": 1,
+        "source_text": "https://doi.org/10.1016/j.optlastec.2026.115100 Received 19 August 2025; Received in revised form 3 March 2026; Accepted 8 March 2026",
+        "linked_figures": [],
+        "linked_tables": []
+      }
+    ],
+    "figures": [],
+    "tables": [],
+    "parameters": [],
+    "results": [],
+    "references": []
+  }
+}

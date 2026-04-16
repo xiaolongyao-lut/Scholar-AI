@@ -1,0 +1,220 @@
+{
+  "schema_version": "v2.graph-aware",
+  "source_pdf": "C:\\Users\\xiao\\Desktop\\wenxianku\\eng-07-00129.pdf",
+  "goal": "Conclusion Extraction",
+  "stage_manifest": {
+    "stage_01_extract": {
+      "status": "unknown",
+      "key_counts": {
+        "sections": 0,
+        "chunks": 390,
+        "figures": 10,
+        "tables": 11
+      }
+    },
+    "stage_02_binding": {
+      "status": "binding_ready",
+      "key_counts": {
+        "relation_edges": 33,
+        "evidence_clusters": 0
+      }
+    },
+    "stage_03_analysis": {
+      "status": "analysis_complete",
+      "goal": "Conclusion Extraction",
+      "writing_points": 241
+    }
+  },
+  "quality_gates": {
+    "has_writing_points": true,
+    "has_evidence_links": true,
+    "has_clusters": false,
+    "writing_points_have_boundary_notes": false,
+    "overall_pass": false
+  },
+  "writing_points": [
+    {
+      "writing_point_id": "wp038",
+      "claim": "Therefore, sensor-based feature extraction in metal AM can be broadly categorized according to the analysis domain.",
+      "point_type": "mechanism",
+      "relevance_score": 0.3659,
+      "goal_hits": [
+        "extraction"
+      ],
+      "page": 6,
+      "source_text": "On the other hand, time-series sensing has seen rapid growth, with piezoelectric or optical microphones placed on the build or in the chamber to record transient phenomena that resulted in LoF, or crack initiation. For time-series data, features can be organized by representation domain (see Table 1). Time domain statistics (e.g., mean, Root Mean Square (RMS), variance, rise time, and counts) are computationally suitable for online defect detection. Frequency domain data (e.g., spectral centroid, Spectral Skewness) measure characteristics based on various mechanisms. Time–frequency analysis methods, such as the Short Time Fourier Transform (STFT) and Continuous Wavelet Transform (CWT), capture how the spectral content of a signal evolves, making them effective for identifying rapid events or overlapping events that arise during AM processing. In parallel, cepstral representations, notably Mel Frequency Cepstral Coefficients (MFCCs), give a compact characterization of the signal’s spectral shape and are frequently used as stable inputs for ML models. Therefore, sensor-based feature extraction in metal AM can be broadly categorized according to the analysis domain. Time domain features are widely applied for real-time detection of amplitude-based anomalies such as spatter bursts or crack initiation, owing to their simplicity and low computational cost [59,60]. Frequency domain features, often obtained through Fast Fourier Transform (FFT) or power-spectral-density analysis, enable defect differentiation by capturing frequency-dependent signatures associated with keyhole collapse, porosity, or process instabilities [26,43,61]. Meanwhile, time–frequency domain methods such as STFT or CWT preserve both temporal and spectral information,",
+      "linked_figures": [
+        "f2"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp145",
+      "claim": "Physically intuitive feature extraction, ML model for instability detection [145]",
+      "point_type": "discussion",
+      "relevance_score": 0.3659,
+      "goal_hits": [
+        "extraction"
+      ],
+      "page": 15,
+      "source_text": "Physically intuitive feature extraction, ML model for instability detection [145]",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp179",
+      "claim": "Conv LSTM-based classifier with VQVAE feature extraction and CGAN data augmentation [155]",
+      "point_type": "discussion",
+      "relevance_score": 0.3659,
+      "goal_hits": [
+        "extraction"
+      ],
+      "page": 16,
+      "source_text": "Conv LSTM-based classifier with VQVAE feature extraction and CGAN data augmentation [155]",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp238",
+      "claim": "ConvLSTM model using VQVAE feature extraction and CGAN augmentation [155]",
+      "point_type": "discussion",
+      "relevance_score": 0.3659,
+      "goal_hits": [
+        "extraction"
+      ],
+      "page": 21,
+      "source_text": "ConvLSTM model using VQVAE feature extraction and CGAN augmentation [155]",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp293",
+      "claim": "Particle tracking, image-sequence analysis, and morphology-based feature extraction",
+      "point_type": "discussion",
+      "relevance_score": 0.3659,
+      "goal_hits": [
+        "extraction"
+      ],
+      "page": 25,
+      "source_text": "Particle tracking, image-sequence analysis, and morphology-based feature extraction",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp346",
+      "claim": "Across the defect categories, observable raw signals support the extraction of engineered features in the time domain (RMS, variance, kurtosis), frequency domain (dominant bands, power spectral density (PSD) peaks), and time–frequency domain (wavelet or STFT transients), forming a unified basis for data-driven defect detection.",
+      "point_type": "result",
+      "relevance_score": 0.3659,
+      "goal_hits": [
+        "extraction"
+      ],
+      "page": 31,
+      "source_text": "Across the defect categories, observable raw signals support the extraction of engineered features in the time domain (RMS, variance, kurtosis), frequency domain (dominant bands, power spectral density (PSD) peaks), and time–frequency domain (wavelet or STFT transients), forming a unified basis for data-driven defect detection. Figure 10 summarizes these relationships by mapping each defect mechanism to its corresponding sensing modality and feature space.",
+      "linked_figures": [
+        "f10",
+        "f10"
+      ],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp368",
+      "claim": "A Time-Frequency Domain Feature Extraction Approach Enhanced by Computer Vision for Wire Arc Additive Manufacturing Monitoring Using Fourier and Wavelet Transform.",
+      "point_type": "result",
+      "relevance_score": 0.3659,
+      "goal_hits": [
+        "extraction"
+      ],
+      "page": 35,
+      "source_text": "46. Tan, Z.E.; Pang, J.H.L.; Kaminski, J.; Pepin, H. Characterisation of porosity, density, and microstructure of directed energy deposited stainless steel AISI 316L. Addit. Manuf. 2019, 25, 286–296. [CrossRef] 47. Siddique, S.; Imran, M.; Rauer, M.; Kaloudis, M.; Wycisk, E.; Emmelmann, C.; Walther, F. Computed tomography for characterization of fatigue performance of selective laser melted parts. Mater. Des. 2015, 83, 661–669. [CrossRef] 48. Qin, L.; Wang, K.; Li, X.; Zhou, S.; Yang, G. Review of the Formation Mechanisms and Control Methods of Geometrical Defects in Laser Deposition Manufacturing. Chinese J. Mech. Eng. Addit. Manuf. Front. 2022, 1, 100052. [CrossRef] 49. Chahal, V.; Taylor, R.M. A review of geometric sensitivities in laser metal 3D printing. Virtual Phys. Prototyp. 2020, 15, 227–241. [CrossRef] 50. Chen, L.; Yao, X.; Feng, W.; Chew, Y.; Moon, S.K. Multimodal Sensor Fusion for Real-Time Location-Dependent Defect Detection in Laser-Directed Energy Deposition. 2023. Available online: https://doi.org/10.1115/DETC2023-110284 (accessed on 12 February 2026). 51. Karthikeyan, A.; Balhara, H.; Hanchate, A.; Lianos, A.K.; Bukkapatnam, S.T.S. In-situ surface porosity prediction in hybriddirected energy deposition (DED) process using explainable multimodal sensor fusion. J. Manuf. Process. 2025, 156, 904–919. [CrossRef] 52. Khanafer, K.; Cao, J.; Kokash, H. Condition Monitoring in Additive Manufacturing: A Critical Review of Different Approaches. J. Manuf. Mater. Process. 2024, 8, 95. [CrossRef] 53. Brandau, B.; Hemschik, R.; Sousa, J.P.; Brueckner, F.; Kaplan, A.F.H. Enhancing laser cladding stability: Defects and schlierenbased analytics during L-DED. Addit. Manuf. 2025, 103, 104758. [CrossRef] 54. Repossini, G.; Laguzza, V.; Grasso, M.; Colosimo, B.M. On the use of spatter signature for in-situ monitoring of Laser Powder Bed Fusion. Addit. Manuf. 2017, 16, 35–48. [CrossRef] 55. Pandiyan, V.; Wróbel, R.; Richter, R.A.; Leparoux, M.; Leinenbach, C.; Shevchik, S. Monitoring of Laser Powder Bed Fusion process by bridging dissimilar process maps using deep learning-based domain adaptation on acoustic emissions. Addit. Manuf. 2024, 80, 103974. [CrossRef] 56. Guo, Q.; Zhao, C.; Escano, L.I.; Young, Z.; Xiong, L.; Fezzaa, K.; Everhart, W.; Brown, B.; Sun, T.; Chen, L. Transient dynamics of powder spattering in laser powder bed fusion additive manufacturing process revealed by in-situ high-speed high-energy x-ray imaging. Acta Mater. 2018, 151, 169–180. [CrossRef] 57. Taylor, P.L.; Williams, R.J.; de Winton, H.C.; Fernandez, V.; Larsen, S.; Hooper, P.A. Digital 3D defect maps: Detecting localised porosity with high-speed melt pool imaging data in LPBF. Addit. Manuf. 2025, 111, 104982. [CrossRef] 58. Bidare, P.; Bitharas, I.; Ward, R.M.; Attallah, M.M.; Moore, A.J. Fluid and particle dynamics in laser powder bed fusion. Acta Mater. 2018, 142, 107–120. [CrossRef] 59. Seleznev, M.; Gustmann, T.; Friebel, J.M.; Peuker, U.A.; Kühn, U.; Hufenbach, J.K.; Biermann, H.; Weidner, A. In situ detection of cracks during laser powder bed fusion using acoustic emission monitoring. Addit. Manuf. Lett. 2022, 3, 100099. [CrossRef] 60. Pandiyan, V.; Drissi-Daoudi, R.; Shevchik, S.; Masinelli, G.; Le-Quang, T.; Logé, R.; Wasmer, K. Semi-supervised Monitoring of Laser powder bed fusion process based on acoustic emissions. Virtual Phys. Prototyp. 2021, 16, 481–497. [CrossRef] 61. Tempelman, J.R.; Wachtor, A.J.; Flynn, E.B.; Depond, P.J.; Forien, J.-B.; Guss, G.M.; Calta, N.P.; Matthews, M.J. Detection of keyhole pore formations in laser powder-bed fusion using acoustic process monitoring measurements. Addit. Manuf. 2022, 55, 102735. [CrossRef] 62. Giulio, M.; Joseph, P.; Luigi, N. A Time-Frequency Domain Feature Extraction Approach Enhanced by Computer Vision for Wire Arc Additive Manufacturing Monitoring Using Fourier and Wavelet Transform. J. Adv. Manuf. Syst. 2024, 23, 741–762. [CrossRef] 63. Zhang, H.; Wu, Q.; Tang, W.; Yang, J. Acoustic Signal-Based Defect Identification for Directed Energy Deposition-Arc Using Wavelet Time–Frequency Diagrams. Sensors 2024, 24, 4397. [CrossRef] 64. Li, S.; Chen, B.; Tan, C.; Song, X. In situ identification of laser directed energy deposition condition based on acoustic emission. Opt. Laser Technol. 2024, 169, 110152. [CrossRef] 65. Gaja, H.; Liou, F. Defect classification of laser metal deposition using logistic regression and artificial neural networks for pattern recognition. Int. J. Adv. Manuf. Technol. 2018, 94, 315–326. [CrossRef] 66. Weber, J.U.; Knabe, M.; Sayilgan, V.; Emmelmann, C. Signal processing of airborne acoustic emissions from laser metal deposited structures. Procedia CIRP 2022, 111, 359–362. [CrossRef] 67. Chen, L.; Bi, G.; Yao, X.; Tan, C.; Su, J.; Ng, N.P.H.; Chew, Y.; Liu, K.; Moon, S.K. Multisensor fusion-based digital twin for localized quality prediction in robotic laser-directed energy deposition. Robot. Comput. Integr. Manuf. 2023, 84, 102581. [CrossRef] 68. Chen, L.; Yao, X.; Tan, C.; He, W.; Su, J.; Weng, F.; Chew, Y.; Ng, N.P.H.; Moon, S.K. In-situ crack and keyhole pore detection in laser directed energy deposition through acoustic signal and deep learning. Addit. Manuf. 2023, 69, 103547. [CrossRef] 69. Song, J.Y.; Dass, A.; Moridi, A.; McLaskey, G.C. Detection of defects during laser-powder interaction by acoustic emission sensors and signal characteristics. Addit. Manuf. 2024, 82, 104035. [CrossRef] 70. Lough, C.S.; Escano, L.I.; Qu, M.; Smith, C.C.; Landers, R.G.; Bristow, D.A.; Chen, L.; Kinzel, E.C. In-situ optical emission spectroscopy of selective laser melting. J. Manuf. Process. 2020, 53, 336–341. [CrossRef]",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp001",
+      "claim": "Review Mechanisms, Sensors, and Signals for Defect Formation and In Situ Monitoring in Metal Additive Manufacturing",
+      "point_type": "background",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Review Mechanisms, Sensors, and Signals for Defect Formation and In Situ Monitoring in Metal Additive Manufacturing",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp002",
+      "claim": "Sanae Tajalli Nobari * , Fabian Hanning , Yongcui Mi and Joerg Volpp",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Sanae Tajalli Nobari * , Fabian Hanning , Yongcui Mi and Joerg Volpp",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp003",
+      "claim": "Department of Engineering Science, University West, 46186 Trollhättan, Sweden;",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Department of Engineering Science, University West, 46186 Trollhättan, Sweden; fabian.hanning@hv.se (F.H.); yongcui.mi@hv.se (Y.M.); jorg.volpp@hv.se (J.V.) * Correspondence: sanae.tajalli-nobari@hv.se",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp004",
+      "claim": "Metal additive manufacturing (AM) facilitates the production of geometrically complex components, yet its broader industrial use remains limited by the risk of defect formation and uncertainties in their detection, originating from the highly dynamic and hightemperature process environment.",
+      "point_type": "mechanism",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Metal additive manufacturing (AM) facilitates the production of geometrically complex components, yet its broader industrial use remains limited by the risk of defect formation and uncertainties in their detection, originating from the highly dynamic and hightemperature process environment. To make additive manufacturing more reliable and establish high-quality parts, it is important to understand how these defects form and how their characteristics appear during the process. This review explains the main causes of common defects, such as cracking, porosity, lack of fusion, and inclusions in metal AM processes, including Powder Bed Fusion and Directed Energy Deposition. It also connects main defect formation mechanisms to the optical, thermal, acoustic, and spectroscopic signals that can be measured during the process. Moreover, it is described how commonly used in situ monitoring systems work and how their signals correspond to melt pool dynamics, vapor plume, particle movement, and the solidification process for each kind of defect. An overview is provided of how data from these systems are analyzed, including the extraction of features from images, the evaluation of temperature fields, and the use of time and frequency domain techniques for various signals. By linking the physics of defect formation to measurable process signals, the interpretation of sensor data is enabled, and potential strategies for monitoring specific problems are outlined. Finally, recent developments are examined, including the integration of multiple sensors, advanced feature-representation approaches, and real-time data interpretation coupled with adaptive control. Together, these directions represent promising advances towards more intelligent and reliable monitoring systems for the future of metal AM.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp005",
+      "claim": "Keywords: directed energy deposition;",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Keywords: directed energy deposition; powder bed fusion; imperfections; cracking; porosity; inclusions; inline monitoring",
+      "linked_figures": [],
+      "linked_tables": []
+    }
+  ],
+  "figures": [
+    {
+      "figure_id": "f2",
+      "figure_number": 2,
+      "page": 6,
+      "caption": "Figure 2. Melt pool behavior during single track scans at 50 W/0.1 m/s, 100 W/0.5 m/s, and 200 W/1 m/s. (a) High-speed images showing melt pool shape, plume direction, and spatter trajectories, (b) Calculated temperature fields highlighting localized gradients and melt pool instability, (c) Schlieren visualization of heated Argon gas illustrating convection-driven particle motion and drag forces [58].",
+      "bbox": [
+        166.1,
+        408.14,
+        560.77,
+        468.55
+      ],
+      "relevance_score": 0.5
+    },
+    {
+      "figure_id": "f10",
+      "figure_number": 10,
+      "page": 31,
+      "caption": "Figure 10. Summary framework linking the four major defect categories in metal AM cracking, porosity, LoF, and inclusions to their underlying physical mechanisms, suitable in situ sensors, and key extracted process features.",
+      "bbox": [
+        166.12,
+        600.48,
+        560.4,
+        635.24
+      ],
+      "relevance_score": 0.5
+    }
+  ],
+  "tables": [],
+  "parameters": [],
+  "results": [],
+  "references": []
+}

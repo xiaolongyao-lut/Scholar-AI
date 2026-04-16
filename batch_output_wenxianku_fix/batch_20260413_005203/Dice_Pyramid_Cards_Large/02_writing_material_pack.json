@@ -1,0 +1,53 @@
+{
+  "goal": "Conclusion Extraction",
+  "goal_profile": {
+    "method_focus": false,
+    "image_focus": false,
+    "process_focus": false,
+    "performance_focus": false,
+    "mechanism_focus": false
+  },
+  "status": "ok",
+  "pipeline_stage": "S3_target_material_packaging",
+  "pack_summary": {
+    "selected_writing_points": 0,
+    "selected_figures": 0,
+    "selected_tables": 0,
+    "selected_references": 0,
+    "selected_parameters": 0,
+    "selected_results": 0,
+    "evidence_bundles": 0,
+    "semantic_themes": 0
+  },
+  "quality_gates": {
+    "has_writing_points": false,
+    "has_figure_level_evidence": false,
+    "has_original_reference_markers": false,
+    "has_boundary_notes": false,
+    "has_semantic_themes": false
+  },
+  "semantic_themes": [],
+  "writing_point_cards": [],
+  "single_figure_cards": [],
+  "single_table_cards": [],
+  "selected_parameter_cards": [],
+  "selected_result_cards": [],
+  "reference_directory_with_original_markers": [],
+  "evidence_bundles": [],
+  "boundary_summary": {},
+  "stats_analysis": {
+    "writing_point_count": 0,
+    "selected_writing_point_count": 0,
+    "selected_figure_count": 0,
+    "selected_table_count": 0
+  },
+  "source_analysis_status": "analysis_complete",
+  "source_pdf": "",
+  "paper_title": "Dice_Pyramid_Cards_Large",
+  "schema_version": "v3.academic-synthesis",
+  "pipeline_id": "Dice_Pyramid_Cards_Large",
+  "llm_status": "disabled_missing_dependency",
+  "selected_figures": [],
+  "selected_tables": [],
+  "selected_references": []
+}

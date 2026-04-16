@@ -7,8 +7,8 @@ export interface WritingAction {
   nameEn: string;
   descriptionZh: string;
   descriptionEn: string;
-  category: 'translate' | 'rewrite' | 'check' | 'generate';
-  supportedScopes: WritingActionScope[];
+  category: string;
+  supportedScopes: string[];
   icon: string;
 }
 
@@ -30,6 +30,15 @@ export interface WritingMaterial {
   type: string;
   focusPointsZh: string[];
   focusPointsEn: string[];
+}
+
+export interface CitationAnchor {
+  id: string;
+  materialId?: string | null;
+  token: string;
+  startOffset: number;
+  endOffset: number;
+  ordinal: number;
 }
 
 // Alias for compatibility if needed
@@ -61,4 +70,26 @@ export interface Revision {
   source: 'manual' | 'auto_save' | 'transform';
   createdAt: string;
   label: string;
+}
+
+// --- Inspiration / 启发点 ---
+
+export type SparkType = 'causal_extension' | 'conflict' | 'analogy' | 'gap' | 'synthesis' | 'memory_association';
+
+export interface InspirationSpark {
+  id: string;
+  content: string;
+  spark_type: SparkType;
+  source_papers: string[];
+  confidence: number;
+  related_point_ids: string[];
+  actionable: boolean;
+}
+
+export interface ContinuationContext {
+  spark: InspirationSpark;
+  evidence_texts: string[];
+  causal_chain_summary: string;
+  suggested_angles: string[];
+  related_figures: string[];
 }

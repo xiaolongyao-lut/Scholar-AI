@@ -1,18 +1,24 @@
-import os
-import shutil
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
-def compute_sha256(filepath):
+from sqlite_maintenance import restore_report
+
+
+BASELINE_ROOT = Path("_backups/v1.0-baseline")
+
+
+def compute_sha256(filepath: Path) -> str:
     hasher = hashlib.sha256()
-    with open(filepath, "rb") as f:
+    with filepath.open("rb") as f:
         while chunk := f.read(8192):
             hasher.update(chunk)
     return hasher.hexdigest()
 
+
 def restore():
-    snapshot_dir = Path("_backups/v1.0-baseline")
+    snapshot_dir = BASELINE_ROOT
     manifest_path = snapshot_dir / "BASELINE_SNAPSHOT_MANIFEST.json"
     
     if not manifest_path.exists():
@@ -24,28 +30,18 @@ def restore():
 
     print(f"Restoring from snapshot {manifest['snapshot_id']} (created at {manifest['created_at']})...")
 
-    # 1. 验证数据库
-    for db_name, info in manifest["databases"].items():
-        src = snapshot_dir / "databases" / db_name
-        current = Path(db_name)
-        
-        # 校验备份文件是否完好
-        if compute_sha256(src) != info["checksum"]:
-            print(f"Error: Checksum mismatch for backup {db_name}. Corruption detected!")
-            return
-            
-        # 还原
-        shutil.copy2(src, current)
-        print(f"Restored database: {db_name}")
+    restore_result = restore_report(snapshot_dir, target_scope="both")
+    if not restore_result.get("ok", False):
+        print("Error: SQLite restore completed with integrity issues.")
+        return
 
-    # 2. 验证元数据
     for f_name, info in manifest["metadata"].items():
         src = snapshot_dir / "metadata" / f_name
         current = Path(f_name)
         
         if compute_sha256(src) != info["checksum"]:
-             print(f"Error: Checksum mismatch for backup {f_name}.")
-             return
+            print(f"Error: Checksum mismatch for backup {f_name}.")
+            return
 
         shutil.copy2(src, current)
         print(f"Restored metadata: {f_name}")

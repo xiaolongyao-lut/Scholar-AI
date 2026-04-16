@@ -1,0 +1,68 @@
+{
+  "scoring": {
+    "goal": "Conclusion Extraction",
+    "goal_profile": {
+      "method_focus": false,
+      "image_focus": false,
+      "process_focus": false,
+      "performance_focus": false,
+      "mechanism_focus": false
+    },
+    "writing_points": [],
+    "selected_writing_points": [],
+    "semantic_themes": [],
+    "selected_figures": [],
+    "selected_tables": [],
+    "selected_references": [],
+    "selected_parameters": [],
+    "selected_results": [],
+    "stats_analysis": {
+      "writing_point_count": 0,
+      "selected_writing_point_count": 0,
+      "selected_figure_count": 0,
+      "selected_table_count": 0
+    },
+    "status": "analysis_complete"
+  },
+  "view": {
+    "schema_version": "v2.graph-aware",
+    "source_pdf": "C:\\Users\\xiao\\Desktop\\wenxianku\\Dice_Pyramid_Cards_Large.pdf",
+    "goal": "Conclusion Extraction",
+    "stage_manifest": {
+      "stage_01_extract": {
+        "status": "unknown",
+        "key_counts": {
+          "sections": 0,
+          "chunks": 0,
+          "figures": 0,
+          "tables": 0
+        }
+      },
+      "stage_02_binding": {
+        "status": "binding_ready",
+        "key_counts": {
+          "relation_edges": 0,
+          "evidence_clusters": 0
+        }
+      },
+      "stage_03_analysis": {
+        "status": "analysis_complete",
+        "goal": "Conclusion Extraction",
+        "writing_points": 0
+      }
+    },
+    "quality_gates": {
+      "has_writing_points": false,
+      "has_evidence_links": false,
+      "has_clusters": false,
+      "writing_points_have_boundary_notes": true,
+      "overall_pass": false
+    },
+    "writing_points": [],
+    "figures": [],
+    "tables": [],
+    "parameters": [],
+    "results": [],
+    "references": []
+  }
+}

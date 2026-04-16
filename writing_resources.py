@@ -8,14 +8,148 @@ Replaces fabricated success payloads with persistent resource layer.
 
 from __future__ import annotations
 
+import logging
+import json
+import os
 import re
+import sqlite3
 from collections import Counter
 from dataclasses import dataclass, field, asdict
+from functools import lru_cache
 from enum import Enum
+from pathlib import Path
+from threading import RLock
 from typing import Any, Iterable, Mapping, Sequence
 from uuid import uuid4
 
 from datetime_utils import utc_now_iso_z
+from db import resolve_sqlite_path
+from repositories.writing_resource_repository import WritingResourceRepository
+
+
+CITATION_ANCHORS_METADATA_KEY = "citation_anchors"
+
+
+def _normalize_citation_anchor(anchor: Mapping[str, Any]) -> dict[str, Any]:
+    """
+    Normalize one citation anchor payload into a JSON-safe shape.
+
+    Why:
+        The editor depends on stable IDs and offsets for round-tripping anchor
+        metadata between save, refresh, and later restore operations.
+    """
+    if not isinstance(anchor, Mapping):
+        raise TypeError("citation anchor must be a mapping")
+
+    anchor_id = str(anchor.get("id", "")).strip()
+    token = str(anchor.get("token", "")).strip()
+    if not anchor_id:
+        raise ValueError("citation anchor id must be a non-empty string")
+    if not token:
+        raise ValueError("citation anchor token must be a non-empty string")
+
+    try:
+        start_offset = int(anchor.get("startOffset"))
+        end_offset = int(anchor.get("endOffset"))
+        ordinal = int(anchor.get("ordinal"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("citation anchor offsets and ordinal must be integers") from exc
+
+    if start_offset < 0 or end_offset < start_offset:
+        raise ValueError("citation anchor offsets must satisfy 0 <= startOffset <= endOffset")
+    if ordinal <= 0:
+        raise ValueError("citation anchor ordinal must be a positive integer")
+
+    material_id_raw = anchor.get("materialId")
+    material_id = None if material_id_raw in (None, "") else str(material_id_raw).strip() or None
+
+    return {
+        "id": anchor_id,
+        "materialId": material_id,
+        "token": token,
+        "startOffset": start_offset,
+        "endOffset": end_offset,
+        "ordinal": ordinal,
+    }
+
+
+def _normalize_citation_anchors(
+    citation_anchors: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """
+    Normalize citation anchor collections while preserving order.
+
+    Why:
+        Saving draft metadata should be deterministic so the frontend can trust
+        the anchor ordering it receives after a refresh or restore.
+    """
+    if citation_anchors is None:
+        return []
+    if isinstance(citation_anchors, (str, bytes)):
+        raise TypeError("citation_anchors must be a sequence of mappings")
+
+    normalized: list[dict[str, Any]] = []
+    for anchor in citation_anchors:
+        normalized.append(_normalize_citation_anchor(anchor))
+    return normalized
+
+
+def _merge_draft_metadata(
+    metadata: Mapping[str, Any] | None,
+    citation_anchors: Sequence[Mapping[str, Any]] | None,
+) -> dict[str, Any]:
+    """
+    Return draft metadata with normalized citation anchors embedded.
+
+    Why:
+        Draft metadata already exists as the extensibility point for resource
+        annotations, so citation anchors should live there without inventing a
+        second persistence channel.
+    """
+    merged = dict(metadata or {})
+    merged[CITATION_ANCHORS_METADATA_KEY] = _normalize_citation_anchors(citation_anchors)
+    return merged
+
+
+def _extract_citation_anchors(metadata: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """
+    Read normalized citation anchors back out of draft or revision metadata.
+
+    Why:
+        API payloads should expose anchors as a first-class field even though
+        the store keeps them inside generic metadata for forward compatibility.
+    """
+    if metadata is None:
+        return []
+
+    raw_value = metadata.get(CITATION_ANCHORS_METADATA_KEY)
+    if raw_value is None:
+        return []
+
+    if not isinstance(raw_value, Sequence) or isinstance(raw_value, (str, bytes)):
+        raise TypeError("stored citation_anchors must be a sequence of mappings")
+
+    return _normalize_citation_anchors(raw_value)
+
+
+def _default_resource_store_path() -> Path:
+    """
+    Resolve the on-disk snapshot path for persisted writing resources.
+
+    Why:
+        The backend should recover drafts and citation metadata after a process
+        restart without requiring the frontend to recreate local state.
+    """
+    configured_path = os.environ.get("WRITING_RESOURCE_STORE_PATH", "").strip()
+    if configured_path:
+        return Path(configured_path).expanduser().resolve()
+
+    return (Path(__file__).resolve().parent / "output" / "writing_resources_state.json").resolve()
+
+
+def _default_resource_db_path() -> Path:
+    """Resolve the default SQLite path for the resource singleton."""
+    return resolve_sqlite_path("WRITING_RESOURCE_DB_PATH", "writing_resources_state.sqlite3")
 
 
 class ProjectStatus(str, Enum):
@@ -148,6 +282,67 @@ class WritingSection:
 
 
 @dataclass(frozen=True)
+class WritingMaterial:
+    """
+    Represents one project-scoped evidence or reference material.
+
+    Why:
+        The reference drawer needs stable backend-backed records instead of
+        silently falling back to simulated cards that cannot round-trip.
+    """
+
+    material_id: str
+    project_id: str
+    title: str
+    title_en: str = ""
+    summary: str = ""
+    summary_en: str = ""
+    type: str = "reference"
+    focus_points: list[str] = field(default_factory=list)
+    focus_points_en: list[str] = field(default_factory=list)
+    created_at: str = field(default_factory=utc_now_iso_z)
+    updated_at: str = field(default_factory=utc_now_iso_z)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @staticmethod
+    def create(
+        project_id: str,
+        title: str,
+        title_en: str = "",
+        summary: str = "",
+        summary_en: str = "",
+        material_type: str = "reference",
+        focus_points: Sequence[str] | None = None,
+        focus_points_en: Sequence[str] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> WritingMaterial:
+        """Factory method to create a new project-scoped material."""
+        if not isinstance(project_id, str) or not project_id.strip():
+            raise ValueError("project_id must be a non-empty string")
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError("title must be a non-empty string")
+
+        return WritingMaterial(
+            material_id=f"mat_{uuid4().hex[:12]}",
+            project_id=project_id.strip(),
+            title=title.strip(),
+            title_en=title_en.strip(),
+            summary=summary.strip(),
+            summary_en=summary_en.strip(),
+            type=(material_type or "reference").strip() or "reference",
+            focus_points=[str(item).strip() for item in (focus_points or []) if str(item).strip()],
+            focus_points_en=[
+                str(item).strip() for item in (focus_points_en or []) if str(item).strip()
+            ],
+            metadata=dict(metadata or {}),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dict."""
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class WritingDraft:
     """
     Represents a draft of content for a section or entire project.
@@ -186,7 +381,12 @@ class WritingDraft:
             metadata=metadata or {},
         )
 
-    def with_content(self, content: str, edited_by: str | None = None) -> WritingDraft:
+    def with_content(
+        self,
+        content: str,
+        edited_by: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> WritingDraft:
         """Return a new draft with updated content."""
         return WritingDraft(
             draft_id=self.draft_id,
@@ -198,7 +398,7 @@ class WritingDraft:
             created_at=self.created_at,
             updated_at=utc_now_iso_z(),
             last_edited_by=edited_by or self.last_edited_by,
-            metadata=self.metadata,
+            metadata=dict(self.metadata if metadata is None else metadata),
         )
 
     def with_status(self, status: DraftStatus) -> WritingDraft:
@@ -220,6 +420,7 @@ class WritingDraft:
         """Serialize to dict."""
         data = asdict(self)
         data["status"] = self.status.value
+        data["citation_anchors"] = _extract_citation_anchors(self.metadata)
         return data
 
 
@@ -265,7 +466,9 @@ class WritingRevision:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict."""
-        return asdict(self)
+        data = asdict(self)
+        data["citation_anchors"] = _extract_citation_anchors(self.metadata)
+        return data
 
 
 @dataclass(frozen=True)
@@ -1445,19 +1648,46 @@ def build_association_bundle_from_runtime_context(
 
 class WritingResourceStore:
     """
-    In-memory store for writing resources.
+    Resource store for writing projects, sections, materials, drafts, and revisions.
     
-    Future: Replace with persistent database.
-    For now, supports Phase 3 implementation with clean interfaces.
+    The store keeps an in-memory cache for fast reads, but the singleton path
+    now persists to SQLite and keeps the existing JSON snapshot as a backup.
     """
 
-    def __init__(self):
-        """Initialize empty resource store."""
+    def __init__(
+        self,
+        persistence_path: str | Path | None = None,
+        database_path: str | Path | None = None,
+        autosave: bool = False,
+    ):
+        """Initialize the resource store and optionally load persisted state."""
         self._projects: dict[str, WritingProject] = {}
         self._sections: dict[str, WritingSection] = {}
+        self._materials: dict[str, WritingMaterial] = {}
         self._drafts: dict[str, WritingDraft] = {}
         self._revisions: dict[str, WritingRevision] = {}
         self._draft_revisions: dict[str, list[str]] = {}  # draft_id -> [revision_ids]
+        self._lock = RLock()
+        self._logger = logging.getLogger(f"{__name__}.{id(self)}")
+        self._persistence_path = Path(persistence_path).resolve() if persistence_path is not None else None
+        self._database_path = Path(database_path).resolve() if database_path is not None else None
+        self._repository = None
+        if self._database_path is not None:
+            try:
+                self._repository = WritingResourceRepository(self._database_path)
+            except (OSError, sqlite3.Error) as exc:
+                self._logger.warning("Unable to open SQLite resource repository at %s: %s", self._database_path, exc)
+        self._autosave = autosave and (self._persistence_path is not None or self._repository is not None)
+
+        loaded = False
+        if self._repository is not None and self._repository.is_healthy() and self._repository.has_data():
+            loaded = self.load_from_database()
+        elif self._persistence_path is not None and self._persistence_path.exists():
+            loaded = self.load_from_disk()
+
+        if not loaded and self._repository is not None and self._persistence_path is not None and self._persistence_path.exists():
+            # Snapshot wins only as a bootstrap path; once loaded we mirror it into SQLite.
+            self.persist_to_database()
 
     # ==========================================================================
     # Project Operations
@@ -1473,16 +1703,18 @@ class WritingResourceStore:
         tags: list[str] | None = None,
     ) -> WritingProject:
         """Create a new writing project."""
-        project = WritingProject.create(
-            title=title,
-            description=description,
-            content_type=content_type,
-            user_id=user_id,
-            metadata=metadata,
-            tags=tags,
-        )
-        self._projects[project.project_id] = project
-        return project
+        with self._lock:
+            project = WritingProject.create(
+                title=title,
+                description=description,
+                content_type=content_type,
+                user_id=user_id,
+                metadata=metadata,
+                tags=tags,
+            )
+            self._projects[project.project_id] = project
+            self._autosave_if_enabled()
+            return project
 
     def get_project(self, project_id: str) -> WritingProject | None:
         """Get a project by ID."""
@@ -1497,12 +1729,57 @@ class WritingResourceStore:
 
     def update_project_status(self, project_id: str, status: ProjectStatus) -> WritingProject | None:
         """Update project status."""
-        project = self.get_project(project_id)
-        if project:
-            updated = project.with_status(status)
+        with self._lock:
+            project = self.get_project(project_id)
+            if project:
+                updated = project.with_status(status)
+                self._projects[project_id] = updated
+                self._autosave_if_enabled()
+                return updated
+            return None
+
+    def update_project(self, project_id: str, **kwargs: Any) -> WritingProject | None:
+        """Update project fields (title, description, tags)."""
+        with self._lock:
+            project = self._projects.get(project_id)
+            if not project:
+                return None
+            # Rebuild frozen dataclass with updated fields
+            d = project.to_dict()
+            for k, v in kwargs.items():
+                if k in d:
+                    d[k] = v
+            d["updated_at"] = utc_now_iso_z()
+            d["status"] = ProjectStatus(d["status"])
+            d["content_type"] = ContentType(d["content_type"])
+            updated = WritingProject(**d)
             self._projects[project_id] = updated
+            self._autosave_if_enabled()
             return updated
-        return None
+
+    def delete_project(self, project_id: str) -> bool:
+        """Delete a project and all its associated resources (sections, materials, drafts, revisions)."""
+        with self._lock:
+            if project_id not in self._projects:
+                return False
+            del self._projects[project_id]
+            # Remove associated sections
+            section_ids = [sid for sid, s in self._sections.items() if s.project_id == project_id]
+            for sid in section_ids:
+                del self._sections[sid]
+            # Remove associated materials
+            material_ids = [mid for mid, m in self._materials.items() if m.project_id == project_id]
+            for mid in material_ids:
+                del self._materials[mid]
+            # Remove associated drafts and their revisions
+            draft_ids = [did for did, d in self._drafts.items() if d.project_id == project_id]
+            for did in draft_ids:
+                rev_ids = self._draft_revisions.pop(did, [])
+                for rid in rev_ids:
+                    self._revisions.pop(rid, None)
+                del self._drafts[did]
+            self._autosave_if_enabled()
+            return True
 
     # ==========================================================================
     # Section Operations
@@ -1517,15 +1794,17 @@ class WritingResourceStore:
         metadata: dict[str, Any] | None = None,
     ) -> WritingSection:
         """Create a section within a project."""
-        section = WritingSection.create(
-            project_id=project_id,
-            title=title,
-            order=order,
-            description=description,
-            metadata=metadata,
-        )
-        self._sections[section.section_id] = section
-        return section
+        with self._lock:
+            section = WritingSection.create(
+                project_id=project_id,
+                title=title,
+                order=order,
+                description=description,
+                metadata=metadata,
+            )
+            self._sections[section.section_id] = section
+            self._autosave_if_enabled()
+            return section
 
     def get_section(self, section_id: str) -> WritingSection | None:
         """Get a section by ID."""
@@ -1535,6 +1814,82 @@ class WritingResourceStore:
         """List all sections in a project."""
         sections = [s for s in self._sections.values() if s.project_id == project_id]
         return sorted(sections, key=lambda s: s.order)
+
+    def update_section(self, section_id: str, **kwargs: Any) -> WritingSection | None:
+        """Update section fields (title, description, order)."""
+        with self._lock:
+            section = self._sections.get(section_id)
+            if not section:
+                return None
+            d = section.to_dict()
+            for k, v in kwargs.items():
+                if k in d:
+                    d[k] = v
+            d["updated_at"] = utc_now_iso_z()
+            updated = WritingSection(**d)
+            self._sections[section_id] = updated
+            self._autosave_if_enabled()
+            return updated
+
+    def delete_section(self, section_id: str) -> bool:
+        """Delete a section by ID."""
+        with self._lock:
+            if section_id not in self._sections:
+                return False
+            del self._sections[section_id]
+            self._autosave_if_enabled()
+            return True
+
+    # ==========================================================================
+    # Material Operations
+    # ==========================================================================
+
+    def create_material(
+        self,
+        project_id: str,
+        title: str,
+        title_en: str = "",
+        summary: str = "",
+        summary_en: str = "",
+        material_type: str = "reference",
+        focus_points: Sequence[str] | None = None,
+        focus_points_en: Sequence[str] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> WritingMaterial:
+        """Create a new project-scoped material."""
+        with self._lock:
+            material = WritingMaterial.create(
+                project_id=project_id,
+                title=title,
+                title_en=title_en,
+                summary=summary,
+                summary_en=summary_en,
+                material_type=material_type,
+                focus_points=focus_points,
+                focus_points_en=focus_points_en,
+                metadata=metadata,
+            )
+            self._materials[material.material_id] = material
+            self._autosave_if_enabled()
+            return material
+
+    def get_material(self, material_id: str) -> WritingMaterial | None:
+        """Get a project-scoped material by ID."""
+        return self._materials.get(material_id)
+
+    def list_materials(self, project_id: str) -> list[WritingMaterial]:
+        """List all project-scoped materials."""
+        materials = [m for m in self._materials.values() if m.project_id == project_id]
+        return sorted(materials, key=lambda material: material.created_at, reverse=True)
+
+    def delete_material(self, material_id: str) -> bool:
+        """Delete a material by ID."""
+        with self._lock:
+            if material_id not in self._materials:
+                return False
+            del self._materials[material_id]
+            self._autosave_if_enabled()
+            return True
 
     # ==========================================================================
     # Draft Operations
@@ -1548,19 +1903,22 @@ class WritingResourceStore:
         section_id: str | None = None,
         edited_by: str | None = None,
         metadata: dict[str, Any] | None = None,
+        citation_anchors: Sequence[Mapping[str, Any]] | None = None,
     ) -> WritingDraft:
         """Create a new draft."""
-        draft = WritingDraft.create(
-            project_id=project_id,
-            title=title,
-            content=content,
-            section_id=section_id,
-            last_edited_by=edited_by,
-            metadata=metadata,
-        )
-        self._drafts[draft.draft_id] = draft
-        self._draft_revisions[draft.draft_id] = []
-        return draft
+        with self._lock:
+            draft = WritingDraft.create(
+                project_id=project_id,
+                title=title,
+                content=content,
+                section_id=section_id,
+                last_edited_by=edited_by,
+                metadata=_merge_draft_metadata(metadata, citation_anchors),
+            )
+            self._drafts[draft.draft_id] = draft
+            self._draft_revisions[draft.draft_id] = []
+            self._autosave_if_enabled()
+            return draft
 
     def get_draft(self, draft_id: str) -> WritingDraft | None:
         """Get a draft by ID."""
@@ -1571,31 +1929,40 @@ class WritingResourceStore:
         draft_id: str,
         content: str,
         edited_by: str | None = None,
+        citation_anchors: Sequence[Mapping[str, Any]] | None = None,
         create_revision: bool = True,
     ) -> WritingDraft | None:
         """Save draft content and optionally create a revision."""
-        draft = self.get_draft(draft_id)
-        if not draft:
-            return None
+        with self._lock:
+            draft = self.get_draft(draft_id)
+            if not draft:
+                return None
 
-        updated_draft = draft.with_content(content, edited_by=edited_by)
-        self._drafts[draft_id] = updated_draft
-
-        # Auto-create revision on save
-        if create_revision:
-            revision_number = len(self._draft_revisions.get(draft_id, [])) + 1
-            revision = WritingRevision.create(
-                draft_id=draft_id,
-                project_id=draft.project_id,
-                content=content,
-                revision_number=revision_number,
-                created_by=edited_by,
-                message="Manual save",
+            updated_metadata = _merge_draft_metadata(draft.metadata, citation_anchors)
+            updated_draft = draft.with_content(
+                content,
+                edited_by=edited_by,
+                metadata=updated_metadata,
             )
-            self._revisions[revision.revision_id] = revision
-            self._draft_revisions[draft_id].append(revision.revision_id)
+            self._drafts[draft_id] = updated_draft
 
-        return updated_draft
+            # Auto-create revision on save
+            if create_revision:
+                revision_number = len(self._draft_revisions.get(draft_id, [])) + 1
+                revision = WritingRevision.create(
+                    draft_id=draft_id,
+                    project_id=draft.project_id,
+                    content=content,
+                    revision_number=revision_number,
+                    created_by=edited_by,
+                    message="Manual save",
+                    metadata=dict(updated_metadata),
+                )
+                self._revisions[revision.revision_id] = revision
+                self._draft_revisions[draft_id].append(revision.revision_id)
+
+            self._autosave_if_enabled()
+            return updated_draft
 
     def list_drafts(self, project_id: str, section_id: str | None = None) -> list[WritingDraft]:
         """List all drafts, optionally filtered by section."""
@@ -1603,6 +1970,18 @@ class WritingResourceStore:
         if section_id:
             drafts = [d for d in drafts if d.section_id == section_id]
         return sorted(drafts, key=lambda d: d.created_at, reverse=True)
+
+    def delete_draft(self, draft_id: str) -> bool:
+        """Delete a draft and its revisions."""
+        with self._lock:
+            if draft_id not in self._drafts:
+                return False
+            del self._drafts[draft_id]
+            rev_ids = self._draft_revisions.pop(draft_id, [])
+            for rid in rev_ids:
+                self._revisions.pop(rid, None)
+            self._autosave_if_enabled()
+            return True
 
     # ==========================================================================
     # Revision Operations
@@ -1620,29 +1999,36 @@ class WritingResourceStore:
 
     def restore_revision(self, draft_id: str, revision_id: str) -> WritingDraft | None:
         """Restore a draft from a revision."""
-        draft = self.get_draft(draft_id)
-        revision = self.get_revision(revision_id)
-        if not draft or not revision:
-            return None
+        with self._lock:
+            draft = self.get_draft(draft_id)
+            revision = self.get_revision(revision_id)
+            if not draft or not revision:
+                return None
 
-        # Update draft content to revision content
-        restored_draft = draft.with_content(revision.content, edited_by="system")
-        self._drafts[draft_id] = restored_draft
+            # Update draft content to revision content
+            restored_draft = draft.with_content(
+                revision.content,
+                edited_by="system",
+                metadata=dict(revision.metadata),
+            )
+            self._drafts[draft_id] = restored_draft
 
-        # Create new revision for the restore action
-        revision_number = len(self._draft_revisions.get(draft_id, [])) + 1
-        new_revision = WritingRevision.create(
-            draft_id=draft_id,
-            project_id=draft.project_id,
-            content=revision.content,
-            revision_number=revision_number,
-            created_by="system",
-            message=f"Restored from revision {revision_id}",
-        )
-        self._revisions[new_revision.revision_id] = new_revision
-        self._draft_revisions[draft_id].append(new_revision.revision_id)
+            # Create new revision for the restore action
+            revision_number = len(self._draft_revisions.get(draft_id, [])) + 1
+            new_revision = WritingRevision.create(
+                draft_id=draft_id,
+                project_id=draft.project_id,
+                content=revision.content,
+                revision_number=revision_number,
+                created_by="system",
+                message=f"Restored from revision {revision_id}",
+                metadata=dict(revision.metadata),
+            )
+            self._revisions[new_revision.revision_id] = new_revision
+            self._draft_revisions[draft_id].append(new_revision.revision_id)
+            self._autosave_if_enabled()
 
-        return restored_draft
+            return restored_draft
 
     # ==========================================================================
     # Associative Writing Operations
@@ -2133,22 +2519,240 @@ class WritingResourceStore:
 
     def export_state(self) -> dict[str, Any]:
         """Export all resource state."""
-        return {
-            "projects": {pid: p.to_dict() for pid, p in self._projects.items()},
-            "sections": {sid: s.to_dict() for sid, s in self._sections.items()},
-            "drafts": {did: d.to_dict() for did, d in self._drafts.items()},
-            "revisions": {rid: r.to_dict() for rid, r in self._revisions.items()},
-            "draft_revisions": dict(self._draft_revisions),
-        }
+        with self._lock:
+            return {
+                "projects": {pid: p.to_dict() for pid, p in self._projects.items()},
+                "sections": {sid: s.to_dict() for sid, s in self._sections.items()},
+                "materials": {mid: m.to_dict() for mid, m in self._materials.items()},
+                "drafts": {did: d.to_dict() for did, d in self._drafts.items()},
+                "revisions": {rid: r.to_dict() for rid, r in self._revisions.items()},
+                "draft_revisions": dict(self._draft_revisions),
+            }
+
+    def import_state(self, state: Mapping[str, Any]) -> None:
+        """
+        Replace in-memory store state from a serialized snapshot.
+
+        Why:
+            Restart-safe resource persistence needs a controlled import path that
+            rebuilds immutable dataclass models without mutating legacy callers.
+        """
+        if not isinstance(state, Mapping):
+            raise TypeError("state must be a mapping")
+
+        with self._lock:
+            projects_raw = state.get("projects", {})
+            sections_raw = state.get("sections", {})
+            materials_raw = state.get("materials", {})
+            drafts_raw = state.get("drafts", {})
+            revisions_raw = state.get("revisions", {})
+            draft_revisions_raw = state.get("draft_revisions", {})
+
+            if not all(
+                isinstance(value, Mapping)
+                for value in (
+                    projects_raw,
+                    sections_raw,
+                    materials_raw,
+                    drafts_raw,
+                    revisions_raw,
+                    draft_revisions_raw,
+                )
+            ):
+                raise TypeError("serialized store state must contain mapping sections")
+
+            projects: dict[str, WritingProject] = {}
+            for project_id, payload in projects_raw.items():
+                if not isinstance(payload, Mapping):
+                    raise TypeError("project payload must be a mapping")
+                projects[str(project_id)] = WritingProject(
+                    project_id=str(payload["project_id"]),
+                    title=str(payload["title"]),
+                    description=str(payload.get("description", "")),
+                    status=ProjectStatus(str(payload.get("status", ProjectStatus.DRAFT.value))),
+                    content_type=ContentType(str(payload.get("content_type", ContentType.GENERAL.value))),
+                    created_at=str(payload.get("created_at", utc_now_iso_z())),
+                    updated_at=str(payload.get("updated_at", utc_now_iso_z())),
+                    user_id=None if payload.get("user_id") in (None, "") else str(payload.get("user_id")),
+                    metadata=dict(payload.get("metadata") or {}),
+                    tags=[str(tag) for tag in payload.get("tags", [])],
+                )
+
+            sections: dict[str, WritingSection] = {}
+            for section_id, payload in sections_raw.items():
+                if not isinstance(payload, Mapping):
+                    raise TypeError("section payload must be a mapping")
+                sections[str(section_id)] = WritingSection(
+                    section_id=str(payload["section_id"]),
+                    project_id=str(payload["project_id"]),
+                    title=str(payload["title"]),
+                    order=int(payload["order"]),
+                    description=str(payload.get("description", "")),
+                    created_at=str(payload.get("created_at", utc_now_iso_z())),
+                    updated_at=str(payload.get("updated_at", utc_now_iso_z())),
+                    metadata=dict(payload.get("metadata") or {}),
+                )
+
+            materials: dict[str, WritingMaterial] = {}
+            for material_id, payload in materials_raw.items():
+                if not isinstance(payload, Mapping):
+                    raise TypeError("material payload must be a mapping")
+                materials[str(material_id)] = WritingMaterial(
+                    material_id=str(payload["material_id"]),
+                    project_id=str(payload["project_id"]),
+                    title=str(payload["title"]),
+                    title_en=str(payload.get("title_en", "")),
+                    summary=str(payload.get("summary", "")),
+                    summary_en=str(payload.get("summary_en", "")),
+                    type=str(payload.get("type", "reference") or "reference"),
+                    focus_points=[str(item) for item in payload.get("focus_points", [])],
+                    focus_points_en=[str(item) for item in payload.get("focus_points_en", [])],
+                    created_at=str(payload.get("created_at", utc_now_iso_z())),
+                    updated_at=str(payload.get("updated_at", utc_now_iso_z())),
+                    metadata=dict(payload.get("metadata") or {}),
+                )
+
+            drafts: dict[str, WritingDraft] = {}
+            for draft_id, payload in drafts_raw.items():
+                if not isinstance(payload, Mapping):
+                    raise TypeError("draft payload must be a mapping")
+                drafts[str(draft_id)] = WritingDraft(
+                    draft_id=str(payload["draft_id"]),
+                    project_id=str(payload["project_id"]),
+                    section_id=None if payload.get("section_id") in (None, "") else str(payload.get("section_id")),
+                    title=str(payload.get("title", "")),
+                    content=str(payload.get("content", "")),
+                    status=DraftStatus(str(payload.get("status", DraftStatus.CREATED.value))),
+                    created_at=str(payload.get("created_at", utc_now_iso_z())),
+                    updated_at=str(payload.get("updated_at", utc_now_iso_z())),
+                    last_edited_by=None if payload.get("last_edited_by") in (None, "") else str(payload.get("last_edited_by")),
+                    metadata=_merge_draft_metadata(
+                        dict(payload.get("metadata") or {}),
+                        payload.get(CITATION_ANCHORS_METADATA_KEY),
+                    ),
+                )
+
+            revisions: dict[str, WritingRevision] = {}
+            for revision_id, payload in revisions_raw.items():
+                if not isinstance(payload, Mapping):
+                    raise TypeError("revision payload must be a mapping")
+                revisions[str(revision_id)] = WritingRevision(
+                    revision_id=str(payload["revision_id"]),
+                    draft_id=str(payload["draft_id"]),
+                    project_id=str(payload["project_id"]),
+                    content=str(payload.get("content", "")),
+                    revision_number=int(payload.get("revision_number", 1)),
+                    created_at=str(payload.get("created_at", utc_now_iso_z())),
+                    created_by=None if payload.get("created_by") in (None, "") else str(payload.get("created_by")),
+                    message=str(payload.get("message", "Auto-saved")),
+                    metadata=_merge_draft_metadata(
+                        dict(payload.get("metadata") or {}),
+                        payload.get(CITATION_ANCHORS_METADATA_KEY),
+                    ),
+                )
+
+            draft_revisions: dict[str, list[str]] = {}
+            for draft_id, revision_ids in draft_revisions_raw.items():
+                if not isinstance(revision_ids, Sequence) or isinstance(revision_ids, (str, bytes)):
+                    raise TypeError("draft_revisions entries must be sequences")
+                draft_revisions[str(draft_id)] = [str(revision_id) for revision_id in revision_ids]
+
+            self._projects = projects
+            self._sections = sections
+            self._materials = materials
+            self._drafts = drafts
+            self._revisions = revisions
+            self._draft_revisions = draft_revisions
+
+    def persist_to_disk(self) -> Path | None:
+        """
+        Flush the current store state to disk using an atomic replace.
+
+        Why:
+            Atomic snapshot writes reduce the chance of leaving a truncated state
+            file behind if the process is interrupted mid-write.
+        """
+        if self._persistence_path is None:
+            return None
+
+        state = self.export_state()
+        snapshot_path = self._persistence_path
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = snapshot_path.with_suffix(snapshot_path.suffix + ".tmp")
+        serialized_state = json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True)
+        temporary_path.write_text(serialized_state, encoding="utf-8")
+        temporary_path.replace(snapshot_path)
+        return snapshot_path
+
+    def persist_to_database(self) -> Path | None:
+        """
+        Flush the current store state to SQLite using the repository layer.
+
+        Why:
+            SQLite is the primary durable backend for the singleton path, while
+            the JSON snapshot remains a portable backup and import/export format.
+        """
+        if self._repository is None:
+            return None
+
+        self._repository.replace_state(self.export_state())
+        return self._repository.db_path
+
+    def load_from_disk(self) -> bool:
+        """
+        Load persisted store state when a snapshot exists.
+
+        Why:
+            The API singleton should reconstruct prior drafts and citations at
+            startup so a browser refresh is not the only way state survives.
+        """
+        if self._persistence_path is None or not self._persistence_path.exists():
+            return False
+
+        raw_state = json.loads(self._persistence_path.read_text(encoding="utf-8"))
+        self.import_state(raw_state)
+        if self._repository is not None:
+            self.persist_to_database()
+        return True
+
+    def load_from_database(self) -> bool:
+        """
+        Load persisted store state from SQLite when rows already exist.
+
+        Why:
+            The singleton should recover from the primary durable store even when
+            the JSON snapshot is missing or stale.
+        """
+
+        if self._repository is None:
+            return False
+
+        if not self._repository.is_healthy():
+            self._logger.warning("Skipping SQLite resource load because %s failed health checks", self._repository.db_path)
+            return False
+
+        if not self._repository.has_data():
+            return False
+
+        self.import_state(self._repository.load_state())
+        return True
+
+    def _autosave_if_enabled(self) -> None:
+        """Persist state after mutating operations when autosave is enabled."""
+        if self._autosave:
+            self.persist_to_database()
+            self.persist_to_disk()
 
 
-# Global singleton instance
-_resource_store: WritingResourceStore | None = None
+@lru_cache(maxsize=1)
+def _get_writing_resource_store_singleton() -> WritingResourceStore:
+    return WritingResourceStore(
+        persistence_path=_default_resource_store_path(),
+        database_path=_default_resource_db_path(),
+        autosave=True,
+    )
 
 
 def get_writing_resource_store() -> WritingResourceStore:
     """Get or create the global WritingResourceStore instance."""
-    global _resource_store
-    if _resource_store is None:
-        _resource_store = WritingResourceStore()
-    return _resource_store
+    return _get_writing_resource_store_singleton()

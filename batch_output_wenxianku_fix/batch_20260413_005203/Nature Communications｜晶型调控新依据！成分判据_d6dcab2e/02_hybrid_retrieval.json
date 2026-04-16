@@ -1,0 +1,384 @@
+{
+  "status": "hybrid_retrieval_ready",
+  "focus_points": [
+    "Conclusion",
+    "Extraction"
+  ],
+  "top_chunks": [
+    {
+      "chunk_id": "c0001",
+      "text": "Nature Communications｜晶型调控新依据！成分判据预测金属增材 制造 CET 转变",
+      "page": 1,
+      "bbox": [
+        43.5,
+        42.37,
+        551.95,
+        83.78
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0002",
+      "text": "科研鹰测试 2026年3月19日 08:30 四川 原创 科研鹰测试",
+      "page": 1,
+      "bbox": [
+        46.5,
+        99.71,
+        352.93,
+        113.31
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0003",
+      "text": "点击上方“蓝字”一键订阅",
+      "page": 1,
+      "bbox": [
+        43.5,
+        139.48,
+        187.36,
+        153.87
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0004",
+      "text": "澳大利亚皇家墨尔本理工大学Ryan Brooke ：Nature",
+      "page": 1,
+      "bbox": [
+        43.5,
+        183.44,
+        552.36,
+        205.22
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0005",
+      "text": "Communications预测金属增材制造中柱状到等轴转变的成分",
+      "page": 1,
+      "bbox": [
+        43.5,
+        212.63,
+        552.34,
+        233.72
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0006",
+      "text": "Ryan Brooke, Duyao Zhang, Dong Qiu ，et al. Compositional criteria to predict",
+      "page": 1,
+      "bbox": [
+        43.5,
+        409.45,
+        552.34,
+        423.51
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0007",
+      "text": "columnar to equiaxed transitions in metal additive manufacturing[J]. Nature",
+      "page": 1,
+      "bbox": [
+        43.5,
+        429.7,
+        552.35,
+        443.76
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0008",
+      "text": "Communications, 2025,16,5710.",
+      "page": 1,
+      "bbox": [
+        43.5,
+        449.95,
+        233.93,
+        464.01
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0009",
+      "text": "利用热力学数据库预测增材制造合金的柱状晶向等轴晶转变（CET）及晶粒细",
+      "page": 1,
+      "bbox": [
+        69.0,
+        492.81,
+        552.34,
+        508.63
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0010",
+      "text": "化，一直是一项长期存在的挑战，和持续探讨的热点话题。当前研究致力于通过设",
+      "page": 1,
+      "bbox": [
+        43.5,
+        514.8,
+        552.35,
+        529.21
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0011",
+      "text": "计合金成分以获得全等轴晶微观组织，从而消除增材制造合金中因粗大柱状晶导致",
+      "page": 1,
+      "bbox": [
+        43.5,
+        536.67,
+        552.33,
+        550.96
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0012",
+      "text": "的力学各向异性。通过研究测量一系列钛合金，评估了文献中提出的三个成分参",
+      "page": 1,
+      "bbox": [
+        43.5,
+        558.3,
+        552.33,
+        572.71
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0013",
+      "text": "数：非平衡凝固范围（ΔTs）、生长限制因子（Q）和成分过冷参数（P）。通过定",
+      "page": 1,
+      "bbox": [
+        43.5,
+        579.06,
+        552.34,
+        594.88
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0014",
+      "text": "向能量沉积制备的Ti-Fe、Ti-Cu、Ti-Cu-Fe和Ti-Mo合金的实验结果表明，冷参数",
+      "page": 1,
+      "bbox": [
+        43.5,
+        600.81,
+        552.35,
+        616.63
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0015",
+      "text": "是指导增材制造合金实现合金化元素选择的最可靠参数。这一结论通过重新审视其",
+      "page": 1,
+      "bbox": [
+        43.5,
+        622.8,
+        552.33,
+        637.21
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0016",
+      "text": "他合金体系及增材制造方法的实验结果得到验证。数值CET模型也预测，在增材制",
+      "page": 1,
+      "bbox": [
+        43.5,
+        644.31,
+        552.35,
+        660.13
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0017",
+      "text": "造特有的高生长速率条件下，冷参数值与 dendrite tip undercooling（枝晶尖端",
+      "page": 1,
+      "bbox": [
+        43.5,
+        666.06,
+        552.34,
+        681.88
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0018",
+      "text": "过冷度）密切相关。本研究为预测增材制造金属合金的晶粒形态提供了一个更清晰",
+      "page": 1,
+      "bbox": [
+        43.5,
+        687.3,
+        552.33,
+        701.71
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0019",
+      "text": "图1.所制备钛合金的母相晶粒形貌。在相应生长限制因子Q分别约为42 K和93 K的条件下制备的Ti-Fe (a,",
+      "page": 2,
+      "bbox": [
+        43.5,
+        337.8,
+        552.13,
+        349.52
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0020",
+      "text": "b)、Ti-Cu-Fe (c, d) 和Ti-Cu (e, f) 合金。a–e图为基于电子背散射衍射数据重构的母相β晶粒。EBSD重构结",
+      "page": 2,
+      "bbox": [
+        43.5,
+        357.45,
+        552.11,
+        369.77
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0021",
+      "text": "果采用AztecCrystal软件生成。f图为背散射电子图像，展示了由过共析Ti2Cu勾勒出的母相β晶粒。需注意的",
+      "page": 2,
+      "bbox": [
+        43.5,
+        379.05,
+        552.13,
+        390.77
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0022",
+      "text": "是，为显示细节，Ti-12.6Cu样品（f）采用了更高的放大倍数。",
+      "page": 2,
+      "bbox": [
+        43.5,
+        400.05,
+        339.12,
+        411.77
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0023",
+      "text": "从图1a–d可以观察到，Ti-Fe和Ti-Cu-Fe合金分别具有相似的晶粒形貌。较低Q",
+      "page": 2,
+      "bbox": [
+        59.37,
+        418.56,
+        552.14,
+        434.38
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0024",
+      "text": "值的合金（Ti-4Fe和Ti-2.4Cu-2.4Fe）具有相近的平均晶粒尺寸，且均为柱状晶与",
+      "page": 2,
+      "bbox": [
+        43.5,
+        439.56,
+        552.14,
+        455.38
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0025",
+      "text": "等轴晶共存的混合组织。而在较高Q值下，Ti-8Fe和Ti-4.7Cu-4.7Fe合金则呈现全",
+      "page": 2,
+      "bbox": [
+        43.5,
+        461.31,
+        552.15,
+        477.13
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    }
+  ]
+}

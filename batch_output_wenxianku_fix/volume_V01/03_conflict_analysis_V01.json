@@ -1,0 +1,512 @@
+{
+  "parameter_consensus": {
+    "content": {
+      "parameter": "content",
+      "conflict_level": "full_agreement",
+      "unique_claims": 1,
+      "paper_count": 3,
+      "papers": [
+        "P0001",
+        "P0002",
+        "P0011"
+      ],
+      "claims": [
+        {
+          "text": "Contents lists available at ScienceDirect",
+          "source_papers": [
+            "P0001",
+            "P0002",
+            "P0011"
+          ]
+        },
+        {
+          "text": "Contents lists available at ScienceDirect",
+          "source_papers": [
+            "P0001",
+            "P0002",
+            "P0011"
+          ]
+        },
+        {
+          "text": "Contents lists available at ScienceDirect",
+          "source_papers": [
+            "P0001",
+            "P0002",
+            "P0011"
+          ]
+        }
+      ]
+    },
+    "heat input": {
+      "consensus_level": "single_source",
+      "paper_count": 1,
+      "papers": [
+        "P0001"
+      ]
+    },
+    "temperature": {
+      "parameter": "temperature",
+      "conflict_level": "high_conflict",
+      "unique_claims": 6,
+      "paper_count": 3,
+      "papers": [
+        "P0001",
+        "P0001",
+        "P0001",
+        "P0001",
+        "P0006",
+        "P0011"
+      ],
+      "claims": [
+        {
+          "text": "a State Key Laboratory of Precision Welding & Joining of Materials and Structures, Harbin Institute of Technology, Harbin 150001, China b Suzhou Laboratory, No.388, Ruoshui Street, SIP, Jiangsu 215123, China c Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engineering, Shanghai Jiao Tong University, Shanghai 200240, China",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "Precipitation-strengthened super­ alloys rely on γ′ (Ni3(Al, Ti, Ta)) as the primary strengthening phase [15], which provides excellent creep resistance and long-term stability under elevated temperatures [16].",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "* Corresponding author at: Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engi­ neering, Shanghai Jiao Tong University, Shanghai 200240, China.",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "Metal additive manufacturing (AM) facilitates the production of geometrically complex components, yet its broader industrial use remains limited by the risk of defect formation and uncertainties in their detection, originating from the highly dynamic and hightemperature process environment.",
+          "source_papers": [
+            "P0006"
+          ]
+        },
+        {
+          "text": "This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures.",
+          "source_papers": [
+            "P0011"
+          ]
+        }
+      ]
+    },
+    "cooling rate": {
+      "consensus_level": "single_source",
+      "paper_count": 1,
+      "papers": [
+        "P0001"
+      ]
+    },
+    "power": {
+      "parameter": "power",
+      "conflict_level": "high_conflict",
+      "unique_claims": 7,
+      "paper_count": 5,
+      "papers": [
+        "P0001",
+        "P0002",
+        "P0002",
+        "P0002",
+        "P0005",
+        "P0006",
+        "P0008"
+      ],
+      "claims": [
+        {
+          "text": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "Dynamics and stability of the keyhole in full-field power-modulated laser welding unveiled by in-situ X-ray imaging",
+          "source_papers": [
+            "P0002"
+          ]
+        },
+        {
+          "text": "Keywords: Full-field power-modulated laser Weld pool Keyhole In-situ X-ray imaging",
+          "source_papers": [
+            "P0002"
+          ]
+        },
+        {
+          "text": "field of laser welding, typical beam shaping strategies include oscillation laser welding, annular beam configurations, and full-field power- modulated lasers [3–5].",
+          "source_papers": [
+            "P0002"
+          ]
+        },
+        {
+          "text": "Roll the dice and match the challenges you face, from Unstable Stairways to Hall of Hieroglyphics, get powerful relics as you complete rooms and climb your way to the top of the pyramid and the ultimate prize: the Treasure Chamber containing the final riddle.",
+          "source_papers": [
+            "P0005"
+          ]
+        },
+        {
+          "text": "Across the defect categories, observable raw signals support the extraction of engineered features in the time domain (RMS, variance, kurtosis), frequency domain (dominant bands, power spectral density (PSD) peaks), and time–frequency domain (wavelet or STFT transients), forming a unified basis for data-driven defect detection.",
+          "source_papers": [
+            "P0006"
+          ]
+        },
+        {
+          "text": "Range analysis and variance analysis are combined to reveal multi-parameter interaction mechanisms and clarify the dominant role of laser power and the significance of key interaction terms.",
+          "source_papers": [
+            "P0008"
+          ]
+        }
+      ]
+    },
+    "ratio": {
+      "parameter": "ratio",
+      "conflict_level": "high_conflict",
+      "unique_claims": 4,
+      "paper_count": 4,
+      "papers": [
+        "P0001",
+        "P0002",
+        "P0005",
+        "P0012"
+      ],
+      "claims": [
+        {
+          "text": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "field of laser welding, typical beam shaping strategies include oscillation laser welding, annular beam configurations, and full-field power- modulated lasers [3–5].",
+          "source_papers": [
+            "P0002"
+          ]
+        },
+        {
+          "text": "Welcome to Dice Pyramid, a solo game of exploration and skill!",
+          "source_papers": [
+            "P0005"
+          ]
+        },
+        {
+          "text": "To allow for increased exploration during initial training phases and more exploitation toward the conclusion, the parameter 휖 varies linearly with the episode number.",
+          "source_papers": [
+            "P0012"
+          ]
+        }
+      ]
+    },
+    "frequency": {
+      "parameter": "frequency",
+      "conflict_level": "high_conflict",
+      "unique_claims": 2,
+      "paper_count": 1,
+      "papers": [
+        "P0006",
+        "P0006"
+      ],
+      "claims": [
+        {
+          "text": "Across the defect categories, observable raw signals support the extraction of engineered features in the time domain (RMS, variance, kurtosis), frequency domain (dominant bands, power spectral density (PSD) peaks), and time–frequency domain (wavelet or STFT transients), forming a unified basis for data-driven defect detection.",
+          "source_papers": [
+            "P0006"
+          ]
+        },
+        {
+          "text": "A Time-Frequency Domain Feature Extraction Approach Enhanced by Computer Vision for Wire Arc Additive Manufacturing Monitoring Using Fourier and Wavelet Transform.",
+          "source_papers": [
+            "P0006"
+          ]
+        }
+      ]
+    },
+    "laser power": {
+      "consensus_level": "single_source",
+      "paper_count": 1,
+      "papers": [
+        "P0008"
+      ]
+    },
+    "composition": {
+      "parameter": "composition",
+      "conflict_level": "high_conflict",
+      "unique_claims": 3,
+      "paper_count": 1,
+      "papers": [
+        "P0013",
+        "P0013",
+        "P0013"
+      ],
+      "claims": [
+        {
+          "text": "Article https://doi.org/10.1038/s41467-025-60162-0 Compositional criteria to predict columnar to equiaxed transitions in metal additive manufacturing",
+          "source_papers": [
+            "P0013"
+          ]
+        },
+        {
+          "text": "Efforts are focused on designing alloy compositions to achieve fully equiaxed microstructures, thereby eliminating the mechanical anisotropy commonly associated with the large columnar grains in additively manufactured alloys.",
+          "source_papers": [
+            "P0013"
+          ]
+        },
+        {
+          "text": "It is well established that the ability of an alloy to undergo a CET and achieve a reﬁned, equiaxed grain morphology is inﬂuenced by the alloying composition during solidiﬁcation processes such as casting1–3.",
+          "source_papers": [
+            "P0013"
+          ]
+        }
+      ]
+    }
+  },
+  "high_conflict_parameters": [
+    {
+      "parameter": "temperature",
+      "conflict_level": "high_conflict",
+      "unique_claims": 6,
+      "paper_count": 3,
+      "papers": [
+        "P0001",
+        "P0001",
+        "P0001",
+        "P0001",
+        "P0006",
+        "P0011"
+      ],
+      "claims": [
+        {
+          "text": "a State Key Laboratory of Precision Welding & Joining of Materials and Structures, Harbin Institute of Technology, Harbin 150001, China b Suzhou Laboratory, No.388, Ruoshui Street, SIP, Jiangsu 215123, China c Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engineering, Shanghai Jiao Tong University, Shanghai 200240, China",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "Precipitation-strengthened super­ alloys rely on γ′ (Ni3(Al, Ti, Ta)) as the primary strengthening phase [15], which provides excellent creep resistance and long-term stability under elevated temperatures [16].",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "* Corresponding author at: Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engi­ neering, Shanghai Jiao Tong University, Shanghai 200240, China.",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "Metal additive manufacturing (AM) facilitates the production of geometrically complex components, yet its broader industrial use remains limited by the risk of defect formation and uncertainties in their detection, originating from the highly dynamic and hightemperature process environment.",
+          "source_papers": [
+            "P0006"
+          ]
+        },
+        {
+          "text": "This leads to a lower temperature gradient in the molten pool, a wider equiaxed grain zone, and refined grain structures.",
+          "source_papers": [
+            "P0011"
+          ]
+        }
+      ]
+    },
+    {
+      "parameter": "power",
+      "conflict_level": "high_conflict",
+      "unique_claims": 7,
+      "paper_count": 5,
+      "papers": [
+        "P0001",
+        "P0002",
+        "P0002",
+        "P0002",
+        "P0005",
+        "P0006",
+        "P0008"
+      ],
+      "claims": [
+        {
+          "text": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "Dynamics and stability of the keyhole in full-field power-modulated laser welding unveiled by in-situ X-ray imaging",
+          "source_papers": [
+            "P0002"
+          ]
+        },
+        {
+          "text": "Keywords: Full-field power-modulated laser Weld pool Keyhole In-situ X-ray imaging",
+          "source_papers": [
+            "P0002"
+          ]
+        },
+        {
+          "text": "field of laser welding, typical beam shaping strategies include oscillation laser welding, annular beam configurations, and full-field power- modulated lasers [3–5].",
+          "source_papers": [
+            "P0002"
+          ]
+        },
+        {
+          "text": "Roll the dice and match the challenges you face, from Unstable Stairways to Hall of Hieroglyphics, get powerful relics as you complete rooms and climb your way to the top of the pyramid and the ultimate prize: the Treasure Chamber containing the final riddle.",
+          "source_papers": [
+            "P0005"
+          ]
+        },
+        {
+          "text": "Across the defect categories, observable raw signals support the extraction of engineered features in the time domain (RMS, variance, kurtosis), frequency domain (dominant bands, power spectral density (PSD) peaks), and time–frequency domain (wavelet or STFT transients), forming a unified basis for data-driven defect detection.",
+          "source_papers": [
+            "P0006"
+          ]
+        },
+        {
+          "text": "Range analysis and variance analysis are combined to reveal multi-parameter interaction mechanisms and clarify the dominant role of laser power and the significance of key interaction terms.",
+          "source_papers": [
+            "P0008"
+          ]
+        }
+      ]
+    },
+    {
+      "parameter": "ratio",
+      "conflict_level": "high_conflict",
+      "unique_claims": 4,
+      "paper_count": 4,
+      "papers": [
+        "P0001",
+        "P0002",
+        "P0005",
+        "P0012"
+      ],
+      "claims": [
+        {
+          "text": "These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13].",
+          "source_papers": [
+            "P0001"
+          ]
+        },
+        {
+          "text": "field of laser welding, typical beam shaping strategies include oscillation laser welding, annular beam configurations, and full-field power- modulated lasers [3–5].",
+          "source_papers": [
+            "P0002"
+          ]
+        },
+        {
+          "text": "Welcome to Dice Pyramid, a solo game of exploration and skill!",
+          "source_papers": [
+            "P0005"
+          ]
+        },
+        {
+          "text": "To allow for increased exploration during initial training phases and more exploitation toward the conclusion, the parameter 휖 varies linearly with the episode number.",
+          "source_papers": [
+            "P0012"
+          ]
+        }
+      ]
+    },
+    {
+      "parameter": "frequency",
+      "conflict_level": "high_conflict",
+      "unique_claims": 2,
+      "paper_count": 1,
+      "papers": [
+        "P0006",
+        "P0006"
+      ],
+      "claims": [
+        {
+          "text": "Across the defect categories, observable raw signals support the extraction of engineered features in the time domain (RMS, variance, kurtosis), frequency domain (dominant bands, power spectral density (PSD) peaks), and time–frequency domain (wavelet or STFT transients), forming a unified basis for data-driven defect detection.",
+          "source_papers": [
+            "P0006"
+          ]
+        },
+        {
+          "text": "A Time-Frequency Domain Feature Extraction Approach Enhanced by Computer Vision for Wire Arc Additive Manufacturing Monitoring Using Fourier and Wavelet Transform.",
+          "source_papers": [
+            "P0006"
+          ]
+        }
+      ]
+    },
+    {
+      "parameter": "composition",
+      "conflict_level": "high_conflict",
+      "unique_claims": 3,
+      "paper_count": 1,
+      "papers": [
+        "P0013",
+        "P0013",
+        "P0013"
+      ],
+      "claims": [
+        {
+          "text": "Article https://doi.org/10.1038/s41467-025-60162-0 Compositional criteria to predict columnar to equiaxed transitions in metal additive manufacturing",
+          "source_papers": [
+            "P0013"
+          ]
+        },
+        {
+          "text": "Efforts are focused on designing alloy compositions to achieve fully equiaxed microstructures, thereby eliminating the mechanical anisotropy commonly associated with the large columnar grains in additively manufactured alloys.",
+          "source_papers": [
+            "P0013"
+          ]
+        },
+        {
+          "text": "It is well established that the ability of an alloy to undergo a CET and achieve a reﬁned, equiaxed grain morphology is inﬂuenced by the alloying composition during solidiﬁcation processes such as casting1–3.",
+          "source_papers": [
+            "P0013"
+          ]
+        }
+      ]
+    }
+  ],
+  "consensus_parameters": [
+    {
+      "parameter": "content",
+      "conflict_level": "full_agreement",
+      "unique_claims": 1,
+      "paper_count": 3,
+      "papers": [
+        "P0001",
+        "P0002",
+        "P0011"
+      ],
+      "claims": [
+        {
+          "text": "Contents lists available at ScienceDirect",
+          "source_papers": [
+            "P0001",
+            "P0002",
+            "P0011"
+          ]
+        },
+        {
+          "text": "Contents lists available at ScienceDirect",
+          "source_papers": [
+            "P0001",
+            "P0002",
+            "P0011"
+          ]
+        },
+        {
+          "text": "Contents lists available at ScienceDirect",
+          "source_papers": [
+            "P0001",
+            "P0002",
+            "P0011"
+          ]
+        }
+      ]
+    }
+  ],
+  "conflict_matrix": {}
+}

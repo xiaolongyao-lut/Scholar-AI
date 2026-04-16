@@ -120,7 +120,9 @@ class WritingSession:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict."""
-        return asdict(self)
+        data = asdict(self)
+        data["mode"] = self.mode.value
+        return data
 
 
 @dataclass(frozen=True)

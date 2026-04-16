@@ -1,0 +1,174 @@
+{
+  "schema_version": "v2.graph-aware",
+  "source_pdf": "C:\\Users\\xiao\\Desktop\\wenxianku\\Dice_Pyramid_Rules.pdf",
+  "goal": "Conclusion Extraction",
+  "stage_manifest": {
+    "stage_01_extract": {
+      "status": "unknown",
+      "key_counts": {
+        "sections": 0,
+        "chunks": 48,
+        "figures": 0,
+        "tables": 0
+      }
+    },
+    "stage_02_binding": {
+      "status": "binding_ready",
+      "key_counts": {
+        "relation_edges": 0,
+        "evidence_clusters": 0
+      }
+    },
+    "stage_03_analysis": {
+      "status": "analysis_complete",
+      "goal": "Conclusion Extraction",
+      "writing_points": 33
+    }
+  },
+  "quality_gates": {
+    "has_writing_points": true,
+    "has_evidence_links": false,
+    "has_clusters": false,
+    "writing_points_have_boundary_notes": false,
+    "overall_pass": false
+  },
+  "writing_points": [
+    {
+      "writing_point_id": "wp001",
+      "claim": "Welcome to Dice Pyramid, a solo game of exploration and skill!",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Welcome to Dice Pyramid, a solo game of exploration and skill!",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp002",
+      "claim": "Journey deep into the heart of an ancient Egyptian pyramid, where each room does present a new challenge that will test your luck and strategy.",
+      "point_type": "background",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Journey deep into the heart of an ancient Egyptian pyramid, where each room does present a new challenge that will test your luck and strategy.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp003",
+      "claim": "Roll the dice and match the challenges you face, from Unstable Stairways to Hall of Hieroglyphics, get powerful relics as you complete rooms and climb your way to the top of the pyramid and the ultimate prize: the Treasure Chamber containing the final riddle.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Roll the dice and match the challenges you face, from Unstable Stairways to Hall of Hieroglyphics, get powerful relics as you complete rooms and climb your way to the top of the pyramid and the ultimate prize: the Treasure Chamber containing the final riddle.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp004",
+      "claim": "Are you ready to accept the challenge and conquer the pyramid?",
+      "point_type": "background",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 1,
+      "source_text": "Are you ready to accept the challenge and conquer the pyramid?",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp009",
+      "claim": "Each card is split into two parts: a room and a relic.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 2,
+      "source_text": "Each card is split into two parts: a room and a relic. Only one part -the one on top- is active at a time.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp010",
+      "claim": "The cards are placed in the pyramid as rooms.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 2,
+      "source_text": "The cards are placed in the pyramid as rooms. When you complete a room, you place it on your side and rotate the card, so the relic side is on top.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp011",
+      "claim": "Room side A room has 3 sections: name, challenge and description.",
+      "point_type": "background",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 2,
+      "source_text": "Room side A room has 3 sections: name, challenge and description.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp012",
+      "claim": "The challenge is what you need to do to complete the room.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 3,
+      "source_text": "The challenge is what you need to do to complete the room. It is displayed using images (see “Reading the cards” for details). The description is a readable version of the challenge",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp013",
+      "claim": "Relic side A relic also has 3 sections: name, ability and description.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 3,
+      "source_text": "Relic side A relic also has 3 sections: name, ability and description.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp014",
+      "claim": "The ability is the effect that this relic provides.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 3,
+      "source_text": "The ability is the effect that this relic provides. It is displayed using images (see “Reading the cards” for details). The description is a readable version of the ability",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp016",
+      "claim": "Take out the Treasure Chamber and Entrance rooms.",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 4,
+      "source_text": "Take out the Treasure Chamber and Entrance rooms. Shuffle the remaining cards.",
+      "linked_figures": [],
+      "linked_tables": []
+    },
+    {
+      "writing_point_id": "wp017",
+      "claim": "Build 2 rows under it with 2 and 3 cards respectively in the shape of a pyramid like this:",
+      "point_type": "discussion",
+      "relevance_score": 0.2689,
+      "goal_hits": [],
+      "page": 4,
+      "source_text": "Place the Treasure Chamber on the table, face down. Build 2 rows under it with 2 and 3 cards respectively in the shape of a pyramid like this:",
+      "linked_figures": [],
+      "linked_tables": []
+    }
+  ],
+  "figures": [],
+  "tables": [],
+  "parameters": [],
+  "results": [],
+  "references": []
+}

@@ -1,11 +1,19 @@
-"""
-Writing Resources-related Pydantic models for REST API.
-
-Includes models for projects, sections, drafts, and revisions.
-"""
+"""Writing resource API models used by the FastAPI adapter."""
 
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
+
+
+class CitationAnchorPayload(BaseModel):
+    """Stable citation anchor metadata exchanged with the frontend editor."""
+
+    id: str
+    materialId: Optional[str] = None
+    token: str
+    startOffset: int
+    endOffset: int
+    ordinal: int
 
 
 class ProjectPayload(BaseModel):
@@ -34,6 +42,22 @@ class SectionPayload(BaseModel):
     updated_at: str
 
 
+class MaterialPayload(BaseModel):
+    """Project-scoped material response used by the reference drawer."""
+
+    material_id: str
+    project_id: str
+    title: str
+    title_en: str = ""
+    summary: str = ""
+    summary_en: str = ""
+    type: str = "reference"
+    focus_points: List[str] = Field(default_factory=list)
+    focus_points_en: List[str] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+
+
 class DraftPayload(BaseModel):
     """Writing draft response."""
 
@@ -46,6 +70,7 @@ class DraftPayload(BaseModel):
     created_at: str
     updated_at: str
     last_edited_by: Optional[str] = None
+    citation_anchors: List[CitationAnchorPayload] = Field(default_factory=list)
 
 
 class RevisionPayload(BaseModel):
@@ -59,6 +84,7 @@ class RevisionPayload(BaseModel):
     created_at: str
     created_by: Optional[str] = None
     message: str
+    citation_anchors: List[CitationAnchorPayload] = Field(default_factory=list)
 
 
 class AssociationSignalPayload(BaseModel):
@@ -131,6 +157,19 @@ class CreateSectionRequest(BaseModel):
     description: str = ""
 
 
+class CreateMaterialRequest(BaseModel):
+    """Request to create a project-scoped reference material."""
+
+    project_id: str
+    title: str
+    title_en: str = ""
+    summary: str = ""
+    summary_en: str = ""
+    type: str = "reference"
+    focus_points: List[str] = Field(default_factory=list)
+    focus_points_en: List[str] = Field(default_factory=list)
+
+
 class CreateDraftRequest(BaseModel):
     """Request to create a writing draft."""
 
@@ -139,6 +178,7 @@ class CreateDraftRequest(BaseModel):
     title: str = ""
     content: str = ""
     edited_by: Optional[str] = None
+    citation_anchors: List[CitationAnchorPayload] = Field(default_factory=list)
 
 
 class SaveDraftRequest(BaseModel):
@@ -146,6 +186,7 @@ class SaveDraftRequest(BaseModel):
 
     content: str
     edited_by: Optional[str] = None
+    citation_anchors: List[CitationAnchorPayload] = Field(default_factory=list)
 
 
 class BuildAssociationRequest(BaseModel):

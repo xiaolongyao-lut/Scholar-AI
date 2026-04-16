@@ -1,0 +1,384 @@
+{
+  "status": "hybrid_retrieval_ready",
+  "focus_points": [
+    "Conclusion",
+    "Extraction"
+  ],
+  "top_chunks": [
+    {
+      "chunk_id": "c0001",
+      "text": "Review Mechanisms, Sensors, and Signals for Defect Formation and In Situ Monitoring in Metal Additive Manufacturing",
+      "page": 1,
+      "bbox": [
+        35.39,
+        99.4,
+        550.73,
+        153.4
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0002",
+      "text": "Sanae Tajalli Nobari * , Fabian Hanning , Yongcui Mi and Joerg Volpp",
+      "page": 1,
+      "bbox": [
+        35.72,
+        167.14,
+        380.43,
+        177.1
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0003",
+      "text": "Department of Engineering Science, University West, 46186 Trollhättan, Sweden; fabian.hanning@hv.se (F.H.); yongcui.mi@hv.se (Y.M.); jorg.volpp@hv.se (J.V.) * Correspondence: sanae.tajalli-nobari@hv.se",
+      "page": 1,
+      "bbox": [
+        165.68,
+        201.34,
+        552.0,
+        230.83
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0004",
+      "text": "Metal additive manufacturing (AM) facilitates the production of geometrically complex components, yet its broader industrial use remains limited by the risk of defect formation and uncertainties in their detection, originating from the highly dynamic and hightemperature process environment. To make additive manufacturing more reliable and establish high-quality parts, it is important to understand how these defects form and how their characteristics appear during the process. This review explains the main causes of common defects, such as cracking, porosity, lack of fusion, and inclusions in metal AM processes, including Powder Bed Fusion and Directed Energy Deposition. It also connects main defect formation mechanisms to the optical, thermal, acoustic, and spectroscopic signals that can be measured during the process. Moreover, it is described how commonly used in situ monitoring systems work and how their signals correspond to melt pool dynamics, vapor plume, particle movement, and the solidification process for each kind of defect. An overview is provided of how data from these systems are analyzed, including the extraction of features from images, the evaluation of temperature fields, and the use of time and frequency domain techniques for various signals. By linking the physics of defect formation to measurable process signals, the interpretation of sensor data is enabled, and potential strategies for monitoring specific problems are outlined. Finally, recent developments are examined, including the integration of multiple sensors, advanced feature-representation approaches, and real-time data interpretation coupled with adaptive control. Together, these directions represent promising advances towards more intelligent and reliable monitoring systems for the future of metal AM.",
+      "page": 1,
+      "bbox": [
+        166.1,
+        267.95,
+        560.93,
+        556.53
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0005",
+      "text": "Keywords: directed energy deposition; powder bed fusion; imperfections; cracking; porosity; inclusions; inline monitoring",
+      "page": 1,
+      "bbox": [
+        166.39,
+        572.33,
+        560.52,
+        596.34
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0006",
+      "text": "Academic Editor: George Z.",
+      "page": 1,
+      "bbox": [
+        35.72,
+        632.98,
+        121.05,
+        639.95
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0007",
+      "text": "1. Introduction",
+      "page": 1,
+      "bbox": [
+        166.39,
+        637.65,
+        248.13,
+        649.6
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0008",
+      "text": "Papageorgiou",
+      "page": 1,
+      "bbox": [
+        35.72,
+        644.9,
+        78.67,
+        651.88
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0009",
+      "text": "Received: 13 February 2026",
+      "page": 1,
+      "bbox": [
+        35.72,
+        660.81,
+        119.09,
+        667.79
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0010",
+      "text": "Revised: 4 March 2026",
+      "page": 1,
+      "bbox": [
+        35.72,
+        672.74,
+        103.89,
+        679.71
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0011",
+      "text": "Accepted: 8 March 2026",
+      "page": 1,
+      "bbox": [
+        35.44,
+        684.67,
+        108.12,
+        691.64
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0012",
+      "text": "Published: 11 March 2026",
+      "page": 1,
+      "bbox": [
+        35.72,
+        696.59,
+        113.8,
+        703.56
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0013",
+      "text": "Copyright: © 2026 by the authors.",
+      "page": 1,
+      "bbox": [
+        35.72,
+        710.44,
+        139.25,
+        717.48
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0014",
+      "text": "Licensee MDPI, Basel, Switzerland.",
+      "page": 1,
+      "bbox": [
+        35.72,
+        722.43,
+        143.38,
+        729.41
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0015",
+      "text": "This article is an open access article",
+      "page": 1,
+      "bbox": [
+        35.5,
+        734.36,
+        142.07,
+        741.33
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0016",
+      "text": "distributed under the terms and",
+      "page": 1,
+      "bbox": [
+        35.72,
+        746.28,
+        133.12,
+        753.26
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0017",
+      "text": "conditions of the Creative Commons",
+      "page": 1,
+      "bbox": [
+        35.72,
+        758.21,
+        148.75,
+        765.18
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0018",
+      "text": "Attribution (CC BY) license.",
+      "page": 1,
+      "bbox": [
+        35.44,
+        770.14,
+        120.66,
+        777.11
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0019",
+      "text": "Additive Manufacturing (AM) has advanced the fabrication of metallic components by allowing the production of intricate geometries with high precision and reduced material waste (e.g., [1]). Nevertheless, maintaining process stability and achieving components without defects continues to be a significant challenge, limiting industrial adoption of metal AM technologies [2–5]. Metal AM processes can be broadly categorized into two major groups: Powder Bed Fusion (PBF) and Directed Energy Deposition (DED). In the PBF process, a thin layer of metal powder is first spread across the build platform and then selectively melted using a focused energy source, typically a laser in Laser Powder Bed Fusion (PBF-LB/M) or an electron beam in Electron Beam Powder Bed Fusion (PBF-EB/M)",
+      "page": 1,
+      "bbox": [
+        165.98,
+        656.18,
+        560.27,
+        777.46
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0020",
+      "text": "Eng 2026, 7, 129 https://doi.org/10.3390/eng7030129",
+      "page": 1,
+      "bbox": [
+        35.47,
+        805.42,
+        559.28,
+        813.53
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0021",
+      "text": "Eng 2026, 7, 129 2 of 41",
+      "page": 2,
+      "bbox": [
+        35.47,
+        35.67,
+        559.67,
+        45.77
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0022",
+      "text": "to form each part layer by layer [1,6,7]. In contrast, DED processes feed metallic material directly into a melt pool generated by a concentrated heat source. Depending on the configuration, the feedstock can be powder or wire, while the energy input is commonly provided by a laser (DED-LB/M) or an electric arc (DED-arc/M) [8–10]. Despite these differences, the processes show similar defect formation mechanisms related to various physical phenomena, including melt pool instability, thermal fluctuations, rapid solidification, and interactions between the molten material and the surrounding atmosphere [11–13]. The layer-by-layer nature and rapid thermal cycling in these processes cause strong microstructural and morphological instabilities, which often cause the formation of porosity [14], lack of fusion (LoF) [15], cracking [16], and inclusions [17]. These defects influence mechanical strength, fatigue resistance, and corrosion performance, often preventing the qualification of AM parts for industries [18]. Therefore, the ability to detect and quantify these defects is essential for understanding their origin and developing strategies to mitigate them. Traditional ex situ inspection techniques, including X-ray computed tomography (CT), optical microscopy (OM), and ultrasonic testing, offer detailed post-process characterization of defects but are time-consuming, costly, and incapable of real-time monitoring of the process [19–21]. To achieve in situ defect detection and enable closed-loop process control, researchers have developed in situ monitoring systems capable of recording transient process signatures during fabrication (e.g., [22]). Various sensors have been used, including optical emission spectroscopy (OES), to monitor plasma and vapor plume characteristics [23,24], infrared (IR) thermography and pyrometry for melt pool temperature mapping [25,26], high-speed and coaxial vision systems for geometric monitoring [27,28], and acoustic emission sensors for elastic wave detection related to cracking or keyhole formation [29,30]. The signals of various sensors can be used to extract measurable features such as melt pool geometry, spectral intensity, temperature gradients, and acoustic frequency that can be correlated with the physical mechanisms of defect formation in different metal AM processes [31]. Moreover, integrating in situ sensor data with machine learning (ML) techniques has created new opportunities to interpret the extensive datasets generated during metal AM. By identifying complex relationships across various signals, ML models identify relationships between signals and defect mechanisms, classify defect types, and help to develop closed-loop process control strategies [32,33]. Several researchers have addressed in situ monitoring techniques in metal AM. For instance, Montazeri et al. [34] developed an in situ porosity monitoring method for PBFLB/M of Inconel 718 using a multispectral optical emission sensor combined with graph theoretic signal analysis. Optical emission data were continuously recorded during fabrication and correlated with porosity levels measured by X-ray CT. By applying the graph Fourier transform to the spectral signals, they found that high-frequency graph Fourier transform coefficients and localized intensity fluctuations increased systematically in layers with porosity, whereas stable layers showed stronger correlations across emission channels. These findings demonstrate that specific graph-spectral features of the emission signal are directly linked to pore formation. Similarly, in the DED process, Herzog et al. [35] developed a multi-axis IR monitoring system equipped with three synchronized cameras to track melt pool geometry alongside layer-wise vertical displacement during deposition. By combining data from complementary viewing angles, their image processing framework detected surface irregularities such as depressions that preceded the formation of internal defects at thin wall intersections. These depressions were shown to originate from reduced laser spot overlap caused by automatic fileting in the tool path, and micro-CT confirmed that they were the direct precursor to porosity formation. Through experiments on an intersecting",
+      "page": 2,
+      "bbox": [
+        165.98,
+        74.64,
+        561.02,
+        767.12
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0023",
+      "text": "https://doi.org/10.3390/eng7030129",
+      "page": 2,
+      "bbox": [
+        427.95,
+        805.56,
+        559.28,
+        813.53
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0024",
+      "text": "Eng 2026, 7, 129 3 of 41",
+      "page": 3,
+      "bbox": [
+        35.47,
+        35.67,
+        559.67,
+        45.77
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0025",
+      "text": "wall test geometry, they linked porosity observed at narrow angles (approximately 30◦) to reduced laser spot overlap resulting from automatic toolpath fileting. Micro-CT validation confirmed the defect locations, and subsequent removal of the filets eliminated the pores, consequently establishing a direct relationship between toolpath design, local irradiance distribution, and defect formation. Additionally, Kim et al. [36] investigated acoustic emission (AE) monitoring for detecting microcrack formation during DED-LB/M of SiC-reinforced stainless steel 316L composites. They recorded and analyzed sound signals in the time, frequency, and time–frequency domains, showing that in-process cracking produces a unique audible “ping” between 12 and 16 kHz. Using signal processing techniques such as high-pass filtering and Harmonic Percussive Source Separation (HPSS), they successfully isolated both post-process and hidden in-process cracking signatures. They also demonstrated that acoustic monitoring provides a simple and effective in situ method for identifying crack formation during rapid cooling, improving in situ quality control during DED-LB/M process. While in situ monitoring and data analysis methods for metal AM have advanced rapidly, most studies still address either sensor development or data modeling separately, without clearly linking the measured signals to the physical processes that cause defect formation. As a result, there is still no unified understanding that connects defect mechanisms, their physical origins, signal features, and sensor performance among different metal AM techniques. Thus, this review paper addresses the gap by examining in situ monitoring techniques in DED and PBF. Then, it analyzes common defect types, including cracking, porosity, LoF, and inclusions, with the physical reasons that lead to their formation and the corresponding optical, thermal, and acoustic responses measured by different sensors. In doing so, the review links various defect formation physics to signal interpretation, introducing a basis for selecting suitable monitoring methods for each defect type in metal AM.",
+      "page": 3,
+      "bbox": [
+        165.98,
+        71.94,
+        561.02,
+        432.84
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    }
+  ]
+}

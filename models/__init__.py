@@ -4,6 +4,20 @@ Centralized Pydantic models for python_adapter_server.
 All request/response models are consolidated here for easier maintenance and discovery.
 """
 
+# Common models (error envelopes, pagination, streaming)
+from .common import (
+    ErrorCode,
+    ErrorDetail,
+    ErrorResponse,
+    PaginationMeta,
+    PaginatedResponse,
+    paginate,
+    SuccessResponse,
+    MessageResponse,
+    ChatStreamEvent,
+    ChatStreamDelta,
+)
+
 # Autopilot models
 from .autopilot import (
     AutopilotStatusResponse,
@@ -19,6 +33,7 @@ from .pipeline import (
     PipelineRequest,
     PipelineTaskSubmitResponse,
     PipelineTaskStatusResponse,
+    BatchProcessRequest,
 )
 
 # Skills models
@@ -60,6 +75,7 @@ from .memory import (
 from .resources import (
     ProjectPayload,
     SectionPayload,
+    MaterialPayload,
     DraftPayload,
     RevisionPayload,
     AssociationSignalPayload,
@@ -68,6 +84,7 @@ from .resources import (
     WritingAssociationPayload,
     CreateProjectRequest,
     CreateSectionRequest,
+    CreateMaterialRequest,
     CreateDraftRequest,
     SaveDraftRequest,
     BuildAssociationRequest,
@@ -90,6 +107,17 @@ from .recovery import (
 )
 
 __all__ = [
+    # Common
+    "ErrorCode",
+    "ErrorDetail",
+    "ErrorResponse",
+    "PaginationMeta",
+    "PaginatedResponse",
+    "paginate",
+    "SuccessResponse",
+    "MessageResponse",
+    "ChatStreamEvent",
+    "ChatStreamDelta",
     # Autopilot
     "AutopilotStatusResponse",
     "AutopilotEnableRequest",
@@ -130,6 +158,7 @@ __all__ = [
     # Resources
     "ProjectPayload",
     "SectionPayload",
+    "MaterialPayload",
     "DraftPayload",
     "RevisionPayload",
     "AssociationSignalPayload",
@@ -138,6 +167,7 @@ __all__ = [
     "WritingAssociationPayload",
     "CreateProjectRequest",
     "CreateSectionRequest",
+    "CreateMaterialRequest",
     "CreateDraftRequest",
     "SaveDraftRequest",
     "BuildAssociationRequest",

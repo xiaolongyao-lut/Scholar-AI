@@ -1,9 +1,11 @@
 /**
  * WritingRuntime Protocol Types (Phase 2)
- * 
- * TypeScript type definitions for the long-lived writing runtime backend.
- * These types parallel the Python harness_protocols.py entities.
+ *
+ * The core transport models are generated from the backend OpenAPI schema
+ * so frontend runtime calls stay aligned with the adapter contract.
  */
+
+import type { components } from "../generated/openapi";
 
 // ==========================================================================
 // Session Types
@@ -11,22 +13,9 @@
 
 export type SessionMode = 'prompt' | 'skill' | 'hybrid';
 
-export interface WritingSession {
-  session_id: string;
-  user_id: string | null;
-  mode: SessionMode;
-  created_at: string;  // ISO 8601
-  settings: Record<string, unknown>;
-  tags: string[];
-  metadata?: Record<string, unknown>;
-}
+export type WritingSession = components["schemas"]["SessionPayload"];
 
-export interface CreateSessionRequest {
-  mode: SessionMode;
-  user_id?: string | null;
-  settings?: Record<string, unknown>;
-  tags?: string[];
-}
+export type CreateSessionRequest = components["schemas"]["CreateSessionRequest"];
 
 // ==========================================================================
 // Job Types
@@ -51,48 +40,11 @@ export type JobStatus =
   | 'failed'
   | 'cancelled';
 
-export interface WritingJob {
-  job_id: string;
-  session_id: string;
-  kind: JobKind;
-  status: JobStatus;
-  input_text: string;
-  created_at: string;  // ISO 8601
-  started_at: string | null;
-  completed_at: string | null;
-  action_id?: string | null;
-  skill_id?: string | null;
-  scope?: string | null;
-  output_mode?: string | null;
-  error?: string | null;
-  tags?: string[];
-  metadata?: Record<string, unknown>;
-}
+export type WritingJob = components["schemas"]["JobPayload"];
 
-export interface CreateJobRequest {
-  session_id: string;
-  kind: JobKind;
-  input_text?: string;
-  action_id?: string | null;
-  skill_id?: string | null;
-  scope?: string | null;
-  output_mode?: string | null;
-  tags?: string[];
-  metadata?: Record<string, unknown>;
-}
+export type CreateJobRequest = components["schemas"]["CreateJobRequest"];
 
-export interface JobStatusDetail {
-  job_id: string;
-  session_id: string;
-  status: JobStatus;
-  kind: JobKind;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  is_paused: boolean;
-  is_cancelled: boolean;
-  error: string | null;
-}
+export type JobStatusDetail = components["schemas"]["JobStatusPayload"];
 
 // ==========================================================================
 // Event Types
@@ -115,14 +67,12 @@ export type EventType =
   | 'job_failed'
   | 'job_cancelled';
 
-export interface WritingEvent {
-  event_id: string;
-  job_id: string;
-  session_id: string;
-  event_type: EventType;
-  timestamp: string;  // ISO 8601
-  data?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
+export type WritingEvent = components["schemas"]["EventPayload"];
+
+export interface JobEventQueryOptions {
+  sinceTimestamp?: string | null;
+  afterEventId?: string | null;
+  limit?: number;
 }
 
 // ==========================================================================
@@ -137,17 +87,7 @@ export type ArtifactType =
   | 'audit_record'
   | 'metadata';
 
-export interface WritingArtifact {
-  artifact_id: string;
-  job_id: string;
-  session_id: string;
-  artifact_type: ArtifactType;
-  content: string | Record<string, unknown>;
-  created_at: string;  // ISO 8601
-  created_by?: string | null;
-  metadata?: Record<string, unknown>;
-  mime_type?: string;
-}
+export type WritingArtifact = components["schemas"]["ArtifactPayload"];
 
 // ==========================================================================
 // Approval Types
@@ -181,7 +121,7 @@ export interface WritingRuntimeClient {
   createJob(request: CreateJobRequest): Promise<WritingJob>;
   getJob(jobId: string): Promise<WritingJob>;
   getJobStatus(jobId: string): Promise<JobStatusDetail>;
-  getJobEvents(jobId: string): Promise<WritingEvent[]>;
+  getJobEvents(jobId: string, options?: JobEventQueryOptions): Promise<WritingEvent[]>;
   getJobArtifacts(jobId: string): Promise<WritingArtifact[]>;
   
   // Job lifecycle control

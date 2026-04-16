@@ -1,0 +1,384 @@
+{
+  "status": "hybrid_retrieval_ready",
+  "focus_points": [
+    "Conclusion",
+    "Extraction"
+  ],
+  "top_chunks": [
+    {
+      "chunk_id": "c0001",
+      "text": "Journal of Materials Processing Tech. 346 (2025) 119098",
+      "page": 1,
+      "bbox": [
+        205.33,
+        32.75,
+        391.3,
+        44.48
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0002",
+      "text": "Contents lists available at ScienceDirect",
+      "page": 1,
+      "bbox": [
+        228.42,
+        58.59,
+        369.07,
+        71.62
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0003",
+      "text": "Journal of Materials Processing Tech.",
+      "page": 1,
+      "bbox": [
+        181.98,
+        79.34,
+        415.54,
+        102.14
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0004",
+      "text": "journal homepage: www.elsevier.com/locate/jmatprotec",
+      "page": 1,
+      "bbox": [
+        192.87,
+        117.48,
+        404.63,
+        125.45
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0005",
+      "text": "Research article",
+      "page": 1,
+      "bbox": [
+        37.59,
+        143.03,
+        105.49,
+        158.67
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0006",
+      "text": "Microstructural evolution and strengthening mechanisms of gas tungsten arc welded nickel-based superalloy joints processed by laser powder bed fusion: Effects of welding direction and heat input",
+      "page": 1,
+      "bbox": [
+        37.59,
+        160.32,
+        479.79,
+        216.78
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0007",
+      "text": "Yaxing Tong a,b",
+      "page": 1,
+      "bbox": [
+        37.59,
+        222.75,
+        109.57,
+        240.46
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0008",
+      "text": ", Guoliang Zhu b,c,*, Sanbao Lin a,**",
+      "page": 1,
+      "bbox": [
+        118.49,
+        222.75,
+        283.06,
+        240.46
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0009",
+      "text": "a State Key Laboratory of Precision Welding & Joining of Materials and Structures, Harbin Institute of Technology, Harbin 150001, China b Suzhou Laboratory, No.388, Ruoshui Street, SIP, Jiangsu 215123, China c Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engineering, Shanghai Jiao Tong University, Shanghai 200240, China",
+      "page": 1,
+      "bbox": [
+        37.59,
+        241.8,
+        485.82,
+        280.8
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0010",
+      "text": "A R T I C L E I N F O",
+      "page": 1,
+      "bbox": [
+        37.59,
+        302.6,
+        115.69,
+        314.0
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0011",
+      "text": "A B S T R A C T",
+      "page": 1,
+      "bbox": [
+        202.0,
+        302.6,
+        258.71,
+        314.0
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0012",
+      "text": "Keywords: Nickel-based superalloy Laser powder bed fusion Gas tungsten arc welding Microstructure evolution Mechanical properties",
+      "page": 1,
+      "bbox": [
+        37.59,
+        321.85,
+        109.58,
+        375.14
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0013",
+      "text": "Laser powder bed fusion (LPBF) imparts nickel-based superalloys with unique non-equilibrium microstructural features; however, their influence on the welding microstructure evolution and mechanical performance remains insufficiently understood. In this study, autogenous gas tungsten arc welding was applied to precipitation- strengthened ZGH4142 superalloy fabricated by LPBF. Microstructural characterization combined with finite element simulation was used to systematically clarify the effects of heat input and welding direction on the structure and properties of the welded joint. The results revealed that the weld morphology and pool geometry enlarged with increasing heat input, and fine equiaxed grains in the weld center transformed to coarse equiaxed ones. With decreasing cooling rate, the MC carbides coarsened, while the γ′ fraction increased from 14 % to 33 %, shifting the dominant strengthening mechanism from grain refinement to dislocation strengthening. The joints exhibited a typical “M-shaped” hardness profile, with the heat-affected zone (HAZ) and weld zone (WZ) showing the highest and lowest hardness, respectively. Quantitative strengthening analysis indicated that the base metal and WZ were mainly governed by solid-solution strengthening, and the HAZ exhibited predominantly dislocation strengthening. Electron backscattered diffraction analysis further revealed that the grain orientation and low- angle grain boundary fractions were sensitive to the welding direction, reflecting the intrinsic anisotropy of the LPBF-processed alloys. These findings provide fundamental insights and practical guidance for welding evaluation and process optimization of additively manufactured nickel-based superalloys.",
+      "page": 1,
+      "bbox": [
+        202.0,
+        321.92,
+        559.79,
+        477.08
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0014",
+      "text": "1. Introduction",
+      "page": 1,
+      "bbox": [
+        37.59,
+        504.08,
+        97.84,
+        517.12
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0015",
+      "text": "complex microstructures and intrinsic anisotropy may lead to distinct behaviors during subsequent welding and service compared with con­ ventional cast-and-wrought alloys, and a systematic understanding of their weldability remains limited.",
+      "page": 1,
+      "bbox": [
+        306.59,
+        504.08,
+        559.98,
+        548.52
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0016",
+      "text": "Laser powder bed fusion (LPBF [1]), a representative technique of metal additive manufacturing, enables the fabrication of complex structures with high precision owing to its high energy density, rapid solidification, and layer-by-layer deposition [2,3]. The LPBF process imparts unique non-equilibrium microstructural features to alloys [4,5], such as cellular sub-grains, strong crystallographic texture, high dislo­ cation density, and supersaturated solid solution [6,7]. These charac­ teristics enhance the strength [8,9] and high-temperature performance [10] of nickel-based superalloys, extending their potential applications in aerospace [11] and power generation sectors [12,13]. However, such",
+      "page": 1,
+      "bbox": [
+        37.59,
+        525.0,
+        291.02,
+        632.2
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0017",
+      "text": "Nickel-based superalloys [14] are important high-temperature structural materials with extensive applications in aerospace, power generation, chemical processing, etc. Precipitation-strengthened super­ alloys rely on γ′ (Ni3(Al, Ti, Ta)) as the primary strengthening phase [15], which provides excellent creep resistance and long-term stability under elevated temperatures [16]. Conventional weldability assess­ ments typically estimate the hot-cracking susceptibility based on the Al + Ti + Ta content [17], which is valid for cast-and-wrought alloys but",
+      "page": 1,
+      "bbox": [
+        306.59,
+        545.92,
+        560.01,
+        632.2
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0018",
+      "text": "* Corresponding author at: Shanghai Key Laboratory of Advanced High-Temperature Materials and Precision Forming, School of Materials Science and Engi­ neering, Shanghai Jiao Tong University, Shanghai 200240, China.",
+      "page": 1,
+      "bbox": [
+        37.59,
+        649.27,
+        557.67,
+        670.52
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0019",
+      "text": "** Corresponding author. E-mail addresses: glzhu@sjtu.edu.cn (G. Zhu), sblin@hit.edu.cn (S. Lin).",
+      "page": 1,
+      "bbox": [
+        42.63,
+        668.37,
+        280.25,
+        689.68
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0020",
+      "text": "https://doi.org/10.1016/j.jmatprotec.2025.119098 Received 11 July 2025; Received in revised form 3 October 2025; Accepted 5 October 2025",
+      "page": 1,
+      "bbox": [
+        37.59,
+        694.96,
+        338.12,
+        716.21
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0021",
+      "text": "Available online 6 October 2025 0924-0136/© 2025 Elsevier B.V. All rights are reserved, including those for text and data mining, AI training, and similar technologies.",
+      "page": 1,
+      "bbox": [
+        37.52,
+        714.0,
+        471.41,
+        733.82
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0022",
+      "text": "Y. Tong et al. Journal of Materials Processing Tech. 346 (2025) 119098",
+      "page": 2,
+      "bbox": [
+        37.59,
+        32.95,
+        560.15,
+        43.38
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0023",
+      "text": "Element C B AlþTiþTa Cr Co W Mo Nb Hf Re Ni",
+      "page": 2,
+      "bbox": [
+        43.6,
+        75.52,
+        547.77,
+        85.95
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0024",
+      "text": "ZGH4142 0.15 0.01 10.0 7.0 18.2 5.2 1.3 0.6 0.03 0.8 Bal.",
+      "page": 2,
+      "bbox": [
+        43.6,
+        88.67,
+        551.68,
+        99.1
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0025",
+      "text": "Sample Welding direction U (V) I (A) v (mm/s) Q (J/mm)",
+      "page": 2,
+      "bbox": [
+        43.6,
+        393.34,
+        282.72,
+        403.77
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    }
+  ]
+}

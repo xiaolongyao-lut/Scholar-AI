@@ -52,3 +52,13 @@ class PipelineTaskStatusResponse(BaseModel):
     stage: str = "queued"
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+
+class BatchProcessRequest(BaseModel):
+    """Batch PDF processing request payload."""
+
+    pdf_folder: str = Field(..., description="Path to folder containing PDF files")
+    output_root: str = Field(..., description="Root output directory for processed materials")
+    goal: str = Field(..., description="Processing goal/theme")
+    batch_size: int = Field(default=13, ge=1, le=100, description="Number of PDFs to collect before triggering volume merge")
+

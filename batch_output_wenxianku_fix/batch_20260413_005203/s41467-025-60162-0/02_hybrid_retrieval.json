@@ -1,0 +1,388 @@
+{
+  "status": "hybrid_retrieval_ready",
+  "focus_points": [
+    "Conclusion",
+    "Extraction"
+  ],
+  "top_chunks": [
+    {
+      "chunk_id": "c0001",
+      "text": "Article https://doi.org/10.1038/s41467-025-60162-0 Compositional criteria to predict columnar to equiaxed transitions in metal additive manufacturing",
+      "page": 1,
+      "bbox": [
+        39.69,
+        94.61,
+        561.24,
+        195.2
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0002",
+      "text": "Received: 13 October 2024",
+      "page": 1,
+      "bbox": [
+        39.69,
+        230.89,
+        146.51,
+        239.36
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0003",
+      "text": "Ryan Brooke 1, Duyao Zhang 1,2 , Dong Qiu 1, Mark A. Gibson1 & Mark Easton 1",
+      "page": 1,
+      "bbox": [
+        217.3,
+        226.17,
+        516.44,
+        252.17
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0004",
+      "text": "Accepted: 16 May 2025",
+      "page": 1,
+      "bbox": [
+        39.69,
+        250.67,
+        132.25,
+        259.14
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0005",
+      "text": "Check for updates",
+      "page": 1,
+      "bbox": [
+        51.87,
+        290.93,
+        119.71,
+        298.9
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0006",
+      "text": "1234567890():,;",
+      "page": 1,
+      "bbox": [
+        6.72,
+        298.81,
+        11.7,
+        334.03
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0007",
+      "text": "1234567890():,;",
+      "page": 1,
+      "bbox": [
+        17.45,
+        297.52,
+        22.43,
+        334.03
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0008",
+      "text": "Predicting the columnar to equiaxed transition (CET) and grain reﬁnement for additively manufactured alloys from thermodynamic databases has been a long-standing challenge and an ongoing source of discussion. Efforts are focused on designing alloy compositions to achieve fully equiaxed microstructures, thereby eliminating the mechanical anisotropy commonly associated with the large columnar grains in additively manufactured alloys. Here, three compositional parameters proposed in the literature are evaluated across a range of Ti alloys: the non-equilibrium solidiﬁcation range (ΔTs), the growth restriction factor (Q) and constitutional supercooling parameter (P). Ti-Fe, Ti-Cu, Ti-Cu-Fe, and Ti-Mo alloys produced via direct energy deposition experimentally veriﬁed that P is the most reliable parameter to guide the selection of alloying elements for additively manufactured (AM) alloys. Veriﬁcation was found by reconsidering results from additional alloy systems and AM methods. The numerical CET models also predict that P is closely related to dendrite tip undercooling at high growth velocities, as found in AM. This work provides a clearer framework for predicting the grain morphology of metallic alloys in AM.",
+      "page": 1,
+      "bbox": [
+        217.3,
+        279.12,
+        561.29,
+        512.38
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0009",
+      "text": "examined in the context of metal AM processes as follows: the constitutional supercooling (CS) parameter (P), the growth restriction factor (Q), and the non-equilibrium (Scheil) freezing range (ΔTs). P is the constitutional supercooling available during steady-state solidiﬁcation8,9, therefore, theoretically it would be expected to be important in applications where nucleation happens after solidiﬁcation is well-established, such as in directional solidiﬁcation. It was the ﬁrst parameter considered to have a relationship with grain size in cast alloys9,10. In a binary system, the supercooling parameter P is calculated as:",
+      "page": 1,
+      "bbox": [
+        306.14,
+        541.71,
+        561.34,
+        646.31
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0010",
+      "text": "P = mcoðk \u0002 1Þ k ð1Þ",
+      "page": 1,
+      "bbox": [
+        407.62,
+        662.63,
+        561.28,
+        682.07
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0011",
+      "text": "It is well established that the ability of an alloy to undergo a CET and achieve a reﬁned, equiaxed grain morphology is inﬂuenced by the alloying composition during solidiﬁcation processes such as casting1–3. However, at the high cooling rate and large thermal gradients observed in fusion-based metal AM, there is a greater propensity to form textured columnar grains4. An equiaxed microstructure is generally preferred to eliminate the mechanical anisotropy associated with coarse columnar grains5. Simple compositional parameters have been proposed to indicate the propensity of an alloy to achieve a ﬁne-equiaxed microstructure over a range of solidiﬁcation processes. While each compositional parameter is supported by some experimental results3,6, debate persists about their respective efﬁcacies7. Developing a reliable CET indicator is a critical step to guide alloy design for high-performance metal AM components. In this paper, the most common CET indicators are",
+      "page": 1,
+      "bbox": [
+        39.68,
+        541.71,
+        294.91,
+        699.83
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0012",
+      "text": "1School of Engineering, Centre for Additive Manufacturing, RMIT University, Melbourne, VIC, Australia. 2Department of Mechanical Engineering, Faculty of Engineering & Design, University of Bath, Bath, UK. e-mail: dz618@bath.ac.uk; mark.easton@rmit.edu.au",
+      "page": 1,
+      "bbox": [
+        39.69,
+        722.68,
+        559.74,
+        742.4
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0013",
+      "text": "Nature Communications| (2025) 16:5710 1",
+      "page": 1,
+      "bbox": [
+        39.69,
+        763.57,
+        561.25,
+        771.55
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0014",
+      "text": "Article https://doi.org/10.1038/s41467-025-60162-0",
+      "page": 2,
+      "bbox": [
+        39.69,
+        23.52,
+        561.25,
+        33.48
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0015",
+      "text": "software with the PanTitaniumTM v2022 database. The representation of the ΔTs (grey range), Q (blue range), and P (green range) values for Ti-6Cu from the phase diagram.",
+      "page": 2,
+      "bbox": [
+        39.69,
+        269.36,
+        294.88,
+        299.19
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0016",
+      "text": "Ti alloy has an equiaxed grain morphology. ΔTs is the freezing range calculated from CALPHAD software. It was suggested that a Ti alloy with a ΔTs considerably higher than 110 K and perhaps closer to 603 K would achieve a CET7. Although Nartu et al.7 did not explicitly provide the detailed methodology for calculating ΔTs, the values reported correlate to the non-equilibrium (Scheil) solidiﬁcation freezing range as calculated by PANDATTM (PanTi2022 database) (see Fig. 1). The research presented here has been provoked by recent ﬁndings25 in which decreasing ΔTs is correlated with the CET and grain reﬁnement in Ti-xCu-yFe alloys, contradicting the ﬁndings of Nartu et al.7. Hence the current study aims to provide a comparison between these three composition related parameters, ΔTs, Q and P, across a range of titanium alloys produced via laser beam directed energy deposition (DED-LB) and their efﬁcacy to predict the grain morphology and grain reﬁnement in AM. Titanium alloys were chosen as a case study as their CET is a common research focus. As the implemented process parameters inﬂuence grain reﬁnement26, these were initially kept constant to isolate compositional effects. It is also worth noting that the powder size distribution can additionally inﬂuence the solidiﬁcation conditions27, therefore, the feedstock powder distribution was kept constant. Three Ti alloy systems with increasing solute content were produced to assess the changing values of ΔTs, Q, and P and their associated correlation to the CET and grain reﬁnement (see Table S1). Two binary Ti-Cu alloys, two binary Ti-Fe alloys, and two ternary Ti-Cu-Fe alloys were investigated at two different levels of Q (i.e., ~42 K and ~93 K). Additionally, Ti-4Fe and Ti−12Mo alloys were produced at different process parameters to understand the inﬂuence of solidiﬁcation conditions on the grain morphology and grain size. Ti-Mo was chosen owing to its distinctive correlation between Q and P values, i.e., Q > P, in contrast to the other common alloys where Q < P. This is due to k being greater than 1 in the Ti-Mo system. Furthermore, a substantial data set of Ti, Cu, and Al alloys from the literature, where the values of ΔTs, Q, and P are compared with the corresponding parent β-grain morphology, is also analysed.",
+      "page": 2,
+      "bbox": [
+        306.14,
+        47.28,
+        561.39,
+        421.41
+      ],
+      "mentioned_figures": [
+        1
+      ],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0017",
+      "text": "where m is the liquidus slope, co the alloy content, and k is the partition coefﬁcient, i.e., the ratio cs/cl where cs is the composition of the solute in the solid and cl is the composition in the liquid. The growth restriction factor, Q, was identiﬁed initially as a key parameter to describe the reduction in dendritic growth rate, as a result of solutal undercooling11. Later work deﬁned Q as the initial rate of development of constitutional supercooling at the beginning of solidiﬁcation8,12 indicating it would be more effective for systems where there is copious nucleation early in solidiﬁcation, such as in systems with potent grain reﬁners. There are many examples that correlate the grain size with the 1/Q value in cast Mg2,13, Al1,14, and Ti alloys15,16. The growth restriction factor Q is calculated by:",
+      "page": 2,
+      "bbox": [
+        39.68,
+        325.7,
+        294.93,
+        453.5
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0018",
+      "text": "Q = Pk = mcoðk \u0002 1Þ ð2Þ",
+      "page": 2,
+      "bbox": [
+        132.72,
+        464.94,
+        294.82,
+        475.2
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0019",
+      "text": "The Hunt CET model17 suggested that a higher Q facilitates equiaxed growth. Later, Kurz et al.18 produced a simpliﬁcation of a numerical CET model that considered the equilibrium freezing range, P, instead. The Hunt analytical model17 was developed to describe the CET of conventional castings. The numerical model by Kurz et al. & Gäumann et al.18–21 was developed to describe the CET during rapid solidiﬁcation, which could be more applicable to AM. Q and P can be taken directly from the phase diagram for binary alloys, as shown in Fig. 1 for a binary Ti-6Cu alloy (all compositions in this paper are given in weight percent (wt.%)). For the alloys containing multiple alloying elements22, Q, can be estimated from the sum of the contributions from each alloying element, or more accurately from CALculation of PHAse Diagrams (CALPHAD) data using:",
+      "page": 2,
+      "bbox": [
+        39.68,
+        484.68,
+        294.91,
+        624.88
+      ],
+      "mentioned_figures": [
+        1
+      ],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0020",
+      "text": "Q = dΔTc df s",
+      "page": 2,
+      "bbox": [
+        140.26,
+        638.08,
+        175.04,
+        659.57
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0021",
+      "text": "\u0001\u0001\u0001\u0001\u0001 f s!0 ð3Þ",
+      "page": 2,
+      "bbox": [
+        175.58,
+        630.94,
+        294.82,
+        663.64
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0022",
+      "text": "where ΔTc is the constitutional supercooling, and fs is the solid fraction. Q has been successfully used as an alloy design parameter for AM alloys23,24. P can also be estimated in multicomponent systems using CALPHAD. Recently, Nartu et al.7 proposed another parameter, denoted here as ΔTs, which was claimed to be more effective at predicting whether a",
+      "page": 2,
+      "bbox": [
+        39.68,
+        679.18,
+        294.93,
+        742.69
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0023",
+      "text": "Results The grain sizes for the Ti-Fe, Ti-Cu-Fe, Ti-Cu, and Ti-Mo alloys are listed in Table S1. It can be seen in Fig. 2a–d that the Ti-Fe and Ti-Cu-Fe alloys, respectively, have similar grain morphologies. The lower Q alloys (Ti4Fe and Ti-2.4Cu-2.4Fe) have similar average grain size, and each has a mixed columnar and equiaxed microstructure. At higher Q, the Ti-8Fe and Ti-4.7Cu-4.7Fe alloys have fully equiaxed microstructures with similar grain size. Both increases in Q also correlate to an increase in P, as both values are related to the CS characteristics of the alloy. As the solute content in the Ti-Fe and Ti-Cu-Fe alloys increases and grain reﬁnement occurs, the corresponding ΔTs decrease. Increasing Q and P also correlate with a dramatic reduction in crystallographic texture, as shown in the pole ﬁgures of Fig. 2a–d. At the higher Q (95 K) for Ti-12.6Cu, a hyper-eutectoid composition, parent β-grain analysis indicates a very reﬁned grain size of 6.2μm (Fig. S1). This is an order of magnitude smaller than the Ti-8Fe and Ti4.7Cu-4.7Fe alloys. However, recent research has shown the difﬁculty associated with parent grain reconstruction of hyper-eutectoid Ti-Cu alloys28, and it is considered that some additional β-grain nucleation is likely to occur during the cyclic heating associated with AM29 due to the active eutectoid transformation. This phenomenon is further supported by the observations of the ﬁnal layer of deposition of Ti12.6Cu. Clear parent β-grain boundaries can be seen by hypereutectoid Ti2Cu formation at these boundaries, with larger grain sizes of 50–150 µm as shown in Fig. S2a, b. Therefore, the reconstructed β-grain size may be unreliable as an indication of the original grain size in Ti-Cu alloys. Figure 2f shows a higher magniﬁcation ﬁeld of the ﬁnal layer of deposition, with traced grain boundaries. Being the ﬁnal layer of deposition, thermal cycling has not occurred, therefore",
+      "page": 2,
+      "bbox": [
+        306.14,
+        432.64,
+        561.37,
+        742.69
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0024",
+      "text": "Nature Communications| (2025) 16:5710 2",
+      "page": 2,
+      "bbox": [
+        39.69,
+        763.57,
+        561.28,
+        771.55
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    },
+    {
+      "chunk_id": "c0025",
+      "text": "Article https://doi.org/10.1038/s41467-025-60162-0",
+      "page": 3,
+      "bbox": [
+        39.69,
+        23.52,
+        561.25,
+        33.48
+      ],
+      "mentioned_figures": [],
+      "mentioned_tables": [],
+      "section_title": "Page Content",
+      "hybrid_score": 0.0
+    }
+  ]
+}
