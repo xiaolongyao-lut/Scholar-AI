@@ -15,6 +15,15 @@ logger = logging.getLogger("RLayer_HybridRetriever")
 def normalize_text(text: str) -> str:
     return re.sub(r'\s+', ' ', (text or '').replace('\xa0', ' ')).strip()
 
+def _cosine_sim(a: list, b: list) -> float:
+    """Cosine similarity between two vectors (plain Python, no numpy required)."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
 def en_tokens(text: str) -> list[str]:
     # 基础分词逻辑 (简化版)
     return [t.lower() for t in re.findall(r"[A-Za-z]+", text or '')]
@@ -36,6 +45,9 @@ class ContextAwareRetriever:
             "context": 0.3
         }
         self.weight_manager = AdaptiveWeightManager()
+        self._embed_api_key = os.getenv("SILICONFLOW_API_KEY") or os.getenv("SILICONFLOW_EMBEDDING_API_KEY")
+        self._embed_base_url = os.getenv("SILICONFLOW_EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1")
+        self._embed_model = os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-m3")
 
     def _score_overlap(self, text: str, query: str) -> float:
         """核心词重叠评分"""
@@ -43,6 +55,32 @@ class ContextAwareRetriever:
         d_toks = set(en_tokens(text) + cn_tokens(text))
         if not q_toks: return 0.0
         return len(q_toks.intersection(d_toks)) / len(q_toks)
+
+    async def _embed_query(self, query: str) -> list[float] | None:
+        """Embed query via SiliconFlow API. Returns None on failure."""
+        if not self._embed_api_key:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{self._embed_base_url.rstrip('/')}/embeddings",
+                    headers={
+                        "Authorization": f"Bearer {self._embed_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self._embed_model,
+                        "input": [query],
+                        "encoding_format": "float",
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json().get("data", [])
+                    if data:
+                        return data[0]["embedding"]
+        except Exception as e:
+            logger.debug("Query embedding failed: %s", e)
+        return None
 
     async def hybrid_search(self, raw_extract: Dict[str, Any], query: str, top_k: int = 50, focus_keywords: List[str] = None) -> List[Dict[str, Any]]:
         """
@@ -57,18 +95,30 @@ class ContextAwareRetriever:
         if not chunks:
             return []
 
+        # Pre-compute query embedding if any chunk has embeddings
+        query_vec = None
+        has_dense = any(chunk.get('embedding') for chunk in chunks)
+        if has_dense:
+            query_vec = await self._embed_query(query)
+
         results = []
         for chunk in chunks:
-            # 1. BM25 模拟分
-            bm25_score = self._score_overlap(chunk.get('claim', ''), query)
+            # 1. BM25 模拟分 — 兼容 claim / content / text 字段
+            chunk_text = chunk.get('claim') or chunk.get('content') or chunk.get('text') or ''
+            bm25_score = self._score_overlap(chunk_text, query)
             
             # 2. Context 评分
             context_score = 0.0
             if self.use_context and 'context_summary' in chunk:
                 context_score = self._score_overlap(chunk['context_summary'], query)
             
-            # 3. Vector 评分
-            vector_score = bm25_score 
+            # 3. Vector 评分 — 使用真实余弦相似度
+            vector_score = 0.0
+            chunk_emb = chunk.get('embedding')
+            if query_vec is not None and chunk_emb is not None and len(chunk_emb) > 0:
+                vector_score = _cosine_sim(query_vec, chunk_emb)
+            else:
+                vector_score = bm25_score  # fallback when no embeddings
             
             combined_score = (
                 bm25_score * weights.get("bm25", 0.3) +

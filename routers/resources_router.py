@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from chunk_models import EnrichedChunk
 from models import (
     ProjectPayload,
     SectionPayload,
@@ -369,6 +370,105 @@ def _recursive_split(
     return chunks
 
 
+def _detect_chunk_type(block: str) -> str:
+    """Classify one text block into narrative/list/table/formula."""
+    lines = [line.strip() for line in block.splitlines() if line.strip()]
+    if not lines:
+        return "narrative"
+
+    table_like_lines = sum(1 for line in lines if "|" in line)
+    if table_like_lines >= max(2, len(lines) // 2):
+        return "table"
+
+    list_like_lines = sum(1 for line in lines if re.match(r"^([\-\*\u2022]|\d+[\.)])\s+", line))
+    if list_like_lines >= max(1, len(lines) // 2):
+        return "list"
+
+    formula_like_lines = sum(1 for line in lines if re.search(r"[=+\-*/^]|\\\(|\\\)|∑|∫", line))
+    if formula_like_lines >= max(1, len(lines) // 2):
+        return "formula"
+
+    return "narrative"
+
+
+def _extract_section_title_from_line(line: str) -> str | None:
+    """Extract section title from common heading patterns."""
+    stripped = line.strip()
+    if not stripped:
+        return None
+
+    markdown_match = re.match(r"^#+\s+(.+)$", stripped)
+    if markdown_match:
+        return markdown_match.group(1).strip()
+
+    cjk_heading_match = re.match(r"^第[一二三四五六七八九十百千0-9]+[章节部分]\s*(.+)?$", stripped)
+    if cjk_heading_match:
+        suffix = (cjk_heading_match.group(1) or "").strip()
+        return suffix or stripped
+
+    return None
+
+
+def structure_aware_chunk(
+    text: str,
+    material_id: str,
+    title: str,
+    chunk_size: int = CHUNK_SIZE,
+    chunk_overlap: int = CHUNK_OVERLAP,
+) -> list[EnrichedChunk]:
+    """Generate enriched chunks with section + block-type awareness."""
+    if not text.strip():
+        return []
+
+    chunks: list[EnrichedChunk] = []
+    section_title = "正文"
+    chunk_index = 0
+
+    blocks = [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+    for block in blocks:
+        lines = [line for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+
+        maybe_heading = _extract_section_title_from_line(lines[0])
+        content_lines = lines
+        if maybe_heading:
+            section_title = maybe_heading
+            content_lines = lines[1:] if len(lines) > 1 else []
+
+        block_content = "\n".join(content_lines).strip()
+        if not block_content:
+            continue
+
+        chunk_type = _detect_chunk_type(block_content)
+        raw_segments = [block_content]
+        if chunk_type == "narrative":
+            raw_segments = _split_text_into_chunks(block_content, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+
+        for raw_segment in raw_segments:
+            raw_text = str(raw_segment or "").strip()
+            if not raw_text:
+                continue
+
+            prefixed_content = f"[文献: {title}][章节: {section_title}][类型: {chunk_type}]\n{raw_text}"
+            chunks.append(
+                EnrichedChunk(
+                    chunk_id=f"{material_id}_chunk_{chunk_index}",
+                    material_id=material_id,
+                    title=title,
+                    section_title=section_title,
+                    chunk_index=chunk_index,
+                    content=prefixed_content,
+                    raw_content=raw_text,
+                    chunk_type=chunk_type,
+                    char_count=len(prefixed_content),
+                )
+            )
+            chunk_index += 1
+
+    return chunks
+
+
 def _chunk_document(
     material_id: str,
     title: str,
@@ -377,18 +477,30 @@ def _chunk_document(
     chunk_overlap: int = CHUNK_OVERLAP,
 ) -> list[dict[str, Any]]:
     """Chunk a document and return chunk metadata list."""
-    raw_chunks = _split_text_into_chunks(content, chunk_size, chunk_overlap)
-    chunks = []
-    for idx, text in enumerate(raw_chunks):
-        chunks.append({
-            "chunk_id": f"{material_id}_chunk_{idx}",
-            "material_id": material_id,
-            "title": title,
-            "chunk_index": idx,
-            "content": text,
-            "char_count": len(text),
-        })
-    return chunks
+    enriched_chunks = structure_aware_chunk(
+        text=content,
+        material_id=material_id,
+        title=title,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    return [
+        {
+            "chunk_id": chunk.chunk_id,
+            "material_id": chunk.material_id,
+            "title": chunk.title,
+            "section_title": chunk.section_title,
+            "chunk_index": chunk.chunk_index,
+            "content": chunk.content,
+            "raw_content": chunk.raw_content,
+            "chunk_type": chunk.chunk_type,
+            "char_count": chunk.char_count,
+            "page": chunk.page,
+            "embedding": chunk.embedding,
+            "keywords": chunk.keywords,
+        }
+        for chunk in enriched_chunks
+    ]
 
 
 def get_writing_resource_store():
