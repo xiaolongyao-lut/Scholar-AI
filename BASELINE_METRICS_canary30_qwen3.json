@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-04-18 06:05:31",
+  "total_queries": 30,
+  "aggregated_metrics": {
+    "recall_at_1": 0.0,
+    "recall_at_3": 0.0667,
+    "recall_at_5": 0.1667,
+    "recall_at_10": 0.2333,
+    "mrr": 0.0542,
+    "avg_latency_ms": 20337.0,
+    "p95_latency_ms": 30066.79,
+    "rerank_api_avg_ms": 12939.9,
+    "rerank_api_p95_ms": 18408.56,
+    "rerank_queue_avg_ms": 0.01,
+    "rerank_queue_p95_ms": 0.01
+  },
+  "per_difficulty": {
+    "hard": {
+      "count": 10,
+      "recall_at_5": 0.1,
+      "mrr": 0.025
+    },
+    "medium": {
+      "count": 10,
+      "recall_at_5": 0.2,
+      "mrr": 0.0843
+    },
+    "simple": {
+      "count": 10,
+      "recall_at_5": 0.2,
+      "mrr": 0.0533
+    }
+  }
+}

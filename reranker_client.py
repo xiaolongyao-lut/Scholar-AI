@@ -165,7 +165,7 @@ async def rerank_async(
         for attempt in range(3):
             try:
                 t_api = time.perf_counter()
-                async with httpx.AsyncClient(timeout=15.0) as client:
+                async with httpx.AsyncClient(timeout=45.0) as client:
                     response = await client.post(resolved_base_url, headers=headers, json=payload)
                 api_ms = (time.perf_counter() - t_api) * 1000.0
                 if timings is not None:
