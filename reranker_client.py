@@ -11,6 +11,8 @@ from typing import Any
 
 import httpx
 
+from token_utils import count_tokens, truncate_to_tokens
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_RERANKER_URL = "https://api.siliconflow.cn/v1/rerank"
@@ -18,6 +20,7 @@ DEFAULT_RERANKER_MODEL = "Qwen/Qwen3-Reranker-8B"
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_BACKOFF_SECONDS = 60.0
 BASE_BACKOFF_SECONDS = 0.5
+SAFE_RERANK_DOC_TOKENS = 7500  # per-document token ceiling; leaves query headroom
 
 
 def _parse_retry_after(headers: Any) -> float | None:
@@ -121,6 +124,25 @@ async def rerank_async(
 
     if not resolved_api_key:
         return _apply_fallback(candidates, top_k)
+
+    # Token-level head-truncation — rerank scores docs as a single unit, so we
+    # can't split; long docs get clipped head-first to keep the request shape
+    # predictable and avoid reranker-side 413 / silent failures.
+    truncated_pairs: list[tuple[int, str]] = []
+    for orig_idx, doc in valid_pairs:
+        doc_tokens = count_tokens(doc)
+        if doc_tokens > SAFE_RERANK_DOC_TOKENS:
+            clipped = truncate_to_tokens(doc, SAFE_RERANK_DOC_TOKENS)
+            logger.info(
+                "rerank: truncated doc #%d from %d to %d tokens",
+                orig_idx,
+                doc_tokens,
+                count_tokens(clipped),
+            )
+            truncated_pairs.append((orig_idx, clipped))
+        else:
+            truncated_pairs.append((orig_idx, doc))
+    valid_pairs = truncated_pairs
 
     payload = {
         "model": resolved_model,

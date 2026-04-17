@@ -1,13 +1,15 @@
 """smoke_cache_guard.py — Phase 4.2 B-2 / 429 退避独立 smoke 工具。
 
-不进评测链路，不拿指标，只验机制。API 代价：≤ 6 次 /embeddings 调用。
+不进评测链路，不拿指标，只验机制。API 代价：≤ 10 次 /embeddings 调用 + 1 次 /rerank。
 
 用法:
-    python smoke_cache_guard.py                # 跑全部 case
-    python smoke_cache_guard.py --case miss    # 只跑 cache-miss 新建
-    python smoke_cache_guard.py --case hit     # 只跑 cache-hit 复用
-    python smoke_cache_guard.py --case tamper  # 只跑 manifest 篡改 → raise
-    python smoke_cache_guard.py --case rerank  # 只跑 rerank 路径（验 429 退避链路可走通）
+    python smoke_cache_guard.py                   # 跑全部 case
+    python smoke_cache_guard.py --case miss       # cache-miss 新建
+    python smoke_cache_guard.py --case hit        # cache-hit 复用
+    python smoke_cache_guard.py --case tamper     # manifest 篡改 → raise
+    python smoke_cache_guard.py --case oversize   # 超长 chunk → split+mean-pool 不 raise
+    python smoke_cache_guard.py --case no_zero_rows  # build 后 .npy 无全零行
+    python smoke_cache_guard.py --case rerank     # 验 rerank retry 路径
 
 会在 `.smoke_cache_guard/` 下建临时 cache 目录，跑完自动清理。
 """
@@ -22,6 +24,7 @@ import shutil
 import sys
 from pathlib import Path
 
+import numpy as np
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -35,6 +38,8 @@ logger = logging.getLogger("smoke")
 SMOKE_DIR = Path(".smoke_cache_guard")
 CACHE_NPY = SMOKE_DIR / "smoke_embeddings.npy"
 CACHE_MANIFEST = SMOKE_DIR / "smoke_embeddings.manifest.json"
+OVERSIZE_NPY = SMOKE_DIR / "smoke_oversize.npy"
+OVERSIZE_MANIFEST = SMOKE_DIR / "smoke_oversize.manifest.json"
 MAN2011_PATH = Path("output") / "chunk_store" / "man2011_chunks.json"
 N_CHUNKS = 5  # small enough to be cheap
 
@@ -174,10 +179,84 @@ async def case_rerank(chunks: list[dict]) -> bool:
     return True
 
 
+def _build_oversize_chunks(base_chunks: list[dict]) -> list[dict]:
+    """Return 5 chunks with 1 synthetic oversized chunk (> 8192 tokens)."""
+    oversized_text = "激光焊接钛合金的微观组织与力学性能研究。" * 1000  # ~14k tokens
+    oversize_chunk = {
+        "chunk_id": "smoke_oversize_0",
+        "content": oversized_text,
+    }
+    # Keep 4 regular chunks to make the corpus non-trivial.
+    return [oversize_chunk, *base_chunks[:4]]
+
+
+async def case_oversize(chunks: list[dict]) -> bool:
+    """超长 chunk：split+mean-pool 必须让 build 成功，且对应行非零。"""
+    logger.info("[case_oversize] 构造 >8192 token 的 chunk → build 不应 raise，对应行非零")
+    _reset_smoke_dir()
+
+    oversize_chunks = _build_oversize_chunks(chunks)
+    try:
+        store = await ChunkVectorStore.build(oversize_chunks, cache_path=OVERSIZE_NPY)
+    except Exception as exc:
+        logger.error("FAIL case_oversize: build raised %s: %s", type(exc).__name__, exc)
+        return False
+
+    if not OVERSIZE_NPY.exists() or not OVERSIZE_MANIFEST.exists():
+        logger.error("FAIL case_oversize: %s 或 manifest 未生成", OVERSIZE_NPY)
+        return False
+    if not store.has_embeddings:
+        logger.error("FAIL case_oversize: store.has_embeddings=False")
+        return False
+
+    arr = np.load(str(OVERSIZE_NPY))
+    if arr.shape[0] != len(oversize_chunks):
+        logger.error("FAIL case_oversize: shape[0] %d != %d", arr.shape[0], len(oversize_chunks))
+        return False
+    oversize_row_zero = bool(np.all(arr[0] == 0))
+    if oversize_row_zero:
+        logger.error("FAIL case_oversize: 超长 chunk 对应的 row 0 全零（split+mean-pool 失效）")
+        return False
+
+    manifest = json.loads(OVERSIZE_MANIFEST.read_text(encoding="utf-8"))
+    logger.info(
+        "PASS case_oversize: manifest=%s, row0_norm=%.4f",
+        {k: manifest.get(k) for k in ("chunk_count", "zero_row_count", "embedding_shape")},
+        float(np.linalg.norm(arr[0])),
+    )
+    return True
+
+
+async def case_no_zero_rows(chunks: list[dict]) -> bool:
+    """紧接 case_oversize 的产物 → .npy 不允许任何全零行。"""
+    logger.info("[case_no_zero_rows] 读 oversize 产物，断言无全零行")
+    if not OVERSIZE_NPY.exists():
+        logger.info("  依赖 case_oversize，先跑")
+        if not await case_oversize(chunks):
+            return False
+
+    arr = np.load(str(OVERSIZE_NPY))
+    zero_rows = int(np.sum((arr == 0).all(axis=1)))
+    if zero_rows > 0:
+        logger.error("FAIL case_no_zero_rows: %d/%d 行全零", zero_rows, arr.shape[0])
+        return False
+
+    manifest = json.loads(OVERSIZE_MANIFEST.read_text(encoding="utf-8"))
+    manifest_zero_rows = manifest.get("zero_row_count")
+    if manifest_zero_rows != 0:
+        logger.error("FAIL case_no_zero_rows: manifest.zero_row_count=%s != 0", manifest_zero_rows)
+        return False
+
+    logger.info("PASS case_no_zero_rows: %d 行全部非零，manifest.zero_row_count=0", arr.shape[0])
+    return True
+
+
 CASES = {
     "miss": case_miss,
     "hit": case_hit,
     "tamper": case_tamper,
+    "oversize": case_oversize,
+    "no_zero_rows": case_no_zero_rows,
     "rerank": case_rerank,
 }
 
@@ -221,7 +300,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    cases = ["miss", "hit", "tamper", "rerank"] if args.case == "all" else [args.case]
+    cases = ["miss", "hit", "tamper", "oversize", "no_zero_rows", "rerank"] if args.case == "all" else [args.case]
     return asyncio.run(run(cases, cleanup=not args.keep))
 
 

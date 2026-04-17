@@ -204,3 +204,52 @@ def test_rerank_async_honors_retry_after_header(monkeypatch):
 
     assert _RetryAfterStub.calls == 2
     assert captured_sleeps == [0.75]  # Retry-After header honored, not 0.5*2^0 exponential
+
+
+def test_rerank_async_truncates_oversized_documents(monkeypatch):
+    """Docs exceeding SAFE_RERANK_DOC_TOKENS must be head-truncated before the POST."""
+    import reranker_client as reranker_mod
+    from reranker_client import SAFE_RERANK_DOC_TOKENS
+    from token_utils import count_tokens
+
+    captured_payloads: list[dict] = []
+
+    class _CapturingStub:
+        def __init__(self, *_a, **_kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return False
+
+        async def post(self, _url, headers=None, json=None):
+            captured_payloads.append(json)
+            return _StubResponse(
+                status_code=200,
+                payload={"results": [
+                    {"index": 0, "relevance_score": 0.5},
+                    {"index": 1, "relevance_score": 0.3},
+                ]},
+            )
+
+    monkeypatch.setattr(reranker_mod.httpx, "AsyncClient", _CapturingStub)
+
+    long_doc = "激光焊接钛合金。" * 5000  # well above 7500 tokens
+    short_doc = "微观组织演化"
+    candidates = [
+        {"chunk_id": "big", "content": long_doc, "rrf_score": 0.9},
+        {"chunk_id": "small", "content": short_doc, "rrf_score": 0.8},
+    ]
+
+    reranked = asyncio.run(reranker_mod.rerank_async("q", candidates, api_key="sf_key"))
+
+    assert len(captured_payloads) == 1
+    sent_docs = captured_payloads[0]["documents"]
+    assert len(sent_docs) == 2
+    assert count_tokens(sent_docs[0]) <= SAFE_RERANK_DOC_TOKENS
+    assert sent_docs[1] == short_doc  # untouched
+    # Reranked output still keys back to original candidates
+    assert {item["chunk_id"] for item in reranked} == {"big", "small"}
+

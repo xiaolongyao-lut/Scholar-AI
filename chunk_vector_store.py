@@ -7,22 +7,36 @@ Gracefully degrades when no API key is available.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import os
+import random
 from pathlib import Path
 from typing import Any
 
 import httpx
 import numpy as np
 
+from token_utils import count_tokens, split_by_tokens
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1"
-DEFAULT_MODEL = "BAAI/bge-m3"
+DEFAULT_MODEL = "Qwen/Qwen3-Embedding-8B"
 EMBEDDING_DIM = 1024
 MANIFEST_VERSION = 1
+
+SAFE_EMBED_TOKENS = 7500  # headroom under SiliconFlow /embeddings 8192-token cap
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_EMBED_RETRIES = 3
+BASE_EMBED_BACKOFF = 0.5
+MAX_EMBED_BACKOFF = 30.0
+
+
+class EmbeddingAPIError(RuntimeError):
+    """Raised when the embedding API cannot produce a usable vector."""
 
 
 def _extract_text(chunk: dict[str, Any]) -> str:
@@ -56,6 +70,7 @@ def _chunks_hash(chunks: list[dict[str, Any]]) -> str:
 
 
 def _build_manifest(chunks: list[dict[str, Any]], embeddings: np.ndarray) -> dict[str, Any]:
+    zero_rows = int(np.sum((embeddings == 0).all(axis=1))) if embeddings.shape[0] > 0 else 0
     return {
         "version": MANIFEST_VERSION,
         "chunk_count": len(chunks),
@@ -63,6 +78,7 @@ def _build_manifest(chunks: list[dict[str, Any]], embeddings: np.ndarray) -> dic
         "embedding_shape": [int(embeddings.shape[0]), int(embeddings.shape[1])],
         "embedding_dim": EMBEDDING_DIM,
         "is_contextual": any(_is_contextualized_chunk(chunk) for chunk in chunks),
+        "zero_row_count": zero_rows,
     }
 
 
@@ -132,6 +148,103 @@ def _validate_cache_guard(
         )
 
 
+def _l2_normalize(vec: np.ndarray) -> np.ndarray:
+    norm = float(np.linalg.norm(vec))
+    if norm == 0.0:
+        return vec
+    return vec / norm
+
+
+def _compute_embed_backoff(attempt: int) -> float:
+    delay = min(BASE_EMBED_BACKOFF * (2 ** attempt), MAX_EMBED_BACKOFF)
+    return delay + random.uniform(0.0, delay)
+
+
+async def _post_embed_batch(
+    client: httpx.AsyncClient,
+    batch: list[str],
+    api_key: str,
+    base_url: str,
+    model: str,
+) -> list[list[float]]:
+    """POST one batch of texts to /embeddings with retry. Raises on failure."""
+    payload = {
+        "model": model,
+        "input": batch,
+        "encoding_format": "float",
+        "dimensions": EMBEDDING_DIM,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    last_status: int | None = None
+    last_body: str = ""
+    for attempt in range(MAX_EMBED_RETRIES):
+        try:
+            resp = await client.post(
+                f"{base_url.rstrip('/')}/embeddings",
+                headers=headers,
+                json=payload,
+            )
+        except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.TimeoutException) as exc:
+            if attempt < MAX_EMBED_RETRIES - 1:
+                await asyncio.sleep(_compute_embed_backoff(attempt))
+                continue
+            raise EmbeddingAPIError(f"embedding transport error: {exc}") from exc
+
+        if resp.status_code == 200:
+            data = resp.json().get("data", []) or []
+            return [item["embedding"] for item in sorted(data, key=lambda x: x["index"])]
+
+        last_status = resp.status_code
+        last_body = (resp.text or "")[:240]
+
+        if resp.status_code in RETRYABLE_STATUS_CODES and attempt < MAX_EMBED_RETRIES - 1:
+            await asyncio.sleep(_compute_embed_backoff(attempt))
+            continue
+
+        # Non-retryable (400/413/404/401/...). Report loudly — no silent zero fallback.
+        break
+
+    raise EmbeddingAPIError(
+        f"embedding API failed after {MAX_EMBED_RETRIES} attempts "
+        f"(last_status={last_status}, body={last_body!r}); "
+        f"batch_size={len(batch)}, first_preview={batch[0][:80]!r}"
+    )
+
+
+async def _embed_single_long(
+    text: str,
+    api_key: str,
+    base_url: str,
+    model: str,
+    client: httpx.AsyncClient,
+) -> list[float]:
+    """Split an oversized text, embed each piece, L2-mean-pool back to one vector."""
+    pieces = split_by_tokens(text, SAFE_EMBED_TOKENS)
+    if not pieces:
+        raise EmbeddingAPIError("split_by_tokens produced 0 pieces for non-empty input")
+    logger.info(
+        "embed: single text %d tokens split into %d piece(s) for mean-pool",
+        count_tokens(text),
+        len(pieces),
+    )
+    # Re-check: every piece must be under the API limit after splitting.
+    for idx, piece in enumerate(pieces):
+        piece_tokens = count_tokens(piece)
+        if piece_tokens > SAFE_EMBED_TOKENS:
+            raise EmbeddingAPIError(
+                f"after split guard, piece #{idx} still {piece_tokens} > {SAFE_EMBED_TOKENS}; "
+                "investigate token_utils.split_by_tokens"
+            )
+    sub_raw = await _post_embed_batch(client, pieces, api_key, base_url, model)
+    sub_arr = np.array(sub_raw, dtype=np.float32)
+    normed = np.stack([_l2_normalize(row) for row in sub_arr], axis=0)
+    pooled = _l2_normalize(normed.mean(axis=0))
+    return pooled.tolist()
+
+
 async def _batch_embed(
     texts: list[str],
     api_key: str,
@@ -139,44 +252,54 @@ async def _batch_embed(
     model: str,
     batch_size: int,
 ) -> list[list[float]]:
-    """Embed texts in batches via SiliconFlow API."""
-    all_embeddings: list[list[float]] = []
+    """Embed texts with token-aware split+mean-pool for oversized entries.
+
+    Raises `EmbeddingAPIError` on transport/HTTP failures — no silent zero fallback.
+    """
+    if not texts:
+        return []
+
+    # Normalize empty → "empty" placeholder (preserves historical behavior).
+    normalized = [t if (t and t.strip()) else "empty" for t in texts]
+
+    # Pre-check token lengths; tag long ones for split+mean-pool.
+    lengths = [count_tokens(t) for t in normalized]
+    long_slots = {i for i, n in enumerate(lengths) if n > SAFE_EMBED_TOKENS}
+
+    if long_slots:
+        logger.info(
+            "embed: %d/%d texts exceed SAFE_EMBED_TOKENS=%d; routing through split+mean-pool",
+            len(long_slots),
+            len(normalized),
+            SAFE_EMBED_TOKENS,
+        )
+
+    output: list[list[float] | None] = [None] * len(normalized)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
-            # Skip empty texts
-            batch = [t if t.strip() else "empty" for t in batch]
-            try:
-                resp = await client.post(
-                    f"{base_url.rstrip('/')}/embeddings",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "input": batch,
-                        "encoding_format": "float",
-                    },
-                )
-                if resp.status_code == 200:
-                    data = resp.json().get("data", [])
-                    batch_embs = [
-                        item["embedding"]
-                        for item in sorted(data, key=lambda x: x["index"])
-                    ]
-                    all_embeddings.extend(batch_embs)
-                else:
-                    logger.warning(
-                        "Embedding API %d: %s", resp.status_code, resp.text[:200]
-                    )
-                    all_embeddings.extend([[0.0] * EMBEDDING_DIM] * len(batch))
-            except Exception as e:
-                logger.warning("Embedding API error: %s", e)
-                all_embeddings.extend([[0.0] * EMBEDDING_DIM] * len(batch))
+        # 1) Fill long slots via split+mean-pool (one text at a time).
+        for i in sorted(long_slots):
+            output[i] = await _embed_single_long(normalized[i], api_key, base_url, model, client)
 
-    return all_embeddings
+        # 2) Batch-embed the rest.
+        regular_indices = [i for i in range(len(normalized)) if i not in long_slots]
+        for start in range(0, len(regular_indices), batch_size):
+            window = regular_indices[start : start + batch_size]
+            batch_texts = [normalized[i] for i in window]
+            sub_raw = await _post_embed_batch(client, batch_texts, api_key, base_url, model)
+            if len(sub_raw) != len(window):
+                raise EmbeddingAPIError(
+                    f"embedding API returned {len(sub_raw)} vectors for {len(window)} inputs"
+                )
+            for slot_idx, vec in zip(window, sub_raw):
+                output[slot_idx] = vec
+
+    # Final sanity: every slot filled.
+    missing = [i for i, v in enumerate(output) if v is None]
+    if missing:
+        raise EmbeddingAPIError(f"embedding slots unfilled: {missing[:8]}")
+
+    return [vec for vec in output if vec is not None]
 
 
 class ChunkVectorStore:
@@ -274,15 +397,20 @@ class ChunkVectorStore:
         raw = await _batch_embed(texts, resolved_key, resolved_base, resolved_model, batch_size)
         embeddings = np.array(raw, dtype=np.float32)
 
-        # Validate shape
+        # Validate shape — this is a hard requirement now; no zero fallback.
         if embeddings.shape != (n, EMBEDDING_DIM):
-            logger.warning(
-                "Embedding shape mismatch: expected (%d, %d), got %s",
-                n, EMBEDDING_DIM, embeddings.shape,
+            raise EmbeddingAPIError(
+                f"Embedding shape mismatch: expected ({n}, {EMBEDDING_DIM}), got {embeddings.shape}"
             )
-            embeddings = np.zeros((n, EMBEDDING_DIM), dtype=np.float32)
-        else:
-            _save_cache(effective_cache_path, embeddings, chunks)
+
+        # Hard guard: no all-zero rows allowed when an API key was available.
+        zero_rows = int(np.sum((embeddings == 0).all(axis=1)))
+        if zero_rows > 0:
+            raise ValueError(
+                f"Embedding build produced {zero_rows}/{n} all-zero rows — poisoned, aborting"
+            )
+
+        _save_cache(effective_cache_path, embeddings, chunks)
 
         return cls(chunks, embeddings)
 
