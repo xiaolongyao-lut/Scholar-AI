@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import numpy as np
+import pytest
 
 from chunk_vector_store import ChunkVectorStore, EMBEDDING_DIM
 from eval_retrieval_runtime import _rrf_fuse
@@ -85,6 +87,59 @@ def test_build_no_api_key_graceful(monkeypatch):
     store = asyncio.run(ChunkVectorStore.build(chunks))
     assert store._embeddings.shape == (1, EMBEDDING_DIM)
     assert store.has_embeddings is False
+
+
+def test_build_raises_when_cache_shape_or_count_mismatch(tmp_path):
+    """Guardrail: cached embedding count/shape drift must fail fast instead of silently recomputing."""
+    chunks = [
+        {"chunk_id": "c_0", "content": "hello", "embedding": list(np.random.randn(EMBEDDING_DIM))},
+        {"chunk_id": "c_1", "content": "world", "embedding": list(np.random.randn(EMBEDDING_DIM))},
+    ]
+    cache_path = tmp_path / "corpus_embeddings.npy"
+
+    # Deliberately wrong cache shape: expected (2, EMBEDDING_DIM), actual (1, EMBEDDING_DIM).
+    np.save(str(cache_path), np.zeros((1, EMBEDDING_DIM), dtype=np.float32))
+    (tmp_path / "corpus_embeddings.manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "chunk_count": 1,
+                "embedding_shape": [1, EMBEDDING_DIM],
+                "is_contextual": False,
+                "chunks_hash": "placeholder",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError):
+        asyncio.run(ChunkVectorStore.build(chunks, cache_path=cache_path))
+
+
+def test_build_raises_when_contextual_mode_mismatch(tmp_path):
+    """Guardrail: manifest contextual mode must match current chunk mode."""
+    chunks = [
+        {"chunk_id": "c_0", "content": "plain content", "embedding": list(np.random.randn(EMBEDDING_DIM))},
+    ]
+    cache_path = tmp_path / "corpus_embeddings.npy"
+    np.save(str(cache_path), np.zeros((1, EMBEDDING_DIM), dtype=np.float32))
+    (tmp_path / "corpus_embeddings.manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "chunk_count": 1,
+                "embedding_shape": [1, EMBEDDING_DIM],
+                "is_contextual": True,
+                "chunks_hash": "placeholder",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError):
+        asyncio.run(ChunkVectorStore.build(chunks, cache_path=cache_path))
 
 
 def test_cosine_search_vec_returns_scores():

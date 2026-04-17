@@ -7,6 +7,8 @@ Gracefully degrades when no API key is available.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 from pathlib import Path
@@ -20,10 +22,114 @@ logger = logging.getLogger(__name__)
 DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1"
 DEFAULT_MODEL = "BAAI/bge-m3"
 EMBEDDING_DIM = 1024
+MANIFEST_VERSION = 1
 
 
 def _extract_text(chunk: dict[str, Any]) -> str:
     return str(chunk.get("content") or chunk.get("claim") or chunk.get("text") or "")
+
+
+def _is_contextualized_chunk(chunk: dict[str, Any]) -> bool:
+    content = str(chunk.get("content") or "").lstrip()
+    return bool(content.startswith("[") and "]" in content[:300])
+
+
+def _resolve_effective_cache_path(cache_path: Path | None, chunks: list[dict[str, Any]]) -> Path | None:
+    if cache_path is None:
+        return None
+    if any(_is_contextualized_chunk(chunk) for chunk in chunks):
+        return cache_path.with_name(f"{cache_path.stem}_contextual{cache_path.suffix}")
+    return cache_path
+
+
+def _cache_manifest_path(cache_path: Path) -> Path:
+    return cache_path.with_suffix(".manifest.json")
+
+
+def _chunks_hash(chunks: list[dict[str, Any]]) -> str:
+    digest = hashlib.sha256()
+    for chunk in chunks:
+        payload = json.dumps(chunk, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        digest.update(payload.encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _build_manifest(chunks: list[dict[str, Any]], embeddings: np.ndarray) -> dict[str, Any]:
+    return {
+        "version": MANIFEST_VERSION,
+        "chunk_count": len(chunks),
+        "chunks_hash": _chunks_hash(chunks),
+        "embedding_shape": [int(embeddings.shape[0]), int(embeddings.shape[1])],
+        "embedding_dim": EMBEDDING_DIM,
+        "is_contextual": any(_is_contextualized_chunk(chunk) for chunk in chunks),
+    }
+
+
+def _load_manifest(manifest_path: Path) -> dict[str, Any]:
+    if not manifest_path.exists():
+        raise ValueError(f"Embedding cache manifest missing: {manifest_path}")
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - defensive parse failure
+        raise ValueError(f"Embedding cache manifest unreadable: {manifest_path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"Embedding cache manifest invalid format: {manifest_path}")
+    return payload
+
+
+def _validate_cache_guard(
+    *,
+    chunks: list[dict[str, Any]],
+    cached: np.ndarray,
+    manifest: dict[str, Any],
+    cache_path: Path,
+) -> None:
+    expected_count = len(chunks)
+    expected_shape = (expected_count, EMBEDDING_DIM)
+    if cached.shape != expected_shape:
+        raise ValueError(
+            f"Embedding cache shape mismatch at {cache_path}: expected {expected_shape}, got {cached.shape}"
+        )
+
+    chunk_count = manifest.get("chunk_count")
+    if not isinstance(chunk_count, int) or chunk_count != expected_count:
+        raise ValueError(
+            f"Embedding cache manifest chunk_count mismatch at {cache_path}: expected {expected_count}, got {chunk_count}"
+        )
+
+    manifest_shape = manifest.get("embedding_shape")
+    if (
+        not isinstance(manifest_shape, list)
+        or len(manifest_shape) != 2
+        or int(manifest_shape[0]) != expected_shape[0]
+        or int(manifest_shape[1]) != expected_shape[1]
+    ):
+        raise ValueError(
+            f"Embedding cache manifest shape mismatch at {cache_path}: expected {list(expected_shape)}, got {manifest_shape}"
+        )
+
+    manifest_dim = manifest.get("embedding_dim")
+    if manifest_dim is not None and int(manifest_dim) != EMBEDDING_DIM:
+        raise ValueError(
+            f"Embedding cache manifest dimension mismatch at {cache_path}: expected {EMBEDDING_DIM}, got {manifest_dim}"
+        )
+
+    expected_contextual = any(_is_contextualized_chunk(chunk) for chunk in chunks)
+    manifest_contextual = manifest.get("is_contextual")
+    if not isinstance(manifest_contextual, bool) or manifest_contextual != expected_contextual:
+        raise ValueError(
+            f"Embedding cache manifest contextual-mode mismatch at {cache_path}: "
+            f"expected {expected_contextual}, got {manifest_contextual}"
+        )
+
+    expected_hash = _chunks_hash(chunks)
+    manifest_hash = manifest.get("chunks_hash")
+    if not isinstance(manifest_hash, str) or manifest_hash != expected_hash:
+        raise ValueError(
+            f"Embedding cache manifest chunks_hash mismatch at {cache_path}: "
+            "corpus changed while cache remained stale"
+        )
 
 
 async def _batch_embed(
@@ -110,19 +216,33 @@ class ChunkVectorStore:
         model: str = DEFAULT_MODEL,
         cache_path: Path | None = None,
         batch_size: int = 32,
+        strict_cache_guard: bool = True,
     ) -> ChunkVectorStore:
         """Build index. Uses cached embeddings when available, else calls API."""
         if not chunks:
             return cls([], np.zeros((0, EMBEDDING_DIM), dtype=np.float32))
 
         n = len(chunks)
+        effective_cache_path = _resolve_effective_cache_path(cache_path, chunks)
 
         # 1. Try loading from cache
-        if cache_path and cache_path.exists():
+        if effective_cache_path and effective_cache_path.exists():
+            if strict_cache_guard:
+                manifest = _load_manifest(_cache_manifest_path(effective_cache_path))
+                cached = np.load(str(effective_cache_path))
+                _validate_cache_guard(
+                    chunks=chunks,
+                    cached=cached,
+                    manifest=manifest,
+                    cache_path=effective_cache_path,
+                )
+                logger.info("Loaded %d cached embeddings from %s (manifest-verified)", n, effective_cache_path)
+                return cls(chunks, cached.astype(np.float32))
+
             try:
-                cached = np.load(str(cache_path))
+                cached = np.load(str(effective_cache_path))
                 if cached.shape[0] == n and cached.shape[1] == EMBEDDING_DIM:
-                    logger.info("Loaded %d cached embeddings from %s", n, cache_path)
+                    logger.info("Loaded %d cached embeddings from %s", n, effective_cache_path)
                     return cls(chunks, cached.astype(np.float32))
             except Exception:
                 pass
@@ -131,7 +251,7 @@ class ChunkVectorStore:
         pre = [chunk.get("embedding") for chunk in chunks]
         if all(e is not None and len(e) >= EMBEDDING_DIM for e in pre):
             embeddings = np.array(pre, dtype=np.float32)[:, :EMBEDDING_DIM]
-            _save_cache(cache_path, embeddings)
+            _save_cache(effective_cache_path, embeddings, chunks)
             logger.info("Using %d pre-computed embeddings from chunks", n)
             return cls(chunks, embeddings)
 
@@ -162,7 +282,7 @@ class ChunkVectorStore:
             )
             embeddings = np.zeros((n, EMBEDDING_DIM), dtype=np.float32)
         else:
-            _save_cache(cache_path, embeddings)
+            _save_cache(effective_cache_path, embeddings, chunks)
 
         return cls(chunks, embeddings)
 
@@ -231,11 +351,16 @@ class ChunkVectorStore:
         return {int(i): float(scores[i]) for i in indices}
 
 
-def _save_cache(cache_path: Path | None, embeddings: np.ndarray) -> None:
+def _save_cache(cache_path: Path | None, embeddings: np.ndarray, chunks: list[dict[str, Any]]) -> None:
     if cache_path is not None:
         try:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             np.save(str(cache_path), embeddings)
+            manifest = _build_manifest(chunks, embeddings)
+            _cache_manifest_path(cache_path).write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
             logger.info("Saved embedding cache to %s", cache_path)
         except Exception as e:
             logger.warning("Failed to save embedding cache: %s", e)

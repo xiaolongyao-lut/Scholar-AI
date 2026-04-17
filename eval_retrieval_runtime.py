@@ -66,6 +66,8 @@ DEFAULT_USE_RERANK = True
 DEFAULT_USE_EXPANSION = False
 DEFAULT_QUERIES_PATH = "eval_queries_v2.0.jsonl"
 DEFAULT_QUERY_CONCURRENCY = 8
+DEFAULT_RERANK_CONCURRENCY = 3
+DEFAULT_STRICT_CACHE_GUARD = True
 
 
 def _calculate_mrr(relevance_list: list[bool]) -> float:
@@ -422,6 +424,7 @@ def run_eval(
     use_expansion: bool = DEFAULT_USE_EXPANSION,
     use_contextual: bool = False,
     query_concurrency: int = DEFAULT_QUERY_CONCURRENCY,
+    strict_cache_guard: bool = DEFAULT_STRICT_CACHE_GUARD,
 ) -> dict[str, Any]:
     # 当前默认策略（Phase 5.2 分路路由修复后）：
     # - use_expansion=True：BM25/Graph 走中文原 query，Dense 走英文翻译，
@@ -462,6 +465,7 @@ def run_eval(
             rerank_top_n=rerank_top_n,
             use_expansion=use_expansion,
             query_concurrency=query_concurrency,
+            strict_cache_guard=strict_cache_guard,
         )
     )
 
@@ -489,6 +493,7 @@ async def _run_eval_async(
     rerank_top_n: int,
     use_expansion: bool,
     query_concurrency: int = DEFAULT_QUERY_CONCURRENCY,
+    strict_cache_guard: bool = DEFAULT_STRICT_CACHE_GUARD,
 ) -> list[dict[str, Any]]:
     """Async eval loop — single event-loop, batch query embedding."""
 
@@ -498,7 +503,11 @@ async def _run_eval_async(
         chunks = corpus.get("chunks", []) if isinstance(corpus.get("chunks"), list) else []
         if chunks:
             cache_path = Path("output") / "embedding_cache" / "corpus_embeddings.npy"
-            vector_store = await ChunkVectorStore.build(chunks, cache_path=cache_path)
+            vector_store = await ChunkVectorStore.build(
+                chunks,
+                cache_path=cache_path,
+                strict_cache_guard=strict_cache_guard,
+            )
 
     # Pre-embed all query texts in batch (avoids 414 individual API calls)
     query_texts = [str(q.get("query_text", "")) for q in queries]
@@ -510,7 +519,7 @@ async def _run_eval_async(
             pass
 
     rerank_semaphore = asyncio.Semaphore(
-        int(os.getenv("SILICONFLOW_RERANK_CONCURRENCY", "8"))
+        int(os.getenv("SILICONFLOW_RERANK_CONCURRENCY", str(DEFAULT_RERANK_CONCURRENCY)))
     ) if use_rerank else None
 
     expansion_semaphore = asyncio.Semaphore(
@@ -614,6 +623,20 @@ if __name__ == "__main__":
     )
     parser.set_defaults(use_expansion=DEFAULT_USE_EXPANSION)
     parser.add_argument("--contextual", action="store_true")
+    strict_guard_group = parser.add_mutually_exclusive_group()
+    strict_guard_group.add_argument(
+        "--strict-cache-guard",
+        dest="strict_cache_guard",
+        action="store_true",
+        help="启用 embedding cache manifest/hash 硬校验（默认开启）。",
+    )
+    strict_guard_group.add_argument(
+        "--no-strict-cache-guard",
+        dest="strict_cache_guard",
+        action="store_false",
+        help="关闭 embedding cache 硬校验（不推荐，仅用于兼容旧缓存）。",
+    )
+    parser.set_defaults(strict_cache_guard=DEFAULT_STRICT_CACHE_GUARD)
     parser.add_argument(
         "--query-concurrency",
         type=int,
@@ -632,6 +655,7 @@ if __name__ == "__main__":
         use_expansion=args.use_expansion,
         use_contextual=args.contextual,
         query_concurrency=args.query_concurrency,
+        strict_cache_guard=args.strict_cache_guard,
     )
     agg = final_metrics.get("aggregated_metrics", {})
     print("Evaluation completed.")
