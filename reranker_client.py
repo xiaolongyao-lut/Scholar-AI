@@ -5,6 +5,7 @@ import contextlib
 import json
 import logging
 import os
+import random
 import time
 from typing import Any
 
@@ -14,6 +15,42 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RERANKER_URL = "https://api.siliconflow.cn/v1/rerank"
 DEFAULT_RERANKER_MODEL = "Qwen/Qwen3-Reranker-8B"
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_BACKOFF_SECONDS = 60.0
+BASE_BACKOFF_SECONDS = 0.5
+
+
+def _parse_retry_after(headers: Any) -> float | None:
+    if headers is None:
+        return None
+    try:
+        ms = headers.get("retry-after-ms")
+    except Exception:
+        return None
+    if ms is not None:
+        try:
+            value = float(ms) / 1000.0
+            if value >= 0:
+                return min(value, MAX_BACKOFF_SECONDS)
+        except (TypeError, ValueError):
+            pass
+    raw = headers.get("retry-after")
+    if raw is None:
+        return None
+    try:
+        value = float(raw)
+        if value >= 0:
+            return min(value, MAX_BACKOFF_SECONDS)
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def _compute_backoff(attempt: int, retry_after: float | None) -> float:
+    if retry_after is not None:
+        return retry_after + random.uniform(0.0, 0.1)
+    delay = min(BASE_BACKOFF_SECONDS * (2 ** attempt), MAX_BACKOFF_SECONDS)
+    return delay + random.uniform(0.0, delay)
 
 
 def _normalize_text(text: str) -> str:
@@ -113,6 +150,15 @@ async def rerank_async(
                     timings["api_ms"] = api_ms
                     timings["attempts"] = attempt + 1
                 if response.status_code != 200:
+                    if response.status_code in RETRYABLE_STATUS_CODES and attempt < 2:
+                        retry_after = _parse_retry_after(getattr(response, "headers", None))
+                        backoff_seconds = _compute_backoff(attempt, retry_after)
+                        logger.info(
+                            "Reranker API %s — retry %d/3 in %.2fs (retry-after=%s)",
+                            response.status_code, attempt + 2, backoff_seconds, retry_after,
+                        )
+                        await asyncio.sleep(backoff_seconds)
+                        continue
                     logger.warning("Reranker API %s: %s", response.status_code, response.text[:240])
                     return _apply_fallback(candidates, top_k)
 
@@ -144,7 +190,7 @@ async def rerank_async(
 
             except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.TimeoutException) as exc:
                 if attempt < 2:
-                    await asyncio.sleep(0.5 * (2 ** attempt))  # 0.5s, 1.0s
+                    await asyncio.sleep(_compute_backoff(attempt, None))
                     continue
                 logger.warning("Reranker API failed after 3 attempts: %s", exc)
                 return _apply_fallback(candidates, top_k)

@@ -40,6 +40,35 @@ class _StubAsyncClient:
         )
 
 
+class _StubAsyncClient429Then200:
+    calls = 0
+
+    def __init__(self, *_args, **kwargs):
+        self.kwargs = kwargs
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, _url, headers=None, json=None):
+        _ = headers, json
+        _StubAsyncClient429Then200.calls += 1
+        if _StubAsyncClient429Then200.calls == 1:
+            return _StubResponse(status_code=429, payload={"error": "rate limited"})
+        return _StubResponse(
+            status_code=200,
+            payload={
+                "results": [
+                    {"index": 2, "relevance_score": 0.99},
+                    {"index": 0, "relevance_score": 0.50},
+                    {"index": 1, "relevance_score": 0.10},
+                ]
+            },
+        )
+
+
 def test_rerank_preserves_order_without_api_key(monkeypatch):
     monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
     monkeypatch.delenv("SILICONFLOW_RERANK_API_KEY", raising=False)
@@ -91,3 +120,87 @@ def test_rerank_async_reorders_using_api(monkeypatch):
     assert [item["chunk_id"] for item in reranked] == ["c2", "c1", "c3"]
     assert reranked[0]["rerank_score"] == 0.95
     assert reranked[1]["rerank_score"] == 0.12
+
+
+def test_rerank_async_retries_429_then_succeeds(monkeypatch):
+    import reranker_client as reranker_mod
+
+    _StubAsyncClient429Then200.calls = 0
+    monkeypatch.setattr(reranker_mod.httpx, "AsyncClient", _StubAsyncClient429Then200)
+
+    # eliminate actual sleep/jitter delay in unit test
+    async def _no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(reranker_mod.asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(reranker_mod.random, "uniform", lambda _a, _b: 0.0)
+
+    candidates = [
+        {"chunk_id": "c1", "content": "doc A", "rrf_score": 0.8},
+        {"chunk_id": "c2", "content": "doc B", "rrf_score": 0.7},
+        {"chunk_id": "c3", "content": "doc C", "rrf_score": 0.6},
+    ]
+    timings: dict[str, float] = {}
+
+    reranked = asyncio.run(
+        reranker_mod.rerank_async("laser query", candidates, api_key="sf_key", timings=timings)
+    )
+
+    assert _StubAsyncClient429Then200.calls == 2
+    assert timings.get("attempts") == 2
+    assert [item["chunk_id"] for item in reranked] == ["c3", "c1", "c2"]
+
+
+def test_parse_retry_after_prefers_ms_header():
+    from reranker_client import _parse_retry_after
+
+    assert _parse_retry_after({"retry-after-ms": "1500"}) == 1.5
+    assert _parse_retry_after({"retry-after": "3"}) == 3.0
+    assert _parse_retry_after({"retry-after-ms": "bogus", "retry-after": "2"}) == 2.0
+    assert _parse_retry_after({}) is None
+    assert _parse_retry_after(None) is None
+    # caps oversized values at MAX_BACKOFF_SECONDS (60s)
+    assert _parse_retry_after({"retry-after": "999"}) == 60.0
+
+
+def test_rerank_async_honors_retry_after_header(monkeypatch):
+    """When server returns Retry-After, backoff must use that value (not exponential)."""
+    import reranker_client as reranker_mod
+
+    captured_sleeps: list[float] = []
+
+    class _RetryAfterStub:
+        calls = 0
+
+        def __init__(self, *_a, **_kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return False
+
+        async def post(self, *_a, **_kw):
+            _RetryAfterStub.calls += 1
+            if _RetryAfterStub.calls == 1:
+                resp = _StubResponse(status_code=429, payload={"error": "rate limited"})
+                resp.headers = {"retry-after-ms": "750"}
+                return resp
+            return _StubResponse(
+                status_code=200,
+                payload={"results": [{"index": 0, "relevance_score": 0.9}]},
+            )
+
+    async def _capture_sleep(seconds):
+        captured_sleeps.append(seconds)
+
+    monkeypatch.setattr(reranker_mod.httpx, "AsyncClient", _RetryAfterStub)
+    monkeypatch.setattr(reranker_mod.asyncio, "sleep", _capture_sleep)
+    monkeypatch.setattr(reranker_mod.random, "uniform", lambda _a, _b: 0.0)
+
+    candidates = [{"chunk_id": "c1", "content": "doc A", "rrf_score": 0.5}]
+    asyncio.run(reranker_mod.rerank_async("q", candidates, api_key="sf_key"))
+
+    assert _RetryAfterStub.calls == 2
+    assert captured_sleeps == [0.75]  # Retry-After header honored, not 0.5*2^0 exponential
