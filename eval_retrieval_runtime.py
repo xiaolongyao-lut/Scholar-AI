@@ -8,6 +8,20 @@ import time
 from pathlib import Path
 from typing import Any
 
+# 加载 .env（SILICONFLOW_API_KEY / RERANK_API_KEY / ARK_API_KEY 等）
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    _env_path = Path(__file__).parent / ".env"
+    if _env_path.exists():
+        for line in _env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
 try:
     from layers.r_layer_hybrid_retriever import hybrid_search as hybrid_search_async
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
@@ -28,6 +42,30 @@ try:
     from reranker_client import rerank_async
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
     rerank_async = None
+
+try:
+    from query_expander import translate_query_async
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
+    translate_query_async = None
+
+try:
+    from contextual_chunker import batch_contextualize
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
+    batch_contextualize = None
+
+
+# 默认参数采用“建议值”，不是硬编码策略。
+# 后续只需改这里即可全局生效（run_eval 默认值与 CLI 默认值共用）。
+DEFAULT_TOP_K = 10
+DEFAULT_RECALL_TOP_N = 100
+DEFAULT_RERANK_TOP_N = 40
+DEFAULT_USE_RERANK = True
+# 实测：query expansion 在 v2.0 (414 条中文语料) 上反向收益 -12%
+# （0.3043 → 0.2657）。翻译后英文 query 喂 dense 路引入噪声，RRF 稀释
+# BM25/Graph 的精准命中。保留代码路径但默认关闭，需 --expansion 显式开。
+DEFAULT_USE_EXPANSION = False
+DEFAULT_QUERIES_PATH = "eval_queries_v2.0.jsonl"
+DEFAULT_QUERY_CONCURRENCY = 8
 
 
 def _calculate_mrr(relevance_list: list[bool]) -> float:
@@ -64,6 +102,10 @@ def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
                 "mrr": 0.0,
                 "avg_latency_ms": 0.0,
                 "p95_latency_ms": 0.0,
+                "rerank_api_avg_ms": 0.0,
+                "rerank_api_p95_ms": 0.0,
+                "rerank_queue_avg_ms": 0.0,
+                "rerank_queue_p95_ms": 0.0,
             },
             "per_difficulty": {},
         }
@@ -71,8 +113,17 @@ def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
     def _avg(values: list[float]) -> float:
         return round(sum(values) / len(values), 4) if values else 0.0
 
+    def _p95(values: list[float]) -> float:
+        if not values:
+            return 0.0
+        s = sorted(values)
+        return round(s[min(len(s) - 1, int(len(s) * 0.95))], 2)
+
     latencies = sorted(float(r.get("latency_ms", 0.0)) for r in results)
     p95_idx = min(len(latencies) - 1, int(len(latencies) * 0.95))
+
+    api_ms_list = [float(r["rerank_api_ms"]) for r in results if r.get("rerank_api_ms") is not None]
+    queue_ms_list = [float(r["rerank_queue_wait_ms"]) for r in results if r.get("rerank_queue_wait_ms") is not None]
 
     aggregated = {
         "recall_at_1": _avg([float(r.get("recall_at_1", 0.0)) for r in results]),
@@ -82,6 +133,10 @@ def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "mrr": _avg([float(r.get("mrr", 0.0)) for r in results]),
         "avg_latency_ms": round(sum(latencies) / len(latencies), 2),
         "p95_latency_ms": round(latencies[p95_idx], 2),
+        "rerank_api_avg_ms": round(sum(api_ms_list) / len(api_ms_list), 2) if api_ms_list else 0.0,
+        "rerank_api_p95_ms": _p95(api_ms_list),
+        "rerank_queue_avg_ms": round(sum(queue_ms_list) / len(queue_ms_list), 2) if queue_ms_list else 0.0,
+        "rerank_queue_p95_ms": _p95(queue_ms_list),
     }
 
     per_difficulty: dict[str, dict[str, Any]] = {}
@@ -150,6 +205,7 @@ async def _retrieve(
     use_rerank: bool = True,
     rerank_top_n: int = 20,
     rerank_semaphore: Any | None = None,
+    rerank_timings: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     hybrid_hits: list[dict[str, Any]] = []
     graph_hits: list[dict[str, Any]] = []
@@ -179,7 +235,8 @@ async def _retrieve(
     if use_rerank and rerank_async and merged_hits:
         try:
             return await rerank_async(
-                query_text, merged_hits[:rerank_top_n], top_k=top_k, semaphore=rerank_semaphore
+                query_text, merged_hits[:rerank_top_n], top_k=top_k,
+                semaphore=rerank_semaphore, timings=rerank_timings,
             )
         except (RuntimeError, TypeError, ValueError):
             pass
@@ -193,6 +250,135 @@ async def _dense_retrieve_precomputed(
     if query_vec is None:
         return []
     return vector_store.cosine_search(query_vec, top_k=top_k)
+
+
+async def _retrieve_with_expansion(
+    query_text: str,
+    corpus: dict[str, Any],
+    top_k: int,
+    *,
+    keyword_graph: dict[str, Any] | None = None,
+    vector_store: Any | None = None,
+    query_vec: Any | None = None,
+    use_rerank: bool = True,
+    rerank_top_n: int = 20,
+    rerank_semaphore: Any | None = None,
+    use_expansion: bool = False,
+    expansion_semaphore: Any | None = None,
+    recall_top_n: int = 100,
+    rerank_timings: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
+    """Phase 5.2: split-routing translated retrieval.
+
+    Why split-routing: r_layer_hybrid_retriever 的 BM25 把中英文 token
+    分开统计（en_tokens / cn_tokens），英文 query 匹不到中文 chunk；
+    graph_keyword_retriever 同理只在 token-level 命中。因此翻译只能
+    喂给 bge-m3 dense 这一路，BM25 + Graph 必须保留中文原 query，
+    否则 3 路 RRF 退化成 1 路，指标反而下降。
+
+    接线：
+      - BM25 (hybrid) + Graph：原中文 query_text
+      - Dense：英文 translated query + 对应重嵌的 query_vec
+      - Rerank：原中文 query_text（Qwen3-Reranker-8B 支持跨语言）
+    """
+
+    merge_top = max(top_k, rerank_top_n, recall_top_n)
+
+    # --- 1. 非扩展路径：走原来的单 query 三路 -----------------------
+    if not use_expansion or translate_query_async is None:
+        return await _retrieve(
+            query_text,
+            corpus,
+            top_k=merge_top,
+            keyword_graph=keyword_graph,
+            vector_store=vector_store,
+            query_vec=query_vec,
+            use_rerank=use_rerank,
+            rerank_top_n=rerank_top_n,
+            rerank_semaphore=rerank_semaphore,
+            rerank_timings=rerank_timings,
+        )
+
+    # --- 2. 翻译（失败则降级到原 query）------------------------------
+    translated = ""
+    try:
+        translated = await translate_query_async(query_text, semaphore=expansion_semaphore)
+    except (RuntimeError, TypeError, ValueError):
+        translated = ""
+
+    translated = (translated or "").strip()
+    if not translated or translated == query_text:
+        # 翻译无效 / 无 API key，整个路径回退
+        return await _retrieve(
+            query_text,
+            corpus,
+            top_k=merge_top,
+            keyword_graph=keyword_graph,
+            vector_store=vector_store,
+            query_vec=query_vec,
+            use_rerank=use_rerank,
+            rerank_top_n=rerank_top_n,
+            rerank_semaphore=rerank_semaphore,
+            rerank_timings=rerank_timings,
+        )
+
+    # --- 3. 英文 query 重嵌（dense 路专用）---------------------------
+    translated_vec = query_vec
+    if vector_store is not None:
+        try:
+            translated_vec = await vector_store.embed_query(translated)
+        except (RuntimeError, TypeError, ValueError):
+            translated_vec = query_vec
+
+    # --- 4. 并行：BM25+Graph 走中文原 query，Dense 走英文 -----------
+    hybrid_hits: list[dict[str, Any]] = []
+    graph_hits: list[dict[str, Any]] = []
+    dense_hits: list[dict[str, Any]] = []
+
+    hybrid_task = None
+    if hybrid_search_async:
+        hybrid_task = asyncio.create_task(
+            hybrid_search_async(corpus, query_text, top_k=merge_top)
+        )
+
+    # Graph / Dense 是同步或轻量协程，顺序调用即可
+    if keyword_graph and graph_keyword_search:
+        try:
+            chunks = corpus.get("chunks", []) if isinstance(corpus.get("chunks"), list) else []
+            graph_hits = graph_keyword_search(
+                keyword_graph, chunks, query=query_text, top_k=merge_top
+            )
+        except (RuntimeError, TypeError, ValueError):
+            graph_hits = []
+
+    if vector_store is not None and translated_vec is not None:
+        try:
+            dense_hits = await _dense_retrieve_precomputed(
+                vector_store, translated_vec, merge_top
+            )
+        except (RuntimeError, TypeError, ValueError):
+            dense_hits = []
+
+    if hybrid_task is not None:
+        try:
+            hits = await hybrid_task
+            hybrid_hits = hits if isinstance(hits, list) else []
+        except (RuntimeError, TypeError, ValueError):
+            hybrid_hits = []
+
+    # --- 5. RRF 合并 + 中文 query rerank ------------------------------
+    merged = _rrf_fuse([hybrid_hits, graph_hits, dense_hits], top_k=merge_top)
+
+    if use_rerank and rerank_async and merged:
+        try:
+            return await rerank_async(
+                query_text, merged[:rerank_top_n], top_k=top_k,
+                semaphore=rerank_semaphore, timings=rerank_timings,
+            )
+        except (RuntimeError, TypeError, ValueError):
+            pass
+
+    return merged[:top_k]
 
 
 def _rrf_fuse(rank_lists: list[list[dict[str, Any]]], top_k: int, rrf_k: int = 60) -> list[dict[str, Any]]:
@@ -227,14 +413,35 @@ def _rrf_fuse(rank_lists: list[list[dict[str, Any]]], top_k: int, rrf_k: int = 6
 
 
 def run_eval(
-    queries_path: str = "eval_queries_v1.0.jsonl",
+    queries_path: str = DEFAULT_QUERIES_PATH,
     output_path: str = "BASELINE_METRICS.json",
-    top_k: int = 10,
-    use_rerank: bool = True,
-    rerank_top_n: int = 30,
+    top_k: int = DEFAULT_TOP_K,
+    recall_top_n: int = DEFAULT_RECALL_TOP_N,
+    use_rerank: bool = DEFAULT_USE_RERANK,
+    rerank_top_n: int = DEFAULT_RERANK_TOP_N,
+    use_expansion: bool = DEFAULT_USE_EXPANSION,
+    use_contextual: bool = False,
+    query_concurrency: int = DEFAULT_QUERY_CONCURRENCY,
 ) -> dict[str, Any]:
+    # 当前默认策略（Phase 5.2 分路路由修复后）：
+    # - use_expansion=True：BM25/Graph 走中文原 query，Dense 走英文翻译，
+    #   Rerank 走中文原 query。在翻译无效或无 API key 时优雅降级。
+    # - recall_top_n=100 / rerank_top_n=40：提升召回深度与重排候选量，
+    #   Qwen3-Reranker-8B 足以处理 top-40 而不显著拖累延迟（并发 8）。
+    #
+    # 后续调参建议：
+    # 1) 若召回仍不足（Recall@10 偏低），把 recall_top_n 进一步上调到 150/200。
+    # 2) 若排序不足（MRR 偏低），再上调 rerank_top_n 到 60，或尝试 --contextual。
+    # 3) top_k 是产品展示策略（5 更精简，10 候选更多），不应替代检索质量调参。
     queries = _load_queries(Path(queries_path))
     corpus = _load_retrieval_corpus()
+
+    # Phase 6: optionally prepend document-level context to chunks
+    if use_contextual and batch_contextualize:
+        chunks = corpus.get("chunks", []) if isinstance(corpus.get("chunks"), list) else []
+        if chunks:
+            contextualized_chunks = batch_contextualize(chunks)
+            corpus = {**corpus, "chunks": contextualized_chunks}
 
     # Pre-build keyword graph once (Phase 3 perf fix)
     keyword_graph: dict[str, Any] | None = None
@@ -250,8 +457,11 @@ def run_eval(
             corpus,
             keyword_graph,
             top_k,
+            recall_top_n=recall_top_n,
             use_rerank=use_rerank,
             rerank_top_n=rerank_top_n,
+            use_expansion=use_expansion,
+            query_concurrency=query_concurrency,
         )
     )
 
@@ -274,8 +484,11 @@ async def _run_eval_async(
     keyword_graph: dict[str, Any] | None,
     top_k: int,
     *,
+    recall_top_n: int,
     use_rerank: bool,
     rerank_top_n: int,
+    use_expansion: bool,
+    query_concurrency: int = DEFAULT_QUERY_CONCURRENCY,
 ) -> list[dict[str, Any]]:
     """Async eval loop — single event-loop, batch query embedding."""
 
@@ -300,45 +513,62 @@ async def _run_eval_async(
         int(os.getenv("SILICONFLOW_RERANK_CONCURRENCY", "8"))
     ) if use_rerank else None
 
+    expansion_semaphore = asyncio.Semaphore(
+        int(os.getenv("ARK_EXPANSION_CONCURRENCY", "2"))
+    ) if use_expansion else None
+
+    # 查询级 gather 闸：避免 414 个协程同时挤在 rerank_semaphore 门口，
+    # 导致 latency_ms 被"排队等"污染。默认与 rerank 并发对齐。
+    query_gate = asyncio.Semaphore(max(1, int(query_concurrency)))
+
     async def _eval_one(i: int, q: dict[str, Any]) -> dict[str, Any]:
-        query_text = query_texts[i]
-        difficulty = str(q.get("difficulty_level", "unknown"))
-        evidence = q.get("evidence_set", []) if isinstance(q.get("evidence_set", []), list) else []
-        expected_doc_ids = {
-            str(item.get("doc_id", "")).strip() for item in evidence if isinstance(item, dict)
-        }
-        expected_doc_ids = {x for x in expected_doc_ids if x}
+        async with query_gate:
+            query_text = query_texts[i]
+            difficulty = str(q.get("difficulty_level", "unknown"))
+            evidence = q.get("evidence_set", []) if isinstance(q.get("evidence_set", []), list) else []
+            expected_doc_ids = {
+                str(item.get("doc_id", "")).strip() for item in evidence if isinstance(item, dict)
+            }
+            expected_doc_ids = {x for x in expected_doc_ids if x}
 
-        t0 = time.perf_counter()
-        hits = await _retrieve(
-            query_text, corpus, top_k=top_k,
-            keyword_graph=keyword_graph,
-            vector_store=vector_store,
-            query_vec=query_vecs[i],
-            use_rerank=use_rerank,
-            rerank_top_n=rerank_top_n,
-            rerank_semaphore=rerank_semaphore,
-        )
-        latency_ms = (time.perf_counter() - t0) * 1000
+            rerank_timings: dict[str, float] = {}
+            t0 = time.perf_counter()
+            hits = await _retrieve_with_expansion(
+                query_text, corpus, top_k=top_k,
+                keyword_graph=keyword_graph,
+                vector_store=vector_store,
+                query_vec=query_vecs[i],
+                use_rerank=use_rerank,
+                rerank_top_n=rerank_top_n,
+                rerank_semaphore=rerank_semaphore,
+                use_expansion=use_expansion,
+                expansion_semaphore=expansion_semaphore,
+                recall_top_n=recall_top_n,
+                rerank_timings=rerank_timings,
+            )
+            latency_ms = (time.perf_counter() - t0) * 1000
 
-        relevance_list: list[bool] = []
-        for hit in hits:
-            if not isinstance(hit, dict):
-                relevance_list.append(False)
-                continue
-            candidate_ids = _extract_candidate_doc_ids(hit)
-            relevance_list.append(bool(candidate_ids.intersection(expected_doc_ids)))
+            relevance_list: list[bool] = []
+            for hit in hits:
+                if not isinstance(hit, dict):
+                    relevance_list.append(False)
+                    continue
+                candidate_ids = _extract_candidate_doc_ids(hit)
+                relevance_list.append(bool(candidate_ids.intersection(expected_doc_ids)))
 
-        return {
-            "query_id": q.get("query_id"),
-            "difficulty": difficulty,
-            "latency_ms": latency_ms,
-            "recall_at_1": _calculate_recall_at_k(relevance_list, 1),
-            "recall_at_3": _calculate_recall_at_k(relevance_list, 3),
-            "recall_at_5": _calculate_recall_at_k(relevance_list, 5),
-            "recall_at_10": _calculate_recall_at_k(relevance_list, 10),
-            "mrr": _calculate_mrr(relevance_list),
-        }
+            return {
+                "query_id": q.get("query_id"),
+                "difficulty": difficulty,
+                "latency_ms": latency_ms,
+                "rerank_api_ms": rerank_timings.get("api_ms"),
+                "rerank_queue_wait_ms": rerank_timings.get("queue_wait_ms"),
+                "rerank_attempts": rerank_timings.get("attempts"),
+                "recall_at_1": _calculate_recall_at_k(relevance_list, 1),
+                "recall_at_3": _calculate_recall_at_k(relevance_list, 3),
+                "recall_at_5": _calculate_recall_at_k(relevance_list, 5),
+                "recall_at_10": _calculate_recall_at_k(relevance_list, 10),
+                "mrr": _calculate_mrr(relevance_list),
+            }
 
     results: list[dict[str, Any]] = list(
         await asyncio.gather(*[_eval_one(i, q) for i, q in enumerate(queries)])
@@ -348,24 +578,67 @@ async def _run_eval_async(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run retrieval evaluation.")
-    parser.add_argument("--queries", default="eval_queries_v1.0.jsonl")
+    parser.add_argument("--queries", default=DEFAULT_QUERIES_PATH)
     parser.add_argument("--output", default="BASELINE_METRICS.json")
-    parser.add_argument("--top-k", type=int, default=10)
-    parser.add_argument("--rerank-top-n", type=int, default=20)
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=DEFAULT_TOP_K,
+        help="返回结果数（偏产品展示策略：5 更精简，10 候选更多）。",
+    )
+    parser.add_argument(
+        "--recall-top-n",
+        type=int,
+        default=DEFAULT_RECALL_TOP_N,
+        help="首轮召回深度；召回不足时优先上调到 80/100。",
+    )
+    parser.add_argument(
+        "--rerank-top-n",
+        type=int,
+        default=DEFAULT_RERANK_TOP_N,
+        help="重排候选深度；MRR 不足时可上调到 30/40。",
+    )
     parser.add_argument("--no-rerank", action="store_true")
+    expansion_group = parser.add_mutually_exclusive_group()
+    expansion_group.add_argument(
+        "--expansion",
+        dest="use_expansion",
+        action="store_true",
+        help="启用 query expansion（仅在评测确认有效时开启）。",
+    )
+    expansion_group.add_argument(
+        "--no-expansion",
+        dest="use_expansion",
+        action="store_false",
+        help="禁用 query expansion（默认）。",
+    )
+    parser.set_defaults(use_expansion=DEFAULT_USE_EXPANSION)
+    parser.add_argument("--contextual", action="store_true")
+    parser.add_argument(
+        "--query-concurrency",
+        type=int,
+        default=DEFAULT_QUERY_CONCURRENCY,
+        help="同时发起的 query 协程数；设为 1 时串行（对齐 Phase 4 原版）。",
+    )
     args = parser.parse_args()
 
     final_metrics = run_eval(
         queries_path=args.queries,
         output_path=args.output,
         top_k=args.top_k,
+        recall_top_n=args.recall_top_n,
         use_rerank=not args.no_rerank,
         rerank_top_n=args.rerank_top_n,
+        use_expansion=args.use_expansion,
+        use_contextual=args.contextual,
+        query_concurrency=args.query_concurrency,
     )
     agg = final_metrics.get("aggregated_metrics", {})
     print("Evaluation completed.")
     print(
         f"Recall@5={agg.get('recall_at_5', 0.0)} | "
         f"MRR={agg.get('mrr', 0.0)} | "
-        f"P95={agg.get('p95_latency_ms', 0.0)}ms"
+        f"P95={agg.get('p95_latency_ms', 0.0)}ms | "
+        f"API-p95={agg.get('rerank_api_p95_ms', 0.0)}ms | "
+        f"Queue-p95={agg.get('rerank_queue_p95_ms', 0.0)}ms"
     )

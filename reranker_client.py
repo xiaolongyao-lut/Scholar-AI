@@ -5,6 +5,7 @@ import contextlib
 import json
 import logging
 import os
+import time
 from typing import Any
 
 import httpx
@@ -20,13 +21,15 @@ def _normalize_text(text: str) -> str:
 
 
 def _extract_document(item: dict[str, Any]) -> str:
+    # raw_content 优先：Phase 6 会在 content 里注入上下文摘要前缀，
+    # rerank 应看无前缀原文，避免 Qwen3-Reranker 输入被稀释。
     return _normalize_text(
         str(
-            item.get("content")
+            item.get("raw_content")
+            or item.get("content")
             or item.get("claim")
             or item.get("text")
             or item.get("source_text")
-            or item.get("raw_content")
             or ""
         )
     )
@@ -58,8 +61,15 @@ async def rerank_async(
     base_url: str | None = None,
     model: str | None = None,
     semaphore: asyncio.Semaphore | None = None,
+    timings: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Rerank retrieval candidates via SiliconFlow, with graceful fallback."""
+    """Rerank retrieval candidates via SiliconFlow, with graceful fallback.
+
+    timings (optional) — caller-supplied dict; on return contains:
+      - queue_wait_ms: time spent waiting for `semaphore`
+      - api_ms: pure HTTP round-trip for the successful attempt
+      - attempts: number of attempts made (1-3)
+    """
     if not candidates or top_k <= 0:
         return []
 
@@ -88,11 +98,20 @@ async def rerank_async(
     }
 
     _ctx = semaphore if semaphore is not None else contextlib.nullcontext()
+    t_call = time.perf_counter()
     async with _ctx:
+        t_acquired = time.perf_counter()
+        if timings is not None:
+            timings["queue_wait_ms"] = (t_acquired - t_call) * 1000.0
         for attempt in range(3):
             try:
+                t_api = time.perf_counter()
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     response = await client.post(resolved_base_url, headers=headers, json=payload)
+                api_ms = (time.perf_counter() - t_api) * 1000.0
+                if timings is not None:
+                    timings["api_ms"] = api_ms
+                    timings["attempts"] = attempt + 1
                 if response.status_code != 200:
                     logger.warning("Reranker API %s: %s", response.status_code, response.text[:240])
                     return _apply_fallback(candidates, top_k)
