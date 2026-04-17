@@ -1,17 +1,21 @@
 """build_eval_corpus.py — 从已有 chunk_store 构建评测语料与对齐的 eval queries.
 
 用法:
+    # 默认（向后兼容 v2.0 生成口径）
     python build_eval_corpus.py
 
+    # v2.1 全量语料（1656 原语料 + 4637 laser_welding）
+    python build_eval_corpus.py --chunk-dir output/chunk_store --output eval_queries_v2.1.jsonl
+
 功能:
-1. 读取 output/chunk_store/ 下所有真实 chunk 数据
+1. 读取 --chunk-dir 下所有真实 chunk 数据
 2. 从每篇文献中自动提取内容关键词，生成与其内容对齐的评测查询
-3. 将 eval_queries_v1.0.jsonl 中的 doc_id 映射到真实 material_id
-4. 输出 eval_queries_v2.0.jsonl — 可直接被 eval_retrieval_runtime.py 使用
+3. 输出 --output 指定的 jsonl — 可直接被 eval_retrieval_runtime.py 使用
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -207,13 +211,34 @@ def also_add_man2011_to_chunk_store(chunk_store_dir: Path) -> str | None:
 
 
 def main():
-    chunk_store_dir = Path("output") / "chunk_store"
+    parser = argparse.ArgumentParser(description="Build eval queries aligned with chunk_store corpus")
+    parser.add_argument(
+        "--chunk-dir",
+        type=Path,
+        default=Path("output") / "chunk_store",
+        help="chunk_store 目录（默认 output/chunk_store）",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("eval_queries_v2.0.jsonl"),
+        help="输出 jsonl 路径（默认 eval_queries_v2.0.jsonl）",
+    )
+    parser.add_argument(
+        "--no-man2011-inject",
+        action="store_true",
+        help="不把 Man2011 full_extract 注入到 chunk_store（v2.1+ 默认 corpus 已就位时用）",
+    )
+    args = parser.parse_args()
+
+    chunk_store_dir: Path = args.chunk_dir
     if not chunk_store_dir.exists():
-        print("ERROR: output/chunk_store/ 不存在")
+        print(f"ERROR: {chunk_store_dir} 不存在")
         return
 
-    # Step 1: 加入 Man 2011
-    also_add_man2011_to_chunk_store(chunk_store_dir)
+    # Step 1: 加入 Man 2011（v2.0 兼容；v2.1 可跳过）
+    if not args.no_man2011_inject:
+        also_add_man2011_to_chunk_store(chunk_store_dir)
 
     # Step 2: 加载所有 chunks
     materials = load_all_chunks(chunk_store_dir)
@@ -237,13 +262,13 @@ def main():
         all_queries.extend(queries)
         print(f"  {mid[:20]}... | {title[:40]} | kw={keywords[:5]} | +{len(queries)}q")
 
-    # Step 4: 写出 eval_queries_v2.0.jsonl
-    out_path = Path("eval_queries_v2.0.jsonl")
+    # Step 4: 写出 jsonl
+    out_path: Path = args.output
     with out_path.open("w", encoding="utf-8") as f:
         for q in all_queries:
             f.write(json.dumps(q, ensure_ascii=False) + "\n")
 
-    print(f"\n✅ 生成 {len(all_queries)} 条评测查询 → {out_path}")
+    print(f"\n[OK] 生成 {len(all_queries)} 条评测查询 → {out_path}")
     print(f"   涉及 {len(set(q['evidence_set'][0]['doc_id'] for q in all_queries))} 篇文献")
 
     # 统计难度分布
