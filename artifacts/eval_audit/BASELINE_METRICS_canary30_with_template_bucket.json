@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-04-18 22:53:04",
+  "total_queries": 30,
+  "aggregated_metrics": {
+    "recall_at_1": 0.0,
+    "recall_at_3": 0.0,
+    "recall_at_5": 0.0667,
+    "recall_at_10": 0.1,
+    "mrr": 0.0216,
+    "avg_latency_ms": 22152.08,
+    "p95_latency_ms": 47574.55,
+    "rerank_api_avg_ms": 19448.27,
+    "rerank_api_p95_ms": 43893.6,
+    "rerank_queue_avg_ms": 0.01,
+    "rerank_queue_p95_ms": 0.01
+  },
+  "per_difficulty": {
+    "hard": {
+      "count": 10,
+      "recall_at_5": 0.1,
+      "mrr": 0.0403
+    },
+    "medium": {
+      "count": 10,
+      "recall_at_5": 0.0,
+      "mrr": 0.0045
+    },
+    "simple": {
+      "count": 10,
+      "recall_at_5": 0.1,
+      "mrr": 0.02
+    }
+  },
+  "per_template_bucket": {
+    "template": {
+      "count": 30,
+      "recall_at_5": 0.0667,
+      "mrr": 0.0216
+    }
+  }
+}

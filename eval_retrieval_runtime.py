@@ -150,10 +150,28 @@ def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
             "mrr": _avg([float(r.get("mrr", 0.0)) for r in subset]),
         }
 
-    return {
+    payload: dict[str, Any] = {
         "aggregated_metrics": aggregated,
         "per_difficulty": per_difficulty,
     }
+
+    # Wave 1: template/non_template 分桶(仅当 results 里出现 is_template 字段时输出)
+    if any("is_template" in r for r in results):
+        per_template_bucket: dict[str, dict[str, Any]] = {}
+        for flag in (True, False):
+            subset = [r for r in results if r.get("is_template") is flag]
+            if not subset:
+                continue
+            key = "template" if flag else "non_template"
+            per_template_bucket[key] = {
+                "count": len(subset),
+                "recall_at_5": _avg([float(r.get("recall_at_5", 0.0)) for r in subset]),
+                "mrr": _avg([float(r.get("mrr", 0.0)) for r in subset]),
+            }
+        if per_template_bucket:
+            payload["per_template_bucket"] = per_template_bucket
+
+    return payload
 
 
 def _load_queries(queries_path: Path) -> list[dict[str, Any]]:
@@ -425,6 +443,7 @@ def run_eval(
     use_contextual: bool = False,
     query_concurrency: int = DEFAULT_QUERY_CONCURRENCY,
     strict_cache_guard: bool = DEFAULT_STRICT_CACHE_GUARD,
+    template_flags_path: str | None = None,
 ) -> dict[str, Any]:
     # 当前默认策略（Phase 5.2 分路路由修复后）：
     # - use_expansion=True：BM25/Graph 走中文原 query，Dense 走英文翻译，
@@ -453,6 +472,22 @@ def run_eval(
         if chunks:
             keyword_graph = build_keyword_graph(chunks)
 
+    # Wave 1: load template flags sidecar, used to tag results with is_template
+    template_flags_map: dict[str, bool] | None = None
+    if template_flags_path:
+        flag_path = Path(template_flags_path)
+        if flag_path.exists():
+            template_flags_map = {}
+            with flag_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    rec = json.loads(stripped)
+                    qid = rec.get("query_id")
+                    if qid:
+                        template_flags_map[qid] = bool(rec.get("is_template", False))
+
     # Run async portion (build vector store + batch embed queries + retrieve) in one event loop
     results = asyncio.run(
         _run_eval_async(
@@ -466,6 +501,7 @@ def run_eval(
             use_expansion=use_expansion,
             query_concurrency=query_concurrency,
             strict_cache_guard=strict_cache_guard,
+            template_flags_map=template_flags_map,
         )
     )
 
@@ -494,6 +530,7 @@ async def _run_eval_async(
     use_expansion: bool,
     query_concurrency: int = DEFAULT_QUERY_CONCURRENCY,
     strict_cache_guard: bool = DEFAULT_STRICT_CACHE_GUARD,
+    template_flags_map: dict[str, bool] | None = None,
 ) -> list[dict[str, Any]]:
     """Async eval loop — single event-loop, batch query embedding."""
 
@@ -577,6 +614,11 @@ async def _run_eval_async(
                 "recall_at_5": _calculate_recall_at_k(relevance_list, 5),
                 "recall_at_10": _calculate_recall_at_k(relevance_list, 10),
                 "mrr": _calculate_mrr(relevance_list),
+                **(
+                    {"is_template": bool(template_flags_map.get(q.get("query_id"), False))}
+                    if template_flags_map is not None
+                    else {}
+                ),
             }
 
     results: list[dict[str, Any]] = list(
@@ -643,6 +685,12 @@ if __name__ == "__main__":
         default=DEFAULT_QUERY_CONCURRENCY,
         help="同时发起的 query 协程数；设为 1 时串行（对齐 Phase 4 原版）。",
     )
+    parser.add_argument(
+        "--template-flags",
+        type=str,
+        default=None,
+        help="Wave 1: audit 工具产出的 template_flags.jsonl；载入后按 template/non_template 分桶输出指标。",
+    )
     args = parser.parse_args()
 
     final_metrics = run_eval(
@@ -656,6 +704,7 @@ if __name__ == "__main__":
         use_contextual=args.contextual,
         query_concurrency=args.query_concurrency,
         strict_cache_guard=args.strict_cache_guard,
+        template_flags_path=args.template_flags,
     )
     agg = final_metrics.get("aggregated_metrics", {})
     print("Evaluation completed.")
