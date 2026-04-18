@@ -1,5 +1,85 @@
 # Advanced Retrieval Phased Upgrade Implementation Plan
 
+## 2026-04-17 scan-folder 性能模式执行记录
+
+已完成 `POST /resources/project/{project_id}/scan-folder` 性能模式落地：
+
+- 新增 `scan_mode` 参数：
+    - `fast`（默认）：元数据预扫 + 分批并发解析
+    - `legacy`：串行兼容模式（结果顺序更稳定）
+- 新增 `batch_size` 参数（默认 `24`，范围 `1-256`）
+- 新增 `max_workers` 参数（默认 `8`，范围 `1-64`）
+- 返回体新增字段：`scan_mode`、`batch_size`、`workers`、`queued`
+
+实现要点：
+
+1. **元数据预扫优先**：先基于 `relative_path + size + mtime_ns` 做指纹去重，提前跳过已索引文件。
+2. **分批并发抽取**：`fast` 模式下使用线程池并发做文本抽取，再在主线程持久化，降低 I/O 等待。
+3. **兼容回退路径**：`legacy` 保留串行处理语义，便于排查与对照。
+
+验证结果：
+
+- 回归测试通过：`16 passed`
+    - `tests/test_resources_router_scan.py`
+    - `tests/test_resources_router_contract.py`
+    - `tests/test_eval_runtime.py`
+
+## 2026-04-17 模块化“按提问触发入库”增强
+
+已把扫描链路模块化，并接入检索接口，支持通过调用参数组合出不同效果。
+
+后端新增模块化能力（`routers/resources_router.py`）：
+
+- `_collect_pending_scan_candidates()`：统一候选收集（元数据预扫 + 去重）
+- `_select_query_pending_candidates()`：按 query 相关性筛选候选
+- `_ingest_pending_candidates()`：统一批量入库执行（`fast/legacy`）
+
+检索接口增强（`GET /resources/chunks/search`）：
+
+- 新增 `ingest_mode`：
+  - `none`：仅检索已入库 chunk
+  - `query`：先按提问内容筛选候选并小批入库，再检索
+  - `full`：先把待入库候选全部入库，再检索
+- 新增可调参数：
+  - `ingest_limit`
+  - `scan_mode`
+  - `scan_batch_size`
+  - `scan_max_workers`
+- 返回体新增 `ingest` 元信息（`enabled/indexed/queued/failed/skipped/workers`）
+
+前端调用增强：
+
+- `Workbench` 检索调用新增 ingest_mode 切换控件（可选 none/query/full）
+  - 默认值：`ingest_mode='query'`
+  - `ingest_limit=8`
+  - `scan_mode='fast'`
+
+验证结果：
+
+- 契约测试：`test_chunk_search_query_driven_ingest_indexes_relevant_files` ✓ PASSED
+- 回归测试通过：17 PASSED ✓
+- 前端构建通过：`npm run build`（在 `frontend/` 目录）✓ SUCCESS
+
+## 2026-04-17 AI API 接入状态（用户提供密钥）
+
+已完成本地 AI 运行时配置启用（`.env`），并确认关键变量可被进程读取：
+
+- `SILICONFLOW_API_KEY`
+- `SILICONFLOW_RERANK_API_KEY`
+- `ARK_API_KEY`
+- `ARK_BASE_URL`
+- `ARK_MODEL`
+
+组件级连通性验证：
+
+- `reranker_client.rerank_async`：PASS（返回重排结果且包含 `rerank_score`）
+- `query_expander.translate_query_async`：PASS（中英翻译链路可用）
+
+说明：
+
+- 端到端 `eval_retrieval_runtime.py` 当前输出 `Recall@5=0.0`，与 API 连通性无直接矛盾；更可能与评测语料/标注匹配或运行配置有关，需单独排查。
+- `.gitignore` 已包含 `.env`，本地密钥文件不会被默认纳入版本控制。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在不推翻现有系统的前提下，按 Phase 0→3 渐进升级检索能力，每个阶段都可独立交付、可评估、可回滚。
@@ -520,7 +600,7 @@ Per-difficulty (with-rerank):
 - Modify: `eval_retrieval_runtime.py`
 - Test: `tests/test_query_expander.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/test_query_expander.py
@@ -545,7 +625,7 @@ def test_hyde_returns_hypothetical_doc():
     assert len(doc) > 0
 ```
 
-- [ ] **Step 2: 实现查询扩展模块**
+- [x] **Step 2: 实现查询扩展模块**
 
 ```python
 # query_expander.py — 核心设计
@@ -576,7 +656,7 @@ def expand_multi_query(query, **kw) -> list[str]: ...
 def generate_hyde(query, **kw) -> str: ...
 ```
 
-- [ ] **Step 3: 接入 eval 流程**
+- [x] **Step 3: 接入 eval 流程**
 
 修改 `eval_retrieval_runtime.py`:
 
@@ -592,11 +672,16 @@ async def _retrieve_with_expansion(query, ...) -> list[dict]:
 # 完整管线: query → translate → parallel retrieve → merge → rerank → top_k
 ```
 
-- [ ] **Step 4: 跑测试并通过**
+- [x] **Step 4: 跑测试并通过**
 
 Run: `pytest tests/test_query_expander.py -v`
 
-- [ ] **Step 5: 运行评测并验收**
+当前实测（2026-04-16）：
+
+- `pytest tests/test_query_expander.py tests/test_eval_runtime.py tests/test_reranker.py -q`
+- 结果：`11 passed`
+
+- [x] **Step 5: 运行评测并验收**
 
 门禁：Recall@5 ≥ 0.40 且 hard 子集 Recall@5 ≥ 0.35
 
@@ -610,6 +695,44 @@ Run: `pytest tests/test_query_expander.py -v`
 | Avg Latency | ~200ms | ~400ms | +100%（多一次 LLM + 并行检索） |
 
 > 延迟翻倍但可接受。生产环境可根据 query 语言自动选择是否启用翻译。
+
+实测结果（2026-04-16，414 queries）：
+
+| 指标 | no-expansion | with-expansion | 变化 |
+|------|--------------|----------------|------|
+| Recall@1 | 0.0821 | **0.0870** | +6.0% |
+| Recall@3 | **0.2198** | 0.2174 | -1.1% |
+| Recall@5 | **0.3043** | 0.2899 | -4.7% |
+| Recall@10 | **0.3986** | 0.3961 | -0.6% |
+| MRR | 0.1753 | 0.1753 | 0% |
+| hard R@5 | **0.2857** | 0.2619 | -8.3% |
+| Avg Latency | 96893.93ms | 112245.55ms | +15.8% |
+| P95 Latency | 156643.12ms | 186023.90ms | +18.8% |
+
+门禁结论：
+
+- Recall@5 ≥ 0.40：❌（当前 0.2899）
+- hard Recall@5 ≥ 0.35：❌（当前 0.2619）
+
+原因分析：
+
+- 当前环境未配置 `ARK_API_KEY` / `VOLCANO_API_KEY`，查询扩展模块会优雅降级为原 query；
+- 因此 Phase 5 的翻译增益未被真正激活，指标未达到预期门槛。
+
+Phase 5.1 校正（translated-first，2026-04-16，同样本 30 条分层快测）：
+
+| 指标 | 旧（双语并行） | 新（translated-first） | 变化 |
+|------|----------------|------------------------|------|
+| Recall@1 | 0.1667 | **0.2667** | +0.10 |
+| Recall@3 | 0.4333 | **0.4667** | +0.03 |
+| Recall@5 | 0.4333 | **0.5000** | +0.07 |
+| Recall@10 | **0.5667** | 0.5000 | -0.07 |
+| MRR | 0.2906 | **0.3456** | +0.06 |
+| Avg Latency | 31138ms | **28236ms** | -2903ms |
+| P95 Latency | 51428ms | **48184ms** | -3244ms |
+
+结论：采用 translated-first 作为 Phase 5 默认实现（英文主检索 + 中文原问 rerank），
+在 top-5 检索质量与延迟上均优于旧的双语并行方案。
 
 - [ ] **Step 6: Commit**
 
@@ -645,7 +768,7 @@ git commit -m "feat(query): Phase 5 — query expansion + cross-lingual retrieva
 - Modify: `chunk_vector_store.py`（重建缓存）
 - Test: `tests/test_contextual_chunker.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/test_contextual_chunker.py
@@ -679,7 +802,7 @@ def test_batch_contextualize():
     assert len(result) == 5
 ```
 
-- [ ] **Step 2: 实现上下文增强模块**
+- [x] **Step 2: 实现上下文增强模块**
 
 ```python
 # contextual_chunker.py — 核心设计
@@ -713,7 +836,7 @@ async def batch_contextualize_async(
 def batch_contextualize(chunks, **kw) -> list[dict]: ...
 ```
 
-- [ ] **Step 3: 重建 embedding 缓存**
+- [x] **Step 3: 重建 embedding 缓存**
 
 ```python
 # 修改 chunk_vector_store.py:
@@ -722,11 +845,16 @@ def batch_contextualize(chunks, **kw) -> list[dict]: ...
 # 缓存文件: output/embedding_cache/corpus_embeddings_contextual.npy
 ```
 
-- [ ] **Step 4: 跑测试并通过**
+- [x] **Step 4: 跑测试并通过**
 
 Run: `pytest tests/test_contextual_chunker.py -v`
 
-- [ ] **Step 5: 运行评测并验收**
+当前实测（2026-04-16）：
+
+- `pytest tests/test_contextual_chunker.py tests/test_eval_runtime.py tests/test_query_expander.py tests/test_reranker.py -q`
+- 结果：`16 passed`
+
+- [x] **Step 5: 运行评测并验收**
 
 门禁：Recall@5 ≥ 0.45 且 MRR ≥ 0.30
 
@@ -740,6 +868,28 @@ Run: `pytest tests/test_contextual_chunker.py -v`
 
 > 这一步需要重新构建 embedding 缓存（~1656 chunks × API 调用），
 > 首次运行较慢（约 5-10 分钟），后续使用缓存。
+
+当前实测（2026-04-16，30 条分层样本，contextual on/off A/B）：
+
+| 指标 | no-contextual | with-contextual | 变化 |
+|------|---------------|-----------------|------|
+| Recall@1 | **0.2667** | 0.2333 | -0.0334 |
+| Recall@3 | **0.3333** | 0.3000 | -0.0333 |
+| Recall@5 | **0.4000** | 0.3667 | -0.0333 |
+| Recall@10 | **0.5000** | 0.4667 | -0.0333 |
+| MRR | **0.3176** | 0.2943 | -0.0233 |
+| Avg Latency | **27949.73ms** | 29071.11ms | +1121ms |
+| P95 Latency | **46323.06ms** | 48375.55ms | +2052ms |
+
+补充验证：`contextualized_chunks=1656`，说明上下文前缀确实已生效；当前并非空跑。
+
+门禁结论：
+
+- Recall@5 ≥ 0.45：❌
+- MRR ≥ 0.30：❌（with-contextual=0.2943）
+
+阶段结论：Phase 6 基础能力已接线完成并可评测，但在当前样本上暂未带来收益，
+建议后续针对摘要提示词与 Budgeter/Router 联调后再做二轮评测。
 
 - [ ] **Step 6: Commit**
 
@@ -797,8 +947,173 @@ P1       结构感知切块              0.0483      0.0483    ✅ Done
 P3       BM25 + Graph              0.1304      0.0920    ✅ Done
 P2       + Dense(BGE-m3) RRF       0.1932      0.1231    ✅ Done
 ─────────────── Tier 1 ↑ ──────────────────────────────────────
-P4       + Reranker                ~0.32       ~0.25     ⬜ Next
-P5       + 查询扩展/翻译           ~0.42       ~0.32     ⬜ Planned
+P4       + Reranker                0.3019      0.1762    ✅ Done
+P5       + 查询扩展/翻译           待真实API   待测       🔄 API已就绪
 P6       + 上下文增强切块          ~0.48       ~0.35     ⬜ Planned
 ─────────────── Tier 2 ↑ ──────────────────────────────────────
 ```
+
+---
+
+## 2026-04-17 API 密钥配置完成 & 组件验证通过
+
+### 配置状态
+
+本地 `.env` 已写入以下有效密钥（`.gitignore` 已覆盖，不纳入版本控制）：
+
+| 变量 | 用途 | 状态 |
+| --- | --- | --- |
+| `SILICONFLOW_API_KEY` | Embedding (BAAI/bge-m3) + 通用 SiliconFlow 调用 | ✅ 已配置 |
+| `SILICONFLOW_RERANK_API_KEY` | Reranker (Qwen3-Reranker-8B) | ✅ 已配置 |
+| `SILICONFLOW_RERANK_MODEL` | `Qwen/Qwen3-Reranker-8B` | ✅ 已配置 |
+| `ARK_API_KEY` / `VOLCANO_API_KEY` | 火山 ARK LLM（查询扩展/上下文摘要） | ✅ 已配置 |
+| `ARK_BASE_URL` | `https://ark.cn-beijing.volces.com/api/v3` | ✅ 已配置 |
+| `ARK_MODEL` | `ep-20260414011719-8x7s4` | ✅ 已配置 |
+
+### 组件测试结果（2026-04-17）
+
+```bash
+pytest tests/test_reranker.py tests/test_query_expander.py -v
+结果：9 passed ✅
+```
+
+### 下一步行动
+
+Phase 5 此前在无 API key 环境下评测，查询扩展路径走降级，指标无变化。
+现在 `ARK_API_KEY` 已就绪，建议重新运行 Phase 5 全量评测以获取真实翻译增益：
+
+```bash
+python eval_retrieval_runtime.py --queries eval_queries_v2.0.jsonl
+```
+
+预期：`translate_query_async` 将把中文 query 翻译为英文后双路检索，
+Phase 5 门禁（Recall@5 ≥ 0.40，hard R@5 ≥ 0.35）有望通过。
+
+---
+
+## 2026-04-18 Phase 5 token-aware guard + Qwen3 模型切换
+
+### 触发原因
+
+Canary 30q v2.1 复测暴露主干 bug：`output/chunk_store/` 里 73 个 chunk 文本超过
+SiliconFlow `/embeddings` 8192-token 上限，`_batch_embed` 在 413 时把整批回填零向量
+→ `corpus_embeddings_contextual.npy` 里 14% 行（885/6293）全零。Smoke 工具只验
+manifest hash，对零向量无感。canary R@5 因此压到 0.0667，rerank 三次 retry 全失败。
+
+同步用户要求切召回链路：`BAAI/bge-m3` → `Qwen/Qwen3-Embedding-8B`（dimensions=1024
+保持 EMBEDDING_DIM 不变），rerank 用 `Qwen/Qwen3-Reranker-8B`。
+
+### 主干改动（commit `e849549`）
+
+- **`token_utils.py`（新）**：`count_tokens / truncate_to_tokens / split_by_tokens`，
+  懒加载 BGE-m3 tokenizer 做保守估算（对 Qwen3 BBPE 偏紧、安全），离线 fallback
+  CJK char × 0.75。
+- **`chunk_vector_store.py`**：
+  - `SAFE_EMBED_TOKENS=7500` 预检；超长 chunk 走 split + L2-norm + mean-pool + L2-norm
+    单向量回填，保持 corpus 形状。
+  - 请求体加 `dimensions=EMBEDDING_DIM`（Qwen3 Matryoshka 截断到 1024）。
+  - `build` 侧 zero-row 硬 raise（旧零向量污染不会再静默通过）；manifest 追加
+    `zero_row_count` 字段供 observability。
+  - 413/400 input-too-long 后 raise（说明 split 仍超长，永远不该到这里）；
+    429/5xx 指数退避 ≤3 次仍失败 raise。
+- **`reranker_client.py`**：`SAFE_RERANK_DOC_TOKENS=7500` head-truncate（rerank
+  单元语义不可拆，截断是合理妥协）。
+- **`smoke_cache_guard.py`**：扩 `case_oversize`（构造 `"激光焊接" * 5000` ≈ 16001
+  tokens 的 chunk）+ `case_no_zero_rows`（紧跟 oversize 的 npy 断言无零行）。
+- **`tests/test_token_utils.py`（新）**：7 case 覆盖空串、CJK 短、under/over limit、
+  truncate、段落优先打包。
+- **`tests/test_reranker.py`**：+1 case 验证超长 doc 被截到 ≤ SAFE_RERANK_DOC_TOKENS。
+- **`.env.example`**：默认模型注释从 BGE 切到 Qwen3，新增 rerank model 占位符。
+  无真实 key（仍 `your_xxx_here`）。
+
+### Smoke 验证（6/6 PASS）
+
+| case | 行为 | 结果 |
+| --- | --- | --- |
+| miss | cache 不存在 → 走 API + 落 manifest | ✅ |
+| hit | cache 存在 + manifest 通过 → 不走 API | ✅ |
+| tamper | 篡改 manifest.chunks_hash → build 应 raise | ✅ |
+| oversize | 16001-token chunk → split 3 片 + mean-pool | ✅，row0 norm=1.0000 |
+| no_zero_rows | npy 全行非零 | ✅，zero_row_count=0 |
+| rerank | 真 API 调用,验证 retry 路径 | ✅ |
+
+### Reranker timeout 修复（commit `11b7021`）
+
+Canary 首次跑 6/30 query rerank 三次全超时。根因：Qwen3-Reranker-8B 比 BGE-reranker
+慢，`reranker_client.py:168` 的 httpx timeout=15s 卡边缘（API p95=15.4s）。提到 45s
+后零超时。
+
+### Canary 30q v2.1 + Qwen3-Embedding-8B + Qwen3-Reranker-8B
+
+| 指标 | broken baseline | clean Qwen3 (8B rerank) |
+| --- | --- | --- |
+| Recall@5 | 0.0667 | **0.1667** (2.5x) |
+| MRR | 0.0403 | 0.0542 |
+| P95 latency | — | 30s |
+| Rerank API p95 | — | 18.4s |
+| Rerank retry-fail | 6/30 | **0/30** |
+
+Canary 各难度桶：hard=0.1, medium=0.2, simple=0.2。
+
+### Full v2.1 3269q snapshot（commit `404340d`）
+
+```
+total_queries=3269  R@5=0.022  MRR=0.0152
+P95=54s  API-p95=21.5s  rerank-fail=2/3269
+```
+
+per-difficulty：hard=0.031（326）, medium=0.027（1455）, simple=0.016（1488）。
+
+infra 干净（0 个 413、0 零向量、p95 在 45s 预算内），但 R@5=0.022 远低于 canary 的
+0.1667，且比旧 broken baseline 的 0.0667 还低。各桶都 -7~10x，**不是单一难度 bias**。
+
+### Qwen3-Reranker-4B 对照实验
+
+按 model-selection 文档（修订版）§7.1 第一优先建议「8B → 4B 降档」，做 canary 对照：
+
+| 指标 | 8B rerank | 4B rerank | 决策门 |
+| --- | --- | --- | --- |
+| Recall@5 | 0.1667 | 0.1000 (-40%) | ❌ 门 1 失败 |
+| MRR | 0.0542 | 0.0511 | ✓ 近似 |
+| P95 latency | 30s | 40s (+33%) | ❌ 门 3 反向 |
+| Rerank API p95 | 18.4s | 29.9s | — |
+| Timeout rate | 0/30 | 0/30 | ✓ |
+
+文档 §9.4.6 明确："4B reranker 不是只要更快就行，而是要在**不明显伤召回和排序的
+前提下更快**"。本环境下 4B 既未更快、又伤召回，**两个核心门同时失败 → 拒绝 4B**。
+
+### 决定
+
+1. **rerank 模型回退到 Qwen3-Reranker-8B**（`DEFAULT_RERANKER_MODEL` + `.env.example`
+   + `tests/test_reranker.py` 全部回滚到 8B）。
+2. 不切 BGE 路线（文档 §7.1 第二优先），原因：BGE 路线需同时换 embedding + rerank，
+   并需重建 corpus cache，开销大；且需先确认运行环境是否支持 BGE 端点（用户当前
+   `.env` 里 SILICONFLOW base URL 是代理，路由细节未知，可能影响选型对照的有效性）。
+3. Full v2.1 R@5=0.022 与 canary 0.1667 的 7-10x 落差，怀疑是 v2.1 query 生成器的
+   ground-truth 对齐问题（commit `b064b4a` "v2.1 queries 对齐 6293-chunk 全量 corpus"
+   可能有部分 evidence_set doc_id 已不在当前 chunk_store）。**留待下轮 plan 抽样
+   100 条做 doc_id 命中率验证**。
+
+### 测试与产物
+
+- **pytest 三件套**：43/43 绿（7 token_utils + 8 reranker + 14 dense_rrf + 9 eval_runtime
+  + 5 query_expander）。
+- **commit 链**：
+  - `e849549` feat(retrieval): token-aware embed/rerank guard + Qwen3 默认模型
+  - `11b7021` fix(reranker): timeout 15→45s 适配 Qwen3-Reranker-8B + canary 产物
+  - `404340d` eval: Phase 5 full v2.1 3269q snapshot — Qwen3-Reranker-8B baseline
+- **artifact 文件**：`BASELINE_METRICS_canary30_qwen3.json`（8B canary，已 commit）
+  + `BASELINE_METRICS_phase5_qwen3.json`（8B full，已 commit）
+  + `BASELINE_METRICS_canary30_qwen3_rerank4b.json`（4B canary 对照，本轮 commit）。
+
+### 下轮 plan 候选
+
+1. **诊断 v2.1 ground-truth 对齐**：抽 100 条 full query 的 evidence_set doc_id，
+   在 `output/chunk_store/*.json` 里查命中率。如果命中率明显低于 1.0，问题在
+   query 生成器，不在召回链路。
+2. **proxy 路由验证**：直连官方 SiliconFlow 端点跑 mini-canary 5q，对比 proxy
+   下的相同 5q 结果，确认代理是否引入额外噪声。
+3. **建小而硬评测集**：按 model-selection 文档 §9.4.2 建 100-200 条人工标注的
+   文献检索测试集（覆盖参数-结果、机理、图表证据、对比、多文献汇总），替代当前
+   v2.1 自动生成 query。
+

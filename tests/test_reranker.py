@@ -108,6 +108,8 @@ def test_rerank_async_reorders_using_api(monkeypatch):
     import reranker_client as reranker_mod
 
     monkeypatch.setattr(reranker_mod.httpx, "AsyncClient", _StubAsyncClient)
+    monkeypatch.delenv("SILICONFLOW_RERANK_BASE_URL", raising=False)
+    monkeypatch.delenv("SILICONFLOW_RERANK_MODEL", raising=False)
 
     candidates = [
         {"chunk_id": "c1", "content": "doc A", "rrf_score": 0.8},
