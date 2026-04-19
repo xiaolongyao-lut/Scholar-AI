@@ -25,6 +25,7 @@ export interface EmbeddingConfig {
 export interface WorkspaceConfig {
   localStoragePath: string;
   autoIndex: boolean;
+  retrievalTopK: number;
 }
 
 export interface AppSettings {
@@ -56,6 +57,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   workspace: {
     localStoragePath: './output',
     autoIndex: true,
+    retrievalTopK: 6,
   },
 };
 

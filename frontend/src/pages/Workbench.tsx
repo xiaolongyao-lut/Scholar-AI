@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
 import { useWriting } from '@/contexts/WritingContext';
-import { getLLMConfig } from '@/services/settingsStore';
+import { getLLMConfig, loadSettings } from '@/services/settingsStore';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { askChatWithConfig, type ChatHistoryMessage } from '@/services/chatApi';
 import axios from 'axios';
@@ -90,6 +90,7 @@ export function Workbench() {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [ingestMode, setIngestMode] = useState<'none' | 'query' | 'full'>('query');
 
   // Load saved messages when project changes
   useEffect(() => {
@@ -123,9 +124,14 @@ export function Workbench() {
         params: {
           project_id: activeProjectId,
           query: currentQuery,
-          top_k: 6,
+          top_k: Math.min(20, Math.max(3, loadSettings().workspace.retrievalTopK ?? 6)),
+          ingest_mode: ingestMode,
+          ingest_limit: 8,
+          scan_mode: 'fast',
+          scan_batch_size: 24,
+          scan_max_workers: 8,
         },
-        timeout: 15000,
+        timeout: 60000,
       });
 
       const results: RetrievedChunk[] = (data.results ?? []).filter(
@@ -161,7 +167,7 @@ export function Workbench() {
     } catch {
       return { context: [] as string[], sources: [] as { title: string; page: string }[] };
     }
-  }, [activeProjectId]);
+  }, [activeProjectId, ingestMode]);
 
   const handleClearHistory = () => {
     if (activeProjectId) localStorage.removeItem(`${CHAT_HISTORY_KEY}_${activeProjectId}`);
@@ -361,6 +367,33 @@ export function Workbench() {
             </div>
           );
         })()}
+        {/* Ingest Mode Selector */}
+        <div className="max-w-2xl mx-auto mb-3 flex items-center gap-2">
+          <span className="text-xs font-label text-foreground/60 min-w-fit">入库模式：</span>
+          <div className="flex gap-1">
+            {(['none', 'query', 'full'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setIngestMode(mode)}
+                disabled={!activeProjectId}
+                title={
+                  mode === 'none' ? '仅检索已入库 chunk' :
+                  mode === 'query' ? '按提问内容筛选候选并入库（推荐）' :
+                  '把待入库候选全部入库'
+                }
+                className={cn(
+                  'px-2.5 py-1 rounded-md text-xs font-label transition-all',
+                  ingestMode === mode
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-surface-high text-foreground/60 hover:text-foreground/80',
+                  !activeProjectId && 'opacity-40 cursor-not-allowed'
+                )}
+              >
+                {mode === 'none' ? '无入库' : mode === 'query' ? '按需入库' : '全量入库'}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <div className="flex-1 flex items-center gap-2 bg-surface-high rounded-xl px-4 py-2.5 border border-outline-variant/50 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
             <Search size={16} className="text-foreground/30 flex-shrink-0" />

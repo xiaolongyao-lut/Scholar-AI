@@ -1,0 +1,3503 @@
+
+============================================================
+PAPER: Financial Report Chunking
+============================================================
+Total pages: 15
+
+--- Page 1 ---
+arXiv:2402.05131v3  [cs.CL]  16 Mar 2024
+Financial Report Chunking for E?ective
+Retrieval Augmented Generation
+Antonio Jimeno Yepes, Yao You, Jan Milczek, Sebastian Laverde, and Leah Li
+Unstructured Technologies
+Sacramento, CA, USA
+leah@unstructured.io
+https://unstructured.io
+Abstract. Chunking information is a key step in Retrieval Augmented
+Generation (RAG). Current research primarily centers on paragraph-
+level chunking. This approach treats all texts as equal and neglects
+the information contained in the structure of documents. We propose
+an expanded approach to chunk documents by moving beyond mere
+paragraph-level chunking to chunk primary by structural element com-
+ponents of documents. Dissecting documents into these constituent ele-
+ments creates a new way to chunk documents that yields the best chunk
+size without tuning. We introduce a novel framework that evaluates how
+chunking based on element types annotated by document understanding
+models contributes to the overall context and accuracy of the informa-
+tion retrieved. We also demonstrate how this approach impacts RAG
+assisted Question & Answer task performance. Our research includes a
+comprehensive analysis of various element types, their role in e?ective
+information retrieval, and the impact they have on the quality of RAG
+outputs. Findings support that element type based chunking largely im-
+prove RAG results on ?nancial reporting. Through this research, we are
+also able to answer how to uncover highly accurate RAG.
+Keywords: Retrieval Augmented Generation ? Document Chunking ?
+Document Pre-Processing ? Financial Domain ? Large Language Models
+1
+Introduction
+Existing approaches for document understanding use a combination of methods
+from the computer vision and natural language processing domains to identify
+the di?erent components in a document. In the rapidly evolving landscape of
+arti?cial intelligence, the capability to e?ectively process unstructured data is
+becoming increasingly critical. Large Language Models (LLMs) like GPT-4 have
+revolutionized natural language understanding and generation, as evidenced by
+their prompt-based functionalities [31], enabling a wide range of applications [5].
+However, the e?cacy of these models is often constrained by their reliance on the
+size and quality of the data they process. A notable limitation is the restricted
+contextual window of LLMs, which hampers their ability to fully comprehend the
+
+
+--- Page 2 ---
+2
+Jimeno Yepes et al.
+contents of extensive documents [25,22,18]. By dissecting large volumes of text
+into smaller, more focused segments, LLMs can process each part with greater
+precision, ensuring a thorough understanding of each section. This segmented
+approach allows for meticulous analysis of unstructured data, enabling LLMs to
+construct a more comprehensive and coherent understanding of the entire docu-
+ment [41]. There remains a challenge in ensuring factual accuracy and relevance
+in the generated responses, especially when dealing with complex or extensive
+information.
+Recently, Retrieval Augmented Generation (RAG) [21,12] has been devel-
+oped to address the hallucination problem with LLMs [15,43] when recovering
+factual information directly from an LLM. In RAG, instead of answering a user
+query directly using an LLM, the user query is used to retrieve documents or
+segments from a corpus and the top retrieved documents or segments are used
+to generate the answer in conjunction with an LLM. In this way, RAG con-
+straints the answer to the set of retrieved documents. RAGs have been used as
+well to answer questions from single documents [14]. The documents are split
+into smaller parts or chunks, indexed by a retrieval system and recovered and
+processed depending on the user information need. In a sense, this process allows
+answering questions about information in a single document, thus contributing
+to the set of techniques available for document understanding.
+Since documents need to be chunked for RAG processing, this raises the
+question about what is the best practice to chunk documents for e?ective RAG
+document understanding. There are several dimensions to consider when decid-
+ing how to chunk a document, which includes the size of the chunks.
+The retrieval system in RAG can use traditional retrieval systems using bag-
+of-words methods or a vector database. If a vector database is used, then an
+embedding needs to be obtained from each chunk, thus the number of tokens
+in the chunk is relevant since the neural networks processing the chunks might
+have constraints on the number of tokens. As well, di?erent chunk sizes might
+have undesirable retrieval results. Since the most relevant retrieved chunks need
+to be processed by an LLM, the number of tokens in retrieved chunks might
+have an e?ect in the generation of the answer [25]. As we see, chunking is re-
+quired for RAG systems and there are several advantages and disadvantages
+when considering how to chunk a document.
+In this work, we study speci?cally the chunking of U.S. Securities and Ex-
+change Commission (SEC)1 Financial Reports2, including 10-Ks, 10-Qs, and
+8-Ks. This study plays a critical role in o?ering insights into the ?nancial health
+and operational dynamics of public companies. These documents present unique
+challenges in terms of document processing and information extraction as they
+consist of varying sizes and layouts, and contain a variety of tabular informa-
+tion. Previou
+
+--- Page 3 ---
+Financial Report Chunking for E?ective Retrieval Augmented Generation
+3
+and chunking con?guration3 [14]. To the best of our knowledge, this is the ?rst
+systematic study on chunking for document understanding and more speci?cally
+for processing ?nancial reports.
+2
+Related work
+RAG is an innovative method that has emerged to enhance the performance of
+LLMs by incorporating external knowledge, thereby boosting their capabilities.
+This technique has undergone substantial research, examining various con?gu-
+rations and applications. Key research includes Gao et al.?s [12] detailed analysis
+of RAG con?gurations and their role in enhancing Natural Language Processing
+(NLP) tasks, reducing errors, and improving factual accuracy. Several context
+retrieval methods are proposed to dynamically retrieve documents to improve
+the coherence of generated outputs [1]. Other research introduced advancements
+in RAG, including reasoning chain storage and optimization strategies for re-
+trieval, respectively, broadening the scope and e?ciency of RAG applications in
+LLMs [21]. More recent work has compared RAG vs LLM ?ne-tuning, and identi-
+?ed that applying both improves the performance of each individual method [2].
+Chunking has been identi?ed as the key factor in the success of RAG, improv-
+ing the relevance of retrieved content by ensuring accurate embedding of text
+with minimal noise. Various strategies have been developed for text subdivision,
+each with its unique approach. They can be summarized as follows: the ?xed
+size strategy divides text into uniform segments, but it often overlooks the
+underlying textual structure. In contrast, the recursive strategy iteratively
+subdivides text using separators like punctuation marks, allowing it to adapt
+more ?uidly to the content. The contextual strategy takes this a step further
+by employing NLP techniques such as sentence segmentation to represent the
+meaning in context. Lastly, the hybrid strategy combines di?erent approaches,
+o?ering greater ?exibility in handling diverse text types [34]. However, an area
+yet to be explored in RAG chunking based on element types (document struc-
+ture), which involves analyzing the inherent structure of documents, such as
+headings, paragraphs, tables, to guide the chunking process. Although chunk-
+ing by Markdown and LaTeX comes closer to addressing element types, it?s not
+the same in nature as a dedicated approach that directly considers document
+structure and element types for chunking, which could potentially yield more
+contextually relevant chunks.
+Exploring the structure of ?nancial reports is an exceptional area for es-
+tablishing optimal principles for chunking. The intricate nature of document
+structures and contents has resulted in most of the work processing ?nancial
+reports focusing on the identi?cation of structural elements. Among previous
+work, we ?nd El-Haj et al. [10] and the FinTOC challenges [17,4,11] that have
+worked at the document structure level for UK and French
+
+--- Page 4 ---
+4
+Jimeno Yepes et al.
+ditionally, there is recent work that considers U.S. SEC reports, which includes
+DocLayNet [33] and more speci?cally with the report tables in FinTabNet [45].
+On the side of ?nancial models, there is work in sentiment analysis in ?-
+nance [37], which includes the pre-training of specialised models such as Fin-
+BERT by Liu et al. [26], which is a BERT based model pre-trained on large
+corpora including large collections of ?nancial news collected from di?erent sites
+and FinBERT by DeSola et al, [9] trained on Wikipedia, BookCorpus and U.S.
+SEC data. Additional models include BloombergGPT [40], FinGPT [42] and
+Instruct-FinGPT[44].
+More advance datasets in the ?nancial domain include FinQA [6], LLMWare [27],
+ConFIRM [8] and TAT-QA [46] among others [7,38,19] that have been prepared
+for retrieval and or Questions and Answering (Q&A) tasks over snippets of ?-
+nancial data that includes tabular data, which has allowed methods on large
+language models to be tested on them [39].
+Most of the previous work has focused on understanding the layout of ?-
+nancial documents or understanding speci?c snippets of existing reports with
+di?erent levels of complexity, but there has not been much research in under-
+standing ?nancial report documents, except some more recent work that includes
+FinanceBench [14], in which a set of questions about the content of ?nancial re-
+ports are proposed that includes the evidence snippet.
+More speci?cally on document chunking methods for RAG, there are stan-
+dard approaches being considered such as chunking text into spans of a given
+token length (e.g. 128 and 256) or chunking based on sentences. Open source
+projects already allow simple processing of documents (e.g. Unstructured4, Lla-
+maindex5 or Langchain 6), without explicitly considering the table structure on
+which these chunking strategies are applied.
+Even though di?erent approaches are available, an exhaustive evaluation of
+chunking applied to RAG and speci?cally to ?nancial reporting, except for some
+limited chunking analysis [14,36], is non-existent. In our work, we compare a
+broad range of chunking approaches in addition to more simple ones and provide
+an analysis of the outcomes of di?erent methods when asking questions about
+di?erent aspects of the reports.
+3
+Methods
+In this section, we present the chunking strategies that we have evaluated. Before
+describing the chunking strategies, we present the RAG environment in which
+these strategies have been evaluated and the dataset used for evaluation.
+3.1
+RAG setting for the experiments
+The RAG pipeline used to process a user question is presented in ?gure 1 and is
+a common instance of a RAG [12]. Prior to answering any question about a given
+4 https://unstructured.io
+5 https://www.llamaindex.ai
+6 https://www.langchain.com
+
+
+--- Page 5 ---
+Financial Report Chunking for E?ective Retrieval Augmented Generation
+5
+document, the document is split into chunks and the chunks are indexed into
+a vector database (vectordb). When a question is sent to the RAG system, the
+top-k chunks most similar to the question are retrieved from the vector database
+and used to generate the answer using a large language model as generator. In
+order to retrieve chunks from the vector database, the question is encoded into a
+vector that is compared to the vector previously generated from the chunks. To
+prompt the generator, the question is converted into a set of instructions that
+instruct the LLM to ?nd the answer within the top-k retrieved chunks.
+Fig. 1. RAG steps to answer a question about a document
+In our experiments, we modify the way documents are chunked prior to
+being indexed in the vector database. All other settings remain constant. In the
+following sections, we describe in more detail each one of the components and
+processes used.
+3.2
+Indexing and retrieval
+We have used the open source system Weaviate7 as our vector database. As
+encoder model, we have used a sentence transformer [35] trained on over 256M
+questions and answers, which is available from the HuggingFace system8.
+As shown in ?gure 2, to index a document, ?rst the document is split into
+chunks, then each chunk is processed by an encoder model and then indexed into
+the vector database. Based on the chunking strategy a document will be split
+into a larger or smaller set of chunks.
+Fig. 2. Indexing of document chunks into the vector database
+7 https://weaviate.io/developers/weaviate
+8 https://huggingface.co/sentence-transformers/multi-qa-mpnet-base-dot-
+v1
+
+
+============================================================
+PAPER: Is Semantic Chunking Worth
+============================================================
+Total pages: 23
+
+--- Page 1 ---
+Findings of the Association for Computational Linguistics:
+NAACL 2025, pages 2155?2177
+April 29 - May 4, 2025 ?2025 Association for Computational Linguistics
+Is Semantic Chunking Worth the Computational Cost?
+Renyi Qu
+Vectara, Inc.
+renyi@vectara.com
+Ruixuan Tu
+University of Wisconsin?Madison
+turx2003@gmail.com
+Forrest Bao
+Vectara, Inc.
+forrest@vectara.com
+Abstract
+Recent advances in Retrieval-Augmented Gen-
+eration (RAG) systems have popularized se-
+mantic chunking, which aims to improve re-
+trieval performance by dividing documents into
+semantically coherent segments. Despite its
+growing adoption, the actual benefits over sim-
+pler fixed-size chunking, where documents are
+split into consecutive, fixed-size segments, re-
+main unclear. This study systematically evalu-
+ates the effectiveness of semantic chunking us-
+ing three common retrieval-related tasks: docu-
+ment retrieval, evidence retrieval, and retrieval-
+based answer generation. The results show that
+the computational costs associated with seman-
+tic chunking are not justified by consistent per-
+formance gains. These findings challenge the
+previous assumptions about semantic chunk-
+ing and highlight the need for more efficient
+chunking strategies in RAG systems.
+1
+Introduction
+In Retrieval-Augmented Generation (RAG) sys-
+tems, cutting documents into smaller units called
+?chunks? has a crucial effect on the quality of both
+retrieval and generation tasks (Chen et al., 2023;
+Wadhwa et al., 2024; Shi et al., 2023; Yu et al.,
+2023). By retrieving the most relevant chunks for
+a given query and feeding them into a generative
+language model, these systems aim to produce ac-
+curate and contextually appropriate answers. How-
+ever, the effectiveness of chunking strategies re-
+mains a significant challenge in optimizing retrieval
+quality and computational efficiency (Lewis et al.,
+2020; Finardi et al., 2024).
+Known as fixed-size chunking, the traditional
+way to chunk is to cut documents into chunks of a
+fixed length such as 200 tokens (Gao et al., 2023).
+While computationally simple, this approach can
+fragment semantically related content across multi-
+ple chunks, leading to suboptimal retrieval perfor-
+mance. Recently, there has been a surge of interest
+in semantic chunking, where documents are seg-
+mented based on semantic similarity, with some in-
+dustry applications suggesting promising improve-
+ments in performance (LangChain, 2024; LlamaIn-
+dex, 2024; McCormick, 2024). However, there
+is no systematic evidence that semantic chunking
+yields a performance gain in downstream tasks,
+and if there is, the gain is significant enough to
+justify the computational overhead than fixed-size
+chunking.
+Such a systematic evaluation is not trivial due to
+the lack of data that can be directly used to com-
+pare chunking strategies. Therefore, we design an
+indirect evaluation using three proxy tasks: (1) doc-
+ument retrieval, measuring the ability to identify
+relevant documents; (2) evidence retrieval, mea-
+suring 
+
+--- Page 2 ---
+Figure 1: Illustration of the three chunkers tested in this study. Colored segments represent different topics within
+the sample document: Purple for psychology, Green for programming, and Yellow for food. Red blocks mark chunk
+breakpoints. (a) Fixed-size Chunker splits the document into consecutive, uniform chunks without considering
+semantic content. (b) Breakpoint-based Semantic Chunker segments the text by detecting semantic distance
+thresholds between consecutive sentences to maintain coherence. (c) Clustering-based Semantic Chunker groups
+semantically similar sentences, potentially combining non-consecutive text to form topic-based chunks.
+?chunkers.?
+Fixed-size Chunker This is our baseline chunker
+that splits a document sequentially into fixed-size
+chunks, based on a predefined or user-specified
+number of sentences per chunk.
+Although this approach is simple and compu-
+tationally efficient, it may separate contextually
+related sentences, leading to potential degradation
+in retrieval quality (Lewis et al., 2020; Finardi et al.,
+2024; Gao et al., 2023). To alleviate this, we use
+overlapping sentences between consecutive chunks,
+a common practice to maintain some degree of con-
+textual continuity.
+Breakpoint-based Semantic Chunker A break-
+point-based chunker scans over the sequence of
+sentences and decide where to insert a breakpoint
+to separate sentences before and after it into two
+chunks. A breakpoint is inserted if the semantic dis-
+tance between two consecutive sentences exceeds
+a thredshold, meaning a significant topic change.
+We tested four relative thresholds for deter-
+mining breakpoints, as proposed by LangChain
+(2024).Additionally, we tested two absolute thresh-
+olds, which use predetermined values to determine
+chunk boundaries, reducing computational over-
+head.
+However, the breakpoint-based chunkers make
+decisions using only two sentences each time. This
+strategy maybe locally greedy. To chunk with more
+information at a bigger scope, we propose a new
+type of semantic chunkers next.
+Clustering-based Semantic Chunker This type
+of chunkers leverage clustering algorithms to group
+sentences together semantically, capturing global
+relationships and allowing for non-sequential sen-
+tence groupings. However, it risks losing losing
+contextual information hidden in the proximity of
+sentences. To mitigate this, we defined a new dis-
+tance measure that combines positional and seman-
+tic distances. Specifically, we calculate a weighted
+sum between the positional distance (i.e., the sen-
+tence index difference) and the cosine distance be-
+tween two sentence xa and xb:
+d(xa, xb) = ?dpos(xa, xb) + (1 ??)dcos(xa, xb)
+(1)
+dpos(xa, xb) = |a ?b|
+n
+(2)
+dcos(xa, xb) = 1 ?max(cos(emb(xa), emb(xb)), 0)
+(3)
+where n is the total number of sentences in the
+document, emb(?) is the embedding function, and
+? is a hyperparameter. When ? = 0, the chunker
+operates purely based on semantic similarity; when
+? = 1, it mirrors the Fixed-size Chunker. In Eq. (3),
+a 
+
+--- Page 3 ---
+similarity values are treated as 0, as they do not aid
+in retrieval or generation.
+Without losing generality, we employed single-
+linkage agglomerative clustering and DBSCAN
+(Ester et al., 1996) as representatives of clustering
+algorithms. Further details on these methods an
+their adjustments during experimentation are pro-
+vided in Appendix A.
+3
+Experiments
+In the absence of ground-truth chunk data, we de-
+signed three experiments to indirectly assess the
+quality of each chunker: document retrieval, evi-
+dence retrieval, and answer generation. Different
+datasets and evaluation metrics were used for each
+experiment to align with the specific task require-
+ments. All documents were first split into sen-
+tences using SpaCy?s en_core_web_sm model (Ex-
+plosion, 2024) before being embedded and chun-
+ked. We tested three embedding models selected to
+represent a range of performances based on their
+rankings on the MTEB Leaderboard (Muennighoff
+et al., 2022). See Appendix E.2 for details.
+3.1
+Document Retrieval
+This experiment assessed the effectiveness of chun-
+kers in retrieving relevant documents for a given
+query. We used 10 datasets, shown in Tables 1
+and 4. Most documents on the BEIR benchmark
+(Thakur et al., 2021) are too short for chunking to
+be effective. To address this, we synthesized longer
+documents by stitching short documents from six
+datasets where documents are too short (see Ap-
+pendix C for details). We randomly sampled 100
+queries from each dataset and retrieved the top k
+chunks, where k ?[1, 3, 5, 10]. Each retrieved
+chunk was mapped to its source document, and the
+retrieved documents were evaluated by comparing
+them to a set of relevant documents for each query.
+3.2
+Evidence Retrieval
+Here we evaluate chunkers at a finer granularity
+than the previous experiment by measuring their
+abilities to locate evidence sentences. We selected
+additional datasets from RAGBench (Friel et al.,
+2024), shown in Tables 2 and 5, because few
+datasets contain long documents with ground-truth
+evidence sentences. We measured the number of
+ground-truth evidence sentences present in the re-
+trieved top-k chunks.
+3.3
+Answer Generation
+This experiment measured how chunkers impacted
+the quality of LLM-generated answers. We used
+gpt-4o-mini as the generative model. The top-5
+retrieved chunks were used as input for the LLM,
+and generated answers were compared to ground-
+truth responses using semantic similarity measures.
+We reused the datasets from Section 3.2, as they
+included long documents, evidence, and reference
+answers.
+4
+Results
+4.1
+Measuring and reporting performances
+As mentioned earlier, we used three proxy tasks
+the study chunking. We cannot directly assess the
+quality of retrieval at the chunk level due to the lack
+of ground-truth at the chunk level. Instead, each
+retrieved chunk is mapped back to either the source
+document or the included evidence sentences.
+Since the number of relevant documents or evi-
+dence sentences is not fixed (unlike the k va
+
+--- Page 4 ---
+Dataset
+Fixed-size
+Breakpoint
+Clustering
+Miracl*
+69.45
+81.89
+67.35
+NQ*
+43.79
+63.93
+41.01
+Scidocs*
+16.82
+17.60
+19.87
+Scifact*
+35.27
+36.27
+35.70
+BioASQ*
+61.86
+61.87
+62.49
+NFCorpus*
+21.36
+21.07
+22.12
+HotpotQA
+90.59
+87.37
+84.79
+MSMARCO
+93.58
+92.23
+93.18
+ConditionalQA
+68.11
+64.44
+65.94
+Qasper
+90.99
+89.27
+90.77
+Table 1: F1@5 for Document Retrieval (%). Datasets
+marked with * are stitched. Rows are sorted by the aver-
+age number of sentences per document (before stitching)
+in ascending order for easier comparison.
+from datasets like Miracl and NQ, leading to high
+topic diversity. In such cases, Breakpoint-based
+Semantic Chunker outperformed others by better
+preserving topic integrity, splitting sentences based
+on semantic dissimilarity to form chunks similar
+to the original documents. In contrast, Fixed-size
+and Clustering-based Chunkers often mixed sen-
+tences from different documents, increasing noise
+and lowering retrieval quality.
+As document length increased, fewer documents
+were stitched together, reducing topic diversity.
+This diminished the advantage of Breakpoint-based
+Semantic Chunker, while Clustering-based Seman-
+tic Chunker improved. The gap between semantic
+and fixed-size chunkers narrowed, with Fixed-size
+Chunker benefiting from higher topic integrity.
+These results suggest that in real life, the topics
+in a document may not be as diverse as in our
+artificially noisy, stitched data, and hence semantic
+chunkers may not have an edge over fixed-size
+chunker there.
+4.3
+Evidence Retrieval
+As shown in Table 2, Fixed-size Chunker per-
+formed best on 3 out of 5 datasets, indicating a
+slight edge in capturing core evidence sentences.
+However, the performance differences between the
+Fixed-size Chunker and the two semantic chunkers
+were minimal, suggesting no clear advantage for
+any specific chunking strategy. See Appendix B
+for more details.
+Further inspection revealed that despite varia-
+tions in chunking methods, the top-k retrieved
+chunks frequently contained the same evidence sen-
+tences, explaining the minimal performance differ-
+ences. This suggests that adding semantic informa-
+tion did not significantly enhance performance, as
+the benefits of semantic grouping were often redun-
+dant when core evidence was already captured by
+sentence positions. These findings indicate that the
+performance of the chunkers largely depends on
+how effectively the embedding models capture the
+semantic richness of individual sentences, rather
+than the chunking strategy itself.
+Dataset
+Fixed-size
+Breakpoint
+Clustering
+ExpertQA
+47.11
+47.08
+46.87
+DelucionQA
+43.05
+43.24
+43.36
+TechQA
+28.98
+28.49
+27.96
+ConditionalQA
+18.23
+19.83
+19.14
+Qasper
+8.66
+8.16
+8.50
+Table 2: F1@5 for Evidence Retrieval (%). Rows are
+sorted by the average number of sentences per document
+in ascending order for easier comparison.
+4.4
+Results for Answer Generation
+As shown in Tables 3, Semantic Chunkers per-
+formed slightly better than Fixed-size Chunker
+based on BERTScore, but the differences are m
+
+--- Page 5 ---
+Limitations
+Sentence-level Chunking Our study focuses on
+sentence-level chunking, where documents are split
+into individual sentences, and each sentence is
+treated as a segment for grouping. This approach
+results in sentence embeddings that lack contextual
+information. While we attempted to address this
+by overlapping sentences in Fixed-size Chunker
+and incorporating positional distance in Seman-
+tic Chunker (global), the embeddings themselves
+remained context-free. Further exploration of con-
+textual embeddings is necessary before definitively
+concluding the limitations of semantic chunking.
+Lack of Chunk Quality Measures As noted in
+Section 4, while the output chunks differed be-
+tween methods, retrieval and generation perfor-
+mances were similar across chunkers. In addition
+to the influence of embedding models, the absence
+of direct chunk quality metrics likely contributed
+to this issue. Having ground-truth query-chunk rel-
+evance scores would provide more accurate evalua-
+tions than relying solely on document or evidence
+mapping.
+Lack of Suitable Datasets Despite testing mul-
+tiple datasets, our selection was constrained by
+a lack of comprehensive datasets.
+An ideal
+dataset would include long documents represen-
+tative of real-world use cases, diverse query types,
+human-generated answers, query-document rele-
+vance scores, and human-labeled evidence sen-
+tences. Our synthetic documents had artificially
+high topic diversity due to random stitching, po-
+tentially leading to unreliable results. Additionally,
+the answer sets in RAGBench (Friel et al., 2024)
+were generated by LLMs, which may not accu-
+rately assess chunk quality. A dataset containing
+all these elements is needed for a more thorough
+evaluation of chunking strategies.
+References
+Valeriia Bolotova-Baranova, Vladislav Blinov, Sofya
+Filippova, Falk Scholer, and Mark Sanderson. 2023.
+Wikihowqa: A comprehensive benchmark for multi-
+document non-factoid question answering. In Pro-
+ceedings of the 61st Annual Meeting of the Associa-
+tion for Computational Linguistics (Volume 1: Long
+Papers), pages 5291?5314.
+Vera Boteva, Demian Gholipour, Artem Sokolov, and
+Stefan Riezler. 2016. A full-text learning to rank
+dataset for medical information retrieval.
+In Ad-
+vances in Information Retrieval: 38th European Con-
+ference on IR Research, ECIR 2016, Padua, Italy,
+March 20?23, 2016. Proceedings 38, pages 716?722.
+Springer.
+Vittorio Castelli, Rishav Chakravarti, Saswati Dana, An-
+thony Ferritto, Radu Florian, Martin Franz, Dinesh
+Garg, Dinesh Khandelwal, Scott McCarley, Mike
+McCawley, et al. 2019. The techqa dataset. arXiv
+preprint arXiv:1911.02984.
+Jianlv Chen, Shitao Xiao, Peitian Zhang, Kun Luo, Defu
+Lian, and Zheng Liu. 2024. Bge m3-embedding:
+Multi-lingual, multi-functionality, multi-granularity
+text embeddings through self-knowledge distillation.
+arXiv preprint arXiv:2402.03216.
+Tong Chen, Hongwei Wang, Sihao Chen, Wenhao
+Yu, Kaixin Ma, Xinran Zhao, Dong Yu, and Hong-
+ming Zhang. 2023.
+Dense x
+
+============================================================
+PAPER: Dense X Retrieval
+============================================================
+Total pages: 19
+
+--- Page 1 ---
+EMNLP 2024 Main Conference
+Dense X Retrieval: What Retrieval Granularity Should We Use?
+Tong Chen?* Hongwei Wang?Sihao Chen?Wenhao Yu?
+Kaixin Ma?Xinran Zhao?Hongming Zhang?Dong Yu?
+?University of Washington
+?Tencent AI Lab
+?University of Pennsylvania
+?Carnegie Mellon University
+Abstract
+Dense retrieval has become a prominent
+method to obtain relevant context or world
+knowledge in open-domain NLP tasks. When
+we use a learned dense retriever on a retrieval
+corpus at inference time, an often-overlooked
+design choice is the retrieval unit in which the
+corpus is indexed, e.g. document, passage, or
+sentence. We discover that the retrieval unit
+choice significantly impacts the performance of
+both retrieval and downstream tasks. Distinct
+from the typical approach of using passages or
+sentences, we introduce a novel retrieval unit,
+proposition, for dense retrieval. Propositions
+are defined as atomic expressions within text,
+each encapsulating a distinct factoid and pre-
+sented in a concise, self-contained natural lan-
+guage format. We conduct an empirical com-
+parison of different retrieval granularity. Our
+experiments reveal that indexing a corpus by
+fine-grained units such as propositions signif-
+icantly outperforms passage-level units in re-
+trieval tasks. Moreover, constructing prompts
+with fine-grained retrieved units for retrieval-
+augmented language models improves the per-
+formance of downstream QA tasks given a spe-
+cific computation budget.
+1
+Introduction
+Dense retrievers are a popular class of techniques
+for accessing external information sources for open-
+domain NLP tasks (Karpukhin et al., 2020). Before
+we use a learned dense retriever to retrieve from a
+corpus, an imperative design decision we have to
+make is the retrieval unit ? i.e. the granularity at
+which we segment and index the retrieval corpus
+for inference. In practice, the choice of retrieval
+units, e.g. documents, fixed-length passage chunks
+or sentences, etc, is usually pre-determined based
+* Work was done during internship at Tencent AI Lab,
+Bellevue.
+?
+https://github.com/chentong0/
+factoid-wiki
+Question: What is the angle of the Tower of Pisa?
+Passage
+Retrieval
+Prior to restoration work performed be-
+tween 1990 and 2001, the tower leaned at
+an angle of 5.5 degrees, but the tower now
+leans at about 3.99 degrees. This means
+the top of the Leaning Tower of Pisa is dis-
+placed horizontally 3.9 meters (12 ft 10 in)
+from the center.
+Sentence
+Retrieval
+Prior to restoration work performed be-
+tween 1990 and 2001, the tower leaned at
+an angle of 5.5 degrees, but the tower now
+leans at about 3.99 degrees.
+Proposition
+Retrieval
+The Leaning Tower of Pisa now leans at
+about 3.99 degrees.
+Contriever
+GTR
+35
+45
+55
+65
+75
+Recall@5 (%)
+43.0
+65.2
+47.3
+66.7
+52.7
+68.0
+Passage Retrieval
+Contriever
+GTR
+25
+30
+35
+40
+45
+EM@500 (%)
+34.1
+38.5
+36.2
+40.1
+37.3
+41.3
+Open-domain QA
+Passage
+Sentence
+Proposition
+Figure 1: (Top) An example of three granularities of
+retrieval units of Wikipedia text when using dense
+
+--- Page 2 ---
+1. Prior to restoration work performed 
+between 1990 and 2001, the Leaning Tower 
+of Pisa leaned at an angle of 5.5 degrees.
+2. The Leaning Tower of Pisa now leans at 
+about 3.99 degrees.
+3. The top of the Leaning Tower of Pisa is 
+displaced horizontally 3.9 meters (12 ft 10 in) 
+from the center.
+Prior to restoration work performed between 
+1990 and 2001, the tower leaned at an angle of 
+5.5 degrees , // but the tower now leans at 
+about 3.99 degrees. // This means the top of the 
+Learning Tower of Pisa is displaced horizontally 
+3.9 meters (12 ft 10 in) from the center.
+WIkipedia
+FactoidWiki
+?
+?
+Answer
+Query
+QA Model
+Retrieval Units
+Retrieval 
+Units
+Passage Retrieval
+B
+C
+D
+Propositionizer
+?
+Query
+Corpus
+Passages
+Sentences
+Propositions
+Retrieval 
+Units
+Retriever
+A
+Figure 2: We discover that segmenting and indexing a retrieval corpus on the proposition level can be a simple yet
+effective strategy to increase dense retrievers? generalization performance at inference time (A, B). We empirically
+compare the retrieval and downstream open-domain QA task performance when dense retrievers work with
+Wikipedia indexed at the level of 100-word passages, sentences, or propositions (C, D).
+can replace passages in downstream QA tasks.
+Based on our empirical experiments, we discover
+that selecting the proper retrieval granularity at in-
+ference time can be a simple yet effective strategy
+for improving dense retrievers? retrieval and down-
+stream QA performance. We illustrate our intuition
+with an example of open-domain QA in Table 1.
+The example shows retrieved text by the same re-
+triever at three different granularities. The pas-
+sage, which represents a coarser retrieval unit with
+a longer context, is theoretically able to provide
+more relevant information for the question. How-
+ever, a passage often includes extraneous details
+(e.g., restoration period and horizontal displace-
+ment in the example of Table 1) that could poten-
+tially distract both the retriever and the language
+model in downstream tasks (Shi et al., 2023; Yu
+et al., 2023b). On the other hand, sentence-level in-
+dexing provides a finer-grained approach but does
+not entirely address the issue (Akkalyoncu Yilmaz
+et al., 2019; Yang et al., 2020). This is because
+sentences can still be complex and compounded,
+and they are often not self-contained, lacking nec-
+essary contextual information (e.g., in the example
+of Table 1, ?the tower? is the coreference of ?Pisa
+Tower?) for judging the query-document relevance.
+To address these shortcomings of typical re-
+trieval units such as passages or sentences, we pro-
+pose using proposition as a novel retrieval unit for
+dense retrieval. Propositions are defined as atomic
+expressions within text, where each encapsulates
+a distinct factoid and is presented in a concise,
+self-contained natural language format. We show
+an example proposition in Table 1. The proposi-
+tion describes the information regarding the Tower
+of Pisa?s current leaning angle in a self-con
+
+--- Page 3 ---
+? We provide a systemic study on how retrieval
+granularity impacts retrieval and downstream
+task performance. We observe that the retrieval
+units have a significant impact on performance.
+? We introduce FACTOIDWIKI, a processed En-
+glish Wikipedia dump, where each page is seg-
+mented into multiple granularities: passages, sen-
+tences, and our proposed propositions.
+? We propose retrieval by proposition as an alter-
+native strategy, which achieves better retrieval
+and QA accuracy and generalization performance
+(with unsupervised retriever), compared to pas-
+sage or sentence as retrieval unit.
+2
+Proposition as a Retrieval Unit
+The goal of our study is to understand how the gran-
+ularity of a retrieval corpus influences the dense
+retrieval models? performance empirically. Aside
+from commonly-used retrieval units such as 100-
+word passages (Karpukhin et al., 2020) or sen-
+tences, we propose using proposition as an alterna-
+tive retrieval unit choice. Here, propositions repre-
+sent atomic expressions of meanings in text (Min
+et al., 2023) with three defining principles below.
+1. Each proposition should correspond to a distinct
+piece of meaning in text, where the composition
+of all propositions would represent the seman-
+tics of the entire text.
+2. A proposition should be minimal, i.e. it cannot
+be further split into separate propositions.
+3. A proposition should be contextualized and self-
+contained (Choi et al., 2021). A proposition
+should include all the necessary context from the
+text (e.g. coreference) to interpret its meaning.
+The use of proposition as a retrieval unit is in-
+spired by a recent line of work (Min et al., 2023;
+Kamoi et al., 2023; Chen et al., 2023a,b), which
+finds success in representing and evaluating text
+semantics at the level of propositions. We demon-
+strate the concept of proposition and how a passage
+can be split into a set of propositions by an example
+on the left side of Figure 2. The passage contains
+three propositions, each of which corresponds to
+a distinct factoid about the Leaning Tower of Pisa:
+the angle before the restoration, the current angle,
+and the horizontal displacement.
+Within each proposition, necessary context from
+the passage is incorporated so that the meaning of
+the proposition can be interpreted independently of
+# units
+Avg. # words
+Passages
+41,393,528
+58.5
+Sentences
+114,219,127
+21.0
+Propositions
+256,885,003
+11.2
+Table 1: Statistics of text units in the English Wikipedia.
+the original text, e.g. the reference of the tower is
+resolved into its full mention, the Leaning Tower
+of Pisa, in the first proposition. We expect each
+proposition to describe exactly one atomic fact, and
+so our intuition is that propositions would suitably
+work as a retrieval unit for information-seeking
+questions.
+3
+FACTOIDWIKI: Proposition-Level
+Index and Retrieval for Wikipedia
+We empirically compare passages, sentences, and
+propositions as retrieval units on Wikipedia, a
+commonly-used retrieval source for knowledge-
+intensive 
+
+--- Page 4 ---
+GPT-4
+Propositionizer
+Not Faithful
+0.7% (3/408)
+1.3% (6/445)
+Not Minimal
+2.9% (12/408)
+2.0% (9/445)
+Not Stand-alone
+4.9% (20/408)
+3.1% (14/445)
+Table 2: Frequency of errors occurred in the generated
+propositions. Most generated propositions are faithful,
+while a small portion of them are not stand-alone.
+a ground truth set of propositions for a passage,
+we estimate the frequency of error cases where
+(1) a proposition is not fully supported by the pas-
+sage, (2) a proposition can be further split into
+separate propositions, and (3) propositions are not
+self-contained, respectively (Table 2). On a random
+sample of 50 passages, we observe that almost all
+propositions generated by both models are faithful,
+while a small portion of the propositions are not
+stand-alone.
+4
+Experimental Settings
+To evaluate the impact of the three retrieval unit
+choices, we conduct experiments on five differ-
+ent open-domain QA datasets with FACTOIDWIKI.
+With each dataset, we evaluate both passage re-
+trieval and downstream QA performance when
+dense retrievers work with Wikipedia indexed in
+different granularities.
+4.1
+Open-Domain QA Datasets
+We experiment on five different open-domain QA
+datasets with Wikipedia as the retrieval source: Nat-
+ural Questions (NQ, Kwiatkowski et al., 2019),
+TriviaQA (TQA, Joshi et al., 2017), Web Ques-
+tions (WebQ, Berant et al., 2013), SQuAD (Ra-
+jpurkar et al., 2016), and Entity Questions (EQ,
+Sciavolino et al., 2021).
+4.2
+Dense Retrieval Models
+We compare the performance of the four following
+supervised or unsupervised dense retriever mod-
+els. Here, supervised models refer to ones that
+have used human-labeled query-passage pairs as
+supervision during training, and vice versa.
+? SimCSE (Gao et al., 2021) is a BERT-base (De-
+vlin et al., 2019) encoder trained on unlabeled
+sentences sampled randomly from Wikipedia.
+SimCSE can be transferred to use as an unsu-
+pervised retriever (Chen et al., 2023b).
+? Contriever (Izacard et al., 2022) is an unsuper-
+vised retriever, instantiated with a BERT-base
+encoder. Contriever is contrastively trained by
+segment pairs constructed from unlabeled docu-
+ments from Wikipedia and web crawl data.
+? DPR (Karpukhin et al., 2020) is a dual-encoder
+BERT-base model fine-tuned on passage retrieval
+tasks directly using the question-passage pair la-
+bels from NQ, TQA, WebQ and SQuAD.
+? GTR (Ni et al., 2022) is a T5-base encoder (Raf-
+fel et al., 2020) pretrained on online forum QA
+data, and fine-tuned with question-passage pair
+labels on MS MARCO (Nguyen et al., 2016) and
+NQ datasets.
+4.3
+Passage Retrieval Evaluation
+We evaluate the retrieval performance at the pas-
+sage level when the corpus is indexed at the pas-
+sage, sentence, or proposition level respectively.
+For sentence and proposition level retrieval, we
+follow the setting introduced in Lee et al. (2021b),
+where the score of the passage is based on the max-
+imum similarity score between the query and all
+sentences or propositions in a passage. In practice,
+
+--- Page 5 ---
+Retriever
+Granularity
+NQ
+TQA
+WebQ
+SQuAD
+EQ
+Avg.
+R@5
+R@20
+R@5
+R@20
+R@5
+R@20
+R@5
+R@20
+R@5
+R@20
+R@5
+R@20
+Unsupervised Dense Retrievers
+SimCSE
+Passage
+28.8
+44.3
+44.9
+59.4
+39.8
+56.0
+29.5
+45.5
+28.4
+40.3
+34.3
+49.1
+Sentence
+35.5
+53.1
+50.5
+64.3
+45.3
+64.1
+37.1
+52.3
+36.3
+50.1
+40.9
+56.8
+Proposition
+41.1
+58.9
+52.4
+66.5
+50.0
+66.8
+38.7
+53.9
+49.5
+62.2
+46.3
+61.7
+Contriever
+Passage
+42.5
+63.8
+58.1
+73.7
+37.1
+60.6
+40.8
+59.8
+36.3
+56.3
+43.0
+62.8
+Sentence
+46.4
+66.8
+60.6
+75.7
+41.7
+63.1
+45.1
+63.5
+42.7
+61.3
+47.3
+66.1
+Proposition
+50.1
+70.0
+65.1
+77.9
+45.9
+66.8
+50.7
+67.7
+51.7
+70.1
+52.7
+70.5
+Supervised Dense Retrievers
+DPR
+Passage
+66.0
+78.0
+71.6
+80.2
+62.9
+74.9
+38.3
+53.9
+47.5
+60.4
+57.3
+69.5
+Sentence
+66.0
+78.0
+71.8
+80.5
+64.1
+74.4
+40.3
+55.9
+53.7
+66.0
+59.2
+71.0
+Proposition
+65.4
+77.7
+70.7
+79.6
+62.8
+75.1
+41.4
+57.2
+59.4
+71.3
+59.9
+72.2
+GTR
+Passage
+66.3
+78.4
+70.1
+79.4
+63.3
+76.5
+54.4
+68.1
+71.7
+80.5
+65.2
+76.6
+Sentence
+66.4
+79.4
+71.6
+80.9
+62.2
+76.8
+60.9
+73.4
+72.5
+81.3
+66.7
+78.4
+Proposition
+66.5
+79.6
+72.2
+80.9
+63.2
+77.4
+63.3
+75.0
+74.9
+83.0
+68.0
+79.2
+Table 3: Passage retrieval performance (Recall@k = 5, 20) on five different open-domain QA datasets when
+pre-trained dense retrievers work with the three different granularity from the retrieval corpus. Underline denotes
+cases where the training split of the target dataset was included in the training data of the dense retriever.
+prompts under the same computation budget, we
+set a token length limit for retrieved units.
+For this reason, we follow an evaluation setup
+where the maximum number of retrieved tokens
+is capped at l = 100 or 500, i.e. only the top
+l tokens from passage, sentence, or proposition
+level retrieval are fed into the language model as
+input. We evaluate the percentage of questions for
+which the predicted answer exactly matches (EM)
+the ground truth. We denote our metric as EM @
+l tokens. We use LLaMA-2-7B (Touvron et al.,
+2023) in our evaluation. To ensure the model?s out-
+put aligns with the format of each dataset, we em-
+ploy in-context learning, incorporating four-shot
+demonstrations as illustrated in Figure 9.
+5
+How Does Granularity Influence
+Passage Retrieval?
+In this section, we report and discuss how index-
+ing the corpus at various granularity influences the
+passage retrieval performance. Surprisingly, de-
+spite all of the dense retrieval models being trained
+on only passage-level documents, all the models
+demonstrate on-par or superior performance when
+the corpus is indexed at the proposition level. Our
+results suggest that indexing the corpus at the finer-
+grained units improves the cross-task generaliza-
+tion on passage retrieval.
+5.1
+Passage Retrieval Performance
+We report our evaluation results in Table 3. We
+observe that retrieval by propositions outperforms
+retrieval by sentences or passages on most tasks for
+both unsupervised and supervised retrievers.
+With all dense retrievers tested, proposition-
+level retrieval consistently outperforms sentence
+and passage-level retrieval on average across the
+five datasets
+
+============================================================
+PAPER: Reconstructing Context
+============================================================
+Total pages: 15
+
+--- Page 1 ---
+Reconstructing Context
+Evaluating Advanced Chunking Strategies for
+Retrieval-Augmented Generation
+Carlo Merola[0009?0000?1088?1495] and Jaspinder Singh[0009?0000?5147?1249] ?
+Department of Computer Science and Engineering, University of Bologna
+carlo.merola@studio.unibo.it, jaspinder.singh@studio.unibo.it
+Abstract. Retrieval-augmented generation (RAG) has become a trans-
+formative approach for enhancing large language models (LLMs) by
+grounding their outputs in external knowledge sources. Yet, a critical
+question persists: how can vast volumes of external knowledge be man-
+aged effectively within the input constraints of LLMs? Traditional meth-
+ods address this by chunking external documents into smaller, fixed-
+size segments. While this approach alleviates input limitations, it often
+fragments context, resulting in incomplete retrieval and diminished co-
+herence in generation. To overcome these shortcomings, two advanced
+techniques?late chunking and contextual retrieval?have been intro-
+duced, both aiming to preserve global context. Despite their potential,
+their comparative strengths and limitations remain unclear. This study
+presents a rigorous analysis of late chunking and contextual retrieval,
+evaluating their effectiveness and efficiency in optimizing RAG systems.
+Our results indicate that contextual retrieval preserves semantic coher-
+ence more effectively but requires greater computational resources. In
+contrast, late chunking offers higher efficiency but tends to sacrifice rel-
+evance and completeness.
+Keywords: Contextual Retrieval ? Late Chunking ? Dynamic Chunking
+? Rank Fusion.
+1
+Introduction
+Retrieval Augmented Generation (RAG) is a transformative approach that en-
+hances the capabilities of large language models (LLMs) by integrating external
+information retrieval directly into the text generation process. This method al-
+lows LLMs to dynamically access and utilize relevant external knowledge, sig-
+nificantly improving their ability to generate accurate, contextually grounded,
+and informative responses. Unlike static LLMs that rely solely on pre-trained
+data, RAG-enabled models can access up-to-date and domain-specific informa-
+tion. This dynamic integration ensures that the generated content remains both
+relevant and accurate, even in rapidly evolving or specialized fields.
+?Equal contribution.
+arXiv:2504.19754v1  [cs.IR]  28 Apr 2025
+
+
+--- Page 2 ---
+2
+J. Singh and C. Merola
+RAG models combine two key components: a retrieval mechanism and a
+generative model. The retrieval mechanism fetches relevant documents or data
+from a large corpus, while the generative model synthesizes this information into
+coherent, contextually enriched answers. This synergy enhances performance in
+knowledge-intensive natural language processing (NLP) tasks, enabling models
+to produce well-informed responses grounded in the retrieved data.
+The Context Dilemma in Classic RAG: Managing extensive external
+documents poses significant issues in RAG systems. Despite advancements, many
+LLMs are limited to processing a few thousand tokens. Although some models
+have achieved context windows up to millions of tokens [5], these are exceptions
+rather than the norm. Moreover, research indicates that LLMs may exhibit posi-
+tional bias, performing better with information at the beginning of a document
+and struggling with content located in the middle or toward the end [11,16]. This
+issue is exacerbated when retrieval fails to prioritize relevant information prop-
+erly. Thus, documents are often divided into smaller segments or "chunks" before
+embedding and retrieval. However, this chunking process can disrupt semantic
+coherence, leading to:
+? Loss of Context: dividing documents without considering semantic bound-
+aries can result in chunks that lack sufficient context, impairing the model?s
+ability to generate accurate and coherent responses.
+? Incomplete Information Retrieval: important information split across chunks
+may not be effectively retrieved or integrated.
+To address these issues, we analyse and compare two recent techniques?
+contextual retrieval1 and late chunking [9]?within a unified setup, evaluating
+their strengths and limitations in tackling challenges like context loss and incom-
+plete information retrieval. Contextual retrieval preserves coherence by prepend-
+ing LLM-generated context to chunks, while late chunking embeds entire docu-
+ments to retain global context before segmenting.
+Our study rigorously assesses their impact on generation performance in
+question-answering tasks, finding that neither technique offers a definitive solu-
+tion. This work highlights the trade-offs between these methods and provides
+practical guidance for optimizing RAG systems.
+To further support the community, we release all code, prompts, and data
+under the permissive MIT license, enabling full reproducibility and empowering
+practitioners to adapt and extend our work.2
+2
+Related Work
+Classic RAG. A standard RAG workflow involves four main stages: document
+segmentation, chunk embedding, indexing, and retrieval. During segmentation,
+documents are divided into manageable chunks. These chunks are then trans-
+formed into vector representations using encoder models, often normalized to
+1 https://www.anthropic.com/news/contextual-retrieval
+2 https://github.com/disi-unibo-nlp/rag-when-how-chunk
+
+
+--- Page 3 ---
+Reconstructing Context
+3
+ensure unit magnitudes. The resulting embeddings are stored in indexed vector
+databases, enabling efficient approximate similarity searches. Retrieval involves
+comparing query embeddings with the stored embeddings using metrics such as
+cosine similarity or Euclidean distance, which identify the most relevant chunks.
+Seminal works like [15] and [13] have demonstrated the effectiveness of RAG
+in tasks such as open-domain question answering. More recent studies, includ-
+ing [7], have introduced advancements in scalability and embedding techniques,
+further establishing RAG as a foundational framework for knowledge-intensive
+applications.
+Document Segmentation. Document segmentation is essential for processing long
+texts in RAG workflows, with methods ranging from fixed-size segmentation [7]
+to more adaptive techniques like semantic segmentation,3 which detect semantic
+breakpoints based on shifts in meaning. Recent advancements include supervised
+segmentation models [14,12] and segment-then-predict models, trained end-to-end
+without explicit labels to optimize chunking for downstream task performance
+[17]. In 2024, late chunking and contextual retrieval introduced novel paradigms.
+Both techniques have proven effective in retrieval benchmarks but remain largely
+untested in integrated RAG workflows. Despite several RAG surveys [7,6,8],
+no prior work has compared these methods within a comprehensive evaluation
+framework. This study addresses this gap by holistically analyzing late chunking
+and contextual retrieval, offering actionable insights into their relative strengths
+and trade-offs.
+3
+Methodology
+To guide our study, we define the following research questions (RQs), aimed at
+evaluating different strategies for chunking and retrieval in RAG systems:
+? RQ#1: Compares the effectiveness of early versus late chunking strate-
+gies, utilizing different text segmenters and embedding models to evalu-
+ate their impact on retrieval accuracy and downstream performance in RAG
+systems.
+? RQ#2: Compares the effectiveness of contextual retrieval versus tra-
+ditional early chunking strategies, utilizing different text segmenters
+and embedding models to evaluate their impact on retrieval accuracy and
+downstream performance in RAG systems.
+3.1
+RQ#1: Early or Late Chunking?
+In this workflow, the main architectural modification compared to the standard
+RAG lies in the document embedding process Figure 3.1. Specifically, we experi-
+ment with various embedding models to encode document chunks, tailoring them
+3 https://docs.llamaindex.ai/en/stable/examples/node_parsers/semantic_
+chunking/
+
+
+--- Page 4 ---
+4
+J. Singh and C. Merola
+to align with the early and late chunking strategies under evaluation. This ad-
+justment allows us to explore how different embedding techniques influence the
+retrieval quality and, subsequently, the overall performance of the RAG system.
+Additionally, we test dynamic segmenting models to further refine the chunk-
+ing process, providing an adaptive mechanism that adjusts chunk sizes based on
+content characteristics. By evaluating the impact of these dynamic segmenting
+models, we aim to improve the overall retrieval efficiency and response generation
+within the RAG framework.
+Early Chunking. Documents are segmented into text chunks, and each chunk
+is processed by the embedding model. The model generates token-level embed-
+dings for each chunk, which are subsequently aggregated using mean pooling to
+produce a single embedding per chunk.
+Late Chunking. Late chunking [9] defers the chunking process. As shown in
+Figure 3.1, instead of segmenting the document initially, the entire document
+is first embedded at the token level. The resulting token embeddings are then
+segmented into chunks, and mean pooling is applied to each chunk to generate the
+final embeddings. This approach preserves the full contextual information within
+the document, potentially leading to superior results across various retrieval
+tasks. It is adaptable to a wide range of long-context embedding models and
+can be implemented without additional training. The two approaches are tested
+with different embedding models.
+3.2
+RQ#2: Early or Contextual Chunking?
+In this workflow, traditional retrieval is compared to Contextual Retrieval with
+Rank Fusion technique. This has been introduced by Anthropic in September
+2024.4 Three steps are added to the Traditional RAG process: Contextualization,
+Rank Fusion, Reraking.
+Contextualization. After document segmentation, each chunk is enriched with
+additional context from the entire document, ensuring that even when seg-
+mented, each piece retains a broader understanding of the content (Fig. 3.2).
+In fact, when documents are split into smaller chunks, it might arise the prob-
+lem where individual chunks lack sufficient context. For example, a chunk might
+contain the text: "The company?s revenue grew by 3% over the previous quarter."
+However, this chunk on its own does not specify which company it is referring to
+or the relevant time period, making it difficult to retrieve the right information
+or use the information effectively. Contextualization improves the relevance and
+accuracy of retrieved information by maintaining contextual integrity.
+4 https://www.anthropic.com/news/contextual-retrieval
+
+
+--- Page 5 ---
+Reconstructing Context
+5
+Chunk
+Embedding
+model
+Chunk Embedding
+Pooling
+.....
+Long document
+x N
+ 
+ 
+Embedding
+model
+ 
+Embedding
+Pooling
+.....
+Long document
+Pooling
+Pooling
+Boundary cues
+....
+ 
+Embedding
+Token
+emb
+Token
+emb
+Token
+emb
+Token
+emb
+Token
+emb
+Token
+emb
+Token
+emb
+Fig. 1. Comparison of early chunking (left) and late chunking (right) approaches for
+processing long documents. In early chunking, the document is divided into chunks
+before embedding, with each chunk processed independently by the embedding model
+and then pooled. In contrast, late chunking processes the entire document to generate
+token embeddings first, using boundary cues to create chunk embeddings, which are
+subsequently pooled.
+Rank Fusion. In our methodology, we employ a rank fusion strategy that in-
+tegrates dense embeddings with sparse embeddings of BM25 [19] to improve
+retrieval performance. Although embedding models adeptly capture semantic
+relationships, they may overlook exact matches, which is particularly useful for
+unique identifiers or technical terms. BM25 uses a ranking function that builds
+upon Term Frequency-Inverse Document Frequency (TF-IDF), addressing this
+limitation by emphasizing precise lexical matches. To combine the strengths of
+both approaches, we conduct searches across both dense embedding vectors and
+BM25 sparse embedding vectors generated from both the chunk and its gener-
+ated context. Initially, the assigned relative importance in the search for the two
+vector fields has been set to be of equal intensity, resulting in lowering the scoring
+results in the retrieval evaluation. For this reason we use a weighting strategy
+assigning higher weights to dense vector fields, emphasizing them more in the
+final ranking. While different weight parameters have been tested, the final deci-
+sion has been to define a ratio of importance 4:1 assigning weight 1 for the dense
+
+
+============================================================
+PAPER: DMG-RAG pages 2-4
+============================================================
+Total pages: 8
+
+--- Page 1 ---
+DMG-RAG: Dynamic Multi-Grained
+Retrieval Augmented Generation for Multi-Hop QA
+Yu Pei1,2,3,4, Mieradilijiang Maimaiti1,2,3,4,*, Yi Chen1,2,3,4, Wu Le5, Zhuofei Xie5, Jiawei Chen5
+1School of Computer Science and Technology, Xinjiang University
+2Xinjiang Laboratory of Multi-Language Information Technology, Xinjiang University
+3Xinjiang Multilingual Information Technology Research Center
+4Joint International Research Laboratory of Silk Road Multilingual Cognitive Computing
+No. 777, Huarui Street, Shuimogou District, Urumqi 830017, Xinjiang, China
+5Integrated Laboratory for Space, Air, and Ground Systems
+Email: peiyu@stu.xju.edu.cn, miradeljan51@xju.edu.cn, 107552501327@stu.xju.edu.cn,
+alaia@richnetworks.hk, zhx34@pitt.edu, syscjw@zohomail.cn
+Abstract?Retrieval-Augmented Generation (RAG) enhances
+multi-hop question answering by grounding large language mod-
+els (LLMs) in retrieved evidence, yet its effectiveness is highly
+sensitive to chunk granularity and context construction under
+a fixed token budget. Sentence-level chunks can be precise but
+often fragment evidence chains, while paragraph- and document-
+level chunks provide broader coverage at the risk of introducing
+redundancy and irrelevant content. We propose DMG-RAG, a
+query-aware multi-grained RAG framework that coordinates
+chunking, retrieval, and budgeted context construction with two
+lightweight modules. We build aligned indices on the same
+corpus at three simple granularities (sentence, paragraph, and
+document). A query-conditioned Router dynamically allocates
+stage-1 retrieval quota set across granularities to shape an
+adaptive candidate pool for each query. Given the candidate pool,
+a Budgeter performs budget-constrained evidence selection by
+jointly considering relevance, chunk length, and redundancy, and
+assembles a compact evidence set via a deterministic greedy pack-
+ing procedure guided by a learned scoring function. Experiments
+on HotpotQA, 2WikiMultiHopQA, and MuSiQue demonstrate
+that DMG-RAG consistently outperforms strong baselines under
+EM and F1, yielding substantial average gains (up to 7?8 points).
+The code is publicly available1.
+Index Terms?multi-grained RAG, evidence set selection,
+multi-hop QA
+I. INTRODUCTION
+Retrieval-Augmented Generation (RAG) has emerged as
+a practical framework that couples Large Language Models
+(LLMs) with an external retrieval module to tackle knowledge-
+intensive tasks such as question answering, translation, sum-
+marization, and information extraction [1]. By retrieving task-
+relevant evidence from a corpus (often via dense retrieval [2]),
+RAG enables LLMs to access up-to-date and task-specific in-
+formation beyond their fixed parametric knowledge, improving
+factuality and controllability in real-world scenarios.
+Despite substantial progress, RAG performance is highly
+sensitive to the ?chunking?retrieval?selection? pipeline: how
+the corpus is segmented, how candidates are retrieved, and how
+evidence is assembled for generation. Many systems rely
+
+--- Page 2 ---
+simple and update-friendly. A lightweight query-conditioned
+Router outputs a granularity distribution and maps it to the
+stage-1 retrieval quota set across the three indices, shaping
+the candidate pool without selecting specific chunks. Given
+this pool, a Budgeter constructs the evidence set under a fixed
+context budget by combining relevance signals, chunk length,
+and redundancy, and applying a learned scorer with deter-
+ministic greedy packing to select a compact, complementary
+context. This ?routing then packing? decomposition separates
+candidate formation from within-budget evidence composition,
+improving interpretability and reproducibility. We evaluate the
+system with Qwen2.5-14B-Instruct as generator [7] and
+compare against four strong baselines.
+The main contributions are as follows:
+? We
+propose
+DMG-RAG,
+a
+query-adaptive
+multi-
+grained
+RAG
+framework
+for
+multi-hop
+QA
+(sen-
+tence/paragraph/document).
+? We introduce a lightweight Router+Budgeter: the Router
+allocates stage-1 top-k quota set across granularities, and
+the Budgeter scores candidates for deterministic budget-
+aware greedy packing.
+? We conduct EM/F1 experiments and controlled ablations
+on HotpotQA, 2WikiMultiHopQA, and MuSiQue to iso-
+late when router and budgeter help.
+II. RELATED WORK
+A. Chunking and Granularity for RAG
+Chunking defines the unit of indexing and retrieval in
+RAG, directly shaping what evidence can be surfaced for
+answering. Early RAG systems retrieve Wikipedia passages
+and generate condition on them [1], a practice echoed by dense
+retrievers such as DPR that segment documents into passages
+before encoding and indexing [2]. Previous analyses further
+show that segmentation strategies and granularity choices can
+substantially affect the effectiveness of RAG [8]. Granularity
+also impacts how evidence is distributed (fragmented facts
+vs. broader context): overly fine units may split co-referent
+facts, while overly coarse units may introduce weakly related
+content and blur salient cues. Recent work explores multi-
+granularity designs, including hierarchical retrieval with re-
+cursive clustering/summarization [9], query-conditioned gran-
+ularity routing [6], and structure-aware fragmentation with
+LMs [10]. Cross-granularity frameworks such as FreeChunker
+further aim to standardize fragmentation across granularities
+for evaluation and reuse [11]. Although promising, these
+approaches can add preprocessing or hierarchical structure that
+complicates maintenance and updates as corpora evolve [8].
+B. Retrieval, Reranking, and Chunk Selection
+Modern RAG pipelines are typically multi-stage: a fast
+retriever builds a candidate pool, and reranking/selection
+determines what evidence is retained. Recent work shows
+that stronger selection can improve downstream generation,
+including structured evidence composition [12], information-
+gain-based reranking and filtering, and zero-shot reranking via
+?answer scent? signals [13]. Complementary studies analyze
+when and why selection hel
+
+--- Page 3 ---
+Fig. 2: Overview of our query-adaptive multi-grained RAG pipeline. The Router allocates a retrieval quota set across
+granularities, and the Budgeter performs budget-aware evidence selection/packing before generation.
+We maintain three parallel dense indices built from the same
+corpus at different granularities G = {sent, para, doc}.
+Given q, our inference follows Algorithm 1:
+Step 1: Query encoding. We encode q into a dense vector
+eq ?Rd using a bi-encoder retriever.
+Step 2: Router (granularity allocation). The Router predicts
+a distribution on G and maps it to integer top-k quota set
+(ksent, kpara, kdoc) for stage-1 retrieval (Algorithm 1, lines 1?
+5). This corresponds to the left panel ?Router module? in
+Figure 2.
+Step 3: Multi-Grained retrieval (and optional reranking).
+We retrieve candidates from each index according to the quota
+set, merge them into a global pool P(q), and optionally rerank
+the top M items using a cross-encoder (Algorithm 1, lines 6?
+10).
+Step 4: Budgeter (budget-aware evidence selection). Given
+P(q) and the budget B, the Budgeter scores/filters candidates
+and produces a final evidence set S(q) (Algorithm 1, lines 11?
+15). If Budgeter is disabled, we fall back to a determin-
+istic greedy packing. This corresponds to the middle panel
+?Budgeter module? and the packing block in the right panel
+?Overall process? in Figure 2.
+Step 5: Generation. We build the generator prompt using
+the packed context and let an LLM produce ?a (Algorithm 1,
+lines 16?18).
+C. Multi-Grained Indexing
+For each granularity g ?G, we segment the corpus into
+chunks Cg = {c(g)
+i
+}Ng
+i=1 and build a FAISS dense index Ig. At
+Algorithm 1 query-adaptive multi-granularity RAG
+Require:Question q; indices for sent/para/doc; Router (optional);
+Budgeter (optional); context budget B; retrieval sizes K/T.
+Ensure: Predicted answer ?a.
+1:
+if Router enabled then
+2:
+(ksent, kpara, kdoc) ?Router(q)
+3:
+else
+4:
+(ksent, kpara, kdoc) ?DefaultQuota(K)
+5:
+end if
+6:
+P ?Retrieve(q, ksent, kpara, kdoc)
+7:
+P ?MergeSort(P)
+8:
+if Reranker enabled then
+9:
+P ?RerankTopM(q, P)
+10:
+end if
+11:
+if Budgeter enabled then
+12:
+S ?BudgetSelect(q, P, B)
+13:
+else
+14:
+S ?GreedyPack(P, B)
+15:
+end if
+16:
+x ?BuildPrompt(S, q)
+17:
+?a ?LLMGenerate(x)
+18:
+return ?a
+inference time, we search for each index with eq:
+Search(Ig, eq, kg) ?Pg(q),
+where Pg(q) are the top candidates kg for granularity g.
+D. Stagewise Retrieval
+We use a two-stage template for controllability. Let K
+be the size of the stage-1 pool (sum of quota set) and T
+be the final retrieval size. The Router determines (kg) with
+
+
+--- Page 4 ---
+P
+g kg = K. We retrieve ?gPg(q), merge-sort them into P(q),
+and optionally apply a cross-encoder reranker to the top M
+items for efficiency.
+E. Router: Dynamic Multi-Grained Top-k Quota Allocation
+a) Role: The Router performs query-level control: it does
+not select evidence directly, but allocates retrieval capacity
+across granularities for stage-1 retrieval (Figure 2, left; Al-
+gorithm 1, lines 1?5).
+b) Model: Given eq, we optionally concatenate low-
+cost descriptors (e.g., normalized budget signal and question
+length) and apply a lightweight MLP:
+p(q) = softmax(MLP([eq; fq])) ?R|G|.
+We map p(q) to an integer quota set by rounding under the
+constraint P
+g kg = K.
+c) Stability safeguards: To ensure robust allocation in
+practice, we use: (i) base quotas to avoid starving any
+granularity; (ii) optional prior mixing with a user-specified
+prior share; (iii) a cap on over-allocating to the finest granu-
+larity. These safeguards make ablations comparable and avoid
+degenerate allocations.
+F. Budgeter: Budget-Aware Evidence Scoring and Packing
+a) Role: The Budgeter performs within-budget evidence
+selection given the candidate pool P(q) and a token budget
+B (Figure 2, middle/right; Algorithm 1, lines 11?15). Unlike
+predicting a budget bucket, our final implementation learns a
+chunk utility scorer: it assigns each candidate chunk c ?P(q)
+a utility score conditioned on the query and then constructs the
+final evidence set S(q) by packing high-utility chunks under
+budget B.
+b) Chunk scoring model: For each candidate chunk c,
+we form a lightweight feature vector from signals already
+available at inference time, including the query embedding
+eq and inexpensive chunk-side attributes (e.g., granularity id,
+dense retrieval score, optional rerank score, and token length).
+A small MLP outputs a scalar utility:
+s(c, q) = MLPb
+ [eq; f(c)]
+
+,
+where f(c) denotes the chunk-side features. This design keeps
+Budgeter lightweight and decouples learning from discrete set
+selection.
+c) Budget-constrained packing: Given utilities {s(c, q)},
+we deterministically build S(q) using a budget-aware packing
+procedure: candidates are prioritized by their utilities (with
+optional redundancy-aware penalties) and are added if the total
+token length remains within B. When Budgeter is disabled,
+we return to the same deterministic greedy packing baseline
+(Algorithm 1, line 14), ensuring fair and reproducible com-
+parisons.
+G. Oracle Supervision for Router and Budgeter
+We train Router and Budgeter using weak supervision
+derived from an oracle policy search on the 2Wiki training
+split. For each training question, we enumerate a small grid
+of candidate granularity allocation policies (used as priors
+for quota allocation) and, when applicable, a set of bud-
+get/selection options. For each candidate configuration, we
+run the same stagewise retrieval and packing procedure as in-
+ference, then score the packed context using automatic signals
+that correlate with answerability (e.g., coverage of sup
+
+--- Page 5 ---
+TABLE I: Dataset statistics (number of questions).
+Dataset
+Train
+Dev
+Test
+HotpotQA
+90K
+7.4K
+7.4K
+2WikiMultiHopQA
+113K
+13K
+13K
+MuSiQue (Ans)
+20K
+2.4K
+2.4K
+methods. Performance is measured by Exact Match (EM) and
+token-level F1-scores, computed with the standard normaliza-
+tion employed in the official evaluation scripts.
+b) Model and retrieval setup:
+All generation-based
+methods use Qwen2.5-14B-Instruct [7]. For retrieval-
+based systems, we use bge-large-en-v1.5 for dense
+retrieval and bge-reranker-large for reranking [28],
+while GenGround uses ColBERTv2.0 following its original
+setting [29]. Naive RAG constructs context by greedy packing
+of retrieved chunks, and our method additionally applies
+query-adaptive routing and budget-aware selection.
+c) Implementation details and final training setup:
+Across all experiments, we keep the pipeline deterministic
+for reproducibility and use greedy decoding (no sampling), so
+temperature/top-p do not affect results. We fix the evaluation
+protocol to a subset of 1,500 questions with a fixed random
+seed, and keep the retrieval budget and stagewise sizes con-
+sistent across ablations. For retrieval, we build FAISS indices
+and use bge-large-en-v1.5 for dense embeddings and
+bge-reranker-large for reranking. For training, both
+Router and Budgeter are trained with oracle supervision in
+2Wiki using the final configuration of N = 20,000 training
+instances for 3 epochs (i.e., E = 3), with a learning rate
+2 ? 10?4 and a batch size of 128 unless otherwise stated.
+d) Baselines:
+We compare our method against four
+representative baselines that cover ?no retrieval?, ?standard
+RAG?, ?granularity routing?, and ?iterative grounding?.
+? Direct
+answers
+questions
+using
+Qwen2.5-14B-Instruct without external retrieval,
+serving as a no-RAG reference.
+? Naive
+RAG
+implements
+the
+standard
+retrieve-then-
+generate pipeline [1], retrieving top-k text chunks and
+assembling them into a single context for generation.
+? MoG
+(Mix-of-Granularity)
+introduces
+a
+query-
+conditioned router to select retrieval granularity for
+RAG [6].
+? GenGround (Generate-then-Ground) alternates between
+generating intermediate single-hop information needs and
+grounding them with retrieval, tailored for multi-hop
+QA [27].
+B. Main Results and Analysis
+Table II and Table III report EM and F1 on three
+multi-hop QA benchmarks. Across all methods, we use
+Qwen2.5-14B-Instruct as the generator to isolate the
+impact of retrieval and evidence construction. DIRECT an-
+swers without retrieval, while RAG-based baselines differ in
+how they chunk, retrieve, and select evidence. In addition,
+NAIVE RAG includes greedy packing refinement, and our
+approach further introduces query-adaptive granularity allo-
+cation (Router) and budget-aware evidence selection/packing
+(Budgeter) to better coordinate the retrieval pipeline end-to-
+end.
+a) HotpotQA: In HotpotQA, DIRECT is substantially
+weaker than retrieval-based methods, indicating that multi-
+hop questions often benefit from external evi
+
+============================================================
+PAPER: Evaluating Modern RAG pages
+============================================================
+Total pages: 10
+
+--- Page 1 ---
+0This is the pre-print version of the paper accepted to appear at the IR-RAG @ SIGIR 2025 workshop: Information Retrieval?s Role in RAG Systems, held on July 17, 2025, in Padova,
+Italy. The final version will be published in the CEUR-WS proceedings.
+
+
+--- Page 2 ---
+IR-RAG @ SIGIR ?25, July 17, 2025, Padova, Italy
+Emre Kuru and Mehmet Onur Keskin
+Evaluating Modern RAG: Textual, Multimodal, Dense, and Late
+Interaction Pipelines
+Emre Kuru
+?zye?in University
+Istanbul, T?rkiye
+emre.kuru@ozu.edu.tr
+Mehmet Onur Keskin
+?zye?in University
+Istanbul, T?rkiye
+onur.keskin@ozu.edu.tr
+Abstract
+Retrieval-augmented generation (RAG) systems have traditionally
+relied on text-based pipelines that extract and retrieve information
+from documents. While efficient and lightweight, these approaches
+often struggle with documents where meaning is conveyed through
+layout, tables, and visual elements. Recent advances in multimodal
+pipelines, powered by advanced vision-language models (VLMs),
+offer significantly improved retrieval quality by jointly encoding vi-
+sual and textual signals. However, these gains come with increased
+memory requirements and higher indexing and retrieval latency. To
+navigate these trade-offs, we propose a quantitative, data-driven se-
+lection methodology, guiding practitioners in identifying the most
+suitable RAG pipeline for a given document corpus based on em-
+pirical performance and resource constraints. We evaluate leading
+contemporary textual and multimodal pipelines, including dense
+and late-interaction architectures, analyze their strengths and limi-
+tations, and examine the types of documents they are equipped to
+handle. Our study provides practical guidance on selecting retrieval
+architectures that balance retrieval effectiveness with system-level
+efficiency, offering clear criteria for when the benefits of sophisti-
+cated multimodal systems outweigh their operational costs.
+CCS Concepts
+? Information systems ?Evaluation of retrieval results; Mul-
+timedia and multimodal retrieval; Question answering.
+Keywords
+Retrieval-Augmented Generation, Multimodal Retrieval
+ACM Reference Format:
+Emre Kuru and Mehmet Onur Keskin. 2025. Evaluating Modern RAG: Tex-
+tual, Multimodal, Dense, and Late Interaction Pipelines. In Information
+Retrieval?s Role in RAG Systems (IR-RAG ?25) at SIGIR 2025, July 17, 2025,
+Padova, Italy. ACM, New York, NY, USA, 10 pages. https://doi.org/TBD
+1
+Introduction
+Retrieval-Augmented Generation (RAG) systems have emerged as a
+powerful solution for grounding large language models in external
+document corpora, particularly in knowledge-intensive domains
+such as finance, healthcare, and law [7, 9, 12]. Early RAG pipelines
+operated on purely textual representations in such domains, ex-
+tracting content from scanned documents using Optical Character
+This work is licensed under a Creative Commons Attribution 4.0 International License.
+IR-RAG @ SIGIR ?25, Padova, Italy
+? 2025 Copyright held by the owner/author(s).
+ACM ISBN TBD
+https://doi.org/TBD
+Recognition (OCR) [13]. These text-only pipelines proved effective
+for linear documents with clean structure, offering fast and light-
+weight retrieval.
+Although widely adopted due to their simplicity and efficiency,
+traditional text-only pipelines face 
+
+--- Page 3 ---
+Evaluating Modern RAG: Textual, Multimodal, Dense, and Late Interaction Pipelines
+IR-RAG @ SIGIR ?25, July 17, 2025, Padova, Italy
+similarity computations at retrieval time. While this boosts perfor-
+mance, particularly in layout-sensitive queries, it also introduces
+higher latency, increased memory usage, and larger index sizes.
+Despite the growing variety of pipeline designs, there remains
+little guidance on selecting the best approach for a specific task.
+This work addresses this gap by comprehensively evaluating state-
+of-the-art RAG retrieval pipelines across the two key design axes
+discussed: modality (text vs. vision) and architecture (dense vs. late
+interaction). Our study benchmarks these pipelines on retrieval per-
+formance and across a range of Quality-of-Service (QoS) metrics on
+two challenging, real-world datasets that exhibit diverse document
+structures and layout complexity. Building on these findings, we
+propose a selection methodology for identifying the most suitable
+RAG pipeline for a given document corpus and computational con-
+straints. This is a deployment-oriented framework for selecting the
+most efficient and accurate pipeline.
+The rest of the paper is organized as follows. Section 2 reviews
+the related work. Section 3 describes the retrieval pipelines evalu-
+ated in this study. Section 4 presents the experimental setup and
+results across effectiveness, latency, and memory usage. Finally,
+Section 5 concludes the paper with key takeaways and future di-
+rections.
+2
+Related Work
+Retrieval-augmented generation (RAG) has become a central para-
+digm for enhancing large language models with access to external
+knowledge sources. Early RAG pipelines operated primarily over
+textual inputs derived via Optical Character Recognition (OCR),
+with minimal attention paid to document layout or visual structure.
+Lin and Byrne introduced one of the earliest RAG architectures
+based on OCR outputs, integrating Dense Passage Retrieval (DPR)
+with a generative language model for open-domain question an-
+swering over scanned texts [5]. Their work demonstrated that stan-
+dard dense retrieval methods could be extended to semi-structured
+documents with text extraction.
+To better handle structurally rich documents, several works
+have incorporated layout-aware techniques. Yepes et al. proposed
+a structure-guided chunking strategy that segments documents
+into semantically distinct regions, such as titles, body text, and
+tables, using computer vision and NLP methods, thereby preserv-
+ing some spatial information during retrieval [17]. However, OCR-
+based pipelines, even with such enhancements, remain constrained
+by transcription errors and the inherent flattening of spatial lay-
+out. Zhang et al. showed that such limitations can significantly
+degrade both retrieval accuracy and generation quality, especially
+in documents where meaning is intrinsically tied to structure [19].
+Recognizing these persistent limitations, recent work has ex-
+plored multimodal r
+
+--- Page 4 ---
+IR-RAG @ SIGIR ?25, July 17, 2025, Padova, Italy
+Emre Kuru and Mehmet Onur Keskin
+Figure 1: Indexing Workflows of Text & Multimodal Pipelines
+document and query are encoded into single vector representations
+using a language or vision-language model. Retrieval is performed
+by computing the similarity between these vectors using a distance
+metric such as cosine similarity. This highly efficient approach
+scales well, making it well-suited for latency-sensitive applications.
+However, its compressed representation can lose fine-grained align-
+ment, particularly important in structured or layout-dependent
+documents. Late interaction architectures address this limitation by
+preserving token-level or patch-level granularity during indexing.
+Instead of compressing the input into a single embedding, these
+models retain multiple embeddings per document, enabling more
+detailed and expressive similarity calculations at query time. A
+common scoring mechanism is MaxSim, where each query token is
+compared with all document tokens, and the maximum similarity
+scores are aggregated. While this approach improves retrieval pre-
+cision, it also increases storage requirements and retrieval latency.
+3.1
+Proposed Pipelines
+As discussed, we evaluate four retrieval pipelines that span the key
+design dimensions in modern RAG systems: input modality (text
+vs. vision) and retrieval architecture (dense vs. late interaction).
+Text-Dense. This pipeline implements a dense retrieval architec-
+ture of over-extracted text. As is common practice, we rely on the
+Unstructured1 off-the-shelf tool in the highest resolution settings
+for OCR, layout analysis, and chunking (by-title). Afterward, for
+chunks that include non-textual elements, we set up a full-fledged
+captioning strategy, in which we feed the visual elements to a state-
+of-the-art Vision Language Model (Google-Gemini 2 0 Flash2) to
+obtain highly detailed textual descriptions of the elements. Each
+resulting chunk is then embedded into a dense vector using a text
+encoder.
+Text-Late Interaction. This pipeline retains the same prepro-
+cessing strategy as the dense variant but uses a late interaction
+architecture to improve token-level alignment. Instead of embed-
+ding each chunk into a single vector, it preserves multiple sub-token
+embeddings, allowing fine-grained comparisons between query and
+document terms.
+Visual-Dense. This pipeline skips OCR and processes full-page
+document images directly using a vision-language model. Each
+image is encoded into a dense vector that jointly captures visual
+1www.unstructured.io
+2https://ai.google.dev/gemini-api/docs/models
+Figure 2: Dense vs Late Interaction Retrieval Architectures
+and textual signals. This design allows for compact, layout-sensitive
+representations with minimal preprocessing.
+Visual-Late Interaction. This pipeline operates on full-page im-
+ages like the dense variant but uses a late interaction retrieval mech-
+anism. It produces multi-vector embeddings for each document
+pat
+
+--- Page 5 ---
+Evaluating Modern RAG: Textual, Multimodal, Dense, and Late Interaction Pipelines
+IR-RAG @ SIGIR ?25, July 17, 2025, Padova, Italy
+All experiments were conducted on a single NVIDIA H100 GPU
+with 80GB of memory. Each retrieval pipeline was evaluated inde-
+pendently using the same document corpus and query set to ensure
+a fair comparison. We implemented each pipeline under the same
+codebase and hardware to eliminate performance differences due
+to infrastructure. To ensure consistency across pipelines, all vector
+indices were stored using identical Qdrant7 clusters.
+4.1.1
+Datasets. We evaluate our retrieval pipelines using the REAL-
+MM-RAG benchmark [14], a recent multimodal dataset designed for
+realistic document retrieval in structured domains. Unlike earlier
+benchmarks, REAL-MM-RAG focuses on long, scanned documents
+with complex layouts, incorporating visual elements such as tables,
+charts, and diagrams. The queries are generated to reflect natural
+user questions rather than direct surface-level matches, providing a
+more rigorous test of retrieval models. To assess robustness under
+linguistic variation, each query in the dataset is rewritten up to
+three times using a large language model, resulting in four levels
+of query phrasing. These rephrased versions introduce increasing
+syntactic and lexical variation, allowing us to measure how well
+retrieval pipelines generalize beyond superficial token overlap and
+capture true semantic intent. We focus on two challenging subsets
+from this benchmark.
+FinReport contains annual financial reports from IBM between
+2005 and 2023. These documents include dense narrative content,
+structured financial tables, and visually segmented layouts. Queries
+typically require extracting specific values, understanding table
+structures, and reasoning over multiple modalities. This dataset is
+ideal for evaluating performance in table-heavy, layout-sensitive
+retrieval tasks.
+TechReport consists of IBM technical documentation across
+systems like FlashSystem and Power Systems. These documents
+are primarily textual but include frequent visual components such
+as block diagrams, system schematics, and formatted tables. The
+queries in this domain target procedural details and technical de-
+scriptions, testing a model?s ability to retrieve relevant explanatory
+content embedded in text and images.
+These datasets were chosen because they enable a fine-grained
+evaluation of how visual modality influences retrieval performance.
+Specifically, each document?s proportion of visual content varies in
+both datasets, providing a balanced distribution of visually sparse
+and rich documents. This makes it possible to observe how retrieval
+pipelines perform under different visual conditions. As shown in
+Figure 5, both datasets exhibit a broad range of visual content levels.
+4.1.2
+Models. Each pipeline is built to represent the state-of-the-
+art, open-access models in their respective configurations. Specifi-
+cally, text-based models were chosen fr
+
+============================================================
+PAPER: ChunkRAG pages 3-5
+============================================================
+Total pages: 10
+
+--- Page 1 ---
+ChunkRAG: A Novel LLM-Chunk Filtering Method for RAG Systems
+Ishneet Sukhvinder Singh
+Ritvik Aggarwal
+Ibrahim Allahverdiyev
+Muhammad Taha
+Aslihan Akalin
+Kevin Zhu
+Sean O?Brien
+Algoverse AI Research
+kevin@algoverse.us, seobrien@ucsd.edu
+Abstract
+Retrieval-Augmented
+Generation
+(RAG)
+frameworks leveraging large language models
+(LLMs) frequently retrieve extraneous or
+weakly
+relevant
+information,
+leading
+to
+factual inaccuracies and hallucinations in
+generated responses.
+Existing document-
+level retrieval approaches lack sufficient
+granularity to effectively filter non-essential
+content. This paper introduces ChunkRAG, a
+retrieval framework that refines information
+selection through semantic chunking and
+chunk-level evaluation. ChunkRAG applies
+a dynamic greedy aggregation strategy to
+segment documents into semantically coherent,
+variable-length sections based on cosine sim-
+ilarity. Empirical evaluations on the PopQA,
+PubHealth and Biography dataset indicate
+that ChunkRAG improves response accuracy
+over state-of-the-art RAG methods.
+The
+analysis further demonstrates that chunk-level
+filtering reduces redundant and weakly related
+information, enhancing the factual consistency
+of responses. By incorporating fine-grained
+retrieval mechanisms, ChunkRAG provides
+a scalable and domain-agnostic approach to
+mitigate hallucinations in knowledge-intensive
+tasks such as fact-checking and multi-hop
+reasoning.
+1
+Introduction
+LLMs combined with retrieval-augmented genera-
+tion (RAG) have improved AI systems? ability to
+generate informed responses using external knowl-
+edge. While promising for knowledge-intensive
+tasks, RAG systems often struggle with retrieving
+irrelevant or weakly relevant content. Despite using
+techniques like re-ranking and query rewriting, this
+limitation leads to factual errors and hallucinations
+in the generated outputs.
+Current RAG systems often retrieve large doc-
+ument segments, assuming more content means
+better coverage. However, this overlooks the need
+Figure 1: Comparison of Response Generation With
+and Without Chunk Filtering
+to evaluate smaller sections independently, leading
+to the inclusion of irrelevant information. LLMs?
+inability to verify factual accuracy compounds this
+issue, reducing RAG reliability in applications like
+question answering and decision-making (Ji et al.,
+2022).
+Figure 1 illustrates the impact of chunk filtering
+on response generation. Without chunk filtering
+(top), irrelevant information, such as references
+to other French cities, is incorporated into the re-
+sponse. In contrast, LLM-driven chunk filtering
+(bottom) removes unnecessary content, yielding a
+precise response: "The capital of France is Paris."
+Recent approaches like CRAG and Self-RAG (Yan
+et al., 2024; Asai et al., 2023) have tried to improve
+retrieval accuracy through corrective retrieval and
+self-reflection mechanisms. However, these meth-
+ods still operate at the document level, failing to
+adequately filter individual text chunks. This granu-
+
+
+--- Page 2 ---
+LLM-driven chunk filtering. This framework oper-
+ates at a finer level of granularity than traditional
+systems by supporting chunk-level filtering of re-
+trieved information. Rather than determining the
+relevance of entire documents, our framework eval-
+uates both the user query and the individual chunks
+within the retrieved chunks. The large language
+model assesses the semantic relevance of each
+chunk in relation to the user?s query, thereby en-
+abling the system to filter out irrelevant or weakly
+related chunks before they reach the generation
+stage.This approach shows particular promise for
+knowledge-intensive tasks, such as multi-hop rea-
+soning (Liu et al., 2025) and fact-checking (Zhong
+et al., 2024; Zhang and Gao, 2024).
+2
+Related Works
+2.1
+Addressing Hallucinations in Large
+Language Models
+Large language models (LLMs) have made sub-
+stantial progress in instruction understanding and
+text generation (Bang et al., 2023; Qin et al., 2023;
+Zhong et al., 2023). Nevertheless, they continue
+to suffer from hallucinations?outputs that are in-
+correct. Research suggests that erroneous internal
+knowledge often triggers these hallucinations (Ton-
+moy et al., 2024; Zhang et al., 2023b; Shuster et al.,
+2018), aggravated by low-quality data distributions
+in training as well as a lack of built-in verification
+mechanisms. Consequently, improving access to
+high-quality external knowledge remains an impor-
+tant line of research.
+2.2
+Retrieval-Augmented Generation
+Techniques
+Retrieval-Augmented
+Generation
+(RAG)
+has
+gained traction as an effective strategy to mitigate
+hallucinations (Lewis et al., 2020; Guu et al., 2020).
+RAG systems enhance performance on knowledge-
+intensive tasks by injecting relevant retrieved doc-
+uments during generation. However, the quality
+of outputs depends heavily on retrieval accuracy,
+as poor document selection can increase factual
+errors. Recent work has explored ways to refine
+RAG pipelines to better filter irrelevant context
+(Kim et al., 2024; Wang et al., 2024; Liu et al.,
+2024). For example, Asai et al. (2023) introduced
+Self-RAG, which integrates a ?critic? mechanism
+to determine when retrieval is truly necessary. Yan
+et al. (2024) proposed CRAG, augmenting RAG
+with strategies to correct weakly appurtenant, un-
+substantiated retrieval results. Similarly, Yoran
+et al. (2023) leveraged a Natural Language Infer-
+ence (NLI) model to filter out irrelevant contexts,
+leading to more robust systems.
+Poliakov and
+Shvai (2024) introduced Multi-Meta-RAG, which
+improves multi-hop reasoning by using LLMs to
+extract metadata for more effective database filter-
+ing before retrieval. This metadata-driven approach
+helps combine relevant context from different do-
+mains while reducing noise, ultimately leading to
+more coherent responses.
+2.3
+Query Rewriting for Enhanced Retrieval
+A key challenge is bridging natural language
+queries with document storage formats. Ma et al.
+(2023) proposed a "Rewrite-Retrieve-Read" frame-
+work where a trainabl
+
+--- Page 3 ---
+Figure 2: ChunkRAG Methodology for Enhanced Retrieval and Filtering. This figure illustrates the ChunkRAG
+pipeline, combining semantic chunking, filtering, and ensemble retrieval to optimize information relevance and
+accuracy, with final results re-ranked for precision.
+? Input Preparation: We begin by tokenizing
+a document D into sentences using NLTK?s
+sent_tokenize function. Each sentence is
+then assigned an embedding vector, gener-
+ated using a pre-trained embedding model
+(text-embedding-3-small).
+? Chunk Formation: Consecutive sentences
+are grouped into chunks based on their se-
+mantic similarity, measured by cosine simi-
+larity. Specifically, if the similarity between
+consecutive sentences drops below a threshold
+(? = 0.8), a new chunk is created, as this indi-
+cates a shift to a different subtopic or theme
+that warrants its own grouping. Each chunk is
+also further constrained to be under 500 char-
+acters to enable granular search and prevent
+oversized chunks - even when discussing a sin-
+gle topic, very large chunks can hinder precise
+information retrieval during tasks like ques-
+tion answering. This character limit ensures
+efficiency during subsequent stages.
+? Chunk Embeddings: Each chunk is repre-
+sented using the same pre-trained embedding
+model as above. The resultant chunk embed-
+dings are stored in a vector database to facili-
+tate efficient retrieval during the query phase.
+Hybrid Retrieval and Advanced Filtering
+In the retrieval and filtering phase, we integrate
+conventional RAG components with advanced fine-
+tuning techniques to better retrieval.
+? Retriever Initialization and Query Rewriting:
+We initialize a retriever capable of comparing
+
+
+--- Page 4 ---
+user queries against the chunk embeddings.
+To enhance query efficacy, we apply a query
+rewriting step using GPT-4o. It adapts user
+inputs into forms better aligned with chunk
+embeddings.
+? Initial Filtering: Retrieved chunks are ini-
+tially filtered using a combination of TF-IDF
+scoring and cosine similarity. Chunks with
+high redundancy (similarity > 0.9) are elimi-
+nated. The remaining chunks are sorted based
+on their similarity to the rewritten query.
+? Relevance Scoring and Tresholding: Each
+chunk?s relevance is evaluated through a
+multi-stage process: an LLM assigns initial
+scores, followed by self-reflection and critic
+model refinements. The self-reflection step
+assesses query alignment, while the critic ap-
+plies domain-specific heuristics (e.g., tempo-
+ral consistency for time-sensitive queries). A
+dynamic threshold, based on score distribu-
+tion analysis, determines final chunk selec-
+tion. When scores cluster tightly, the thresh-
+old increases to retain only the most relevant
+chunks.
+? Hybrid Retrieval Strategy:
+We combine
+BM25 and LLM-based retrieval methods with
+equal weights (0.5 each) to balance keyword
+and semantic matching.
+Cohere?s rerank-
+ing model (rerank-englishv3.0) then ad-
+dresses the Lost in the middle problem -
+where relevant information in the middle
+of long documents tends to be underempha-
+sized by standard retrieval methods - by re-
+evaluating chunks with emphasis on contex-
+tual centrality, preventing the oversight of rel-
+evant mid-document information.
+Response Generation and Evaluation
+After filtering, the remaining chunks are used as
+context to generate the final response. The steps
+include:
+? Response Generation: An LLM generates
+a response based on the filtered context
+chunks. During generation, strict constraints
+ensure that only retrieved information is used,
+thereby minimizing the risk of hallucinations.
+? Evaluation: The generated responses are
+evaluated for accuracy against a set of human-
+validated reference answers.
+Our methodology(Figure 2 and Algorithm 1),
+combining semantic chunking with advanced re-
+trieval and filtering mechanisms, significantly en-
+hances the quality of responses produced by RAG
+systems, ensuring both relevance and correctness
+of the generated content.
+4
+Experiments
+The experiments were conducted on the free-tier
+Google Colab environment, which provides a stan-
+dard NVIDIA K80 GPU with 12GB of mem-
+ory. As such, due to computational resource con-
+straints, our evaluation was primarily focused on
+the PopQA,PubHealth and Biography dataset.
+4.1
+Tasks, Datasets and Metrics
+ChunkRAG was evaluated on three datasets, which
+are in public domain and licensed for research pur-
+poses, including:
+PopQA (Mallen et al., 2022) is a short-form gen-
+eration task. Generally, only one entity of factual
+knowledge is expected to be answered for each
+single question. In our experiments, we exactly
+followed the setting in Self-RAG (Asai et al., 2023)
+which evaluated methods on a long-tail subset con-
+sist
+
+--- Page 5 ---
+Algorithm 1 Enhanced Hybrid Retrieval and Filtering
+Require: q: Original user query
+Require: D: Document collection
+Require: ?dup: Redundancy threshold (e.g., 0.9)
+Require: wbm25, wllm: Hybrid retrieval weights
+Ensure: Cfinal: Filtered and ranked chunks
+1: qrewritten ?GPT4_QueryRewrite(q)
+2: // Hybrid Retrieval
+3: C ?CombineRetrieval(BM25(D, qrewritten), LLM(D, qrewritten), wbm25, wllm)
+4: // Redundancy Removal
+5: Cfiltered ??
+6: for each chunk ci ?C do
+7:
+if
+max
+cj?Cfiltered cos
+ emb(ci), emb(cj)
+
+??dup then
+8:
+Append ci to Cfiltered
+9:
+end if
+10: end for
+11: // Multi-stage Scoring
+12: for each chunk c ?Cfiltered do
+13:
+base ?LLMRelevance(c, qrewritten)
+14:
+reflect ?SelfReflect(c, qrewritten, base)
+15:
+critic ?CriticEval(c, qrewritten, base, reflect)
+16:
+score(c) ?CombineScores(base, reflect, critic)
+17: end for
+18: // Dynamic Thresholding
+19: S ?{ score(c) | c ?Cfiltered}
+20: ? ?mean(S); ? ?std(S)
+21: T ?if var(S) < ? then ? + ? else ?
+22: Cthreshold ?{ c ?Cfiltered | score(c) ?T}
+23: // Lost-in-Middle Reranking
+24: Cfinal ?Cohere_Rerank(Cthreshold, qrewritten)
+25: return Cfinal
+cluded LLaMA2-chat13B, a conversational variant
+of LLaMA2 tailored for dialogue-based applica-
+tions, and ChatGPT, OpenAI?s proprietary conver-
+sational agent renowned for its robust language
+understanding and generation capabilities. These
+baseline results are taken from (Yan et al., 2024).
+4.2.2
+Baselines With Retrieval
+Standard
+Retrieval-Augmented
+Generation
+(RAG): To establish a baseline for retrieval-
+augmented methods, we evaluated standard RAG
+approaches. Specifically, we employed Standard
+RAG (Lewis et al., 2020), which utilizes a retriever
+to fetch relevant documents based on the input
+query, subsequently feeding these documents into
+the language model to generate responses. For
+consistency, we utilized the same retriever mech-
+anism as ChunkRAG to ensure a fair compari-
+son. In addition to Standard RAG, we evaluated
+instruction-tuned LLMs with standard RAG, in-
+cluding LLaMA2-7B, LLaMA2-13B, and Alpaca-
+7B, Alpaca-13B, to assess the impact of retrieval
+augmentation in conjunction of instruction tuning.
+These baseline results are taken from (Yan et al.,
+2024).
+Advanced Retrieval-Augmented Generation:
+To benchmark ChunkRAG against more sophisti-
+cated RAG-based methods, we included advanced
+systems that incorporate additional strategies to en-
+hance performance. Self-RAG (Asai et al., 2023)
+further refines RAG by incorporating reflection
+tokens labeled by GPT-4 within the instruction-
+tuning data, enabling the model to better utilize
+retrieved information. Additionally, we considered
+CRAG and Self-CRAG (Yan et al., 2024), a recent
+approach that augments standard RAG with cor-
+
+
+============================================================
+PAPER: MAQ-retrieval pages 3-6
+============================================================
+Total pages: 13
+
+--- Page 1 ---
+JOURNAL OF IEEE TRANSACTIONS ON ARTIFICIAL INTELLIGENCE, VOL. 00, NO. 0, MONTH 2026
+1
+MAQ-Retrieval: Multi-Aspect Queries Retrieval
+for Large Language Models
+Zixuan Xu, Gaoyang Pang, Xinyu Chen, Ming Ding, Senior Member, IEEE,
+Branka Vucetic, Life Fellow, IEEE, Yonghui Li, Fellow, IEEE, Zihuai Lin, Senior Member, IEEE
+Abstract?Retrieval-Augmented Generation (RAG) typically
+relies on single-query retrieval. Various query optimization tech-
+niques have been proposed to enhance retrieval by decomposing
+the single query into multiple queries focusing on different
+aspects. This query optimization is to supplement the original
+query to increase the retrieval confidence from diverse aspects.
+Existing practices individually retrieve relevant texts based on the
+generated multi-aspect queries, aggregate these texts, and apply
+reranking methods to select the Top-K most relevant texts. Such
+existing individual retrieval and reranking mechanisms often
+overlook the connections between queries. Consequently, these
+methods fail to adequately capture the nuances introduced by
+distinct aspects in multiple queries, and may amplify retrieval-
+induced hallucinations when semantically fragmented evidence
+is presented to large models. To bridge this gap, we introduce a
+novel Multi-Aspect Queries Retrieval (MAQ-Retrieval) method.
+It follows query optimization for multi-aspect queries, integrates
+a query-weighting mechanism, and leverages the concept of
+convex hull to perform joint retrieval of multi-aspect queries. In
+particular, the convex region we constructed can include the set of
+candidate texts that may be overlooked in traditional approaches,
+ensuring comprehensive coverage of relevant texts while sup-
+pressing inconsistent or noisy fragments that may contribute to
+model hallucinations. Extensive experiments on both multiple-
+choice and summarization tasks in either English or Chinese
+demonstrate that MAQ-Retrieval consistently outperforms four
+baselines, achieving up to an increased accuracy of 15.2%
+and the best F1 and ROUGE-Lsum scores across all evaluated
+datasets, confirming its advantages in RAG with multiple queries,
+highlighting its ability to enhance retrieval accuracy and mitigate
+hallucination propagation in large models.
+Impact
+Statement?This
+work
+reshapes
+how
+Retrieval-
+Augmented Generation (RAG) systems handle multi-faceted
+information needs. Instead of treating decomposed queries as
+isolated inputs, our framework geometrically integrates them,
+allowing large language models to reason across interdependent
+query dimensions. The resulting retrieval process is not only
+more accurate but also inherently interpretable, offering a
+structured lens into how multiple constraints interact in high-
+dimensional embedding spaces. Beyond academic benchmarks,
+MAQ-Retrieval opens practical avenues for complex real-world
+reasoning?such as clinical trial matching, multi-policy decision
+analysis, and multi-perspective summarization?where overlap-
+ping criteria must b
+
+--- Page 2 ---
+2
+JOURNAL OF IEEE TRANSACTIONS ON ARTIFICIAL INTELLIGENCE, VOL. 00, NO. 0, MONTH 2026
+thresholds. Selecting too few texts (small K values) risks
+excluding crucial contextual information, while selecting too
+many (large K values) introduces irrelevant texts, leading to
+increased noise and diminished response quality. Furthermore,
+existing methods typically apply identical retrieval thresholds
+to all queries, neglecting the inherent differences in importance
+among individual queries. More salient queries reasonably
+warrant a larger number of retrieved texts. Second, there is
+no unified standard for effectively re-ranking texts retrieved
+from multiple aspects. Ranking texts solely based on their
+relevance to the original query risks diminishing the specificity
+of individual aspects, whereas ranking them exclusively by
+individual aspects lacks a consistent comparative basis. Col-
+lectively, these limitations not only degrade response quality
+but also amplify the tendency of LLMs to hallucinate when
+confronted with noisy or imbalanced retrieval results..
+To address the above challenge, we propose a novel retrieval
+approach to adaptively score the importance of each query
+through a weighting mechanism for fairness and to capture
+the implicit texts related to all queries for completeness. This
+unified retrieval framework reduces semantic fragmentation
+and mitigates hallucination risks during evidence aggregation.
+1 The main contributions are summarized as follows:
+(1) We propose a novel approach called Multi-Aspect
+Queries Retrieval (MAQ-Retrieval), which, for the first time,
+introduces the concept of a Convex Hull to tackle the challenge
+of filtering relevant text information for multiple queries. Our
+method can capture texts that are implicitly relevant to all
+queries but may be overlooked in individual retrieval, thereby
+enhancing the LLM performance.
+(2) We introduce a Query Weighting mechanism that com-
+putes the Mahalanobis distance between each query vector and
+the corpus of text vectors, dynamically scaling the importance
+of each query in subsequent information selection according to
+its significance. By assigning higher weights to more important
+queries, our approach ensures that those most relevant to the
+original document play a dominant role in the retrieval process.
+(3) We extensively evaluate the proposed MAQ-Retrieval
+against the current benchmarks with five embedding models
+in both Chinese and English across three different databases
+using different LLMs. The results demonstrate that MAQ-
+Retrieval achieves higher accuracy than existing retrieval and
+rerank methods for multiple queries.
+II. RELATED WORK
+Decomposing an initial query into multiple sub-queries has
+emerged as one of the query optimization methods in RAG [6],
+[17]. It is critical for improving LLMs in complex domains. In
+fields like law, finance, and medicine, user queries often con-
+tain intricate requirements and have semantic ambiguity due to
+extensive specialized terminol
+
+--- Page 3 ---
+ZIXUAN XU et al.: BARE DEMO OF IEEETAI.CLS FOR IEEE JOURNALS OF IEEE TRANSACTIONS ON ARTIFICIAL INTELLIGENCE
+3
+aspects. We illustrate this limitation through the classic parable
+of the Blind men and an elephant2. As shown in Figure 1, four
+blind people touch different parts of an elephant and each
+imagines something entirely different. Suppose their original
+query comprehensively described the elephant. The four blind
+people decompose it into the following queries based on their
+partial observations:
+? Decomposed query A: ?What is thin and long??
+? Decomposed query B: ?What is thick and rough??
+? Decomposed query C: ?What is thick and wide??
+? Decomposed query D: ?What is long and thick??
+If these queries are executed independently, they might retrieve
+answers such as rope (A), wall (B), tree (C), and snake (D).
+Each query accurately describes one part of the elephant, but
+taken independently, the results diverge from the true object.
+Only by jointly retrieving these queries can the correct holistic
+answer?the elephant?be identified.
+A. Interrelated Queries in Complex Scenarios
+For multi-aspect queries retrieval, a representative scenario
+lies in the medical trial-matching domain. LLMs used for
+matching clinical trials with patient information often en-
+counter complex eligibility criteria that require satisfaction
+of multiple correlated conditions [25], [26], [27], [28]. For
+instance, the following is an exclusion criterion for acute
+leukaemia in clinical trial recruitment to exclude unstable
+cardiovascular function3:
+Exclusion criteria
+Query 1: symptomatic ischemia, or
+Query 2: uncontrolled clinically significant conduction abnormal-
+ities, or
+Query 3: congestive heart failure classified as New York Heart
+Association Class III or higher, or
+Query 4: myocardial infarction within the past 3 months, or
+Query 5: QTc > 480 ms, calculated using Fredericia?s QT
+correction formula, or
+Query 6: serum albumin level < 3.2 g/dL.
+These queries exhibit multidimensional clinical interdepen-
+dencies that necessitate integrated evaluation. For example,
+Query 2 (conduction abnormalities) and Query 5 (QTc pro-
+longation) both reflect electrophysiological instability, where
+ventricular tachycardia (Q2) may coexist with prolonged re-
+polarization (Q5) to amplify arrhythmia risk [29]. Similarly,
+Query 3 (heart failure) could directly result from Query
+4?s recent myocardial infarction, while both conditions may
+manifest as Query 1?s symptomatic ischemia through compro-
+mised cardiac output [30]. This interconnectivity implies that
+isolated query processing risks semantic fragmentation ? e.g.,
+a patient with compensated heart failure (borderline Q3) and
+subclinical conduction delays (non-Q2) might still warrant ex-
+clusion if their combined effect produces ischemic symptoms
+2?Blind
+men
+and
+an
+elephant?,
+Wikipedia:
+https : //en . wikipedia .
+org/wiki/Blind men and an elephant
+3The trial exclusion criteria is from the Australian New Zealand
+Clinical
+Trials
+Registry
+(ANZ
+
+--- Page 4 ---
+4
+JOURNAL OF IEEE TRANSACTIONS ON ARTIFICIAL INTELLIGENCE, VOL. 00, NO. 0, MONTH 2026
+Fig. 3: Illustration of MAQ-Retrieval framework. The MAQ-Retrieval framework begins by vectorizing multiple user?s queries
+and text chunks into the vectors, then computes query weights through Mahalanobis-Weighted Query Scoring to get each
+query?s weights. Using these weight points as vertices and projected into a lower-dimensional space. Then, it constructs a
+convex hull from the selected vertices to filter text vectors that satisfy all query constraints. Finally, the retrieved text chunks
+are passed to the LLM combined with queries and prompts to generate responses. For ease of visualization, raw vectors are
+assumed to be three-dimensional and reduced to two-dimensional vectors for the convex hull based filtering.
+B. Limitations of Empirical Top-K Selection
+Existing multi-aspect queries retrieval pipelines often rely
+on a fixed, empirically chosen Top-K threshold. This practice
+often misses texts that are jointly relevant to all aspect-specific
+queries, while admitting substantial noise. Figure 2 illustrates
+this issue on a two-dimensional vector plane. Let the three
+decomposed query vectors be A, B, and C, and suppose only
+Texts 1?5 are relevant to the original query. In this case,
+choosing K = 1 for each query would retrieve only Texts
+1?3, missing Text 4, which lies in the region influenced by all
+three decomposed queries. Since no principled, interpretable
+method exists for setting K, practitioners typically set K to
+an excessively large value to maximize recall and then depend
+on a downstream reranking scheme to prune the candidate set.
+In Figure 2, however, setting K = 2 might retrieve unrelated
+texts (Texts 6?7) and still miss Text 5, which is more related
+to query C. Query C should be considered the most important
+query and have a larger candidate text pool (K = 3) to include
+related texts as many as possible. For queries A and B, a
+smaller number of candidate texts should be set (K = 1) to
+avoid including irrelevant texts.
+Analog to the parable depicted in Figure 1, the description
+of an elephant?s trunk is more distinctive and thus more
+effective for retrieval compared to descriptions of the ele-
+phant?s general body. Such highly discriminative query aspects
+naturally yield more accurate retrieval results. Therefore, a
+retrieval method would dynamically adjust the number of texts
+retrieved according to the specificity of individual query as-
+pects. However, traditional fixed Top-K retrieval mechanisms
+inherently lack this adaptability, thereby limiting retrieval
+precision across diverse query scenarios.
+C. Limitation of Reranking Schemes
+Using a rerank scheme to reorder texts can also miss
+texts relevant to the various aspects covered by each aspect
+query. The goal of decomposing a query is to compensate for
+information missing from the original. However, the current
+approaches rank all retrieved texts by their relevance to the
+initial query [10], [1
+
+--- Page 5 ---
+ZIXUAN XU et al.: BARE DEMO OF IEEETAI.CLS FOR IEEE JOURNALS OF IEEE TRANSACTIONS ON ARTIFICIAL INTELLIGENCE
+5
+represent multiple aspect-specific query vectors. We define
+a region R that contains all text vectors whose cumulative
+distances to these queries remain below a fixed threshold ?,
+R =
+(
+x ?RD
+
+m
+X
+i=1
+?x ?qi?2 ??
+)
+.
+(1)
+This region can be regarded as a multi-constraint feasible zone,
+representing texts that simultaneously satisfy the semantic
+proximity requirements of multiple queries. However, directly
+computing or representing R is intractable in high-dimensional
+spaces due to its nonlinear, implicit, and potentially frag-
+mented boundary structure. To approximate this joint region
+efficiently, we leverage a convex hull representation, which
+provides a minimal enclosing geometry without introducing
+additional hyperparameters [31], [32], [33]. Intuitively, all text
+vectors lying inside this convex hull are considered jointly
+relevant to the multi-aspect queries, capturing the intersection
+of their semantic influences.
+Alternative geometric representations?such as ?-Shapes or
+concave hulls?can in theory describe finer and more irregular
+boundaries of the feasible region. However, these methods
+are sensitive to parameter tuning (e.g., the ? radius) and
+tend to exclude marginal yet semantically meaningful points
+when applied to sparse or unevenly distributed embeddings
+[32], [33]. Given that our objective is to retain as many
+potentially relevant candidates as possible while preserving
+interpretability and computational efficiency, we adopt the
+convex hull as a principled and stable approximation of the
+joint feasible region in MAQ-Retrieval.
+Building upon this mathematical foundation, we next in-
+troduce the MAQ-Retrieval framework, which operationalizes
+this convex-region concept through query weighting and
+convex-hull-based filtering to identify the most relevant
+information across multiple queries. As illustrated in Figure 3,
+the external long text is segmented into smaller n text chunks
+while preserving as much original meaning as possible, ob-
+taining P = {p1, p2, . . . , pn}. These chunks are vectorized
+by an embedding model fembed and saved in the database.
+This process transforms textual content into high-dimensional
+vectors. Similar texts are positioned closer in this vector space,
+capturing semantic relationships. The set of n text chunks
+vectors is defined as XP = {xp1, xp2, . . . , xpn}. Each vector
+has a dimension of D. We then compute the overall mean
+vector ? and covariance matrix S of all text embeddings by:
+? = 1
+n
+n
+X
+i=1
+xpi,
+S =
+1
+n ?1
+n
+X
+i=1
+(xpi ??)(xpi ??)?.
+(2)
+The MAQ-Retrieval framework begins with ?, S, and
+m queries. We also apply the embedding model fembed to
+vectorize each query. The set of m query vectors is defined
+as XQ = {xq1, xq2, . . . , xqm}. The MAQ-Retrieval framework
+calculates the Mahalanobis distance between each query vector
+and the external text vector in the database to serve as the
+weig
+
+============================================================
+PAPER: SYNAPSE
+============================================================
+Total pages: 17
+
+--- Page 1 ---
+SYNAPSE: Empowering LLM Agents with Episodic-Semantic Memory via
+Spreading Activation
+Hanqi Jiang1*, Junhao Chen1*, Yi Pan1, Ling Chen2, Weihang You1,
+Yifan Zhou1, Ruidong Zhang1, Andrea Sikora3, Lin Zhao4, Yohannes Abate5, Tianming Liu1?
+1School of Computing, University of Georgia, Athens
+2Department of Biosystems Engineering and Soil Science, University of Tennessee, Knoxville
+3Department of Biomedical Informatics, University of Colorado School of Medicine, Aurora
+4Department of Biomedical Engineering, New Jersey Institute of Technology, Newark
+5Department of Physics and Astronomy, The University of Georgia, Athens
+Abstract
+While Large Language Models (LLMs) ex-
+cel at generalized reasoning, standard retrieval-
+augmented approaches fail to address the dis-
+connected nature of long-term agentic mem-
+ory.
+To bridge this gap, we introduce
+SYNAPSE (Synergistic Associative Processing
+& Semantic Encoding), a unified memory ar-
+chitecture that transcends static vector similar-
+ity. Drawing from cognitive science, SYNAPSE
+models memory as a dynamic graph where
+relevance emerges from spreading activation
+rather than pre-computed links. By integrating
+lateral inhibition and temporal decay, the sys-
+tem dynamically highlights relevant sub-graphs
+while filtering interference. We implement a
+Triple Hybrid Retrieval strategy that fuses geo-
+metric embeddings with activation-based graph
+traversal. Comprehensive evaluations on the
+LoCoMo benchmark show that SYNAPSE sig-
+nificantly outperforms state-of-the-art methods
+in complex temporal and multi-hop reasoning
+tasks, offering a robust solution to the "Contex-
+tual Tunneling" problem. Our code and data
+will be made publicly available upon accep-
+tance.
+1
+Introduction
+The evolution of Large Language Models (LLMs)
+from static responders to autonomous agents neces-
+sitates a fundamental rethinking of memory archi-
+tecture (Park et al., 2023; Yao et al., 2023; Schick
+et al., 2023). While LLMs demonstrate remark-
+able reasoning within finite context windows, their
+agency is brittle without the ability to accumu-
+late experiences and maintain narrative coherence
+over long horizons (Guti?rrez et al., 2024; Izacard
+et al., 2023). The predominant solution, Retrieval-
+Augmented Generation (RAG) (Lewis et al., 2020),
+externalizes history into vector databases, retriev-
+ing information based on semantic similarity (Guu
+*Equal contribution
+?Corresponding author
+et al., 2020; Asai et al., 2024). While effective for
+factual lookup (Borgeaud et al., 2022), standard
+RAG imposes a critical limitation on reasoning
+agents: it treats memory as a static library to be
+indexed, rather than a dynamic network to be rea-
+soned over (Guti?rrez et al., 2024; Zhu et al., 2025).
+We argue that existing systems suffer from Con-
+textual Isolation, a failure mode stemming from
+the implicit Search Assumption: that the rele-
+vance of a past memory is strictly determined by
+its semantic proximity to the current query (Zhu
+et al., 2025; Edge et al.,
+
+--- Page 2 ---
+through temporal and causal edges. This mech-
+anism enables the system to prioritize memories
+that are structurally salient to the current context,
+such as the aforementioned schedule conflict, even
+when direct semantic similarity is absent. To ensure
+focus, we implement lateral inhibition, a biological
+mechanism that suppresses irrelevant distractors.
+We evaluate SYNAPSE on the rigorous LoCoMo
+benchmark (Maharana et al., 2024), which in-
+volves long-horizon dialogues averaging 16K to-
+kens.
+SYNAPSE establishes a new state-of-the-
+art (SOTA), significantly outperforming traditional
+RAG and recent agentic memory systems. Notably,
+our activation-based approach improves accuracy
+on complex multi-hop reasoning tasks by up to
+23% while reducing token consumption by 95%
+compared to full-context methods.
+In summary, our contributions are as follows:
+? Unified Episodic-Semantic Graph: We pro-
+pose a dual-layer topology that synergizes
+granular interaction logs with synthesized ab-
+stract concepts, addressing the structural frag-
+mentation inherent in flat vector stores.
+? Cognitive Dynamics with Uncertainty Gat-
+ing: We introduce a retrieval mechanism gov-
+erned by spreading activation and lateral inhi-
+bition to prioritize implicit relevance, coupled
+with a "feeling of knowing" protocol that ro-
+bustly rejects hallucinations.
+? SOTA Performance & Efficiency: SYNAPSE
+establishes a new state-of-the-art on the Lo-
+CoMo benchmark (+7.2 F1), improving multi-
+hop reasoning accuracy by 23% while reduc-
+ing token consumption by 95% compared to
+full-context methods.
+2
+Related Work
+2.1
+Memory Allocation Capabilities
+Systems
+such
+as
+MemGPT
+(Packer
+et
+al.,
+2024), MemoryOS (Li et al., 2025), and Lang-
+Mem (LangChain Team, 2024) address con-
+text limitations by optimizing memory place-
+ment via policy-based controllers or hierarchical
+buffers (Lewis et al., 2020; Nafee et al., 2025;
+Guu et al., 2020). However, these approaches treat
+memory items as independent textual units, lack-
+ing the mechanisms to model causal or structural
+relationships during retrieval (Khandelwal et al.,
+2020). Consequently, they cannot recover linked
+memories absent surface-level similarity. In con-
+trast, SYNAPSE shifts the focus from storage man-
+agement to reasoning, where relevance propagates
+through a structured network rather than relying on
+independent item retrieval.
+2.2
+Graph-Based and Structured Memory
+Recent works introduce structure into agentic mem-
+ory via explicit linking. A-Mem (Xu et al., 2025)
+and AriGraph (Anokhin et al., 2025) utilize LLMs
+to maintain dynamic knowledge graphs, while Hip-
+poRAG (Guti?rrez et al., 2024) adapts Personal
+PageRank for retrieval. Crucially, methods like
+GraphRAG (Edge et al., 2025) optimize for global
+sense-making via community detection, summariz-
+ing entire datasets at high computational cost. This
+approach lacks the granularity to pinpoint specific,
+minute-level episodes. In contrast, SYNAPSE in-
+tegrates cognitive dynamics (ACT-R) to strict
+
+--- Page 3 ---
+seeds, propagating energy to relevant contexts even
+under weak initial semantic overlap.
+3
+Methodology
+Building on the cognitive foundations outlined
+above, we now present SYNAPSE, an agentic mem-
+ory architecture that addresses Contextual Isola-
+tion through dynamic activation propagation. Our
+key insight is that relevance should emerge from
+distributed graph dynamics rather than being pre-
+computed through static links or determined solely
+by vector similarity. The overall framework of our
+proposed method is detailed in Figure 1.
+3.1
+Unified Episodic-Semantic Graph
+We formulate the agent?s memory as a directed
+graph G = (V, E). To capture both specific ex-
+periences and generalized knowledge, the vertex
+set V is partitioned into Episodic Nodes (VE) and
+Semantic Nodes (VS).
+Node Construction.
+Each episodic node ve
+i ?
+VE encapsulates a distinct interaction turn, repre-
+sented as a tuple (ci, hi, ?i), where ci is the textual
+content, hi ?Rd is the dense embedding produced
+by a sentence encoder (all-MiniLM-L6-v2), and
+?i is the timestamp. Semantic nodes vs
+j ?VS rep-
+resent abstract concepts (e.g., entities, preferences)
+extracted by the LLM via prompted entity/concept
+extraction triggered every N = 5 turns. Duplicate
+detection uses embedding similarity with thresh-
+old ?dup = 0.92. The complete graph construction
+algorithm is provided in Appendix A.1.
+Topology.
+The edges E define the retrieval path-
+ways: (i) Temporal Edges link sequential episodes
+(ve
+t ?ve
+t+1); (ii) Abstraction Edges bidirectionally
+connect episodes to relevant concepts within the
+same consolidation window (N = 5). This tem-
+poral association allows bridging concepts (e.g.,
+"Mark" ?"Ski Trip") via co-occurrence even with-
+out direct semantic similarity, enabling the "Bridge
+Node" effect (Figure 1); (iii) Association Edges
+model latent correlations between concepts.
+Graph Maintenance and Scalability.
+To pre-
+vent quadratic graph growth (O(|V|2)) in long-
+horizon deployments, we enforce strict sparsity
+constraints: (1) Edge Pruning: Each node is lim-
+ited to its Top-K incoming edges (default K = 15);
+(2) Node Garbage Collection: Nodes with acti-
+vation consistently below a dormancy threshold
+? = 0.01 for W = 10 windows are archived to
+disk. This ensures the active graph remains com-
+pact (|V| ?10, 000) while preserving retrieval
+speed.
+3.2
+Cognitive Dynamics: Spreading
+Activation
+Inspired by human semantic memory mod-
+els (Collins and Loftus, 1975), we implement a
+dynamic activation process to prioritize informa-
+tion.
+Initialization.
+Given a query q, we identify a set
+of anchor nodes T via a dual-trigger mechanism:
+(1) Lexical Trigger: We use BM25 sparse retrieval
+to capture exact entity matches (e.g., proper nouns
+like "Kendall"), ensuring precision for named enti-
+ties; (2) Semantic Trigger: We use dense retrieval
+(all-MiniLM-L6-v2) to capture conceptual simi-
+larity (e.g., "Ski Trip"), maximizing recall for the-
+matic queries. The union of Top-k nodes from both
+streams forms
+
+--- Page 4 ---
+Figure 1: Overview of the SYNAPSE architecture. (Left) A user query regarding "that guy from the ski trip" activates
+the graph via Dual Triggers: Lexical matching targets explicit entities ("Kendall"), while Semantic embedding
+targets implicit concepts ("Ski Trip"). (Center) Spreading Activation dynamically propagates relevance through the
+Unified Episodic-Semantic Graph. Note how the bridge node "Mark" (purple) is activated despite not appearing in
+the query, connecting the disjoint concepts of "Ski Trip" and "Dating". (Right) The Triple Hybrid Scoring layer
+reranks candidates, successfully retrieving the ground truth ("broke up with Mark") while suppressing semantically
+similar but logically irrelevant distractors ("going skiing") via lateral inhibition.
+where TM is the set of M highest-potential nodes
+(default M = 7) to enforce sparsity.
+Sigmoid Activation.
+The inhibited potential is
+transformed into the final firing rate:
+a(t+1)
+i
+= ?(?u(t+1)
+i
+) =
+1
+1 + exp(??(?u(t+1)
+i
+??))
+(4)
+The cycle proceeds strictly as: Propagation (Eq. 2)
+?Lateral Inhibition (Eq. 3) ?Non-linear Acti-
+vation (Eq. 4). Stability is reached within T = 3
+iterations.
+3.3
+Triple-Signal Hybrid Retrieval
+To maximize recall in open-domain QA tasks, we
+propose a hybrid scoring function that fuses seman-
+tic, contextual, and structural signals. The rele-
+vance score S(vi) is defined as:
+S(vi) = ?1 ? sim(hi, hq)
++ ?2 ? a(T)
+i
++ ?3 ? PageRank(vi)
+(5)
+The Top-k nodes (default k = 30) are retrieved and
+re-ordered topologically. Factor scores are cached
+and updated only during consolidation (N = 5
+turns) to maintain query latency independent of
+history length T.
+Crucially, these components
+serve orthogonal roles: (1) PageRank acts as a
+Global Structural Prior, prioritizing universally
+important hubs (e.g., main characters) independent
+of the specific query; (2) Activation acts as a Lo-
+cal Contextual Signal, propagating query-specific
+relevance. Sensitivity analysis indicates robustness
+to ?3 ?[0.1, 0.3], confirming PageRank?s role as
+a stable prior. This decoupling ensures that novel
+but locally relevant details are not drowned out by
+global hubs.
+3.4
+Uncertainty-Aware Rejection
+To robustly handle adversarial queries about non-
+existent entities, SYNAPSE integrates a Meta-
+Cognitive Verification layer inspired by the "Feel-
+ing of Knowing" (FOK) in human memory moni-
+toring. This mechanism operates via a dual-stage
+cognitive gating protocol:
+Confidence-Based Gating
+We model retrieval
+confidence Cret as the activation energy of the
+top-ranked node. If Cret < ?gate (calibrated to
+?gate = 0.12), the system activates a negative ac-
+knowledgement protocol, preemptively rejecting
+the query. This mirrors the brain?s ability to rapidly
+inhibit response generation when memory traces
+are insufficient.
+4
+
+
+--- Page 5 ---
+Explicit Verification Prompting
+For borderline
+cases effectively passing the gate, we employ a ver-
+ification prompt that enforces a "strict evidence"
+constraint on the LLM: ?Is this EXPLICITLY men-
+tioned? If not, output ?Not mentioned?.? This
+forces the generator to distinguish between para-
+metric knowledge hallucination and grounded re-
+trieval.
+4
+Experiments
+4.1
+Experimental Setup
+Benchmark Dataset.
+We evaluate SYNAPSE on
+the LOCOMO benchmark (Maharana et al., 2024),
+a rigorous testbed for long-term conversational
+memory. Unlike standard datasets (e.g., Multi-
+Session Chat) with short contexts (?1K tokens),
+LoCoMo features extensive dialogues averaging
+16K tokens across up to 35 sessions. We report
+the F1 Score and BLEU-1 Score across five cogni-
+tive categories: Single-Hop (C1), Temporal (C2),
+Open-Domain (C3), Multi-Hop (C4), and Adver-
+sarial (C5).
+Baselines.
+To rigorously position SYNAPSE, we
+benchmark against ten state-of-the-art methods
+spanning four distinct memory paradigms: System-
+level, Graph-based, Retrieval-based, and Agen-
+tic/Compression. We explicitly prioritized base-
+lines designed for autonomous agentic mem-
+ory?systems capable of stateful updates and con-
+tinuous learning. We explicitly distinguish between
+static RAG (designed for fixed corpora) and agentic
+memory (designed for evolving interaction). While
+methods like HippoRAG (Guti?rrez et al., 2024)
+utilize similar graph propagation, they are opti-
+mized for static pre-indexed corpora and lack the
+incremental update (O(1) write) and time-decay
+mechanisms required for continuous agentic dia-
+logue. Thus, they are incompatible with the on-
+line read-write nature of the LoCoMo benchmark.
+Please refer to Appendix Table B and Table 5 for
+the complete taxonomy.
+Implementation Details.
+For SYNAPSE, we uti-
+lize all-MiniLM-L6-v2 for embedding generation
+(dim=384). The Spreading Activation propagates
+for T = 3 steps with a retention parameter ? = 0.5
+and temporal decay ? = 0.01. The hybrid retrieval
+weights are set to ? = {0.5, 0.3, 0.2} (Seman-
+tic, Activation, Structural). To ensure a fair "Uni-
+fied Backbone" comparison, we re-ran all repro-
+ducible baselines (marked with ? in Table 1) using
+GPT-4o-mini with temperature 0.1. For baselines
+with fixed proprietary backends, we report their
+default strong model performance. We provide a
+detailed discussion on the sensitivity of each hy-
+perparameter and justify our selection choices in
+Appendix C.
+4.2
+Main Results
+Table 1 details the comprehensive evaluation on the
+LoCoMo benchmark (GPT-4o-mini), reporting F1
+and BLEU-1 scores across five distinct categories
+along with aggregate rankings.
+Overall Performance.
+SYNAPSE establishes a
+new state-of-the-art with a weighted average F1
+of 40.5 (calculated excluding the adversarial cate-
+gory for fair comparison). This performance rep-
+resents a substantial margin of +7.2 points over
+A-Mem (33.3) and outperforms recent graph-based
+systems such as Zep (39.7) and AriGraph (33.7).
+Notably, 
+
+============================================================
+PAPER: KET-RAG
+============================================================
+Total pages: 10
+
+--- Page 1 ---
+KET-RAG: A Cost-Efficient Multi-Granular Indexing Framework
+for Graph-RAG
+Yiqian Huang
+National University of Singapore
+Singapore
+yiqian@comp.nus.edu.sg
+Shiqi Zhang?
+National University of Singapore
+Singapore
+PyroWis AI
+Singapore
+shiqi@pyrowis.ai
+Xiaokui Xiao
+National University of Singapore
+Singapore
+xkxiao@nus.edu.sg
+Abstract
+Graph-RAG constructs a knowledge graph from text chunks to
+improve retrieval in Large Language Model (LLM)-based question
+answering. It is particularly useful in domains such as biomedicine,
+law, and political science, where retrieval often requires multi-hop
+reasoning over proprietary documents. Some existing Graph-RAG
+systems construct KNN graphs based on text chunk relevance, but
+this coarse-grained approach fails to capture entity relationships
+within texts, leading to sub-par retrieval and generation quality. To
+address this, recent solutions leverage LLMs to extract entities and
+relationships from text chunks, constructing triplet-based knowl-
+edge graphs. However, this approach incurs significant indexing
+costs, especially for large document collections.
+To ensure a good result accuracy while reducing the indexing
+cost, we propose KET-RAG, a multi-granular indexing framework.
+KET-RAG first identifies a small set of key text chunks and leverages
+an LLM to construct a knowledge graph skeleton. It then builds
+a text-keyword bipartite graph from all text chunks, serving as a
+lightweight alternative to a full knowledge graph. During retrieval,
+KET-RAG searches both structures: it follows the local search strat-
+egy of existing Graph-RAG systems on the skeleton while mimick-
+ing this search on the bipartite graph to improve retrieval quality.
+We evaluate 13 solutions on three real-world datasets, demonstrat-
+ing that KET-RAG outperforms all competitors in indexing cost,
+retrieval effectiveness, and generation quality. Notably, it achieves
+comparable or superior retrieval quality to Microsoft?s Graph-RAG
+while reducing indexing costs by over an order of magnitude. Ad-
+ditionally, it improves the generation quality by up to 32.4% while
+lowering indexing costs by around 20%.
+CCS Concepts
+? Information systems ?Retrieval models and ranking; ?
+Computing methodologies ?Information extraction; Knowledge
+representation and reasoning.
+Keywords
+Retrieval-Augmented Generation; GraphRAG; Indexing
+?Corresponding author.
+This work is licensed under a Creative Commons Attribution 4.0 International License.
+KDD ?25, Toronto, ON, Canada
+? 2025 Copyright held by the owner/author(s).
+ACM ISBN 979-8-4007-1454-2/2025/08
+https://doi.org/10.1145/3711896.3737012
+ACM Reference Format:
+Yiqian Huang, Shiqi Zhang, and Xiaokui Xiao. 2025. KET-RAG: A Cost-
+Efficient Multi-Granular Indexing Framework for Graph-RAG. In Proceed-
+ings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data
+Mining V.2 (KDD ?25), August 3?7, 2025, Toronto, ON, Canada. ACM, New
+York, NY, USA, 10 pages. https://doi.org/10.1145/3711896.3737012
+1
+Introduction
+Given a 
+
+--- Page 2 ---
+KDD ?25, August 3?7, 2025, Toronto, ON, Canada
+Yiqian Huang, Shiqi Zhang, & Xiaokui Xiao
+graph. Instead of fully materializing the knowledge graph, KET-
+RAG first identifies a set of core text chunks from T based on their
+PageRank centralities [28] in an intermediate KNN graph. It then
+constructs a skeleton of the complete knowledge graph using KG-
+RAG described above. To prevent information loss from relying
+solely on this skeleton, KET-RAG also builds a text-keyword bipar-
+tite from T, serving as a lightweight alternative to KG-RAG. By
+linking keywords to the text chunks in which they appear, keywords
+and their neighboring text chunks can be regarded as candidate en-
+tities and corresponding relations in the knowledge graph. During
+retrieval, KET-RAG adopts the local search strategy of existing solu-
+tions but, unlike previous methods, extracts ego networks from both
+entity and keyword channels to facilitate LLM-based generation.
+In experiments, we evaluate 13 solutions on three datasets across
+three key aspects: indexing cost, retrieval quality, and generation
+quality. Notably, KET-RAG achieves retrieval quality comparable
+to or better than Microsoft?s Graph-RAG [8], the state-of-the-art
+KG-RAG solution, while reducing indexing costs by over an order
+of magnitude. At the same time, it improves generation quality
+by up to 32.4% while lowering indexing costs by approximately
+20%. Furthermore, the core components of KET-RAG, Skeleton-
+RAG and Keyword-RAG, also function as effective stand-alone RAG
+solutions, balancing efficiency and quality. In particular, Skeleton-
+RAG reduces indexing costs by 20% while maintaining retrieval
+quality, showing only minor performance drops in low-cost set-
+tings and achieving parity or even slight improvements in high-
+accuracy configurations. Meanwhile, Keyword-RAG consistently
+outperforms the vanilla Text-RAG in both retrieval and generation
+quality, achieving up to 92.4%, 133.3%, 118.5%, and 12.9% relative
+improvements in Coverage, EM, F1 scores, and BERTScore, respec-
+tively, while exhibiting no compromise in retrieval latency.
+To summarize, we make the following contributions in this work:
+? We propose KET-RAG, a cost-efficient multi-granular indexing
+framework for Graph-RAG, integrating two complementary
+components to balance indexing cost and result quality.
+? We introduce Skeleton-RAG, which constructs a knowledge
+graph skeleton by selecting core text chunks and leveraging
+LLMs to extract structured knowledge.
+? We develop Keyword-RAG, a lightweight text-keyword bipartite
+graph that mimics the retrieval paradigm of KG-RAG while
+significantly reducing indexing costs.
+? We conduct extensive experiments demonstrating the improve-
+ments of our proposed solutions.
+2
+Preliminaries
+We first define the key terminologies and notations in Section 2.1,
+and present the objective of this work in Section 2.2. Finally, we
+review the state-of-the-art Microsoft?s Graph-RAG in Section 2.3.
+2.1
+Terminologies and Notations
+Le
+
+--- Page 3 ---
+KET-RAG: A Cost-Efficient Multi-Granular Indexing Framework for Graph-RAG
+KDD ?25, August 3?7, 2025, Toronto, ON, Canada
+Algorithm 1: KG-Index (T)
+Input: The text chunk set T.
+Output: A TAG index G.
+1 V??{(??, ?(??)) | ???T }; V???; E ??;
+2 for each ??= (??, ?(??)) ?V?do
+3
+V?, E??entities and edges extracted by LLM from ??;
+4
+V??V??V?; E ?E ?E?;
+5
+E ?E ?{(??,?) | ??(V??E?)};
+6 return (V??V?, E);
+Algorithm 2: KG-Retrieval (G,?, ?)
+Input: A TAG index G = (V??V?, E), a query ?, context
+length limit ?
+Output: The context ?
+1 S??arg min-k
+???V?
+euc(??,?), where ?= 10;
+2 S??arg max-k
+??,??E
+adj(S?,??,?), s.t. |
+?(S?)|+|
+?(S?)|=?/2;
+3 S??arg max-k
+???V?
+adj(S??S?, ??), s.t. |
+?(S?)|=?/2;
+4 return ?(S??S??S?);
+generates a text embedding for each ???T and treats the corre-
+sponding text snippets as text-attributed nodes, forming the node
+set V?(Line 1). For each node ???V?, KG-Index leverages a pre-
+defined LLM to process ??in two steps: entity identification and
+relationship extraction, obtaining the sets of entities and relations
+(V?and E?) (Line 3). These extracted entities and relationships are
+then added to V?and E, respectively (Line 4). For each extracted
+entity or relationship ??(V??E?), the LLM generates a textual
+description ??along with its embedding ?(??). Additionally, KG-
+Index links each text chunk node ??to its corresponding extracted
+entities and relationships (Line 5).
+The local search procedure retrieves context from entities, re-
+lationships, and text chunks. Algorithm 2 outlines the retrieval
+process, following the default context limit ratio across channels.
+Given a graph index G and a context limit ?, KG-Retrieval retrieves
+contexts in the order of seed entities, relationships, and text chunks.
+Specifically, it first retrieves 10 entity nodes (S?) with embeddings
+most similar to the query embedding based on Euclidean distance
+(Line 1). It then retrieves relationships (S?) until the combined to-
+ken count from S??S?reaches ?/2 (Line 2). Relationships are
+prioritized based on adjacency to S?, with those connecting two
+seed entities ranking higher. For text chunk retrieval, KG-Retrieval
+retrieves text chunks most adjacent to S?and S?until the total
+context length reaches ?(Line 3). At last, the retrieved texts from
+S??S??S?are concatenated to form the final context, which is
+returned as input for generation (Line 4).
+3
+Related Works
+Beyond Microsoft?s Graph-RAG, we review other indexing and
+retrieval approaches within existing Graph-RAG frameworks. For
+a comprehensive review, we refer readers to surveys [9, 29, 39].
+Given T, the core of constructing a KNN graph is measuring text
+chunk similarity. In particular, Li et al. [21] consider both structural
+and lexical similarities. Structural similarity is based on the physical
+adjacency of text chunks, linking neighboring passages in G. Lexi-
+cal similarity connects chunk nodes that share common keywords,
+which are extracted using LLM-based prompting. Wang et al. [35]
+leverage multiple lexi
+
+--- Page 4 ---
+KDD ?25, August 3?7, 2025, Toronto, ON, Canada
+Yiqian Huang, Shiqi Zhang, & Xiaokui Xiao
+Retriever
+Generation
+KNN Graph
+Context
+Final Answer:
+?Hamlet.?
+KG Skeleton
+Text-Keyword Graph
+LLM
+1
+2
+3
+Combine Context Info (     +     )
+Prompt
++
+Indexing phase
+Retrieval and generation phase
+t1
+t2
+t7
+...
+Juliet
+Romeo
+Hamlet
+...
+Input
+Query:
+?Who kills Polonius??
+Length Limit ?
+Retrieval Ratio ?
+t1
+semantic similarity
+lexical similarity
+t4
+t2
+t5
+t7
+t6
+Existing
+ GraphRAG
+Word & Sentence
+Tokenizer
+t3
+?
+t1
+t2
+t7
+..
+v1
+v2
+v10
+..
+seed
+retrieved
+? ?? tokens
+(1 ??) ?? tokens
+5
+4
+Input text set 
+Figure 1: The illustration of KET-RAG: the indexing stage in 1?- 3?and the retrieval stage in 4?- 5?.
+or semantic similarity. This serves as an intermediate structure
+for building the final graph G.
+(2) Next, KET-RAG selects a ?fraction of core chunks according
+to their structural importance in the KNN graph. These core
+chunks are then processed using KG-Index (Algorithm 1) to
+produce a knowledge graph skeleton G?.
+(3) Finally, KET-RAG constructs the bipartite graph G?= (V??
+V?, E?) from T. In G?, the node set V?represents keywords,
+and V?represents text chunks. An edge ??,??E?indicates that
+keyword node ??appears in text chunk node ??. Each keyword
+node ??is assigned a description ??(consisting of all sentences
+containing that keyword), and its embedding ?(??) is computed
+as the average of these sentences? embeddings.
+During retrieval, KET-RAG balances information from G?and G?
+using a constant ?. It first identifies a set of seed nodes, either enti-
+ties or keywords, that are most similar to the query ?in the text
+embedding space. For entity seeds, KET-RAG applies Algorithm 2
+to retrieve context using ?proportion of the total context limit ?.
+For keyword seeds, it follows a similar procedure to collect relevant
+neighboring text chunks using the remaining (1 ??) of the context
+budget. Finally, the retrieved context is combined with a predefined
+prompt and passed to the LLM for response generation.
+4.2
+Rationale and Comparison
+KET-RAG is motivated by two key observations. First, a small subset
+of core text chunks often exhibits broad relevance to others. Figure 2
+presents the degree distribution of the KNN graph constructed from
+the MuSiQue dataset with input chunk sizes ?= 1200 and ?= 150.
+This heavily skewed distribution highlights the importance of core
+chunks in linking different parts of the graph. Consequently, these
+?= 2
+?= 4
+?= 10
+1
+10
+100
+100
+101
+102
+degree
+#chunks
+(a) ?= 1200
+1
+10
+100
+100
+101
+102
+103
+degree
+#chunks
+(b) ?= 150
+Figure 2: Log-log Plot of the degree distribution of the KNN
+graph on MuSiQue.
+core chunks should be prioritized to extract high-quality triplets
+using the LLM. Second, in the lightweight alternative graph G?,
+keywords and their neighboring text chunks can serve as stand-
+ins for entities and their ego networks. Specifically, when seed
+keywords align with seed entities, their neighboring text chunks are
+expected to contain information about t
+
+--- Page 5 ---
+KET-RAG: A Cost-Efficient Multi-Granular Indexing Framework for Graph-RAG
+KDD ?25, August 3?7, 2025, Toronto, ON, Canada
+Algorithm 3: KET-Index (T, ?, ?,?)
+Input: The text chunk set T, an integer ?, a budget rate ?,
+the number of splits ?.
+Output: A TAG index G.
+1 W ?all keywords tokenized from T;
+2 V ?{??= (??, ?(??)) | ???T }; E ??;
+3 for each ???V do
+4
+S1 ?arg max-k
+???V\{??}
+co-occ(??, ??), where ?= ?/2;
+5
+S2 ?
+arg max-k
+???V\(S1?{??})
+cos(??, ??), where ?= ?/2;
+6
+E ?E ?{(??, ??) | ???(S1 ?S2)};
+7 G ?(V, E);
+8 V??arg max-k
+???V
+??in Eq. (1), where ?= ??? |V|?;
+9 G??KG-Index (V?) in Algorithm 1;
+10 T??split each ???T into 2?equal-sized sub-chunks;
+11 V??{??= (??, ?(??)) | ???T?}; V???; E???;
+12 for each keyword ??W do
+13
+V??V??{??= (??, ?(??))}, where ??is all sentences
+in T?containing ?and ?(??) is the average embedding;
+14
+E??E??{(??, ??) | ???V?, ???V?, ??contains ?};
+15 G??(V??V?, E?);
+16 return G??G?;
+This subgraph-based approach better captures in-text relationships
+w.r.t. seed keywords, enhancing overall effectiveness.
+5
+Detailed Implementations
+This section provides a detailed explanation of KET-RAG, with the
+indexing stage KET-Index discussed in Section 5.1 and the retrieval
+process KET-Retrieval described in Section 5.2.
+5.1
+KET-Index
+As outlined in Algorithm 3, KET-Index takes as input a set T of
+text chunks, an integer ?for the KNN graph, a budget rate ?, and
+an integer ?for text chunk splitting. It first tokenizes all text chunks
+in T into vocabulary W. By default, it tokenizes chunks into words
+while excluding stop words (e.g., ?the?, ?a?, and ?is?) to define keyword
+nodes, though traditional keyword extraction methods [31] can also
+be applied. KET-Index then executes three core subroutines.
+KNN Graph Initialization. In Lines 2?7, KET-Index represents
+each text chunk ???T with its embedding ?(??) as a node ???V.
+It then links each node ??to the top-?/2 nodes based on lexical sim-
+ilarity and the top-?/2 nodes based on semantic similarity, forming
+the KNN graph G (Lines 3?6). Specifically, the lexical similarity
+between nodes ??, ??is defined as the number of co-occurring key-
+words in W, while the semantic similarity is measured using the
+cosine similarity between their embeddings ?(??) and ?(??).
+core chunk identification. Motivated by the observations in Fig-
+ure 2, given an intermediate KNN graph G = (V, E) and a budget
+rate ??[0, 1], Line 8 of Algorithm 3 selects a set V?of ??? |V|?
+core chunk nodes based on their structural importance. For each
+node ???V, the PageRank value [28] ??serves as a measure of
+structural importance. Let P be the probability transition matrix of
+G, where P?,?=
+1
+?(??) and ?(??) denotes the degree of ??. Given a
+teleport probability ?, the PageRank vector ?is computed as:
+?= ?? 1/n + (1 ??) ? ?? P,
+(1)
+where 1/n is the initial vector with each of ?= |V| dimensions
+set to 1/?, and ??= ?[?] represents the PageRank score of ???V.
+PageRank effectively captures both direct and higher-order struc-
+tural im

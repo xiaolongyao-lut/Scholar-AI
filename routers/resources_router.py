@@ -2,10 +2,12 @@
 """Resources API Router - Manages projects, sections, drafts, and associations."""
 
 import asyncio
+import concurrent.futures as futures
 import json
 import logging
 import os
 import re
+import sqlite3
 from pathlib import Path
 from typing import Any, Mapping
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
@@ -50,7 +52,92 @@ CHUNK_OVERLAP = 150    # overlap chars between adjacent chunks
 MAX_CHUNKS_PER_MATERIAL = 5  # max chunks returned per document in RAG search (was 2)
 
 # Supported file extensions for folder scanning
-_SCAN_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md"}
+_SCAN_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".bib", ".ipynb"}
+_SCAN_SKIP_DIRS = {".scholarai", ".git", "node_modules", "__pycache__"}
+_SCAN_MODES = {"legacy", "fast"}
+_INGEST_MODES = {"none", "query", "full"}
+
+
+def _iter_scan_files(root: Path) -> list[Path]:
+    """Recursively collect supported files under root while skipping internal dirs."""
+    candidates: list[Path] = []
+    for current_root, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in _SCAN_SKIP_DIRS]
+        current = Path(current_root)
+        for filename in files:
+            path = current / filename
+            if path.suffix.lower() in _SCAN_EXTENSIONS:
+                candidates.append(path)
+    return candidates
+
+
+def _build_source_fingerprint(root: Path, path: Path) -> str:
+    """Build a stable-ish fingerprint for dedupe across nested folders."""
+    rel = path.resolve().relative_to(root.resolve()).as_posix()
+    stat = path.stat()
+    return f"{rel}|{stat.st_size}|{int(stat.st_mtime_ns)}"
+
+
+def _extract_zotero_item_key(relative_path: Path) -> str | None:
+    """Infer Zotero item key from storage relative path (usually first segment)."""
+    if not relative_path.parts:
+        return None
+    first = str(relative_path.parts[0]).strip()
+    if len(first) == 8 and first.isalnum():
+        return first.upper()
+    return None
+
+
+def _load_zotero_title_map(storage_root: Path) -> dict[str, str]:
+    """Load itemKey -> title from zotero.sqlite when available.
+
+    Zotero commonly stores `storage/` under the same parent as `zotero.sqlite`.
+    This is optional; failures should not block ingestion.
+    """
+    db_path = storage_root.parent / "zotero.sqlite"
+    if not db_path.exists():
+        return {}
+
+    title_map: dict[str, str] = {}
+    try:
+        conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+        try:
+            cursor = conn.cursor()
+            queries = [
+                """
+                SELECT items.key, itemDataValues.value
+                FROM items
+                JOIN itemData ON itemData.itemID = items.itemID
+                JOIN fields ON fields.fieldID = itemData.fieldID
+                JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID
+                WHERE fields.fieldName = 'title'
+                """,
+                """
+                SELECT items.key, itemDataValues.value
+                FROM items
+                JOIN itemData ON itemData.itemID = items.itemID
+                JOIN fieldsCombined ON fieldsCombined.fieldID = itemData.fieldID
+                JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID
+                WHERE fieldsCombined.fieldName = 'title'
+                """,
+            ]
+
+            for query in queries:
+                try:
+                    cursor.execute(query)
+                except sqlite3.Error:
+                    continue
+                for key, value in cursor.fetchall():
+                    item_key = str(key or "").strip().upper()
+                    title = str(value or "").strip()
+                    if item_key and title and item_key not in title_map:
+                        title_map[item_key] = title
+        finally:
+            conn.close()
+    except (sqlite3.Error, OSError, RuntimeError, TypeError, ValueError):
+        return {}
+
+    return title_map
 
 
 def _get_project_source_folder(project_id: str) -> str:
@@ -537,6 +624,67 @@ def _extract_document_content(filename: str, raw: bytes) -> str:
                 break
             except (UnicodeDecodeError, LookupError):
                 continue
+    elif ext == "ipynb":
+        try:
+            notebook = json.loads(raw.decode("utf-8"))
+            cells = notebook.get("cells", []) if isinstance(notebook, dict) else []
+            parts: list[str] = []
+
+            for idx, cell in enumerate(cells, start=1):
+                if not isinstance(cell, dict):
+                    continue
+                cell_type = str(cell.get("cell_type") or "").strip().lower()
+                source = cell.get("source")
+                if isinstance(source, list):
+                    source_text = "".join(str(x) for x in source)
+                else:
+                    source_text = str(source or "")
+                source_text = source_text.strip()
+                if not source_text:
+                    continue
+
+                if cell_type == "markdown":
+                    parts.append(f"[Notebook Markdown Cell {idx}]\n{source_text}")
+                elif cell_type == "code":
+                    code_lines = [ln for ln in source_text.splitlines() if ln.strip()][:80]
+                    code_excerpt = "\n".join(code_lines)
+                    if code_excerpt:
+                        parts.append(f"[Notebook Code Cell {idx}]\n{code_excerpt}")
+
+                    outputs = cell.get("outputs", [])
+                    if isinstance(outputs, list):
+                        output_snippets: list[str] = []
+                        for output in outputs:
+                            if not isinstance(output, dict):
+                                continue
+                            # stream output
+                            if output.get("output_type") == "stream":
+                                text = output.get("text")
+                                if isinstance(text, list):
+                                    text = "".join(str(x) for x in text)
+                                text = str(text or "").strip()
+                                if text:
+                                    output_snippets.append(text)
+
+                            # execute_result / display_data plain text
+                            data = output.get("data")
+                            if isinstance(data, dict):
+                                plain = data.get("text/plain")
+                                if isinstance(plain, list):
+                                    plain = "".join(str(x) for x in plain)
+                                plain = str(plain or "").strip()
+                                if plain:
+                                    output_snippets.append(plain)
+
+                        if output_snippets:
+                            merged_outputs = "\n".join(output_snippets[:20])
+                            parts.append(f"[Notebook Output Cell {idx}]\n{merged_outputs}")
+
+            content = "\n\n".join(parts)
+            if not content.strip():
+                content = f"[Notebook 文件: {filename}，未提取到可索引内容]"
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            content = f"[Notebook 解析失败: {exc}]"
     elif ext == "pdf":
         try:
             import io
@@ -583,6 +731,259 @@ def _truncate_document_content(content: str) -> str:
     if len(content) <= max_content_len:
         return content
     return content[:max_content_len] + f"\n\n[...文档内容已截断，总长度 {len(content)} 字符]"
+
+
+def _resolve_scan_workers(requested_workers: int | None) -> int:
+    """Resolve scan worker count for I/O-bound extraction tasks.
+
+    Uses a conservative upper bound to avoid exhausting descriptors/memory when
+    indexing very large Zotero folders.
+    """
+    process_cpu_count = getattr(os, "process_cpu_count", None)
+    process_cpu = process_cpu_count() if callable(process_cpu_count) else None
+    default_workers = min(32, (process_cpu or os.cpu_count() or 1) + 4)
+    if requested_workers is None:
+        return default_workers
+    return max(1, min(int(requested_workers), 64))
+
+
+def _iter_scan_batches(items: list[dict[str, Any]], batch_size: int) -> list[list[dict[str, Any]]]:
+    """Split scan workload into fixed-size batches."""
+    if batch_size <= 0:
+        return [items]
+    return [items[idx: idx + batch_size] for idx in range(0, len(items), batch_size)]
+
+
+def _extract_scan_candidate_content(file_path: Path) -> tuple[str | None, str | None]:
+    """Extract candidate text for scan-folder ingestion.
+
+    Returns:
+        (content, None) on success, or (None, reason) on failure.
+    """
+    try:
+        raw = file_path.read_bytes()
+        content = _truncate_document_content(_extract_document_content(file_path.name, raw))
+        normalized = str(content or "").strip()
+        if not normalized or _is_extraction_failure_placeholder(normalized):
+            return None, "无法提取文本"
+        return content, None
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)
+
+
+def _collect_pending_scan_candidates(
+    project_id: str,
+    folder_path: Path,
+) -> dict[str, Any]:
+    """Collect non-indexed candidates from a folder for a project.
+
+    This is a reusable metadata stage shared by both full-folder scan and
+    query-driven on-demand ingestion.
+    """
+    candidates = _iter_scan_files(folder_path)
+    existing_doc_store = _load_doc_store(project_id)
+    existing_titles = {str(v.get("title") or "") for v in existing_doc_store.values()}
+    existing_fingerprints = {
+        str(v.get("source_fingerprint") or "")
+        for v in existing_doc_store.values()
+        if str(v.get("source_fingerprint") or "")
+    }
+
+    pending_candidates: list[dict[str, Any]] = []
+    skipped_results: list[dict[str, Any]] = []
+    failed_results: list[dict[str, Any]] = []
+
+    for file_path in candidates:
+        filename = file_path.name
+        relative_path = file_path.resolve().relative_to(folder_path.resolve())
+        relative_posix = relative_path.as_posix()
+
+        try:
+            stat = file_path.stat()
+            fingerprint = f"{relative_posix}|{stat.st_size}|{int(stat.st_mtime_ns)}"
+        except OSError as exc:
+            failed_results.append({"title": relative_posix, "status": "error", "reason": str(exc)})
+            continue
+
+        if fingerprint in existing_fingerprints:
+            skipped_results.append({"title": relative_posix, "status": "skipped", "reason": "已索引（指纹匹配）"})
+            continue
+
+        if relative_posix in existing_titles or filename in existing_titles:
+            skipped_results.append({"title": relative_posix, "status": "skipped", "reason": "已索引（路径/文件名匹配）"})
+            continue
+
+        pending_candidates.append(
+            {
+                "path": file_path,
+                "relative_path": relative_path,
+                "relative_posix": relative_posix,
+                "fingerprint": fingerprint,
+                "size": stat.st_size,
+                "mtime": stat.st_mtime,
+            }
+        )
+
+    return {
+        "candidates": candidates,
+        "pending": pending_candidates,
+        "existing_titles": existing_titles,
+        "existing_fingerprints": existing_fingerprints,
+        "skipped_results": skipped_results,
+        "failed_results": failed_results,
+    }
+
+
+def _score_pending_candidate_for_query(
+    query_tokens: set[str],
+    relative_posix: str,
+    zotero_title: str,
+) -> float:
+    """Score an unindexed file candidate using filename/path/title signals."""
+    query_text = " ".join(sorted(query_tokens))
+    normalized_path = re.sub(r"[_\-./\\]+", " ", relative_posix.lower())
+    relative_tokens = _tokenize_search_text(normalized_path)
+    title_tokens = _tokenize_search_text(zotero_title.lower()) if zotero_title else set()
+    matched = query_tokens & (relative_tokens | title_tokens)
+
+    score = float(len(matched) * 3)
+    if query_text and query_text in normalized_path:
+        score += 6.0
+    if query_text and zotero_title and query_text in zotero_title.lower():
+        score += 8.0
+
+    if query_tokens:
+        score += (len(matched) / len(query_tokens)) * 5.0
+
+    return score
+
+
+def _select_query_pending_candidates(
+    pending_candidates: list[dict[str, Any]],
+    query: str,
+    zotero_title_map: dict[str, str],
+    ingest_limit: int,
+) -> list[dict[str, Any]]:
+    """Select query-relevant subset from pending candidates."""
+    query_tokens = _tokenize_search_text(str(query or "").lower())
+    if not query_tokens:
+        return pending_candidates[:ingest_limit]
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for item in pending_candidates:
+        relative_path = item["relative_path"]
+        zotero_key = _extract_zotero_item_key(relative_path)
+        zotero_title = zotero_title_map.get(zotero_key, "") if zotero_key else ""
+        score = _score_pending_candidate_for_query(query_tokens, str(item["relative_posix"]), zotero_title)
+        if score > 0:
+            scored.append((score, item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in scored[:ingest_limit]]
+
+
+def _ingest_pending_candidates(
+    project_id: str,
+    *,
+    store: Any,
+    pending_candidates: list[dict[str, Any]],
+    zotero_title_map: dict[str, str],
+    scan_mode: str,
+    batch_size: int,
+    max_workers: int,
+    existing_titles: set[str],
+    existing_fingerprints: set[str],
+) -> dict[str, Any]:
+    """Persist pending candidates into doc/chunk stores.
+
+    This function is intentionally reusable by both full scan and on-demand ingest.
+    """
+    results: list[dict[str, Any]] = []
+    total_chunks = 0
+    failed = 0
+    worker_count = 1
+
+    normalized_mode = str(scan_mode or "").strip().lower()
+    if normalized_mode not in _SCAN_MODES:
+        normalized_mode = "fast"
+
+    if normalized_mode == "fast" and pending_candidates:
+        worker_count = _resolve_scan_workers(max_workers)
+        for batch in _iter_scan_batches(pending_candidates, batch_size):
+            with futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+                future_map = {
+                    executor.submit(_extract_scan_candidate_content, item["path"]): item
+                    for item in batch
+                }
+                for future in futures.as_completed(future_map):
+                    item = future_map[future]
+                    relative_posix = str(item["relative_posix"])
+                    relative_path = item["relative_path"]
+                    fingerprint = str(item["fingerprint"])
+
+                    content, error_reason = future.result()
+                    if error_reason or not content:
+                        failed += 1
+                        results.append({"title": relative_posix, "status": "error", "reason": error_reason or "无法提取文本"})
+                        continue
+
+                    zotero_key = _extract_zotero_item_key(relative_path)
+                    zotero_title = zotero_title_map.get(zotero_key, "") if zotero_key else ""
+                    material_title = f"{zotero_title} [{relative_posix}]" if zotero_title else relative_posix
+
+                    result = _persist_uploaded_document(
+                        project_id,
+                        material_title,
+                        content,
+                        store=store,
+                        source_relative_path=relative_posix,
+                        source_fingerprint=fingerprint,
+                        source_size=int(item["size"]),
+                        source_mtime=float(item["mtime"]),
+                    )
+                    total_chunks += int(result.get("chunks") or 0)
+                    existing_fingerprints.add(fingerprint)
+                    existing_titles.add(material_title)
+                    results.append({"title": material_title, "status": "ok", "chunks": result.get("chunks")})
+    else:
+        for item in pending_candidates:
+            relative_posix = str(item["relative_posix"])
+            relative_path = item["relative_path"]
+            fingerprint = str(item["fingerprint"])
+
+            content, error_reason = _extract_scan_candidate_content(item["path"])
+            if error_reason or not content:
+                failed += 1
+                results.append({"title": relative_posix, "status": "error", "reason": error_reason or "无法提取文本"})
+                continue
+
+            zotero_key = _extract_zotero_item_key(relative_path)
+            zotero_title = zotero_title_map.get(zotero_key, "") if zotero_key else ""
+            material_title = f"{zotero_title} [{relative_posix}]" if zotero_title else relative_posix
+
+            result = _persist_uploaded_document(
+                project_id,
+                material_title,
+                content,
+                store=store,
+                source_relative_path=relative_posix,
+                source_fingerprint=fingerprint,
+                source_size=int(item["size"]),
+                source_mtime=float(item["mtime"]),
+            )
+            total_chunks += int(result.get("chunks") or 0)
+            existing_fingerprints.add(fingerprint)
+            existing_titles.add(material_title)
+            results.append({"title": material_title, "status": "ok", "chunks": result.get("chunks")})
+
+    return {
+        "results": results,
+        "failed": failed,
+        "total_chunks": total_chunks,
+        "workers": worker_count,
+        "scan_mode": normalized_mode,
+        "indexed": len(pending_candidates) - failed,
+    }
 
 
 def _normalize_project_title_for_cleanup(title: str) -> str:
@@ -686,6 +1087,10 @@ def _persist_uploaded_document(
     content: str,
     *,
     store: Any,
+    source_relative_path: str | None = None,
+    source_fingerprint: str | None = None,
+    source_size: int | None = None,
+    source_mtime: float | None = None,
 ) -> dict[str, Any]:
     """Create a material entry and persist its document/chunk payload."""
     summary = content[:200].replace("\n", " ").strip() if content else f"从文件 {filename} 导入"
@@ -699,7 +1104,14 @@ def _persist_uploaded_document(
     )
 
     doc_store = _load_doc_store(project_id)
-    doc_store[material.material_id] = {"title": filename, "content": content}
+    doc_store[material.material_id] = {
+        "title": filename,
+        "content": content,
+        "source_relative_path": source_relative_path or filename,
+        "source_fingerprint": source_fingerprint or "",
+        "source_size": int(source_size or 0),
+        "source_mtime": float(source_mtime or 0.0),
+    }
     _save_doc_store(project_id, doc_store)
 
     chunks = _chunk_document(material.material_id, filename, content)
@@ -972,7 +1384,25 @@ async def delete_project(project_id: str) -> dict[str, str]:
 
 
 @router.post("/project/{project_id}/scan-folder")
-async def scan_project_folder(project_id: str) -> dict[str, Any]:
+async def scan_project_folder(
+    project_id: str,
+    scan_mode: str = Query(
+        "fast",
+        description="扫描模式：legacy（串行兼容）/ fast（元数据预扫 + 分批并发解析）",
+    ),
+    batch_size: int = Query(
+        24,
+        ge=1,
+        le=256,
+        description="fast 模式下每批处理文件数",
+    ),
+    max_workers: int = Query(
+        8,
+        ge=1,
+        le=64,
+        description="fast 模式下并发 worker 数（建议 4-16）",
+    ),
+) -> dict[str, Any]:
     """Scan the project's source_folder and ingest all literature files.
 
     Reads all supported files (.pdf, .docx, .doc, .txt, .md) from the project's
@@ -996,60 +1426,48 @@ async def scan_project_folder(project_id: str) -> dict[str, Any]:
             detail=f"文件夹不存在或无法访问：{folder_path}",
         )
 
-    # Collect candidate files
-    candidates = [
-        f for f in folder_path.iterdir()
-        if f.is_file() and f.suffix.lower() in _SCAN_EXTENSIONS
-    ]
+    normalized_mode = str(scan_mode or "").strip().lower()
+    if normalized_mode not in _SCAN_MODES:
+        raise HTTPException(status_code=400, detail=f"scan_mode 不支持: {scan_mode}，可选值: legacy, fast")
 
-    # Get already-indexed titles to skip duplicates
-    existing_doc_store = _load_doc_store(project_id)
-    existing_titles = {v["title"] for v in existing_doc_store.values()}
+    # Collect candidate files recursively (Zotero storage often has hundreds of subfolders)
+    candidate_payload = _collect_pending_scan_candidates(project_id, folder_path)
+    candidates = candidate_payload["candidates"]
+    pending_candidates = candidate_payload["pending"]
+    existing_titles = candidate_payload["existing_titles"]
+    existing_fingerprints = candidate_payload["existing_fingerprints"]
+    skipped_results = list(candidate_payload["skipped_results"])
+    failed_results = list(candidate_payload["failed_results"])
 
-    results: list[dict[str, Any]] = []
-    total_chunks = 0
-    skipped = 0
-    failed = 0
+    zotero_title_map = _load_zotero_title_map(folder_path)
+    ingest_payload = _ingest_pending_candidates(
+        project_id,
+        store=store,
+        pending_candidates=pending_candidates,
+        zotero_title_map=zotero_title_map,
+        scan_mode=normalized_mode,
+        batch_size=batch_size,
+        max_workers=max_workers,
+        existing_titles=existing_titles,
+        existing_fingerprints=existing_fingerprints,
+    )
 
-    for file_path in candidates:
-        filename = file_path.name
-        if filename in existing_titles:
-            skipped += 1
-            results.append({"title": filename, "status": "skipped", "reason": "已索引"})
-            continue
-        try:
-            raw = file_path.read_bytes()
-
-            # Reuse the existing content extractor
-            class _FakeUpload:
-                def __init__(self, name: str, data: bytes):
-                    self.filename = name
-                    self._data = data
-                async def read(self) -> bytes:
-                    return self._data
-
-            content = _truncate_document_content(_extract_document_content(filename, raw))
-            normalized = str(content or "").strip()
-            if not normalized or normalized.startswith("["):
-                failed += 1
-                results.append({"title": filename, "status": "error", "reason": "无法提取文本"})
-                continue
-
-            result = _persist_uploaded_document(project_id, filename, content, store=store)
-            total_chunks += int(result.get("chunks") or 0)
-            results.append({"title": filename, "status": "ok", "chunks": result.get("chunks")})
-        except Exception as exc:  # noqa: BLE001
-            failed += 1
-            results.append({"title": filename, "status": "error", "reason": str(exc)})
+    results = [*skipped_results, *failed_results, *list(ingest_payload["results"])]
+    skipped = len(skipped_results)
+    failed = len(failed_results) + int(ingest_payload["failed"])
 
     return {
         "project_id": project_id,
         "folder": str(folder_path),
+        "scan_mode": str(ingest_payload["scan_mode"]),
+        "batch_size": batch_size,
+        "workers": int(ingest_payload["workers"]),
         "total_files": len(candidates),
-        "indexed": len(candidates) - skipped - failed,
+        "queued": len(pending_candidates),
+        "indexed": int(ingest_payload["indexed"]),
         "skipped": skipped,
         "failed": failed,
-        "total_chunks": total_chunks,
+        "total_chunks": int(ingest_payload["total_chunks"]),
         "results": results,
     }
 
@@ -1219,19 +1637,82 @@ async def search_chunks(
     project_id: str = Query(...),
     query: str = Query(..., min_length=1, description="搜索词"),
     top_k: int = Query(10, ge=1, le=50, description="返回最相关的 N 个chunk"),
+    ingest_mode: str = Query("none", description="提问前置入库模式：none/query/full"),
+    ingest_limit: int = Query(8, ge=1, le=128, description="query 模式最多入库候选文件数"),
+    scan_mode: str = Query("fast", description="入库执行模式：legacy/fast"),
+    scan_batch_size: int = Query(24, ge=1, le=256, description="入库批大小"),
+    scan_max_workers: int = Query(8, ge=1, le=64, description="入库并发 worker 数"),
 ) -> dict[str, Any]:
-    """Simple keyword-based chunk search for RAG context retrieval.
+    """Chunk search with optional query-driven pre-ingestion.
 
-    Scores chunks by keyword overlap with the query. For production use,
-    this should be replaced with embedding-based vector search.
+    - ingest_mode=none: pure retrieval on existing chunks
+    - ingest_mode=query: ingest only query-relevant pending files
+    - ingest_mode=full: ingest all pending files before retrieval
     """
+    normalized_ingest_mode = str(ingest_mode or "").strip().lower()
+    if normalized_ingest_mode not in _INGEST_MODES:
+        raise HTTPException(status_code=400, detail=f"ingest_mode 不支持: {ingest_mode}，可选值: none, query, full")
+
+    ingest_meta: dict[str, Any] = {
+        "enabled": normalized_ingest_mode != "none",
+        "mode": normalized_ingest_mode,
+        "indexed": 0,
+        "queued": 0,
+        "failed": 0,
+        "skipped": 0,
+        "workers": 1,
+    }
+
+    if normalized_ingest_mode != "none":
+        store = _ensure_upload_project(project_id)
+        project_obj = get_writing_resource_store().get_project(project_id)
+        source_folder = str((project_obj.metadata.get("source_folder") if project_obj else "") or "").strip()
+
+        if source_folder:
+            folder_path = Path(source_folder).expanduser().resolve()
+            if folder_path.is_dir():
+                candidate_payload = _collect_pending_scan_candidates(project_id, folder_path)
+                pending_candidates = list(candidate_payload["pending"])
+                ingest_meta["skipped"] = len(candidate_payload["skipped_results"])
+                ingest_meta["failed"] = len(candidate_payload["failed_results"])
+
+                zotero_title_map = _load_zotero_title_map(folder_path)
+                if normalized_ingest_mode == "query":
+                    pending_candidates = _select_query_pending_candidates(
+                        pending_candidates,
+                        query=query,
+                        zotero_title_map=zotero_title_map,
+                        ingest_limit=ingest_limit,
+                    )
+
+                ingest_meta["queued"] = len(pending_candidates)
+                if pending_candidates:
+                    ingest_payload = _ingest_pending_candidates(
+                        project_id,
+                        store=store,
+                        pending_candidates=pending_candidates,
+                        zotero_title_map=zotero_title_map,
+                        scan_mode=scan_mode,
+                        batch_size=scan_batch_size,
+                        max_workers=scan_max_workers,
+                        existing_titles=candidate_payload["existing_titles"],
+                        existing_fingerprints=candidate_payload["existing_fingerprints"],
+                    )
+                    ingest_meta["indexed"] = int(ingest_payload["indexed"])
+                    ingest_meta["failed"] = int(ingest_meta["failed"]) + int(ingest_payload["failed"])
+                    ingest_meta["workers"] = int(ingest_payload["workers"])
+            else:
+                ingest_meta["error"] = f"source_folder 无法访问: {folder_path}"
+        else:
+            ingest_meta["error"] = "项目未配置 source_folder，已跳过前置入库"
+
     chunk_store = _ensure_project_chunks(project_id)
     all_chunks: list[dict[str, Any]] = []
     for chunks in chunk_store.values():
         all_chunks.extend(chunks)
 
     if not all_chunks:
-        return {"project_id": project_id, "query": query, "results": []}
+        return {"project_id": project_id, "query": query, "ingest": ingest_meta, "results": []}
 
     query_text = query.lower().strip()
     query_tokens = _tokenize_search_text(query_text)
@@ -1264,6 +1745,7 @@ async def search_chunks(
     return {
         "project_id": project_id,
         "query": query,
+        "ingest": ingest_meta,
         "results": [{"score": round(s, 2), **c} for s, c in top if s > 0],
     }
 

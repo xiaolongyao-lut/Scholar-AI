@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(python -m pytest tests/test_reranker.py tests/test_eval_runtime.py tests/test_query_expander.py tests/test_contextual_chunker.py tests/test_dense_rrf_retrieval.py tests/test_graph_keyword_retriever.py tests/test_chunk_structure.py -q)",
+      "Bash(head -30 eval_queries_v2.0.jsonl)",
+      "Read(//tmp/**)",
+      "Bash(python eval_retrieval_runtime.py --queries /tmp/eval_v2_30.jsonl --output /tmp/ab_no_expansion.json --no-expansion)",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('eval_retrieval_runtime.py',encoding='utf-8'\\).read\\(\\)\\); print\\('eval OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('reranker_client.py',encoding='utf-8'\\).read\\(\\)\\); print\\('rerank OK'\\)\")",
+      "mcp__ide__executeCode",
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(f,encoding='utf-8'\\).read\\(\\)\\) for f in \\('eval_retrieval_runtime.py','reranker_client.py'\\)]; print\\('OK'\\)\")",
+      "Bash(py *)",
+      "Bash(xargs -I{} wc -c {})",
+      "WebSearch",
+      "Bash(tee /tmp/phase42_1656.log)",
+      "Bash(powershell *)",
+      "Bash(python -m pytest tests/test_dense_rrf_retrieval.py tests/test_eval_runtime.py tests/test_reranker.py -x --tb=short)",
+      "Bash(python -m pytest tests/test_dense_rrf_retrieval.py tests/test_eval_runtime.py tests/test_reranker.py --tb=short)",
+      "Bash(python -m pytest tests/test_reranker.py -v)",
+      "Bash(python -m pytest tests/test_reranker.py)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(python *)",
+      "Bash(where python *)",
+      "Bash(D:/anaconda/python.exe -m pytest tests/test_reranker.py tests/test_dense_rrf_retrieval.py tests/test_eval_runtime.py -v)",
+      "Bash(D:/anaconda/python.exe -m pytest tests/test_eval_runtime.py tests/test_dense_rrf_retrieval.py tests/test_reranker.py -v)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}

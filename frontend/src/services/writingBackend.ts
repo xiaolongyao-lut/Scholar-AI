@@ -129,12 +129,40 @@ export class WritingBackendService {
   }
 
   /**
-   * Scan all literature files in the project's source_folder and index any
-   * that haven't been indexed yet. Returns counts of indexed/skipped/failed files.
+   * Scan literature files in source_folder with pluggable execution modes.
+   * - scanMode: 'fast' | 'legacy'
+   * - batchSize/maxWorkers: effective when scanMode='fast'
    */
-  async scanProjectFolder(projectId: string): Promise<{ indexed: number; skipped: number; failed: number; folder: string }> {
-    const response = await this.client.post<{ indexed: number; skipped: number; failed: number; folder: string }>(
-      `/resources/project/${projectId}/scan-folder`
+  async scanProjectFolder(
+    projectId: string,
+    options?: { scanMode?: 'fast' | 'legacy'; batchSize?: number; maxWorkers?: number }
+  ): Promise<{
+    indexed: number;
+    skipped: number;
+    failed: number;
+    folder: string;
+    queued?: number;
+    workers?: number;
+    scan_mode?: string;
+  }> {
+    const response = await this.client.post<{
+      indexed: number;
+      skipped: number;
+      failed: number;
+      folder: string;
+      queued?: number;
+      workers?: number;
+      scan_mode?: string;
+    }>(
+      `/resources/project/${projectId}/scan-folder`,
+      null,
+      {
+        params: {
+          scan_mode: options?.scanMode,
+          batch_size: options?.batchSize,
+          max_workers: options?.maxWorkers,
+        },
+      }
     );
     return response.data;
   }

@@ -13,6 +13,9 @@ import {
   Files,
   CheckCircle2,
   AlertTriangle,
+  Pencil,
+  X,
+  Check,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -103,6 +106,9 @@ export function KnowledgeBase() {
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<{ indexed: number; skipped: number; failed: number; folder: string } | null>(null);
   const [projectSourceFolder, setProjectSourceFolder] = useState('');
+  const [editingFolder, setEditingFolder] = useState(false);
+  const [folderDraft, setFolderDraft] = useState('');
+  const [savingFolder, setSavingFolder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const { activeProjectId } = useWriting();
@@ -158,6 +164,27 @@ export function KnowledgeBase() {
   useEffect(() => {
     void loadMaterials();
   }, [loadMaterials]);
+
+  const handleUpdateSourceFolder = useCallback(async () => {
+    if (!activeProjectId || savingFolder) return;
+    const trimmed = folderDraft.trim();
+    setSavingFolder(true);
+    try {
+      const baseUrl = getApiBaseUrl();
+      await axios.put(
+        `${baseUrl}/resources/project/${activeProjectId}/source-folder`,
+        null,
+        { params: { source_folder: trimmed }, timeout: 10000 },
+      );
+      setProjectSourceFolder(trimmed);
+      setEditingFolder(false);
+    } catch (err: unknown) {
+      // keep editing mode open on error so user can retry
+      console.error('更新文献文件夹失败:', formatAxiosError(err));
+    } finally {
+      setSavingFolder(false);
+    }
+  }, [activeProjectId, folderDraft, savingFolder]);
 
   const handleScanFolder = useCallback(async () => {
     if (!activeProjectId || scanning) return;
@@ -314,12 +341,63 @@ export function KnowledgeBase() {
       </div>
 
       {/* Source folder info bar */}
-      {activeProjectId && projectSourceFolder && (
-        <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50/50 border border-emerald-200/60 text-xs font-label">
-          <FolderOpen size={13} className="text-emerald-600 flex-shrink-0" />
-          <span className="text-emerald-700 font-medium">文献文件夹：</span>
-          <code className="text-emerald-600 font-mono truncate flex-1">{projectSourceFolder}</code>
-          <span className="text-emerald-500/70 ml-1 flex-shrink-0">切片存在 .scholarai/ 子目录</span>
+      {activeProjectId && (
+        <div className="mb-4 px-3 py-2 rounded-lg bg-emerald-50/50 border border-emerald-200/60 text-xs font-label">
+          {editingFolder ? (
+            <div className="flex items-center gap-2">
+              <FolderOpen size={13} className="text-emerald-600 flex-shrink-0" />
+              <span className="text-emerald-700 font-medium flex-shrink-0">文献文件夹：</span>
+              <input
+                autoFocus
+                value={folderDraft}
+                onChange={e => setFolderDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') void handleUpdateSourceFolder();
+                  if (e.key === 'Escape') setEditingFolder(false);
+                }}
+                placeholder="输入文件夹绝对路径，例如 D:\\我的文献"
+                className="flex-1 bg-white/80 border border-emerald-300 rounded px-2 py-0.5 font-mono text-emerald-800 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              />
+              <button
+                type="button"
+                onClick={() => void handleUpdateSourceFolder()}
+                disabled={savingFolder}
+                title="保存"
+                className="flex-shrink-0 p-1 rounded text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                {savingFolder ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingFolder(false)}
+                title="取消"
+                className="flex-shrink-0 p-1 rounded text-emerald-500 hover:bg-emerald-100"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <FolderOpen size={13} className="text-emerald-600 flex-shrink-0" />
+              <span className="text-emerald-700 font-medium flex-shrink-0">文献文件夹：</span>
+              {projectSourceFolder ? (
+                <>
+                  <code className="text-emerald-600 font-mono truncate flex-1">{projectSourceFolder}</code>
+                  <span className="text-emerald-500/70 ml-1 flex-shrink-0">切片存在 .scholarai/</span>
+                </>
+              ) : (
+                <span className="text-emerald-500/60 italic flex-1">未设置（切片存在 output/chunk_store/）</span>
+              )}
+              <button
+                type="button"
+                onClick={() => { setFolderDraft(projectSourceFolder); setEditingFolder(true); }}
+                title="修改文献文件夹路径"
+                className="flex-shrink-0 p-1 rounded text-emerald-500 hover:bg-emerald-100 hover:text-emerald-700 transition-colors"
+              >
+                <Pencil size={12} />
+              </button>
+            </div>
+          )}
         </div>
       )}
       {scanResult && (

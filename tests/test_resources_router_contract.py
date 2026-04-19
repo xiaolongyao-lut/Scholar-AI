@@ -166,3 +166,43 @@ def test_material_endpoints_round_trip_project_scoped_cards() -> None:
     get_response = client.get(f"/resources/material/{material_payload['material_id']}")
     assert get_response.status_code == 200
     assert get_response.json()["summary_en"] == "Analyzes major bottlenecks in quantum synchronization."
+
+
+def test_chunk_search_query_driven_ingest_indexes_relevant_files(tmp_path) -> None:
+    """chunks/search should optionally ingest query-relevant files before retrieval."""
+    client = TestClient(app)
+    source_folder = tmp_path / "literature"
+    source_folder.mkdir(parents=True)
+    (source_folder / "transformer_notes.txt").write_text(
+        "Transformer attention mechanism improves sequence modeling.",
+        encoding="utf-8",
+    )
+
+    project_response = client.post(
+        "/resources/project",
+        json={
+            "title": "Query Driven Ingest Project",
+            "source_folder": str(source_folder),
+        },
+    )
+    assert project_response.status_code == 200
+    project_payload = project_response.json()
+
+    response = client.get(
+        "/resources/chunks/search",
+        params={
+            "project_id": project_payload["project_id"],
+            "query": "transformer attention",
+            "top_k": 5,
+            "ingest_mode": "query",
+            "ingest_limit": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ingest"]["enabled"] is True
+    assert payload["ingest"]["indexed"] >= 1
+    assert payload["results"]
+    assert any("transformer" in str(item.get("title", "")).lower() for item in payload["results"])
+

@@ -399,21 +399,17 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
         >
           {providerModels.length > 0 ? (
             <div>
-              <input
+              <select
                 id="chat-model-select"
-                type="text"
-                list="chat-model-list"
                 value={llm.model}
                 onChange={e => handleModelChange(e.target.value)}
-                placeholder="model-id 或 ep-xxx"
                 aria-label={t('settings.chat_model')}
                 className="w-full bg-surface-high rounded-lg px-3 py-2 border border-outline-variant/50 text-sm font-label text-foreground focus:outline-none focus:border-primary/40 transition-colors"
-              />
-              <datalist id="chat-model-list">
+              >
                 {providerModels.map(m => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
-              </datalist>
+              </select>
               {selectedModel && (
                 <p className="text-[10px] text-foreground/40 mt-1">
                   {selectedModel.description}
