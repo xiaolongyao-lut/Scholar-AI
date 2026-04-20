@@ -1768,3 +1768,169 @@ Per strict reviewer lockout semantics:
 
 ---
 
+
+## 2026-04-21: Tier 0 Gate Decision — Per-Query Quality Persistence Before Any Paid Eval
+
+**By:** Morpheus (Architect / QA Lead)
+**Requested by:** 小龙 姚
+**Status:** ✅ APPROVED — Tier 0 may proceed without user approval
+
+### Decision
+
+**YES — Tier 0 can proceed.** It does not cross any hard-stop boundary.
+
+### Root-Cause Evidence (code audit)
+
+The 1100/3269 U1A run wasted money because of a single architectural defect in val_retrieval_runtime.py:
+
+- **Lines 795-812:** _eval_one() computes full per-query quality metrics (recall@1/3/5/10, mrr, latency, rerank timing) into a esult dict.
+- **Lines 813-827:** The progress reporter receives this esult but writes **only counters** (done, 	otal, percent, last_query_id) to the progress JSONL. All quality data is discarded at write time.
+- **Lines 830-831:** Per-query results are collected in-memory via syncio.gather, passed back to un_eval.
+- **Lines 680-688:** Aggregation and canonical JSON write happen **only after all queries complete**.
+
+**Consequence:** If the process is interrupted before line 680, **all per-query quality data is lost**. This is exactly what happened at 1100/3269. The data was computed, then thrown away.
+
+### Tier 0 Scope
+
+**Objective:** Make the eval runner interrupt-safe by persisting per-query quality evidence to disk as each query completes.
+
+**Change location:** val_retrieval_runtime.py, function _eval_one() (lines 812-828).
+
+**What to add:**
+1. A new --per-query-output CLI parameter (path to a JSONL file).
+2. Inside _eval_one(), after computing esult (line 812), **append the full esult dict as one JSON line** to the per-query JSONL. Use the existing progress_lock for concurrency safety.
+3. Ensure the per-query JSONL is independently parseable — each line is a complete per-query record.
+
+**What NOT to touch:**
+- No changes to the existing progress JSONL format (backward compatible).
+- No changes to the canonical output JSON schema.
+- No changes to ggregate_metrics() — it already works on list[dict].
+- No new dependencies.
+- No refactoring of existing code structure.
+
+**Estimated change:** ~15 lines of code addition. Zero lines modified.
+
+### Verification Protocol (from morpheus-quality-tiers.md Tier 0 spec)
+
+1. Run 5 queries in dry-run mode (no rerank API, local-only).
+2. Verify per-query JSONL is written and each line is valid JSON with recall/mrr fields.
+3. Verify aggregate metrics can be recomputed from the per-query JSONL by piping into ggregate_metrics().
+4. Verify that interrupting at query 3 leaves usable per-query data for queries 1-3 in the JSONL.
+
+**Cost:** Zero. No paid API calls.
+
+### Hard-Stop Analysis
+
+| Boundary | Crossed? | Reasoning |
+|---|---|---|
+| New dependency | ❌ NO | Uses only json, syncio, Path — all existing imports |
+| Schema change | ❌ NO | Adds a new output file; does not modify existing file schemas |
+| Refactor | ❌ NO | Pure addition of ~15 lines in one function; no restructuring |
+| Paid API call | ❌ NO | Tier 0 runs with --no-rerank (local-only) |
+| Reviewer lockout | ❌ NO | No relation to the rejected U1 artifact cycle |
+
+### Execution Owner
+
+**Tank** — this is QA infrastructure. Tank already identified the defect in 	ank-1100-vs-3269.md and is named as Tier 0 executor in morpheus-quality-tiers.md.
+
+**Review:** Morpheus reviews the change before any paid eval (Tier 1+) is authorized.
+
+### Budget Gate Reminder
+
+- **Tier 0:** No approval needed (zero cost). ← WE ARE HERE
+- **Tier 1 (50 queries):** Any team member may run.
+- **Tier 2 (250 queries):** Requires Morpheus or 小龙 approval.
+- **Tier 3 (3269 queries):** Requires BOTH Morpheus AND 小龙 approval.
+
+No paid eval runs until Tier 0 passes all 4 verification checks.
+
+---
+
+## 2026-04-21: Tank Decision — Tier 0 QA Acceptance Contract (Pre-Paid Mini-Eval)
+
+**Date:** 2026-04-21
+**Owner:** Tank (QA)
+**Scope:** Define the minimum acceptance contract before any paid mini-eval is allowed.
+
+### Why this gate exists
+
+Current interrupted artifact (output/v21_u1a_full_eval_canonical.progress.jsonl) records only counters (done/total/percent/last_query_id) and no per-query quality fields, so it is not reusable quality evidence if a run stops early.
+
+### Tier 0 — Minimum reusable-evidence contract
+
+An interrupted run is considered reusable **only if all are true**:
+
+1. **Per-query quality persistence exists**: one JSONL line per completed query containing at least query_id, ecall_at_5, mrr, latency_ms (and ideally recall@1/3/10).
+2. **Progress remains monotonic**: progress JSONL done strictly increases to the interruption point; 	otal is stable.
+3. **Cross-file coherence holds**: last done in progress equals line count in per-query JSONL at interruption.
+4. **Partial aggregation is possible**: loading the saved per-query JSONL into ggregate_metrics() yields valid ggregated_metrics and per_difficulty outputs.
+
+If any one fails, interruption evidence is QA-rejected.
+
+### Tier 0 PASS vs FAIL
+
+#### PASS
+
+- Interrupted run produces both:
+  - progress heartbeat JSONL (operational trace), and
+  - per-query quality JSONL (analysis trace).
+- Per-query JSONL parses cleanly and contains required quality fields for every persisted row.
+- Coherence check passes (progress.done == persisted_rows).
+- Partial metrics can be recomputed from persisted rows without rerunning those rows.
+
+#### FAIL
+
+- Progress-only evidence (current failure mode).
+- Missing/invalid per-query rows.
+- Non-monotonic progress or count mismatch between artifacts.
+- Partial metrics cannot be recomputed from persisted rows.
+
+### Cheapest practical validation shape (Tier 0 proof run)
+
+**Goal:** Prove interruption safety with zero paid spend.
+
+- **Dataset:** val_queries_v2.1_u1a_250.jsonl
+- **Query count:** 20 (--offset 0 --limit 20)
+- **Cost mode:** local-only (--no-rerank)
+- **Progress cadence:** every 1 query (--progress-every 1)
+- **Forced interruption point:** after done=8 (40%)
+
+**Expected artifacts**
+
+1. output/tier0_u1a20.progress.jsonl
+2. output/tier0_u1a20.per_query.jsonl
+3. output/tier0_u1a20.partial_metrics.json (metrics recomputed from persisted 8 rows)
+
+**QA acceptance for this proof run**
+
+- progress file ends at done=8,total=20.
+- per-query file has exactly 8 valid rows with quality keys.
+- partial metrics file is generated from those 8 rows and includes ggregated_metrics.recall_at_5 and ggregated_metrics.mrr.
+
+Only after this Tier 0 contract passes may any paid Tier 1/2 mini-eval proceed.
+
+---
+
+## 2026-04-21: Trinity Decision — Tier 0 Per-Query Persistence Implementation
+
+**Date:** 2026-04-21
+**Owner:** Trinity (Implementation)
+**Scope:** Implement Morpheus Tier 0 per-query JSONL persistence in val_retrieval_runtime.py.
+
+### Decision
+
+Add a --per-query-output CLI option and append the full per-query esult dict as JSONL for each completed query, guarded by the existing async progress lock to keep writes coherent under concurrency.
+
+### Why
+
+Interrupted eval runs currently lose per-query quality evidence because only progress counters are persisted. Tier 0 requires reusable per-query quality rows to recompute partial metrics.
+
+### Implementation Notes
+
+- Added per_query_output plumbing through un_eval → _run_eval_async.
+- Appended per-query JSONL records under the same progress_lock used for progress writes.
+- Left progress JSONL and canonical output schema unchanged.
+
+### Verification
+
+- New test: 	ests/test_eval_runtime.py::test_run_eval_writes_per_query_output_jsonl (passes).
