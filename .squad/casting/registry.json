@@ -1,0 +1,39 @@
+{
+  "agents": {
+    "architect": {
+      "persistent_name": "Morpheus",
+      "universe": "The Matrix",
+      "created_at": "2026-04-20T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "implementation": {
+      "persistent_name": "Trinity",
+      "universe": "The Matrix",
+      "created_at": "2026-04-20T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "frontend_design": {
+      "persistent_name": "Switch",
+      "universe": "The Matrix",
+      "created_at": "2026-04-20T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "qa": {
+      "persistent_name": "Tank",
+      "universe": "The Matrix",
+      "created_at": "2026-04-20T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "data": {
+      "persistent_name": "Oracle",
+      "universe": "The Matrix",
+      "created_at": "2026-04-20T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
+}
