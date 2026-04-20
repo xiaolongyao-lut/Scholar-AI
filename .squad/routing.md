@@ -11,7 +11,7 @@ How to decide who handles what.
 | Frontend / UX Design         | Switch   | flows, UI states, interaction design               |
 | Testing / QA                 | Tank     | unit tests, regression checks, smoke tests         |
 | Data Work                    | Oracle   | sample data, goldsets, labels, eval analysis       |
-| Code Review                  | Morpheus | review PRs, quality checks, design consistency     |
+| Code Review                  | Morpheus | PRs, audits, post-rejection reassignment decisions |
 | Frontend State Mapping       | Switch   | retrieval states, filters, chat surfaces           |
 | Testing                      | Tank     | edge cases, test coverage, verification            |
 | Scope & Priorities           | Morpheus | planning, sequencing, trade-offs                   |
@@ -68,8 +68,8 @@ How to decide who handles what.
 33. **Collaboration visibility artifact (required).** For any multi-agent shared task, Coordinator/Scribe must append ordered summaries to `output/squad_collab_timeline.jsonl` so collaboration is observable outside chat.
 34. **Usage Q&A is non-interruptive by default.** If active background work exists, Coordinator should answer user usage/how-to questions directly while keeping active tasks running.
 35. **Stop requires explicit user intent.** Active task loops may stop only on explicit user commands such as `stop`, `pause`, `idle`, or equivalent clear instruction.
-36. **Reviewer rejection reassignment is coordinator-owned.** When Tank (or any reviewer) rejects an artifact, the revision owner must be selected and dispatched by Coordinator; reviewer suggestions are advisory until Coordinator confirms.
-37. **Non-coordinator reassignment audit.** If a revision task is spawned/reassigned by anyone other than Coordinator, Coordinator must immediately audit author lockout and routing reason, then either ratify or reroute/cancel the task before execution continues.
+36. **Reviewer rejection reassignment is Morpheus-audited.** When Tank (or any reviewer) rejects an artifact, Morpheus audits lockout compliance and selects the revision owner; Coordinator then executes the reassignment per Morpheus decision.
+37. **Non-Morpheus reassignment audit.** If a revision task is reassigned without Morpheus review, Morpheus must immediately audit the decision and either approve or cancel the task before execution continues.
 
 ### Unified Heartbeat Record (Required)
 

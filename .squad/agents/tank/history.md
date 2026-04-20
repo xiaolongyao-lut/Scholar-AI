@@ -24,6 +24,22 @@
 - A single temp corpus can cover malformed nested JSON, empty keyword-pruned output, and mixed-source provenance stability without broadening scope.
 - Key files for this iteration: `tests/test_extraction_pipeline.py`, `src/extraction_pipeline.py`, `src/folder_traversal.py`, `src/keyword_filter.py`.
 
+### 2026-04-20T22:04:52Z: Mini-Eval Sample Prep Task Assigned
+
+**Status:** Task routed to Tank for execution.
+
+**Task:** Prepare stratified 250-query subsample from `eval_queries_v2.1_u1a.jsonl` (3269 total).
+
+**Deliverable:** `eval_queries_v2.1_u1a_mini.jsonl`
+
+**Cost:** Zero (local data selection, no API spend)
+
+**Stratification criteria:** Balanced distribution across template categories (fixed/semi-fixed/dynamic), even spread across query complexity ranges, proportional sampling of query types.
+
+**Sequencing:** Parallel to Phase 5 LiteLLM integration; input to Ralph's mini-eval run.
+
+**Evidence:** `.squad/decisions/inbox/morpheus-reuse-baseline.md` (Authorized Next Steps table, row 2)
+
 ### 2026-04-20: Chat Contract & Synthetic Corpus Delivery
 
 - Created `tests/data/chat/synthetic-corpus.jsonl`: Representative literature dataset (100-paper sim) with source metadata and nested chunks

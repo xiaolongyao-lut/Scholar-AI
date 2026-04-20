@@ -289,3 +289,13 @@ The keyword_prefilter module is now ready for production integration into the li
   - OPEN_THREADS 更新：[intelligent-chat-hard-stop] 已关闭（resolution 记录锁定决策、三模块交付、修复周期完成）。
   - 检查点已保存：.squad/backups/checkpoint-phase1-5-intelligent-chat-final-20260420-XXXX/
 - **是否通知 Owner**：否（批准内容在 Owner 检查时可见，requirement pool 中的下一项已标记 WAITING FOR USER）
+
+### 2026-04-20 Morpheus — U1 恢复路由：先修评测集偏置，不做同集重跑
+
+- **操作**：为 U1 质量失败写入恢复决策 `.squad/decisions/inbox/morpheus-u1-recovery.md`，明确下一周期先做评测集修复说明，不批准在未改 `eval_queries_v2.1.jsonl` 的前提下继续 full eval 重跑或检索调参。
+- **触发原因**：Tank 复核后合同链已通过，但质量门禁仍严重失败（Recall@5=0.0281, MRR=0.0204）。审计证据显示 `output/eval_query_audit_v21.json` 中 `template_match.matched=3269`、`non_template=0`、`unique_query_text=181/3269`、`duplicate_query_text_across_docs.type_count=70`、`hard_with_single_doc_evidence.type_count=326`，问题首先表现为评测集/模板设计偏置。
+- **结果**：
+  - **主诊断锁定**：当前立即问题主要是 evaluation-set / template-design bias；acceptance-contract mismatch 已清除，不再作为下一步 blocker。
+  - **执行路由**：我已授权一个 data-only 的 U1A 修复周期——先做重复模板簇与 hard 单证据样本的修复说明，再重新生成 canonical audit，然后才允许重开 full eval。
+  - **角色边界**：Oracle 与 Trinity 在本 rejected artifact 周期继续锁定；下一执行 owner 路由给 Ralph，Tank 保持 reviewer。
+- **是否通知 Owner**：否（恢复决策已写入 inbox，Owner 检查时可见）

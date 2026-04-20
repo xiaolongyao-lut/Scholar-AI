@@ -15,7 +15,7 @@
 
 | Name     | Role                    | Charter                             | Status  |
 | -------- | ----------------------- | ----------------------------------- | ------- |
-| Morpheus | Architect               | `.squad/agents/morpheus/charter.md` | Active  |
+| Morpheus | Architect / QA Lead     | `.squad/agents/morpheus/charter.md` | Active  |
 | Trinity  | Implementation          | `.squad/agents/trinity/charter.md`  | Active  |
 | Switch   | Frontend Design         | `.squad/agents/switch/charter.md`   | Active  |
 | Tank     | QA                      | `.squad/agents/tank/charter.md`     | Active  |

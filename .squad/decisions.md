@@ -262,6 +262,33 @@ New canonical full eval rerun with owner **Ralph** (with Morpheus oversight). Or
 - Backend code style should remain stable unless Morpheus explicitly approves a refactor
 - Approved refactors must be backed up and the backup location must be recorded
 
+### 2026-04-20T22:04:52Z: Evaluation Baseline Reuse Strategy Locked — Morpheus Directive
+
+**By:** User (via Copilot) + Morpheus (routing correction)
+
+**What:** Completed 3269-query eval baseline is reusable as permanent reference. Cost control applies ONLY to rerank/LLM-AI API spend, not to already-completed artifacts or local computation.
+
+**Why:** User clarification distinguishes sunk-cost work (reusable, zero marginal cost) from live API spend (cost-gated).
+
+**Scope:**
+- `output/v21_full_eval_canonical.json` (3269/3269, recall@5=0.028) — **permanent pre-remediation baseline, never re-run**
+- `output/v21_u1a_full_eval_canonical.progress.jsonl` (1100/3269 partial) — **discardable** (counters only, no per-query metrics)
+- `eval_queries_v2.1_u1a.jsonl` (remediated dataset) — **reuse as-is** (Tank-audited 2026-04-20)
+- `eval_queries_v2.1_u1a_mini.jsonl` (250-query stratified subsample) — **authorize now** (zero cost, local prep)
+
+**Authorized Next Steps:**
+1. Tank prepares stratified 250-query subsample (zero cost, data selection only)
+2. Ralph runs mini-eval on 250 queries with rerank (~8% of full eval cost, budget-gated)
+3. Tank compares mini-eval results vs. baseline (zero cost, local)
+4. Morpheus reviews comparison; gates Phase 5 readiness
+
+**Cost Budget:** ~8% of full eval (15–20 API credits estimated)
+
+**Decision Records:**
+- User directives: `.squad/decisions/inbox/copilot-directive-20260420-220452.md`, `.squad/decisions/inbox/copilot-directive-20260420-220452-reuse-baseline.md`
+- Morpheus revised reroute: `.squad/decisions/inbox/morpheus-reuse-baseline.md` (supersedes prior `morpheus-budget-reroute.md`)
+- Scribe logging: `.squad/orchestration-log/20260420-220452-scribe-directive-capture-reroute.md`, `.squad/log/20260420-220452-baseline-reuse-checkpoint.md`
+
 ## Inbox Merges — 2026-04-20
 
 # Decision: Extraction Pipeline Subtask Closed

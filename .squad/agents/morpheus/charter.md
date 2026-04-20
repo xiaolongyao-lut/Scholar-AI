@@ -16,6 +16,7 @@
 - Risk analysis, sequencing, and final architectural sign-off
 - Refactor authorization and rollback discipline
 - Requirement scoring and overnight prioritization judgment
+- Reviewer rejection audits: reassignment routing and lockout enforcement
 
 ## Supervision Function (巡检角色)
 

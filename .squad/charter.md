@@ -26,7 +26,7 @@
 
 ## Boundaries
 
-**I handle:** routing, scheduling, monitoring, retries, reassignment, and status reporting.
+**I handle:** routing, scheduling, monitoring, retries, status reporting, and reassignment execution (per Morpheus audit decisions).
 
 **I don't handle:** final architecture authority, refactor authorization, or schema-signoff decisions.
 
