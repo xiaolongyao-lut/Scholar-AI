@@ -74,6 +74,16 @@ For long-running eval pipelines, validate **artifact chain coherence** before ac
 4. Apply threshold gates only after path and coherence gates pass, so pass/fail evidence is reproducible.
 5. If a progress JSONL contains multiple appended runs, canonical evidence must keep **one monotonic completed run only** (typically the last coherent suffix ending at the expected total). Mixed-run progress logs are not reviewer-safe as-is.
 
+### Interrupted-run evidence gate (anti money-burn)
+
+For any run that may be interrupted, require two traces:
+1. **Operational trace**: progress JSONL (`done/total/percent/last_query_id`) for heartbeat.
+2. **Quality trace**: per-query JSONL with at least `query_id`, `recall_at_5`, `mrr`, `latency_ms`.
+
+Acceptance rule:
+- Interruption is reusable only if `last_progress.done == per_query_row_count` and partial metrics can be recomputed from persisted per-query rows.
+- Progress-only artifacts are non-reusable for quality decisions and should be treated as failed evidence.
+
 ### Split-gate verdict pattern (contract vs quality)
 
 When re-gating a revised evidence pack, report two explicit statuses:

@@ -21,6 +21,7 @@
 - Implemented src/extraction_pipeline.py with extract_literature_context entrypoint, provenance-preserving context items, and keyword-aware lightweight extraction.
 - Added tests/test_extraction_pipeline.py to verify keyword filtering, provenance visibility, and text extraction behavior.
 - Updated README.md to document Phase 6 extraction pipeline integration.
+- Added per-query JSONL persistence for eval runs via `--per-query-output` to preserve per-query quality evidence on interruption.
 
 ### 2026-04-20: Phase 1 LiteLLM Gateway Delivery
 

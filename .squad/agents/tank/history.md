@@ -147,3 +147,23 @@ This approval follows strict lockout semantics:
 - Residual low-fanout cross-doc text reuse is a known non-blocking issue and should be tracked separately from critical pathologies
 - Lockout compliance with three-agent rotation (Oracle → Trinity → Ralph) is working as designed
 - Template diversity restoration is critical for reducing dataset bias signals in evaluation
+- Progress-only heartbeat logs are not quality evidence; interrupted evals are reusable only when per-query quality rows are persisted and cross-file coherent with progress counts.
+
+### 2026-04-20: Tier 0 interruption-proof persistence gate
+
+- Ran zero-cost Tier 0 proof on `eval_queries_v2.1_u1a_250.jsonl` (20-query slice) with forced interruption at done=8 using the real `_run_eval_async` persistence write path.
+- Produced `output/tier0_u1a20.progress.jsonl`, `output/tier0_u1a20.per_query.jsonl`, and `output/tier0_u1a20.partial_metrics.json`.
+- Verified PASS conditions: monotonic progress (1..8), per-query persisted rows=8, cross-file coherence (`done==rows`), and partial metrics recomputed from persisted rows.
+- Learning: progress-only traces are insufficient; reusable interruption evidence requires synchronized progress + per-query quality rows + recomputation artifact.
+
+### 2026-04-20: Tier 1 vs 3269 Baseline QA Comparison
+
+- Tier 1 (50q U1A slice) is evidence-coherent (progress 50/50, per-query rows=50) and shows strong directional quality gains over permanent baseline (Recall@5 0.92 vs 0.0281; MRR 0.8278 vs 0.0204).
+- This signal is probe-level only: sample is small, excludes hard queries, and uses first-50 ordering rather than randomized draw; baseline-vs-U1A comparison remains directional due to query-set shift.
+- Latency regressed materially (avg +85%, p95 +101%), so quality gain and speed cost must be evaluated together in Tier 2.
+
+### 2026-04-20: Tier 2 vs 3269 Baseline QA Comparison
+
+- Tier 2 (250q U1A slice) is evidence-coherent (progress 250/250, per-query rows=250) and preserves strong directional quality gains over baseline (Recall@5 0.70 vs 0.0281; MRR 0.5991 vs 0.0204).
+- Compared with Tier 1, quality softens as sample grows (Recall@5 0.92 -> 0.70; MRR 0.8278 -> 0.5991), which is expected but confirms Tier 1 was optimistic.
+- Latency regresses further at Tier 2 (avg +136%, p95 +183% vs baseline), so Tier 3 should proceed as a controlled validation step focused on representativeness and performance risk, not as final proof.

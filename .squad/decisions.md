@@ -1407,6 +1407,135 @@ The magnitude of improvement (0.028 → 0.92) reflects **two compounded changes*
 
 ---
 
+### 2026-04-21: Tank Tier 2 vs Permanent Baseline (3269) Comparison
+
+**By:** Tank (QA)
+**Date:** 2026-04-21
+**Requested by:** 小龙 姚
+**Scope:** Quality comparison between Tier 2 (250 queries, U1A) and permanent 3269 baseline
+
+#### Verdict
+
+**✅ TIER 2 EVIDENCE STRONG — JUSTIFIES TIER 3 CONSIDERATION WITH CAUTION**
+
+Tier 2 demonstrates substantially above-baseline quality on the remediated query set. However, latency regression is material and must be explicitly managed in Tier 3 planning.
+
+#### Metric Comparison
+
+| Metric | Baseline (3269) | Tier 1 (50) | Tier 2 (250) | Tier 2 - Baseline |
+|---|---:|---:|---:|---:|
+| Recall@5 | 0.0281 | 0.9200 | 0.7000 | +0.6719 (+2391.1%, ~24.9×) |
+| MRR | 0.0204 | 0.8278 | 0.5991 | +0.5787 (+2836.8%, ~29.4×) |
+| Recall@1 | 0.0081 | 0.7600 | 0.5240 | +0.5159 |
+| Recall@10 | 0.0488 | 0.9600 | 0.7480 | +0.6992 |
+| Avg latency (ms) | 7798.45 | 14457.53 | 18395.60 | +10597.15 (+135.9%) |
+| P95 latency (ms) | 13741.82 | 27586.69 | 38826.46 | +25084.64 (+182.5%) |
+
+#### QA Judgment
+
+**Tier 2 is strong enough to justify considering Tier 3, with caution.**
+
+- **Quality:** Large effect size (25× improvement) persists beyond Tier 1's tiny sample. 95% CI [0.640, 0.756] shows well-controlled sampling variance.
+- **Signal:** Improvement is directional and substantial, indicating U1A remediation + retrieval combination is working.
+- **Risk:** Latency worsened materially (avg +136%, p95 +183%), primarily from rerank API latency (~80% of wall time). This is acceptable for batch evaluation but would be production-concerning.
+
+#### Main Caveats (must be carried forward to Tier 3)
+
+1. **Sample/set differences:** Baseline is full 3269 original-template queries; Tier 2 is 250-query U1A remediated slice. Direct comparability is limited.
+2. **No hard queries in Tier 2:** Tier 2 contains only simple (117) + medium (133) difficulty. Baseline includes 326 hard queries. Tier 2 cannot validate hard-query performance.
+3. **Confounded improvement:** Cannot isolate contribution of (a) U1A query remediation vs (b) pipeline behavior changes. Baseline comparison is **directional only**.
+4. **Latency risk:** Worsened 2.4–2.8× — acceptable for measurement runs, unacceptable for production without pipeline optimization.
+5. **30% failure rate:** 75 of 250 queries failed at recall@5. Of these, 63 (25.2%) are total misses. Root cause should be investigated.
+
+#### Infrastructure Compliance
+
+- ✅ Per-query incremental persistence: 250/250 rows in `tier2_u1a250.per_query.jsonl`
+- ✅ Checkpoints monotonic: progress at 63, 125, 188, 250 queries
+- ✅ Aggregate metrics computed: recall@1/3/5/10, MRR, latency percentiles
+- ✅ Bootstrap CI computed: 95% interval [0.640, 0.756] via 1000 resamples
+- ✅ Failure annotation: Queries with recall@5 = 0 flagged
+
+#### Decision Status
+
+- **Completeness:** ✅ Comparison analysis complete
+- **Recommendation:** ✅ Tier 3 escalation is justified on quality evidence alone
+- **Next gate:** Awaiting Morpheus architectural review and 小龙 co-approval for Tier 3 execution
+
+---
+
+### 2026-04-21: Morpheus Tier 3 Gate Recommendation (Conditional)
+
+**By:** Morpheus (Architect)
+**Date:** 2026-04-21
+**Requested by:** 小龙 姚
+**Policy Reference:** Rule 5, `morpheus-quality-tiers.md` — *Tier 3 requires BOTH Morpheus AND 小龙 approval*
+
+#### Verdict
+
+**CONDITIONAL RECOMMEND — Tier 3 is supportable, but execution requires 小龙's explicit co-approval.**
+
+Morpheus provides architectural sign-off. This document does NOT authorize execution — it is one half of the required dual-approval gate.
+
+#### Gate Criteria Evaluation (All Must Pass)
+
+| Criterion | Evidence | Status |
+|---|---|---|
+| **Recall@5 CI lower bound > 0.05** | 0.640 >> 0.05 (12.8× threshold) | ✅ **PASS** |
+| **Code/config change validated** | U1A query remediation (94.4% rewritten, 2482 unique texts) | ⚠️ **PASS with caveat** — change is query-set remediation, not retrieval pipeline code change |
+| **Morpheus approves** | This document | ✅ **APPROVED** (conditional on 小龙 co-sign) |
+| **小龙 approves** | **NOT YET OBTAINED** | ❌ **PENDING** |
+
+#### Confidence Assessment: MEDIUM-HIGH (70%)
+
+**Strengths:**
+1. **Large effect size.** recall@5 jumped from 0.028 to 0.700 — a 25× improvement. Even pessimistic CI bound (0.640) is 12.8× above the gate threshold. Not noise.
+2. **Bootstrap CI is tight.** The 95% interval [0.640, 0.756] spans only 0.116 — sampling variance is well-controlled for 250 queries.
+3. **Tier 1 → Tier 2 shrinkage was expected and healthy.** The drop from 0.92 to 0.70 matches prediction of small-sample optimism in Tier 1. Tier 2 is the trustworthy number.
+4. **Infrastructure discipline held.** All 250 per-query results persisted, checkpoints monotonic, no data loss.
+
+**Weaknesses:**
+1. **No hard queries evaluated.** The U1A-250 sample contains 0 hard-difficulty queries. The full U1A pack also has 0 hard queries (the 326 hard queries in the baseline had no U1A remediation). A Tier 3 run will also have 0 hard queries — this gap persists.
+2. **30% failure rate is material.** 75 of 250 queries failed at recall@5. Of these, 63 (25.2%) are total misses — the relevant document was not retrieved at any depth. Root cause is not explained in the metrics summary alone.
+3. **Confounded variable.** The improvement measures combined effect of (a) U1A query remediation and (b) any pipeline behavior changes. Cannot isolate which factor contributed more. Baseline comparison is **directional only**.
+4. **Latency regression.** Average latency increased 2.4× (7.8s → 18.4s), p95 increased 2.8× (13.7s → 38.8s). Rerank API dominates (~80% of wall time). Acceptable for batch evaluation but would be production concern.
+
+#### Critical Caveats for 小龙 and Team
+
+1. **Tier 3 will NOT include hard queries.** The U1A remediation only covered simple and medium difficulty. Running 3269 U1A queries will produce more data at the same difficulty mix, not harder coverage.
+2. **Tier 3 cost is ~13× Tier 2.** Approximately 3269 rerank API calls at observed latency profile → estimated wall time ~14 hours, estimated API cost ~13× what Tier 2 spent.
+3. **The 30% failure rate should be investigated before or during Tier 3.** Understanding why 63 queries produce zero recall at any depth will inform whether Tier 3 results will look similar or reveal new failure modes.
+4. **Result is not an apples-to-apples pipeline improvement claim.** Any report citing Tier 2/3 numbers must note the query-set change. Publication-grade claims require a controlled experiment (same queries, different pipeline versions).
+
+#### Conditions for Tier 3 Execution
+
+**If 小龙 co-approves, Morpheus authorizes Tier 3 under these conditions:**
+
+1. **Scope:** Full U1A-3269 query set from `eval_queries_v2.1_u1a.jsonl`
+2. **Incremental save:** Per-query JSONL mandatory (anti-waste Rule 1)
+3. **Checkpoints:** Save at 25% / 50% / 75% / 100% (each independently analyzable)
+4. **Failure annotation:** Flag all queries with recall@5 = 0 in per-query output
+5. **Comparison report:** Must include methodology note on query-set difference (Rule 4)
+6. **Budget cap:** ~3269 rerank API calls; abort and checkpoint if API errors exceed 5%
+7. **Estimated cost:** ~13× Tier 2 API spend; ~14 hours wall time
+
+#### Approval Boundary (Dual-Gate Rule)
+
+- **Morpheus half:** ✅ APPROVED (conditional)
+- **小龙 half:** ❌ **PENDING** — explicit co-approval required in writing
+
+**Acceptable form for 小龙 co-approval:**
+> "Approved Tier 3 per morpheus-tier3-gate.md" — 小龙
+
+**Until this co-approval is recorded in writing, no team member may execute Tier 3.**
+
+#### Decision Status
+
+- **Architectural completeness:** ✅ All conditions and caveats documented
+- **Policy compliance:** ✅ Dual-approval gate model honored
+- **Next step:** 小龙 explicit approval required before execution
+
+---
+
 ### 2026-04-21: Ralph Tier 1 Mini-Eval Execution Report
 
 **Date:** 2026-04-20  
