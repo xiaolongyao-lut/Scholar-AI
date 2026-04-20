@@ -1499,6 +1499,65 @@ Morpheus provides architectural sign-off. This document does NOT authorize execu
 3. **Confounded variable.** The improvement measures combined effect of (a) U1A query remediation and (b) any pipeline behavior changes. Cannot isolate which factor contributed more. Baseline comparison is **directional only**.
 4. **Latency regression.** Average latency increased 2.4× (7.8s → 18.4s), p95 increased 2.8× (13.7s → 38.8s). Rerank API dominates (~80% of wall time). Acceptable for batch evaluation but would be production concern.
 
+#### Morpheus Recommendation for Tier 3 Execution
+
+**Proceed to Tier 3 when 小龙 co-approves,** under these conditions:
+
+1. **Scope:** Full U1A-3269 query set from `eval_queries_v2.1_u1a.jsonl`
+2. **Incremental save:** Per-query JSONL mandatory (anti-waste Rule 1)
+3. **Checkpoints:** Save at 25% / 50% / 75% / 100% (each independently analyzable)
+4. **Failure annotation:** Flag all queries with recall@5 = 0 in per-query output
+5. **Comparison report:** Must include methodology note on query-set difference (Rule 4)
+6. **Budget cap:** ~3269 rerank API calls; abort and checkpoint if API errors exceed 5%
+7. **Estimated cost:** ~13× Tier 2 API spend; ~14 hours wall time
+
+#### Critical Caveats
+
+1. **Tier 3 will NOT include hard queries.** The U1A remediation only covers simple and medium difficulty. Running 3269 U1A queries will produce more data at the same difficulty mix, not harder coverage.
+2. **Tier 3 cost is ~13× Tier 2.** Approximately 3269 rerank API calls at the observed latency profile → estimated wall time ~14 hours, estimated API cost ~13× what Tier 2 spent.
+3. **The 30% failure rate should be investigated before or during Tier 3.** Understanding why 63 queries produce zero recall at any depth will inform whether Tier 3 results will look similar or reveal new failure modes.
+4. **Result is not an apples-to-apples pipeline improvement claim.** Any report citing Tier 2/3 numbers must note the query-set change. Publication-grade claims require a controlled experiment (same queries, different pipeline versions).
+
+#### Decision Status (Morpheus Half)
+
+- **Morpheus half:** ✅ APPROVED (conditional)
+- **小龙 half:** ❌ PENDING (explicit co-approval required)
+- **Effective:** Only after dual approval recorded
+
+---
+
+### 2026-04-21: Tier 3 Dual Approval & Ralph Launch (小龙 Executive Co-Approval)
+
+**By:** 小龙 姚 (User/Lead)  
+**Date:** 2026-04-21  
+**Approval Form:** "Approved Tier 3 per morpheus-tier3-gate.md"  
+**Policy Reference:** Rule 5, `morpheus-quality-tiers.md` — *Tier 3 requires BOTH Morpheus AND 小龙 approval*
+
+#### Decision
+
+**APPROVED** — Ralph Tier 3 execution is authorized.
+
+Both Morpheus architectural sign-off and executive co-approval have been obtained. The dual-approval gate (Rule 5) is satisfied.
+
+#### Ralph Tier 3 Launch Parameters
+
+| Parameter | Value |
+|---|---|
+| **Query source** | `eval_queries_v2.1_u1a.jsonl` (full 3269 queries) |
+| **Artifact root** | `tier3_u1a3269/` |
+| **Mode** | `background` (async, long-running, ~14 hours) |
+| **Checkpoints** | 25% / 50% / 75% / 100% (per-query JSONL incremental save) |
+| **Failure annotation** | All recall@5 = 0 queries flagged per-query |
+| **Budget cap** | ~3269 rerank API calls; abort if API errors exceed 5% |
+| **Estimated cost** | ~13× Tier 2 API spend |
+
+#### Decision Status
+
+- **Dual approval gate:** ✅ SATISFIED (both Morpheus + 小龙)
+- **Ralph Tier 3 execution:** ✅ AUTHORIZED
+- **Launch status:** ✅ PROCEEDING
+- **Supervision record:** `.squad/orchestration-log/20260421-tier3-dual-approval-ralph-launch.md`
+
 #### Critical Caveats for 小龙 and Team
 
 1. **Tier 3 will NOT include hard queries.** The U1A remediation only covered simple and medium difficulty. Running 3269 U1A queries will produce more data at the same difficulty mix, not harder coverage.
