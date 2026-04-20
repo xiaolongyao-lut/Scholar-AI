@@ -65,6 +65,14 @@ For each scenario, report:
 - **Structure validity**: 100% should pass contract validation
 - **Coverage ratios**: Percentage of baseline dataset matched (for filtering scenarios)
 
+### Canonical artifact coherence gate
+
+For long-running eval pipelines, validate **artifact chain coherence** before accepting results:
+1. Required files must exist at the **contracted canonical paths** (do not accept alternate filenames as equivalent).
+2. Progress evidence must terminate at the same `total_queries` as the accepted metrics file.
+3. If a non-canonical metrics file is complete but canonical progress/metrics are partial, mark as reject until reconciled.
+4. Apply threshold gates only after path and coherence gates pass, so pass/fail evidence is reproducible.
+
 ### Filtering correctness pattern
 
 When testing keyword/relevance filters:

@@ -38,3 +38,12 @@
 - Delivered `tests/test_context_budget.py`: Full validation test suite (28 passing tests)
 - **Key Integration:** Extraction pipeline now respects LLM context windows during batch operations
 - **Status:** ✅ Phase 2 batch complete and tested. Awaiting Morpheus cross-domain review
+
+### 2026-04-20: U1 Step 3 Revision Ownership Handoff
+
+- **Event:** Tank formal reviewer gate verdict: REJECTED (U1 Step 3)
+- **Blockers:** (1) missing canonical metrics artifact `output/v21_full_eval_canonical.json`, (2) Tier 2 quality gate failure (Recall@5 0.0281 vs ≥0.45 required)
+- **Lockout routing:** Oracle → Trinity (strict rejection lockout compliance)
+- **Trinity ownership:** U1 revision cycle (full responsibility for remediation)
+- **Mandatory deliverables:** canonical artifacts, contract coherence, run integrity, quality gate closure
+- **Status:** Assigned; awaiting Trinity remediation submission

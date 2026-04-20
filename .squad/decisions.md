@@ -1454,3 +1454,65 @@ Not safe yet:
 - **Reviewer/hard-stop gates:** U1 Step 4 awaits audit/eval review; U2 is storage/API hard-stop; U3 waits on U2.
 
 # Morpheus Phase 2 Review — Verdict
+
+---
+
+## Tank U1 Final Verdict
+
+**By:** Tank (QA)  
+**Date:** 2026-04-20  
+**Scope:** U1 formal reviewer gate after canonical/full eval cycle
+
+### Verdict
+
+**REJECTED** — U1 Step 3 is **not approved**.
+
+### Evidence
+
+1. **Contract artifact mismatch (blocker):**
+   - Required canonical metrics file `output/v21_full_eval_canonical.json` is missing.
+   - Present metrics file is `output/eval_v21_full_metrics_template_flags.json`, which does not satisfy the exact U1 acceptance artifact contract.
+
+2. **Tier 2 gate failure (blocker):**
+   - Metrics show `recall_at_5 = 0.0281` and `mrr = 0.0204`.
+   - U1 acceptance requires Recall@5 ≥ 0.45 and MRR ≥ 0.30.
+
+3. **Progress integrity split:**
+   - `output/eval_v21_full_progress_template_flags.jsonl` ends at `done=3269`.
+   - `output/v21_full_eval_canonical.progress.jsonl` ends at `done=350`.
+   - Canonical-named progress not aligned with completed canonical metrics.
+
+### Reviewer Protocol Enforcement
+
+- **Revision owner:** Oracle → Trinity (lockout compliance)
+- **Required fixes:** canonical metrics artifact, progress coherence, Tier 2 root cause
+
+---
+
+## Tank U1 Lockout Routing Correction
+
+**By:** Tank (QA)  
+**Date:** 2026-04-20  
+**Scope:** Rejection lockout enforcement per reviewer protocol
+
+### Decision
+
+**REJECTED remains in force** for U1 Step 3.
+
+**Lockout routing:** Oracle (ineligible) → Trinity (assigned)
+
+### Trinity Mandatory Deliverables
+
+1. **Canonical artifacts:**
+   - `output/eval_query_audit_v21.json`
+   - `output/eval_query_audit_v21_template_flags.jsonl`
+   - `output/v21_full_eval_canonical.json`
+   - `output/v21_full_eval_canonical.progress.jsonl`
+
+2. **Contract coherence:** 3269 queries, hard=326/medium=1455/simple=1488, required metric sections, monotonic progress to done=3269
+
+3. **Run integrity:** single canonical owner, no stale heartbeat
+
+4. **Quality gate:** Recall@5 ≥ 0.45, MRR ≥ 0.30 (with root-cause + corrective plan if below)
+
+---

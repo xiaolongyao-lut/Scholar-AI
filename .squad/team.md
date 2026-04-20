@@ -6,7 +6,7 @@
 
 - **Name:** Squad
 - **Role:** Coordinator
-- **Notes:** Routes work, enforces handoffs/reviewer gates, runs 5-second patrol, and can trigger peer `peek` (read-only check) / `nudge` (light unblock prompt) for long-running tasks.
+- **Notes:** Routes work, enforces handoffs/reviewer gates, runs 5-second patrol, requires 25-second unified heartbeat on long-running tasks, uses Coordinator-led active heartbeat polling (pull) with ordered summary output, supports quiet-window downshift (60s summaries after 3 unchanged windows), keeps generic `peek` default-off for single-owner runs, and uses `co-work` interface + `nudge` by heartbeat thresholds.
 - **Authority boundary:** Coordinator manages execution flow; Morpheus owns architecture judgment and hard-stop approvals.
 - **Operating model:** 7 member agents + 1 Coordinator (`7+1`). Coordinator does not count as a member worker.
 - **Conflict rule:** supervision for the same target run is serialized (single supervision token), never concurrent.

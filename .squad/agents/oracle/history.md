@@ -42,3 +42,10 @@
 - **Oracle responsibilities:** Monitor `output/v21_full_eval_canonical.progress.jsonl` for heartbeat freshness; validate metrics JSON when written; extract Recall@5, MRR, per_template_bucket for Tank approval.
 - **Tank approval gate:** 11-point checklist (A1–A11) including artifact presence, query count match (3269), Tier 2 gate pass (Recall@5 ≥ 0.45, MRR ≥ 0.30), and run integrity verification.
 - **Critical path:** Awaiting metrics file completion; 60-min hard timeout enforced; single-process ownership required per supervision rule.
+
+### U1 Step 3 Revision Lockout (2026-04-20)
+- **Event:** Tank formal reviewer gate verdict issued: REJECTED
+- **Blocker analysis:** (1) Missing canonical metrics `output/v21_full_eval_canonical.json`, (2) Tier 2 quality gate failure (Recall@5=0.0281 vs ≥0.45), (3) progress coherence gap (template-flags vs canonical-named)
+- **Lockout enforcement:** Oracle locked out from immediate revision cycle per strict rejection protocol
+- **Revision owner:** Transferred to Trinity
+- **Oracle next steps:** Wait for Trinity remediation; available for data support tasks outside U1 revision scope

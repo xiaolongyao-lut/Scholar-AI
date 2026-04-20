@@ -49,34 +49,67 @@ How to decide who handles what.
 14. **Coordinator is not architecture authority.** When a block crosses hard-stop boundaries (refactor/schema/new dependency), escalate to Morpheus and mark `WAITING FOR MORPHEUS`.
 15. **Requirement-pool gate before dispatch.** For non-bypass requirements, Coordinator must auto-route to Morpheus for requirement judgment before assigning implementation.
 16. **Execution only after judgment.** Only Morpheus-judged `DO NOW` items can be fanned out to Trinity/Tank/Oracle/Switch; all other recommendations stay queued or waiting.
-17. **Enable peer peek on long runs.** Coordinator may assign read-only "peek" checks to non-owner agents to verify milestone progress and heartbeat.
-18. **Enable peer nudge before takeover.** Coordinator should try at least one peer "nudge" (concise unblock suggestion) before hard reroute/kill, unless explicit crash/fatal error is present.
+17. **Disable generic peer peek by default.** Under heartbeat-first supervision, read-only peek is off for single-owner runs.
+18. **Use co-work interface for shared tasks.** When 2+ agents are assigned to one task, Coordinator may open structured co-work exchange (`request`, `constraints`, `handoff_artifacts`, `done_criteria`) without ownership takeover.
 19. **Clean superseded processes after rerun decision.** If a stale run is rejected and a rerun is active, Coordinator must terminate only superseded processes from the rejected run to prevent resource contention.
 20. **Protect canonical runner.** Cleanup operations must preserve the designated canonical runner and verify by PID/command-line after cleanup.
 21. **Ghost-running is hard-fail.** If an agent is marked `running` but no matching owner process exists and no artifact heartbeat updates for 2 patrol cycles (~10s), classify as `ghost-running` immediately.
 22. **Ghost-running bypasses adaptive wait windows.** For ghost-running, skip long-goal L2/L3 waiting and jump directly to `stale-cleanup + relaunch decision`.
+23. **Heartbeat SLA for long runs.** Owner agent must publish heartbeat every 25s with `task_id`, `owner`, `phase`, `last_checkpoint`, `next_milestone`, `updated_at`.
+24. **Unified heartbeat schema is mandatory.** Heartbeat records must use the same keys and status vocabulary across all agents: `running`, `weak-heartbeat`, `heartbeat-miss`, `blocked`, `done`.
+25. **Weak-heartbeat threshold.** If heartbeat gap exceeds 40s and artifact/log progress is flat for 2 patrol cycles, mark `weak-heartbeat` and trigger a single peer nudge.
+26. **Heartbeat-miss threshold.** If heartbeat gap reaches 75s with no progress markers, mark `heartbeat-miss` and escalate to consult (or stale-cleanup if hard-fail signals coexist).
+27. **Nudge throttle.** For the same run, allow at most one nudge per 60s window and at most two consecutive nudges before mandatory consult.
+28. **Coordinator active heartbeat polling.** Heartbeat reporting is pull-based: Coordinator asks for heartbeat on patrol windows instead of waiting for ad-hoc agent broadcasts.
+29. **Ordered heartbeat reporting.** For multi-agent shared tasks, emit one serialized heartbeat summary using order `owner -> Tank -> Oracle/Switch -> Trinity -> Ralph -> Morpheus -> Scribe`.
+30. **No broadcast storm.** Agents should avoid unsolicited heartbeat chatter; unsolicited messages are reserved for `blocked`, `heartbeat-miss`, `done`, or hard-fail evidence.
+31. **Quiet-window cadence control.** If no status/checkpoint change is observed for 3 consecutive poll windows, user-facing heartbeat summaries should be downshifted to 60s cadence.
+32. **Wake-up on meaningful change.** Any checkpoint advance or state transition (`weak-heartbeat`, `heartbeat-miss`, `blocked`, `done`) must immediately restore 25s summary cadence.
+33. **Collaboration visibility artifact (required).** For any multi-agent shared task, Coordinator/Scribe must append ordered summaries to `output/squad_collab_timeline.jsonl` so collaboration is observable outside chat.
+
+### Unified Heartbeat Record (Required)
+
+Every long-running task heartbeat should be emitted as one normalized record containing:
+
+- `task_id`: stable task identifier
+- `owner`: owner agent name
+- `status`: one of `running|weak-heartbeat|heartbeat-miss|blocked|done`
+- `phase`: current phase label
+- `last_checkpoint`: latest concrete checkpoint marker
+- `next_milestone`: next expected milestone
+- `updated_at`: ISO8601 timestamp
+- `artifact_ref`: primary artifact/log path (or `none`)
 
 ## Supervision Order (Serialized)
 
 For the same long-running target task, supervision must be serialized:
 
-1. **Peek (Tank first)** — verify checkpoint/heartbeat plausibility and test-risk surface.
-2. **Peek (Oracle second, for data/eval tasks; Switch second, for UI tasks)** — verify artifact/metrics/state progression.
-3. **Nudge (single peer)** — one concise unblock suggestion from exactly one peer agent.
-4. **Consult (multi-agent)** — only after failed nudge, gather 2-agent verdict.
-5. **Stale-cleanup + relaunch decision** — kill only superseded processes, protect canonical runner.
+1. **Nudge (single peer)** — one concise unblock suggestion from exactly one peer agent.
+2. **Co-work-sync (multi-agent task only)** — one structured collaboration exchange using the co-work interface fields.
+3. **Consult (multi-agent)** — only after failed nudge/co-work-sync, gather 2-agent verdict.
+4. **Stale-cleanup + relaunch decision** — kill only superseded processes, protect canonical runner.
 
-If `ghost-running` is detected, jump from current step directly to step 5.
+`weak-heartbeat` should enter step 1 directly (nudge) even if L2 time window is not yet reached.
 
-Never run step 1-4 concurrently for the same target run.
+`heartbeat-miss` should enter step 3 directly (consult), unless hard-fail signals require immediate step 4.
+
+If `ghost-running` is detected, jump from current step directly to step 4.
+
+Never run step 1-3 concurrently for the same target run.
+
+Heartbeat check is performed as a serialized pre-step by Coordinator (poll owner first, then applicable peers), and then supervision steps proceed based on the ordered summary.
+
+During quiet-window mode, supervision evaluation still runs on patrol cadence; only user-facing summary frequency is downshifted.
+
+For multi-agent tasks, each ordered heartbeat summary should include: `task_id`, `window_id`, `participants`, `order`, `status`, `checkpoint`, `updated_at`, `decision`.
 
 ## Per-Agent Supervision Functions
 
 - **Coordinator (Squad):** owns supervision token, enforces step order, announces state transitions.
 - **Ralph:** watchdog/queue monitor; detects orphaned or ghost-running tasks and opens supervision tickets to Coordinator (no ownership takeover).
-- **Tank:** first-line peek for stale suspicion, defines retry acceptance line.
-- **Oracle:** second-line peek for data/eval artifact heartbeat and metric append health.
-- **Switch:** second-line peek for frontend-flow tasks (state transitions, UX heartbeat).
+- **Tank:** first-line heartbeat plausibility check and retry acceptance line.
+- **Oracle:** data/eval co-work sync for artifact heartbeat and metric append health.
+- **Switch:** frontend-flow co-work sync for state transitions and UX heartbeat.
 - **Trinity:** owner-runner diagnostics and minimal recovery command path.
 - **Morpheus:** arbitration only when architecture/hard-stop boundary is crossed.
 - **Scribe:** append supervision timeline and evidence (who/when/what verdict).

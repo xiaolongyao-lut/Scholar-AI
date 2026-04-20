@@ -28,6 +28,16 @@
 
 - Created `tests/data/chat/synthetic-corpus.jsonl`: Representative literature dataset (100-paper sim) with source metadata and nested chunks
 - Created `tests/data/chat/chat-contract.json`: Canonical schema for chat context, responses, and provenance
+
+### 2026-04-20: U1 Step 3 Formal Reviewer Gate Verdict
+
+- **Verdict:** REJECTED (blockers identified)
+- **Primary blocker:** Missing canonical metrics artifact `output/v21_full_eval_canonical.json`; present artifact is `output/eval_v21_full_metrics_template_flags.json` (contract mismatch)
+- **Secondary blocker:** Tier 2 quality gate failure (Recall@5=0.0281, MRR=0.0204 vs required ≥0.45/≥0.30)
+- **Tertiary issue:** Progress coherence gap (template-flags done=3269 vs canonical-named done=350)
+- **Revision routing:** Oracle → Trinity (lockout compliance enforced)
+- **Re-gate requirements:** Canonical artifacts, contract coherence, quality gate closure
+- **Status:** Revision cycle transferred to Trinity
 - Delivered `tests/test_chat_contract.py`: Contract-driven validation tests for keyword filtering, provenance, and extraction boundaries
 - **Key Finding:** 100-paper corpus fits comfortably in memory (~15 relevant chunks per query)
 - **Key Finding:** Lightweight file handling (malformation, missing fields) requires graceful degradation
@@ -57,3 +67,7 @@
 - **Blocker failures:** missing required files, wrong total query count, stale progress heartbeat, smoke file as canonical, missing metric sections.
 - **Tank Supervision Hardening:** Enforce single-run process ownership before approval; verify heartbeat freshness; reject if multiple eval processes targeting same canonical output or progress stuck at `done=50`.
 - **Awaiting:** Oracle full-eval output (`output/v21_full_eval_canonical.json`) and progress evidence (`output/v21_full_eval_canonical.progress.jsonl`); monitor and validate against checklist.
+- Formal U1 gate must enforce canonical artifact naming, not just metric-equivalent alternates: `output/v21_full_eval_canonical.json` is mandatory for approval.
+- Current full eval evidence is split: template-flags progress reached `done=3269`, but canonical progress file stopped at `done=350`; this breaks canonical evidence coherence.
+- U1 Tier 2 blockers confirmed on latest full metrics: `recall_at_5=0.0281`, `mrr=0.0204`, both far below required thresholds (`0.45` / `0.30`).
+- Key QA gate files for this decision: `output/eval_query_audit_v21.json`, `output/eval_query_audit_v21_template_flags.jsonl`, `output/eval_v21_full_metrics_template_flags.json`, `output/eval_v21_full_progress_template_flags.jsonl`, `output/v21_full_eval_canonical.progress.jsonl`, `.squad/decisions.md`.
