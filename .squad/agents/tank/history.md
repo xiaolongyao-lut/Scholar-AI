@@ -74,3 +74,60 @@
 - U1 Step 3 re-gate with Trinity revised pack: contract/evidence-pack now passes (all four canonical artifacts present, totals/split coherent, canonical progress monotonic to done=3269), but Tier-2 quality gate still fails (`Recall@5=0.0281`, `MRR=0.0204`), so verdict remains REJECTED.
 - Strict lockout semantics are cumulative per artifact cycle: Oracle remained locked out from prior rejection, Trinity became locked out after this re-gate rejection, and the next lockout-compliant revision owner escalates to a third agent.
 - Re-gate decision artifact path: `.squad/decisions/inbox/tank-u1-regate-verdict.md`.
+
+### 2026-04-20: U1A Audit Gate — Dataset Shape Approval
+
+**Status:** ✅ APPROVED for canonical rerun readiness  
+**Scope:** Review of Ralph-delivered U1A data-only remediation pack
+
+### Audit Summary
+
+Confirmed all known Morpheus-targeted pathologies are cleared:
+
+| Pathology | Before | After | Status |
+|-----------|--------|-------|--------|
+| Duplicate generic query-text clusters (≥6 docs) | 70 | 0 | ✅ Cleared |
+| Hard queries with single-evidence supervision | 326 | 0 | ✅ Cleared |
+| Template saturation (non_template queries) | 0 | 3086 | ✅ Restored |
+| Artifact coherence (query count consistency) | n/a | ✅ Pass | ✅ Coherent |
+
+Residual low-fanout reuse (`max fanout=5`, `clusters_gt1=562`) remains but is below authorized pathology threshold (≥6) and non-blocking for rerun.
+
+### QA Evidence
+
+Validation suite: `pytest tests\test_eval_dataset_audit.py tests\test_eval_runtime.py -q` → `17 passed`
+
+Data validation on `output/eval_query_audit_v21_u1a.json`:
+- `total_queries=3269` (consistent)
+- `template_match.matched=183`, `template_match.non_template=3086`
+- `duplicate_query_text_across_docs.type_count=0`
+- `hard_with_single_doc_evidence.type_count=0`
+- Audit/ledger/template flags consistency: **all checks pass**
+
+### Approval Decision
+
+**✅ APPROVED** → Proceed to canonical full eval rerun on `eval_queries_v2.1_u1a.jsonl`
+
+### Next Steps
+
+1. **Owner:** Ralph (lockout-compliant)
+2. **Ineligible:** Oracle, Trinity (lockout constraint applies)
+3. **Task:** Execute canonical eval rerun using existing harness
+4. **Expected artifacts:** `output/v21_u1a_full_eval_canonical.json` + metrics breakdown
+5. **Acceptance gate:** Tier 2 quality thresholds (Recall@5 ≥ 0.45, MRR ≥ 0.30) + Tank final sign-off
+
+### Lockout Compliance
+
+This approval follows strict lockout semantics:
+- Ralph is the third eligible revision owner (after Oracle/Trinity lockout)
+- Rerun is scoped to canonical eval only (no code changes)
+- Morpheus retains oversight authority for any architecture-blocking findings
+- Escalation path defined for findings that require retrieval tuning
+
+## Learnings
+
+- Dataset remediation at query/label level is effective without touching infrastructure
+- Pathology audit process (duplicate cluster detection, hard-query inventory, template saturation analysis) provides clear traceability
+- Residual low-fanout cross-doc text reuse is a known non-blocking issue and should be tracked separately from critical pathologies
+- Lockout compliance with three-agent rotation (Oracle → Trinity → Ralph) is working as designed
+- Template diversity restoration is critical for reducing dataset bias signals in evaluation

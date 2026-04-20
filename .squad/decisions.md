@@ -168,6 +168,91 @@
 
 **Approval Status:** ✅ User approved | ✅ Team ready | 🟡 Awaiting Morpheus Phase 1 code review
 
+### 2026-04-20: Morpheus U1 Recovery Decision Issued
+
+**By:** Morpheus (Architecture)
+**Date:** 2026-04-20
+**Scope:** Next lockout-compliant recovery step after Tank re-gate rejection
+**Decision Source:** `.squad/decisions/inbox/morpheus-u1-recovery.md` (merged)
+
+## Verdict
+
+The immediate U1 problem is **primarily evaluation-set / template-design bias**. The earlier acceptance-contract mismatch is already cleared.
+
+## Authorized Next Step
+
+- Freeze reruns on unchanged `eval_queries_v2.1.jsonl`
+- Execute scoped, data-only U1A remediation pass (Ralph owner)
+- Do NOT refactor retrieval/runtime code, change schema, or add dependencies
+- Any architecture changes must come back to Morpheus for re-approval
+
+## Owner Routing
+
+- Remediation owner: Ralph
+- Reviewer: Tank (audit/dataset shape)
+- Locked out this cycle: Oracle, Trinity
+
+### 2026-04-20: Ralph U1A Data Remediation Completed
+
+**By:** Ralph (Data Remediation Specialist)
+**Date:** 2026-04-20
+**Scope:** Data-only U1A remediation pack for v2.1 eval queries
+**Decision Source:** `.squad/decisions/inbox/ralph-u1a-remediation.md` (merged)
+
+## Remediation Scope
+
+- **Duplicate generic query-text clusters (≥6 distinct docs):** Rewrote to document-anchored non-template questions
+- **Hard queries with single-evidence supervision:** Downgraded to medium difficulty
+- **Non-template population:** Restored from 0 to 3086 queries
+
+## Outcome
+
+- Before: `unique_query_text=181`, `template_match.non_template=0`, `duplicate_query_text_across_docs.type_count=70`, `hard_with_single_doc_evidence.type_count=326`
+- After: `unique_query_text=2482`, `template_match.matched=183`, `template_match.non_template=3086`, `duplicate_query_text_across_docs.type_count=0`, `hard_with_single_doc_evidence.type_count=0`
+
+## Artifacts Delivered
+
+- `eval_queries_v2.1_u1a.jsonl`
+- `output/eval_query_audit_v21_u1a.json`
+- `output/eval_query_audit_v21_u1a_template_flags.jsonl`
+- `output/eval_query_audit_v21_u1a_remediation_ledger.json`
+
+### 2026-04-20: Tank U1A Audit Gate — APPROVED for Rerun Readiness
+
+**By:** Tank (QA Reviewer)
+**Date:** 2026-04-20
+**Scope:** Reviewer gate for U1A data-only remediation pack
+**Decision Source:** `.squad/decisions/inbox/tank-u1a-audit-gate.md` (merged)
+
+## Verdict
+
+**✅ APPROVED** for canonical rerun on `eval_queries_v2.1_u1a.jsonl`
+
+## Pathology Clearance Check
+
+The known Morpheus-targeted pathologies are sufficiently cleared:
+
+- Duplicate generic query-text clusters at threshold (≥6 distinct docs): **cleared** (`type_count=0`)
+- Hard queries with single-evidence supervision: **cleared** (`type_count=0`)
+- Template saturation: **materially reduced** (`matched=183`, `non_template=3086`)
+- Artifact coherence cross-checks: **pass** (`total_queries=3269`, `unique_query_text=2482`)
+
+Residual low-fanout cross-doc text reuse (`max fanout=5`, `clusters_gt1=562`) remains non-blocking below authorized threshold.
+
+## QA Evidence
+
+- Validation suite: `pytest tests\test_eval_dataset_audit.py tests\test_eval_runtime.py -q` → `17 passed`
+- Data validation summary:
+  - `total_rows=3269`
+  - `flags_true=183`, `flags_false=3086`
+  - `duplicate cluster >=6 = 0`
+  - `hard_single_evidence = 0`
+  - Audit/ledger/template flags consistency: **none failed**
+
+## Next Allowed Step
+
+New canonical full eval rerun with owner **Ralph** (with Morpheus oversight). Oracle and Trinity remain lockout-ineligible.
+
 ## Governance
 
 - All meaningful changes require team consensus
