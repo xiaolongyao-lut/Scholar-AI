@@ -1299,6 +1299,150 @@ Updated `tests/test_eval_runtime.py` with 8 passing tests covering new flags. Co
 
 **Execution Order Recommendation:**
 - **Trinity first:** do a no-code smoke run on a 10-query slice, then execute canonical full v2.1 eval with existing template flags and explicit output filename
+
+---
+
+## Evaluation Quality Tiers & Tier 2 Approval (2026-04-21)
+
+### 2026-04-21: Quality-Tier Evaluation Strategy — Cost-Aware Testing Policy
+
+**By:** Morpheus (Architect)  
+**Context:** User directive to compare ~1100 partial run vs 3269 baseline, define tiered testing, stop wasting money.
+
+#### Tier Definitions
+
+**Tier 0 — Smoke Check (cost: ≈0, no API calls)**
+- Run 5 queries in dry-run mode; verify per-query incremental save works
+- Verify aggregate metrics computed correctly from per-query data
+- Escalate to Tier 1 only after all 4 checks pass
+
+**Tier 1 — Diagnostic Probe (cost: ~2% ≈ 50 queries)**
+- Select 50 balanced queries; run with rerank API, saving per-query results incrementally
+- Compute aggregate recall@1/3/5/10 and MRR; compare directionally against baseline 0.028
+- Escalate to Tier 2 if recall@5 > 0.05 (2× baseline) OR infrastructure issues found
+- Stop condition: if recall@5 ≤ 0.03, retrieval needs code changes before more spend justified
+
+**Tier 2 — Statistical Validation (cost: ~8% ≈ 250 queries)**
+- Run full U1A-250 subsample with incremental checkpoints (63, 125, 188, 250)
+- Compute aggregate + per-difficulty metrics + 95% CI for recall@5 (1000 bootstrap resamples)
+- Produce comparison report against 3269 baseline (noting query-set difference)
+- Escalate to Tier 3 if: recall@5 CI lower bound > 0.05 AND code/config change validated AND Morpheus approves
+
+**Tier 3 — Full Validation (cost: 100% ≈ 3269 queries)**
+- Run full U1A-3269 with incremental per-query saves; checkpoint at 25%, 50%, 75%
+- Full aggregate + per-difficulty + per-template breakdown
+- Gate: Only after Tier 2 passes AND Morpheus + 小龙 both sign off
+
+#### Anti-Waste Rules (Mandatory for ALL evaluation runs)
+1. **Incremental Per-Query Save:** Every run MUST write per-query results to disk as each query completes
+2. **No Run Without Gate Justification:** State tier, question, expected cost, and authorizer before any paid API run
+3. **Canonical Metrics on Every Completion:** Every finished run MUST produce canonical metrics JSON with aggregate recall@k and MRR
+4. **Same Query Set for Fair Comparison:** Comparisons only valid between runs using same query set; note differences in reports
+5. **Budget Approval Chain:** Tier 0-1 (any team member); Tier 2 (Morpheus or 小龙); Tier 3 (both Morpheus AND 小龙)
+
+**Status:** Effective immediately. All eval runs follow this tier structure.  
+**Decision Log:** `.squad/decisions/inbox/morpheus-quality-tiers.md`
+
+---
+
+### 2026-04-21: Morpheus Tier 2 Gate Decision — APPROVED
+
+**By:** Morpheus (Architect)  
+**Date:** 2026-04-21  
+**Requested by:** 小龙 姚
+
+#### Verdict
+**APPROVED — Tier 2 (250-query) execution is authorized.**
+
+#### Evidence Reviewed
+| Artifact | Status |
+|---|---|
+| `output/tier1_u1a50.metrics.json` | ✅ 50 queries, complete |
+| `output/tier1_u1a50.per_query.jsonl` | ✅ 50 rows, all fields present |
+| `output/tier1_u1a50.progress.jsonl` | ✅ done=50/50, monotonic |
+| `ralph-tier1-mini-eval.md` | ✅ Execution report verified |
+| `tank-tier0-proof.md` | ✅ Infrastructure proof prior |
+
+#### Tier 1 Results vs Gate Criteria
+| Metric | Tier 1 (50q) | Baseline (3269q) | Gate Threshold | Result |
+|---|---|---|---|---|
+| recall@5 | **0.92** | 0.028 | > 0.05 | **32.7× baseline, 18.4× threshold — PASS** |
+| MRR | **0.8278** | 0.020 | — | 41× improvement (directional) |
+| recall@1 | 0.76 | 0.008 | — | Strong first-hit accuracy |
+| recall@10 | 0.96 | 0.049 | — | Near-ceiling coverage at depth 10 |
+
+**Stop condition (recall@5 ≤ 0.03):** Not triggered. Result is 30× above the stop line.
+
+#### Failure Analysis (4 of 50 queries with recall@5 = 0)
+- 2 total misses (4%) — relevant doc not retrieved at any depth
+- 2 ranking misses (4%) — found at position 6-10, not top-5
+- **Assessment:** Healthy failure distribution for 50-query probe; not blockers
+
+#### Anti-Waste Compliance
+- ✅ Rule 1: Per-query incremental save — 50/50 rows persisted
+- ✅ Rule 2: Gate justification — Tier 1 probe, authorized by tier policy
+- ✅ Rule 3: Canonical metrics produced
+- ✅ Rule 4: Query-set difference documented (U1A ≠ baseline template queries)
+- ✅ Rule 5: Budget chain — Tier 1 did not require explicit approval
+
+#### Caution Note
+The magnitude of improvement (0.028 → 0.92) reflects **two compounded changes**: (1) U1A query remediation (94.4% rewritten, 2482 unique texts vs 181) and (2) doc-specific targeting in U1A queries. This is **not** a controlled experiment measuring pipeline improvement alone. Tier 2 should treat baseline comparison as directional evidence, not apples-to-apples.
+
+#### Approval Boundary
+**Tier 2 execution is authorized under these conditions:**
+1. **Scope:** Full U1A-250 sample (all 250 queries from `eval_queries_v2.1_u1a_250.jsonl`)
+2. **Checkpoints:** Save incremental results at queries 63, 125, 188, 250
+3. **Artifacts required:** `output/tier2_u1a_250_results.json` + `output/tier2_u1a_250_comparison.md`
+4. **Bootstrap CI:** Compute 95% confidence interval for recall@5 via 1000 bootstrap resamples
+5. **Failure investigation:** Flag and annotate any query with recall@5 = 0 in the per-query output
+6. **Comparison report:** Must include methodology note on query-set difference
+
+**What This Does NOT Authorize:**
+- ❌ Tier 3 (full 3269-query) run — requires separate gate with both Morpheus AND 小龙 approval
+- ❌ Any code changes to the eval pipeline — this is a measurement run only
+- ❌ Budget beyond 250 rerank API calls
+
+**Status:** Effective immediately. Ralph or Tank may execute Tier 2.  
+**Decision Log:** `.squad/decisions/inbox/morpheus-tier2-gate.md`
+
+---
+
+### 2026-04-21: Ralph Tier 1 Mini-Eval Execution Report
+
+**Date:** 2026-04-20  
+**Executor:** Ralph (Tier 1 eval runner)  
+**Approval:** Unlocked by Tier 0 pass
+
+**Status:** ✅ COMPLETED  
+**Queries Evaluated:** 50 (first 50 from remediated sample)  
+**Total Runtime:** ~120 seconds
+
+#### Key Results
+- **Recall@5:** 0.92 (23 simple + 27 medium difficulty)
+- **MRR:** 0.8278
+- **Avg Latency:** 14457.53ms
+- **P95 Latency:** 27586.69ms
+
+#### Artifact Deliverables
+✅ All three artifacts persisted to `output/` with `tier1_u1a50` prefix:
+1. **`output/tier1_u1a50.metrics.json`** (647 bytes) — Canonical aggregated metrics with per-difficulty bucketing
+2. **`output/tier1_u1a50.progress.jsonl`** (108 bytes) — Final progress snapshot: done=50/50 (100%)
+3. **`output/tier1_u1a50.per_query.jsonl`** (14030 bytes) — 50 JSONL rows with per-query quality metrics
+
+#### Persistence Verification
+- ✅ Progress monotonicity: Final snapshot shows done=50
+- ✅ Per-query row count: 50 rows persisted (matches limit)
+- ✅ Cross-file coherence: Progress done=50 matches per_query row count=50
+- ✅ Canonical metrics recomputable: Full aggregated metrics computed and written
+
+**No Blockers:** Run completed without stalls, hangs, or artifact truncation.
+
+**Next Actions:**
+1. **Tier 2 Gate:** 250-query full eval requires Morpheus approval (now: APPROVED)
+2. **Baseline Comparison:** tier1_u1a50 metrics vs permanent tier0_baseline (3269 queries) pending Morpheus review
+3. **Archive Decision:** Tier 0 + Tier 1 artifacts confirm persistence contract; ready for release documentation
+
+**Decision Log:** `.squad/decisions/inbox/ralph-tier1-mini-eval.md`
 - **Tank first:** verify output schema/counts, especially aggregated_metrics, per_difficulty, per_template_bucket
 
 **Evidence:**
