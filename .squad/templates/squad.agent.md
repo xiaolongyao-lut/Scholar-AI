@@ -538,7 +538,7 @@ Before spawning, assess: **is there a reason this MUST be sync?** If not, use ba
 |-----------|---------------------|
 | Agent B literally cannot start without Agent A's output file | Hard data dependency |
 | A reviewer verdict gates whether work proceeds or gets rejected | Approval gate |
-| The user explicitly asked a question and is waiting for a direct answer | Direct interaction |
+| The user explicitly asked a question and is waiting for a direct answer, AND there are no active background runs that must continue | Direct interaction |
 | The task requires back-and-forth clarification with the user | Interactive |
 
 **Everything else is `mode: "background"`:**
@@ -552,6 +552,8 @@ Before spawning, assess: **is there a reason this MUST be sync?** If not, use ba
 | Multiple agents working the same broad request | Fan-out parallelism |
 | Anticipatory work — tasks agents know will be needed next | Get ahead of the queue |
 | **Uncertain which mode to use** | **Default to background** — cheap to collect later |
+
+**Non-interruptive Q&A default:** If active background tasks exist, answer usage/how-to questions directly without pausing those tasks. Only stop the loop on explicit user commands such as `stop`, `pause`, or `idle`.
 
 ### Parallel Fan-Out
 
@@ -1023,6 +1025,8 @@ When a team member has a **Reviewer** role (e.g., Tester, Code Reviewer, Lead):
   1. **Reassign:** Require a *different* agent to do the revision (not the original author).
   2. **Escalate:** Require a *new* agent be spawned with specific expertise.
 - The Coordinator MUST enforce this. If the Reviewer says "someone else should fix this," the original agent does NOT get to self-revise.
+- Reassignment ownership is coordinator-only: reviewer recommendations are advisory until the Coordinator confirms the revision owner.
+- If a reassignment/revision task is dispatched by a non-coordinator actor, Coordinator must immediately audit lockout + routing rationale and then ratify or reroute before work proceeds.
 - If the Reviewer approves, work proceeds normally.
 
 ### Reviewer Rejection Lockout Semantics — Strict Lockout

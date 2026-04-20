@@ -72,6 +72,15 @@ For long-running eval pipelines, validate **artifact chain coherence** before ac
 2. Progress evidence must terminate at the same `total_queries` as the accepted metrics file.
 3. If a non-canonical metrics file is complete but canonical progress/metrics are partial, mark as reject until reconciled.
 4. Apply threshold gates only after path and coherence gates pass, so pass/fail evidence is reproducible.
+5. If a progress JSONL contains multiple appended runs, canonical evidence must keep **one monotonic completed run only** (typically the last coherent suffix ending at the expected total). Mixed-run progress logs are not reviewer-safe as-is.
+
+### Split-gate verdict pattern (contract vs quality)
+
+When re-gating a revised evidence pack, report two explicit statuses:
+1. **Contract/evidence-pack status** (artifact presence, naming, counts, required sections, monotonic completion).
+2. **Quality-gate status** (threshold metrics such as Recall@5/MRR).
+
+If contract passes but quality fails, keep overall verdict **REJECTED**, explicitly mark what is unblocked (contract checks) vs still blocked (quality acceptance) so downstream routing is deterministic.
 
 ### Filtering correctness pattern
 

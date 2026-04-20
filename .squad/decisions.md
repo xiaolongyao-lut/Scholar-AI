@@ -1516,3 +1516,143 @@ Not safe yet:
 4. **Quality gate:** Recall@5 ≥ 0.45, MRR ≥ 0.30 (with root-cause + corrective plan if below)
 
 ---
+## Trinity U1 Revision Complete
+
+**By:** Trinity (Implementation)  
+**Date:** 2026-04-20  
+**Scope:** U1 Step 3 rejected artifact cycle — lockout-compliant revision pack
+
+### Decision
+
+The rejection was not artifact-contract mismatch only. The canonical artifact chain was broken, **and** the underlying full-eval quality is genuinely far below the U1 gate.
+
+### What Changed
+
+1. Promoted the completed full-run metrics file to the required canonical path:
+   - `output\v21_full_eval_canonical.json`
+2. Rebuilt the canonical progress chain from the completed monotonic run only:
+   - `output\v21_full_eval_canonical.progress.jsonl`
+   - kept the coherent suffix that starts at `done=25` and ends at `done=3269`
+   - removed the earlier aborted-prefix segment from the canonical evidence chain
+3. Verified no active `eval_retrieval_runtime.py` / `audit_eval_dataset.py` process remained at closeout.
+
+### Evidence Summary
+
+- Audit totals are coherent:
+  - `total_queries=3269`
+  - `hard=326`
+  - `medium=1455`
+  - `simple=1488`
+- Canonical metrics sections present:
+  - `aggregated_metrics`
+  - `per_difficulty`
+  - `per_template_bucket`
+- Canonical progress now ends at:
+  - `done=3269`
+  - `total=3269`
+  - monotonic progression = true
+
+### Gate Outcome
+
+- `Recall@5 = 0.0281`
+- `MRR = 0.0204`
+
+These remain far below the U1 gate (`Recall@5 ≥ 0.45`, `MRR ≥ 0.30`), so U1 stays blocked on quality, not just naming/coherence.
+
+### Root Cause
+
+The audit evidence points to a dataset/eval-quality problem in addition to the artifact issue:
+
+1. **Template saturation**
+   - `template_match.matched = 3269 / 3269`
+   - `per_template_bucket` contains only `template`
+   - there is no non-template population to validate broader retrieval behavior
+
+2. **High query-text duplication across many docs**
+   - audit `bad_cases.duplicate_query_text_across_docs.type_count = 70`
+   - repeated generic prompts such as "激光焊接的最新研究进展" map to very large doc sets
+
+3. **Hard-query supervision is thin**
+   - audit `bad_cases.hard_with_single_doc_evidence.type_count = 326`
+   - every hard query is effectively single-evidence, which weakens discriminative evaluation
+
+### Next Reviewer-Cycle Proposal
+
+1. **Do not spend another full rerun on the same v2.1 set/config first.**
+2. First remediate the eval set:
+   - add / preserve a real non-template bucket
+   - reduce cross-doc duplicate generic prompts
+   - review hard-query evidence design so hard cases are not all single-evidence template variants
+3. After dataset remediation, rerun full eval directly to canonical paths:
+   - `output\v21_full_eval_canonical.json`
+   - `output\v21_full_eval_canonical.progress.jsonl`
+
+### Validation Performed
+
+- `python -m pytest tests\test_eval_dataset_audit.py -q` → pass
+- `python -m pytest tests\test_eval_runtime.py -q` → pass
+
+---
+
+## Tank U1 Re-Gate Verdict
+
+**By:** Tank (QA)  
+**Date:** 2026-04-20  
+**Scope:** U1 Step 3 formal re-gate using Trinity canonical evidence pack
+
+### Verdict
+
+**REJECTED**
+
+### Gate Split (Contract vs Quality)
+
+#### 1) Contract / Evidence-Pack Status
+
+**PASS (unblocked)**
+
+- Required artifacts present:
+  - `output/eval_query_audit_v21.json`
+  - `output/eval_query_audit_v21_template_flags.jsonl`
+  - `output/v21_full_eval_canonical.json`
+  - `output/v21_full_eval_canonical.progress.jsonl`
+- Contract totals coherent at 3269 queries.
+- Difficulty split coherent with required baseline:
+  - hard=326, medium=1455, simple=1488
+- Canonical metrics sections present:
+  - `aggregated_metrics`
+  - `per_difficulty`
+  - `per_template_bucket`
+- Canonical progress chain is monotonic and ends at `done=3269 / total=3269`.
+- No active eval/audit runtime process remained during review.
+
+#### 2) Quality-Gate Status
+
+**FAIL (still blocked)**
+
+- `Recall@5 = 0.0281` (required `>= 0.45`)
+- `MRR = 0.0204` (required `>= 0.30`)
+
+Tier-2 quality gate is not met, so U1 Step 3 cannot be approved.
+
+### Lockout-Compliant Next Revision Owner
+
+Per strict reviewer lockout semantics:
+
+- Oracle is already locked out from prior rejected cycle.
+- Trinity is now the rejected revision author and becomes locked out for the next cycle.
+
+**Next revision owner: Morpheus (escalation/third-agent revision owner).**
+
+### Blocked / Unblocked Now
+
+#### Unblocked
+
+- Canonical evidence-pack contract checks (artifact naming, coherence, progress integrity) are now cleared.
+
+#### Blocked
+
+- U1 Step 3 quality acceptance remains blocked on Tier-2 metric remediation and a new lockout-compliant revised pack.
+- Any immediate "go next step" action that depends on U1 Step 3 approval remains blocked.
+
+---
+

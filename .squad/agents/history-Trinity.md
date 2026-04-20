@@ -186,3 +186,54 @@ Oracle owns canonical rerun with new Trinity tooling. Tank will review output ag
 ## Next Action
 
 Begin Phase 4 implementation: Chat Endpoint integration using session memory and multi-turn prompt utilities as building blocks.
+
+---
+
+## 2026-04-20: U1 Revision Cycle Completion & Re-Gate (13:11 UTC)
+
+**Date/Time:** 2026-04-20 13:11 UTC  
+**Role:** trinity (implementation, revision cycle)  
+**Phase:** U1 Step 3 — Canonical Evidence Pack Fix & Re-Gate  
+**Status:** CYCLE COMPLETE ✅
+
+### Work Summary
+
+Completed U1 Step 3 revision cycle with canonical evidence pack fixes:
+
+1. Promoted completed full-run metrics to canonical path: output/v21_full_eval_canonical.json
+2. Rebuilt canonical progress chain: output/v21_full_eval_canonical.progress.jsonl (monotonic, done=3269)
+3. Removed aborted-prefix segment, kept coherent full-run suffix
+4. Verified no active eval/audit processes at closeout
+
+### Artifact Coherence Verified
+
+- Total queries: 3269 (uniform across audit, progress, metrics)
+- Difficulty split: hard=326, medium=1455, simple=1488
+- Canonical metrics sections: aggregated_metrics, per_difficulty, per_template_bucket
+- Progress: monotonic, ends at done=3269/total=3269
+
+### Gate Outcome (Tank Re-Gate)
+
+**Verdict: REJECTED (Contract PASS, Quality FAIL)**
+
+- Contract/Evidence: ✅ PASS (all required artifacts present, coherence validated)
+- Quality Gate: ❌ FAIL (Recall@5=0.0281, MRR=0.0204 vs required ≥0.45/≥0.30)
+
+**Blocker:** Tier 2 quality metrics remain far below thresholds despite contract fix.
+
+### Root-Cause Finding
+
+Audit evidence reveals dataset/eval-quality issues:
+1. Template saturation (3269/3269 template-matched; no non-template validation population)
+2. High query-text duplication across docs (70 instances of generic prompts)
+3. Hard-query supervision thin (326 hard queries all single-evidence, weakens discrimination)
+
+### Lockout Status
+
+- **Trinity ownership:** COMPLETE
+- **Oracle:** Locked out (original author + first rejection)
+- **Trinity:** Now locked out (rejected revision author)
+- **Next eligible owner:** Morpheus (post-rejection assignment)
+
+**Source:** Orchestration log .squad/orchestration-log/20260420-131131-trinity-completion.md
+

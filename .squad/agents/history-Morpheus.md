@@ -159,3 +159,69 @@ Phase 4 completion showed keyword-only retrieval at ~70% precision; contextual e
 - Await Trinity's canonical eval completion
 - Finalize 109-Paper Step 3 decision post-Trinity + Oracle validation
 - Scribe orchestration logs for this decision phase
+
+---
+
+## 2026-04-20: U1 Revision Cycle Assignment (Lockout Enforcement) (13:11 UTC)
+
+**Date/Time:** 2026-04-20 13:11 UTC  
+**Role:** morpheus (owner, post-rejection assignment)  
+**Phase:** U1 Step 3 — Second Remediation Cycle (Post-Tank Re-Gate)  
+**Status:** ASSIGNED
+
+### Assignment Context
+
+**Prior Cycle:** Trinity revision (COMPLETE, verdict REJECTED by Tank)  
+**New Cycle Owner:** Morpheus (architecture role, post-rejection escalation)  
+**Prior Verdict:** REJECTED — Quality Gate FAIL (Recall@5=0.0281, MRR=0.0204 vs required ≥0.45/≥0.30)  
+
+### Lockout Enforcement
+
+- **Oracle:** Locked out (original author + first rejection)
+- **Trinity:** Locked out (rejected revision author + re-gate rejection)
+- **Morpheus:** Sole eligible next owner per strict reviewer protocol
+- **Guarantee:** No reassignments during Morpheus ownership period
+
+### Scope of Work
+
+Morpheus inherits U1 Step 3 revision responsibility with mandatory deliverables:
+
+#### 1. Root-Cause Investigation
+- Analyze why canonical evidence fix (Trinity) did not resolve quality gap
+- Identify architectural or algorithmic bottlenecks in ranking/retrieval pipeline
+- Document findings: Trinity audit evidence shows (a) template saturation 3269/3269, (b) query-text duplication (70 instances), (c) hard-query supervision thin (326 hard, all single-evidence)
+- Distinguish between eval-set pathology vs retrieval algorithm limitation
+
+#### 2. Corrective Action Plan
+- Design remediation strategy (e.g., eval-set refinement, reranker tuning, index rebuild, algorithm adjustment)
+- Prioritize: Trinity memo suggests eval-set remediation before rerun (add non-template bucket, reduce cross-doc duplication, improve hard-query evidence design)
+- Determine if remediation needs Trinity support or can proceed independently
+
+#### 3. Quality Re-Validation
+- Execute full eval run with corrected pipeline (if applicable)
+- Collect canonical metrics: Recall@5 and MRR
+- Validate coherence with canonical evidence pack standards
+- Confirm all contract/evidence requirements remain PASS
+
+#### 4. Re-Submission & Final Gate
+- Prepare revised artifacts for Tank final gate
+- Include corrective evidence and remediation justification
+- Target: Recall@5 ≥ 0.45, MRR ≥ 0.30
+
+### Immediate Next Steps
+
+1. Review Tank re-gate verdict: .squad/orchestration-log/20260420-131131-tank-regate.md
+2. Review Trinity canonical pack + root-cause analysis: .squad/agents/history-Trinity.md
+3. Assess Trinity proposal: eval-set remediation vs full-rerun iteration
+4. Design Morpheus investigation roadmap
+5. Coordinate with Trinity if needed; otherwise proceed independently
+
+### Success Criteria
+
+- Root-cause analysis complete and documented
+- Corrective action plan justified and executable
+- Quality re-validation achieves Recall@5 ≥ 0.45, MRR ≥ 0.30
+- Re-submission passes Tank final gate
+
+**Source:** Orchestration log .squad/orchestration-log/20260420-131131-morpheus-handoff.md
+

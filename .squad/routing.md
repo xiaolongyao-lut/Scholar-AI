@@ -66,6 +66,10 @@ How to decide who handles what.
 31. **Quiet-window cadence control.** If no status/checkpoint change is observed for 3 consecutive poll windows, user-facing heartbeat summaries should be downshifted to 60s cadence.
 32. **Wake-up on meaningful change.** Any checkpoint advance or state transition (`weak-heartbeat`, `heartbeat-miss`, `blocked`, `done`) must immediately restore 25s summary cadence.
 33. **Collaboration visibility artifact (required).** For any multi-agent shared task, Coordinator/Scribe must append ordered summaries to `output/squad_collab_timeline.jsonl` so collaboration is observable outside chat.
+34. **Usage Q&A is non-interruptive by default.** If active background work exists, Coordinator should answer user usage/how-to questions directly while keeping active tasks running.
+35. **Stop requires explicit user intent.** Active task loops may stop only on explicit user commands such as `stop`, `pause`, `idle`, or equivalent clear instruction.
+36. **Reviewer rejection reassignment is coordinator-owned.** When Tank (or any reviewer) rejects an artifact, the revision owner must be selected and dispatched by Coordinator; reviewer suggestions are advisory until Coordinator confirms.
+37. **Non-coordinator reassignment audit.** If a revision task is spawned/reassigned by anyone other than Coordinator, Coordinator must immediately audit author lockout and routing reason, then either ratify or reroute/cancel the task before execution continues.
 
 ### Unified Heartbeat Record (Required)
 

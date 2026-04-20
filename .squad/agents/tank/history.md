@@ -71,3 +71,6 @@
 - Current full eval evidence is split: template-flags progress reached `done=3269`, but canonical progress file stopped at `done=350`; this breaks canonical evidence coherence.
 - U1 Tier 2 blockers confirmed on latest full metrics: `recall_at_5=0.0281`, `mrr=0.0204`, both far below required thresholds (`0.45` / `0.30`).
 - Key QA gate files for this decision: `output/eval_query_audit_v21.json`, `output/eval_query_audit_v21_template_flags.jsonl`, `output/eval_v21_full_metrics_template_flags.json`, `output/eval_v21_full_progress_template_flags.jsonl`, `output/v21_full_eval_canonical.progress.jsonl`, `.squad/decisions.md`.
+- U1 Step 3 re-gate with Trinity revised pack: contract/evidence-pack now passes (all four canonical artifacts present, totals/split coherent, canonical progress monotonic to done=3269), but Tier-2 quality gate still fails (`Recall@5=0.0281`, `MRR=0.0204`), so verdict remains REJECTED.
+- Strict lockout semantics are cumulative per artifact cycle: Oracle remained locked out from prior rejection, Trinity became locked out after this re-gate rejection, and the next lockout-compliant revision owner escalates to a third agent.
+- Re-gate decision artifact path: `.squad/decisions/inbox/tank-u1-regate-verdict.md`.

@@ -256,3 +256,59 @@ Begin Phase 4 integration test suite: prepare endpoint tests for Chat API integr
 - Await Trinity's canonical eval completion
 - Monitor dataset saturation as eval progresses
 - Prepare final audit closure validation post-Trinity
+
+---
+
+## 2026-04-20: U1 Re-Gate Verdict — Trinity Canonical Pack (13:11 UTC)
+
+**Date/Time:** 2026-04-20 13:11 UTC  
+**Role:** tank (QA lead, reviewer gate)  
+**Phase:** U1 Step 3 — Post-Trinity Remediation Re-Gate  
+**Status:** COMPLETED ✅
+
+### Re-Gate Verdict: REJECTED
+
+**Gate Split Result:**
+- Contract/Evidence Gate: ✅ **PASS** (unblocked)
+- Quality Gate: ❌ **FAIL** (remains blocked)
+
+### Contract/Evidence Gate — PASS
+
+✅ All required artifacts present and validated:
+- output/eval_query_audit_v21.json ✅
+- output/eval_query_audit_v21_template_flags.jsonl ✅
+- output/v21_full_eval_canonical.json ✅ (FIXED)
+- output/v21_full_eval_canonical.progress.jsonl ✅ (FIXED)
+
+✅ Contract coherence verified:
+- Total queries: 3269 (uniform)
+- Difficulty: hard=326, medium=1455, simple=1488
+- Canonical metrics sections: aggregated_metrics, per_difficulty, per_template_bucket
+- Progress monotonic: ends at done=3269/total=3269
+- No active eval/audit process at review time
+
+### Quality Gate — FAIL
+
+❌ **Blocker:** Tier 2 metrics below required thresholds:
+- Recall@5: 0.0281 (required ≥ 0.45) — **Gap: ~94% below**
+- MRR: 0.0204 (required ≥ 0.30) — **Gap: ~93% below**
+
+**Impact:** Trivial change from Trinity revision. Quality gap indicates systematic eval-set pathology, not artifact naming.
+
+### Lockout Routing Enforced
+
+**Verdict:** REJECTED remains in force.
+
+- **Oracle:** Ineligible (original author + first rejection)
+- **Trinity:** Ineligible (rejected revision author per strict protocol)
+- **Next Eligible Owner:** Morpheus (third-agent escalation)
+
+### Requirements for Morpheus Next Cycle
+
+1. **Root-Cause Analysis:** Investigate why quality gap persists despite contract fix
+2. **Corrective Action Plan:** Address dataset/algorithmic bottlenecks (template saturation, query duplication, hard-query supervision)
+3. **Quality Re-Validation:** Achieve Recall@5 ≥ 0.45, MRR ≥ 0.30
+4. **Re-Submission:** Submit revised metrics and corrective evidence for final gate
+
+**Source:** Orchestration log .squad/orchestration-log/20260420-131131-tank-regate.md
+

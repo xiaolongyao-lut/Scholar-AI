@@ -39,6 +39,11 @@
 - **Key Integration:** Extraction pipeline now respects LLM context windows during batch operations
 - **Status:** ✅ Phase 2 batch complete and tested. Awaiting Morpheus cross-domain review
 
+- U1 retrieval gate artifacts now use `output\v21_full_eval_canonical.json` and `output\v21_full_eval_canonical.progress.jsonl` as the reviewer-facing canonical pair.
+- `eval_query_audit_v21.json` is the authoritative source for v2.1 audit totals: 3269 total queries with hard=326, medium=1455, simple=1488.
+- The completed v2.1 full eval remains far below gate (`Recall@5=0.0281`, `MRR=0.0204`), so U1 failure is genuine quality failure, not just artifact naming.
+- For canonical progress evidence, use a single monotonic completed run only; appended mixed-run progress logs must be trimmed before review submission.
+
 ### 2026-04-20: U1 Step 3 Revision Ownership Handoff
 
 - **Event:** Tank formal reviewer gate verdict: REJECTED (U1 Step 3)
