@@ -23,6 +23,14 @@
 - Updated README.md to document Phase 6 extraction pipeline integration.
 - Added per-query JSONL persistence for eval runs via `--per-query-output` to preserve per-query quality evidence on interruption.
 
+### 2026-04-21: Rerank Config Alignment (qwen3-rerank)
+- **Direction:** Implemented config/env/docs/test alignment for qwen3-rerank as final default model.
+- **Superseded:** Earlier VL-direction (qwen3-vl-rerank) was corrected per user guidance; reverted cleanly.
+- **Files updated:** `.env`, `reranker_client.py` DEFAULT_RERANKER_MODEL, README docs, test fixtures.
+- **No breaking changes:** Embedding cache remains valid; reranker API contract stable; backward-compatible.
+- **Status:** ✅ Complete. Regression tests (5/5) pass; production deployment ready.
+- **Decision trail:** Consolidated to `.squad/decisions/decisions.md` with full audit evidence from Morpheus, Oracle, Tank.
+
 ### 2026-04-20: Phase 1 LiteLLM Gateway Delivery
 
 - Implemented `src/litellm_gateway.py`: Multi-provider LLM abstraction (OpenAI, Anthropic, Google)
@@ -53,3 +61,6 @@
 - **Trinity ownership:** U1 revision cycle (full responsibility for remediation)
 - **Mandatory deliverables:** canonical artifacts, contract coherence, run integrity, quality gate closure
 - **Status:** Assigned; awaiting Trinity remediation submission
+- Reranker switch path is provider-sensitive: `qwen3-vl-rerank` is wired through DashScope text-rerank, while existing `SILICONFLOW_RERANK_*` settings should stay on the SiliconFlow `Qwen/Qwen3-Reranker-8B` fallback to avoid breaking current envs.
+- The repo already chunks and embeds before rerank in the eval/retrieval path: `eval_retrieval_runtime.py` loads `output\chunk_store\*.json`, optionally contextualizes chunks, builds/caches embeddings with `ChunkVectorStore.build(...)`, batch-embeds queries, and only then calls `rerank_async(...)`.
+- Key rerank/embedding files for future work: `reranker_client.py`, `layers\r_layer_hybrid_retriever.py`, `chunk_vector_store.py`, `contextual_chunker.py`, `eval_retrieval_runtime.py`, and `.env.example`.

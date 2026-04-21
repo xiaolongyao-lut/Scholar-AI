@@ -74,6 +74,7 @@ Open:
 Next:
 
 - ✅ **所有 Intelligent Chat Phase 1-5 支持任务已完成并 Morpheus 批准。** 检索管道三模块（keyword_prefilter 7/7、folder_traversal 4/4、extraction_pipeline 5/5）全部实现、测试、真实数据验证均已交付。前端修复周期（Switch 锁定 → Trinity 修复 → Tank 批准）已完成。
-- 🔄 **Board 清晰状态**：无当前执行项。requirement pool 中 `Batch async ingestion for large literature folders` 处于 WAITING FOR USER 状态。
+- ✅ **Tier 3 检查点恢复成功（2026-04-21 01:10:39）**：Ralph 完成全量 U1A-3269 查询集评估。最终指标：2,748/2,748 (100%)、Recall@5=0.25%、MRR=0.4%。三个产物已持久化（progress.jsonl 2.7MB、per_query.jsonl 840KB、metrics.json 735B）。自动链到 Morpheus 评审 + Tank 审计（用户指令）。
+- 🔄 **Board 状态**：Tier 3 完成后，自动链在进行。无新决策 inbox 文件；决策合并暂停至 Morpheus/Tank 交付。
 - ⚠️ Zotero jasminum-outline.json 缺结构化元数据的约束仍有效（非阻塞，已跟踪于 OPEN_THREADS）。
-- **最终检查点**：`.squad/backups/checkpoint-phase6-final-20260420-0418/`
+- **最新检查点**：`.squad/orchestration-log/20260421T011311Z-ralph-tier3-checkpoint-resume-completion.md`

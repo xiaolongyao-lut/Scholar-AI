@@ -2,6 +2,38 @@
 
 Records of key implementation phases and delivery milestones by Trinity.
 
+## 2026-04-21: Task 2.1.1 — AIAdapter cost/defaults unification (17:25 UTC)
+
+**Date/Time:** 2026-04-21 17:25:40Z  
+**Role:** trinity (implementation)  
+**Task:** 2.1.1 — AIAdapter private `_chat` helper + LLM call site refactor  
+**Status:** ✅ COMPLETED  
+
+### Summary
+
+Implemented private `_chat` helper in `layers/ai_adapter.py` to centralize LLM call handling and enable cost telemetry. Refactored 7 internal call sites through the helper while preserving all site-specific parameter contracts.
+
+### Implementation Details
+
+- **Helper signature:** `_chat(overrides: dict, messages: list) → Response`
+- **Telemetry:** Integrated `resolve_llm_params` + `log_llm_call` + `usage_from_response` with fail-open error handling
+- **Call sites refactored:** 7 completion sites now route through helper
+- **Site-specific preservation:** All temperature, max_tokens, response_format overrides retained
+
+### Test Coverage
+
+- `tests/test_ai_adapter_chat_helper.py`: 4 new focused tests (all passing)
+- `tests/test_llm_provider_routing.py`: 3 passing (provider routing verified)
+- Regression suite: No breakage in extraction/chat paths
+
+### Approval Status
+
+✅ Morpheus design review approved (narrowed scope)  
+✅ Tank QA verification passed  
+✅ Gate approval obtained — proceed to 2.1.2  
+
+
+
 ## 2026-04-20: U1 Phase — Eval Tooling & Debugging (18:55 UTC)
 
 **Date/Time:** 2026-04-20 18:55 UTC  

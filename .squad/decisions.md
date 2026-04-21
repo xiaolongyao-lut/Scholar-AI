@@ -2266,3 +2266,95 @@ Interrupted eval runs currently lose per-query quality evidence because only pro
 ### Verification
 
 - New test: 	ests/test_eval_runtime.py::test_run_eval_writes_per_query_output_jsonl (passes).
+
+---
+
+## 2026-04-21: Task 2.1.1 Design Review — AIAdapter cost/defaults unification
+
+**By:** Morpheus (Architecture)  
+**Date:** 2026-04-21  
+**Status:** ✅ APPROVED
+
+### Verdict
+- **PROCEED NOW** with narrowed implementation scope: layers/ai_adapter.py only for this subtask pass.
+
+### Key Decisions
+1. Only live chat.completions.create call sites confirmed: 7 in layers/ai_adapter.py; inspiration_engine.py and xtractor_full.py out of scope for this pass.
+2. Trinity implements _chat as internal AIAdapter helper only; no exported API change.
+3. All existing method contracts preserved: same prompt construction, same try/except, same downstream response reads.
+4. Site-specific behavior is contract-critical: site 2 keeps max_tokens=10 + no esponse_format; site 6 keeps 	emperature=0.2; JSON-producing sites keep esponse_format={"type":"json_object"}.
+5. Cost telemetry best-effort only: sampling/logging may not break extraction/chat paths on error.
+
+### Rationale
+- Task uses existing repo-local modules (llm_defaults.py, llm_cost_logger.py, llm_pricing.py)
+- No new dependency required
+- No refactor approval needed—surgical scope only
+- Aligns with delivery-speed preference
+
+---
+
+## 2026-04-21: Task 2.1.1 QA Preflight & Gate Approval — AIAdapter scope verification
+
+**By:** Tank (QA)  
+**Date:** 2026-04-21  
+**Status:** ✅ GATE APPROVED
+
+### Decision
+Task 2.1.1 narrowed to layers/ai_adapter.py seven known chat.completions.create sites only. Do not expand scope into inspiration_engine.py or xtractor_full.py.
+
+### Required Invariants (All Preserved)
+1. Site 2 (erify_multimodal_support): 	emperature=0.1, max_tokens=10, no esponse_format
+2. Site 6 (classify_claim_boundary): 	emperature=0.2 + JSON response_format
+3. JSON vs non-JSON split: 6 JSON + 1 non-JSON
+4. Telemetry/logging failures must be swallowed; never break main path
+
+### Evidence
+- Plan: .copilot-tracking/plans/2026-04-21-cost-and-defaults.md (§2.1.1)
+- Runtime code: layers/ai_adapter.py lines 194, 241, 289, 349, 405, 460, 568
+- Test coverage: 	ests/test_ai_adapter_chat_helper.py (4 passed), 	ests/test_llm_provider_routing.py (3 passed)
+
+---
+
+## 2026-04-21: Trinity Implementation Complete — AIAdapter _chat helper
+
+**By:** Trinity (Implementation)  
+**Date:** 2026-04-21  
+**Status:** ✅ IMPLEMENTATION COMPLETE
+
+### Decision
+Implemented §2.1.1 only inside layers/ai_adapter.py by adding private _chat helper and routing 7 in-class completion sites through it.
+
+### Scope Adherence
+- Morpheus-approved scope: layers/ai_adapter.py only
+- Excluded: inspiration_engine.py, xtractor_full.py
+- Contract preservation: All site-specific kwargs retained
+
+### Artifacts
+- layers/ai_adapter.py: 7 call sites refactored
+- 	ests/test_ai_adapter_chat_helper.py: 4 focused unit tests
+- .copilot-tracking/changes/2026-04-21-cost-and-defaults-changes.md: Implementation log
+
+### Test Results
+- 	est_ai_adapter_chat_helper.py: 4 PASSED
+- 	est_llm_provider_routing.py: 3 PASSED
+- Regression suite: No regressions
+
+---
+
+## 2026-04-21: Trinity Implementation Acceptance — Tank QA Gate Approval
+
+**By:** Tank (QA)  
+**Date:** 2026-04-21  
+**Status:** ✅ ACCEPT — Task 2.1.1 complete
+
+### Evidence
+- _chat helper verified to exist and use esolve_llm_params + fail-open telemetry
+- 7 internal call sites migrated; only 1 direct chat.completions.create remains (inside helper)
+- Site-specific contracts verified:
+  - erify_multimodal_support: overrides={"temperature":0.1,"max_tokens":10}, no esponse_format
+  - classify_claim_boundary: overrides={"temperature":0.2} + JSON response_format
+- Focused tests passed: 	est_ai_adapter_chat_helper.py → 4 passed, 	est_llm_provider_routing.py → 3 passed
+
+### Verdict
+✅ **APPROVE** — Task 2.1.1 acceptance criteria satisfied for narrowed layers/ai_adapter.py scope. Coordinator may mark task complete and proceed to 2.1.2.
+

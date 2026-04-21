@@ -2,6 +2,43 @@
 
 Records of key decisions and approvals by Morpheus (the architecture owner).
 
+## 2026-04-21: Task 2.1.1 Design Review & Approval Gate (17:25 UTC)
+
+**Date/Time:** 2026-04-21 17:25:40Z  
+**Role:** morpheus (architecture, approval)  
+**Task:** 2.1.1 — AIAdapter cost/defaults design review  
+**Status:** ✅ COMPLETED  
+
+### Design Decision
+
+✅ **PROCEED** with narrowed scope: `layers/ai_adapter.py` only for this subtask pass.
+
+### Rationale
+
+- Uses existing repo-local modules (`llm_defaults.py`, `llm_cost_logger.py`, `llm_pricing.py`)
+- No new dependencies required
+- No refactor approval needed—surgical implementation only
+- Risk profile acceptable for current phase
+
+### Key Boundaries
+
+1. Scope: `layers/ai_adapter.py` only; `inspiration_engine.py` and `extractor_full.py` out of scope
+2. Pattern: `_chat` internal helper only (no exported API change)
+3. Contracts: All site-specific parameter contracts must be preserved verbatim
+4. Telemetry: Best-effort only; must never break extraction/chat paths
+
+### Approval Status
+
+✅ Trinity implementation complete and verified  
+✅ Tank QA gate approval obtained  
+✅ No blocking architectural concerns identified  
+
+### Next Steps
+
+Task 2.1.1 complete. Coordinate release and advance to 2.1.2.
+
+
+
 ## 2026-04-20: Approve Phase 4 Chat Endpoint Integration
 
 **Date/Time:** 2026-04-20 07:02 UTC

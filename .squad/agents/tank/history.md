@@ -24,6 +24,13 @@
 - A single temp corpus can cover malformed nested JSON, empty keyword-pruned output, and mixed-source provenance stability without broadening scope.
 - Key files for this iteration: `tests/test_extraction_pipeline.py`, `src/extraction_pipeline.py`, `src/folder_traversal.py`, `src/keyword_filter.py`.
 
+### 2026-04-21: Rerank Regression Gate (qwen3-rerank)
+- **Scope:** Validated qwen3-rerank text-only payload stability and raw_content document extraction priority.
+- **Tests passed:** 5/5 targeted regressions including reranker request-shape, hybrid retrieval integration, contextual preservation, and expansion query flow.
+- **Finding:** SiliconFlow flat payload format confirmed stable; raw_content extraction working as designed (text-only, no image inputs prepared).
+- **Evidence:** All regression tests pass; no new token/payload issues detected.
+- **Next:** Production deployment ready; no further regressions required.
+
 ### 2026-04-20T22:04:52Z: Mini-Eval Sample Prep Task Assigned
 
 **Status:** Task routed to Tank for execution.
@@ -167,3 +174,10 @@ This approval follows strict lockout semantics:
 - Tier 2 (250q U1A slice) is evidence-coherent (progress 250/250, per-query rows=250) and preserves strong directional quality gains over baseline (Recall@5 0.70 vs 0.0281; MRR 0.5991 vs 0.0204).
 - Compared with Tier 1, quality softens as sample grows (Recall@5 0.92 -> 0.70; MRR 0.8278 -> 0.5991), which is expected but confirms Tier 1 was optimistic.
 - Latency regresses further at Tier 2 (avg +136%, p95 +183% vs baseline), so Tier 3 should proceed as a controlled validation step focused on representativeness and performance risk, not as final proof.
+
+### 2026-04-21: Rerank model switch QA (qwen3-vl-rerank text mode)
+
+- Narrowest rerank request-shape regression lives in `tests/test_reranker.py::test_rerank_async_reorders_using_api` and `tests/test_llm_provider_routing.py::test_hybrid_retriever_uses_siliconflow_rerank`; both currently assert the legacy model string `Qwen/Qwen3-Reranker-8B`.
+- Chunk/raw_content path is only partially covered: `tests/test_contextual_chunker.py::test_contextual_preserves_original` verifies `raw_content` retention, but no direct test asserts reranker payload prefers `raw_content` over prefixed `content`.
+- Embedding-chain entry is covered by `tests/test_eval_runtime.py::test_retrieve_with_expansion_uses_translated_query_for_retrieval` (asserts `vector_store.embed_query()` is invoked with translated text and rerank still receives original query).
+- QA command used for this pass: `python -m pytest -q tests\\test_reranker.py::test_rerank_async_reorders_using_api tests\\test_reranker.py::test_rerank_async_truncates_oversized_documents tests\\test_eval_runtime.py::test_retrieve_with_expansion_uses_translated_query_for_retrieval tests\\test_contextual_chunker.py::test_contextual_preserves_original tests\\test_llm_provider_routing.py::test_hybrid_retriever_uses_siliconflow_rerank` (5 passed).

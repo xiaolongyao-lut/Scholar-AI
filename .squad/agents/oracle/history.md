@@ -48,4 +48,21 @@
 - **Blocker analysis:** (1) Missing canonical metrics `output/v21_full_eval_canonical.json`, (2) Tier 2 quality gate failure (Recall@5=0.0281 vs ≥0.45), (3) progress coherence gap (template-flags vs canonical-named)
 - **Lockout enforcement:** Oracle locked out from immediate revision cycle per strict rejection protocol
 - **Revision owner:** Transferred to Trinity
+
+### Rerank Pipeline Alignment (2026-04-21)
+- **Chunk-rerank trace:** Verified raw_content prioritization in reranker; embedding uses content (post-context); no mismatch detected.
+- **Key finding:** Embedding cache independent of reranker model; remains valid across model updates.
+- **Multimodal ready:** Pipeline extensible to image+text when needed; no current image extraction in chunking pipeline.
+- **Final decision:** Text-only qwen3-rerank confirmed stable; Morpheus audit + Tank regressions + final config alignment complete.
+- **Orchestration:** Decisions consolidated to `.squad/decisions/decisions.md` with full evidence trail.
 - **Oracle next steps:** Wait for Trinity remediation; available for data support tasks outside U1 revision scope
+
+### Pipeline Architecture Verification (2026-04-21)
+- **Task:** Trace chunk-embedding-rerank pipeline end-to-end; verify qwen3-vl-rerank integration
+- **Scope:** chunk_models.py → contextual_chunker.py → chunk_vector_store.py → eval_retrieval_runtime.py → reranker_client.py
+- **Key finding:** Pipeline correctly handles text-only input. `_extract_document()` prioritizes `raw_content` (undecorated) over `content` (context-decorated). Reranker receives clean chunk text as intended.
+- **Chunk data structure:** EnrichedChunk carries both `content` (post-context) for embedding and `raw_content` (original) for reranking—no mismatch.
+- **Multimodal readiness:** qwen3-vl-rerank capable of image+text but currently pipeline extracts text only; extensible when Phase 6+ requires visual reranking.
+- **Decision:** No code changes needed. Pipeline production-ready for text reranking. Future multimodal support requires figure/table extraction in chunk phase and request format update.
+- **Evidence:** reranker_client.py:83–95, contextual_chunker.py:164–220, test_reranker.py:261–309 all validate correct behavior.
+- **Formal decision:** `.squad/decisions/inbox/oracle-chunk-trace.md` written; team coordination complete.

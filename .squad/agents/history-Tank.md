@@ -2,6 +2,33 @@
 
 Records of testing phases and quality validation by Tank.
 
+## 2026-04-21: Task 2.1.1 — AIAdapter QA verification & gate approval (17:25 UTC)
+
+**Date/Time:** 2026-04-21 17:25:40Z  
+**Role:** tank (QA)  
+**Task:** 2.1.1 — AIAdapter preflight + final gate approval  
+**Status:** ✅ COMPLETED  
+
+### Verification Checklist
+
+✅ Structural check: All 7 `chat.completions.create` sites in `layers/ai_adapter.py` migrated to `_chat` helper  
+✅ Contract preservation: All site-specific kwargs maintained (temperature, max_tokens, response_format)  
+✅ Test coverage: 4 focused adapter tests + 3 provider routing tests all passing  
+✅ Telemetry non-breaking: Logging failures do not propagate to extraction/chat paths  
+✅ Scope compliance: Narrowed implementation (AIAdapter only) matches Morpheus approval  
+
+### Test Results
+
+- `tests/test_ai_adapter_chat_helper.py`: 4/4 PASSED
+- `tests/test_llm_provider_routing.py`: 3/3 PASSED
+- Regression suite: No breaking changes
+
+### Gate Verdict
+
+✅ **APPROVE** — Task 2.1.1 acceptance criteria satisfied. Coordinator may advance to 2.1.2.
+
+
+
 ## 2026-04-20: U1 Phase — Full-Eval QA Stall Verdict (18:35 UTC)
 
 **Date/Time:** 2026-04-20 18:35 UTC  
