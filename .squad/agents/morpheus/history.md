@@ -63,3 +63,11 @@
 - **Tier escalation shrinkage pattern:** Expect 20-25% metric shrinkage when moving from small probe (50q) to statistical validation (250q). Tier 1 numbers should be treated as directional upper bounds, not commitments. Always quote Tier 2 numbers as the reliable estimate.
 - **Dual-approval gate discipline:** For Tier 3 (high-cost) evaluation, the gate recommendation and the execution authorization are separate artifacts. The architect writes the recommendation; execution is blocked until the second approver (小龙) explicitly co-signs. This prevents accidental spend escalation.
 - **Reranker model upgrade audit (2026-04-21):** Qwen3-VL-Reranker is backward-compatible for text-only reranking; multimodal capability is optional and not triggered by the current pipeline. Chunking is properly decoupled: `raw_content` (no prefix) used for rerank, `content` (with summary) used for embedding context enrichment. Switch is one-liner (env var or default model constant). No embedding recomputation needed; embeddings and reranking are independent. Decision: APPROVED for trivial implementation. Chunking gap alleged by user is not real—the separation of raw_content/content is intentional and correct.
+
+### 2026-04-21: Task 2.1.2 Design Review — Sampling Persistence & Live App Wiring
+- **Role:** Architecture review and cross-domain design gates.
+- **Verdict:** APPROVED. PROCEED with backend-only scope (sampling_storage.py, routing, precedence wiring, live app binding). 2.1.3 frontend explicitly WAITING FOR USER.
+- **Key constraints:** Sampling precedence (request > file > defaults) locked for both chat endpoints. Storage must be fail-open on read, fail-closed on write. Persistence path: `~/.literature-lab/sampling.json` with atomic writes and threading.Lock. Trinity must wire into actual chat-serving entrypoint (python_adapter_server.py or my-project/src/app.py), not assume main_system_production.py is live.
+- **Architectural risk:** Silent contract drift (entrypoint binding, wrong precedence order, broken persistence semantics).
+- **Evidence basis:** `.copilot-tracking/plans/2026-04-21-cost-and-defaults.md`, live app sources, llm_defaults.py.
+- **Decision trail:** Consolidated to `.squad/decisions/decisions.md` § 2026-04-21 Task 2.1.2 Design Review.

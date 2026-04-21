@@ -64,3 +64,13 @@
 - Reranker switch path is provider-sensitive: `qwen3-vl-rerank` is wired through DashScope text-rerank, while existing `SILICONFLOW_RERANK_*` settings should stay on the SiliconFlow `Qwen/Qwen3-Reranker-8B` fallback to avoid breaking current envs.
 - The repo already chunks and embeds before rerank in the eval/retrieval path: `eval_retrieval_runtime.py` loads `output\chunk_store\*.json`, optionally contextualizes chunks, builds/caches embeddings with `ChunkVectorStore.build(...)`, batch-embeds queries, and only then calls `rerank_async(...)`.
 - Key rerank/embedding files for future work: `reranker_client.py`, `layers\r_layer_hybrid_retriever.py`, `chunk_vector_store.py`, `contextual_chunker.py`, `eval_retrieval_runtime.py`, and `.env.example`.
+
+### 2026-04-21: Task 2.1.2 Implementation — Sampling Persistence & Router Wiring
+- **Role:** Backend implementation of user-sampling persistence and live app wiring per Morpheus design review.
+- **Deliverables:** `sampling_storage.py` (persist/load with fail-open/fail-closed semantics), `routers/sampling_router.py` (`GET/PUT/DELETE /sampling` endpoints), chat_router precedence wiring (request > file > defaults).
+- **Router integration:** Live FastAPI entrypoint binding via `python_adapter_server.py` or `my-project/src/app.py`. Sampling precedence applied to both `/chat/ask` and `/chat/stream`.
+- **Persistence contract:** `load_user_sampling()` returns `{}` on missing/corrupt file (fail-open). `save_user_sampling()` validates every task via `llm_defaults.resolve_llm_params()` and only writes on full success (fail-closed).
+- **Path isolation:** `~/.literature-lab/sampling.json` with atomic `tmp + os.replace()` and threading.Lock. No user-controlled path input. No path leakage in API responses.
+- **Status:** Implementation complete. Sampling persistence, `/sampling` routes, live router registration, chat precedence wiring, tests all passing (16 tests focused). Awaiting Tank QA verdict.
+- **Test results:** All unit tests pass; precedence wiring confirmed in code paths for both chat endpoints.
+- **Decision trail:** Consolidated to `.squad/decisions/decisions.md` § 2026-04-21 Task 2.1.2 (Design Review, Preflight, Verdict).

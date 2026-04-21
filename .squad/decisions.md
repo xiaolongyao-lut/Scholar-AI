@@ -2358,3 +2358,84 @@ Implemented §2.1.1 only inside layers/ai_adapter.py by adding private _chat hel
 ### Verdict
 ✅ **APPROVE** — Task 2.1.1 acceptance criteria satisfied for narrowed layers/ai_adapter.py scope. Coordinator may mark task complete and proceed to 2.1.2.
 
+---
+
+## 2026-04-21: Task 2.1.2 Design Review — Sampling Persistence & Live App Wiring
+
+**By:** Morpheus (Architecture)  
+**Date:** 2026-04-21  
+**Status:** ✅ APPROVED — PROCEED NOW
+
+### Verdict
+- **PROCEED NOW** with task 2.1.2 as a bounded backend-only change.
+- **2.1.3 frontend work:** WAITING FOR USER confirmation before implementation.
+
+### Key Decisions
+1. **Scope:** Limited to additive user-sampling persistence and API wiring for `sampling_storage.py`, `routers/sampling_router.py`, `routers/chat_router.py`, and live FastAPI entrypoints. 2.1.3 frontend work is explicitly out-of-scope.
+2. **Storage Contract:** `sampling_storage.py` must preserve plan contract exactly:
+   - `load_user_sampling()` is fail-open (`{}` on missing/corrupt file, never raises)
+   - `save_user_sampling()` validates every task via `llm_defaults.resolve_llm_params()` and only writes on full success
+3. **Precedence:** Locked to **request body > persisted file overrides > task defaults**. Must apply to both `/chat/ask` and `/chat/stream`. Any later router adoption must reuse same merge order.
+4. **Persistence Path:** Fixed to `Path.home() / ".literature-lab" / "sampling.json"` with UTF-8 JSON, atomic `tmp + os.replace()`, single-process `threading.Lock`, no user-controlled path input or path leakage in API responses.
+5. **App Entrypoint:** Trinity must wire the new router into actual chat-serving FastAPI app (`python_adapter_server.py`; `my-project/src/app.py` if still exercised), not assume `main_system_production.py` is live.
+6. **User Confirmation:** 2.1.3 remains **WAITING FOR USER** even though React/Vite surface exists in-repo; plan still requires explicit user confirmation before frontend implementation.
+
+### Rationale
+- Task fits current phase scope, reuses existing repo-local validation logic, adds no dependency, requires no refactor authority.
+- Main architectural risk: silent contract drift (wrong app entrypoint, wrong merge precedence, wrong persistence behavior).
+
+### Evidence
+- `.copilot-tracking/plans/2026-04-21-cost-and-defaults.md` §2.1.2–§2.1.3
+- `routers/chat_router.py` (sampling already present on request models)
+- `llm_defaults.py`
+- `python_adapter_server.py` lines 431-445
+- `my-project/src/app.py`
+
+---
+
+## 2026-04-21: Task 2.1.2 QA Preflight — Acceptance Criteria
+
+**By:** Tank (QA)  
+**Date:** 2026-04-21  
+**Status:** ✅ PREFLIGHT COMPLETE
+
+### Verdict
+- **QA scope locked** to backend task 2.1.2 only; any 2.1.3 frontend work is out-of-scope and will be rejected at preflight.
+
+### Minimum Acceptance Evidence
+1. **Storage:** fail-open/fail-closed behavior proven (`load_user_sampling` returns `{}` on missing/corrupt file; invalid save raises and preserves on-disk content).
+2. **API Contract:** Validated for:
+   - `GET /sampling` (empty + populated)
+   - `PUT /sampling` (valid 200 + invalid 422)
+   - `DELETE /sampling/{task}` reset semantics
+3. **Sampling Precedence (Mandatory):** Test-gated for both `/chat/ask` and `/chat/stream`: **request body overrides > persisted file overrides > llm_defaults task defaults**.
+4. **Inspiration Precedence (Conditional):** Enforce only if Trinity wires sampling merge into inspiration paths in this task; otherwise mark not-applicable with explicit evidence.
+
+### Why
+- Highest regression risk is silent precedence drift and unsafe persistence behavior.
+- Frontend drift would violate approved 2.1.2 boundary and dilute QA signal.
+
+---
+
+## 2026-04-21: Task 2.1.2 QA Verdict — Implementation Approval
+
+**By:** Tank (QA)  
+**Date:** 2026-04-21  
+**Status:** ✅ APPROVE — Coordinator may mark 2.1.2 complete
+
+### Scope Check
+- Reviewed backend-only artifacts: `sampling_storage.py`, `routers/sampling_router.py`, `routers/chat_router.py`, `python_adapter_server.py`, tests, and plan tracking.
+- **No 2.1.3 frontend implementation drift observed.**
+- `inspiration_router.py` remains untouched; treated as **not-applicable** per preflight conditional rule.
+
+### Validation Evidence
+- **Focused test sequence:** `py -m pytest -q tests\test_sampling_storage.py tests\test_sampling_router.py test_chat_router.py` → **16 passed**.
+- **Confidence run:** `py -m pytest -q tests\test_llm_defaults.py tests\test_ai_adapter_chat_helper.py` → **10 passed**.
+- **Precedence wiring confirmed in shared code path:**
+  - `/chat/ask` resolves via `_resolve_request_llm_config(..., sampling=req.sampling)` (routers/chat_router.py lines ~496-503)
+  - `/chat/stream` resolves via `_resolve_request_llm_config(..., sampling=req.sampling)` (routers/chat_router.py lines ~549-563)
+  - Merge order in resolver: request > persisted file > task defaults (routers/chat_router.py lines ~83-90).
+
+### Release Gate Decision
+- **✅ Coordinator may mark 2.1.2 complete** and move to next executable task.
+

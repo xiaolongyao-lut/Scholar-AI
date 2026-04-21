@@ -181,3 +181,13 @@ This approval follows strict lockout semantics:
 - Chunk/raw_content path is only partially covered: `tests/test_contextual_chunker.py::test_contextual_preserves_original` verifies `raw_content` retention, but no direct test asserts reranker payload prefers `raw_content` over prefixed `content`.
 - Embedding-chain entry is covered by `tests/test_eval_runtime.py::test_retrieve_with_expansion_uses_translated_query_for_retrieval` (asserts `vector_store.embed_query()` is invoked with translated text and rerank still receives original query).
 - QA command used for this pass: `python -m pytest -q tests\\test_reranker.py::test_rerank_async_reorders_using_api tests\\test_reranker.py::test_rerank_async_truncates_oversized_documents tests\\test_eval_runtime.py::test_retrieve_with_expansion_uses_translated_query_for_retrieval tests\\test_contextual_chunker.py::test_contextual_preserves_original tests\\test_llm_provider_routing.py::test_hybrid_retriever_uses_siliconflow_rerank` (5 passed).
+
+### 2026-04-21: Task 2.1.2 QA Preflight & Verdict — Sampling Persistence Backend Scope
+- **Role:** Quality assurance for task 2.1.2 backend-only sampling persistence scope.
+- **Preflight verdicts:** Scope locked to 2.1.2 backend only. Any 2.1.3 frontend implementation is out-of-scope and will be rejected. Minimum acceptance evidence defined for storage fail-open/fail-closed behavior, API contract validation, and precedence wiring for both `/chat/ask` and `/chat/stream`.
+- **Test focus:** `tests/test_sampling_storage.py`, `tests/test_sampling_router.py`, `test_chat_router.py` — 16 tests total, all passing.
+- **Precedence validation:** Confirmed merge order in shared resolver: request > persisted file > task defaults (routers/chat_router.py lines ~83-90). Both chat endpoints validated.
+- **Scope integrity:** No 2.1.3 frontend implementation drift observed. `inspiration_router.py` remains untouched (marked not-applicable per preflight rule).
+- **Final verdict:** ✅ APPROVE for task 2.1.2 completion. Coordinator may mark task complete and advance to next executable task.
+- **Evidence:** 16 tests passed, precedence wiring confirmed, no frontend drift, scope boundary maintained.
+- **Decision trail:** Consolidated to `.squad/decisions/decisions.md` § 2026-04-21 Task 2.1.2 (Preflight, Verdict).
