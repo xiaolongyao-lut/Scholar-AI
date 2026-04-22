@@ -49,6 +49,81 @@ Archived decisions older than 30 days. Kept for historical reference.
 
 #### 4. tank-gateb-root-goldset-provenance.md
 
+- **QA finding:** Root `gateb_goldset.jsonl` is confirmed synthetic scaffolding (generator script + schema validator proof)
+- **Evidence:** Validator errors on `no_gold` invariants (records 16/24/32/40 fail)
+- **Implication:** Validates provenance-lock decision; no contamination risk
+- **Routing:** Confirms Oracle must build under locked canonical paths only
+
+---
+
+## 2026-04-22 Final Gate Batch Archive
+
+**Session:** Gate B Canonical-Pair Final Gate Completion  
+**Merged into:** `.squad/decisions.md#2026-04-22: Gate B Phase A Canonical-Pair Final Gate PASS`  
+**Timestamp:** 2026-04-22T22:15:00Z
+
+### Merged Inbox Notes
+
+#### 1. oracle-gateb-phase-a-scaffold.md
+
+- **Status:** Complete (reviewer-ready scaffold)
+- **Production output:** Built 36-record schema-valid `gateb_goldset.jsonl` + header-only `gateb_qrels.tsv`
+- **Input source:** `artifacts/eval_audit/gateb_initial_candidates.jsonl` (40 entries, trusted)
+- **Exclusion rule:** Excluded 4 S4 placeholders (query_text=null)
+- **Schema validation:** ✅ PASSED (zero errors)
+- **Strata distribution:** S1=16, S2=10, S3=10
+- **Artifact status:**
+  - `gateb_goldset.jsonl`: 36 records, all `no_gold=true`, empty qrels arrays
+  - `gateb_qrels.tsv`: TREC 4-column format, header only, 0 data rows, iteration=0
+- **Provenance fields:** source_stratum, source_template_id, original_query_id
+- **Constraints honored:** ✅ No fabricated data; canonical root excluded; no synthetic markers
+- **Evidence:** Script `scripts/build_gateb_phase_a_trusted.py` (reproducible)
+
+#### 2. tank-gateb-final-qa-gate.md
+
+- **Reviewer:** Tank (QA)
+- **Scope:** Gate B canonical pair contract compliance
+- **Verdict:** ✅ **PASS** (scaffold-pass for Phase A trusted-input contract)
+- **Meaning:** Structurally valid; trusted for reviewer gate; NOT annotation-complete
+- **Contract checklist results (all PASS):**
+  1. Schema validation: 0 errors
+  2. `gateb_qrels.tsv`: Strict 4-column TREC format, iteration=0
+  3. Cross-file alignment: query_id/doc_id/relevance multisets exactly match (both empty)
+  4. Relevance domain: Only {0,1,2}; no contradictions
+  5. `no_gold` invariants: PASS (no_gold=true with all qrels empty)
+  6. Synthetic root exclusion: PASS (canonical query_text subset of trusted lineage)
+  7. Provenance guard: PASS (no synthetic markers detected)
+- **Blockers remaining:** Pooling, annotation, κ validation (all Phase B scope)
+- **Next action:** Await Phase B tool development and annotation workflow
+
+#### 3. tank-gateb-pass-contract.md
+
+- **Purpose:** Lock final review criteria for Gate B canonical pair
+- **Scope:** `artifacts/eval_audit/{gateb_goldset.jsonl, gateb_qrels.tsv}`
+- **Hard constraints (7 items):**
+  1. Schema compliance: zero errors
+  2. Cross-file consistency: multiset equality
+  3. Synthetic root ledger excluded: never used as eval input
+  4. TREC format: strict 4-column, tab-separated, iteration=0
+  5. Relevance/no_gold contradictions: none allowed
+  6. Cross-file join check: all rows map correctly
+  7. Provenance guard: reject synthetic markers
+- **PASS conditions:** All 7 items must pass; no schema/format/logic errors
+- **NO-GO conditions:** Any one triggers rejection
+- **Final reviewer output expectation:** Binary explicit verdict (PASS or NO-GO with failed check ids)
+- **Use:** This contract template was instantiated by Tank QA and passed with 7/7 items PASS
+
+### Conflict Resolution
+
+All three notes were **100% consistent:**
+- Oracle's production results confirm planned constraints
+- Tank's verification confirms Oracle's outputs meet all requirements
+- Strata distribution (S1=16, S2=10, S3=10) reported identically by both
+- No fabrication, no synthetic contamination, no schema errors
+- Contract specification was used as the audit checklist; all items passed
+
+**Decision:** Unified into single canonical entry in active decisions.md
+
 - **Verdict:** Root `gateb_goldset.jsonl` is synthetic scaffolding/cold-start draft, NOT canonical trusted Gate B goldset
 - **Evidence:**
   - Generator writes file with seeded randomness (seed 42) and synthetic stratum sampling: `scratch_generate.py:50-78, 136-138`

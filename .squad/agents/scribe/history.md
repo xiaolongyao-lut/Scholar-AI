@@ -50,3 +50,17 @@ Agent Scribe initialized and ready for work.
 - **Orchestration entry:** `.squad/orchestration-log/2026-04-22T21-30Z-scribe-provenance-arbitration.md`
 - **Archive:** All four original inbox notes preserved in `.squad/decisions-archive.md` for historical reference
 - **Outcome:** Phase A unblocking pending → Oracle data-build preparation starts only after provenance lock acceptance
+
+**Session 2026-04-22: Gate B Canonical-Pair Final Gate Batch**
+
+- **Task:** Merge final-gate & scaffold-pass completion notes into unified canonical record
+- **Inbox notes processed:** 3 (all consistent, 0 conflicts)
+  1. Oracle completion: Built 36-record schema-valid goldset + header-only qrels; no fabrication; strata S1=16/S2=10/S3=10
+  2. Tank verification: 7-point contract audit all PASS; scaffold-pass verdict issued
+  3. Tank contract: Reviewer checklist template locked; all items verified
+- **Result:** ✅ COMPLETE — Unified decision "2026-04-22: Gate B Phase A Canonical-Pair Final Gate PASS" merged into `decisions.md`
+- **Session log:** `.squad/log/2026-04-22-gateb-canonical-pair-final-session.md` (full orchestration record)
+- **Orchestration entry:** `.squad/orchestration-log/2026-04-22T22-15-00Z-gateb-canonical-pair-final-gate.md`
+- **Archive:** All three original inbox notes preserved in `.squad/decisions-archive.md` for historical reference
+- **Status:** Both artifacts trusted; Phase B now unblocked for pooling + annotation + κ validation
+- **Key facts:** Schema validation PASS; synthetic root excluded; no contradictions; canonical paths locked; ready for reviewer gate

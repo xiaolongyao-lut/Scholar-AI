@@ -1810,6 +1810,129 @@ Scribe merged four independent inbox notes (2026-04-22 batch):
 1. Scribe framing: Evaluation pipeline is healthy; trusted inputs are missing
 2. Morpheus first-slice decision: Reviewer-gate preparation, not data-build
 3. Morpheus arbitration: Root goldset excluded; canonical paths locked; Oracle to build under locked paths
+
+---
+
+### 2026-04-22: Gate B Phase A Canonical-Pair Final Gate PASS
+
+**By:** Oracle (Production), Tank (Verification), Scribe (Orchestration)  
+**Date:** 2026-04-22  
+**Status:** ✅ COMPLETE — Both artifacts trusted; Phase B unblocked
+
+**Decision Source:** Merged from three consistent inbox notes:
+- `.squad/decisions/inbox/oracle-gateb-phase-a-scaffold.md` (production completion)
+- `.squad/decisions/inbox/tank-gateb-final-qa-gate.md` (verification verdict)
+- `.squad/decisions/inbox/tank-gateb-pass-contract.md` (contract specification)
+
+## Oracle Phase A Production (Complete Slice)
+
+**Task:** Build 36-record schema-valid `gateb_goldset.jsonl` and header-only `gateb_qrels.tsv` from trusted pre-annotation artifact
+
+**Input Source:** `artifacts/eval_audit/gateb_initial_candidates.jsonl` (40 entries, trusted, user-authored)
+
+**Conversion Rule:** Exclude 4 S4 placeholders (query_text=null); convert 36 candidates with actual query text into schema-valid goldset records
+
+**Outputs Delivered:**
+
+1. **`artifacts/eval_audit/gateb_goldset.jsonl`** (36 records)
+   - Schema version 1 compliant (validated with `gateb_schema_validator.py`)
+   - All records have `no_gold=true` (awaiting human annotation)
+   - Empty `qrels` arrays (no fabricated judgments)
+   - Strata distribution: S1=16, S2=10, S3=10
+   - Provenance fields: `source_stratum`, `source_template_id`, `original_query_id`
+
+2. **`artifacts/eval_audit/gateb_qrels.tsv`** (TREC format)
+   - 4-column format: `query_id iteration doc_id relevance`
+   - `iteration=0` on every row (as required)
+   - Zero data rows (pending human pooling and annotation)
+   - Header row present
+
+**Schema Validation:** ✅ PASSED (zero errors)
+
+**Constraints Honored:**
+- ✅ Root `gateb_goldset.jsonl` NOT used as input (forbidden)
+- ✅ Seeded only from repo-local trusted source
+- ✅ No fabricated provenance or relevance judgments
+- ✅ No invalid schema entries
+
+**Evidence:** Script `scripts/build_gateb_phase_a_trusted.py` (reproducible, no manual edits)
+
+## Tank QA Final Gate (Contract Compliance Audit)
+
+**Task:** Verify both canonical artifacts meet all 7-point contract requirements
+
+**Checklist Results (All PASS):**
+
+| # | Check | Result | Evidence |
+|---|-------|--------|----------|
+| 1 | Schema validation | ✅ PASS | `gateb_goldset.jsonl` → 0 errors |
+| 2 | TREC format | ✅ PASS | 4-column tab-delimited, `iteration=0` |
+| 3 | Relevance domain | ✅ PASS | Only `{0,1,2}` + no contradictions |
+| 4 | `no_gold` invariants | ✅ PASS | `no_gold=true` with all qrels empty |
+| 5 | Cross-file alignment | ✅ PASS | `query_id/doc_id/relevance` multisets exactly match |
+| 6 | Synthetic root exclusion | ✅ PASS | Canonical query_text subset of `gateb_initial_candidates.jsonl` |
+| 7 | Provenance guard | ✅ PASS | No synthetic markers; root excluded |
+
+**Verdict:** ✅ **PASS — Scaffold-Pass for Phase A Trusted-Input Contract**
+
+**What "Scaffold-Pass" Means:**
+- Both artifacts are structurally valid and ready for reviewer inspection
+- Trusted for metadata structure and contract compliance
+- NOT yet annotation-complete (qrels empty, pooling pending)
+- Unblocks Phase B (pooling + annotation + κ validation)
+
+## What This Unblocks
+
+✅ Reviewers can inspect 36 queries and provenance  
+✅ Pooling tool development can proceed against query_ids  
+✅ Schema-valid structure ready to receive annotation data  
+✅ **Phase B may start once artifacts are approved**
+
+## What Remains Blocked (Phase B Scope)
+
+- **Pooling:** Build candidate pools (BM25 + Dense + Graph + RRF + Rerank) — 20-40 docs per query
+- **Annotation:** Human judges assign relevance `{0,1,2}` per doc
+- **κ validation:** Cohen's κ ≥ 0.6 on 20-query overlap sample
+- **Evaluation runs:** Cannot execute until qrels populated
+
+## Phase B Next Actions
+
+1. Build pooling tool or run retrieval system to generate candidate pools
+2. Execute human annotation workflow (manual or semi-automated)
+3. Populate qrels arrays and update `no_gold` flags
+4. Validate with Cohen's κ check
+5. Re-run gate with populated qrels
+
+## Unblock Condition
+
+Phase B work may begin once:
+1. Reviewers have approved both canonical artifacts
+2. Provisional scaffolding phase (Gate A) is complete
+3. Phase B tooling is ready
+
+## Deduplication Notes
+
+All three inbox notes were **100% consistent** with zero conflicts:
+- Oracle describes production; Tank verifies the result
+- Both report identical strata distribution (S1=16, S2=10, S3=10)
+- Both confirm zero errors and no fabrication
+- Tank's contract checklist confirms all Oracle constraints were honored
+
+**Decision:** Unified into single canonical entry (this record).
+
+**Inbox files scheduled for deletion after commit:**
+- `.squad/decisions/inbox/oracle-gateb-phase-a-scaffold.md`
+- `.squad/decisions/inbox/tank-gateb-final-qa-gate.md`
+- `.squad/decisions/inbox/tank-gateb-pass-contract.md`
+
+**Archive:** All three original notes preserved in `decisions-archive.md` for historical reference.
+
+## Session & Orchestration Logs
+
+- **Session Log:** `.squad/log/2026-04-22-gateb-canonical-pair-final-session.md` (complete orchestration record)
+- **Orchestration Entry:** `.squad/orchestration-log/2026-04-22T22-15-00Z-gateb-canonical-pair-final-gate.md`
+
+---
 4. Tank QA verdict: Root file is synthetic scaffolding (generator script analysis + schema validator output)
 
 **Result:** All four notes were consistent and fully deduplicable. No conflicts.

@@ -292,6 +292,13 @@ The keyword_prefilter module is now ready for production integration into the li
 
 ### 2026-04-20 Morpheus — U1 恢复路由：先修评测集偏置，不做同集重跑
 
+### 2026-04-22 Morpheus 自主更新 — Gate B 根金标仲裁
+
+- **操作**：新增团队决策记录 `.squad/decisions/inbox/morpheus-2026-04-22-phase-a-gateb-arbitration.md`，裁定根目录 `gateb_goldset.jsonl` 的可用边界，并锁定 Phase A 唯一合法下一切片。
+- **触发原因**：队内出现冲突——既有 provenance lock 要求排除根目录 synthetic goldset，但最新盘点提出该文件含 40 条记录、似乎可迁移复用。需要用仓库证据重新仲裁。
+- **结果**：确认根目录 `gateb_goldset.jsonl` 仍不得进入 canonical/trusted Gate B 评测；仅可作为非 canonical 的 schema/debug fixture。原因是 Gate B 方案已把 40 条首批样本落在 `artifacts/eval_audit/gateb_initial_candidates.jsonl`，canonical 输出路径锁定为 `artifacts/eval_audit/gateb_goldset.jsonl` + `artifacts/eval_audit/gateb_qrels.tsv`，且根文件由 `scratch_generate.py` 生成并经 `gateb_schema_validator.py` 验证失败（4 条 `no_gold` 不变式错误）。
+- **是否通知 Owner**：否（团队可见于 decision inbox；若需执行，由 Oracle/Tank 按锁定路径继续）
+
 - **操作**：为 U1 质量失败写入恢复决策 `.squad/decisions/inbox/morpheus-u1-recovery.md`，明确下一周期先做评测集修复说明，不批准在未改 `eval_queries_v2.1.jsonl` 的前提下继续 full eval 重跑或检索调参。
 - **触发原因**：Tank 复核后合同链已通过，但质量门禁仍严重失败（Recall@5=0.0281, MRR=0.0204）。审计证据显示 `output/eval_query_audit_v21.json` 中 `template_match.matched=3269`、`non_template=0`、`unique_query_text=181/3269`、`duplicate_query_text_across_docs.type_count=70`、`hard_with_single_doc_evidence.type_count=326`，问题首先表现为评测集/模板设计偏置。
 - **结果**：

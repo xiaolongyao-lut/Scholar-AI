@@ -66,3 +66,16 @@
 - **Decision:** No code changes needed. Pipeline production-ready for text reranking. Future multimodal support requires figure/table extraction in chunk phase and request format update.
 - **Evidence:** reranker_client.py:83–95, contextual_chunker.py:164–220, test_reranker.py:261–309 all validate correct behavior.
 - **Formal decision:** `.squad/decisions/inbox/oracle-chunk-trace.md` written; team coordination complete.
+
+### Gate B Phase A Trusted Input Production (2026-04-22)
+- **Task:** Build canonical Gate B goldset and qrels from repo-local trusted sources
+- **Input:** `artifacts/eval_audit/gateb_initial_candidates.jsonl` (40 candidates, trusted)
+- **Output:** `artifacts/eval_audit/gateb_goldset.jsonl` (36 schema-valid queries) + `artifacts/eval_audit/gateb_qrels.tsv` (TREC format)
+- **Scope limitation:** S4 placeholders (query_text=null) excluded as user-authored; 36/40 candidates converted to reviewer-ready scaffolds
+- **Constraints honored:** Root `gateb_goldset.jsonl` NOT used as input (forbidden); no fabricated provenance or judgments; schema validation passes
+- **Artifact quality:** All records have `no_gold=true`, empty `qrels` arrays (honest about annotation blocker); strata S1=16, S2=10, S3=10
+- **Precise blocker:** Human annotation requires (1) pooling tool to build candidate pools, (2) relevance judgments (0/1/2) for 20-40 docs per query, (3) Cohen's κ ≥ 0.6 validation
+- **What unblocked:** Reviewers can inspect queries and provenance; pooling tool can proceed; schema-valid structure ready for annotation data
+- **What remains blocked:** Evaluation cannot run (empty qrels); Gate B pass criteria unchecked; Gate C trigger decision blocked
+- **Script:** `scripts/build_gateb_phase_a_trusted.py` (reproducible, no manual edits)
+- **Decision:** `.squad/decisions/inbox/oracle-gateb-phase-a-scaffold.md` documents completion of first legal trusted-input production slice
