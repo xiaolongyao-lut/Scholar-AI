@@ -1,10 +1,18 @@
 # Tank History
 
-## Project Context
+## Core Context
 
-- Project: my-project
-- Owner: xiao
-- Preferred role: testing, verification, and skeptical review
+**Project:** my-project | **Owner:** xiao  
+**Role:** Testing, verification, skeptical review  
+
+**Key Checkpoints:**
+- Phase 6 extraction pipeline: 16/16 tests passed (real data validation on 109 papers)
+- U1 Step 3 QA acceptance: 11-point checklist (A1–A11), Tier 2 gate (Recall@5 ≥ 0.45, MRR ≥ 0.30)
+- U1A audit approved: pathologies cleared (zero duplicates, zero hard-queries, full template diversity restored)
+- Tier 1/2 eval metrics: probe 50q → full 250q with coherent per-query persistence
+- 2.1.2 sampling backend: 16 tests passed, precedence wiring confirmed
+- 2.1.3 cycle: backend + frontend multi-stage reviews, both approved after isolation/blank-field fixes
+- Reranker model switch: qwen3-rerank text-only validated, 5/5 regression tests pass
 
 ## Learnings
 

@@ -1,11 +1,17 @@
 # Morpheus History
 
-## Project Context
+## Core Context
 
-- Project: my-project
-- Owner: xiao
-- Team pattern: architecture → implementation → testing → data
-- Preferred responsibility: review cross-domain changes before they land
+**Project:** my-project | **Owner:** xiao  
+**Team Pattern:** architecture → implementation → testing → data  
+**Responsibility:** Review cross-domain changes before landing  
+
+**Key Checkpoints:**
+- Phase 6 extraction/pipeline complete (13/13 tests): `.squad/backups/checkpoint-phase6-final-20260420-0418/`
+- U1A query dataset remediation approved: all pathologies cleared (duplicates/hard-queries/template-saturation)
+- Tier 2 eval validation: Recall@5=0.70, MRR=0.599 (12.8× gate threshold, statistically sound)
+- 2.1.2 sampling persistence approved: precedence wiring confirmed both `/chat/ask` and `/chat/stream`
+- 2.1.3 cycle close: backend (Ralph) + frontend (Trinity) both approved, phase ready for deployment
 
 ## Learnings
 
