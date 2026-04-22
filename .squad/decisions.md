@@ -2439,3 +2439,121 @@ Implemented §2.1.1 only inside layers/ai_adapter.py by adding private _chat hel
 ### Release Gate Decision
 - **✅ Coordinator may mark 2.1.2 complete** and move to next executable task.
 
+
+---
+
+## 2026-04-22: Task 2.2 Design Review — LLM Cost Telemetry
+
+**By:** Morpheus  
+**Status:** PROCEED — split execution required
+
+### Decisions
+1. **Split 2.2 into three sequential slices** for isolated testing, router addition, and regression.
+2. **Exact next slice:** 2.2.A (tests only) covering `tests/test_llm_pricing.py` and `tests/test_llm_cost_logger.py`.
+3. **Read-only endpoint boundary:** `/llm/cost/*` streams from `output/llm_cost.jsonl` with no cache, no mutations, 256 MB guard.
+4. **Contract preservation:** Keep existing `llm_cost_logger` fail-open behavior and JSONL schema intact.
+
+---
+
+## 2026-04-22 — Task 2.2.A QA Verdict: APPROVE
+
+**Owner:** Tank  
+**Scope:** 2.2.A tests-only slice
+
+### Result
+- Coverage verified: pricing lookup, cost math, logger schema, telemetry suppression, unknown models.
+- 19 tests passed.
+- No `/llm/cost/*` router work detected.
+- **✅ APPROVE** — 2.2.A complete, advance to 2.2.B.
+
+---
+
+## 2026-04-22: Task 2.1.3 Design Review — Frontend Sampling Panel
+
+**By:** Morpheus
+
+### Decisions
+1. **Task boundary:** Sampling panel in `frontend/src/pages/Settings.tsx` only, no chat-input UI work.
+2. **State isolation:** Server-backed state under `~/.literature-lab/sampling.json`.
+3. **Empty-field semantics:** Frontend must omit empty fields from `PUT /sampling` payloads.
+4. **Contract prerequisite:** Backend `GET /sampling` must expose `task_defaults` and `MODEL_MAX_TOKENS`.
+
+---
+
+## 2026-04-22: Task 2.1.3 Sampling Frontend Rejection Audit — REVISION REQUIRED
+
+**By:** Morpheus
+
+### Defects Found
+1. **Blank != no override** — Backend persists empty `{task: {}}` objects. Frontend must omit empty task overrides entirely.
+2. **Scope drift** — Unrelated `aiCostProfile` added to `settingsStore.ts`. Must be removed.
+
+### Lockout Enforced
+- Switch locked out. **Next owner: Trinity**
+- Brief: Fix blank semantics, remove scope drift, preserve sampling UI.
+
+---
+
+## 2026-04-22: Task 2.1.3 Sampling Frontend QA Re-Review: APPROVE
+
+**Owner:** Tank
+
+### Verification
+- Blank field persistence: Resolved (DELETE semantics via `buildSamplingSaveRequest`).
+- Scope drift: Resolved (no `aiCostProfile` UI, `settingsStore.ts` optional only).
+- UI contract: All 5 task panels, PUT/DELETE, 422 surfacing confirmed.
+- Tests: frontend pass, npm build pass, backend tests pass.
+- **✅ APPROVE** — 2.1.3 complete.
+
+---
+
+## 2026-04-22: Task 2.1.3 Backend Prerequisite Rejection Audit — REVISION REQUIRED
+
+**By:** Morpheus
+
+### Scope Impurity Found
+- Claimed "backend-only" but worktree contaminated: `llm_defaults.py`, `sampling_storage.py`, modified routers, untracked test files.
+- Not a logic rejection; **isolation rejection**.
+
+### Lockout Enforced
+- Trinity locked out. **Next owner: Ralph**
+- Brief: Clean tree, minimal patch only (`GET /sampling` returns `task_defaults` + `model_max_tokens`, focused tests).
+
+---
+
+## 2026-04-22: Task 2.1.3 Backend Prerequisite — Ralph Clean Resubmission
+
+**Status:** ✅ READY FOR TANK TIER 2 RE-REVIEW
+
+### What Changed (4 Files, 224 Lines)
+- `routers/sampling_router.py` (44 lines): GET/PUT/DELETE `/sampling` endpoints
+- `sampling_storage.py` (62 lines): User overrides persistent storage
+- `tests/test_sampling_router.py` (60 lines): 3 focused tests (all green)
+- `llm_defaults.py` (58 lines): Defaults and validation reuse
+
+### Worktree Isolation
+```
+A  llm_defaults.py
+A  routers/sampling_router.py
+A  sampling_storage.py
+A  tests/test_sampling_router.py
+
+4 files changed, 224 insertions(+), 0 deletions(-)
+```
+✅ No unrelated drift, only task files.
+
+---
+
+## 2026-04-22: Task 2.1.3 Backend Prerequisite — Tank Tier 2 Re-Review: APPROVE
+
+**Status:** ✅ **APPROVE**
+
+### Verification
+- Minimal scope: 4 files, 224 lines, 0 deletions.
+- No scope creep: adapter untouched, frontend untouched.
+- Tests green: 3 focused + 13/13 comprehensive suite.
+- Backward compatible: existing fields preserved.
+- **Unblocks 2.1.3 frontend** for defaults query.
+
+**Coordinator signal:** 2.1.3 complete. Advance to 2.2.B.
+
