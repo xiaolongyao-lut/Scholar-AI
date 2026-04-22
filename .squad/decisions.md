@@ -253,6 +253,30 @@ Residual low-fanout cross-doc text reuse (`max fanout=5`, `clusters_gt1=562`) re
 
 New canonical full eval rerun with owner **Ralph** (with Morpheus oversight). Oracle and Trinity remain lockout-ineligible.
 
+### 2026-04-22: Task 2.2.B QA Verdict (Tank) — APPROVED
+
+**By:** Tank (QA)
+**Date:** 2026-04-22
+**Scope:** Cost Defaults Router (2.2.B)
+**Decision Source:** `.squad/decisions/inbox/tank-2.2.b-qa-verdict.md` (merged)
+
+## Verdict
+
+✅ **APPROVED** — 2.2.B meets specification and preflight checklist.
+
+## Evidence
+
+- Router is read-only GET surface only (`/llm/cost/today`, `/llm/cost/range`), no mutation handlers.
+- Aggregation logic stream-scans `output/llm_cost.jsonl` line-by-line, skips malformed rows, reports `meta.malformed_lines`.
+- Oversize guard enforced: files >256 MB return HTTP 503 with archive guidance.
+- Error rows counted as calls (aggregation date-window based, not status-filtered).
+- Live app wiring present in `python_adapter_server.py`: router registered, `/llm/*` classified as API path.
+- Focused regression run passed: `py -m pytest -q tests\test_llm_pricing.py tests\test_llm_cost_logger.py tests\test_llm_cost_router.py` → **20 passed**.
+
+## Next Step
+
+Coordinator may mark **2.2.B complete** and advance to the next 2.2 slice.
+
 ## Governance
 
 - All meaningful changes require team consensus

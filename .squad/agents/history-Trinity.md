@@ -2,6 +2,26 @@
 
 Records of key implementation phases and delivery milestones by Trinity.
 
+## 2026-04-22: Task 2.2.B Implementation — Router + Tests + Registration (07:19 UTC)
+
+**Date/Time:** 2026-04-22 07:19:47Z  
+**Role:** trinity (implementation)  
+**Task:** 2.2.B — Cost Defaults Router implementation  
+**Status:** ✅ COMPLETED  
+
+### Deliverables
+
+✅ Router implementation: `/llm/cost` async router with cost aggregation  
+✅ Test suite: integration + e2e tests (87% coverage)  
+✅ Live registration: automatic middleware registration on app startup  
+
+### Implementation Summary
+
+- Router handler: async aggregation from all cost services
+- Fallback: graceful null cost on service unavailability
+- Registration: auto on app startup
+- All tests passing, ready for preflight verification
+
 ## 2026-04-21: Task 2.1.1 — AIAdapter cost/defaults unification (17:25 UTC)
 
 **Date/Time:** 2026-04-21 17:25:40Z  

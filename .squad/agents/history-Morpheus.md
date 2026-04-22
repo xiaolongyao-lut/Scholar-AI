@@ -2,6 +2,28 @@
 
 Records of key decisions and approvals by Morpheus (the architecture owner).
 
+## 2026-04-22: Task 2.2.B Design Review & Approval Gate (07:19 UTC)
+
+**Date/Time:** 2026-04-22 07:19:47Z  
+**Role:** morpheus (architecture, approval)  
+**Task:** 2.2.B — Cost Defaults Router design review  
+**Status:** ✅ COMPLETED  
+
+### Design Decision
+
+✅ **APPROVED** — `/llm/cost` router selected as DO NOW for immediate implementation.
+
+### Rationale
+
+- Achieves cost transparency via single source of truth
+- Minimal latency overhead (<5ms per request target)
+- Integrates cleanly into middleware chain post-auth
+- Dependencies: existing cost-calculator service
+
+### Approval Status
+
+✅ Approved for Trinity implementation team. Reviewer gate completed by Tank: **APPROVED for deployment**.
+
 ## 2026-04-21: Task 2.1.1 Design Review & Approval Gate (17:25 UTC)
 
 **Date/Time:** 2026-04-21 17:25:40Z  

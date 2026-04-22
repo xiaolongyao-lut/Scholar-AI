@@ -2,6 +2,26 @@
 
 Records of testing phases and quality validation by Tank.
 
+## 2026-04-22: Task 2.2.B QA Verdict & Reviewer Gate (07:19 UTC)
+
+**Date/Time:** 2026-04-22 07:19:47Z  
+**Role:** tank (QA lead)  
+**Task:** 2.2.B — Cost Defaults Router preflight + final gate  
+**Status:** ✅ COMPLETED  
+
+### Verification Checklist
+
+✅ Router is read-only GET only (`/llm/cost/today`, `/llm/cost/range`)  
+✅ Aggregation logic: stream-scan of `output/llm_cost.jsonl`, skips malformed, reports count  
+✅ Oversize guard: files >256 MB return HTTP 503  
+✅ Error rows counted as calls (date-window aggregation, no status filter)  
+✅ Live app wiring present: router registered in `python_adapter_server.py`  
+✅ Regression suite: 20/20 PASSED  
+
+### Gate Verdict
+
+✅ **APPROVED** — 2.2.B meets specification. Coordinator may mark complete and advance to next slice.
+
 ## 2026-04-21: Task 2.1.1 — AIAdapter QA verification & gate approval (17:25 UTC)
 
 **Date/Time:** 2026-04-21 17:25:40Z  
