@@ -2762,3 +2762,57 @@ A  tests/test_sampling_router.py
 
 **Coordinator signal:** 2.1.3 complete. Advance to 2.2.B.
 
+---
+
+## 2026-04-22: Gate B Phase B Pool Export C6 Re-Review — PASS
+
+**Status:** ✅ **PASS**
+
+**By:** Morpheus (audit), Ralph (implementation), Tank (verification)
+
+### Scope Reviewed
+C6-only reproducibility hardening slice for Gate B Phase B pool export (lockout-compliant Ralph revision after Trinity rejection).
+
+### Critical Path Summary
+
+**Morpheus Audit:** Validated Tank's C6 failure diagnosis (non-deterministic export). Designed narrowest fix scope: C6-only reproducibility hardening without scope/data changes. Assigned to Ralph (lockout-compliant non-Trinity owner).
+
+**Ralph Implementation:** COMPLETE
+- Added reproducibility metadata: exact command, input paths, commit SHA, deterministic knobs, output hashes
+- Hardened candidate sort key: explicit 3-part sort (source label → best rank → doc ID) for deterministic ordering
+- Created test harness `test_gateb_c6_repro.py` for C6 proof with stable-hash rerun evidence
+- No breaking changes to C1–C5 contracts
+
+**Tank Verification:** PASS
+- Contract regression (C1–C5): ✅ 3/3 tests pass
+- Reproducibility proof: ✅ Stable hashes on rerun
+  - pools: `254f2df1fd85a6a945f3a2664b48f5244d31599457be579c6bdacb8339d5213a`
+  - annotation_input: `bc2bebfca7f5cd1084248b44da8acc4eee50042958fdeffb589071696ea6dba4`
+- Query count: ✅ 36 (both runs)
+- Schema spot-check: ✅ source_doc_ids retained in pools; annotation schema preserved
+
+### C6 Closure
+- **Deterministic export:** ✓ Proven by stable-hash rerun evidence
+- **Reproducibility metadata:** ✓ Command, inputs, commit SHA, deterministic knobs, output hashes
+- **Scope drift:** ✓ Zero — C1–C5 unchanged, no 36-query changes, no policy expansions
+- **Contract compliance:** ✓ All 6 items (C1–C6) PASS
+
+### Unblocked: Phase B Annotation
+
+Phase B annotation baseline freeze-ready:
+1. Artifact pair + hash pair frozen as baseline
+2. Annotators/reviewer assignment can proceed
+3. Scoring workflow starts immediately on `artifacts/eval_audit/gateb_phase_b_annotation_input.jsonl`
+4. Downstream outputs: `gateb_qrels.tsv` + κ consistency report
+
+### Files Modified
+- `gateb_phase_b_pool_export.py` — Added reproducibility support, determinism hardening
+- `test_gateb_c6_repro.py` — New reproducibility test harness (C6 proof)
+
+### Evidence Anchors
+- `.squad/decisions/inbox/morpheus-gateb-phaseb-c6-audit.md`
+- `.squad/decisions/inbox/ralph-gateb-c6-reproducibility-hardening.md`
+- `.squad/decisions/inbox/tank-gateb-c6-rereview-verdict.md`
+- `.squad/log/2026-04-22-gateb-c6-rereview-session.md`
+- `.squad/orchestration-log/2026-04-22T23-45-00Z-gateb-c6-rereview.md`
+

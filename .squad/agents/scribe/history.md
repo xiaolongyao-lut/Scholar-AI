@@ -64,3 +64,19 @@ Agent Scribe initialized and ready for work.
 - **Archive:** All three original inbox notes preserved in `.squad/decisions-archive.md` for historical reference
 - **Status:** Both artifacts trusted; Phase B now unblocked for pooling + annotation + κ validation
 - **Key facts:** Schema validation PASS; synthetic root excluded; no contradictions; canonical paths locked; ready for reviewer gate
+
+**Session 2026-04-22: Gate B C6 Re-Review Batch**
+
+- **Task:** Merge C6 rereview inbox batch (determinism fix verification) into unified decision record
+- **Inbox notes processed:** 3 (all consistent, 0 conflicts)
+  1. Morpheus audit: Validated Tank's C6 failure diagnosis; designed narrowest fix scope; assigned to Ralph (lockout-compliant non-Trinity owner)
+  2. Ralph implementation: COMPLETE — added reproducibility metadata + determinism hardening + test harness; contract regression stable (C1–C5 PASS); ready for Tank review
+  3. Tank verdict: PASS ✅ — verified stable hashes on rerun (pools + annotation_input), query count stable (36), schema spot-check PASS, scope drift zero
+- **Result:** ✅ COMPLETE — Unified decision "2026-04-22: Gate B Phase B Pool Export C6 Re-Review — PASS" merged into `decisions.md`
+- **Session log:** `.squad/log/2026-04-22-gateb-c6-rereview-session.md` (complete C6 verification record)
+- **Orchestration entry:** `.squad/orchestration-log/2026-04-22T23-45-00Z-gateb-c6-rereview.md`
+- **Archive:** All three original inbox notes preserved in `.squad/decisions-archive.md` for historical reference
+- **Reproducibility proof:** Stable hashes confirmed — pools: `254f2df1fd85...`, annotation: `bc2bebfc...`; query count: 36 (both runs)
+- **Unblocked:** Phase B annotation baseline freeze-ready; annotator assignment + scoring workflow can proceed
+- **Key facts:** C6 determinism proven; C1–C5 contracts stable; zero scope drift; artifact baseline stable
+

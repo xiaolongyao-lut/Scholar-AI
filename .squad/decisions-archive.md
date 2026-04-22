@@ -147,4 +147,71 @@ All four notes align on:
 
 ---
 
+## 2026-04-22 Gate B C6 Re-Review Batch Archive
+
+**Session:** Gate B Phase B Pool Export C6 Re-Review  
+**Merged into:** `.squad/decisions.md#2026-04-22: Gate B Phase B Pool Export C6 Re-Review — PASS`  
+**Timestamp:** 2026-04-22T23:45:00Z
+
+### Original Inbox Notes
+
+#### 1. morpheus-gateb-phaseb-c6-audit.md
+
+- **Audit Result:** VALID FAILURE
+- **Scope:** Reviewed Tank's C6 rejection (non-deterministic export) against pool-export contract
+- **Evidence:** Same command + same inputs at commit `50f33d2ac6fcbbe1e88fede7c1fc8cca7880f8bf` produced different hashes
+- **Root Cause:** Exporter lacks reproducibility metadata and deterministic hardening
+- **Fix Scope (C6-only):** Add explicit repro metadata (command, inputs, commit SHA, deterministic knobs, output hashes) + harden determinism so identical inputs yield identical outputs
+- **Out of Scope:** Query scope changes, pool membership policy, source/evidence semantics, qrels work, dense-lane expansion
+- **Owner Decision:** Trinity locked out; Ralph assigned (narrowest revision after rejection)
+- **Status:** START NOW approved (narrow, legal, dependency-free, isolated)
+
+#### 2. ralph-gateb-c6-reproducibility-hardening.md
+
+- **Status:** IMPLEMENTATION COMPLETE
+- **Implementer:** Ralph (Work Monitor)
+- **Files Modified:** 2
+  1. `gateb_phase_b_pool_export.py` — Added reproducibility metadata support + determinism hardening
+  2. `test_gateb_c6_repro.py` — New reproducibility test harness (C6 proof)
+- **Determinism Hardening:** Explicit 3-part sort key (source label → best rank → doc ID) ensures identical candidate ordering
+- **Metadata Captured:** Command, inputs, commit SHA, deterministic knobs, output file hashes
+- **Contract Compliance:** C1–C5 unchanged (36-query scope, dedup, source-label, evidence, artifact separation); C6 (reproducibility) fixed
+- **Proof:** test_gateb_c6_repro.py runs export twice, compares hashes, confirms deterministic behavior
+- **Test Coverage:** Existing tests still pass (no breaking changes)
+- **Ready Status:** Ready for Tank Tier 2 Re-Review
+
+#### 3. tank-gateb-c6-rereview-verdict.md
+
+- **Verdict:** ✅ **PASS**
+- **Evidence Executed:**
+  1. Helper function validation: ✅ `py -3 validate_c6_changes.py` PASS
+  2. Contract regression: ✅ `pytest tests/test_gateb_phase_b_pool_export.py -v` — 3/3 pass (C1–C5 stable)
+  3. Reproducibility proof: ✅ `python test_gateb_c6_repro.py` — stable hashes on rerun
+     - pools: `254f2df1fd85a6a945f3a2664b48f5244d31599457be579c6bdacb8339d5213a`
+     - annotation_input: `bc2bebfca7f5cd1084248b44da8acc4eee50042958fdeffb589071696ea6dba4`
+  4. Schema spot-check: ✅ source_doc_ids retained in pools, annotation schema preserved
+- **Query Count:** 36 (both runs)
+- **Scope Drift:** Zero
+- **QA Conclusion:** C6 is closed; deterministic rerun behavior reproducible with stable hashes
+- **Next Steps:** 
+  1. Freeze artifact pair + hash pair as annotation baseline
+  2. Assign annotators/reviewer and begin scoring
+  3. Produce downstream outputs (gateb_qrels.tsv + κ consistency report)
+
+### Merger Result
+
+**Status:** ✅ CONSISTENT AND FULLY DEDUPLICABLE
+
+All three notes align on:
+- C6 failure diagnosis: valid (non-deterministic export with unstable hashes)
+- Fix scope: narrowest (C6-only reproducibility hardening, no policy/data changes)
+- Implementation path: Ralph lockout-compliant assignment → complete determinism hardening + test proof
+- Verification: Tank confirms stable-hash rerun evidence; C1–C5 contracts stable; C6 fixed
+
+**Verdict consensus:** PASS ✅
+
+**No conflicts detected between any pairs of notes.**
+
+---
+
 
