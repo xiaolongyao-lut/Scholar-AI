@@ -12,16 +12,17 @@
 - Team members should reuse project rules and skills instead of coding from isolated local assumptions.
 - Implemented Phase 1 LiteLLM gateway with env-driven configs, added .env.example and tests.
 
-- Phase 1 discovery found no literature data files in data/output/resources or repo root; report at .squad/discovery/literature-data-map.md.
-- Real data scan: C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output contains batch extraction JSONs (batch_process_109papers_results.json and per-paper artifacts under batch_test_109papers\<key>\<paper-title>\).
-- Zotero storage at D:\zotero\zoterodate\storage is attachment-heavy (mostly PDFs/caches) with 83 jasminum-outline.json outline files; limited structured metadata fields in samples.
-- Implemented src/keyword_filter.py keyword_prefilter with Unicode-normalized substring matching across title/abstract/keywords-like keys (incl. Chinese) and nested structures.
-- Implemented src/folder_traversal.py for lightweight folder traversal (json/jsonl/csv/txt), traceable record fields (source_root/path/relative_path/record_type), and keyword_prefilter integration.
-- Added traverse_folder alias in src/folder_traversal.py to align traversal tests with the public entrypoint contract.
-- Implemented src/extraction_pipeline.py with extract_literature_context entrypoint, provenance-preserving context items, and keyword-aware lightweight extraction.
-- Added tests/test_extraction_pipeline.py to verify keyword filtering, provenance visibility, and text extraction behavior.
-- Updated README.md to document Phase 6 extraction pipeline integration.
-- Added per-query JSONL persistence for eval runs via `--per-query-output` to preserve per-query quality evidence on interruption.
+### 2026-04-22: Gate B Review-Chain Milestone — Trinity Preflight Ready (With Conditions)
+
+- **Scope:** Preflight validation of working annotation artifact
+- **Verdict:** ⚠️ READY WITH CONDITIONS (working artifact usable; conditions: add `annotator_id`, exclude `source_hint`)
+- **Key findings:**
+  - All annotation metadata present and correctly structured
+  - Trinity implementation ready to receive annotation input
+  - Condition 1: Canonical merge must include `annotator_id` field (audit trail)
+  - Condition 2: Non-canonical `source_hint` values must remain in development artifact only
+- **Next:** Morpheus final gate → Ralph canonical merge authorization
+- **Decision ref:** `.squad/decisions/inbox/trinity-annotation-readiness.md`
 
 ### 2026-04-21: Rerank Config Alignment (qwen3-rerank)
 - **Direction:** Implemented config/env/docs/test alignment for qwen3-rerank as final default model.
@@ -93,3 +94,6 @@
 - **Status:** Implementation complete. Sampling persistence, `/sampling` routes, live router registration, chat precedence wiring, tests all passing (16 tests focused). Awaiting Tank QA verdict.
 - **Test results:** All unit tests pass; precedence wiring confirmed in code paths for both chat endpoints.
 - **Decision trail:** Consolidated to `.squad/decisions/decisions.md` § 2026-04-21 Task 2.1.2 (Design Review, Preflight, Verdict).
+- 2026-04-22 Gate B Phase B preflight: `artifacts/eval_audit/gateb_phase_b_annotation_input.jsonl` now contains in-place candidate-level `relevance` + `judged_at` judgments across all 36 frozen queries (343 candidates total), but its SHA moved from frozen `f86ede18...` to working `cee338e7...`.
+- Gate B Phase B contract risk: canonical validator only accepts qrel `source_hint` values in `{bm25,bm25+dense,bm25+graph,dense,rerank,evidence_set,unexpected_unknown_source}`, while the working annotation artifact currently carries combinations like `graph+rrf+rerank` and `bm25+rrf+rerank+evidence_set`.
+- Gate B Phase B merge-readiness note: current working annotation artifact preserves query order with `gateb_goldset.jsonl`, but canonical merge still needs explicit record-level `annotator_id` handling and a transformation step from candidate-level judgments to goldset/qrels outputs.

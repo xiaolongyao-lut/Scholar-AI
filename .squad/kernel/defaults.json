@@ -1,0 +1,23 @@
+{
+  "kernel_version": "1.0.0",
+  "tiers": {
+    "default": {
+      "description": "Conservative mode: self-heal constructible blockers, escalate on constraints",
+      "behaviors": {
+        "constructible": "self_heal",
+        "economic": "degrade",
+        "context": "queue",
+        "constraint": "escalate"
+      }
+    },
+    "autopilot": {
+      "description": "Autonomous mode: resolve blockers and auto-advance to next step",
+      "behaviors": {
+        "constructible": "self_heal",
+        "economic": "degrade",
+        "context": "queue",
+        "constraint": "escalate"
+      }
+    }
+  }
+}

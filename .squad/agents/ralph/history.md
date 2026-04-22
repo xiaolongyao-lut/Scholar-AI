@@ -9,8 +9,43 @@ Agent Ralph initialized and ready for work.
 
 ## Recent Updates
 
+📌 Gate B Review-Chain Milestone — Canonical Merge Launched — 2026-04-22  
 📌 U1A Data Remediation Completed — 2026-04-20  
 📌 Team initialized on 2026-04-19
+
+## 2026-04-22: Gate B Review-Chain Milestone — Canonical Merge Launch
+
+**Status:** 🚀 LAUNCHED  
+**Scope:** Canonical normalization merge under Morpheus conditional authorization
+
+### Authorization Chain Completed
+
+1. ✅ **Oracle review:** PASS (annotation artifact scope + 343 candidates verified)
+2. ✅ **Trinity preflight:** READY WITH CONDITIONS (annotator_id + source_hint requirements)
+3. ✅ **Morpheus final gate:** PASS WITH CONDITIONS (narrow merge scope authorized)
+
+### Merge Constraints (Binding)
+
+1. **Add annotator_id** to all goldset records
+2. **Exclude source_hint** from canonical output
+3. **Preserve provenance chain** (source_stratum, template_id, original_query_id)
+4. **Schema validation post-merge** (gateb_goldset.jsonl must pass validator)
+5. **No behavioral changes** (normalization only, no filtering/restructuring)
+
+### Expected Outcome
+
+- Canonical goldset updated with normalized schema
+- All conditions validated before completion
+- Decision inbox updated with merge verdict
+
+### Next Actions
+
+- Execute canonical merge per 5-point checklist
+- Validate all conditions
+- Report merge completion verdict to orchestration log
+- Close review-chain milestone decision cycle
+
+**Decision ref:** `.squad/orchestration-log/2026-04-22T15-03Z-ralph-launch-canonical-merge.md`
 
 ## 2026-04-20: U1A Data-Only Remediation Pack Delivery
 

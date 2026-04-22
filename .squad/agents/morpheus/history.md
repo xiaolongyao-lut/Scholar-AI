@@ -55,6 +55,19 @@
 - **Unified-plan dispatch rule (2026-04-20):** Before dispatching from a merged plan, reconcile plan wording against repo-local artifacts. For U1, `eval_queries_v2.1.jsonl` is 3269 lines, prior Wave 1 audit artifacts already exist under `artifacts/eval_audit\`, and the real missing step is canonicalizing/rerunning outputs into `output\` plus refreshed full-eval evidence.
 - **Unified-plan gate rule (2026-04-20):** Treat conversation persistence U2 as a storage/API hard-stop even when the design doc is complete. `.modular/sessions/index.sqlite3`, transcript/checkpoint/blob layout, and new session endpoints must be gated before any frontend U3 work starts.
 
+### 2026-04-22: Gate B Review-Chain Milestone — Final Gate Pass (With Conditions)
+
+- **Scope:** Final architectural gate for annotation artifact canonical merge
+- **Verdict:** ✅ PASS WITH CONDITIONS (canonical merge authorized as narrow normalization only)
+- **Reasons:**
+  - Oracle review: PASS (annotation artifact scope intact, 343 candidates verified, no data blockers)
+  - Trinity preflight: READY WITH CONDITIONS (annotator_id + source_hint isolation required)
+  - Canonical merge scope authorized: narrow normalization only (schema alignment, provenance population, no behavioral changes)
+- **Merge safety:** Update slice constraints prevent scope creep or unintended field leaks
+- **Binding conditions:** 5-point merge constraint checklist (annotator_id, source_hint exclusion, provenance preservation, schema validation, no behavioral changes)
+- **Merge authorization:** Ralph may proceed with canonical normalization merge
+- **Decision ref:** `.squad/decisions/inbox/morpheus-final-annotation-gate.md`
+
 ### 2026-04-22: Task 2.1.3 Cycle Close
 
 **Cycle:** Cost Defaults & Frontend UI (2.1.3)  
@@ -88,6 +101,8 @@
 - **Tier escalation shrinkage pattern:** Expect 20-25% metric shrinkage when moving from small probe (50q) to statistical validation (250q). Tier 1 numbers should be treated as directional upper bounds, not commitments. Always quote Tier 2 numbers as the reliable estimate.
 - **Dual-approval gate discipline:** For Tier 3 (high-cost) evaluation, the gate recommendation and the execution authorization are separate artifacts. The architect writes the recommendation; execution is blocked until the second approver (小龙) explicitly co-signs. This prevents accidental spend escalation.
 - **Reranker model upgrade audit (2026-04-21):** Qwen3-VL-Reranker is backward-compatible for text-only reranking; multimodal capability is optional and not triggered by the current pipeline. Chunking is properly decoupled: `raw_content` (no prefix) used for rerank, `content` (with summary) used for embedding context enrichment. Switch is one-liner (env var or default model constant). No embedding recomputation needed; embeddings and reranking are independent. Decision: APPROVED for trivial implementation. Chunking gap alleged by user is not real—the separation of raw_content/content is intentional and correct.
+- **Gate B Phase B reviewed-artifact rule (2026-04-22):** A reviewed annotation JSONL may become the authoritative working source even after it diverges from the frozen baseline hash, but the frozen hash remains the scope-lock reference and must not be silently replaced.
+- **Canonical merge safety rule (2026-04-22):** If reviewed `source_hint` values exceed `gateb_schema_validator.py`'s closed vocabulary, normalize them into validator-safe canonical values (or `unexpected_unknown_source`) and preserve the original combos plus `chunk_id`/provenance in an audit sidecar instead of widening schema or validator.
 
 ### 2026-04-21: Task 2.1.2 Design Review — Sampling Persistence & Live App Wiring
 - **Role:** Architecture review and cross-domain design gates.

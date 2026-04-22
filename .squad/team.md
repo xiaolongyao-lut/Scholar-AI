@@ -29,3 +29,10 @@
 - **Stack:** 多模态 RAG / 文献处理 / 智能对话，前后端协同推进
 - **Description:** 多模态 RAG 文献助手项目，当前只聚焦文献提取、关键词相关性遍历与智能对话，为后续写作助手奠定基础
 - **Created:** 2026-04-20
+
+## Owner Decision Profile (Autopilot)
+
+- **Primary profile source:** `my-project/.copilot/skills/user-profile/SKILL.md`
+- **Evidence profile source:** `..\用户画像_AI协作工程画像.md` (workspace sibling)
+- **Execution intent:** 在 `autopilot` 档位下，Morpheus 的审批与执行默认以 Owner 画像优先（求真、可回滚、门禁可验、blast radius 可控）。
+- **Approval default:** 非红线事项满足 `surgical + rollback + DoD + controlled blast radius` 时，默认 `DO NOW`，不等待额外人工确认。

@@ -2,6 +2,48 @@
 
 ## Active Decisions
 
+### 2026-04-22: Gate B Review-Chain Milestone — Canonical Merge Authorized
+
+**By:** Oracle + Trinity + Morpheus (review chain)  
+**Date:** 2026-04-22  
+**Scope:** Annotation artifact review + conditional authorization for canonical merge
+
+## Review-Chain Verdict Summary
+
+| Agent | Status | Key Finding |
+|-------|--------|------------|
+| **Oracle** | ✅ PASS | Annotation artifact review complete; 36 queries, 343 candidates verified; schema-valid |
+| **Trinity** | ⚠️ READY WITH CONDITIONS | Working artifact usable; merge conditions: add `annotator_id`, exclude `source_hint` |
+| **Morpheus** | ✅ PASS WITH CONDITIONS | Canonical merge authorized as narrow normalization only (5-point constraint checklist) |
+| **Ralph** | 🚀 LAUNCHED | Canonical normalization merge execution underway per conditions |
+
+## Conditions for Canonical Merge (Morpheus-Binding)
+
+1. **Add annotator_id field** to all goldset records (audit trail requirement)
+2. **Exclude source_hint from canonical output** (non-canonical data isolation)
+3. **Preserve provenance chain** (source_stratum, template_id, original_query_id carry forward)
+4. **Schema validation post-merge** (gateb_goldset.jsonl must pass validator)
+5. **No behavioral changes** (normalization only, no filtering/restructuring)
+
+## Authorized Scope
+
+- **Narrow merge:** Schema/field normalization only (per Morpheus binding authorization)
+- **No scope creep:** All constraints are merge-time and verifiable by Ralph
+
+## Evidence
+
+- Primary: `.squad/decisions/inbox/oracle-annotation-review.md`, `.squad/decisions/inbox/trinity-annotation-readiness.md`, `.squad/decisions/inbox/morpheus-final-annotation-gate.md`
+- Orchestration logs: `.squad/orchestration-log/2026-04-22T15-03Z-*.md` (Oracle, Trinity, Morpheus, Ralph entries)
+- Session: `.squad/sessions/2026-04-22T15-03Z-review-chain-milestone.md` (decision flow record)
+
+## Next Action
+
+- Ralph canonical merge completion + validation
+- Merge verdict recording to orchestration log
+- Decision inbox cleanup and deduplication
+
+---
+
 ### 2026-04-20: Core team uses a 4-role execution model
 
 **By:** Squad

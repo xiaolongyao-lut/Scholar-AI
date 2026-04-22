@@ -1,5 +1,7 @@
 {
   "version": 1,
+  "kernel_version": "1.0.0",
+  "autonomy_tier": "default",
   "agentModelOverrides": {
     "Morpheus": "claude-opus-4.7",
     "Trinity": "gpt-5.4",

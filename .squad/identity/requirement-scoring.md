@@ -8,6 +8,17 @@ Give Morpheus a fast, repeatable way to judge whether a requirement should be ac
 
 Score each from 1 to 5. Use weighted scoring to reflect priority.
 
+### 0. Owner Profile Alignment (Weight: 6)
+
+- 5 = strong alignment with owner profile (`求真 > 求快`, `可回滚`, `门禁可验`, `低爆炸半径`)
+- 3 = partially aligned, needs tighter guardrails/evidence anchors
+- 1 = conflicts with owner profile expectations
+
+Profile source:
+
+- `my-project/.copilot/skills/user-profile/SKILL.md`
+- `..\用户画像_AI协作工程画像.md`
+
 ### 1. Real Usage Necessity for the RAG Literature Assistant (Weight: 5)
 
 - 5 = directly needed in real literature-assistant workflows
@@ -36,16 +47,21 @@ If a direction has clear literature support (papers, established methods), treat
 
 Use:
 
-`total = necessity * 5 + maturity * 3 + no_refactor * 2`
+`total = owner_alignment * 6 + necessity * 5 + maturity * 3 + no_refactor * 2`
 
-Maximum = 50.
+Maximum = 80.
 
 ## Total Score Recommendation
 
-- **40-50:** `DO NOW` if no policy conflict
-- **28-39:** `LATER` (schedule after current must-deliver items)
-- **18-27:** `WAITING FOR USER` unless it removes an immediate blocker
-- **<18:** reject for current phase
+- **62-80:** `DO NOW` if no policy conflict
+- **44-61:** `LATER` (schedule after current must-deliver items)
+- **28-43:** `WAITING FOR USER` unless it removes an immediate blocker
+- **<28:** reject for current phase
+
+Autopilot tie-breaker:
+
+- In `autopilot`, if `owner_alignment >= 4` and no hard-stop is triggered, prefer `DO NOW` over `WAITING FOR MORPHEUS`.
+- For non-redline items, Morpheus should bias approval toward owner-profile-consistent execution.
 
 ## Hard Stops
 

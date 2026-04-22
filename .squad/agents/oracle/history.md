@@ -11,6 +11,18 @@
 - User explicitly wants a dedicated data specialist for tasks like generating structured batches or evaluation datasets.
 - Data work should be routed early instead of being treated as cleanup after implementation.
 
+### 2026-04-22: Gate B Review-Chain Milestone — Oracle Review Pass
+
+- **Scope:** Annotation artifact review (gateb_goldset.jsonl + gateb_qrels.tsv)
+- **Verdict:** ✅ PASS (36 queries, 343 candidates verified, schema-valid, no data-side blockers)
+- **Key findings:**
+  - All 36 queries retain consistent field structure and provenance chain
+  - 343 total candidates verified across S1/S2/S3 strata
+  - gateb_goldset.jsonl passes validator; qrels.tsv header-ready structure correct
+  - Only seeded from trusted `gateb_initial_candidates.jsonl` (40 entries); 4 S4 placeholders properly excluded
+- **Next:** Trinity preflight + Morpheus final gate → Ralph canonical merge authorization
+- **Decision ref:** `.squad/decisions/inbox/oracle-annotation-review.md`
+
 ### Phase 4: Real-Record Validation (2026-04-20)
 - **Key discovery:** "Record" in extraction pipeline context means a single chunk, not a full paper. Each chunk retains source PDF and paper title as metadata.
 - **Sampling insight:** Introduction chunks are meta-heavy (journal headers, conference markers). Full-paper validation would need chunks from body and methods sections for complete keyword coverage.
@@ -79,3 +91,11 @@
 - **What remains blocked:** Evaluation cannot run (empty qrels); Gate B pass criteria unchecked; Gate C trigger decision blocked
 - **Script:** `scripts/build_gateb_phase_a_trusted.py` (reproducible, no manual edits)
 - **Decision:** `.squad/decisions/inbox/oracle-gateb-phase-a-scaffold.md` documents completion of first legal trusted-input production slice
+
+### Gate B Phase B Reviewed Annotation Audit (2026-04-22)
+- **Task:** Data-side audit of user-reviewed in-place annotations in `artifacts/eval_audit/gateb_phase_b_annotation_input.jsonl`
+- **Scope lock result:** PASS — current file hash changed from frozen baseline to `cee338e774f11c5af0ccdf8982bdf55f0c2f9cde1d628ceb4f14fa4bc1914802`, but all 36 locked query IDs remain present in canonical order and exactly match `artifacts/eval_audit/gateb_phase_b_pools.jsonl`
+- **Coverage result:** 36 queries, 343 judged candidates total; per-query candidate coverage matches pool export exactly with no missing or extra `(doc_id, chunk_id)` identities
+- **Schema result:** All candidate judgments contain valid `relevance` in {0,1,2} and valid `judged_at` ISO-Z timestamps; no missing candidate arrays, no duplicate query IDs, no duplicate candidate identities, no conflicting duplicate judgments
+- **Operational note:** All 343 candidates share the same `judged_at` timestamp (`2026-04-22T14:32:13Z`), which is acceptable as a batch-reviewed artifact but should be preserved verbatim in audit-side outputs
+- **Downstream contract:** Working transforms should now treat this annotated JSONL as the authoritative reviewed source, flattening `(query_id, doc_id, relevance)` for review-stage qrels generation while retaining `chunk_id`, `judged_at`, and provenance metadata in sidecar audit outputs until canonical writes are approved

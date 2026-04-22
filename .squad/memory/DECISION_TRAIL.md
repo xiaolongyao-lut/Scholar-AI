@@ -306,3 +306,10 @@ The keyword_prefilter module is now ready for production integration into the li
   - **执行路由**：我已授权一个 data-only 的 U1A 修复周期——先做重复模板簇与 hard 单证据样本的修复说明，再重新生成 canonical audit，然后才允许重开 full eval。
   - **角色边界**：Oracle 与 Trinity 在本 rejected artifact 周期继续锁定；下一执行 owner 路由给 Ralph，Tank 保持 reviewer。
 - **是否通知 Owner**：否（恢复决策已写入 inbox，Owner 检查时可见）
+
+### 2026-04-22 Morpheus 自主更新 — Gate B Phase B 最终放行门
+
+- **操作**：完成 Gate B Phase B reviewed annotation artifact 的总工复核；写入 `.squad/decisions/inbox/morpheus-final-annotation-gate.md`；向 `.squad/agents/morpheus/history.md` 追加可复用结论；更新 `.squad/skills/annotation-artifact-audit/SKILL.md` 的 canonical-release gate。
+- **触发原因**：用户已批准 “AI 初评分 + 用户人工审校” 替代旧的 second-human overlap 路径；Oracle 给出 PASS；Trinity 给出 READY WITH CONDITIONS，需要 Morpheus 做最终 canonical-write 放行判断。
+- **结果**：判定为 **PASS WITH CONDITIONS**。canonical update slice 可启动，但仅限受约束的规范化合并：保持 36-query / 343-candidate scope lock，不得改 schema/validator；必须补齐 record-level `annotator_id`；不得直接复制 reviewed `source_hint` 组合串进 canonical，需做 validator-safe 映射并把原始组合、`chunk_id`、`judged_at`、`source_labels`、`from_original_evidence` 保存在 audit sidecar。
+- **是否通知 Owner**：否（决策 inbox 与 history 中可见）
