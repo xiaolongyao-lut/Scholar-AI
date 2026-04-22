@@ -80,3 +80,20 @@ Agent Scribe initialized and ready for work.
 - **Unblocked:** Phase B annotation baseline freeze-ready; annotator assignment + scoring workflow can proceed
 - **Key facts:** C6 determinism proven; C1–C5 contracts stable; zero scope drift; artifact baseline stable
 
+**Session 2026-04-22: Gate B Phase B Baseline Freeze Batch**
+
+- **Task:** Merge phase B baseline-freeze inbox notes into unified decision record; create session/orchestration logs
+- **Inbox notes processed:** 4 (all consistent, 0 conflicts)
+  1. Oracle release control: Frozen baseline pair with exact SHA256 hashes
+  2. Morpheus next-slice directive: Freeze approved Phase B artifact baseline before annotation
+  3. Morpheus first-slice context: Phase B pool-export strategy and scope
+  4. Tank pool-export contract: Contract specification and verification
+- **Result:** ✅ COMPLETE — Unified decision "2026-04-22: Gate B Phase B Baseline Freeze Decision (Annotation Ready)" merged into `decisions.md`
+- **Session log:** `.squad/log/2026-04-22-gateb-phase-b-baseline-freeze-session.md` (baseline freeze orchestration record)
+- **Orchestration entry:** `.squad/orchestration-log/2026-04-22T21-38-00Z-gateb-phase-b-baseline-freeze.md`
+- **Archive:** All four original inbox notes scheduled for preservation in `.squad/decisions-archive.md` before deletion
+- **Frozen hashes:** pools `a553d1e3...` + annotation_input `f86ede18...` (both stable post-C6)
+- **Frozen query count:** 36 (S1=16, S2=10, S3=10)
+- **Blockers identified:** Annotator assignment, reviewer assignment, scoring tool availability, timeline SLA
+- **Key facts:** Baseline cryptographically frozen; no machine-side changes needed; pure human dependencies identified; κ scope (≥10% overlap, κ≥0.6) documented; orchestration can proceed with annotator assignment
+

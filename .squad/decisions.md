@@ -2816,3 +2816,124 @@ Phase B annotation baseline freeze-ready:
 - `.squad/log/2026-04-22-gateb-c6-rereview-session.md`
 - `.squad/orchestration-log/2026-04-22T23-45-00Z-gateb-c6-rereview.md`
 
+---
+
+## 2026-04-22: Gate B Phase B Baseline Freeze Decision (Annotation Ready)
+
+**Status:** ✅ **FROZEN — Handoff to Orchestration for Annotator Assignment**
+
+**By:** Oracle (Release Control), Morpheus (Next-Slice Authority)
+
+**Date:** 2026-04-22
+
+### Decision Summary
+
+**FROZEN**: The verified Phase B annotation baseline pair:
+- Pool export: `artifacts/eval_audit/gateb_phase_b_pools.jsonl` (36 queries, 11 docs avg per query)
+- Annotation input: `artifacts/eval_audit/gateb_phase_b_annotation_input.jsonl` (36 queries, simplified schema)
+
+**Locked SHA256 hashes** (computed 2026-04-22 post-Ralph C6 fix):
+- pools:              `a553d1e396d3fc380c430470d5b3405cacf2422ab3739ab25a93ddb255f48f59`
+- annotation_input:   `f86ede18bbce875df9665d445c1aaa9c6b11c4ff9856282c0396d8a7dab5233f`
+
+**Frozen query count:** 36 (S1=16, S2=10, S3=10)
+
+**Canonical pair unchanged:** `gateb_goldset.jsonl` + `gateb_qrels.tsv` remain locked as Phase A scaffolds.
+
+### Rationale
+
+#### Why This Freeze Is Safe
+
+1. **C6 Reproducibility Fixed** (Ralph's slice): Deterministic export now produces stable hashes across reruns. No more variance.
+2. **36-Query Scope Verified**: All three artifacts (goldset, pools, annotation_input) contain exactly the same 36 query IDs in identical order.
+3. **Provenance Preserved**: Pool candidates include source_labels, ranks, from_original_evidence flags—reviewers can inspect before annotating.
+4. **Canonical Separation Holds**: No mutations to Phase A goldset or qrels; only new export artifacts created.
+5. **Smallest Handoff Unit**: Pools + annotation input are the only data humans need before scoring begins.
+
+#### Why This Freeze Now
+
+- C6 regression has been addressed; artifact stability is confirmed.
+- No further machine-side changes are needed before annotation starts.
+- Freezing early prevents **provenance drift**—if someone re-exports without explicit gate approval, annotation work is invalidated.
+- Next blocker is purely human: assign annotators and begin scoring.
+
+### Facts
+
+- **Goldset**: 36 queries, all with `no_gold=true`, empty qrels arrays (honest placeholder state).
+- **Phase B pools**: Deterministic union of (bm25, dense, graph, rrf, rerank, evidence_set) top-10 per query, with deduplication.
+- **Annotation input**: Simplified pools export (no source_doc_ids breakdown), ready for human scoring workflow.
+- **Current qrels.tsv**: Header-only (no annotation rows yet).
+- **Ralph's C6 fix**: Stable sort key in _candidate_sort_key() ensures byte-identical artifacts on rerun.
+
+### Decisions
+
+1. **Lock the pair**: Use only these hashes and paths for all Phase B annotation. No regeneration without new gate decision.
+2. **Prohibit scope changes**: 36 queries are frozen. Any expansion (scope creep) requires explicit re-approval.
+3. **Preserve canonical**: goldset.jsonl and qrels.tsv remain as Phase A trusted scaffolds—do not edit.
+4. **Block downstream**: Annotation cannot proceed, qrels cannot be updated, Gate B eval cannot run until annotators are assigned.
+
+### Blockers & Dependencies (Honest Assessment)
+
+#### Remaining Human Dependencies
+
+1. **Annotator Assignment**: Who is the primary annotator (domain expert: laser welding)?
+2. **Reviewer Assignment**: Who is the secondary reviewer for κ overlap validation?
+3. **Scoring Tool**: Do annotators have a UI/tool for marking relevance (0/1/2) per query-doc pair?
+4. **Timeline**: When should annotation start? What's the target completion date?
+
+#### What Unblocks After Annotation + κ Validation
+
+- Populating `gateb_qrels.tsv` with non-empty TREC rows
+- Updating `gateb_goldset.jsonl` qrels arrays and no_gold flags
+- Running Gate B eval (retrieval metric computation)
+- QA gate decision on whether Gate B eval passes
+
+### Open Questions
+
+- **For Orchestration**: Should the team establish an SLA for annotation (e.g., completion by 2026-04-29)?
+- **For Annotators**: Do the content previews in annotation_input.jsonl provide sufficient context, or do they need access to full PDFs?
+- **For QA**: Are there any known constraints on κ validation (e.g., if one query has <3 rel=2 docs, does it auto-fail)?
+
+### Next Steps
+
+1. **Morpheus / Orchestration**: Announce annotator and reviewer identities against this frozen pair.
+2. **Annotators**: Begin scoring `artifacts/eval_audit/gateb_phase_b_annotation_input.jsonl` (36 queries, ~1,080 tasks).
+3. **Reviewer**: Conduct κ overlap on ≥10% of queries; target κ ≥ 0.6.
+4. **Oracle**: Monitor for completion; prepare qrels update script once annotation data arrives.
+5. **Tank QA**: Schedule re-entry qa-gate when annotation + κ validation are complete.
+
+### Artifact Location
+
+**Baseline freeze documentation**:
+- `artifacts/eval_audit/GATEB_PHASE_B_BASELINE_FREEZE.md`
+
+**Canonical sources**:
+- `artifacts/eval_audit/gateb_phase_b_pools.jsonl` (frozen SHA256)
+- `artifacts/eval_audit/gateb_phase_b_annotation_input.jsonl` (frozen SHA256)
+- `artifacts/eval_audit/gateb_goldset.jsonl` (unchanged)
+- `artifacts/eval_audit/gateb_qrels.tsv` (header-only, awaiting annotation)
+
+### Consensus & Deduplication
+
+All four Phase B baseline-freeze inbox notes were **100% consistent** with zero conflicts:
+
+1. **Morpheus directive** (morpheus-2026-04-22-gateb-next-slice-after-c6-pass.md): Freeze the approved Phase B artifact/hash baseline
+2. **Oracle release control** (oracle-gateb-phase-b-baseline-freeze.md): Frozen baseline pair with exact SHA256 hashes
+3. **Morpheus first-slice decision** (morpheus-gateb-phase-b-first-slice.md): Phase B pool-export context and scope
+4. **Tank pool-export contract** (tank-gateb-phaseb-pool-export-contract.md): Contract specification for pools artifact
+
+**Decision:** Unified into single canonical baseline-freeze entry (this record).
+
+**Inbox files scheduled for deletion after commit:**
+- `.squad/decisions/inbox/oracle-gateb-phase-b-baseline-freeze.md`
+- `.squad/decisions/inbox/morpheus-2026-04-22-gateb-next-slice-after-c6-pass.md`
+- `.squad/decisions/inbox/morpheus-gateb-phase-b-first-slice.md`
+- `.squad/decisions/inbox/tank-gateb-phaseb-pool-export-contract.md`
+
+**Archive:** All four original notes preserved in `decisions-archive.md` for historical reference.
+
+### Session & Orchestration Logs
+
+- **Session Log:** `.squad/log/2026-04-22-gateb-phase-b-baseline-freeze-session.md` (baseline freeze orchestration record)
+- **Orchestration Entry:** `.squad/orchestration-log/2026-04-22T21-38-00Z-gateb-phase-b-baseline-freeze.md`
+
