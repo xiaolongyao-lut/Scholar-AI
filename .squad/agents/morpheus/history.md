@@ -49,6 +49,25 @@
 - **Unified-plan dispatch rule (2026-04-20):** Before dispatching from a merged plan, reconcile plan wording against repo-local artifacts. For U1, `eval_queries_v2.1.jsonl` is 3269 lines, prior Wave 1 audit artifacts already exist under `artifacts/eval_audit\`, and the real missing step is canonicalizing/rerunning outputs into `output\` plus refreshed full-eval evidence.
 - **Unified-plan gate rule (2026-04-20):** Treat conversation persistence U2 as a storage/API hard-stop even when the design doc is complete. `.modular/sessions/index.sqlite3`, transcript/checkpoint/blob layout, and new session endpoints must be gated before any frontend U3 work starts.
 
+### 2026-04-22: Task 2.1.3 Cycle Close
+
+**Cycle:** Cost Defaults & Frontend UI (2.1.3)  
+**Participation:** Design review → backend rejection audit → UI rejection audit
+
+**Key Decisions:**
+1. Backend prerequisite required before frontend work proceeds
+2. Trinity's backend metadata patch rejected (isolation failure) → Ralph assigned as revision owner
+3. Ralph's clean resubmission approved by Tank
+4. Switch's UI implementation rejected → Trinity assigned as UI revision owner
+5. Trinity's UI revision approved by Tank (blank-field behavior fixed, constraints restored)
+
+**Outcomes:**
+- ✅ Backend: Ralph's isolated patch approved
+- ✅ Frontend: Trinity's UI revision approved
+- ✅ Phase ready for deployment
+
+**Checkpoint:** `.squad/orchestration-log/2026-04-22T06-55-33Z-Morpheus.md`
+
 ### Rerank Pipeline Alignment (2026-04-21)
 - **Cross-agent audit outcome:** Morpheus audit + Oracle trace + Tank regressions confirmed qwen3-rerank text-only pipeline is stable and production-ready.
 - **Superseded direction:** Trinity's earlier VL-direction (qwen3-vl-rerank) was corrected per user guidance; final default is qwen3-rerank.

@@ -33,3 +33,17 @@
 - **Design Insight:** Progressive disclosure via accordion lets most users ignore provenance while researchers can drill into sources
 - **Open Questions Escalated:** Insight Message UX, session history loading, mobile responsiveness (awaiting Morpheus decision)
 - **Status:** ✅ Ready for Morpheus Phase 1 design review (2026-04-25)
+
+### 2026-04-22: Task 2.1.3 Frontend Implementation Rejection
+
+**Status:** 🔴 REJECTED by Tank (first submission)  
+**Cycle:** Cost Defaults & Frontend UI (2.1.3)
+
+**First Submission:** UI implementation  
+**Rejection Reason:** Quality gate failure; blank-field behavior and constraint issues
+
+**Lock-out:** Morpheus reassigned Trinity as UI revision owner; Switch locked out for revision cycle
+
+**Outcome:** Trinity's revision approved by Tank; deployment ready without further Switch engagement for 2.1.3
+
+**Checkpoint:** `.squad/orchestration-log/2026-04-22T06-55-33Z-Switch.md`

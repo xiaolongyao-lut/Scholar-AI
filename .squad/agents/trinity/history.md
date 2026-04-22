@@ -48,6 +48,25 @@
 - **Key Integration:** Extraction pipeline now respects LLM context windows during batch operations
 - **Status:** ✅ Phase 2 batch complete and tested. Awaiting Morpheus cross-domain review
 
+### 2026-04-22: Task 2.1.3 Cycle Close
+
+**Cycle:** Cost Defaults & Frontend UI (2.1.3)  
+**Participation:** Backend implementation → lock-out → UI revision owner
+
+**Outcomes:**
+
+1. **Backend Submission (First):** ❌ REJECTED by Tank
+   - Issue: Isolation boundary failure
+   - Lock-out: Morpheus reassigned Ralph as revision owner
+   - Duration: 1 cycle (Trinity locked until Ralph approved)
+
+2. **UI Revision (After Lock Period):** ✅ APPROVED by Tank
+   - Assignment: Morpheus designated Trinity as UI revision owner (Switch was locked)
+   - Changes: Fixed blank-field behavior, restored accepted constraints
+   - Status: Ready for deployment
+
+**Checkpoint:** `.squad/orchestration-log/2026-04-22T06-55-33Z-Trinity.md`
+
 - U1 retrieval gate artifacts now use `output\v21_full_eval_canonical.json` and `output\v21_full_eval_canonical.progress.jsonl` as the reviewer-facing canonical pair.
 - `eval_query_audit_v21.json` is the authoritative source for v2.1 audit totals: 3269 total queries with hard=326, medium=1455, simple=1488.
 - The completed v2.1 full eval remains far below gate (`Recall@5=0.0281`, `MRR=0.0204`), so U1 failure is genuine quality failure, not just artifact naming.

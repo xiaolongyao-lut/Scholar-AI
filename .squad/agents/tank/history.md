@@ -47,6 +47,26 @@
 
 **Evidence:** `.squad/decisions/inbox/morpheus-reuse-baseline.md` (Authorized Next Steps table, row 2)
 
+### 2026-04-22: Task 2.1.3 Cycle Close
+
+**Cycle:** Cost Defaults & Frontend UI (2.1.3)  
+**Role:** Reviewer / quality gate across backend + frontend phases
+
+**Multi-Stage Verification:**
+
+1. **Backend Preflight:** Prepared verification checklist
+2. **Backend Review (Trinity submission):** ❌ REJECTED — isolation boundary failure
+3. **Backend Re-Review (Ralph resubmission):** ✅ APPROVED — clean isolated implementation
+4. **Frontend Preflight → Review → Re-Review:**
+   - Switch UI first submission: ❌ REJECTED (quality/constraint failure)
+   - Trinity UI revision: ✅ ACCEPTED (blank-field behavior fixed)
+
+**Outcomes:**
+- ✅ Backend prerequisite approved; frontend unblocked
+- ✅ Frontend revision approved; ready for deployment
+
+**Checkpoint:** `.squad/orchestration-log/2026-04-22T06-55-33Z-Tank.md`
+
 ### 2026-04-20: Chat Contract & Synthetic Corpus Delivery
 
 - Created `tests/data/chat/synthetic-corpus.jsonl`: Representative literature dataset (100-paper sim) with source metadata and nested chunks
