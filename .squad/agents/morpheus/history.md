@@ -21,9 +21,7 @@
 - SESSION_SNAPSHOT Open section had two items that were already resolved in prior sessions but never closed — always verify Open items against actual file state before trusting them.
 - Key file paths for self-check: `.squad/memory/SESSION_SNAPSHOT.md`, `.squad/memory/OPEN_THREADS.md`, `.squad/identity/requirement-pool.md`, `.squad/memory/DECISION_TRAIL.md`.
 - Phase close procedure: DECISION_TRAIL append → SESSION_SNAPSHOT Next update → OPEN_THREADS review → checkpoint copy `.squad/memory/` → `.squad/backups/checkpoint-phaseX-<timestamp>/`. Decision inbox note if team-relevant.
-- Phase 2 close observation: keyword_filter.py is a pure function with no I/O, no deps, 73 field-name variants (EN+CN). This means Tank can unit-test it in isolation without mocking. The field-name set covers output/ artifact field names — integration with existing data is zero-friction.
-- Phase 1 discovery result: no pre-existing literature data files in the repo. This is expected — the system design centers on runtime ingestion from user-provided folders, not bundled datasets.
-- OPEN_THREADS should only gain entries for genuine downstream blockers; "no data files found" is an architectural fact, not a blocker when the design already anticipates runtime ingestion.
+- **Gate B Contract Conflict Discovery (2026-04-22):** Ralph's canonical merge blocker reveals that validator code and guide documentation can drift without explicit reconciliation. Validator enforces `no_gold=true → ALL relevance = 0`, but guide implies `no_gold=true` when no `rel=2` (allowing `rel=1`). Contract ownership decision required. Evidence: `.squad/orchestration-log/2026-04-22T22-30Z-ralph-blocker-completion.md`, `.squad/orchestration-log/2026-04-22T22-35Z-morpheus-blocker-resolution-launch.md`, `.squad/session-log-blocker-milestone-2026-04-22.md`.
 - **Phase 1 refreshed conclusion (2026-04-20):** Real data sources confirmed externally. `output/` = 894 JSON historical extraction artifacts (multi-stage pipeline outputs). `D:\zotero\zoterodate\storage` = 815 files (PDFs + 83 jasminum-outline.json outlines). User clarified: output/ is historical extraction product, Zotero storage is the literature library.
 - **Data structure insight:** output/ per-paper artifacts follow a numbered stage pattern (01_full_extract → 02_hybrid_retrieval → 03_academic_scoring → 04_causal_dag → project_view). This is a strong design reference for Phase 2 pipeline architecture.
 - **Metadata gap:** jasminum-outline.json only contains PDF TOC structure (level/title/page), not structured metadata (abstract/keywords/authors/year). This is a genuine constraint for any phase requiring structured bibliographic metadata.
@@ -85,6 +83,31 @@
 - ✅ Frontend: Trinity's UI revision approved
 - ✅ Phase ready for deployment
 
+### 2026-04-22: Gate B Blocker Resolution — `no_gold` Canonical Semantics
+
+**Event:** Contract conflict escalation from Ralph's canonical merge blocker  
+**Scope:** Resolve semantic mismatch between Phase B guide and canonical validator  
+**Resolution Authority:** Morpheus (architectural gate keeper)  
+**Verdict:** ✅ RESOLVED
+
+**The Decision:**
+
+Canonical validator contract is authoritative. `no_gold=true` semantics:
+- Queries with ≥1 `rel=2` → canonical qrels populated, `no_gold=false`
+- Queries with 0 `rel=2` → canonical qrels empty, `no_gold=true`
+- rel1-only judgments → audit sidecar (not canonical qrels)
+- No validator/schema code changes required
+
+**Rationale:** Smallest durable fix that preserves reviewed source, avoids schema widening, and keeps canonical outputs deterministic.
+
+**Authority:** Binding to Ralph's canonical merge retry. Precedence: validator > guide for this conflict.
+
+**Reference:**
+- Blocker notes: `.squad/decisions/inbox/ralph-canonical-normalization.md`, `.squad/decisions/inbox/morpheus-no-gold-canonical-semantics.md`
+- Orchestration: `.squad/orchestration-log/2026-04-22T22-40Z-morpheus-blocker-resolution.md`
+- Session log: `.squad/session-log-blocker-milestone-2026-04-22.md`
+- Ralph retry authorization: `.squad/orchestration-log/2026-04-22T22-42Z-ralph-canonical-merge-retry.md`
+
 **Checkpoint:** `.squad/orchestration-log/2026-04-22T06-55-33Z-Morpheus.md`
 
 ### Rerank Pipeline Alignment (2026-04-21)
@@ -103,6 +126,45 @@
 - **Reranker model upgrade audit (2026-04-21):** Qwen3-VL-Reranker is backward-compatible for text-only reranking; multimodal capability is optional and not triggered by the current pipeline. Chunking is properly decoupled: `raw_content` (no prefix) used for rerank, `content` (with summary) used for embedding context enrichment. Switch is one-liner (env var or default model constant). No embedding recomputation needed; embeddings and reranking are independent. Decision: APPROVED for trivial implementation. Chunking gap alleged by user is not real—the separation of raw_content/content is intentional and correct.
 - **Gate B Phase B reviewed-artifact rule (2026-04-22):** A reviewed annotation JSONL may become the authoritative working source even after it diverges from the frozen baseline hash, but the frozen hash remains the scope-lock reference and must not be silently replaced.
 - **Canonical merge safety rule (2026-04-22):** If reviewed `source_hint` values exceed `gateb_schema_validator.py`'s closed vocabulary, normalize them into validator-safe canonical values (or `unexpected_unknown_source`) and preserve the original combos plus `chunk_id`/provenance in an audit sidecar instead of widening schema or validator.
+
+### 2026-04-22: Gate B Canonical Merge — Blocker Resolution Dispatch
+
+**Status:** 🔄 DECISION REQUIRED  
+**Scope:** Contract ownership dispute: `no_gold` semantics between guide and validator  
+
+**Blocker Context:**
+Ralph's canonical merge attempt failed `gateb_schema_validator.py` validation. Conflict discovered:
+- **Phase B Guide semantics:** `no_gold=true` when query has no `rel=2` candidates (implies `rel=1` acceptable)
+- **Schema Validator enforcement:** `no_gold=true` → ALL relevance must be 0 (strict invariant)
+- **Affected:** 6/36 queries (16.7%) with only `rel=1` candidates
+
+**Decision Required:**
+1. Which rule is authoritative: guide or validator?
+2. Does contract need validator code change, guide clarification, or both?
+3. How to classify the 6 affected queries: valid (guide-correct) or invalid (validator-correct)?
+
+**Evidence to Examine:**
+- `gateb_schema_validator.py` implementation and documentation
+- `GATEB_PHASE_B_GUIDE.md` context and intent
+- Oracle's prior annotation review criteria
+- Related decisions in `.squad/decisions/decisions.md` (prior gate contexts)
+
+**Morpheus Action:**
+- Read validator code + guide documentation + prior decisions
+- Determine binding semantics for `no_gold`
+- Authorize Ralph merge retry with updated constraints (if needed)
+- Log decision with binding authority notation in `.squad/orchestration-log/2026-04-22T22-35Z-morpheus-blocker-resolution.md`
+
+**Orchestration refs:**
+- Ralph blocker completion: `.squad/orchestration-log/2026-04-22T22-30Z-ralph-blocker-completion.md`
+- Morpheus dispatch: `.squad/orchestration-log/2026-04-22T22-35Z-morpheus-blocker-resolution-launch.md`
+- Session log: `.squad/session-log-blocker-milestone-2026-04-22.md`
+
+**Binding authority:** Morpheus decision will authorize Ralph retry (no Scribe re-route needed)
+
+**Timeline:** Within current session (no rush); other work streams can continue in parallel
+
+---
 
 ### 2026-04-21: Task 2.1.2 Design Review — Sampling Persistence & Live App Wiring
 - **Role:** Architecture review and cross-domain design gates.

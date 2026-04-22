@@ -9,9 +9,121 @@ Agent Ralph initialized and ready for work.
 
 ## Recent Updates
 
+📌 Gate B Canonical Merge — Morpheus Blocker-Resolution Dispatched — 2026-04-22  
+📌 Gate B Canonical Merge Blocked by Contract Conflict — 2026-04-22  
 📌 Gate B Review-Chain Milestone — Canonical Merge Launched — 2026-04-22  
 📌 U1A Data Remediation Completed — 2026-04-20  
 📌 Team initialized on 2026-04-19
+
+## 2026-04-22: Gate B Canonical Merge — Blocker Completion & Escalation
+
+**Status:** 🔄 AWAITING MORPHEUS DECISION  
+**Scope:** Contract conflict escalation; canonical merge retry blocked pending resolution
+
+### Blocker Summary
+
+Discovered during canonical normalization merge validation:
+
+1. **Conflict:** `GATEB_PHASE_B_GUIDE.md` semantics vs. `gateb_schema_validator.py` enforcement
+   - Guide: `no_gold=true` when query has no `rel=2` candidates (implied: `rel=1` acceptable)
+   - Validator: `no_gold=true` → ALL relevance must be 0 (invariant: cannot have `rel=1` with `no_gold=true`)
+
+2. **Affected records:** 6 / 36 queries (16.7%)
+   - Characteristic: Only `rel=1` candidates (no `rel=2`, no `rel=0`)
+   - Validation failure: Schema validator rejects these as invalid
+
+3. **Decision required:** Which rule is authoritative?
+   - Option A: Guide is correct → validator too strict → needs relaxation
+   - Option B: Validator is correct → guide incomplete → needs clarification
+   - Option C: Conditional logic needed → policy decision required
+
+### Actions Taken (Ralph)
+
+- ✅ Executed constrained merge attempt against reviewed annotation artifact
+- ✅ Re-ran `gateb_schema_validator.py`; confirmed invariant failure on 6 rel1-only / no-rel2 queries
+- ✅ Restored canonical scaffold state (`artifacts/eval_audit/gateb_goldset.jsonl`, `gateb_qrels.tsv`) to pre-merge
+- ✅ Did NOT commit invalid canonical outputs
+- ✅ Documented blocker in orchestration log: `.squad/orchestration-log/2026-04-22T22-30Z-ralph-blocker-completion.md`
+
+### Escalation to Morpheus
+
+- Morpheus has authority to resolve contract ownership disputes
+- Morpheus decision will authorize merge retry with updated constraints (if needed)
+- Morpheus launched for blocker-resolution: `.squad/orchestration-log/2026-04-22T22-35Z-morpheus-blocker-resolution-launch.md`
+- Session log created: `.squad/session-log-blocker-milestone-2026-04-22.md`
+
+### Canonical State
+
+- **goldset:** Restored to pre-merge scaffold state (no invalid records committed)
+- **qrels:** Restored to pre-merge scaffold state (no invalid records committed)
+- **Retention:** Annotation artifact preserved and unchanged; ready for merge retry after Morpheus decision
+
+### Next Actions (Pending Morpheus Decision)
+
+1. ⏳ Morpheus analyzes validator code + guide documentation + prior decisions
+2. ⏳ Morpheus logs decision with binding authority notation
+3. ⏳ Ralph receives Morpheus directive and re-attempts merge per updated constraints
+4. ⏳ Schema validation re-run post-merge
+5. ⏳ Decision inbox updated with merge verdict
+
+**Orchestration refs:** 
+- Blocker completion: `.squad/orchestration-log/2026-04-22T22-30Z-ralph-blocker-completion.md`
+- Morpheus launch: `.squad/orchestration-log/2026-04-22T22-35Z-morpheus-blocker-resolution-launch.md`
+- Morpheus resolution: `.squad/orchestration-log/2026-04-22T22-40Z-morpheus-blocker-resolution.md`
+- Retry launch: `.squad/orchestration-log/2026-04-22T22-42Z-ralph-canonical-merge-retry.md`
+- Session log: `.squad/session-log-blocker-milestone-2026-04-22.md`
+
+### 2026-04-22: Gate B Blocker Resolution — Morpheus Authorized Merge Retry
+
+**Status:** 🟢 AUTHORIZED TO RETRY  
+**Decision Authority:** Morpheus (2026-04-22, 22:40Z)  
+**Scope:** Canonical normalization merge under updated constraint set
+
+**Morpheus Binding Decision:**
+
+Canonical validator contract is authoritative. `no_gold=true` semantics established:
+- Queries with ≥1 `rel=2` → canonical qrels populated, `no_gold=false`
+- Queries with 0 `rel=2` → canonical qrels empty, `no_gold=true`
+- rel1-only judgments → audit sidecar (not canonical qrels)
+
+**Updated Merge Constraint (Replaces Prior "Phase B Guide" Guidance):**
+
+| Condition | Action |
+|-----------|--------|
+| Query has ≥1 `rel=2` | Populate canonical qrels with all reviewed judgments, `no_gold=false` |
+| Query has 0 `rel=2` | Empty canonical qrels, `no_gold=true`, preserve rel1-only evidence in audit sidecar |
+| **Validator invariant** | ✅ Continues to enforce: `no_gold=true` → all relevance = 0 (satisfied by updated logic) |
+| **Schema changes** | None required |
+| **Code changes** | None required |
+
+**Retry Execution Plan:**
+
+1. Load reviewed artifact: `gateb_phase_b_annotation_input.jsonl`
+2. Partition queries by rel=2 presence
+3. Populate goldset per updated constraint (rel=2 present vs. absent)
+4. Extract rel1-only judgments to audit sidecar
+5. Re-run `gateb_schema_validator.py` (should now pass)
+6. Document merge report with decision rationale
+
+**Expected Outcome:**
+
+- ✅ Schema validation passes (no INVALID records)
+- ✅ All 36 queries represented in canonical output
+- ✅ 6 rel=2-present queries have `no_gold=false` + populated qrels
+- ✅ 6 rel=2-absent queries have `no_gold=true` + empty canonical qrels
+- ✅ rel1-only evidence preserved in audit sidecar
+
+**References:**
+- Blocker discovery: `.squad/decisions/inbox/ralph-canonical-normalization.md`
+- Morpheus decision: `.squad/decisions/inbox/morpheus-no-gold-canonical-semantics.md`
+- Orchestration (resolution): `.squad/orchestration-log/2026-04-22T22-40Z-morpheus-blocker-resolution.md`
+- Orchestration (retry): `.squad/orchestration-log/2026-04-22T22-42Z-ralph-canonical-merge-retry.md`
+- Main decisions log: `.squad/decisions/decisions.md#Gate B Canonical Merge`
+
+
+
+**Status:** ⛔ BLOCKED (Historical record — escalated to Morpheus)  
+**Scope:** Morpheus-authorized canonical normalization merge
 
 ## 2026-04-22: Gate B Review-Chain Milestone — Canonical Merge Launch
 

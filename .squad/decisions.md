@@ -2,6 +2,29 @@
 
 ## Active Decisions
 
+### 2026-04-22: Gate B Phase B `no_gold` Semantics Clarified
+
+**By:** Morpheus  
+**Date:** 2026-04-22  
+**Scope:** Canonical goldset/qrels contract for the reviewed annotation pass
+
+**Conflict:** The reviewed artifact contains 6 queries with `relevance=1` judgments but no `relevance=2` judgment, while `gateb_schema_validator.py` enforces `no_gold=true` → no non-zero canonical qrels.
+
+**Decision:** The canonical-validator contract wins for this slice. For reviewed Phase B assembly, `no_gold=true` means the canonical eval outputs contain **no direct-answer gold** for that query. Queries with no `rel=2` stay `no_gold=true` and keep empty canonical `qrels` / no TREC qrels rows, even if the reviewed annotation artifact contains `rel=1` background judgments.
+
+**Why:** This is the narrowest authoritative fix. It preserves the reviewed annotation JSONL as the audit truth, avoids a schema/validator change, keeps canonical evaluation semantics deterministic, and treats rel1-only queries as corpus-gap evidence rather than gold-bearing eval rows.
+
+**Boundaries for the next slice:**
+- Preserve `artifacts/eval_audit/gateb_phase_b_annotation_input.jsonl` unchanged as the reviewed source.
+- Do **not** widen `gateb_schema_validator.py`.
+- Do **not** reinterpret `rel=1` as canonical gold when `rel=2` is absent.
+- Preserve rel1-only judgments in an audit-side artifact/report, not in canonical qrels.
+- Canonical merge rerun remains Ralph-owned after this ruling.
+
+**Evidence:** `artifacts/eval_audit/GATEB_PHASE_B_GUIDE.md`, `artifacts/eval_audit/GATEB_PHASE_B_BASELINE_FREEZE.md`, `gateb_schema_validator.py`, `.squad/decisions/inbox/ralph-canonical-normalization.md`
+
+---
+
 ### 2026-04-22: Gate B Review-Chain Milestone — Canonical Merge Authorized
 
 **By:** Oracle + Trinity + Morpheus (review chain)  
@@ -2978,4 +3001,3 @@ All four Phase B baseline-freeze inbox notes were **100% consistent** with zero 
 
 - **Session Log:** `.squad/log/2026-04-22-gateb-phase-b-baseline-freeze-session.md` (baseline freeze orchestration record)
 - **Orchestration Entry:** `.squad/orchestration-log/2026-04-22T21-38-00Z-gateb-phase-b-baseline-freeze.md`
-
