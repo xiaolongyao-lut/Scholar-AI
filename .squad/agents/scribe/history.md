@@ -36,3 +36,17 @@ Agent Scribe initialized and ready for work.
 - **Chain completion:** All 5 phases (LiteLLM → Context Budget → Session Memory → Chat Endpoint → Frontend) approved and production-ready
 - **Non-blocking observations:** Nav entry missing, unavailable state not pre-checked, insufficient_context not visually differentiated (all documented for follow-up)
 - **Frontend work:** Created `intelligentChatApi.ts`, `TierSelector.tsx`, `MessageBubble.tsx`, `IntelligentChat.tsx`; modified `App.tsx` and `vite.config.ts`; frontend build passed locally
+
+**Session 2026-04-22: Provenance Arbitration Batch**
+
+- **Task:** Merge provenance/input-blocker inbox notes into unified decision record
+- **Inbox notes processed:** 4 (all consistent, 0 conflicts)
+  1. Scribe framing: "Evaluation pipeline healthy; trusted inputs missing"
+  2. Morpheus first-slice decision: Reviewer-gate preparation via provenance lock
+  3. Morpheus arbitration: Root goldset excluded; canonical paths locked
+  4. Tank QA verdict: Root file is synthetic scaffolding (generator script + schema validator proof)
+- **Result:** ✅ COMPLETE — Unified decision "2026-04-22: Phase A Execution Unblocked via Provenance Lock" merged into `decisions.md`
+- **Session log:** `.squad/log/2026-04-22-provenance-arbitration-session.md` (complete arbitration record)
+- **Orchestration entry:** `.squad/orchestration-log/2026-04-22T21-30Z-scribe-provenance-arbitration.md`
+- **Archive:** All four original inbox notes preserved in `.squad/decisions-archive.md` for historical reference
+- **Outcome:** Phase A unblocking pending → Oracle data-build preparation starts only after provenance lock acceptance
