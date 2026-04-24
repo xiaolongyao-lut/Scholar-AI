@@ -171,3 +171,24 @@ write_json("validation_results.json", results)
 
 - Real validation example: `.squad/discovery/oracle-extraction-validation-report.md`
 - Test scripts: `validate_extraction.py`, `test_filtering.py`, `test_provenance.py` (my-project root)
+
+### Winner-lane closure parity gate
+
+For eval closure sign-off after a parameter sweep winner is chosen:
+1. Compare full-eval frozen config vs winner config on the **five core retrieval knobs** only:
+   - `top_k`
+   - `recall_top_n`
+   - `rerank_top_n`
+   - `use_rerank`
+   - `use_expansion`
+2. Allow additional full-lane runtime knobs (for example concurrency or cache-guard settings) if they do not contradict the winner lane intent.
+3. Record parity as PASS/FAIL explicitly in the closure note.
+
+### Approval-with-caveats pattern
+
+A closure can be APPROVED while still requiring mandatory caveats. Trigger caveats when:
+- `use_rerank=true` but aggregated rerank API latency metrics are `0.0` (activation ambiguity),
+- step-sweep latency is known warm-cache optimistic,
+- per-template bucket quality is materially asymmetric vs aggregate quality.
+
+Treat these as **disclosure requirements**, not automatic blockers, unless the project contract explicitly requires active rerank evidence.

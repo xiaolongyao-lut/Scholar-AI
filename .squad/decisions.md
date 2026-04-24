@@ -2,6 +2,55 @@
 
 ## Active Decisions
 
+### 2026-04-25: S-1 Conversation Persistence — Path D Recommendation (Minimal Hardening, Then S-2)
+
+**By:** Morpheus (architecture review)  
+**Date:** 2026-04-25T00:04:18Z  
+**Scope:** Decide safest next move for conversation-persistence S-1 after live repo reconnaissance
+
+**Facts:**
+- `repositories/writing_runtime_repository.py` already provides durable SQLite + append-only transcript persistence, blob sidecars, and transcript repair with current schema `sessions / jobs / events / artifacts / approvals / checkpoints / runtime_meta`.
+- `writing_runtime.py` + `routers/runtime_router.py` already implement and expose resume / timeline / checkpoints / rewind / fork; tests pass (`tests/test_writing_runtime_persistence.py` — 4 passed).
+- Current blob spill path is behaviorally incomplete: payloads spill at 8,192 bytes, but resumed timeline events surface blob refs rather than rehydrated content; no `MODULAR_BLOB_SPILL_BYTES` env or `scripts/migrate_modular_sessions.py` exists.
+- Stricter S-1 plan asks for 64KB spill + env override + migration + `sessions / turns / tool_calls / checkpoints / branches`, but `CONVERSATION_PERSISTENCE_DESIGN.md` already tolerates top-level `blobs/` and an `artifacts` table — docs not fully aligned on physical layout.
+
+**Decision: ✅ Path D — Behavior-Complete Minimal Hardening, Then S-2**
+
+Do **not** do full table/path renames now. Finish only the parts of S-1 that close real behavior gaps while preserving the recently landed backend:
+
+1. Raise spill threshold to 64KB with `MODULAR_BLOB_SPILL_BYTES`
+2. Add blob read-through / transcript rehydration for resumed timeline payloads
+3. Add the missing focused blob-spill regression coverage
+4. Add a tiny idempotent migration/doctor script for schema/transcript repair entry
+
+**Rationale:**
+- Fixes the only clear non-cosmetic gap found in live code: large transcript payloads currently spill but do not round-trip back into resumed transcript views.
+- Preserves already-working resume / rewind / fork behavior and avoids churn against a backend that is already tested and partially accepted.
+- Avoids speculative schema and file-layout churn where plan and design docs are themselves inconsistent.
+
+**Explicitly Defer:**
+- Renaming `jobs/events/artifacts` into `turns/tool_calls/branches`
+- Moving blobs to `blobs/{session_id}/{blob_id}.bin`
+- Broader lifecycle work (archive/delete/export) and workspace file rollback UX fields like `rollback_snapshot_path` / `archived_turns_count`
+
+**Upgrade to invasive path later only if:**
+- S-2 or frontend integration proves current schema cannot express required turn/tool-call views without fragile mapping
+- Branch / rewind / audit queries become materially awkward or ambiguous on `jobs/events`
+- Blob storage needs per-session isolation for GC, tenancy, or operational debugging
+- Team reconciles plan vs design into one canonical storage contract and approves a migration window
+
+**Evidence:**
+- Inbox source: `.squad/decisions/inbox/morpheus-s1-recommendation.md` (merged here)
+- `repositories/writing_runtime_repository.py`
+- `writing_runtime.py`
+- `routers/runtime_router.py`
+- `tests/test_writing_runtime_persistence.py`
+- `docs/superpowers/plans/2026-04-20-conversation-persistence-mvp.md`
+- `docs/superpowers/plans/2026-04-20-latest-unified-plan.md`
+- `CONVERSATION_PERSISTENCE_DESIGN.md`
+
+---
+
 ### 2026-04-24 (late): Squad Execution Audit — Inbox Canonicalization Batch
 
 **By:** Squad 4.7 Coordinator (audit)
