@@ -1,4 +1,9 @@
-# Project Context
+# Ralph History
+
+> **Scope:** agent-internal working log.
+> **Team-facing night-shift record:** see `.squad/agents/history-Ralph.md`. Audit 2026-04-24.
+
+## Project Context
 
 - **Project:** my-project
 - **Created:** 2026-04-19

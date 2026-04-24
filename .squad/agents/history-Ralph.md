@@ -2,6 +2,9 @@
 
 Records of key actions and decisions during overnight patrol shifts.
 
+> **Scope:** team-facing night-shift record.
+> **Agent-internal working log:** see `agents/ralph/history.md`. Audit 2026-04-24.
+
 ## 2026-04-20 22:15 — Triage Overnight Feature Request
 
 **Date/Time:** 2026-04-20 22:15 UTC

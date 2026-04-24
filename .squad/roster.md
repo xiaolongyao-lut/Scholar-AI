@@ -1,6 +1,6 @@
 # Team Roster
 
-> {One-line project description}
+> 多模态 RAG 文献助手 — 架构/编码/测试/数据/前端协作的多 Agent 小队 (canonical source: `team.md`)
 
 ## Coordinator
 
@@ -12,12 +12,16 @@
 
 | Name | Role | Charter | Status |
 |------|------|---------|--------|
-| {Name} | {Role} | `.squad/agents/{name}/charter.md` | ✅ Active |
-| {Name} | {Role} | `.squad/agents/{name}/charter.md` | ✅ Active |
-| {Name} | {Role} | `.squad/agents/{name}/charter.md` | ✅ Active |
-| {Name} | {Role} | `.squad/agents/{name}/charter.md` | ✅ Active |
+| Morpheus | Architect / QA Lead | `.squad/agents/morpheus/charter.md` | ✅ Active |
+| Trinity | Implementation | `.squad/agents/trinity/charter.md` | ✅ Active |
+| Switch | Frontend Design | `.squad/agents/switch/charter.md` | ✅ Active |
+| Dozer | Frontend Implementation | `.squad/agents/dozer/charter.md` | ✅ Active |
+| Tank | QA | `.squad/agents/tank/charter.md` | ✅ Active |
+| Oracle | Data Engineer | `.squad/agents/oracle/charter.md` | ✅ Active |
 | Scribe | Session Logger | `.squad/agents/scribe/charter.md` | 📋 Silent |
 | Ralph | Work Monitor | — | 🔄 Monitor |
+
+> Canonical identity source: `team.md`. If this table drifts from `team.md`, `team.md` wins; run the audit skill to reconcile.
 
 ## Coding Agent
 
@@ -54,7 +58,7 @@
 
 ## Project Context
 
-- **Owner:** {user name}
-- **Stack:** {languages, frameworks, tools}
-- **Description:** {what the project does, in one sentence}
-- **Created:** {timestamp}
+- **Owner:** xiao (小龙 姚)
+- **Stack:** Python (RAG runtime), Node/React (frontend), Zotero integration, SiliconFlow + DashScope LLM providers
+- **Description:** 多模态 RAG 文献助手 — 当前聚焦文献提取、关键词相关性遍历与智能对话，后续扩展写作助手
+- **Created:** 2026-04-20

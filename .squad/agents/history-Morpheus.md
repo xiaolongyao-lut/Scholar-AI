@@ -2,6 +2,9 @@
 
 Records of key decisions and approvals by Morpheus (the architecture owner).
 
+> **Scope:** team-facing decision record (owner/reviewer view).
+> **Agent-internal working log:** see `agents/morpheus/history.md` — the two are complementary, not duplicates. Audit 2026-04-24.
+
 ## 2026-04-22: Task 2.2.B Design Review & Approval Gate (07:19 UTC)
 
 **Date/Time:** 2026-04-22 07:19:47Z  

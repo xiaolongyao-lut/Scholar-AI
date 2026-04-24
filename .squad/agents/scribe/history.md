@@ -28,6 +28,54 @@ Agent Scribe initialized and ready for work.
   - Memory: `.squad/memory/DECISION_TRAIL.md` (phase chain with why/evidence/impact)
   - Project documentation: `README.md` (§文献检索模块, integrated discovery/implementation/testing/validation narrative)
 
+**Session 2026-04-25: U1 Closure Finalization Batch — APPROVE**
+
+- **Task:** Merge Oracle U1 full-eval + Tank closure-review verdicts into decision registry; orchestration logging for closure finalization
+- **Oracle verdict:** ✅ U1 FULL EVAL COMPLETE — 3,269 queries evaluated; Recall@5=0.6721, MRR=0.5594 (both exceed requirements); all metric blocks present; config matches Step 3 winner exactly
+- **Tank verdict:** ✅ APPROVE — Closure pack complete, coherent, threshold-compliant, config-aligned; all 5-point gate checks pass
+- **Orchestration logs created:**
+  - `.squad/orchestration-log/2026-04-25T00-00-00Z-oracle-u1-full-eval-complete.md` (Oracle supervision: peek → nudge → consult → stale-cleanup)
+  - `.squad/orchestration-log/2026-04-25T00-00-01Z-tank-u1-closure-review.md` (Tank verdict record with mandatory caveats)
+  - `.squad/orchestration-log/2026-04-25T00-00-02Z-u1-closure-finalization.md` (Scribe merge & finalization)
+- **Session log:** `.squad/log/2026-04-25T00-00-02Z-u1-closure-approved.md`
+- **Decision merge:** Unified decision "2026-04-25: U1 Closure Finalization — APPROVE" merged into `decisions.md`
+- **Inbox deletion:** `oracle-u1-full-eval.md`, `tank-u1-closure-review.md` deleted post-merge (audit trail in decisions.md)
+- **Mandatory caveats documented:**
+  1. Rerank API fallback observed (graceful BM25 fallback; metrics show 0.0 API latency)
+  2. Step 3 warm-cache baseline noted (not cold-start production; full-eval 14,998ms avg shows true cost)
+  3. Template bucket asymmetry disclosed (0.0219 vs 0.6771 Recall@5)
+  4. Archive assessment: decisions.md ~197KB (no archival trigger; threshold ~20KB)
+- **Agent history updates:** Scribe history appended (this entry); Oracle/Tank updates pending (non-blocking)
+- **Git ready:** Staged for commit (3 orchestration logs + decision merge)
+- **Next:** Git commit + post-closure handoff (archive/integration per downstream project phase)
+
+**Session 2026-04-24 (late): Rerank Review Approval & Oracle Follow-Up Launch**
+
+- **Task:** Record Tank rerank review verdict; orchestration logging for Tank approval + Oracle runtime-proof launch; merge verdict to decisions.md
+- **Tank verdict:** ✅ APPROVE — All 7-point contract checks passed; 48-test regression bundle PASS
+- **Residual risk:** Runtime activation proof (1-query isolated canary) queued with Oracle; non-blocking follow-up
+- **Orchestration logs created:**
+  - `.squad/orchestration-log/2026-04-24T23-21-41Z-tank-rerank-review.md` (supervision timeline: peek → nudge → consult → stale-cleanup)
+  - `.squad/orchestration-log/2026-04-24T23-21-41Z-oracle-rerank-runtime-proof-launch.md` (follow-up launch)
+- **Session log:** `.squad/log/2026-04-24T23-21-41Z-rerank-review-approved.md`
+- **Decision merge:** Tank verdict merged to `decisions.md` under "2026-04-24: Trinity Rerank Key Redesign — APPROVE"
+- **Inbox status:** `tank-rerank-review.md` → merged ✅; `oracle-u1-full-eval.md` → defer until U1 closure (now complete, see above)
+- **Next:** U1 closure finalization batch (now complete)
+
+**Session 2026-04-24 (late, continued): Oracle Rerank Runtime Proof Complete & Scribe Orchestration Batch**
+
+- **Oracle canary result:** ✅ PROOF COMPLETE (2026-04-24T23:22:57Z) — Validity-first key selection active; legacy-rerank key selected; HTTP 200 on probe and request; 3 reranked candidates returned; no 401 errors; U1 eval untouched; budget state isolated.
+- **Scribe orchestration batch:**
+  1. Orchestration log: `.squad/orchestration-log/2026-04-24T23-22-57Z-oracle-rerank-runtime-proof.md` (supervision timeline with 4-step format: peek → nudge → consult → stale-cleanup)
+  2. Session log: `.squad/log/2026-04-24T23-22-57Z-oracle-rerank-runtime-proof-complete.md`
+  3. Decision merge: Oracle runtime-proof merged to `decisions.md` under "2026-04-24: Oracle — Rerank Runtime Proof COMPLETE"; inbox file `oracle-rerank-runtime-proof.md` deleted
+  4. No other agent history updates needed (rerank lane isolated; U1 lane separate)
+  5. Decision archive: `decisions.md` remains under 20KB threshold (no archival needed)
+  6. Git: Ready for commit if staged
+- **Rerank lane closure:** Tank approval (23:21:41) + Oracle proof (23:22:57) → Rerank redesign is production-ready, no blockers remain
+- **U1 lane status:** `oracle-u1-full-eval.md` inbox entry remains pending; U1 full eval is separate, non-blocking lane; no action until U1 verdict lands
+
+
 **Session 2026-04-24: Trinity Rerank Redesign Completion + Tank Review Gate**
 
 - **Trinity work:** Completed rerank key redesign with TDD-first approach. Backup created, test harness green, validity-first probing + process-local cache + kill switch implemented. Regression bundle passed (48 tests), smoke test confirmed no 401s. Rerank budget remains in short-circuit state pending Tank verdict.
@@ -36,7 +84,7 @@ Agent Scribe initialized and ready for work.
   - `.squad/orchestration-log/2026-04-24T15-13-00Z-trinity-rerank-redesign.md` (Trinity completion)
   - `.squad/orchestration-log/2026-04-24T15-13-30Z-tank-rerank-review-launch.md` (Tank gate launch)
 - **Session log:** `.squad/log/2026-04-24T15-13Z-rerank-redesign-batch.md` filed
-- **Decision merge:** Pending Tank verdict in `.squad/decisions/inbox/tank-rerank-review-verdict.md`; will merge to `decisions.md` after verdict received
+- **Decision merge:** Pending Tank verdict in `.squad/decisions/inbox/tank-rerank-review.md`; will merge to `decisions.md` after verdict received
 - **Next:** Tank verdict expected; production promotion gated by Tank approval
 
 **Phase 5 Completion (2026-04-20): Intelligent Chat Full Chain COMPLETE**

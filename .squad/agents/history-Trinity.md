@@ -2,6 +2,9 @@
 
 Records of key implementation phases and delivery milestones by Trinity.
 
+> **Scope:** team-facing delivery record.
+> **Agent-internal working log:** see `agents/trinity/history.md`. Audit 2026-04-24.
+
 ## 2026-04-24: API Remediation — Local `.env` Compatibility Reader (19:07 UTC)
 
 **Date/Time:** 2026-04-24 19:07 UTC  

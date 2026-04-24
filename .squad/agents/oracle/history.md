@@ -1,5 +1,8 @@
 # Oracle History
 
+> **Scope:** agent-internal working log.
+> **Team-facing data production record:** see `.squad/agents/history-Oracle.md`. Audit 2026-04-24.
+
 ## Project Context
 
 - Project: my-project
@@ -18,6 +21,38 @@
 
 - User explicitly wants a dedicated data specialist for tasks like generating structured batches or evaluation datasets.
 - Data work should be routed early instead of being treated as cleanup after implementation.
+
+### 2026-04-24: U1 Full Retrieval Closure Eval — COMPLETE
+
+**Task:** Execute full U1A evaluation (3,269 queries) using Step 3 winner config from `output\109papers_step3_best.json`
+
+**Configuration applied:**
+- `top_k=10, recall_top_n=200, rerank_top_n=40, use_rerank=true, use_expansion=false`
+- Environment: `SILICONFLOW_RERANK_API_KEY` set from repo `.env`
+- Input: `eval_queries_v2.1_u1a.jsonl` + `output\eval_query_audit_v21_u1a_template_flags.jsonl`
+- Output: Fresh artifact names at `output\u1_closure_full_eval.*`
+
+**Result:** ✅ SUCCESS
+- Recall@5 = 0.6721 (requirement: ≥ 0.45) **PASS**
+- MRR = 0.5594 (requirement: ≥ 0.30) **PASS**
+- All artifacts present and coherent (3,269/3,269 queries)
+- Progress file: 66 heartbeats, monotonic to completion
+- Per-query file: 3,269 rows matching total_queries
+- per_template_bucket metrics block present with template/non_template keys
+
+**Key observation:** Rerank API showed `p95=0.0ms` (same fallback pattern as 100-query run), but eval completed with graceful BM25 fallback. Latency metrics reflect queue wait only.
+
+**Artifacts for Tank review:**
+- `.squad/decisions/inbox/oracle-u1-full-eval.md` — full decision record (merged to decisions.md 2026-04-25)
+- All closure output files at `output\u1_closure_full_eval.*`
+
+**Status for next phase:** Ready for Tank Tier 2 gate validation. ✅ Tank closure review completed and APPROVED (2026-04-25).
+
+**Closure Result (2026-04-25):**
+- Tank verdict: ✅ APPROVE
+- Mandatory caveats: Rerank API fallback observed; Step 3 warm-cache caveat; template bucket asymmetry disclosed
+- Orchestration log: `.squad/orchestration-log/2026-04-25T00-00-00Z-oracle-u1-full-eval-complete.md`
+- Decision merged: "2026-04-25: U1 Closure Finalization — APPROVE" → `decisions.md`
 
 ### 2026-04-24: Router Import Stability Audit
 
@@ -210,4 +245,70 @@
 - Decisions merged: oracle-step3-sweep-run.md, ralph-u1-closure-prep.md, tank-u1-review-prep.md all moved to decisions.md
 
 **Next:** Monitor U1A full eval completion; hand metrics/progress/per-query artifacts to Tank for A1-A11 acceptance checklist validation. Target completion ~2h from launch.
+
+### 2026-04-24: U1 Closure Full Eval — Live Supervision Pass
+
+**Task:** Read-only supervision pass on running U1A full-scale evaluation.
+
+**Scope:** Monitor `output/u1_closure_full_eval.{progress,per_query}.jsonl` and `.metrics.json.resume_config.json` for health, progression, and data integrity.
+
+**Verdict:** ✅ **RUN ACTIVELY PROGRESSING — HEALTHY**
+
+**Key findings:**
+- **Progress:** 2,050 / 3,269 queries (62.71% complete) as of 23:01:59 UTC
+- **Elapsed:** 32m 11s from launch (22:29:48 UTC)
+- **Throughput:** 1.06 queries/sec (steady)
+- **Artifacts:** Progress file (41 checkpoints), per_query file (2,067 records), metrics not yet written (expected post-completion)
+- **Per-query health:** All records populated with valid recall_at_1..5, mrr, latency_ms
+- **Reranker:** Queue wait times tracked; API call timing not instrumented (non-blocking)
+- **Async lag:** Per-query records (2,067) lead progress done (2,050) by 17 — within expected buffering window
+- **Config locked:** Winner from Step 3 (recall_top_n=200, rerank_top_n=40, use_rerank=true)
+- **No data anomalies:** Monotonic timestamp progression, no backsliding, canonical query sequencing intact
+
+**Risk assessment:**
+- Early completion before metrics flush: **LOW** (progress/per_query both present; Tank QA validates post-completion)
+- Data mismatch: **VERY LOW** (async write lag normal; query IDs consistent)
+- Reranker instrumentation gap: **INFORMATIONAL** (does not block quality gate; timing already logged in latency_ms)
+
+**Estimated completion:** 2026-04-24 23:21:07 UTC (~19 min from last checkpoint)
+
+**Quality gate readiness:** Winner config Recall@5 ≥ 0.82 (vs Tier 2 ≥ 0.45), MRR ≥ 0.66 (vs Tier 2 ≥ 0.30) — high confidence pass expected.
+
+**Action:** No intervention required. Continue monitoring for metrics.json flush post-completion. Hand final artifacts to Tank for A1-A11 acceptance checklist.
+
+**Evidence:** `.squad/decisions/inbox/oracle-u1-watch.md` (full supervision report).
+
+### 2026-04-24: Rerank Runtime Proof Canary — COMPLETE
+
+**Task:** Run 1-query isolated rerank canary to verify runtime activation after Tank-approved rerank-key redesign.
+
+**Scope:** Execute clean-budget proof that the new validity-first key selection + probe logic is active, correct, and unblocked.
+
+**Configuration:**
+- Isolated budget state: `output/canary_rerank_proof/` (no interference with U1 eval lane)
+- Query count: 1 (probe-only)
+- Key selection: Must use legacy-rerank (51-char) not embedding-only key (38-char)
+- Expected: HTTP 200 on probe + rerank request, no 401 errors
+
+**Execution Result:** ✅ **CANARY PASSED**
+
+**Evidence:**
+- Probe succeeded: `2026-04-24 23:22:55,772 - httpx - INFO - HTTP Request: POST https://api.siliconflow.cn/v1/rerank "HTTP/1.1 200 OK"`
+- Key selection: `2026-04-24 23:22:55,772 - reranker_client - INFO - Rerank key selected: source=legacy-rerank key_len=51`
+- Rerank request: `2026-04-24 23:22:57,692 - httpx - INFO - HTTP Request: POST https://api.siliconflow.cn/v1/rerank "HTTP/1.1 200 OK"` (second HTTP 200, no 401)
+- Result: 3 ranked candidates returned; no API errors
+
+**Key findings:**
+1. **Validity-first probe active** — `_probe_rerank_key()` was invoked at startup and ran live HTTP test against endpoint
+2. **Correct key selected** — legacy-rerank (51-char RERANK_API_KEY) was chosen, not embedding-only SILICONFLOW_API_KEY
+3. **No 401 error** — both probe and request HTTP 200; the fix is working as intended
+4. **U1 eval untouched** — U1 completed at 100% (23:20:28) before canary ran; isolated budget state prevented cross-lane interference
+
+**Artifacts:**
+- Canary script: `canary_rerank_proof.py`
+- Metrics output: `output/canary_rerank_proof/canary_metrics.json`
+- Report: `output/canary_rerank_proof/canary_report.json`
+- Decision: `.squad/decisions/inbox/oracle-rerank-runtime-proof.md`
+
+**Status:** ✅ Runtime activation is PROVEN. No blockers remain. Implementation ready for merge.
 

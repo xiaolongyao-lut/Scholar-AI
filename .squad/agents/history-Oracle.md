@@ -2,6 +2,9 @@
 
 Records of data validation and sweep/report artifact oversight by Oracle.
 
+> **Scope:** team-facing data production record.
+> **Agent-internal working log:** see `agents/oracle/history.md`. Audit 2026-04-24.
+
 ## 2026-04-24: Goldset Adjudication — 64 Review-Needed Queries (19:28 UTC)
 
 **Date/Time:** 2026-04-24 19:28 UTC  

@@ -2,6 +2,9 @@
 
 Records of testing phases and quality validation by Tank.
 
+> **Scope:** team-facing QA record.
+> **Agent-internal working log:** see `agents/tank/history.md`. Audit 2026-04-24.
+
 ## 2026-04-24: GateB Goldset First-Pass 100-Query Conditional Approval & Oracle Gate (19:21 UTC)
 
 **Date/Time:** 2026-04-24 19:21 UTC  

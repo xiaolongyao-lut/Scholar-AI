@@ -28,3 +28,8 @@ Run the narrowest chain-aware tests first:
 Flag a coverage gap if either is missing:
 - direct assertion for DashScope text-mode payload (`input.query`, `input.documents`, `parameters.top_n`),
 - direct assertion that reranker prefers `raw_content` over prefixed `content`.
+
+## Live smoke interpretation rule
+
+- If smoke metrics show `rerank_api_avg_ms=0.0` and `rerank_api_p95_ms=0.0`, do **not** treat "no 401 in log" as proof of active rerank.
+- Always cross-check `output/rerank_budget_state.json` and recent `output/rerank_cost.jsonl` tail for `budget_capped` events before concluding runtime health.

@@ -1,5 +1,8 @@
 # Morpheus History
 
+> **Scope:** agent-internal working log.
+> **Team-facing approval record:** see `.squad/agents/history-Morpheus.md` — the two are complementary, not duplicates. Audit 2026-04-24.
+
 ## Core Context
 
 **Project:** my-project | **Owner:** xiao  
