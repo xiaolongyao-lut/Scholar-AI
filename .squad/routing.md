@@ -9,6 +9,7 @@ How to decide who handles what.
 | Architecture / System Design | Morpheus | module boundaries, interfaces, system trade-offs   |
 | Code Implementation          | Trinity  | features, bug fixes, refactors, scaffolding        |
 | Frontend / UX Design         | Switch   | flows, UI states, interaction design               |
+| Frontend Implementation      | Dozer    | api adapter, interface sync, UI state wiring       |
 | Testing / QA                 | Tank     | unit tests, regression checks, smoke tests         |
 | Data Work                    | Oracle   | sample data, goldsets, labels, eval analysis       |
 | Code Review                  | Morpheus | PRs, audits, post-rejection reassignment decisions |
@@ -70,6 +71,7 @@ How to decide who handles what.
 35. **Stop requires explicit user intent.** Active task loops may stop only on explicit user commands such as `stop`, `pause`, `idle`, or equivalent clear instruction.
 36. **Reviewer rejection reassignment is Morpheus-audited.** When Tank (or any reviewer) rejects an artifact, Morpheus audits lockout compliance and selects the revision owner; Coordinator then executes the reassignment per Morpheus decision.
 37. **Non-Morpheus reassignment audit.** If a revision task is reassigned without Morpheus review, Morpheus must immediately audit the decision and either approve or cancel the task before execution continues.
+38. **Backend change triggers frontend parallel lane.** If Trinity modifies or adds backend endpoints/contracts, spawn Dozer in parallel to update existing frontend service functions/interfaces, and spawn Switch for state/UX expression review.
 
 ### Unified Heartbeat Record (Required)
 

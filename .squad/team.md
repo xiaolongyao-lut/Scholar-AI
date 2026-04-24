@@ -18,6 +18,7 @@
 | Morpheus | Architect / QA Lead     | `.squad/agents/morpheus/charter.md` | Active  |
 | Trinity  | Implementation          | `.squad/agents/trinity/charter.md`  | Active  |
 | Switch   | Frontend Design         | `.squad/agents/switch/charter.md`   | Active  |
+| Dozer    | Frontend Implementation | `.squad/agents/dozer/charter.md`    | Active  |
 | Tank     | QA                      | `.squad/agents/tank/charter.md`     | Active  |
 | Oracle   | Data Engineer           | `.squad/agents/oracle/charter.md`   | Active  |
 | Scribe   | Session Logger          | `.squad/agents/scribe/charter.md`   | Silent  |

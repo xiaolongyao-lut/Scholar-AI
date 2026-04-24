@@ -2,6 +2,361 @@
 
 ## Active Decisions
 
+### 2026-04-24: Tank Final Goldset Approval — Regenerated 100-Query Canonical Set APPROVED
+
+**By:** Tank (QA Reviewer)  
+**Date:** 2026-04-24T19:31:41Z  
+**Scope:** Final approval of regenerated canonical 100-query goldset after full adjudication of former 64 scaffold entries
+
+**Decision:** ✅ **APPROVED** — Hard-goldset acceptance gate is now closed.
+
+**Quality Gates Verified:**
+- ✅ Former 64 scaffold entries fully adjudicated; no unresolved scaffold-only records remain
+- ✅ Schema validation returns zero errors
+- ✅ Qrels TSV fully coherent with JSONL qrels structure
+- ✅ Provenance chain validated: Zotero-backed exact-title alignment
+- ✅ No obvious fabricated references detected
+
+**Final Artifacts (Locked):**
+- `artifacts/eval_audit/gateb_firstpass_100_all.jsonl` — merged 100-query canonical set
+- `artifacts/eval_audit/gateb_firstpass_100_high_confidence.jsonl` — 36 pre-reviewed records
+- `artifacts/eval_audit/gateb_firstpass_100_review_needed.jsonl` — 64 adjudicated records
+- `artifacts/eval_audit/gateb_firstpass_100_qrels.tsv` — TREC qrels format
+- `artifacts/eval_audit/gateb_firstpass_100_manifest.json` — schema and provenance metadata
+
+**Evidence:**
+- Orchestration log: `.squad/orchestration-log/2026-04-24-193141-tank-final-goldset-approval.md`
+- Session log: `.squad/log/2026-04-24-193141-final-goldset-approval.md`
+- Decision source: `.squad/decisions/inbox/tank-final-approve-goldset-100.md` (merged here)
+
+**Next:** Canonical 100-query set ready for evaluation pipeline. No further adjudication cycles required. Locked state prevents regression.
+
+---
+
+### 2026-04-24: Oracle Goldset Build — 100-Query First Pass COMPLETED
+
+**By:** Oracle (Data Engineer)  
+**Date:** 2026-04-24T19:13:47Z  
+**Scope:** Build first-pass 100-query Zotero-backed real-literature goldset, reusing 36 reviewed Gate B records and scaffolding 64 review-needed entries from title-matched corpus
+
+**Decision:** COMPLETED — 100-query goldset composition delivered with real-literature provenance trace.
+
+**Composition:**
+- **High confidence (36):** Reused reviewed Gate B records with existing graded judgments
+- **Review needed (64):** Exact-title scaffolds from Zotero ↔ parsed-corpus overlaps, with empty qrels and candidate pools for adjudication
+- **Manifest:** Schema validation passed; provenance chain complete (Zotero title → corpus doc ID)
+
+**Outputs:**
+- `artifacts/eval_audit/gateb_firstpass_100_all.jsonl` — merged 100-query artifact
+- `artifacts/eval_audit/gateb_firstpass_100_high_confidence.jsonl` — 36-query subset (ready for eval)
+- `artifacts/eval_audit/gateb_firstpass_100_review_needed.jsonl` — 64-query subset (awaiting adjudication)
+- `artifacts/eval_audit/gateb_firstpass_100_review_pools.jsonl` — candidate docs per query
+- `artifacts/eval_audit/gateb_firstpass_100_qrels.tsv` — TSV format (high-confidence only)
+- `artifacts/eval_audit/gateb_firstpass_100_manifest.json` — schema and provenance metadata
+
+**Quality Gates Passed:**
+- ✅ Real-literature only (no synthetic papers or invented citations)
+- ✅ Provenance integrity (Zotero titles linked to corpus via exact match)
+- ✅ Schema validation (zero errors)
+- ✅ Qrels and review pools ready for downstream adjudication
+
+**Evidence:**
+- Orchestration log: `.squad/orchestration-log/2026-04-24_191347-oracle-goldset-build.md`
+- Session log: `.squad/log/2026-04-24_191347-oracle-goldset-build.md`
+- Decision source: `.squad/decisions/inbox/oracle-build-goldset-100.md` (merged here)
+
+**Next:** Ready for Tank review if artifact is selected for formal evaluation. High-confidence slice may proceed to downstream eval immediately.
+
+---
+
+### 2026-04-24: Goldset Rejection Audit — Scope Clarification PASS
+
+**By:** Morpheus (Architecture Review)  
+**Date:** 2026-04-24T19:10:44Z  
+**Scope:** Determine whether Tank's rejection on 36/40-query artifacts blocks Oracle's fresh 100-query build
+
+**Decision:** PASS — Tank's rejection applies only to pre-existing artifacts. Oracle's fresh Zotero-backed 100-query build is unblocked.
+
+**Key Finding:** Reviewer lockout is artifact-specific. Tank reviewed only the 36/40 pair (no 100-query artifact existed). Tank's rejection does not bind an artifact that hasn't been submitted for review.
+
+**Boundary:** This is NOT a reversal of Tank's rejection on the 36/40 pair. The rejection remains valid for those specific artifacts. Only when a 100-query artifact is delivered and rejected would Oracle become locked out for the next revision.
+
+**Entry Conditions for Tank's Next Review:**
+- Explicit 100 hard query scope documented
+- Real-literature Zotero provenance trace (doc_id mapping)
+- Schema validation passes with zero errors
+- Root synthetic file not offered as canonical evidence
+
+**Next:** Oracle completes 100-query build. Tank re-reviews only when new artifact is presented.
+
+**Evidence:**
+- `.squad/decisions/inbox/morpheus-goldset-rejection-audit.md` (audit source)
+- `.squad/templates/skills/reviewer-protocol/SKILL.md` (lockout semantics)
+- `.squad/decisions.md` prior entries (Phase A provenance lock, Phase B sign-offs)
+
+---
+
+### 2026-04-24: Tier3 Sign-Off Gate — Acceptance Complete
+
+**By:** Tank (QA)  
+**Date:** 2026-04-24T09:29:48Z  
+**Scope:** Tier3 full-evaluation consistency verification and sign-off gate
+
+**Decision:** PASS — Tier3 sign-off gate is satisfied and closed. All coherence checks pass.
+
+**Evidence:**
+- Artifact triplet exists and complete: `output/tier3_u1a3269.metrics.json`, `output/tier3_u1a3269.progress.jsonl`, `output/tier3_u1a3269.per_query.jsonl`
+- Progress final = 3269/3269 (100%)
+- Per-query rows = 3269, unique query_id = 3269
+- Metrics total_queries = 3269
+- Progress monotonic (no reset, no duplicate step)
+- Resume-config aligned with Tier3 triplet targets
+- Metrics ↔ per-query aggregation consistent (mean recall@5 ≈ 0.7421, mean MRR ≈ 0.6459)
+
+**Next:** Tier3 evaluation results ready for downstream aggregation and reporting.
+
+---
+
+### 2026-04-24: Gate B Phase B Sign-Off — Normalization Ready
+
+**By:** Oracle (Data Review)  
+**Date:** 2026-04-24T09:29:48Z  
+**Scope:** Gate B Phase B normalization/sign-off gate internal consistency audit
+
+**Decision:** PASS — Frozen artifact set is internally consistent and ready for sign-off.
+
+**Key Findings:**
+- ✅ Schema validation: zero errors on `artifacts/eval_audit/gateb_goldset.jsonl` (36 queries, 343 candidates, S1=16/S2=10/S3=10)
+- ✅ Goldset internal consistency: no_gold=true (6), no_gold=false (30)
+- ✅ Qrels TSV consistency: 30 gold queries, 280 judgment rows, no misalignment
+- ✅ Pool reproducibility: SHA256 hashes stable
+- ⚠️ Repository hygiene issue: Duplicate `gateb_goldset.jsonl` at root (40 queries, pre-normalization phase A scaffold) must be deleted/archived to eliminate path ambiguity
+
+**Blocking Next Gate:** Awaiting human annotation completion + Cohen's κ validation.
+
+**Action Required:** Delete or archive root `gateb_goldset.jsonl` before downstream CI/automation.
+
+---
+
+### 2026-04-24: Session Persistence MVP — Lane Launched
+
+**By:** Trinity (Implementation)  
+**Date:** 2026-04-24T09:29:48Z  
+**Scope:** Backend-only session persistence MVP after Tier3 and Gate B sign-offs passed
+
+**Decision:** Start §3.5 session persistence with rerank-entry hard stop + eval manifest-first loading, deferring full quarantine/reslice batch.
+
+**Evidence:**
+- `eval_retrieval_runtime.py`: manifest.json-first loading active, oversize_count reporting enabled
+- `reranker_client.py`: oversize candidate fallback before HTTP calls (warning="oversize_skipped")
+- Tests: `test_eval_runtime_v2_layout.py`, `test_reranker.py::test_rerank_async_skips_oversize_candidates_before_http` passing
+
+**Open Issues:**
+- Embedding-entry rejection/quarantine in `chunk_vector_store.py` (deferred to §3.5.3)
+- Historical chunk reslice workflow (deferred to §3.5.5)
+
+**Next:** Continue §3.5 with embedding vector store integration.
+
+---
+
+### 2026-04-22: Morpheus Plan Gate — 4-Stream Reconciliation
+
+**By:** Morpheus (Architecture)  
+**Date:** 2026-04-22  
+**Scope:** Reconcile four active plan streams into conservative execution order
+
+**Decision:** Treat four plans as three workstreams: Tier3 eval acceptance, Gate B Phase B signoff, conversation-persistence MVP (backend first). Execute in that order; defer frontend work and optional optimizations.
+
+**Authorized Next Steps:**
+1. Tank audits Tier3 artifact consistency → close/no-close verdict
+2. Ralph confirms Gate B canonical pair coherence → Morpheus closes gate
+3. Trinity starts conversation-persistence backend only (U2, after both gates recorded; U3 frontend deferred)
+
+**Do NOT:**
+- Rerun on unchanged queries without Tier3 acceptance first
+- Start frontend work before backend/session-storage contract proven
+- Refactor retrieval/runtime code or add dependencies without approval
+
+---
+
+### 2026-04-22: Gate B `no_gold` Semantics — Contract Ruling
+
+**By:** Morpheus (Architecture)  
+**Date:** 2026-04-22  
+**Scope:** Resolve reviewed-annotation conflict between Phase B guidance and canonical validator rules
+
+**Decision:** The canonical-validator contract wins. `no_gold=true` means **no direct-answer gold in canonical qrels**, even if reviewed artifact contains rel=1 judgments.
+
+**Boundaries:**
+- Queries with ≥1 rel=2: enter canonical qrels with no_gold=false
+- Queries with 0 rel=2: stay no_gold=true with empty canonical qrels (rel1-only preserved in audit sidecar)
+- No schema/validator changes; no mutation of reviewed source
+- Ralph reruns canonical merge per this ruling
+
+---
+
+### 2026-04-22: Oracle Oversize Scan Slice — Report Landed
+
+**By:** Oracle (Data)  
+**Date:** 2026-04-22  
+**Scope:** §3.5.5 precondition: historical oversize scanner + report artifact
+
+**Decision:** Land smallest safe slice: add historical oversize scanner (mirrors eval loader), emit report artifact, stop before targeted reslice.
+
+**Evidence:**
+- `scripts/scan_oversize_chunks.py`
+- `output/oversize_materials_report.json`: 6293 scanned, 80 oversize materials, 86 oversize chunks
+
+---
+
+### 2026-04-22: Oracle Phase 6 Eval Blocked — Credential Issue
+
+**By:** Oracle (Data)  
+**Date:** 2026-04-22  
+**Scope:** §3.3 contextual chunks quality evaluation
+
+**Decision:** Hold Phase 6 run until embedding credentials restored or cache available. First attempt failed with EmbeddingAPIError → HTTP 401.
+
+**Action:** Restore valid SiliconFlow credential or regenerate non-contextual cache, then rerun E1→E4.
+
+---
+
+### 2026-04-22: Ralph Canonical Normalization — Execution Authorized
+
+**By:** Ralph (Merge) + Morpheus (Ruling)  
+**Date:** 2026-04-22  
+**Scope:** Gate B Phase B canonical merge under rel=2-only contract
+
+**Decision:** Merge reviewed source applying rel=2-only filtering + annotator_id field addition. Preserve rel1-only evidence in audit sidecar.
+
+**Outcome:**
+- 36 goldset records, 285 TSV qrels (6 no_gold=true queries → 0 qrels rows)
+- `annotator_id=phase_b_reviewed_pass` added to canonical records
+- rel1-only judgments preserved in `gateb_phase_b_rel1_only_sidecar.jsonl`
+
+---
+
+### 2026-04-22: Tank Test Promotion 3.4 — Concurrent Write Fix Approved
+
+**By:** Tank (QA)  
+**Date:** 2026-04-22  
+**Scope:** §3.4 test promotion: unblock concurrent-write regression
+
+**Decision:** Approve tiny production fix to `routers/resources_router.py::_atomic_write_text` to eliminate temp-file path collisions.
+
+**Evidence:**
+- Fixed failing test: `test_concurrent_identical_saves_keep_manifest_consistent`
+- Verification: 20/20 tests pass in test_rerank_budget.py + test_chunk_store_jsonl.py + test_inspiration_smoke.py
+
+**Outcome:** §3.4 test-promotion scope fully complete.
+
+---
+
+### 2026-04-22: Trinity Chunk Boundary 3.5 — Guard Placement Decided
+
+**By:** Trinity (Implementation)  
+**Date:** 2026-04-22  
+**Scope:** §3.5.2 embedding guard + quarantine isolation placement
+
+**Decision:** Place Slice 2 hard guard at `ChunkVectorStore.build(...)` (embedding boundary) + quarantine at `routers.resources_router._save_chunk_store(...)` (persistence boundary).
+
+**Evidence:**
+- Plan §3.5.1, §3.5.4 requirements aligned
+- Tests: `test_chunk_size_guard.py` covers pre-embed rejection, env rollback, quarantine routing
+
+---
+
+### 2026-04-22: Trinity Directed Reslice 3.5.5 — Fallback Strategy
+
+**By:** Trinity (Implementation)  
+**Date:** 2026-04-22  
+**Scope:** §3.5.5 historical oversize chunk cleanup (fallback when first reslice incomplete)
+
+**Decision:** Use `scripts/reslice_oversize_materials.py` to reslice only report-listed materials through production `_chunk_document()` + secondary split on remaining oversize.
+
+**Fallback:** Reconstruct source text from stored chunk content for materials with no doc_store record.
+
+---
+
+### 2026-04-22: Tank Test Promotion 3.4 Slice — Rerank Budget Tests Added
+
+**By:** Tank (QA)  
+**Date:** 2026-04-22  
+**Scope:** §3.4 test promotion: implement rerank budget threshold regression
+
+**Decision:** Add missing `tests/test_rerank_budget.py` coverage (budget threshold fallback, cross-day reset, corrupted-state recovery).
+
+**Verification:** 20/20 tests pass; §3.4 slice complete.
+
+---
+
+### 2026-04-22: Tank QA Preflight 3.5 — First Safe Slice Criteria
+
+**By:** Tank (QA)  
+**Date:** 2026-04-22  
+**Scope:** §3.5 QA preflight gate for first safe slice (manifest-first loading)
+
+**Decision:** Focus on 3.5.2 eval runtime v2 layout alignment without expanding to full hard-valve. Pass criteria:
+1. `_load_retrieval_corpus()` loads v2 manifest when legacy absent
+2. Legacy-only corpus still loads with migration warning
+3. v2 preferred deterministically when both exist
+4. No regression to existing test contracts
+
+**Baseline:** 32/32 tests pass in test_chunk_store_jsonl.py + test_eval_runtime.py.
+
+---
+
+### 2026-04-23: User Directive — Squad Autopilot
+
+**By:** xiao (via Copilot)  
+**Date:** 2026-04-23T00:07:05Z  
+**What:** Set squad tier to autopilot for current execution context.
+
+---
+
+### 2026-04-23: User Directive — Reference Set for RAG Answers
+
+**By:** xiao (via Copilot)  
+**Date:** 2026-04-23T02:57:32Z  
+**What:** Use `C:\Users\xiao\Desktop\回答提示词.md`, `C:\Users\xiao\Desktop\正反例.md`, and `C:\Users\xiao\Desktop\格式与约束.md` as prompt/output reference set for plan-aligned RAG answer work.
+
+---
+
+### 2026-04-23: Unified Model Call Gateway — Main RAG Workflow Generation Complete
+
+**By:** Trinity (implementation), Scribe (logged)  
+**Date:** 2026-04-23T00:15:00Z  
+**Scope:** §3.6.5 plan completion — route `main_rag_workflow.py._generate_answer(...)` through gateway
+
+**Decision:** Integration of the final model call gateway entry point is complete. Main RAG workflow's answer generation now invokes `model_call_gateway.gated_call(kind="llm", ...)` instead of making direct HTTP calls.
+
+**Why:** Completes the unified gateway pattern across all major LLM call sites (embedder, reranker, query expansion, contextual summary, and now generation). Enables:
+- Exact cache checking on generation prompts
+- Unified retry/concurrency/budget semantics
+- Consistent telemetry (cache_status + decision fields in llm_cost.jsonl)
+- Future-ready fallback path when embedding credentials restored
+
+**Scope Boundaries:**
+- Modifies: `main_rag_workflow.py` L538-557 (gateway invocation in `_generate_answer`)
+- Imports: `from model_call_gateway import gated_call` (L53)
+- Cache key binding: `prompt_hash + sampling_params_hash + task="generation"`
+- No change to: Answer format, evidence packing, memory adapter contract, fallback chain
+- Gateway itself: Pre-deployed (Step 1 from 2026-04-22); LLM/reranker/embedding/query/contextual integration pre-completed
+
+**Verification:**
+- Test suite: 7 tests passed (test_main_rag_workflow_generation.py + test_evidence_packer.py)
+- Grep audit: No remaining `requests.post(...)` in generation path
+- SQL todo: workflow-gateway-step marked done
+
+**Evidence:** `main_rag_workflow.py:538-557`, `tests/test_main_rag_workflow_generation.py`, `.squad/orchestration-log/2026-04-23T00-15-00Z-trinity-gateway-cleanup-completion.md`
+
+**Known Blockers (Out of Scope):**
+- Phase 6 eval (§3.3) blocked on embedding credentials (HTTP 401)
+- Embedding gateway runtime acceptance (§3.5.6) same blocker
+- These do not affect the generation gateway path
+
+---
+
 ### 2026-04-22: Gate B Phase B `no_gold` Semantics Clarified
 
 **By:** Morpheus  
@@ -3001,3 +3356,321 @@ All four Phase B baseline-freeze inbox notes were **100% consistent** with zero 
 
 - **Session Log:** `.squad/log/2026-04-22-gateb-phase-b-baseline-freeze-session.md` (baseline freeze orchestration record)
 - **Orchestration Entry:** `.squad/orchestration-log/2026-04-22T21-38-00Z-gateb-phase-b-baseline-freeze.md`
+
+---
+
+### 2026-04-24: Conversation Persistence MVP — Block-and-Reassign Verdict
+
+**By:** Tank (QA) + Morpheus (Architecture Review)  
+**Date:** 2026-04-24T10:10:16Z  
+**Scope:** Backend conversation persistence MVP acceptance gate — reviewer blocking verdict classification and scope boundary enforcement
+
+**Decision:** BLOCK-AND-REASSIGN with locked-out original author
+
+**Verdict Details:**
+- Tank's conditional sign-off is a **hard reviewer-blocking rejection** (not deferrable rework).
+- Trinity is **locked out** for this revision cycle per reviewer protocol (original author cannot produce next revision after rejection).
+- **Revision owner:** Ralph
+- **MVP scope affirmed:** resume/rewind/fork/checkpoint persistence **in-scope**; archive/delete/export lifecycle APIs **out-of-scope** for this release.
+
+**Evidence:**
+- Tank's blocking note explicitly withheld sign-off and named required revisions: `.squad/decisions/inbox/tank-persistence-qa-prep.md:16-30`
+- Reviewer protocol forbids original author from producing rejected artifact's next revision: `.squad/templates/skills/reviewer-protocol/SKILL.md:28-36`
+- MVP boundaries explicitly specified in CONVERSATION_PERSISTENCE_DESIGN.md Phase 4 deferral structure
+
+**Patch Scope (Ralph's Revision):**
+1. `tests/test_runtime_router_contract.py` — bootstrap import guard + negative-path route assertions
+2. `routers/runtime_router.py` — normalize missing-job behavior (400/404 consistency)
+3. `test_writing_runtime.py` — explicit export_state() → import_state() round-trip regression
+
+**QA Gate (Must Pass Before Re-Verification):**
+```powershell
+pytest -q test_writing_runtime.py tests\test_writing_runtime_persistence.py tests\test_session_memory_resume.py tests\test_runtime_router_contract.py
+```
+- Router contract tests collect cleanly from repo root
+- Negative-path assertions cover missing session/job/invalid-mode cases
+- export_state() / import_state() round-trip passes
+- All four-file acceptance bundle passes
+
+---
+
+### 2026-04-24: Router Import Path Stability Fix
+
+**By:** Oracle (Data Engineer / QA Investigator)  
+**Date:** 2026-04-24T10:10:16Z  
+**Scope:** Root cause analysis of `tests/test_runtime_router_contract.py` pytest collection failure
+
+**Decision:** CREATE `routers/__init__.py` (empty file)
+
+**Root Cause:**
+`routers/` directory lacks `__init__.py`, causing Python to treat it as a namespace package. When test imports `routers.runtime_router` as a submodule, the statement `from models import (...)` is resolved as "search routers.models first, then models". Since routers.models doesn't exist, ModuleNotFoundError is raised before Python can fall back to top-level models.
+
+**Minimal Fix:**
+- Create `routers/__init__.py` (empty) to convert namespace package → regular package
+- Eliminates import ambiguity
+- One file, zero code changes
+- No runtime impact
+
+**Verification Commands:**
+
+Pre-fix (reproduces failure):
+```bash
+pytest tests/test_runtime_router_contract.py -v --collect-only
+```
+
+Post-fix (should collect 2 tests):
+```bash
+pytest tests/test_runtime_router_contract.py -v --collect-only
+pytest tests/test_runtime_router_contract.py -v
+```
+
+Expected: 2 tests collected and both pass.
+
+**Evidence:**
+- File structure audit: `routers/` missing `__init__.py`; all routers use bare `from models import (...)` pattern
+- Namespace package behavior: PEP 420 import prioritization and pytest collection context
+- Detailed evidence pack: `.squad/decisions/inbox/oracle-router-import-evidence-pack.md`
+
+---
+
+### 2026-04-24: Frontend Persistence Contract Drift — Deferred Post-QA
+
+**By:** Dozer (Frontend Implementation)  
+**Date:** 2026-04-24T10:10:16Z  
+**Scope:** Frontend runtime service contract alignment with newly added backend persistence APIs
+
+**Decision:** Frontend persistence wiring is deferred to post-backend-QA cycle; required action is contract schema regeneration before UI work can proceed.
+
+**Drift Assessment:**
+- Backend now exposes: `/runtime/sessions`, `/runtime/session/current`, `/runtime/session/{id}/timeline`, `/runtime/session/{id}/checkpoints`, `/runtime/session/{id}/rewind`, `/runtime/session/{id}/fork`
+- Frontend contract still only knows: create/get session + job endpoints
+- `Workbench` component is localStorage-only; no persistence demo possible until schema regen
+- Frontend session/runtime types in `frontend/src/types/runtime.ts` are out of date
+
+**Minimal Blocker Before UI Work:**
+- Regenerate `frontend/src/generated/openapi.ts` from backend OpenAPI spec
+- Update `frontend/src/services/runtimeClient.ts` with resume/timeline/checkpoint/rewind/fork method stubs
+
+**Not Blocking Backend MVP:** Backend-only persistence MVP is unaffected by frontend drift. Frontend work is fully deferrable.
+
+**Evidence:**
+- Backend router: `routers/runtime_router.py` (resume/timeline/checkpoint/rewind/fork routes)
+- Backend models: `models/runtime.py` (session persistence entities)
+- Frontend stale contract: `frontend/src/generated/openapi.ts`, `frontend/src/services/runtimeClient.ts`
+
+---
+
+### 2026-04-24: User Directive — Frontend Gemini API Preference
+
+**By:** 小龙 姚 (User) via Coordinator  
+**Date:** 2026-04-24T10:10:16Z  
+**Scope:** Frontend LLM integration runtime behavior
+
+**Decision:** Frontend should prefer Gemini API for LLM calls; gracefully fall back to Copilot mode if Gemini is unavailable or errors.
+
+**Rationale:** User preference for LLM provider selection
+
+**Implementation Impact:**
+- Client-side runtime strategy shift only
+- No schema/contract changes
+- No backend impact
+- Pure frontend LLM-call orchestration logic
+
+---
+
+## Deduplication & Inbox Cleanup
+
+The following four inbox files are consolidated into the above entries and scheduled for deletion:
+
+- `.squad/decisions/inbox/morpheus-persistence-blocker-audit.md` (consolidated into Block-and-Reassign Verdict entry)
+- `.squad/decisions/inbox/oracle-router-import-audit.md` (consolidated into Router Import Path entry)
+- `.squad/decisions/inbox/oracle-router-import-evidence-pack.md` (evidence pack referenced)
+- `.squad/decisions/inbox/dozer-persistence-contract-scan.md` (consolidated into Frontend Drift entry)
+- `.squad/decisions/inbox/copilot-directive-20260424-175802.md` (consolidated into Gemini API Directive entry)
+- `.squad/decisions/inbox/morpheus-session-persistence-guardrail.md` (preserved as guardrail reference)
+- `.squad/decisions/inbox/trinity-conversation-persistence-mvp.md` (preserved as design reference)
+- `.squad/decisions/inbox/tank-persistence-qa-prep.md` (evidence pack referenced)
+
+
+### 2026-04-24: Tank Persistence QA — Two-Stage Gate Adoption
+
+**By:** Tank (QA)  
+**Date:** 2026-04-24  
+**Scope:** Split persistence acceptance workflow into fast smoke gate and final full gate
+
+**Decision:** Adopt two-stage persistence QA:
+- **Smoke gate** (`persistence_smoke` marker): 4 sentinel tests, fast pre-rerun validation (~0.1s)
+- **Full gate** (`persistence_full` marker): complete persistence suite, final sign-off (~3.2s)
+
+**Rationale:** The single broad gate delayed iteration by forcing full-suite reruns too early. Two-stage approach preserves final rigor while shortening revision feedback loops.
+
+**Implementation:**
+- Added `pytest.ini` markers: `persistence_smoke`, `persistence_full`
+- Tagged sentinel tests in 4 files
+
+**Operational Contract:**
+
+| Stage | Command | Tests | Result |
+|-------|---------|-------|--------|
+| Smoke | `py -m pytest -q -m persistence_smoke tests\test_runtime_router_contract.py test_writing_runtime.py tests\test_writing_runtime_persistence.py tests\test_session_memory_resume.py` | 4 | ✅ PASS |
+| Full | `py -m pytest -q tests\test_runtime_router_contract.py test_writing_runtime.py tests\test_writing_runtime_persistence.py tests\test_session_memory_resume.py` | 33 | ✅ PASS |
+
+---
+
+### 2026-04-24: Morpheus Persistence Turnaround Diagnosis
+
+**By:** Morpheus (Architecture)  
+**Date:** 2026-04-24  
+**Scope:** Root cause of session-persistence-u2 acceptance bundle collection failure
+
+**Decision:** `session-persistence-u2` is not hard-blocked. Backend already passes runtime + persistence suites. Current stop is a QA-bundle collection failure plus missing acceptance coverage.
+
+**Evidence:**
+- `pytest -q test_writing_runtime.py tests\test_writing_runtime_persistence.py tests\test_session_memory_resume.py` → **31 PASSED**
+- Bundle `tests\test_session_memory_resume.py + test_runtime_router_contract.py` → **FAILED** (collection error: `routers.runtime_router` not found)
+- Single `pytest -q tests\test_runtime_router_contract.py -q` → **6 PASSED** (router works)
+- Root cause: `test_session_memory_resume.py` inserts `src` at front of `sys.path`, masking `routers.runtime_router`
+
+**Shortest Safe Turnaround:**
+1. Add import guard in `test_runtime_router_contract.py`
+2. Add negative-path assertions (invalid session mode, missing current session, bad rewind/fork)
+3. Add `export_state() → import_state()` round-trip regression in `test_writing_runtime.py`
+4. Run full bundle: `pytest -q test_writing_runtime.py tests\test_writing_runtime_persistence.py tests\test_session_memory_resume.py tests\test_runtime_router_contract.py`
+
+---
+
+### 2026-04-24: Oracle Persistence Lane Bottleneck Analysis
+
+**By:** Oracle (Data Engineer)  
+**Date:** 2026-04-24  
+**Scope:** Writing runtime persistence test suite performance analysis
+
+**Finding:** Persistence lane is **not inherently slow** but **blocked by structural inefficiencies**:
+
+1. **Router import instability** — `routers/` lacks `__init__.py`; PEP 420 ambiguity in pytest context
+2. **Test surface bloat** — 4 test files × 33 tests = 3.2s total; 0.97s on slowest test
+3. **Async/IO not optimized** — All 4 tests use `@pytest.mark.asyncio` with full SQLite I/O; no smoke-checks
+4. **Rerun scope too wide** — Health checks + full load + JSON deserialization on every init
+
+**Summary Table:**
+
+| Bottleneck | Impact | Fix | Saves |
+|---|---|---|---|
+| Router `__init__.py` missing | HIGH | Create empty file | 0.5s/run |
+| All tests async + full I/O | MEDIUM | Split Tiers 1/2/3 | 0.5s (smoke) |
+| Health checks every init | MEDIUM | Cache or skip reload | 0.4s/suite |
+| Rewind/fork in smoke | MEDIUM | Move to final-only | 0.7s |
+| Full deserialization | LOW | Lazy-load by scope | 0.1s |
+
+**Phase 1 (Immediate):**
+1. Create `routers/__init__.py` → 0.5s collection speedup
+2. Add smoke tier test
+
+---
+
+### 2026-04-24: User Directive — Persistence Support
+
+**By:** 小龙 姚 (Copilot)  
+**Date:** 2026-04-24T18:21:56+08:00  
+**What:** When encountering stalled tasks: if not stalled → provide support; other agents must proactively find slow reasons and optimize execution path
+**Why:** User request
+
+---
+
+### 2026-04-24: Oracle Step 3 Parameter Sweep — Winner Selected & Ready for Full Eval
+
+**By:** Oracle (Data Engineer)  
+**Date:** 2026-04-24T22:25:22Z  
+**Scope:** Complete 24-candidate parametric optimization sweep on 109-paper corpus to select retrieval configuration for U1A closure eval
+
+**Decision:** WINNER SELECTED — Configuration ready for full U1A evaluation
+
+**Sweep Details:**
+- Corpus: Isolated 109-paper derived contextual cache from laser_welding_109 dataset
+- Candidates Tested: 24 combinations
+- Control Config: top_k=10, recall_top_n=100, rerank_top_n=40, use_rerank=true
+
+**Winner Configuration:**
+- top_k: 10
+- recall_top_n: 200
+- rerank_top_n: 40
+- use_rerank: true
+- use_expansion: false
+- use_contextual: false
+- query_concurrency: 8
+- strict_cache_guard: true
+
+**Winner Performance:**
+- Recall@5: 0.8700 (vs control 0.82) — +6% improvement
+- MRR: 0.6798 (vs control 0.6616) — +2.7% improvement
+- Avg Latency: 3337.54ms (warm-cache measurement)
+- P95 Latency: 4084.47ms (warm-cache measurement)
+- Quality Tier: 2 — Defensible improvement, latency advantage from prefix-cache reuse
+
+**Caveat:** Latency is warm-cache optimistic; full-eval latency (cold corpus) expected higher. No reranker auth failures observed.
+
+**Evidence:**
+- Orchestration log: .squad/orchestration-log/20260424-222522-oracle-step3-sweep-run.md
+- Session log: .squad/log/20260424-222522-step3-to-u1-full-eval.md
+
+**Next:** Winner config passed to oracle-u1-full-eval for 3269-query U1A closure evaluation.
+
+---
+
+### 2026-04-24: Ralph Handoff — U1 Retrieval Closure Execution Plan
+
+**By:** Ralph (Delivery Coordinator)  
+**Date:** 2026-04-24T22:25:22Z  
+**Scope:** Document exact post-Oracle execution sequence for U1 retrieval closure
+
+**Decision:** ACCEPTED — Closure plan approved; ready for Oracle/Tank execution
+
+**Three-Stage Plan:**
+1. **Stage 1 — 100-Query Frozen Pack (Complete):** Recall@5=0.82, MRR=0.6616, avg_latency=12720.8ms
+2. **Stage 2 — 109-Paper Step 3 Sweep (In Progress):** Uses isolated corpus, 24 candidates, outputs sweep.jsonl/best.json/report.md
+3. **Stage 3 — Full U1A Eval (Pending):** Uses eval_queries_v2.1_u1a.jsonl (3269 queries), winner config from Stage 2
+
+**Quality Gates:**
+- Recall@5 >= 0.45, MRR >= 0.30 (Tier 2 thresholds)
+- per_template_bucket breakdown present
+- All 3269 queries evaluated
+
+**Evidence:**
+- Detailed plan: .squad/decisions/inbox/ralph-u1-closure-prep.md (merged here)
+
+**Next:** Oracle executes Stage 2. Tank prepares acceptance checklist in parallel.
+
+---
+
+### 2026-04-24: Tank — U1 Closure QA Review Acceptance Checklist
+
+**By:** Tank (QA Reviewer)  
+**Date:** 2026-04-24T22:25:22Z  
+**Scope:** Prepare frozen acceptance gates for U1A full eval closure review
+
+**Decision:** READY FOR APPLICATION — Checklist prepared; will apply upon full-eval artifacts
+
+**Acceptance Gates (11 Checks):**
+- A1: Artifact Completeness (all files exist, non-empty JSON/JSONL)
+- A2: Query Count Coherence (3269 total, progress reaches 3269/3269, per_query has 3269 rows)
+- A3: Metric Structure (aggregated_metrics, per_difficulty, per_template_bucket all present)
+- A4: Quality Gate Checks - Recall@5 >= 0.45, MRR >= 0.30 (HARD FAIL if not met)
+- A5: Per-Query Integrity (no duplicate query_ids, difficult queries present)
+- A6: Reranker Health (reject if 401 auth failures; document warm-cache if rerank_api_ms=0.0)
+- A7: Per-Template Coherence (totals >= 3000, <= 5 orphaned templates)
+- A8: Latency Caveat (document warm-cache nature of Step 3)
+- A9: Tokenizer Fallback (note if transformers unavailable)
+- A10: Freshness & Config Freeze (resume_config matches winner, timestamp recent)
+- A11: Oversize Handling (don't block if oversize_count > 100)
+
+**Tank Verdict:**
+- PASS if A1-A7 and A10 all pass AND A4 gates met
+- FAIL if any gate fails; escalate to Oracle
+
+**Evidence:**
+- Detailed checklist: .squad/decisions/inbox/tank-u1-review-prep.md (merged here)
+
+**Next:** When full eval artifacts arrive, Tank applies checklist. Oracle continues background work. QA runs parallel (no blocking).
+
+---
+

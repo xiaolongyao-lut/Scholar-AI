@@ -1,16 +1,44 @@
 # Trinity History
 
+> **Scope:** agent-internal working log.
+> **Team-facing delivery record:** see `.squad/agents/history-Trinity.md`. Audit 2026-04-24.
+
 ## Project Context
 
 - Project: my-project
 - Owner: xiao
 - Preferred role: main coding engine for the team
 
+## Recent Milestones
+
+- **2026-04-24: Rerank Key Redesign — COMPLETED** (Backup created, TDD tests green, validity-first probing + process-local cache + kill switch, regression bundle 48/48 green, smoke no 401, Tank review gate launched)
+- **2026-04-24: Session Persistence MVP — STARTED** (Rerank oversize guard deployed; eval v2 manifest-first loading active)
+- **2026-04-22: Chunk Boundary Slice 2 — Guard Placement Decided** (embed boundary: ChunkVectorStore.build() + persistence boundary: _save_chunk_store())
+- **2026-04-22: Directed Reslice Fallback — Strategy Defined** (reslice only report-listed materials via production _chunk_document() + secondary split)
+
 ## Learnings
 
 - User wants implementation to sit primarily with GPT-5.4.
 - Team members should reuse project rules and skills instead of coding from isolated local assumptions.
 - Implemented Phase 1 LiteLLM gateway with env-driven configs, added .env.example and tests.
+- 2026-04-24 rerank key redesign landed as a surgical fix in `reranker_client.py`: preserve provider/url/model resolution, but select env credentials by live probe validity first, with `RERANK_KEY_PROBE_DISABLE=1` as rollback.
+- Required backup path for this lane: `.squad/backups/2026-04-24-rerank-key-redesign/reranker_client.py.pre`.
+- Regression anchor for rerank key selection lives in `tests/test_reranker.py`; focused bundle for this area is `tests/test_reranker.py`, `tests/test_llm_provider_routing.py`, `tests/test_model_call_gateway.py`, `tests/test_llm_defaults.py`, `tests/test_query_expander.py`.
+- Live rerank smoke can be masked by existing runtime budget state in `output/rerank_cost.jsonl`; `rerank_api_* = 0.0` does not automatically mean key-selection regression.
+
+### 2026-04-24: Rerank Key Redesign — COMPLETE (TDD-First)
+
+- **Scope:** Eliminate 401 errors on rerank API path under live eval via config-only fix + TDD-driven implementation
+- **Trinity execution:**
+  - ✅ Backup created: `.squad/backups/2026-04-24-trinity-rerank-key/reranker_client.py.bak`
+  - ✅ TDD tests: Full harness written and green before implementation
+  - ✅ Implementation: Validity-first key probing (SiliconFlow → generic fallback) + process-local cache + kill switch for stale keys
+  - ✅ Regression: Focused bundle passed (48 tests, all green)
+  - ✅ Smoke test: No 401 observed; rerank API recovered to normal latency
+- **Known observation:** Rerank budget state remained in short-circuit (`rerank_api_*=0.0`) during eval; clean-budget runtime activation confirmation pending
+- **Next gate:** Tank review gate launched as background process (checklist: test coverage, cache isolation, key-precedence contract, short-circuit sign-off, production readiness)
+- **Orchestration:** `.squad/orchestration-log/2026-04-24T15-13-00Z-trinity-rerank-redesign.md` (completion), `.squad/orchestration-log/2026-04-24T15-13-30Z-tank-rerank-review-launch.md` (gate launch)
+- **Decision merge:** Pending Tank verdict in `.squad/decisions/inbox/tank-rerank-review-verdict.md`
 
 ### 2026-04-22: Gate B Review-Chain Milestone — Trinity Preflight Ready (With Conditions)
 
@@ -97,3 +125,23 @@
 - 2026-04-22 Gate B Phase B preflight: `artifacts/eval_audit/gateb_phase_b_annotation_input.jsonl` now contains in-place candidate-level `relevance` + `judged_at` judgments across all 36 frozen queries (343 candidates total), but its SHA moved from frozen `f86ede18...` to working `cee338e7...`.
 - Gate B Phase B contract risk: canonical validator only accepts qrel `source_hint` values in `{bm25,bm25+dense,bm25+graph,dense,rerank,evidence_set,unexpected_unknown_source}`, while the working annotation artifact currently carries combinations like `graph+rrf+rerank` and `bm25+rrf+rerank+evidence_set`.
 - Gate B Phase B merge-readiness note: current working annotation artifact preserves query order with `gateb_goldset.jsonl`, but canonical merge still needs explicit record-level `annotator_id` handling and a transformation step from candidate-level judgments to goldset/qrels outputs.
+
+### 2026-04-24: Conversation Persistence MVP — Boundaries Set + Implementation Ready
+
+**Scope 1: Persistence MVP Boundaries (Morpheus Decision)**
+- **Scope Set:** Workspace-bound create/list/current/resume/timeline + durable append-only transcript recovery
+- **Out of MVP:** Rewind, fork, archive, delete, recovery-console, canonical-event-store integration
+- **Why:** Existing `WritingRuntime` + `WritingRuntimeRepository` provides minimum seam without refactor pressure
+- **Boundaries:** Keep backend on current path; no parallel subsystem; if rewind/fork exist, non-blocking follow-on scope
+- **Evidence:** Consolidated to `.squad/decisions.md` (Session Persistence MVP Guardrail section)
+
+**Scope 2: Persistence Architecture (Trinity Decision)**
+- **Architecture Set:** `WritingRuntime` + `WritingRuntimeRepository` with workspace binding in session metadata
+- **Storage:** Append-only transcript JSONL under `.modular/sessions/transcripts/`
+- **Lineage:** Checkpoint lineage via existing runtime SQLite index
+- **Why:** Ships resume/timeline/rewind/fork without parallel session subsystem or broad refactor
+- **Evidence:** Consolidated to `.squad/decisions.md` (Conversation Persistence MVP Shape section)
+
+**Status:** ✅ Boundaries and architecture defined; ready for implementation under Tank's QA supervision
+
+**Orchestration Log:** `.squad/orchestration-log/2026-04-24T10-21-09Z-coordinator.md`

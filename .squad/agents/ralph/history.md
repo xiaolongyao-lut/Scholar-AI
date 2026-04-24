@@ -9,11 +9,30 @@ Agent Ralph initialized and ready for work.
 
 ## Recent Updates
 
+📌 Conversation Persistence MVP — Revision Owner Assigned — 2026-04-24  
 📌 Gate B Canonical Merge — Morpheus Blocker-Resolution Dispatched — 2026-04-22  
 📌 Gate B Canonical Merge Blocked by Contract Conflict — 2026-04-22  
 📌 Gate B Review-Chain Milestone — Canonical Merge Launched — 2026-04-22  
 📌 U1A Data Remediation Completed — 2026-04-20  
 📌 Team initialized on 2026-04-19
+
+## 2026-04-24: Conversation Persistence MVP — Revision Owner Assigned
+
+**Status:** 🔄 ASSIGNED FOR REVISION  
+**Scope:** Router-contract bootstrap, negative-path route coverage, export/import round-trip regression
+
+**Assignment Details:**
+- Trinity (original author) locked out per reviewer protocol after Tank's hard-blocking QA verdict
+- Ralph assigned to address minimal revision scope
+- **Patch scope:**
+  1. `tests/test_runtime_router_contract.py` — add import bootstrap guard + negative-path route assertions
+  2. `routers/runtime_router.py` — normalize missing-job behavior (400/404 consistency)
+  3. `test_writing_runtime.py` — add export_state() → import_state() round-trip regression
+- **Blocker:** Router test collection fails (routers/ missing `__init__.py`) — minimal fix available from Oracle
+- **QA Gate:** Full acceptance bundle must pass: `pytest test_writing_runtime.py tests/test_writing_runtime_persistence.py tests/test_session_memory_resume.py tests/test_runtime_router_contract.py`
+- **Decision ref:** `.squad/decisions.md` (Block-and-Reassign Verdict entry)
+
+---
 
 ## 2026-04-22: Gate B Canonical Merge — Blocker Completion & Escalation
 
@@ -119,6 +138,32 @@ Canonical validator contract is authoritative. `no_gold=true` semantics establis
 - Orchestration (resolution): `.squad/orchestration-log/2026-04-22T22-40Z-morpheus-blocker-resolution.md`
 - Orchestration (retry): `.squad/orchestration-log/2026-04-22T22-42Z-ralph-canonical-merge-retry.md`
 - Main decisions log: `.squad/decisions/decisions.md#Gate B Canonical Merge`
+
+## 2026-04-22: Gate B Canonical Merge — rel=2-only Contract Rerun Complete
+
+**Status:** ✅ COMPLETE  
+**Scope:** Narrow canonical normalization rerun under Morpheus rel=2-only ruling
+
+### Outcome
+
+- Canonical artifacts updated from the reviewed annotation source without mutating `artifacts/eval_audit/gateb_phase_b_annotation_input.jsonl`.
+- `artifacts/eval_audit/gateb_goldset.jsonl` now keeps the frozen 36-query order, sets `annotator_id` to `phase_b_reviewed_pass`, records `pool_size`, and applies rel=2-only canonical semantics.
+- `artifacts/eval_audit/gateb_qrels.tsv` now contains 285 rows for the 30 queries with at least one reviewed `rel=2`.
+- 6 rel1-only / no-rel2 queries remain `no_gold=true` with empty canonical qrels and are preserved in `artifacts/eval_audit/gateb_phase_b_rel1_only_sidecar.jsonl`.
+
+### Validation
+
+- `gateb_schema_validator.py artifacts/eval_audit/gateb_goldset.jsonl` → PASS
+- Goldset/qrels cross-check confirmed:
+  - 36 records preserved in original order
+  - 30 queries with canonical qrels / `no_gold=false`
+  - 6 queries with empty canonical qrels / `no_gold=true`
+  - no `no_gold=true` query emitted any TSV rows
+
+### Notes
+
+- Reviewed annotation source SHA256 remained `CEE338E774F11C5AF0CCDF8982BDF55F0C2F9CDE1D628CEB4F14FA4BC1914802` before and after rerun.
+- Unsupported reviewed `source_hint` combinations were normalized to validator-safe canonical values (`unexpected_unknown_source` or `evidence_set`), while original reviewed provenance stays in the unchanged source artifact and rel1-only sidecar.
 
 
 

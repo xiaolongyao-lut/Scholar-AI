@@ -1,6 +1,44 @@
 # Squad Decisions Archive
 
-Archived decisions older than 30 days. Kept for historical reference.
+Archived decisions and inbox merges. Kept for historical reference.
+
+## 2026-04-23 Inbox Merge — Cost & Defaults Final Slices
+
+**Session:** Gateway Cleanup & Reslice Completion  
+**Merged from:** `.squad/decisions/inbox/`  
+**Timestamp:** 2026-04-23T00:30:00Z
+
+### Archived Inbox Items (Resolved)
+
+#### 1. trinity-chunk-guard-first-slice.md
+
+- **Scope:** §3.5 rerank oversize guard + eval manifest-first loading
+- **Status**: ✅ **RESOLVED** — Slice 1 landed (2026-04-22)
+- **Summary:** Rerank hard-stop on oversize candidates + eval manifest-first consumption aligned with v2 chunk-store
+- **Evidence:** `eval_retrieval_runtime.py` manifest-first, `reranker_client.py` oversize skip, test coverage in place
+- **Outstanding:** Slice 2 (embedding guard) + Slice 3 (historical reslice) — both landing in later session
+- **Archive reason:** Decision scope satisfied; moved to historical for context preservation
+
+#### 2. trinity-directed-reslice.md
+
+- **Scope:** §3.5.5 targeted historical chunk cleanup via production reslice path
+- **Status**: ✅ **RESOLVED** — Reslice completed (2026-04-22)
+- **Summary:** `scripts/reslice_oversize_materials.py` used to reslice only report-identified materials through production chunking entry
+- **Evidence:** `output/oversize_materials_report.json` post-reslice shows `oversize_count=0`; manifest records `resliced_at` field
+- **Fallback logic:** Handled missing source records by reconstructing from stored chunk content
+- **Blocker resolved:** Pre-reslice acceptance (canary30 Recall@5 baseline captured; post-reslice comparison pending embedding credential fix)
+- **Archive reason:** Decision scope satisfied; historical decision captured for audit trail
+
+#### 3. oracle-phase6-eval.md
+
+- **Scope:** §3.3 Phase 6 contextual chunks quality evaluation decision hold
+- **Status:** 🔄 **HOLD** — Blocking on embedding API credentials (HTTP 401)
+- **Summary:** Cannot proceed with E1-E4 comparative evaluation until non-contextual embedding cache is rebuilt with valid credentials
+- **Evidence:** `chunk_vector_store.build()` fails with `EmbeddingAPIError 401`; contextual cache exists but cross-use violates experiment isolation contract
+- **Next unblock:** Valid embedding credential restoration or recovery of trusted non-contextual cache
+- **Archive reason:** Awaiting external unblock; moved to archive but remains re-executable once credential restored
+
+---
 
 ## Archived (Pre-2026-03-23)
 

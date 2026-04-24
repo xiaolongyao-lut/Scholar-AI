@@ -28,6 +28,17 @@ Agent Scribe initialized and ready for work.
   - Memory: `.squad/memory/DECISION_TRAIL.md` (phase chain with why/evidence/impact)
   - Project documentation: `README.md` (§文献检索模块, integrated discovery/implementation/testing/validation narrative)
 
+**Session 2026-04-24: Trinity Rerank Redesign Completion + Tank Review Gate**
+
+- **Trinity work:** Completed rerank key redesign with TDD-first approach. Backup created, test harness green, validity-first probing + process-local cache + kill switch implemented. Regression bundle passed (48 tests), smoke test confirmed no 401s. Rerank budget remains in short-circuit state pending Tank verdict.
+- **Tank review gate:** Launched as background process; review checklist includes test coverage audit, cache isolation, key-precedence contract, short-circuit state sign-off, production readiness verdict.
+- **Orchestration logs:** 
+  - `.squad/orchestration-log/2026-04-24T15-13-00Z-trinity-rerank-redesign.md` (Trinity completion)
+  - `.squad/orchestration-log/2026-04-24T15-13-30Z-tank-rerank-review-launch.md` (Tank gate launch)
+- **Session log:** `.squad/log/2026-04-24T15-13Z-rerank-redesign-batch.md` filed
+- **Decision merge:** Pending Tank verdict in `.squad/decisions/inbox/tank-rerank-review-verdict.md`; will merge to `decisions.md` after verdict received
+- **Next:** Tank verdict expected; production promotion gated by Tank approval
+
 **Phase 5 Completion (2026-04-20): Intelligent Chat Full Chain COMPLETE**
 
 - **Orchestration logs:** Phase 5 frontend integration completion logged to `.squad/orchestration-log/2026-04-20T07-09-07Z-phase5-frontend-completion.md`

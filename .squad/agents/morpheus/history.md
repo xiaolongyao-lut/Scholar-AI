@@ -7,6 +7,8 @@
 **Responsibility:** Review cross-domain changes before landing  
 
 **Key Checkpoints:**
+- **2026-04-24: Goldset Rejection Audit — Scope Clarification** (Tank's rejection binds only pre-existing 36/40-query artifacts; Oracle's fresh 100-query build unblocked; lockout is artifact-specific, not builder-specific)
+- **2026-04-24: Persistence Turnaround Diagnosis** (Backend already passes 31/31 runtime+persistence tests; collection failure root-cause isolated to import path collision; shortest turnaround: add import guard + negative-path assertions + round-trip regression)
 - Phase 6 extraction/pipeline complete (13/13 tests): `.squad/backups/checkpoint-phase6-final-20260420-0418/`
 - U1A query dataset remediation approved: all pathologies cleared (duplicates/hard-queries/template-saturation)
 - Tier 2 eval validation: Recall@5=0.70, MRR=0.599 (12.8× gate threshold, statistically sound)
@@ -48,6 +50,7 @@
 - **Next safe tasks after extraction:** (1) Tank edge-case tests for extraction_pipeline (2) Oracle real-data validation for extraction_pipeline (3) README update with extraction pipeline section. All three are dependency-free and non-refactor.
 - **Night-shift final closure (2026-04-20):** All safe autonomous work completed. Tank added 3 boundary tests (16/16 total). Oracle validated on 109 real papers (4 scenarios, PASS). README updated with extraction validation chapter + corrected test counts. HARD-STOP escalated: "Intelligent chat" requires LLM dependency — WAITING FOR USER.
 - **Production readiness chain:** The full validation chain for the retrieval pipeline is: implementation → unit tests → boundary tests → real-data validation (109 papers) → documentation integration. This five-layer pattern should be the standard for future modules.
+- **2026-04-24: Conversation Persistence MVP — Blocker Review Completed** (Block-and-reassign verdict rendered; Trinity locked out; Ralph assigned revision owner; MVP scope affirmed; router-contract bootstrap + negative-path coverage + export/import round-trip regression required; detailed scope in `.squad/decisions.md`)
 - **Final checkpoint:** `.squad/backups/checkpoint-phase6-final-20260420-0418/`
 - **Oracle validation report format:** The extraction validation report is significantly more detailed than the prefilter validation report (4 scenarios, provenance analysis, schema validation, item shape contract, limitations section). This format is the new gold standard for module validation reports.
 - **Unified-plan dispatch rule (2026-04-20):** Before dispatching from a merged plan, reconcile plan wording against repo-local artifacts. For U1, `eval_queries_v2.1.jsonl` is 3269 lines, prior Wave 1 audit artifacts already exist under `artifacts/eval_audit\`, and the real missing step is canonicalizing/rerunning outputs into `output\` plus refreshed full-eval evidence.

@@ -538,7 +538,7 @@ Before spawning, assess: **is there a reason this MUST be sync?** If not, use ba
 |-----------|---------------------|
 | Agent B literally cannot start without Agent A's output file | Hard data dependency |
 | A reviewer verdict gates whether work proceeds or gets rejected | Approval gate |
-| The user explicitly asked a question and is waiting for a direct answer, AND there are no active background runs that must continue | Direct interaction |
+| The user explicitly asked a question and is waiting for a direct answer | Direct interaction |
 | The task requires back-and-forth clarification with the user | Interactive |
 
 **Everything else is `mode: "background"`:**
@@ -552,8 +552,6 @@ Before spawning, assess: **is there a reason this MUST be sync?** If not, use ba
 | Multiple agents working the same broad request | Fan-out parallelism |
 | Anticipatory work — tasks agents know will be needed next | Get ahead of the queue |
 | **Uncertain which mode to use** | **Default to background** — cheap to collect later |
-
-**Non-interruptive Q&A default:** If active background tasks exist, answer usage/how-to questions directly without pausing those tasks. Only stop the loop on explicit user commands such as `stop`, `pause`, or `idle`.
 
 ### Parallel Fan-Out
 
@@ -1024,8 +1022,7 @@ When a team member has a **Reviewer** role (e.g., Tester, Code Reviewer, Lead):
 - On **rejection**, the Reviewer may choose ONE of:
   1. **Reassign:** Require a *different* agent to do the revision (not the original author).
   2. **Escalate:** Require a *new* agent be spawned with specific expertise.
-- Morpheus MUST own the reassignment decision. If the Reviewer says "someone else should fix this," Morpheus audits and selects the revision owner; Coordinator then executes per Morpheus decision.
-- If a reassignment/revision task is dispatched without Morpheus review, Morpheus must immediately verify the decision and either approve or cancel before execution continues.
+- The Coordinator MUST enforce this. If the Reviewer says "someone else should fix this," the original agent does NOT get to self-revise.
 - If the Reviewer approves, work proceeds normally.
 
 ### Reviewer Rejection Lockout Semantics — Strict Lockout
@@ -1033,8 +1030,8 @@ When a team member has a **Reviewer** role (e.g., Tester, Code Reviewer, Lead):
 When an artifact is **rejected** by a Reviewer:
 
 1. **The original author is locked out.** They may NOT produce the next version of that artifact. No exceptions.
-2. **A different agent MUST own the revision.** Morpheus audits the Reviewer's recommendation and selects the revision author.
-3. **Morpheus enforces this mechanically.** Before dispatching a revision, Morpheus MUST verify that the selected agent is NOT the original author. If the Reviewer names the original author as the fix agent, Morpheus MUST refuse and ask the Reviewer to name a different agent.
+2. **A different agent MUST own the revision.** The Coordinator selects the revision author based on the Reviewer's recommendation (reassign or escalate).
+3. **The Coordinator enforces this mechanically.** Before spawning a revision agent, the Coordinator MUST verify that the selected agent is NOT the original author. If the Reviewer names the original author as the fix agent, the Coordinator MUST refuse and ask the Reviewer to name a different agent.
 4. **The locked-out author may NOT contribute to the revision** in any form — not as a co-author, advisor, or pair. The revision must be independently produced.
 5. **Lockout scope:** The lockout applies to the specific artifact that was rejected. The original author may still work on other unrelated artifacts.
 6. **Lockout duration:** The lockout persists for that revision cycle. If the revision is also rejected, the same rule applies again — the revision author is now also locked out, and a third agent must revise.

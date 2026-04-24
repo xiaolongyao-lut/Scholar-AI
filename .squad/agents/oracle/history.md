@@ -6,10 +6,35 @@
 - Owner: xiao
 - Preferred role: data generation, label work, and benchmark support
 
+## Recent Milestones
+
+- **2026-04-24: Goldset 100 Final Approval — Tank APPROVED** (Tank issued final verdict on regenerated canonical 100-query goldset; former 64 scaffold entries fully adjudicated; schema/qrels/provenance validated; hard-goldset acceptance gate closed)
+- **2026-04-24: Goldset Re-Review Input — 100-Query Artifact Set (Tank CONDITIONAL APPROVE)** (Tank's re-review confirms first-pass 100-query artifact set ready for adjudication workflow; schema/provenance validated; 64 review-needed entries require human judgment; next gate = regenerate canonical set post-adjudication)
+- **2026-04-24: Goldset Rejection Audit — Oracle Build Unblocked** (Morpheus audit confirms Tank's rejection applies only to 36/40 artifacts; fresh 100-query build can continue unblocked; entry conditions for next review = 100-query scope + Zotero provenance + schema validation + no synthetic root)
+- **2026-04-24: Persistence Lane Bottleneck Analysis — Complete** (Router import instability = HIGH; async I/O bloat = MEDIUM; health checks = MEDIUM; Phase 1: create `routers/__init__.py` → 0.5s speedup)
+- **2026-04-24: Gate B Phase B Sign-Off — PASS** (36-query goldset schema-valid; annotation-ready; path hygiene issue flagged)
+
 ## Learnings
 
 - User explicitly wants a dedicated data specialist for tasks like generating structured batches or evaluation datasets.
 - Data work should be routed early instead of being treated as cleanup after implementation.
+
+### 2026-04-24: Router Import Stability Audit
+
+- **Scope:** Root cause analysis of Tank's pytest collection failure on `tests/test_runtime_router_contract.py`
+- **Verdict:** ✅ Root cause identified and minimal fix proposed
+- **Key findings:**
+  - `routers/` directory lacks `__init__.py` → Python treats as namespace package
+  - Bare `from models import (...)` in routers becomes ambiguous import path
+  - PEP 420 resolver searches `routers.models` first, fails, never reaches top-level `models`
+  - Works in server context (root path setup) but fails in pytest (submodule import context)
+- **Fix:** Create `routers/__init__.py` (empty file)
+  - Converts namespace package → regular package
+  - Eliminates import ambiguity
+  - One file, zero code changes
+  - No runtime impact
+- **Verification:** Pre/post collection and full test run commands documented
+- **Decision ref:** `.squad/decisions.md` (Router Import Path Stability entry)
 
 ### 2026-04-22: Gate B Review-Chain Milestone — Oracle Review Pass
 
@@ -99,3 +124,90 @@
 - **Schema result:** All candidate judgments contain valid `relevance` in {0,1,2} and valid `judged_at` ISO-Z timestamps; no missing candidate arrays, no duplicate query IDs, no duplicate candidate identities, no conflicting duplicate judgments
 - **Operational note:** All 343 candidates share the same `judged_at` timestamp (`2026-04-22T14:32:13Z`), which is acceptable as a batch-reviewed artifact but should be preserved verbatim in audit-side outputs
 - **Downstream contract:** Working transforms should now treat this annotated JSONL as the authoritative reviewed source, flattening `(query_id, doc_id, relevance)` for review-stage qrels generation while retaining `chunk_id`, `judged_at`, and provenance metadata in sidecar audit outputs until canonical writes are approved
+
+### Phase 6 Contextual Chunks Eval Attempt (2026-04-22)
+- **Task:** Execute `.copilot-tracking/plans/2026-04-21-cost-and-defaults.md` §3.3 E1-E4 contextual-vs-non-contextual evaluation and emit `eval_reports/2026-04-*` artifacts.
+- **Prep completed:** Read plan/context files, verified cache-separation logic in `chunk_vector_store.py`, and ran targeted baseline checks: `pytest tests\test_eval_runtime.py tests\test_dense_rrf_retrieval.py tests\test_contextual_chunker.py -q` → **43 passed**.
+- **Blocker:** First E1 run failed before any progress/per-query artifact was written. `eval_retrieval_runtime.py` attempted to build non-contextual embeddings and raised `chunk_vector_store.EmbeddingAPIError` with `last_status=401, body='"Api key is invalid"'`.
+- **Evidence:** Only contextual cache exists at `output/embedding_cache/corpus_embeddings_contextual.npy` + manifest (`chunk_count=6293`, `is_contextual=true`), while `output/chunk_store/laser_welding_109_chunks.json` currently has 2911 chunks and no embedded vectors. No reusable non-contextual cache (`corpus_embeddings.npy`) exists.
+- **Decision:** Hold Phase 6 default-switch decision until a valid embedding credential is restored or a matching non-contextual cache is prebuilt. Do **not** fake results with polluted contextual cache or dense-disabled fallback.
+- **Artifacts written:** `eval_reports/2026-04-phase6-comparison.md` blocker report; decision note `\.squad\decisions\inbox\oracle-phase6-eval.md`.
+
+### 2026-04-24: Fallback Contract Analysis + Router Import Audit — Complete
+
+**Scope 1: Fallback Contract Analysis**
+- **Task:** Verify backend/frontend chat contract supports Gemini → Copilot fallback detection
+- **Verdict:** ✅ No backend changes required; contract already complete and safe
+- **Key findings:**
+  - Frontend tracks attempted + active provider in fallback metadata
+  - Backend returns actual model in `ChatResponse.model` field
+  - UI displays both when fallback occurs; no conflicts
+  - `model` field correctly extracted from LLM provider response via `_extract_chat_response()`
+- **Evidence:** Full audit documented in `.squad/decisions.md` (Fallback Contract Analysis section)
+
+**Scope 2: Router Import Audit**
+- **Task:** Root cause analysis of Tank's pytest collection failure on `tests/test_runtime_router_contract.py`
+- **Verdict:** ✅ Root cause identified and minimal fix proposed
+- **Root Cause:** `routers/` directory lacks `__init__.py` → Python treats as namespace package; bare `from models import (...)` becomes ambiguous
+- **PEP 420 Issue:** Resolver searches `routers.models` first (fails), never reaches top-level `models`
+- **Fix:** Create `routers/__init__.py` (empty file)
+  - Converts namespace package → regular package
+  - Eliminates import ambiguity
+  - One file, zero code changes, no runtime impact
+- **Verification:** Pre/post collection and full test run commands documented
+- **Evidence:** Full diagnostic in `.squad/decisions.md` (Router Import Fix section)
+
+**Orchestration Log:** `.squad/orchestration-log/2026-04-24T10-21-09Z-oracle.md`
+
+### 2026-04-24: Step 3 Parameter Sweep Completion + U1A Full Eval Launch
+
+**Task:** Execute 24-candidate parametric optimization sweep on isolated 109-paper corpus; select winner configuration; launch full U1A closure evaluation
+
+**Scope:** Complete Step 3 of U1 retrieval closure (per ralph-u1-closure-prep plan)
+
+**Execution Results:**
+
+**Sweep Details:**
+- Corpus: Isolated 109-paper derived contextual cache from laser_welding_109 dataset
+- Test set: 100 frozen queries from gateb_firstpass_100_eval_queries.jsonl
+- Parameter space: recall_top_n in [50,100,150,200], rerank_top_n in [20,40], use_rerank in [true,false]
+- Control config: top_k=10, recall_top_n=100, rerank_top_n=40, use_rerank=true
+- Candidates tested: 24 configurations
+
+**Winner Identified:**
+- Configuration: top_k=10, recall_top_n=200, rerank_top_n=40, use_rerank=true, use_expansion=false
+- Recall@5: 0.8700 (+6% vs control 0.82)
+- MRR: 0.6798 (+2.7% vs control 0.6616)
+- Avg latency: 3337.54ms (warm-cache measurement)
+- P95 latency: 4084.47ms (warm-cache measurement)
+- Quality tier: 2 (defensible improvement)
+
+**Critical Caveat:**
+- Latency measurements are warm-cache optimistic due to prefix embeddings cached from control run
+- Per-query rows show rerank_attempts=0 / rerank_api_ms=0.0
+- Full eval latency (cold corpus) expected higher; use full-eval as production expectation
+- No reranker auth failures observed in Step 3 sweep
+
+**Artifacts Generated:**
+- output\109papers_step3_sweep.jsonl — Full candidate result set
+- output\109papers_step3_best.json — Frozen winner config
+- output\109papers_step3_report.md — Human-readable sweep analysis
+
+**U1A Full Eval Launch:**
+- Configuration: Winner config from Step 3 (recall_top_n=200, rerank_top_n=40, use_rerank=true)
+- Query set: eval_queries_v2.1_u1a.jsonl (3269 queries expected)
+- Expected artifacts: u1_closure_full_eval.metrics.json, progress.jsonl, per_query.jsonl
+- Quality gates: Recall@5 >= 0.45, MRR >= 0.30 (Tier 2 thresholds)
+
+**Status:**
+- Step 3 sweep: ✅ COMPLETE with winner identified
+- U1A full eval: 🔵 LAUNCHED (running)
+- Quality assurance: Tank QA checklist prepared and ready to apply upon completion
+
+**Evidence:**
+- Orchestration logs: .squad/orchestration-log/20260424-222522-oracle-step3-sweep-run.md, oracle-u1-full-eval.md
+- Session log: .squad/log/20260424-222522-step3-to-u1-full-eval.md
+- Decisions merged: oracle-step3-sweep-run.md, ralph-u1-closure-prep.md, tank-u1-review-prep.md all moved to decisions.md
+
+**Next:** Monitor U1A full eval completion; hand metrics/progress/per-query artifacts to Tank for A1-A11 acceptance checklist validation. Target completion ~2h from launch.
+

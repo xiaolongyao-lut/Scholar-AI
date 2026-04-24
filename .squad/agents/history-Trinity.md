@@ -2,6 +2,58 @@
 
 Records of key implementation phases and delivery milestones by Trinity.
 
+## 2026-04-24: API Remediation — Local `.env` Compatibility Reader (19:07 UTC)
+
+**Date/Time:** 2026-04-24 19:07 UTC  
+**Role:** trinity (implementation)  
+**Task:** Restore repo API usability  
+**Status:** ✅ COMPLETED
+
+### Problem
+
+Local API runtime configuration was broken:
+- `AIAdapter` loading `.env` into global `os.environ`
+- Legacy `RERANK_*` values leaked into rerank/query paths
+- Provider/model misrouting across embedding, rerank, query expander, contextual chunker, main RAG workflow
+
+### Solution Deployed
+
+Implemented read-only `.env` compatibility reader for API-backed runtime paths:
+- Eliminated global `os.environ` mutation
+- Provider/model routing restored
+- Cross-component config pollution prevented
+- Local setup compatibility preserved
+
+### Validation
+
+**Test Suite:** Focused regression bundle  
+**Command:** `pytest -q tests\test_model_call_gateway.py tests\test_llm_provider_routing.py tests\test_reranker.py tests\test_query_expander.py tests\test_llm_defaults.py`  
+**Result:** ✅ **42 passed**
+
+### Local Configuration Reference
+
+To force qwen3 rerank in development:
+```bash
+SILICONFLOW_RERANK_MODEL=qwen3-rerank
+DASHSCOPE_RERANK_MODEL=qwen3-rerank
+```
+
+### Artifacts
+
+- Orchestration log: `.squad/orchestration-log/2026-04-24_190700-trinity-api-remediation.md`
+- Session log: `.squad/log/2026-04-24_190700-api-remediation.md`
+- Decision record: `.squad/decisions/decisions.md#API Runtime Configuration (2026-04-24)`
+
+### Impact
+
+- ✅ Embedding pipeline: config resolution fixed
+- ✅ Rerank pipeline: provider/model routing restored
+- ✅ Query expander: runtime config accessible
+- ✅ Contextual chunker: API settings available
+- ✅ Main RAG workflow: full usability restored
+
+---
+
 ## 2026-04-22: Task 2.2.B Implementation — Router + Tests + Registration (07:19 UTC)
 
 **Date/Time:** 2026-04-22 07:19:47Z  

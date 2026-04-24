@@ -6,6 +6,7 @@
     "Morpheus": "claude-opus-4.7",
     "Trinity": "gpt-5.4",
     "Switch": "gemini-3.1-pro-preview",
+    "Dozer": "gpt-5.4",
     "Tank": "gpt-5.3-codex",
     "Oracle": "gemini-3-pro-preview",
     "Scribe": "claude-haiku-4.5",
