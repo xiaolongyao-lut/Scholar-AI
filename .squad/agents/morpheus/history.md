@@ -10,6 +10,7 @@
 **Responsibility:** Review cross-domain changes before landing  
 
 **Key Checkpoints:**
+- **2026-04-26: R5 Option B audit — COMPLETED** (Audited minimal formal `retrieve_then_rerank(...)` seam; identified best module (eval_retrieval_runtime.py), minimal signature (13 params, all env-resolved), blast radius (2 files); no parameter-based credential fallback; decision inbox note merged to decisions.md)
 - **2026-04-24: Goldset Rejection Audit — Scope Clarification** (Tank's rejection binds only pre-existing 36/40-query artifacts; Oracle's fresh 100-query build unblocked; lockout is artifact-specific, not builder-specific)
 - **2026-04-24: Persistence Turnaround Diagnosis** (Backend already passes 31/31 runtime+persistence tests; collection failure root-cause isolated to import path collision; shortest turnaround: add import guard + negative-path assertions + round-trip regression)
 - Phase 6 extraction/pipeline complete (13/13 tests): `.squad/backups/checkpoint-phase6-final-20260420-0418/`

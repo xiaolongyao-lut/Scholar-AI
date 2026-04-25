@@ -260,6 +260,119 @@ Do **not** do full table/path renames now. Finish only the parts of S-1 that clo
 
 ---
 
+### 2026-04-26: Trinity env key-type audit
+
+**By:** Trinity (Implementation Engineer)  
+**Date:** 2026-04-26  
+**Scope:** Audit env-based embedding/rerank routing and 401 path behavior against live `.env`
+
+**Decision: ✅ Audit Complete; No Code Changes; Blocking Findings Recorded**
+
+#### Audit Findings
+
+**Facts:**
+- `runtime_env.resolve_embedding_config()` has provider selection + embedding key probe, but `chunk_vector_store.ChunkVectorStore.build()` still rewrites `base_url` post-resolution (`/rerank` → `/embeddings`)
+- `eval_retrieval_runtime.py` calls `key_pool.parse_env_pools()` + `apply_to_env("embedding", idx=0)`; `key_pool.py` groups `.env` by prefix/URL substring, not explicit key type
+- Live smoke: embedding resolver selected valid key but resolved `base_url` fell back to generic `BASE_URL`; request to `/embeddings` returned 200+HTML (not embedding JSON); rerank returned 200+JSON
+
+**Trinity Decision:**
+- Audit-only; no runtime code changes in this pass
+- Converge blocking findings to three facts: credential grouping / endpoint ownership / probe validity
+- Root cause: `chunk_vector_store.py` base-url string rewrite + generic host override
+- Minimum fixes: ① explicit credential object contract ② schema-aware embedding probe ③ remove post-resolve base-url rewrite
+
+**Recommendations for implementation phase:**
+1. Embedding env injection → `SILICONFLOW_EMBEDDING_BASE_URL` (typed) or direct credential pass
+2. Embedding probe add response schema validation
+3. Remove `chunk_vector_store.py` base_url rewrite; let errors surface in resolver/probe layer
+
+**Evidence:**
+- Live audit: `.env` + smoke HTTP requests with logged response types
+- Orchestration log: `.squad/orchestration-log/2026-04-26T18-21-23Z-Trinity-env-keytype-audit.md`
+- Session log: `.squad/log/2026-04-26T18-21-23Z-audit-findings.md`
+- Inbox source: `.squad/decisions/inbox/trinity-env-keytype-audit.md`
+
+**Open:**
+- When should embedding/rerank resolver consume explicit `Credential` object vs current `.env` probe?
+
+**Next:**
+- This audit unblocks Morpheus R5-B decision (see below)
+- Implementation waits on Trinity availability + Morpheus architecture review + Tank QA gate
+
+---
+
+### 2026-04-26: Morpheus R5-B audit — Minimal formal `retrieve_then_rerank(...)` seam
+
+**By:** Morpheus (Architect / Chief Engineer)  
+**Date:** 2026-04-26  
+**Scope:** Audit Option B for minimal formal `retrieve_then_rerank(...)` orchestration seam to unblock R5 smoke test
+
+**Decision: ✅ Audit Complete; Option B Approved for Implementation**
+
+#### Architecture Audit Findings
+
+**Facts:**
+- `tests/test_retrieve_then_rerank_smoke.py:6-8` intentionally skipped (no public `retrieve_then_rerank(...)` seam yet)
+- `eval_retrieval_runtime.py:579-840` already contains live retrieval → RRF → rerank path (`_retrieve`, `_retrieve_with_expansion`)
+- `layers/r_layer_hybrid_retriever.py:152-285` is not suitable (bypasses `reranker_client.rerank_async` budget/cache/short-circuit behavior)
+- User directive: use local `.env`, identify keys by key type, treat R5 as Option B
+- Typed credential resolution already in `runtime_env.py:203-304` and `reranker_client.py:117-232`
+
+**Morpheus Decision:**
+- Best seam: new public async wrapper in `eval_retrieval_runtime.py`, placed next to `_retrieve_with_expansion(...)`
+- Do NOT add explicit `api_key`/`base_url`/`model` parameters; let resolvers use local `.env` by key type (fixes env-keytype audit findings)
+- Minimal signature: 13 parameters (all env-resolved, backward-compatible defaults)
+
+**Minimal Implementation Signature:**
+```python
+async def retrieve_then_rerank(
+    query_text: str,
+    corpus: dict[str, Any],
+    top_k: int = DEFAULT_TOP_K,
+    *,
+    recall_top_n: int = DEFAULT_RECALL_TOP_N,
+    use_rerank: bool = DEFAULT_USE_RERANK,
+    rerank_top_n: int = DEFAULT_RERANK_TOP_N,
+    use_prefilter: bool = DEFAULT_USE_PREFILTER,
+    prefilter_threshold: float = DEFAULT_PREFILTER_THRESHOLD,
+    use_dynamic_topk: bool = DEFAULT_USE_DYNAMIC_TOPK,
+    dynamic_low_rerank_top_n: int = DEFAULT_DYNAMIC_LOW_RERANK_TOP_N,
+    dynamic_high_rerank_top_n: int = DEFAULT_DYNAMIC_HIGH_RERANK_TOP_N,
+    dynamic_score_gap_threshold: float = DEFAULT_DYNAMIC_SCORE_GAP_THRESHOLD,
+    use_expansion: bool = DEFAULT_USE_EXPANSION,
+    strict_cache_guard: bool = DEFAULT_STRICT_CACHE_GUARD,
+) -> list[dict[str, Any]]:
+```
+
+**Internal call chain:**
+1. Read `chunks = corpus.get("chunks", [])`
+2. Build `keyword_graph = build_keyword_graph(chunks)` when available
+3. Build `vector_store = await ChunkVectorStore.build(chunks, cache_path=None, strict_cache_guard=strict_cache_guard, concurrency=_get_env_int("EMBED_CONCURRENCY", 32))`
+4. Compute `query_vec = await vector_store.embed_query(query_text)` when vector store exists
+5. Delegate to `_retrieve_with_expansion(...)` (already tested)
+
+**Blast Radius:**
+- Touch: `eval_retrieval_runtime.py`, `tests/test_retrieve_then_rerank_smoke.py`
+- Optional coverage add: one small contract test in `tests/test_eval_runtime.py` (narrow, no-risk)
+- No-touch: `layers/r_layer_hybrid_retriever.py`, `main_rag_workflow.py`, `rag_integration_entry.py`, `reranker_client.py`, `chunk_vector_store.py`, `runtime_env.py`, existing embedding/rerank regression bundles
+
+**Evidence:**
+- Orchestration log: `.squad/orchestration-log/2026-04-26T18-21-23Z-Morpheus-r5-b-audit.md`
+- Session log: `.squad/log/2026-04-26T18-21-23Z-audit-findings.md`
+- Inbox source: `.squad/decisions/inbox/morpheus-r5-b-audit.md`
+
+**Open:**
+- Future "production retrieval service" extraction deferred (eval-module temporary acceptable for now)
+- Local `.env` remains mixed-format; full typed-only migration deferred
+
+**Next (Implementation Phase):**
+- Safest implementation order:
+  1. Add thin public wrapper in `eval_retrieval_runtime.py`
+  2. Monkeypatch `ChunkVectorStore.build`, `hybrid_search_async`, `rerank_async` in test
+  3. Replace skip in `tests/test_retrieve_then_rerank_smoke.py` with happy-path test
+
+---
+
 ### 2026-04-24 (late): Squad Execution Audit — Inbox Canonicalization Batch
 
 **By:** Squad 4.7 Coordinator (audit)

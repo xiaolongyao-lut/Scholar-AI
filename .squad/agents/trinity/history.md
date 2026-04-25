@@ -29,6 +29,7 @@
 
 ## Recent Milestones
 
+- **2026-04-26: env key-type audit — COMPLETED** (Audited embedding/rerank routing against live `.env`; found prefix/heuristic dependencies in key_pool.py, _repo_env(), chunk_vector_store.py; verified live HTTP behavior: embedding 200+HTML, rerank 200+JSON; identified minimum fixes; decision inbox note merged to decisions.md)
 - **2026-04-26: Rerank Budget Contract Alignment — COMPLETED** (Audited hard-cap vs soft-telemetry contract; `reranker_client.RerankBudgetGuard` as source of truth; `rerank_budget.py` as compatibility wrapper; 39/39 regression passed; Tank QA validation complete)
 - **2026-04-24: Rerank Key Redesign — COMPLETED** (Backup created, TDD tests green, validity-first probing + process-local cache + kill switch, regression bundle 48/48 green, smoke no 401, Tank review gate launched)
 - **2026-04-24: Session Persistence MVP — STARTED** (Rerank oversize guard deployed; eval v2 manifest-first loading active)
