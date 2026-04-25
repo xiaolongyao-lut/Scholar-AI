@@ -5,6 +5,53 @@ Records of testing phases and quality validation by Tank.
 > **Scope:** team-facing QA record.
 > **Agent-internal working log:** see `agents/tank/history.md`. Audit 2026-04-24.
 
+## 2026-04-25: Handoff Test Contract Closures (R1, E1, E2) (17:47 UTC)
+
+**Date/Time:** 2026-04-25 17:47 UTC  
+**Role:** Tank (QA)  
+**Task:** Close embedding/rerank test contracts for all-probes-fail, no-key, and batch-size  
+**Status:** ✅ COMPLETED  
+
+### Scope
+
+Three test contract closures to lock semantics and track gaps:
+
+1. **R1 (Rerank):** All-probes-fail fallback uses provider static key, not probe order
+2. **E1 (Embedding):** No-key resolver returns None (does not raise); caller owns degrade/skip
+3. **E2 (Embedding):** Batch-size parameter `_batch_embed(batch_size=...)` is configurable; env var not wired
+
+### Validation Checklist
+
+✅ **R1 Closure:** Added regression `test_all_probes_fail_uses_static_provider_key_semantics` with dual-key scenario  
+✅ **E1 Closure:** Renamed misleading test to `test_no_key_returns_none_api_key_contract`; behavior verified  
+✅ **E2 Closure:** Renamed test `test_provider_limit_is_configurable_via_batch_size_arg`; added xfail gap for env override  
+✅ **Plan Update:** `.copilot-tracking/plans/2026-04-25-embedding-rerank-test-handoff.md` marked E2 partial  
+✅ **Decision Records:** Three inbox items merged to `decisions.md`  
+
+### Evidence
+
+- Orchestration log: `.squad/orchestration-log/2026-04-25T17-47-57Z-tank-handoff-test-closure.md`
+- Session log: `.squad/log/2026-04-25T17-47-57Z-handoff-test-closure.md`
+- Source files: `tank-probe-failure-regression.md`, `tank-embedding-no-key-contract.md`, `tank-embedding-batch-contract.md`
+
+### Findings
+
+- **R1:** Dual-key (SILICONFLOW + RERANK) scenario confirms static key fallback semantics; probe order not used
+- **E1:** Runtime contract is no-raise on missing key; test name was misleading, now fixed
+- **E2:** Parameter config works as expected; env var support deferred with xfail gap
+
+### Impact
+
+All three contracts now locked and traceable. E2 gap marked for future env-contract decision. No business logic changes.
+
+### Next
+
+- Coordinator marks R1/E1/E2 slices done  
+- Morpheus launches fresh plan resweep  
+- Adjacent slices remain decoupled
+
+---
+
 ## 2026-04-24: GateB Goldset First-Pass 100-Query Conditional Approval & Oracle Gate (19:21 UTC)
 
 **Date/Time:** 2026-04-24 19:21 UTC  

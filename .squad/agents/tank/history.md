@@ -8,7 +8,26 @@
 **Project:** my-project | **Owner:** xiao  
 **Role:** Testing, verification, skeptical review  
 
-**Key Checkpoints:**
+**Current Status (2026-04-26):** Post-rerank-budget validation. U1 closure finalized. Contract acceptance gates on rerank key redesign + budget alignment both green. Goldset final approved (100 canonical + 64 scaffold pending adjudication). Session persistence smoke + full gates adopted. Next: rewind/fork scope decisions.
+
+**Execution Patterns:**
+- Acceptance checklist structure (A1–A11) enables concurrent QA verification
+- Two-stage gates (smoke + full) reduce feedback loop time while preserving rigor
+- Caveat disclosure mandatory (warm-cache vs cold-start latency, fallback conditions, template asymmetry)
+- Rejection scoping critical: Tank rejects pre-existing artifacts only, never blocking new generation (e.g., Oracle 100-query build unblocked while Tank rejects prior 36/40 scaffold)
+
+**Persistent Learnings:**
+- Rerank API 401 failures are self-healing once credentials renewed; graceful BM25 fallback occurs automatically — disclose in reports
+- Warm-cache latency from Step 3 (prefix embeddings cached) does not predict cold-start; use full-eval measurements for production expectations
+- Token budget estimation via char-ratio (when transformers unavailable) underestimates by ~10%; must disclose in eval reports
+- Parameter selection in Step 3 prioritizes quality gates over latency (within tolerance); tiebreaker is avg latency
+
+**Key Contract Verifications (2026-04-26):**
+- **Rerank Budget Guard:** Hard-cap (call/token) enforced → fallback; Soft-warn (USD) → telemetry only — test-proven
+- **Hard/soft invariants:** Only call/token can trigger hard fallback; USD only emits telemetry — explicitly test-distinguishable
+- **Regression bundle focus:** Always validate full logic paths (provider response order, no fallback warning in USD path) — smallest regression > no test
+
+## Key Checkpoints
 - **2026-04-26: Rerank Budget Contract Validation — COMPLETED** (Trinity contract alignment audited; hard-cap vs soft-warn distinction verified; 36/36 regression passed; plan cleanup applied)
 - **2026-04-24: Rerank Key Redesign Review Gate — LAUNCHED (Background)** (Trinity completed TDD-first validity probing + cache + kill switch; Tank gate launched for test coverage / cache isolation / key-precedence contract / short-circuit sign-off / production readiness audit)
 - **2026-04-24: Final Goldset Approval — Regenerated 100-Query Canonical Set (APPROVED)** (Former 64 scaffold entries fully adjudicated; schema/qrels/provenance validated; hard-goldset acceptance gate closed)

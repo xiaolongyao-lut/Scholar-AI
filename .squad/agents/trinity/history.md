@@ -9,6 +9,24 @@
 - Owner: xiao
 - Preferred role: main coding engine for the team
 
+## Core Context
+
+**Current Status (2026-04-26):** Surgical rerank & embedding system hardening (key config + budget contract).  
+**Execution Model:** TDD-first implementation on GPT-5.4; Tank-led QA gates.  
+**Key Outcomes:** 2026-04-26 rerank budget contract (hard-cap vs soft-telemetry) aligned and validated. 2026-04-24 rerank key redesign (validity-first probing) landed with 48/48 regression. Session persistence MVP boundaries set.
+
+**Persistent Learnings:**
+- Implementation sits with GPT-5.4; reuse project rules/skills to avoid isolated local assumptions
+- Live rerank state can mask key-selection regression (rerank_api_* = 0.0 does not prove health)
+- Backup strategy for runtime fixes: `.squad/backups/` with pre/post snapshots for audit trail
+- Regression anchors: Keep focused bundles per system (rerank: test_reranker.py + 4 routing/gateway tests)
+
+**Current Tech Contracts:**
+- `reranker_client.RerankBudgetGuard`: hard-cap enforcement (call/token), soft-warn (USD) — source of truth
+- `rerank_budget.py`: compatibility wrapper around runtime contract (legacy `count` field supported)
+- Rerank default model: qwen3-rerank (DashScope) with SILICONFLOW fallback for backward compat
+- Session persistence: WritingRuntime + WritingRuntimeRepository (append-only transcript, workspace-bound)
+
 ## Recent Milestones
 
 - **2026-04-26: Rerank Budget Contract Alignment — COMPLETED** (Audited hard-cap vs soft-telemetry contract; `reranker_client.RerankBudgetGuard` as source of truth; `rerank_budget.py` as compatibility wrapper; 39/39 regression passed; Tank QA validation complete)

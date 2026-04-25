@@ -44,3 +44,26 @@ If you make a decision that affects other team members, write it to:
 .squad/decisions/inbox/copilot-{brief-slug}.md
 ```
 The Scribe will merge it into the shared decisions file.
+
+## Long-Running & Self-Decision
+
+For any task that runs across multiple turns, terminals, or sessions, you MUST conform to the kernel-grade protocols:
+
+- **Long-running protocol** — `.squad/kernel/long-running-protocol.md`
+  - Atomic writes (`*.tmp` + replace) for shared/persistent state
+  - Session resume via `RAG_SESSION_ID` (or task-equivalent ID) with checkpoints under `.squad/sessions/`
+  - Multi-terminal lock files under `.squad/locks/` before touching shared state
+  - All LLM/API calls go through `model_call_gateway`; citations through `citation_auditor`
+  - No silent failure — degraded paths must be logged
+  - Cross-stack write protection (Copilot must not write under `.claude_squad/`)
+
+- **Self-audit protocol** — `.squad/kernel/self-audit.md`
+  - Run the 7-item audit checklist on the cadence defined in
+    `.squad/casting-policy.json` → `execution_profile.discipline`
+  - Every irreversible action (delete / push / publish / pay / schema) goes through the double-confirm gate
+  - Every autonomous decision writes a provenance record with `kernel_rule_ref`
+  - Failed audit = `constraint` blocker → escalate per `.squad/kernel/blocker-arbitration.md`
+
+These rules apply to every agent in the squad regardless of profile, but the
+aggressive profile additionally enforces the safety guardrails defined in
+`.squad/charter.md` (Aggressive Safety Guardrails).

@@ -52,6 +52,71 @@
 
 ---
 
+### 2026-04-25: Handoff Test Contract Closures (R1, E1, E2)
+
+**By:** Tank (QA Engineer)  
+**Date:** 2026-04-25  
+**Scope:** Close embedding/rerank test contracts for all-probes-fail semantics, no-key return behavior, and batch-size parameter configuration
+
+**Decision: ✅ Three Contracts Locked**
+
+#### R1: All-Probes-Fail Uses Static Provider Key Semantics
+
+**Facts:**
+- `resolve_rerank_config()` falls back to provider static key (not probe-order first key) when all probes fail
+- Test previously covered single-key fallback but did not discriminate multi-key + all-invalid semantics
+- Evidence: `reranker_client.py:199-229` explicit static-key fallback with warning source field
+
+**Tank Decision:**
+- Add focused regression `tests/test_reranker.py::test_all_probes_fail_uses_static_provider_key_semantics`
+- Use dual-key scenario (`SILICONFLOW_API_KEY + RERANK_API_KEY`) to verify static key selection, not probe order
+- No business logic change; test-only closure
+
+**Status:** ✅ Locked
+
+#### E1: No-Key Contract — Returns None (Does Not Raise)
+
+**Facts:**
+- `resolve_embedding_config()` returns `(None, base_url, model)` when no embedding key exists; logs error but does not raise
+- Test name `test_no_key_raises_clear_error` contradicted runtime behavior (asserted `api_key is None`)
+- Caller behavior is mixed but explicit (degrade/skip on missing key), so resolver no-raise is current contract
+
+**Tank Decision:**
+- Rename test to `test_no_key_returns_none_api_key_contract` to match runtime truth
+- Keep as behavior-lock (not xfail/skip); callers own failure/degrade policy
+- File: `tests/test_embedding_provider_resolution.py`
+
+**Status:** ✅ Locked
+
+#### E2: Embedding Batch Size Parameter Contract
+
+**Facts:**
+- `_batch_embed(batch_size=...)` argument is configurable; `EMBEDDING_BATCH_SIZE` env var is NOT wired
+- Original test proved configurability via explicit arg only; handoff expected env-based override (not aligned)
+- Evidence: `chunk_vector_store.py` has `DEFAULT_EMBED_BATCH_SIZE = 32`, no `EMBEDDING_BATCH_SIZE` lookup
+
+**Tank Decision:**
+- Rename test to `test_provider_limit_is_configurable_via_batch_size_arg` to match current implementation
+- Add `xfail(strict=True)` gap test `test_embedding_batch_size_env_override_gap` with reason: env var not wired
+- Update `.copilot-tracking/plans/2026-04-25-embedding-rerank-test-handoff.md` to mark E2 as partial (arg-config verified, env-config gap tracked)
+
+**Status:** ✅ Locked (partial; gap deferred)
+
+**Evidence:**
+- Orchestration log: `.squad/orchestration-log/2026-04-25T17-47-57Z-tank-handoff-test-closure.md`
+- Session log: `.squad/log/2026-04-25T17-47-57Z-handoff-test-closure.md`
+- Inbox sources: `tank-probe-failure-regression.md`, `tank-embedding-no-key-contract.md`, `tank-embedding-batch-contract.md`
+
+**Open:**
+- Should runtime support `EMBEDDING_BATCH_SIZE` as first-class env contract, or keep call-site-only control?
+
+**Next:**
+- Coordinator marks R1/E1/E2 todo slices complete
+- Morpheus launches fresh plan resweep after closures
+- E2 env-contract decision deferred to implementation phase
+
+---
+
 ### 2026-04-25: Claude 自决策体系 → Copilot 适配优化（非破坏式）
 
 **By:** Squad Coordinator (Copilot)  

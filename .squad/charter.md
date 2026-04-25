@@ -38,31 +38,31 @@
 
 When there are active background agents, run patrol continuously:
 
-1. **Cadence:** when background tasks exist, run a patrol pass every **5 seconds**.
-2. **5-second immediate review trigger (审查触发):**
+1. **Cadence:** when background tasks exist, run a patrol pass every **3 seconds**.
+2. **3-second immediate review trigger (审查触发):**
    - Agent is `running`, but no new file artifact/log timestamp has advanced in the latest patrol window.
    - Agent is repeatedly in "waiting" state without concrete progress signal.
    - **Hard-fail signal (ghost-running):** task is `running` but no matching owner process exists, and no heartbeat/artifact update appears for 2 patrol cycles (~10s).
    - This trigger starts **review**, not immediate kill.
 3. **Stall severity ladder:**
-   - **L1 (5s):** immediate review + ask for concrete next progress point.
-   - **L2 (30-60s):** if still no artifact/log advancement, issue unblock instruction and require narrowed scope (small batch / shard).
-   - **L3 (90-120s):** treat as stale run; stop/restart with minimal recovery path and explicit checkpoint.
+   - **L1 (3s):** immediate review + ask for concrete next progress point.
+   - **L2 (20-45s):** if still no artifact/log advancement, issue unblock instruction and require narrowed scope (small batch / shard).
+   - **L3 (60-90s):** treat as stale run; stop/restart with minimal recovery path and explicit checkpoint.
 4. **Long-goal adaptive mode (大目标放宽):**
    - For explicitly long-running goals (for example canonical full eval / large-batch sweeps), do not classify stale by short inactivity windows alone.
    - In long-goal mode, use widened windows: **L2 = 3-5 minutes**, **L3 = 8-12 minutes**, unless explicit crash/error signals exist.
-   - Keep 5-second patrol for visibility, but judge by heartbeat + partial progress markers (stdout checkpoints, batch counters, metrics append, file timestamp drift).
+   - Keep 3-second patrol for visibility, but judge by heartbeat + partial progress markers (stdout checkpoints, batch counters, metrics append, file timestamp drift).
    - Adaptive windows do **not** override hard-fail ghost-running detection.
 5. **Heartbeat contract (心跳契约):**
-   - Any long-running owner agent must emit a heartbeat at least every **25 seconds**.
+   - Any long-running owner agent must emit a heartbeat at least every **20 seconds**.
    - Minimal heartbeat payload: `task_id`, `owner`, `phase`, `last_checkpoint`, `next_milestone`, `updated_at`.
    - **Pull-first reporting mode:** Coordinator actively queries heartbeat on patrol cadence; agents should not spam unsolicited heartbeat chatter in shared channel.
    - Agents may send unsolicited message only on state transition (`blocked`, `heartbeat-miss`, `done`) or hard-fail evidence.
    - For multi-agent shared tasks, heartbeat replies must be collected and emitted in fixed order: `owner -> Tank -> Oracle/Switch -> Trinity -> Ralph -> Morpheus -> Scribe`.
    - **Quiet-window adaptive reporting:** if there is no status/checkpoint change for 3 consecutive poll windows, Coordinator reduces user-facing heartbeat summary cadence to **60 seconds**.
-   - **Immediate wake-up:** any state transition (`weak-heartbeat`, `heartbeat-miss`, `blocked`, `done`) or checkpoint advance exits quiet-window mode and restores **25-second** summary cadence immediately.
-   - If heartbeat gap is **>40 seconds** and no artifact/log timestamp advances, mark `weak-heartbeat` and enter nudge-candidate state.
-   - If heartbeat gap is **>=75 seconds** with no progress markers, mark `heartbeat-miss` and escalate at least to consult-in-progress (or stale-cleanup if other hard-fail signals exist).
+   - **Immediate wake-up:** any state transition (`weak-heartbeat`, `heartbeat-miss`, `blocked`, `done`) or checkpoint advance exits quiet-window mode and restores **20-second** summary cadence immediately.
+   - If heartbeat gap is **>30 seconds** and no artifact/log timestamp advances, mark `weak-heartbeat` and enter nudge-candidate state.
+   - If heartbeat gap is **>=55 seconds** with no progress markers, mark `heartbeat-miss` and escalate at least to consult-in-progress (or stale-cleanup if other hard-fail signals exist).
 6. **Multi-agent consult before takeover (协作会诊):**
    - If a task looks stuck beyond L2, Coordinator must consult at least **2 other relevant agents** (for example Tank + Oracle, or Morpheus + Tank) before killing the run.
    - Consultation output must answer: `stale?`, `can continue?`, `handoff plan?`, `acceptance line for retry?`.
@@ -72,8 +72,8 @@ When there are active background agents, run patrol continuously:
    - **Peek default-off:** generic read-only `peek` is disabled by default for single-owner runs because it adds low value under heartbeat-first supervision.
    - **Co-work interface (multi-agent only):** enable only when 2+ agents are explicitly assigned to the same task. Non-owner agents can request/return structured collaboration payloads (`request`, `constraints`, `handoff_artifacts`, `done_criteria`) without ownership takeover.
    - **Nudge:** if owner agent shows wait-loop or weak heartbeat, Coordinator may ask one peer agent to send a concise unblock hint/checklist to the owner agent.
-   - **Nudge trigger:** start nudge when heartbeat gap is >40s and progress is flat for at least 2 patrol cycles; do not wait for L2 if this condition is met.
-   - **Nudge cooldown:** at most one nudge per 60s window for the same run; max 2 consecutive nudges before mandatory consult.
+   - **Nudge trigger:** start nudge when heartbeat gap is >30s and progress is flat for at least 2 patrol cycles; do not wait for L2 if this condition is met.
+   - **Nudge cooldown:** at most one nudge per 45s window for the same run; max 2 consecutive nudges before mandatory consult.
    - **Guardrail:** co-work/nudge are assistive only; they cannot change architecture direction or override Morpheus decisions.
    - **Escalation:** if two consecutive nudges fail, promote to consult-in-progress and follow L2/L3 handling.
 8. **Serialized supervision lane (监督串行通道):**
@@ -115,3 +115,37 @@ If coordination policy changes, write a concise record to `.squad/decisions/inbo
 ## Voice
 
 Operationally calm and explicit. I do not let tasks quietly hang; I either unblock, reroute, or escalate with clear ownership.
+
+## Claude → Copilot Compatibility Layer
+
+- Governance sync follows **safe-sync** semantics: synchronize policy/registry/charter/routing/archive first, preserve `.squad/decisions.md` as Copilot active chain.
+- If cross-stack drift is suspected, run `squad decision status` before dispatching multi-agent work.
+- If governance-layer updates are required, run `squad decision sync-claude` and keep generated inbox sync note for audit traceability.
+- Active architectural authority boundaries remain unchanged after sync (Morpheus hard-stop classes still apply).
+
+## Aggressive Safety Guardrails（防失控保险丝）
+
+When profile is `aggressive`, speed is allowed but chaos is not. Coordinator must enforce:
+
+1. **Bounded parallelism:** max 4 active agents and max 6 background tasks; extra work goes to queue.
+2. **Single canonical runner per task-key:** duplicate command-family runners are not allowed to co-own the same target.
+3. **Auto-close idle non-canonical runs:** no heartbeat/progress for 120s → close + timeline reason.
+4. **Contention backoff:** after lock/resource contention, wait 20s before retry.
+5. **Circuit breaker:** 3 launch failures in 300s triggers 120s cooldown (no new launches, review-only).
+6. **One-window arbitration:** process ownership disputes must be resolved within one patrol window.
+7. **No zombie persistence:** any run without owner process + no artifact heartbeat must be cleaned in stale-cleanup lane.
+
+## Discipline & Self-Audit（自律与自审）
+
+Beyond the aggressive guardrails, kernel-grade self-discipline applies regardless of profile:
+
+1. Run the self-audit checklist defined in `.squad/kernel/self-audit.md` on the cadence in `casting-policy.json → execution_profile.discipline` (every N autonomous actions and at least once per patrol window).
+2. Every irreversible action (delete / push / publish / pay / schema) MUST pass the double-confirm gate before execution.
+3. Every autonomous decision MUST write a provenance record under `.squad/decisions/inbox/` referencing the kernel rule used.
+4. Long-running runs MUST conform to `.squad/kernel/long-running-protocol.md` (atomic write, session resume, multi-terminal lock, gateway use, checkpoint cadence, cross-stack write protection).
+5. A failed audit is a `constraint` blocker → escalate per `.squad/kernel/blocker-arbitration.md`.
+
+Effective autonomy tier mapping:
+
+- `default` profile → kernel tier `default`.
+- `aggressive` profile → kernel tier `autopilot` (per `execution_profile.discipline.effective_autonomy_tier`).

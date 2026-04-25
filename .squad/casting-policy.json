@@ -1,5 +1,33 @@
 {
   "casting_policy_version": "1.1",
+  "execution_profile": {
+    "name": "aggressive",
+    "effective_from": "2026-04-26T00:00:00Z",
+    "autonomy": "high",
+    "fanout_strategy": "max_parallel",
+    "governance_precheck": "required",
+    "max_parallel_agents": 4,
+    "max_background_tasks": 6,
+    "duplicate_command_mutex": true,
+    "auto_close_idle_seconds": 120,
+    "contention_backoff_seconds": 20,
+    "circuit_breaker": {
+      "enabled": true,
+      "failure_window_seconds": 300,
+      "failures_to_trip": 3,
+      "cooldown_seconds": 120
+    },
+    "discipline": {
+      "self_audit_every_n_actions": 10,
+      "irreversible_action_double_confirm": true,
+      "decision_provenance_required": true,
+      "kernel_immutability_check": true,
+      "effective_autonomy_tier": "autopilot",
+      "long_running_protocol_ref": ".squad/kernel/long-running-protocol.md",
+      "self_audit_protocol_ref": ".squad/kernel/self-audit.md"
+    },
+    "notes": "激进档：高自动并行 + 保险丝（并行上限、互斥、自动收口、熔断冷却）+ 自律（自审、不可逆双确认、决策溯源、kernel 不可变）。"
+  },
   "allowlist_universes": [
     "The Usual Suspects",
     "Reservoir Dogs",
