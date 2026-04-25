@@ -2,6 +2,92 @@
 
 ## Active Decisions
 
+### 2026-04-26: § 1.3 Rerank Budget Contract Alignment & Validation
+
+**By:** Trinity (Implementation Engineer) & Tank (QA Engineer)  
+**Date:** 2026-04-26  
+**Scope:** Align and validate hard-cap (call/token) vs soft-warn (USD telemetry) contract across `reranker_client.py` and `rerank_budget.py`
+
+**Decision: ✅ Contract Alignment Complete and Test-Verified**
+
+#### Trinity Implementation (2026-04-26)
+
+**Facts:**
+- `reranker_client.py` already enforced intended contract: hard caps on `RERANK_DAILY_CALL_CAP` and `RERANK_DAILY_TOKEN_CAP` with `RERANK_DAILY_BUDGET_USD` returning only `budget_soft_warn`
+- `rerank_budget.py` had drifted to separate helper contract with call-only state tracking via `count` field
+- Focused regression after alignment: **39/39 passed** (`tests\test_rerank_budget.py`, `tests\test_rerank_short_circuit_and_budget.py`, `tests\test_rerank_budget_concurrency.py`, `tests\test_reranker.py`)
+
+**Trinity Decision:**
+- Kept surgical runtime source of truth in `reranker_client.RerankBudgetGuard`; converted `rerank_budget.py` to compatibility wrapper
+- Aligned helper state schema to `output/rerank_budget_state.json` with fields `date/call_count/token_count/cost_usd`; backward-compatible legacy `count` field accepted during reads
+- Added regression proving helper-level token-cap enforcement with aligned state persistence
+
+#### Tank QA Validation (2026-04-26)
+
+**Facts:**
+- `RerankBudgetGuard.try_acquire` confirmed hard fallback only on `daily_call_cap`/`daily_token_cap`; `daily_budget_usd` returns `allowed=True` with `event=budget_soft_warn`
+- Existing tests covered paths but USD-fallback distinction was not test-discriminative; ranking order assertions insufficient
+- Focused regression bundle after strengthening: **36/36 passed** (`tests\test_rerank_budget.py`, `tests\test_rerank_short_circuit_and_budget.py`, `tests\test_reranker.py`)
+
+**Tank Decision:**
+- Add smallest regression strengthening: force provider to reverse rank order and assert output reflects provider order with no `budget_capped` warning (proves no fallback in USD path)
+- Apply minimal factual cleanup in plan wording: remove duplicated §1.3 block for single-source status text
+
+**Contract Invariants (Verified):**
+1. Only `call/token` can hard-cap and force fallback
+2. USD can only emit soft warning telemetry
+
+**Evidence:**
+- Orchestration logs: `.squad/orchestration-log/2026-04-26T01-38-32Z-trinity-rerank-budget-align.md`, `.squad/orchestration-log/2026-04-26T01-38-32Z-tank-rerank-budget-qa.md`
+- Code: `reranker_client.py`, `rerank_budget.py`
+- Tests: Focused bundle 39 + 36 regressions passed
+- Plan updates: `.copilot-tracking/plans/2026-04-21-cost-and-defaults.md` (minimal factual edits)
+
+**Open:**
+- None. Contract behavior fully verified and documented.
+
+**Next:**
+- Rerank budget guard reviews focused on hard/soft invariants only
+- Adjacent slices (embedding key, 401 remediation) remain decoupled
+
+---
+
+### 2026-04-25: Claude 自决策体系 → Copilot 适配优化（非破坏式）
+
+**By:** Squad Coordinator (Copilot)  
+**Date:** 2026-04-25  
+**Scope:** 基于 `.claude_squad` 的决策治理结构，优化 `.squad` 可维护性与可追溯性，不覆盖 Copilot 侧已沉淀的活跃决策链。
+
+**Decision:** ✅ 采用“安全同步 + 本地主链保留”策略
+
+1. 对齐治理面（policy/registry/charter/routing/archive）
+2. 保留 `.squad/decisions.md` 作为 Copilot 侧活跃主链，不做覆盖
+3. 新增决策与状态目录说明文档，明确落盘边界与维护规则
+4. 新增 `squad decision` 子命令，支持 `status` 与 `sync-claude`
+
+**Rationale:**
+
+- `.squad/decisions.md` 已包含更近期、与当前执行直接关联的裁决，直接覆盖会丢失本地上下文。
+- `.claude_squad` 在 registry 侧有可复用席位元数据，适合以“兼容层”引入。
+- 通过命令化同步，可重复执行并保留备份，降低人工同步错误。
+
+**Non-goals:**
+
+- 不强行双向覆盖 `decisions.md`
+- 不删除 `.squad/state` 现有运行痕迹文件
+- 不改变既有 Hard-stop 授权边界（Morpheus 仍保留架构裁决权）
+
+**Evidence:**
+
+- `.claude_squad/casting-registry.json`
+- `.squad/casting-registry.json`
+- `tools/squad/commands/decision.ps1`
+- `tools/squad/squad.ps1`
+- `.squad/decisions/README.md`
+- `.squad/state/README.md`
+
+---
+
 ### 2026-04-25: S-1 Conversation Persistence — Path D Recommendation (Minimal Hardening, Then S-2)
 
 **By:** Morpheus (architecture review)  
@@ -48,6 +134,12 @@ Do **not** do full table/path renames now. Finish only the parts of S-1 that clo
 - `docs/superpowers/plans/2026-04-20-conversation-persistence-mvp.md`
 - `docs/superpowers/plans/2026-04-20-latest-unified-plan.md`
 - `CONVERSATION_PERSISTENCE_DESIGN.md`
+
+**UPDATE 2026-04-25 (COMPLETED):** ✅ Path D minimal hardening fully implemented and tested.
+- Task 1: Added 3 blob-spill regression tests (`test_large_payload_spill_and_resume`, `test_mixed_payload_sizes_with_rehydration`, `test_corrupted_blob_graceful_degradation`) to `tests/test_writing_runtime_persistence.py` — all 3 tests passing.
+- Task 2: Created idempotent repair script `scripts/repair_modular_sessions.py` (330+ lines) with `scan_blob_orphans()`, `scan_zombie_blobs()`, `apply_repairs()` supporting `--dry-run` / `--apply` / `--output`.
+- Task 3: End-to-end verification passed; all tests green; repair script syntax valid.
+- **Status:** Ready to hand off to S-2 schema/UX redesign; current behavior gaps closed; no architectural debts introduced.
 
 ---
 
@@ -3093,9 +3185,12 @@ Per strict reviewer lockout semantics:
 
 The 1100/3269 U1A run wasted money because of a single architectural defect in val_retrieval_runtime.py:
 
-- **Lines 795-812:** _eval_one() computes full per-query quality metrics (recall@1/3/5/10, mrr, latency, rerank timing) into a esult dict.
-- **Lines 813-827:** The progress reporter receives this esult but writes **only counters** (done, 	otal, percent, last_query_id) to the progress JSONL. All quality data is discarded at write time.
-- **Lines 830-831:** Per-query results are collected in-memory via syncio.gather, passed back to un_eval.
+- **Lines 795-812:** _eval_one() computes full per-query quality metrics (recall@1/3/5/10, mrr, latency, rerank timing) into a 
+esult dict.
+- **Lines 813-827:** The progress reporter receives this 
+esult but writes **only counters** (done, 	otal, percent, last_query_id) to the progress JSONL. All quality data is discarded at write time.
+- **Lines 830-831:** Per-query results are collected in-memory via syncio.gather, passed back to 
+un_eval.
 - **Lines 680-688:** Aggregation and canonical JSON write happen **only after all queries complete**.
 
 **Consequence:** If the process is interrupted before line 680, **all per-query quality data is lost**. This is exactly what happened at 1100/3269. The data was computed, then thrown away.
@@ -3108,7 +3203,9 @@ The 1100/3269 U1A run wasted money because of a single architectural defect in 
 
 **What to add:**
 1. A new --per-query-output CLI parameter (path to a JSONL file).
-2. Inside _eval_one(), after computing esult (line 812), **append the full esult dict as one JSON line** to the per-query JSONL. Use the existing progress_lock for concurrency safety.
+2. Inside _eval_one(), after computing 
+esult (line 812), **append the full 
+esult dict as one JSON line** to the per-query JSONL. Use the existing progress_lock for concurrency safety.
 3. Ensure the per-query JSONL is independently parseable — each line is a complete per-query record.
 
 **What NOT to touch:**
@@ -3170,7 +3267,8 @@ Current interrupted artifact (output/v21_u1a_full_eval_canonical.progress.jsonl)
 
 An interrupted run is considered reusable **only if all are true**:
 
-1. **Per-query quality persistence exists**: one JSONL line per completed query containing at least query_id, ecall_at_5, mrr, latency_ms (and ideally recall@1/3/10).
+1. **Per-query quality persistence exists**: one JSONL line per completed query containing at least query_id, 
+ecall_at_5, mrr, latency_ms (and ideally recall@1/3/10).
 2. **Progress remains monotonic**: progress JSONL done strictly increases to the interruption point; 	otal is stable.
 3. **Cross-file coherence holds**: last done in progress equals line count in per-query JSONL at interruption.
 4. **Partial aggregation is possible**: loading the saved per-query JSONL into ggregate_metrics() yields valid ggregated_metrics and per_difficulty outputs.
@@ -3229,7 +3327,8 @@ Only after this Tier 0 contract passes may any paid Tier 1/2 mini-eval proceed.
 
 ### Decision
 
-Add a --per-query-output CLI option and append the full per-query esult dict as JSONL for each completed query, guarded by the existing async progress lock to keep writes coherent under concurrency.
+Add a --per-query-output CLI option and append the full per-query 
+esult dict as JSONL for each completed query, guarded by the existing async progress lock to keep writes coherent under concurrency.
 
 ### Why
 
@@ -3237,7 +3336,8 @@ Interrupted eval runs currently lose per-query quality evidence because only pro
 
 ### Implementation Notes
 
-- Added per_query_output plumbing through un_eval → _run_eval_async.
+- Added per_query_output plumbing through 
+un_eval → _run_eval_async.
 - Appended per-query JSONL records under the same progress_lock used for progress writes.
 - Left progress JSONL and canonical output schema unchanged.
 
@@ -3260,7 +3360,9 @@ Interrupted eval runs currently lose per-query quality evidence because only pro
 1. Only live chat.completions.create call sites confirmed: 7 in layers/ai_adapter.py; inspiration_engine.py and xtractor_full.py out of scope for this pass.
 2. Trinity implements _chat as internal AIAdapter helper only; no exported API change.
 3. All existing method contracts preserved: same prompt construction, same try/except, same downstream response reads.
-4. Site-specific behavior is contract-critical: site 2 keeps max_tokens=10 + no esponse_format; site 6 keeps 	emperature=0.2; JSON-producing sites keep esponse_format={"type":"json_object"}.
+4. Site-specific behavior is contract-critical: site 2 keeps max_tokens=10 + no 
+esponse_format; site 6 keeps 	emperature=0.2; JSON-producing sites keep 
+esponse_format={"type":"json_object"}.
 5. Cost telemetry best-effort only: sampling/logging may not break extraction/chat paths on error.
 
 ### Rationale
@@ -3281,7 +3383,8 @@ Interrupted eval runs currently lose per-query quality evidence because only pro
 Task 2.1.1 narrowed to layers/ai_adapter.py seven known chat.completions.create sites only. Do not expand scope into inspiration_engine.py or xtractor_full.py.
 
 ### Required Invariants (All Preserved)
-1. Site 2 (erify_multimodal_support): 	emperature=0.1, max_tokens=10, no esponse_format
+1. Site 2 (erify_multimodal_support): 	emperature=0.1, max_tokens=10, no 
+esponse_format
 2. Site 6 (classify_claim_boundary): 	emperature=0.2 + JSON response_format
 3. JSON vs non-JSON split: 6 JSON + 1 non-JSON
 4. Telemetry/logging failures must be swallowed; never break main path
@@ -3326,10 +3429,12 @@ Implemented §2.1.1 only inside layers/ai_adapter.py by adding private _chat hel
 **Status:** ✅ ACCEPT — Task 2.1.1 complete
 
 ### Evidence
-- _chat helper verified to exist and use esolve_llm_params + fail-open telemetry
+- _chat helper verified to exist and use 
+esolve_llm_params + fail-open telemetry
 - 7 internal call sites migrated; only 1 direct chat.completions.create remains (inside helper)
 - Site-specific contracts verified:
-  - erify_multimodal_support: overrides={"temperature":0.1,"max_tokens":10}, no esponse_format
+  - erify_multimodal_support: overrides={"temperature":0.1,"max_tokens":10}, no 
+esponse_format
   - classify_claim_boundary: overrides={"temperature":0.2} + JSON response_format
 - Focused tests passed: 	est_ai_adapter_chat_helper.py → 4 passed, 	est_llm_provider_routing.py → 3 passed
 

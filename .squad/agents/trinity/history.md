@@ -11,6 +11,7 @@
 
 ## Recent Milestones
 
+- **2026-04-26: Rerank Budget Contract Alignment — COMPLETED** (Audited hard-cap vs soft-telemetry contract; `reranker_client.RerankBudgetGuard` as source of truth; `rerank_budget.py` as compatibility wrapper; 39/39 regression passed; Tank QA validation complete)
 - **2026-04-24: Rerank Key Redesign — COMPLETED** (Backup created, TDD tests green, validity-first probing + process-local cache + kill switch, regression bundle 48/48 green, smoke no 401, Tank review gate launched)
 - **2026-04-24: Session Persistence MVP — STARTED** (Rerank oversize guard deployed; eval v2 manifest-first loading active)
 - **2026-04-22: Chunk Boundary Slice 2 — Guard Placement Decided** (embed boundary: ChunkVectorStore.build() + persistence boundary: _save_chunk_store())
@@ -25,6 +26,22 @@
 - Required backup path for this lane: `.squad/backups/2026-04-24-rerank-key-redesign/reranker_client.py.pre`.
 - Regression anchor for rerank key selection lives in `tests/test_reranker.py`; focused bundle for this area is `tests/test_reranker.py`, `tests/test_llm_provider_routing.py`, `tests/test_model_call_gateway.py`, `tests/test_llm_defaults.py`, `tests/test_query_expander.py`.
 - Live rerank smoke can be masked by existing runtime budget state in `output/rerank_cost.jsonl`; `rerank_api_* = 0.0` does not automatically mean key-selection regression.
+
+### 2026-04-26: Rerank Budget Contract Alignment — COMPLETE
+
+- **Scope:** Align hard-cap (call/token) vs soft-warn (USD telemetry) contract across `reranker_client.py` and `rerank_budget.py`
+- **Trinity execution:**
+  - ✅ Audited `reranker_client.RerankBudgetGuard`: enforces hard fallback only on call/token caps; USD returns soft `budget_soft_warn` event
+  - ✅ Converted `rerank_budget.py` from parallel implementation to compatibility wrapper around runtime contract
+  - ✅ Aligned helper state schema to `output/rerank_budget_state.json` with `date/call_count/token_count/cost_usd` fields
+  - ✅ Backward-compatible legacy `count` field handling during state reads
+  - ✅ Added regression proving helper-level token-cap enforcement with aligned state persistence
+  - ✅ Regression bundle: **39/39 passed** (`test_rerank_budget.py`, `test_rerank_short_circuit_and_budget.py`, `test_rerank_budget_concurrency.py`, `test_reranker.py`)
+- **Key decision:** Kept surgical runtime source of truth in `reranker_client.RerankBudgetGuard`; eliminated semantic split between helper and runtime contracts
+- **Tank validation:** Completed successfully (see Tank history)
+- **Orchestration:** `.squad/orchestration-log/2026-04-26T01-38-32Z-trinity-rerank-budget-align.md`
+- **Decision merged:** `.squad/decisions.md` (rerank budget contract section)
+- **Status:** ✅ Complete. Contract behavior fully verified and documented.
 
 ### 2026-04-24: Rerank Key Redesign — COMPLETE (TDD-First)
 

@@ -9,6 +9,7 @@
 **Role:** Testing, verification, skeptical review  
 
 **Key Checkpoints:**
+- **2026-04-26: Rerank Budget Contract Validation — COMPLETED** (Trinity contract alignment audited; hard-cap vs soft-warn distinction verified; 36/36 regression passed; plan cleanup applied)
 - **2026-04-24: Rerank Key Redesign Review Gate — LAUNCHED (Background)** (Trinity completed TDD-first validity probing + cache + kill switch; Tank gate launched for test coverage / cache isolation / key-precedence contract / short-circuit sign-off / production readiness audit)
 - **2026-04-24: Final Goldset Approval — Regenerated 100-Query Canonical Set (APPROVED)** (Former 64 scaffold entries fully adjudicated; schema/qrels/provenance validated; hard-goldset acceptance gate closed)
 - **2026-04-24: Goldset Re-Review — New 100 Artifact Set (CONDITIONAL APPROVE)** (First-pass 100-query goldset passes schema/provenance validation; approved for workflow kickoff; 64 scaffold entries require human adjudication for hard-goldset closure; minimal next gate = adjudicate + regenerate + validate)
@@ -27,6 +28,22 @@
 - §3.5 QA Preflight: Manifest-first loading criterion set; baseline 32/32 tests pass
 
 ## Learnings
+
+### 2026-04-26: Rerank Budget Contract Validation (APPROVED)
+
+- **Trinity alignment:** Audited `reranker_client.RerankBudgetGuard` as hard-cap enforcement source; `rerank_budget.py` as compatibility wrapper; helper state schema aligned to `output/rerank_budget_state.json`
+- **Tank validation scope:** Verify hard-cap (call/token) vs soft-warn (USD telemetry) contract distinction with focused regression
+- **Tank execution:**
+  - ✅ Contract audit: `RerankBudgetGuard.try_acquire` confirmed hard fallback only on `daily_call_cap`/`daily_token_cap`; USD returns `allowed=True` with `budget_soft_warn` event
+  - ✅ Regression strengthening: Added smallest regression proving USD "no fallback" behavior via provider reverse-rank assertion + no `budget_capped` warning
+  - ✅ Plan cleanup: Removed duplicated §1.3 wording block for single-source status text
+  - ✅ Regression bundle: **36/36 passed** (`test_rerank_budget.py`, `test_rerank_short_circuit_and_budget.py`, `test_reranker.py`)
+- **Contract invariants (verified):**
+  1. Only `call/token` can hard-cap and force fallback
+  2. USD can only emit soft warning telemetry
+- **Orchestration:** `.squad/orchestration-log/2026-04-26T01-38-32Z-tank-rerank-budget-qa.md`
+- **Decision merged:** `.squad/decisions.md` (rerank budget contract section)
+- **Status:** ✅ Complete. Contract behavior explicitly test-distinguishable.
 
 ### 2026-04-24: Rerank Key Redesign Review Closure (APPROVE)
 
