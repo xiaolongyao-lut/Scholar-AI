@@ -462,3 +462,21 @@ This approval follows strict lockout semantics:
 - Tier-2 quality gates are met with margin (`Recall@5=0.6721`, `MRR=0.5594`), so closure status is APPROVE.
 - Winner-lane parity should be checked on the five core knobs (`top_k`, `recall_top_n`, `rerank_top_n`, `use_rerank`, `use_expansion`) instead of requiring every runtime knob to be identical between Step 3 and full eval.
 - Even on APPROVE, closure report must carry caveats when rerank API latency is zeroed and when template/non-template quality is highly asymmetric.
+
+### 2026-04-25: E2 Embedding Batch Size Environment Variable Wiring QA Validation — COMPLETE
+
+- **Scope:** Validate `EMBEDDING_BATCH_SIZE` environment variable wiring on default batch path
+- **Tank execution:**
+  - ✅ Independently verified env honored on default path (code inspection + test)
+  - ✅ Independently verified explicit `batch_size` parameter overrides env
+  - ✅ Ran focused embedding batch regression: **5/5 passed** (`tests\test_embedding_batch_chunking.py`)
+  - ✅ Confirmed E2 contract behavior locked
+- **Validation findings:**
+  - `_resolve_embed_batch_size()` reads `EMBEDDING_BATCH_SIZE` only when `batch_size` is omitted
+  - Explicit `batch_size` parameter returns immediately (precedence verified)
+  - Default-path batching and explicit-arg override share unified contract
+- **Evidence inspection:** `chunk_vector_store.py:47-53` (resolver), `283-368` (apply)
+- **QA approval:** ✅ Env wiring is honored on default path, explicit `batch_size` still overrides env
+- **Orchestration:** `.squad/orchestration-log/2026-04-25T17-59-29Z-tank-embedding-batch-env-qa.md`
+- **Decision merged:** `.squad/decisions.md` (E2 Embedding Batch Size Environment Variable Wiring section)
+- **Status:** ✅ Complete. No open items for E2 contract scope. E2 marked CLOSED in handoff plan.

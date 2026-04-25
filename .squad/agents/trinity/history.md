@@ -180,3 +180,18 @@
 **Status:** ✅ Boundaries and architecture defined; ready for implementation under Tank's QA supervision
 
 **Orchestration Log:** `.squad/orchestration-log/2026-04-24T10-21-09Z-coordinator.md`
+
+### 2026-04-25: E2 Embedding Batch Size Environment Variable Wiring — COMPLETE
+
+- **Scope:** Wire `EMBEDDING_BATCH_SIZE` environment variable as default batch size for embedding operations
+- **Trinity execution:**
+  - ✅ Modified `chunk_vector_store._batch_embed()` to resolve `EMBEDDING_BATCH_SIZE` when `batch_size` parameter is omitted
+  - ✅ Modified `ChunkVectorStore.build()` to pass optional `batch_size` parameter, enabling default chunk-embedding path
+  - ✅ Explicit parameter precedence preserved (env var only read when parameter omitted)
+  - ✅ Focused regression bundle: **5/5 passed** (`tests\test_embedding_batch_chunking.py`)
+- **Contract:** Default path honors `EMBEDDING_BATCH_SIZE` env; explicit `batch_size` parameter overrides env
+- **Code changes:** `chunk_vector_store.py` lines 47-53 (resolver), 283-368 (apply)
+- **Tank validation:** QA approved independently (see Tank history)
+- **Orchestration:** `.squad/orchestration-log/2026-04-25T17-59-29Z-trinity-embedding-batch-env.md`
+- **Decision merged:** `.squad/decisions.md` (E2 Embedding Batch Size Environment Variable Wiring section)
+- **Status:** ✅ Complete. E2 marked CLOSED in handoff plan. Contract behavior fully verified.

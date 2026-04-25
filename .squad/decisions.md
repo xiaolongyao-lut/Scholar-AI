@@ -2,6 +2,58 @@
 
 ## Active Decisions
 
+### 2026-04-25: E2 Embedding Batch Size Environment Variable Wiring
+
+**By:** Trinity (Implementation Engineer) & Tank (QA Engineer)  
+**Date:** 2026-04-25  
+**Scope:** Wire `EMBEDDING_BATCH_SIZE` environment variable as default batch size for embedding operations, preserving explicit parameter precedence
+
+**Decision: ✅ Environment Variable Contract Locked and Test-Verified**
+
+#### Trinity Implementation (2026-04-25)
+
+**Facts:**
+- `chunk_vector_store._batch_embed()` now resolves `EMBEDDING_BATCH_SIZE` only when `batch_size` is omitted; explicit `batch_size` calls are unchanged
+- `ChunkVectorStore.build()` now passes through an optional `batch_size`, enabling default chunk-embedding path to honor `EMBEDDING_BATCH_SIZE` env var
+- Focused regression: **5/5 passed** (`tests\test_embedding_batch_chunking.py`)
+
+**Trinity Decision:**
+- Close the E2 env gap with default-path-only wiring: env config supplies batch size when callers do not specify one, explicit parameter maintains precedence
+- Evidence: `chunk_vector_store.py` lines 47-53 (resolver), 283-368 (apply in _batch_embed)
+
+#### Tank QA Validation (2026-04-25)
+
+**Facts:**
+- `_resolve_embed_batch_size()` reads `EMBEDDING_BATCH_SIZE` only when `batch_size` is omitted; explicit `batch_size` returns immediately
+- `_batch_embed()` applies resolver before chunk windowing; default-path batching and explicit-arg override share unified contract
+- Focused regression: **5/5 passed**, including env default-path and explicit-arg override cases
+
+**Tank Decision:**
+- ✅ QA approve: env wiring is honored on default path, explicit `batch_size` overrides env
+- No regressions in focused bundle; contract behavior fully verified
+
+**Contract Invariants (Verified):**
+1. Missing `batch_size` parameter → reads `EMBEDDING_BATCH_SIZE` env var
+2. Explicit `batch_size` parameter → ignores env var (precedence preserved)
+3. If both env and parameter missing → uses hardcoded `DEFAULT_EMBED_BATCH_SIZE` fallback
+
+**Evidence:**
+- Orchestration logs: `.squad/orchestration-log/2026-04-25T17-59-29Z-trinity-embedding-batch-env.md`, `.squad/orchestration-log/2026-04-25T17-59-29Z-tank-embedding-batch-env-qa.md`
+- Session log: `.squad/log/2026-04-25T17-59-29Z-embedding-batch-env-closure.md`
+- Code: `chunk_vector_store.py`
+- Tests: `tests\test_embedding_batch_chunking.py` (5/5 PASS)
+- Inbox sources: `.squad/decisions/inbox/trinity-embedding-batch-env.md`, `.squad/decisions/inbox/tank-embedding-batch-env-qa.md` (merged here)
+
+**Open:**
+- `ChunkVectorStore.batch_embed_queries()` also accepts omitted `batch_size` (scope expansion deferred)
+- Broader rerank/retrieval entrypoint work (R5) remains blocked by missing `retrieve_then_rerank(...)` entrypoint
+
+**Next:**
+- E2 marked CLOSED in handoff plan
+- Continue scheduled plan work pending coordinator resweep
+
+---
+
 ### 2026-04-26: § 1.3 Rerank Budget Contract Alignment & Validation
 
 **By:** Trinity (Implementation Engineer) & Tank (QA Engineer)  
