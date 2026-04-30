@@ -2,10 +2,39 @@
 
 ## Active Decisions
 
+### 2026-04-26: Trinity Aligned Canary30 Rerank OFF
+
+**By:** Trinity (Implementation Engineer)
+**Date:** 2026-04-26
+**Scope:** Runtime/config-only confirmation slice using the aligned 30-query canary.
+
+**Decision: ✅ Completed**
+
+**Facts:**
+- Executed the full 30-query aligned canary with `eval_queries_v2.1_canary30_ALIGNED.jsonl`.
+- Run provenance in `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output\trinity_aligned_canary30_rerank_off.metrics.json` records `use_rerank = false` and `evaluated_queries = 30`.
+- Aggregated metrics: Recall@5 `0.5333`, Recall@10 `0.6333`, MRR `0.3219`, P95 latency `510.19ms`.
+- Artifact set produced: `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output\trinity_aligned_canary30_rerank_off.metrics.json`, `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output\trinity_aligned_canary30_rerank_off.progress.jsonl` (6 lines), `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output\trinity_aligned_canary30_rerank_off.per_query.jsonl` (30 lines), `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output\trinity_aligned_canary30_rerank_off.run.log`.
+
+**Decision:**
+- The requested next slice is complete: aligned canary30 ran successfully with rerank disabled and no code-default changes.
+
+**Evidence:**
+- Metrics: `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output\trinity_aligned_canary30_rerank_off.metrics.json`
+- Progress log: `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output\trinity_aligned_canary30_rerank_off.progress.jsonl`
+- Per-query results: `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output\trinity_aligned_canary30_rerank_off.per_query.jsonl`
+- Command/provenance log: `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\output\trinity_aligned_canary30_rerank_off.run.log`
+- Inbox source retained: `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.squad\decisions\inbox\trinity-aligned-canary-rerank-off.md`
+
+**Rollback:**
+- Re-enable rerank on the next invocation. No code, corpus, or query artifact changes were made in this slice.
+
+---
+
 ### 2026-04-25: E2 Embedding Batch Size Environment Variable Wiring
 
-**By:** Trinity (Implementation Engineer) & Tank (QA Engineer)  
-**Date:** 2026-04-25  
+**By:** Trinity (Implementation Engineer) & Tank (QA Engineer)
+**Date:** 2026-04-25
 **Scope:** Wire `EMBEDDING_BATCH_SIZE` environment variable as default batch size for embedding operations, preserving explicit parameter precedence
 
 **Decision: ✅ Environment Variable Contract Locked and Test-Verified**
@@ -56,8 +85,8 @@
 
 ### 2026-04-26: § 1.3 Rerank Budget Contract Alignment & Validation
 
-**By:** Trinity (Implementation Engineer) & Tank (QA Engineer)  
-**Date:** 2026-04-26  
+**By:** Trinity (Implementation Engineer) & Tank (QA Engineer)
+**Date:** 2026-04-26
 **Scope:** Align and validate hard-cap (call/token) vs soft-warn (USD telemetry) contract across `reranker_client.py` and `rerank_budget.py`
 
 **Decision: ✅ Contract Alignment Complete and Test-Verified**
@@ -106,8 +135,8 @@
 
 ### 2026-04-25: Handoff Test Contract Closures (R1, E1, E2)
 
-**By:** Tank (QA Engineer)  
-**Date:** 2026-04-25  
+**By:** Tank (QA Engineer)
+**Date:** 2026-04-25
 **Scope:** Close embedding/rerank test contracts for all-probes-fail semantics, no-key return behavior, and batch-size parameter configuration
 
 **Decision: ✅ Three Contracts Locked**
@@ -171,8 +200,8 @@
 
 ### 2026-04-25: Claude 自决策体系 → Copilot 适配优化（非破坏式）
 
-**By:** Squad Coordinator (Copilot)  
-**Date:** 2026-04-25  
+**By:** Squad Coordinator (Copilot)
+**Date:** 2026-04-25
 **Scope:** 基于 `.claude_squad` 的决策治理结构，优化 `.squad` 可维护性与可追溯性，不覆盖 Copilot 侧已沉淀的活跃决策链。
 
 **Decision:** ✅ 采用“安全同步 + 本地主链保留”策略
@@ -207,8 +236,8 @@
 
 ### 2026-04-25: S-1 Conversation Persistence — Path D Recommendation (Minimal Hardening, Then S-2)
 
-**By:** Morpheus (architecture review)  
-**Date:** 2026-04-25T00:04:18Z  
+**By:** Morpheus (architecture review)
+**Date:** 2026-04-25T00:04:18Z
 **Scope:** Decide safest next move for conversation-persistence S-1 after live repo reconnaissance
 
 **Facts:**
@@ -262,8 +291,8 @@ Do **not** do full table/path renames now. Finish only the parts of S-1 that clo
 
 ### 2026-04-26: Trinity env key-type audit
 
-**By:** Trinity (Implementation Engineer)  
-**Date:** 2026-04-26  
+**By:** Trinity (Implementation Engineer)
+**Date:** 2026-04-26
 **Scope:** Audit env-based embedding/rerank routing and 401 path behavior against live `.env`
 
 **Decision: ✅ Audit Complete; No Code Changes; Blocking Findings Recorded**
@@ -303,8 +332,8 @@ Do **not** do full table/path renames now. Finish only the parts of S-1 that clo
 
 ### 2026-04-26: Morpheus R5-B audit — Minimal formal `retrieve_then_rerank(...)` seam
 
-**By:** Morpheus (Architect / Chief Engineer)  
-**Date:** 2026-04-26  
+**By:** Morpheus (Architect / Chief Engineer)
+**Date:** 2026-04-26
 **Scope:** Audit Option B for minimal formal `retrieve_then_rerank(...)` orchestration seam to unblock R5 smoke test
 
 **Decision: ✅ Audit Complete; Option B Approved for Implementation**
@@ -587,8 +616,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-24: Tank Final Goldset Approval — Regenerated 100-Query Canonical Set APPROVED
 
-**By:** Tank (QA Reviewer)  
-**Date:** 2026-04-24T19:31:41Z  
+**By:** Tank (QA Reviewer)
+**Date:** 2026-04-24T19:31:41Z
 **Scope:** Final approval of regenerated canonical 100-query goldset after full adjudication of former 64 scaffold entries
 
 **Decision:** ✅ **APPROVED** — Hard-goldset acceptance gate is now closed.
@@ -618,8 +647,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-24: Oracle Goldset Build — 100-Query First Pass COMPLETED
 
-**By:** Oracle (Data Engineer)  
-**Date:** 2026-04-24T19:13:47Z  
+**By:** Oracle (Data Engineer)
+**Date:** 2026-04-24T19:13:47Z
 **Scope:** Build first-pass 100-query Zotero-backed real-literature goldset, reusing 36 reviewed Gate B records and scaffolding 64 review-needed entries from title-matched corpus
 
 **Decision:** COMPLETED — 100-query goldset composition delivered with real-literature provenance trace.
@@ -654,8 +683,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-24: Goldset Rejection Audit — Scope Clarification PASS
 
-**By:** Morpheus (Architecture Review)  
-**Date:** 2026-04-24T19:10:44Z  
+**By:** Morpheus (Architecture Review)
+**Date:** 2026-04-24T19:10:44Z
 **Scope:** Determine whether Tank's rejection on 36/40-query artifacts blocks Oracle's fresh 100-query build
 
 **Decision:** PASS — Tank's rejection applies only to pre-existing artifacts. Oracle's fresh Zotero-backed 100-query build is unblocked.
@@ -681,8 +710,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-24: Tier3 Sign-Off Gate — Acceptance Complete
 
-**By:** Tank (QA)  
-**Date:** 2026-04-24T09:29:48Z  
+**By:** Tank (QA)
+**Date:** 2026-04-24T09:29:48Z
 **Scope:** Tier3 full-evaluation consistency verification and sign-off gate
 
 **Decision:** PASS — Tier3 sign-off gate is satisfied and closed. All coherence checks pass.
@@ -702,8 +731,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-24: Gate B Phase B Sign-Off — Normalization Ready
 
-**By:** Oracle (Data Review)  
-**Date:** 2026-04-24T09:29:48Z  
+**By:** Oracle (Data Review)
+**Date:** 2026-04-24T09:29:48Z
 **Scope:** Gate B Phase B normalization/sign-off gate internal consistency audit
 
 **Decision:** PASS — Frozen artifact set is internally consistent and ready for sign-off.
@@ -723,8 +752,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-24: Session Persistence MVP — Lane Launched
 
-**By:** Trinity (Implementation)  
-**Date:** 2026-04-24T09:29:48Z  
+**By:** Trinity (Implementation)
+**Date:** 2026-04-24T09:29:48Z
 **Scope:** Backend-only session persistence MVP after Tier3 and Gate B sign-offs passed
 
 **Decision:** Start §3.5 session persistence with rerank-entry hard stop + eval manifest-first loading, deferring full quarantine/reslice batch.
@@ -744,8 +773,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Morpheus Plan Gate — 4-Stream Reconciliation
 
-**By:** Morpheus (Architecture)  
-**Date:** 2026-04-22  
+**By:** Morpheus (Architecture)
+**Date:** 2026-04-22
 **Scope:** Reconcile four active plan streams into conservative execution order
 
 **Decision:** Treat four plans as three workstreams: Tier3 eval acceptance, Gate B Phase B signoff, conversation-persistence MVP (backend first). Execute in that order; defer frontend work and optional optimizations.
@@ -764,8 +793,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Gate B `no_gold` Semantics — Contract Ruling
 
-**By:** Morpheus (Architecture)  
-**Date:** 2026-04-22  
+**By:** Morpheus (Architecture)
+**Date:** 2026-04-22
 **Scope:** Resolve reviewed-annotation conflict between Phase B guidance and canonical validator rules
 
 **Decision:** The canonical-validator contract wins. `no_gold=true` means **no direct-answer gold in canonical qrels**, even if reviewed artifact contains rel=1 judgments.
@@ -780,8 +809,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Oracle Oversize Scan Slice — Report Landed
 
-**By:** Oracle (Data)  
-**Date:** 2026-04-22  
+**By:** Oracle (Data)
+**Date:** 2026-04-22
 **Scope:** §3.5.5 precondition: historical oversize scanner + report artifact
 
 **Decision:** Land smallest safe slice: add historical oversize scanner (mirrors eval loader), emit report artifact, stop before targeted reslice.
@@ -794,8 +823,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Oracle Phase 6 Eval Blocked — Credential Issue
 
-**By:** Oracle (Data)  
-**Date:** 2026-04-22  
+**By:** Oracle (Data)
+**Date:** 2026-04-22
 **Scope:** §3.3 contextual chunks quality evaluation
 
 **Decision:** Hold Phase 6 run until embedding credentials restored or cache available. First attempt failed with EmbeddingAPIError → HTTP 401.
@@ -806,8 +835,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Ralph Canonical Normalization — Execution Authorized
 
-**By:** Ralph (Merge) + Morpheus (Ruling)  
-**Date:** 2026-04-22  
+**By:** Ralph (Merge) + Morpheus (Ruling)
+**Date:** 2026-04-22
 **Scope:** Gate B Phase B canonical merge under rel=2-only contract
 
 **Decision:** Merge reviewed source applying rel=2-only filtering + annotator_id field addition. Preserve rel1-only evidence in audit sidecar.
@@ -821,8 +850,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Tank Test Promotion 3.4 — Concurrent Write Fix Approved
 
-**By:** Tank (QA)  
-**Date:** 2026-04-22  
+**By:** Tank (QA)
+**Date:** 2026-04-22
 **Scope:** §3.4 test promotion: unblock concurrent-write regression
 
 **Decision:** Approve tiny production fix to `routers/resources_router.py::_atomic_write_text` to eliminate temp-file path collisions.
@@ -837,8 +866,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Trinity Chunk Boundary 3.5 — Guard Placement Decided
 
-**By:** Trinity (Implementation)  
-**Date:** 2026-04-22  
+**By:** Trinity (Implementation)
+**Date:** 2026-04-22
 **Scope:** §3.5.2 embedding guard + quarantine isolation placement
 
 **Decision:** Place Slice 2 hard guard at `ChunkVectorStore.build(...)` (embedding boundary) + quarantine at `routers.resources_router._save_chunk_store(...)` (persistence boundary).
@@ -851,8 +880,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Trinity Directed Reslice 3.5.5 — Fallback Strategy
 
-**By:** Trinity (Implementation)  
-**Date:** 2026-04-22  
+**By:** Trinity (Implementation)
+**Date:** 2026-04-22
 **Scope:** §3.5.5 historical oversize chunk cleanup (fallback when first reslice incomplete)
 
 **Decision:** Use `scripts/reslice_oversize_materials.py` to reslice only report-listed materials through production `_chunk_document()` + secondary split on remaining oversize.
@@ -863,8 +892,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Tank Test Promotion 3.4 Slice — Rerank Budget Tests Added
 
-**By:** Tank (QA)  
-**Date:** 2026-04-22  
+**By:** Tank (QA)
+**Date:** 2026-04-22
 **Scope:** §3.4 test promotion: implement rerank budget threshold regression
 
 **Decision:** Add missing `tests/test_rerank_budget.py` coverage (budget threshold fallback, cross-day reset, corrupted-state recovery).
@@ -875,8 +904,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Tank QA Preflight 3.5 — First Safe Slice Criteria
 
-**By:** Tank (QA)  
-**Date:** 2026-04-22  
+**By:** Tank (QA)
+**Date:** 2026-04-22
 **Scope:** §3.5 QA preflight gate for first safe slice (manifest-first loading)
 
 **Decision:** Focus on 3.5.2 eval runtime v2 layout alignment without expanding to full hard-valve. Pass criteria:
@@ -891,24 +920,24 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-23: User Directive — Squad Autopilot
 
-**By:** xiao (via Copilot)  
-**Date:** 2026-04-23T00:07:05Z  
+**By:** xiao (via Copilot)
+**Date:** 2026-04-23T00:07:05Z
 **What:** Set squad tier to autopilot for current execution context.
 
 ---
 
 ### 2026-04-23: User Directive — Reference Set for RAG Answers
 
-**By:** xiao (via Copilot)  
-**Date:** 2026-04-23T02:57:32Z  
+**By:** xiao (via Copilot)
+**Date:** 2026-04-23T02:57:32Z
 **What:** Use `C:\Users\xiao\Desktop\回答提示词.md`, `C:\Users\xiao\Desktop\正反例.md`, and `C:\Users\xiao\Desktop\格式与约束.md` as prompt/output reference set for plan-aligned RAG answer work.
 
 ---
 
 ### 2026-04-23: Unified Model Call Gateway — Main RAG Workflow Generation Complete
 
-**By:** Trinity (implementation), Scribe (logged)  
-**Date:** 2026-04-23T00:15:00Z  
+**By:** Trinity (implementation), Scribe (logged)
+**Date:** 2026-04-23T00:15:00Z
 **Scope:** §3.6.5 plan completion — route `main_rag_workflow.py._generate_answer(...)` through gateway
 
 **Decision:** Integration of the final model call gateway entry point is complete. Main RAG workflow's answer generation now invokes `model_call_gateway.gated_call(kind="llm", ...)` instead of making direct HTTP calls.
@@ -942,8 +971,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Gate B Phase B `no_gold` Semantics Clarified
 
-**By:** Morpheus  
-**Date:** 2026-04-22  
+**By:** Morpheus
+**Date:** 2026-04-22
 **Scope:** Canonical goldset/qrels contract for the reviewed annotation pass
 
 **Conflict:** The reviewed artifact contains 6 queries with `relevance=1` judgments but no `relevance=2` judgment, while `gateb_schema_validator.py` enforces `no_gold=true` → no non-zero canonical qrels.
@@ -965,8 +994,8 @@ No corpus mutation. No active-sweep interference. Ranking-policy change only.
 
 ### 2026-04-22: Gate B Review-Chain Milestone — Canonical Merge Authorized
 
-**By:** Oracle + Trinity + Morpheus (review chain)  
-**Date:** 2026-04-22  
+**By:** Oracle + Trinity + Morpheus (review chain)
+**Date:** 2026-04-22
 **Scope:** Annotation artifact review + conditional authorization for canonical merge
 
 ## Review-Chain Verdict Summary
@@ -1554,8 +1583,8 @@ Phase 3 关闭。`tests/test_keyword_filter.py` 6/6 通过（0.05s），覆盖�
 
 # Phase 4 Closure — Oracle Real-Data Validation
 
-**Date:** 2026-04-20  
-**By:** Morpheus  
+**Date:** 2026-04-20
+**By:** Morpheus
 
 ## Decision
 
@@ -1749,9 +1778,9 @@ Trinity may proceed to Phase 4 (Chat Endpoint — Full Integration). Tank leads 
 
 # Decision: Extract Literature Context is Production-Ready for Retrieval
 
-**Date:** 2026-04-21  
-**Agent:** Oracle  
-**Status:** Recommendation to Morpheus  
+**Date:** 2026-04-21
+**Agent:** Oracle
+**Status:** Recommendation to Morpheus
 **Artifact:** `.squad/discovery/oracle-extraction-validation-report.md`
 
 ## Summary
@@ -1794,9 +1823,9 @@ No refactor required; current implementation is correct and efficient.
 
 # Decision: Real-Record Validation Confirms Keyword Filter Is Production-Ready
 
-**Date:** 2026-04-20  
-**By:** Oracle  
-**Phase:** 4 — Real-record validation  
+**Date:** 2026-04-20
+**By:** Oracle
+**Phase:** 4 — Real-record validation
 
 ## Context
 Phase 1 discovered structured data in `output\batch_test_109papers\` (109 papers extracted, each with multiple JSON artifacts). Phase 2 produced `keyword_filter.py` to scan title/abstract/keyword fields for relevance matching. Phase 4 now validates the function against real samples.
@@ -1825,13 +1854,13 @@ Proceed with integrating `keyword_prefilter()` into the retrieval and ranking pi
 
 ---
 
-**Report:** `.squad/discovery/oracle-validation-report.md`  
+**Report:** `.squad/discovery/oracle-validation-report.md`
 **Test data:** `.squad/discovery/oracle_sample_records.json` (attached for audit)
 
 # Phase 5 Documentation Integration Decision
 
-**Date:** 2026-04-20  
-**Agent:** Scribe (Documentation Specialist)  
+**Date:** 2026-04-20
+**Agent:** Scribe (Documentation Specialist)
 **Task:** Consolidate Phases 1-4 outputs into user-facing documentation
 
 ---
@@ -1901,8 +1930,8 @@ This creates a story that goes from "here's the data" → "here's how we process
 
 # Decision: Chat UI Design Choices
 
-**Author:** Switch  
-**Date:** 2026-04-20  
+**Author:** Switch
+**Date:** 2026-04-20
 **Status:** Pending Morpheus review
 
 ---
@@ -2019,9 +2048,9 @@ This creates a story that goes from "here's the data" → "here's how we process
 
 # Decision: Phase 4 — Chat Endpoint Integration Review
 
-**By:** Morpheus (Architecture)  
-**Date:** 2026-05-18  
-**Scope:** Phase 4 `/api/chat` endpoint and supporting modules  
+**By:** Morpheus (Architecture)
+**Date:** 2026-05-18
+**Scope:** Phase 4 `/api/chat` endpoint and supporting modules
 **Verdict:** ✅ APPROVE
 
 ---
@@ -2106,10 +2135,10 @@ Tests protect the end-to-end behavior meaningfully. The LLM is mocked at the rig
 
 # Morpheus Phase 5 Review — Verdict
 
-**Date:** 2026-04-20  
-**Reviewer:** Morpheus (Architecture)  
-**Phase:** Intelligent Chat Phase 5 — Frontend Integration  
-**Implementer:** Switch  
+**Date:** 2026-04-20
+**Reviewer:** Morpheus (Architecture)
+**Phase:** Intelligent Chat Phase 5 — Frontend Integration
+**Implementer:** Switch
 **Status:** ✅ APPROVE
 
 ## Verdict: APPROVE
@@ -2132,13 +2161,13 @@ Tests protect the end-to-end behavior meaningfully. The LLM is mocked at the rig
 
 ## Material Observations (Non-blocking)
 
-1. **Missing sidebar nav entry for `/chat`.**  
+1. **Missing sidebar nav entry for `/chat`.**
    The route is registered in `App.tsx` but `MainLayout.tsx` has no `NavItem` for it. Users can only reach the page via direct URL. Acceptable for MVP; recommend adding nav entry in a follow-up.
 
-2. **`unavailable` state not implemented.**  
+2. **`unavailable` state not implemented.**
    The contract specifies a 'Load literature first' banner with disabled inputs when no literature context is loaded. Currently, the UI permits sending a message and relies on the backend 400 error, which the error handler catches gracefully. Low risk — the UX degrades to an error message rather than a broken state.
 
-3. **`insufficient_context` not visually differentiated.**  
+3. **`insufficient_context` not visually differentiated.**
    The backend returns a specific insufficient-context text, but the frontend renders it as a normal assistant bubble (no warning badge). The text itself is informative, so this is cosmetic.
 
 ## Non-material Notes
@@ -2175,9 +2204,9 @@ Tests protect the end-to-end behavior meaningfully. The LLM is mocked at the rig
 
 ### Tank Full-Eval QA Verdict and Acceptance Criteria
 
-**By:** Tank (QA Lead)  
-**Date:** 2026-04-20 18:35 UTC  
-**Scope:** Full-eval v2.1 run status  
+**By:** Tank (QA Lead)
+**Date:** 2026-04-20 18:35 UTC
+**Scope:** Full-eval v2.1 run status
 
 **Verdict:** REJECT current trinity-u1-runner run as source of canonical full-eval artifact.
 
@@ -2237,9 +2266,9 @@ Tests protect the end-to-end behavior meaningfully. The LLM is mocked at the rig
 
 ### Trinity Debug: Progress Visibility & Segmentation Tooling
 
-**By:** Trinity (Implementation — Debug track)  
-**Date:** 2026-04-20 18:55 UTC  
-**Scope:** Root-cause analysis + tooling for observable chunked execution  
+**By:** Trinity (Implementation — Debug track)
+**Date:** 2026-04-20 18:55 UTC
+**Scope:** Root-cause analysis + tooling for observable chunked execution
 
 **Analysis Summary:**
 
@@ -2285,9 +2314,9 @@ Updated `tests/test_eval_runtime.py` with 8 passing tests covering new flags. Co
 
 ### Morpheus U1 Decision — Retrieval Closure Scope
 
-**By:** Morpheus (Architecture)  
-**Date:** 2026-04-20  
-**Phase:** U1 review only  
+**By:** Morpheus (Architecture)
+**Date:** 2026-04-20
+**Phase:** U1 review only
 
 **Core Decision:** Treat U1 as an execution-closure phase for existing eval wiring, not a new implementation phase.
 
@@ -2333,7 +2362,7 @@ Updated `tests/test_eval_runtime.py` with 8 passing tests covering new flags. Co
 
 ### 2026-04-21: Quality-Tier Evaluation Strategy — Cost-Aware Testing Policy
 
-**By:** Morpheus (Architect)  
+**By:** Morpheus (Architect)
 **Context:** User directive to compare ~1100 partial run vs 3269 baseline, define tiered testing, stop wasting money.
 
 #### Tier Definitions
@@ -2367,15 +2396,15 @@ Updated `tests/test_eval_runtime.py` with 8 passing tests covering new flags. Co
 4. **Same Query Set for Fair Comparison:** Comparisons only valid between runs using same query set; note differences in reports
 5. **Budget Approval Chain:** Tier 0-1 (any team member); Tier 2 (Morpheus or 小龙); Tier 3 (both Morpheus AND 小龙)
 
-**Status:** Effective immediately. All eval runs follow this tier structure.  
+**Status:** Effective immediately. All eval runs follow this tier structure.
 **Decision Log:** `.squad/decisions/inbox/morpheus-quality-tiers.md`
 
 ---
 
 ### 2026-04-21: Morpheus Tier 2 Gate Decision — APPROVED
 
-**By:** Morpheus (Architect)  
-**Date:** 2026-04-21  
+**By:** Morpheus (Architect)
+**Date:** 2026-04-21
 **Requested by:** 小龙 姚
 
 #### Verdict
@@ -2429,7 +2458,7 @@ The magnitude of improvement (0.028 → 0.92) reflects **two compounded changes*
 - ❌ Any code changes to the eval pipeline — this is a measurement run only
 - ❌ Budget beyond 250 rerank API calls
 
-**Status:** Effective immediately. Ralph or Tank may execute Tier 2.  
+**Status:** Effective immediately. Ralph or Tank may execute Tier 2.
 **Decision Log:** `.squad/decisions/inbox/morpheus-tier2-gate.md`
 
 ---
@@ -2555,9 +2584,9 @@ Morpheus provides architectural sign-off. This document does NOT authorize execu
 
 ### 2026-04-21: Tier 3 Dual Approval & Ralph Launch (小龙 Executive Co-Approval)
 
-**By:** 小龙 姚 (User/Lead)  
-**Date:** 2026-04-21  
-**Approval Form:** "Approved Tier 3 per morpheus-tier3-gate.md"  
+**By:** 小龙 姚 (User/Lead)
+**Date:** 2026-04-21
+**Approval Form:** "Approved Tier 3 per morpheus-tier3-gate.md"
 **Policy Reference:** Rule 5, `morpheus-quality-tiers.md` — *Tier 3 requires BOTH Morpheus AND 小龙 approval*
 
 #### Decision
@@ -2624,12 +2653,12 @@ Both Morpheus architectural sign-off and executive co-approval have been obtaine
 
 ### 2026-04-21: Ralph Tier 1 Mini-Eval Execution Report
 
-**Date:** 2026-04-20  
-**Executor:** Ralph (Tier 1 eval runner)  
+**Date:** 2026-04-20
+**Executor:** Ralph (Tier 1 eval runner)
 **Approval:** Unlocked by Tier 0 pass
 
-**Status:** ✅ COMPLETED  
-**Queries Evaluated:** 50 (first 50 from remediated sample)  
+**Status:** ✅ COMPLETED
+**Queries Evaluated:** 50 (first 50 from remediated sample)
 **Total Runtime:** ~120 seconds
 
 #### Key Results
@@ -2673,9 +2702,9 @@ Both Morpheus architectural sign-off and executive co-approval have been obtaine
 
 ### Oracle U1 Decision: 109-Paper Step 3 Contract Specification
 
-**By:** Oracle (Data Production)  
-**Date:** 2026-04-21  
-**Task:** Phase U1 (109-paper Step 3 parameter optimization) reality audit and contract definition  
+**By:** Oracle (Data Production)
+**Date:** 2026-04-21
+**Task:** Phase U1 (109-paper Step 3 parameter optimization) reality audit and contract definition
 
 **Step 2 Completion Status:** ✅ All Step 2 artifacts verified present
 
@@ -2757,8 +2786,8 @@ No conflicts detected between Tank/Trinity diagnostic decisions and Morpheus/Ora
 
 ### Tank U1 QA Acceptance Contract (Fresh Audit/Full-Eval Cycle)
 
-**By:** Tank (QA)  
-**Date:** 2026-04-20  
+**By:** Tank (QA)
+**Date:** 2026-04-20
 **Scope:** U1 audit + v2.1 full-eval acceptance, Oracle deliverables
 
 #### 1) Reconciled U1 Baseline
@@ -2818,8 +2847,8 @@ Scribe merged four independent inbox notes (2026-04-22 batch):
 
 ### 2026-04-22: Gate B Phase A Canonical-Pair Final Gate PASS
 
-**By:** Oracle (Production), Tank (Verification), Scribe (Orchestration)  
-**Date:** 2026-04-22  
+**By:** Oracle (Production), Tank (Verification), Scribe (Orchestration)
+**Date:** 2026-04-22
 **Status:** ✅ COMPLETE — Both artifacts trusted; Phase B unblocked
 
 **Decision Source:** Merged from three consistent inbox notes:
@@ -2886,9 +2915,9 @@ Scribe merged four independent inbox notes (2026-04-22 batch):
 
 ## What This Unblocks
 
-✅ Reviewers can inspect 36 queries and provenance  
-✅ Pooling tool development can proceed against query_ids  
-✅ Schema-valid structure ready to receive annotation data  
+✅ Reviewers can inspect 36 queries and provenance
+✅ Pooling tool development can proceed against query_ids
+✅ Schema-valid structure ready to receive annotation data
 ✅ **Phase B may start once artifacts are approved**
 
 ## What Remains Blocked (Phase B Scope)
@@ -2996,8 +3025,8 @@ Tank will only approve U1 after Oracle submits all four required artifacts and e
 
 ### Oracle U1 Start Decision
 
-**By:** Oracle (Data)  
-**Date:** 2026-04-20  
+**By:** Oracle (Data)
+**Date:** 2026-04-20
 **Scope:** Phase U1 retrieval closure kickoff
 
 #### Facts
@@ -3042,8 +3071,8 @@ python eval_retrieval_runtime.py --queries eval_queries_v2.1.jsonl --template-fl
 
 ### Tank Decision — Canonical Rerun Supervision Hardening
 
-**By:** Tank (QA)  
-**Date:** 2026-04-20  
+**By:** Tank (QA)
+**Date:** 2026-04-20
 **Scope:** v2.1 canonical full-eval rerun health checks
 
 **Decision:** Treat stale progress heartbeat and duplicate eval processes as immediate rerun-risk signals; do not approve a rerun start/restart until only one canonical eval process is active and heartbeat freshness is verifiable.
@@ -3058,8 +3087,8 @@ python eval_retrieval_runtime.py --queries eval_queries_v2.1.jsonl --template-fl
 
 ### 2026-04-24: Trinity Rerank Key Redesign — APPROVE
 
-**By:** Tank (QA)  
-**Date:** 2026-04-24  
+**By:** Tank (QA)
+**Date:** 2026-04-24
 **Scope:** Trinity's rerank key redesign completion; 7-point contract audit
 
 **Verdict:** ✅ **APPROVE**
@@ -3091,8 +3120,8 @@ All contract checks passed:
 
 ### 2026-04-24: Oracle — Rerank Runtime Proof COMPLETE
 
-**By:** Oracle (Data Engineer)  
-**Date:** 2026-04-24T23:22:57Z  
+**By:** Oracle (Data Engineer)
+**Date:** 2026-04-24T23:22:57Z
 **Scope:** Clean-budget isolated 1-query rerank canary to verify runtime activation after approved rerank-key redesign
 
 **Verdict:** ✅ **PROOF COMPLETE — Rerank Runtime Activation VERIFIED**
@@ -3150,8 +3179,8 @@ The separate U1 full-eval lane (`oracle-u1-full-eval.md` in inbox) is ongoing an
 
 ### Morpheus Decision — Unified Plan Start
 
-**By:** Morpheus (Architect)  
-**Date:** 2026-04-20  
+**By:** Morpheus (Architect)
+**Date:** 2026-04-20
 **Scope:** `docs/superpowers/plans/2026-04-20-latest-unified-plan.md`
 
 #### Decision
@@ -3203,8 +3232,8 @@ Not safe yet:
 
 ## Tank U1 Final Verdict
 
-**By:** Tank (QA)  
-**Date:** 2026-04-20  
+**By:** Tank (QA)
+**Date:** 2026-04-20
 **Scope:** U1 formal reviewer gate after canonical/full eval cycle
 
 ### Verdict
@@ -3235,8 +3264,8 @@ Not safe yet:
 
 ## Tank U1 Lockout Routing Correction
 
-**By:** Tank (QA)  
-**Date:** 2026-04-20  
+**By:** Tank (QA)
+**Date:** 2026-04-20
 **Scope:** Rejection lockout enforcement per reviewer protocol
 
 ### Decision
@@ -3262,8 +3291,8 @@ Not safe yet:
 ---
 ## Trinity U1 Revision Complete
 
-**By:** Trinity (Implementation)  
-**Date:** 2026-04-20  
+**By:** Trinity (Implementation)
+**Date:** 2026-04-20
 **Scope:** U1 Step 3 rejected artifact cycle — lockout-compliant revision pack
 
 ### Decision
@@ -3340,8 +3369,8 @@ The audit evidence points to a dataset/eval-quality problem in addition to the a
 
 ## Tank U1 Re-Gate Verdict
 
-**By:** Tank (QA)  
-**Date:** 2026-04-20  
+**By:** Tank (QA)
+**Date:** 2026-04-20
 **Scope:** U1 Step 3 formal re-gate using Trinity canonical evidence pack
 
 ### Verdict
@@ -3415,11 +3444,11 @@ Per strict reviewer lockout semantics:
 
 The 1100/3269 U1A run wasted money because of a single architectural defect in val_retrieval_runtime.py:
 
-- **Lines 795-812:** _eval_one() computes full per-query quality metrics (recall@1/3/5/10, mrr, latency, rerank timing) into a 
+- **Lines 795-812:** _eval_one() computes full per-query quality metrics (recall@1/3/5/10, mrr, latency, rerank timing) into a
 esult dict.
-- **Lines 813-827:** The progress reporter receives this 
+- **Lines 813-827:** The progress reporter receives this
 esult but writes **only counters** (done, 	otal, percent, last_query_id) to the progress JSONL. All quality data is discarded at write time.
-- **Lines 830-831:** Per-query results are collected in-memory via syncio.gather, passed back to 
+- **Lines 830-831:** Per-query results are collected in-memory via syncio.gather, passed back to
 un_eval.
 - **Lines 680-688:** Aggregation and canonical JSON write happen **only after all queries complete**.
 
@@ -3433,8 +3462,8 @@ un_eval.
 
 **What to add:**
 1. A new --per-query-output CLI parameter (path to a JSONL file).
-2. Inside _eval_one(), after computing 
-esult (line 812), **append the full 
+2. Inside _eval_one(), after computing
+esult (line 812), **append the full
 esult dict as one JSON line** to the per-query JSONL. Use the existing progress_lock for concurrency safety.
 3. Ensure the per-query JSONL is independently parseable — each line is a complete per-query record.
 
@@ -3497,7 +3526,7 @@ Current interrupted artifact (output/v21_u1a_full_eval_canonical.progress.jsonl)
 
 An interrupted run is considered reusable **only if all are true**:
 
-1. **Per-query quality persistence exists**: one JSONL line per completed query containing at least query_id, 
+1. **Per-query quality persistence exists**: one JSONL line per completed query containing at least query_id,
 ecall_at_5, mrr, latency_ms (and ideally recall@1/3/10).
 2. **Progress remains monotonic**: progress JSONL done strictly increases to the interruption point; 	otal is stable.
 3. **Cross-file coherence holds**: last done in progress equals line count in per-query JSONL at interruption.
@@ -3557,7 +3586,7 @@ Only after this Tier 0 contract passes may any paid Tier 1/2 mini-eval proceed.
 
 ### Decision
 
-Add a --per-query-output CLI option and append the full per-query 
+Add a --per-query-output CLI option and append the full per-query
 esult dict as JSONL for each completed query, guarded by the existing async progress lock to keep writes coherent under concurrency.
 
 ### Why
@@ -3566,7 +3595,7 @@ Interrupted eval runs currently lose per-query quality evidence because only pro
 
 ### Implementation Notes
 
-- Added per_query_output plumbing through 
+- Added per_query_output plumbing through
 un_eval → _run_eval_async.
 - Appended per-query JSONL records under the same progress_lock used for progress writes.
 - Left progress JSONL and canonical output schema unchanged.
@@ -3579,8 +3608,8 @@ un_eval → _run_eval_async.
 
 ## 2026-04-21: Task 2.1.1 Design Review — AIAdapter cost/defaults unification
 
-**By:** Morpheus (Architecture)  
-**Date:** 2026-04-21  
+**By:** Morpheus (Architecture)
+**Date:** 2026-04-21
 **Status:** ✅ APPROVED
 
 ### Verdict
@@ -3590,8 +3619,8 @@ un_eval → _run_eval_async.
 1. Only live chat.completions.create call sites confirmed: 7 in layers/ai_adapter.py; inspiration_engine.py and xtractor_full.py out of scope for this pass.
 2. Trinity implements _chat as internal AIAdapter helper only; no exported API change.
 3. All existing method contracts preserved: same prompt construction, same try/except, same downstream response reads.
-4. Site-specific behavior is contract-critical: site 2 keeps max_tokens=10 + no 
-esponse_format; site 6 keeps 	emperature=0.2; JSON-producing sites keep 
+4. Site-specific behavior is contract-critical: site 2 keeps max_tokens=10 + no
+esponse_format; site 6 keeps 	emperature=0.2; JSON-producing sites keep
 esponse_format={"type":"json_object"}.
 5. Cost telemetry best-effort only: sampling/logging may not break extraction/chat paths on error.
 
@@ -3605,15 +3634,15 @@ esponse_format={"type":"json_object"}.
 
 ## 2026-04-21: Task 2.1.1 QA Preflight & Gate Approval — AIAdapter scope verification
 
-**By:** Tank (QA)  
-**Date:** 2026-04-21  
+**By:** Tank (QA)
+**Date:** 2026-04-21
 **Status:** ✅ GATE APPROVED
 
 ### Decision
 Task 2.1.1 narrowed to layers/ai_adapter.py seven known chat.completions.create sites only. Do not expand scope into inspiration_engine.py or xtractor_full.py.
 
 ### Required Invariants (All Preserved)
-1. Site 2 (erify_multimodal_support): 	emperature=0.1, max_tokens=10, no 
+1. Site 2 (erify_multimodal_support): 	emperature=0.1, max_tokens=10, no
 esponse_format
 2. Site 6 (classify_claim_boundary): 	emperature=0.2 + JSON response_format
 3. JSON vs non-JSON split: 6 JSON + 1 non-JSON
@@ -3628,8 +3657,8 @@ esponse_format
 
 ## 2026-04-21: Trinity Implementation Complete — AIAdapter _chat helper
 
-**By:** Trinity (Implementation)  
-**Date:** 2026-04-21  
+**By:** Trinity (Implementation)
+**Date:** 2026-04-21
 **Status:** ✅ IMPLEMENTATION COMPLETE
 
 ### Decision
@@ -3654,16 +3683,16 @@ Implemented §2.1.1 only inside layers/ai_adapter.py by adding private _chat hel
 
 ## 2026-04-21: Trinity Implementation Acceptance — Tank QA Gate Approval
 
-**By:** Tank (QA)  
-**Date:** 2026-04-21  
+**By:** Tank (QA)
+**Date:** 2026-04-21
 **Status:** ✅ ACCEPT — Task 2.1.1 complete
 
 ### Evidence
-- _chat helper verified to exist and use 
+- _chat helper verified to exist and use
 esolve_llm_params + fail-open telemetry
 - 7 internal call sites migrated; only 1 direct chat.completions.create remains (inside helper)
 - Site-specific contracts verified:
-  - erify_multimodal_support: overrides={"temperature":0.1,"max_tokens":10}, no 
+  - erify_multimodal_support: overrides={"temperature":0.1,"max_tokens":10}, no
 esponse_format
   - classify_claim_boundary: overrides={"temperature":0.2} + JSON response_format
 - Focused tests passed: 	est_ai_adapter_chat_helper.py → 4 passed, 	est_llm_provider_routing.py → 3 passed
@@ -3675,8 +3704,8 @@ esponse_format
 
 ## 2026-04-21: Task 2.1.2 Design Review — Sampling Persistence & Live App Wiring
 
-**By:** Morpheus (Architecture)  
-**Date:** 2026-04-21  
+**By:** Morpheus (Architecture)
+**Date:** 2026-04-21
 **Status:** ✅ APPROVED — PROCEED NOW
 
 ### Verdict
@@ -3708,8 +3737,8 @@ esponse_format
 
 ## 2026-04-21: Task 2.1.2 QA Preflight — Acceptance Criteria
 
-**By:** Tank (QA)  
-**Date:** 2026-04-21  
+**By:** Tank (QA)
+**Date:** 2026-04-21
 **Status:** ✅ PREFLIGHT COMPLETE
 
 ### Verdict
@@ -3732,8 +3761,8 @@ esponse_format
 
 ## 2026-04-21: Task 2.1.2 QA Verdict — Implementation Approval
 
-**By:** Tank (QA)  
-**Date:** 2026-04-21  
+**By:** Tank (QA)
+**Date:** 2026-04-21
 **Status:** ✅ APPROVE — Coordinator may mark 2.1.2 complete
 
 ### Scope Check
@@ -3757,7 +3786,7 @@ esponse_format
 
 ## 2026-04-22: Task 2.2 Design Review — LLM Cost Telemetry
 
-**By:** Morpheus  
+**By:** Morpheus
 **Status:** PROCEED — split execution required
 
 ### Decisions
@@ -3770,7 +3799,7 @@ esponse_format
 
 ## 2026-04-22 — Task 2.2.A QA Verdict: APPROVE
 
-**Owner:** Tank  
+**Owner:** Tank
 **Scope:** 2.2.A tests-only slice
 
 ### Result
@@ -3975,6 +4004,40 @@ Phase B annotation baseline freeze-ready:
 
 ### Decisions
 
+## 2024-06-10 Reranker Isolation Long-Run Checkpoint
+
+### Tank — Rerank Layer QA Audit
+- Focused rerank suite passed: 40/40 tests.
+- No-rerank baseline artifacts confirm rerank path intentionally disabled.
+- Verdict: Budget guard contract enforced; no code-level rerank defect in this slice; retrieval-baseline weakness candidate.
+- Evidence: `.squad/decisions/inbox/tank-rerank-layer-audit.md`
+
+### Oracle — Ranking Evidence
+- No-rerank canary30 valid; mixed failures; no clean 30q rerank-on counterpart.
+- Data integrity: no material-id mismatch; failures are retrieval-miss or ranking inversion.
+- Evidence: `.squad/decisions/inbox/oracle-ranking-evidence.md`
+
+### Trinity — Rerank Diagnostics
+- Verified no-rerank artifacts; identified import-time dotenv leak in `eval_retrieval_runtime.py`.
+- Decision: Accept rerank-off as baseline; fix env-leak before further rerank-on.
+- Evidence: `.squad/decisions/inbox/trinity-rerank-diagnostics.md`
+
+### Morpheus — Decision
+- Authorized only surgical fix in `eval_retrieval_runtime.py` and `tests\test_eval_runtime.py`.
+- Blocked paired 30q rerank-on pending local validation and budget/credential approval.
+- Evidence: `.squad/decisions/inbox/morpheus-rerank-decision-tree.md`
+
+### Trinity — Dotenv Leak Fix
+- Patched `eval_retrieval_runtime.py` to respect `RUNTIME_ENV_DISABLE_DOTENV`.
+- Added regression in `tests\test_eval_runtime.py`.
+- Validation: 5-test bundle and eval runtime suite all passed.
+- Evidence: `.squad/decisions/inbox/trinity-dotenv-leak-fix.md`
+
+### Tank — Dotenv Leak Review
+- Approved: patch is surgical, matches scope, disables import-time env mutation when disabled.
+- All required tests passed; regression contract enforced.
+- Evidence: `.squad/decisions/inbox/tank-dotenv-leak-review.md`
+
 1. **Lock the pair**: Use only these hashes and paths for all Phase B annotation. No regeneration without new gate decision.
 2. **Prohibit scope changes**: 36 queries are frozen. Any expansion (scope creep) requires explicit re-approval.
 3. **Preserve canonical**: goldset.jsonl and qrels.tsv remain as Phase A trusted scaffolds—do not edit.
@@ -4049,8 +4112,8 @@ All four Phase B baseline-freeze inbox notes were **100% consistent** with zero 
 
 ### 2026-04-24: Conversation Persistence MVP — Block-and-Reassign Verdict
 
-**By:** Tank (QA) + Morpheus (Architecture Review)  
-**Date:** 2026-04-24T10:10:16Z  
+**By:** Tank (QA) + Morpheus (Architecture Review)
+**Date:** 2026-04-24T10:10:16Z
 **Scope:** Backend conversation persistence MVP acceptance gate — reviewer blocking verdict classification and scope boundary enforcement
 
 **Decision:** BLOCK-AND-REASSIGN with locked-out original author
@@ -4084,8 +4147,8 @@ pytest -q test_writing_runtime.py tests\test_writing_runtime_persistence.py test
 
 ### 2026-04-24: Router Import Path Stability Fix
 
-**By:** Oracle (Data Engineer / QA Investigator)  
-**Date:** 2026-04-24T10:10:16Z  
+**By:** Oracle (Data Engineer / QA Investigator)
+**Date:** 2026-04-24T10:10:16Z
 **Scope:** Root cause analysis of `tests/test_runtime_router_contract.py` pytest collection failure
 
 **Decision:** CREATE `routers/__init__.py` (empty file)
@@ -4123,8 +4186,8 @@ Expected: 2 tests collected and both pass.
 
 ### 2026-04-24: Frontend Persistence Contract Drift — Deferred Post-QA
 
-**By:** Dozer (Frontend Implementation)  
-**Date:** 2026-04-24T10:10:16Z  
+**By:** Dozer (Frontend Implementation)
+**Date:** 2026-04-24T10:10:16Z
 **Scope:** Frontend runtime service contract alignment with newly added backend persistence APIs
 
 **Decision:** Frontend persistence wiring is deferred to post-backend-QA cycle; required action is contract schema regeneration before UI work can proceed.
@@ -4150,8 +4213,8 @@ Expected: 2 tests collected and both pass.
 
 ### 2026-04-24: User Directive — Frontend Gemini API Preference
 
-**By:** 小龙 姚 (User) via Coordinator  
-**Date:** 2026-04-24T10:10:16Z  
+**By:** 小龙 姚 (User) via Coordinator
+**Date:** 2026-04-24T10:10:16Z
 **Scope:** Frontend LLM integration runtime behavior
 
 **Decision:** Frontend should prefer Gemini API for LLM calls; gracefully fall back to Copilot mode if Gemini is unavailable or errors.
@@ -4182,8 +4245,8 @@ The following four inbox files are consolidated into the above entries and sched
 
 ### 2026-04-24: Tank Persistence QA — Two-Stage Gate Adoption
 
-**By:** Tank (QA)  
-**Date:** 2026-04-24  
+**By:** Tank (QA)
+**Date:** 2026-04-24
 **Scope:** Split persistence acceptance workflow into fast smoke gate and final full gate
 
 **Decision:** Adopt two-stage persistence QA:
@@ -4207,8 +4270,8 @@ The following four inbox files are consolidated into the above entries and sched
 
 ### 2026-04-24: Morpheus Persistence Turnaround Diagnosis
 
-**By:** Morpheus (Architecture)  
-**Date:** 2026-04-24  
+**By:** Morpheus (Architecture)
+**Date:** 2026-04-24
 **Scope:** Root cause of session-persistence-u2 acceptance bundle collection failure
 
 **Decision:** `session-persistence-u2` is not hard-blocked. Backend already passes runtime + persistence suites. Current stop is a QA-bundle collection failure plus missing acceptance coverage.
@@ -4229,8 +4292,8 @@ The following four inbox files are consolidated into the above entries and sched
 
 ### 2026-04-24: Oracle Persistence Lane Bottleneck Analysis
 
-**By:** Oracle (Data Engineer)  
-**Date:** 2026-04-24  
+**By:** Oracle (Data Engineer)
+**Date:** 2026-04-24
 **Scope:** Writing runtime persistence test suite performance analysis
 
 **Finding:** Persistence lane is **not inherently slow** but **blocked by structural inefficiencies**:
@@ -4258,8 +4321,8 @@ The following four inbox files are consolidated into the above entries and sched
 
 ### 2026-04-24: User Directive — Persistence Support
 
-**By:** 小龙 姚 (Copilot)  
-**Date:** 2026-04-24T18:21:56+08:00  
+**By:** 小龙 姚 (Copilot)
+**Date:** 2026-04-24T18:21:56+08:00
 **What:** When encountering stalled tasks: if not stalled → provide support; other agents must proactively find slow reasons and optimize execution path
 **Why:** User request
 
@@ -4267,8 +4330,8 @@ The following four inbox files are consolidated into the above entries and sched
 
 ### 2026-04-24: Oracle Step 3 Parameter Sweep — Winner Selected & Ready for Full Eval
 
-**By:** Oracle (Data Engineer)  
-**Date:** 2026-04-24T22:25:22Z  
+**By:** Oracle (Data Engineer)
+**Date:** 2026-04-24T22:25:22Z
 **Scope:** Complete 24-candidate parametric optimization sweep on 109-paper corpus to select retrieval configuration for U1A closure eval
 
 **Decision:** WINNER SELECTED — Configuration ready for full U1A evaluation
@@ -4307,8 +4370,8 @@ The following four inbox files are consolidated into the above entries and sched
 
 ### 2026-04-24: Ralph Handoff — U1 Retrieval Closure Execution Plan
 
-**By:** Ralph (Delivery Coordinator)  
-**Date:** 2026-04-24T22:25:22Z  
+**By:** Ralph (Delivery Coordinator)
+**Date:** 2026-04-24T22:25:22Z
 **Scope:** Document exact post-Oracle execution sequence for U1 retrieval closure
 
 **Decision:** ACCEPTED — Closure plan approved; ready for Oracle/Tank execution
@@ -4332,8 +4395,8 @@ The following four inbox files are consolidated into the above entries and sched
 
 ### 2026-04-24: Tank — U1 Closure QA Review Acceptance Checklist
 
-**By:** Tank (QA Reviewer)  
-**Date:** 2026-04-24T22:25:22Z  
+**By:** Tank (QA Reviewer)
+**Date:** 2026-04-24T22:25:22Z
 **Scope:** Prepare frozen acceptance gates for U1A full eval closure review
 
 **Decision:** READY FOR APPLICATION — Checklist prepared; will apply upon full-eval artifacts
@@ -4364,8 +4427,8 @@ The following four inbox files are consolidated into the above entries and sched
 
 ### 2026-04-25: U1 Closure Finalization — APPROVE
 
-**By:** Oracle (Data Engineer) + Tank (QA Reviewer) → merged by Scribe (Documentation)  
-**Date:** 2026-04-25T00:00:00Z  
+**By:** Oracle (Data Engineer) + Tank (QA Reviewer) → merged by Scribe (Documentation)
+**Date:** 2026-04-25T00:00:00Z
 **Scope:** Final U1A retrieval closure evaluation and review gate
 
 **Decision:** ✅ **APPROVE** — U1 full-eval closure pack complete, coherent, threshold-compliant, and config-aligned with Step 3 winner lane.
@@ -4447,4 +4510,230 @@ Awaiting downstream project directive. U1 closure pack is archived and documente
 - **Handoff:** To external stakeholders or future team
 
 ---
+
+### 2026-04-26: Morpheus Release Verdict — NOT READY FOR LAUNCH TODAY
+
+**By:** Morpheus (Architect / QA Lead)
+**Date:** 2026-04-26
+**Scope:** Final architectural review and release-readiness assessment across Morpheus, Tank, and Trinity completed work
+
+**Decision: ❌ NOT READY FOR LAUNCH TODAY**
+
+#### Code-Side Status: ✅ Complete
+
+Squad completed surgical hardening across three critical systems:
+
+1. **Embedding provider resolution** (E-layer)
+   - Key-type routing with typed credential parsing
+   - Schema-aware embedding probe (rejects HTML/non-JSON)
+   - Fallback chain (SiliconFlow → Jina → generic catalog)
+   - Tests: 52/52 PASS
+
+2. **Rerank key redesign** (R-layer)
+   - Validity-first key probing with process-local cache
+   - Kill switch for stale keys (`RERANK_KEY_PROBE_DISABLE=1`)
+   - All-invalid scenario logging + fallback to static provider key
+   - Tests: 48/48 PASS
+
+3. **Rerank budget contract alignment** (R-layer)
+   - Hard-cap on `daily_call_cap` and `daily_token_cap` forces fallback
+   - USD `daily_budget_usd` only emits soft telemetry (no fallback)
+   - State persistence aligned to `output/rerank_budget_state.json`
+   - Tests: 39/39 PASS
+
+**Total unit test coverage:** 139/139 PASS across all three systems
+
+#### Runtime Validation Status: ⚠️ Hard Blocker Found
+
+Trinity attempted live smoke validation and discovered **critical data migration blocker**:
+
+**The Blocker:**
+- Chunk store migrated (2026-04-24): 13MB monolith → per-paper JSONL with hashed material_ids (`mat_{md5(material_id)[:8]}`)
+- Eval queries generated from pre-migration chunk_store
+- Current queries reference pre-migration material_ids (e.g., `mat_c216c5d0efef`)
+- Current corpus contains post-migration material_ids (e.g., `mat_874b8b22012f`)
+- **Result:** Zero overlap → all live smoke queries return Recall@5=0.0 despite API success
+
+**Impact:** Cannot execute cache rebuild gate (§3.3) or live rerun quality validation (§3.6) until queries align with post-migration corpus
+
+#### Three Validation Gates (All Blocked)
+
+1. **Step 1: Live Smoke Test** — blocked by material_id mismatch (Recall@5=0.0)
+2. **Step 2: Cache Rebuild + Validation** — blocked on Step 1 success
+3. **Step 3: Live Rerun Quality Gate** — blocked on Step 2 success
+
+#### Launch-Critical Path Forward
+
+**Option 1: Regenerate Eval Queries (RECOMMENDED)**
+- Generate new queries from post-migration chunk_store
+- Estimated time: 30-60 minutes
+- Risk: Low (data-only, no code changes)
+
+**Option 2: Restore Pre-Migration Chunk Store**
+- Restore pre-migration backup for evaluation continuity
+- Estimated time: 10-20 minutes (if backup exists)
+- Risk: Medium (defers migration validation)
+
+**Option 3: Manual Re-Audit (NOT RECOMMENDED)**
+- Map current query material_ids to post-migration equivalents
+- Estimated time: 2+ hours
+- Risk: High (error-prone, not scalable)
+
+#### Evidence Trail
+
+- **Trinity blocker analysis:** `.squad/decisions/inbox/trinity-runtime-rerun.md`
+- **Morpheus verdict:** `.squad/decisions/inbox/morpheus-release-verdict.md`
+- **Tank validation spec:** `.squad/decisions/inbox/tank-release-gates.md`
+- **Orchestration logs:**
+  - `.squad/orchestration-log/2026-04-26T18-55-03Z-morpheus.md`
+  - `.squad/orchestration-log/2026-04-26T18-55-04Z-tank.md`
+  - `.squad/orchestration-log/2026-04-26T18-55-05Z-trinity.md`
+- **Session log:** `.squad/log/2026-04-26T18-55-06Z-launch-blocker-diagnosis.md`
+
+#### Next Escalation
+
+**User decision required:** Select resolution option (1/2/3) and authorize execution.
+
+**Decision status:** Pending user input on query regeneration vs backup restoration.
+
+---
+
+### 2026-04-26: Tank Release-Readiness Gate Audit
+
+**By:** Tank (QA Engineer)
+**Date:** 2026-04-26
+**Scope:** Comprehensive QA validation of code-side fixes and identification of unproven runtime paths
+
+**Decision: ✅ Unit Test Coverage STRONG; Runtime Activation UNPROVEN**
+
+#### Validation Bundle Summary
+
+**Proven (Unit Tests):**
+- Embedding provider resolution: 8 tests PASS (fallback chain, key-pool, no-key contract)
+- Embedding key probe: 9 tests PASS (validity-first probing, kill switch, schema-aware rejection)
+- Key pool parsing: 8 tests PASS (typed key parsing, rotation, cooldown)
+- Dense RRF retrieval: 20 tests PASS (cosine search, RRF fusion, cache guards)
+- Embedding batch chunking: 7 tests PASS (batch size config, precedence)
+- Rerank smoke wrapper: 1 test PASS (public contract)
+- **Total: 52/52 embedding/rerank tests PASS**
+
+**Recent squad completions:**
+- 2026-04-26: Rerank budget contract (39 tests) — call/token hard-cap vs USD soft-warn distinction verified
+- 2026-04-25: Embedding batch size env wiring (5 tests) — env override with arg precedence locked
+- 2026-04-24: Rerank key redesign (48 tests) — validity-first + cache + kill switch verified
+
+**Unproven (No Live Test):**
+1. Live embedding runtime activation with real `.env` keys → `ChunkVectorStore.build()` returns `has_embeddings=True`
+2. Rerank live runtime activation with clean budget state → `rerank_async()` returns non-zero scores, `rerank_budget_state.json` updated
+3. Cache rebuild correctness (§3.3) — not started
+4. Canary query validation (§3.3) — not started
+5. Live rerun quality gate (§3.6) — not started
+
+#### Three-Step Validation Bundle (Recommended Execution)
+
+**Step 1: Live Smoke Test Bundle** (~10 minutes)
+- Clear kill switches from environment
+- Reset budget state to clean slate
+- Test 1: Embedding activation with smoke chunks
+- Test 2: Rerank activation with smoke queries
+- Test 3: Budget state file updated with non-zero call count
+- Pass criteria: All 3 assertions pass without errors
+
+**Step 2: Cache Rebuild + Validation (§3.3)** (~30 minutes)
+- Rebuild cache with contextual chunking
+- Validate manifest integrity
+- Run 20-query canary bundle
+- Pass criteria: ≤1 rank swap per query vs baseline
+
+**Step 3: Live Rerun Quality Gate (§3.6)** (~20 minutes)
+- Run 50-query subset from U1 eval
+- Compare metrics ±5% tolerance vs U1 baseline
+- Pass criteria: Recall@5 and MRR within tolerance
+
+**Total estimated time:** 1-2 hours (assuming no failures)
+
+#### Launch Verdict
+
+**Can the project launch now?** **NO — 3 hard blockers remain:**
+1. Live embedding/rerank activation not proven
+2. Cache rebuild + validation not executed
+3. Live rerun quality gate not executed
+
+**Confidence on existing fixes:** Unit test coverage STRONG; live runtime activation UNPROVEN; production-readiness CONDITIONAL
+
+**Recommended path:** Execute Step 1-3 validation bundle in order. If Step 1 fails, root cause before proceeding.
+
+#### Evidence Trail
+
+- **Test execution logs:** 52/52 PASS embedding/rerank
+- **Orchestration log:** `.squad/orchestration-log/2026-04-26T18-55-04Z-tank.md`
+- **Inbox source:** `.squad/decisions/inbox/tank-release-gates.md` (merged here)
+
+---
+
+### 2026-04-26: Trinity Runtime Rerun — Hard Blocker (Data Migration Aftermath)
+
+**By:** Trinity (Implementation Engineer)
+**Date:** 2026-04-26
+**Scope:** §3.3 cache rebuild and live smoke validation attempt
+
+**Decision: ⚠️ BLOCKER CONFIRMED — Chunk Store Migration Broke Eval Query Alignment**
+
+#### Live Smoke Results
+
+- **Local embedding tests:** 10/10 PASS in 5.06s ✅
+- **Live 5-query canary smoke:** Completed ~6.8s avg; Embedding API and Rerank API both responded normally
+- **⚠️ CRITICAL:** All 5 queries returned Recall@5=0.0 (zero hits) despite API success
+
+#### Root Cause: Material_ID Format Mismatch
+
+**Facts:**
+1. Chunk store migration completed (2026-04-24): monolith → per-paper JSONL with `mat_{md5(material_id)[:8]}` hashing
+2. Eval queries `eval_queries_v2.1_canary30.jsonl` generated from pre-migration chunk_store
+3. Query material_ids: `mat_c216c5d0efef`, `mat_63c534514857`, `mat_c17112283f4a` (pre-migration format)
+4. Corpus material_ids: `mat_874b8b22012f` + 158 others (post-migration format, different hash prefix)
+5. **Overlap: ZERO → all queries fail**
+
+**Impact:**
+- Cannot proceed with cache rebuild until queries align with corpus
+- Eval retrieval path is broken at data layer, not code layer
+- Project cannot go live with misaligned eval queries and corpus
+
+#### Resolution Options (User Decision)
+
+**Option 1: Regenerate Eval Queries (RECOMMENDED)**
+- Generate new queries from post-migration chunk_store
+- Use `build_eval_corpus.py` or equivalent
+- Estimated time: 30-60 minutes
+- Risk: Low (data-only)
+
+**Option 2: Restore Pre-Migration Chunk Store**
+- Restore backup for evaluation continuity
+- Estimated time: 10-20 minutes (if backup exists)
+- Risk: Medium (defers migration validation)
+
+**Option 3: Manual Re-Audit (NOT RECOMMENDED)**
+- Map current query material_ids to post-migration IDs
+- Estimated time: 2+ hours
+- Risk: High (error-prone, not scalable)
+
+#### Evidence Trail
+
+- **Trinity blocker diagnosis:** `.squad/decisions/inbox/trinity-runtime-rerun.md` (merged here)
+- **Orchestration log:** `.squad/orchestration-log/2026-04-26T18-55-05Z-trinity.md`
+- **Session log:** `.squad/log/2026-04-26T18-55-06Z-launch-blocker-diagnosis.md`
+- **Chunk store migration spec:** `cost-and-defaults.md §1.1`
+
+#### Why This Is NOT a Code Bug
+
+- Embedding API: online and responding ✅
+- Rerank API: online and responding ✅
+- Unit tests: 139 tests PASS ✅
+- **Error:** Data alignment issue (queries ≠ corpus), not code regression
+
+#### Next Step
+
+**User must decide:** Option 1 (regenerate queries), Option 2 (restore backup), or Option 3 (manual mapping).
+
+**Trinity ready for:** Query regeneration work (Option 1) or guidance on Option 2/3.
 
