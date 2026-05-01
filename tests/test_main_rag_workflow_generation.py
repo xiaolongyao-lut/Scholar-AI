@@ -150,3 +150,85 @@ async def test_rag_search_preserves_local_rerank_metadata(monkeypatch) -> None:
     assert hits[0]["source_hint"] == "bm25+dense+rerank"
     assert hits[0]["metadata"]["rerank_model"] == "qwen3-vl-rerank"
     assert hits[0]["metadata"]["source_labels"] == ["bm25", "dense", "rerank", "local_fallback"]
+
+
+@pytest.mark.asyncio
+async def test_ask_result_exposes_generation_evidence_refs(monkeypatch) -> None:
+    class _FakeRouter:
+        async def route_query(self, _query: str, top_k: int) -> list[str]:
+            assert top_k == 2
+            return ["porosity"]
+
+    workflow = main_rag_workflow.RAGWorkflow(
+        semantic_router=_FakeRouter(),
+        ragflow_adapter=None,
+        api_key="test-key",
+        llm_client=object(),
+        enable_requests_fallback=False,
+    )
+
+    async def fake_decompose_query_async(*_args, **_kwargs) -> list[str]:
+        return ["laser porosity"]
+
+    async def fake_rag_search(_query: str, *, top_k: int, dataset_ids=None) -> list[dict]:
+        assert top_k == 3
+        assert dataset_ids == ["ds-1"]
+        return [
+            {
+                "chunk_id": "chunk-keep",
+                "material_id": "paper-a",
+                "text": "Kept evidence.",
+                "score": 0.99,
+                "source_labels": ["bm25", "dense"],
+            },
+            {
+                "chunk_id": "chunk-drop",
+                "material_id": "paper-b",
+                "text": "Dropped evidence.",
+                "score": 0.1,
+            },
+        ]
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    def fake_gated_call(**kwargs):
+        task = kwargs["cache_key_parts"].get("task")
+        if task == "semantic_cache_lookup":
+            return [0.1, 0.2]
+        if task == "generation":
+            return '{"status": "success", "overall_score": 1.0}'
+        raise AssertionError(f"unexpected gateway task: {task}")
+
+    monkeypatch.setattr(main_rag_workflow, "decompose_query_async", fake_decompose_query_async, raising=False)
+    monkeypatch.setattr(workflow, "_rag_search", fake_rag_search, raising=False)
+    monkeypatch.setattr(main_rag_workflow.asyncio, "to_thread", fake_to_thread, raising=False)
+    monkeypatch.setattr(main_rag_workflow, "gated_call", fake_gated_call, raising=False)
+    monkeypatch.setattr(main_rag_workflow, "_compute_corpus_version", lambda _project_id: "corpus-v1", raising=False)
+    monkeypatch.setenv("EVIDENCE_PACK_TOP_K", "1")
+    monkeypatch.setenv("EVIDENCE_MAX_PER_MATERIAL", "2")
+    monkeypatch.setenv("EVIDENCE_TOKEN_BUDGET", "4000")
+    monkeypatch.setenv("EVIDENCE_TOKEN_HARD_CAP", "5000")
+
+    result = await workflow.ask_my_literature(
+        "How does laser welding porosity form?",
+        top_k_points=2,
+        top_k_evidence=3,
+        dataset_ids=["ds-1"],
+    )
+
+    assert result.generated_answer
+    assert result.rag_evidence[0]["chunk_id"] == "chunk-keep"
+    assert result.evidence_refs == [
+        {
+            "chunk_id": "chunk-keep",
+            "material_id": "paper-a",
+            "text": "Kept evidence.",
+            "compressed_text": "",
+            "quote": "",
+            "label": "",
+            "score": 0.99,
+            "source_labels": ["bm25", "dense"],
+        }
+    ]
+    assert result.trace["step_3_generation"]["evidence_ref_count"] == 1

@@ -28,7 +28,7 @@ import logging
 import os
 import re
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
@@ -54,7 +54,7 @@ DEFAULT_LLM_MODEL = env_value("ARK_MODEL", "OPENAI_MODEL", "MODEL", default="ep-
 LEGACY_LLM_API_ENV_NAMES = ("SILICONFLOW_API_KEY",)
 from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
 from layers.r_layer_hybrid_retriever import hybrid_search
-from evidence_packer import build_evidence_references, format_evidence_item, pack_evidence
+from evidence_packer import EvidenceReference, build_evidence_references, format_evidence_item, pack_evidence
 from model_call_gateway import gated_call, _compute_corpus_version
 from query_expander import decompose_query_async
 from retrieval_provenance import attach_source_labels, merge_source_labels
@@ -79,6 +79,7 @@ class RAGResult:
     confidence_score: float
     trace: Dict[str, Any]
     association_bundle: Optional[Dict[str, Any]] = None
+    evidence_refs: List[EvidenceReference] = field(default_factory=list)
 
 
 # Sprint 4: Unified Generation Prompt Template (Centralized for DoD Audits)
@@ -288,6 +289,7 @@ class RAGWorkflow:
                             focused_points=["cached"],
                             memory_hits=[],
                             rag_evidence=[],
+                            evidence_refs=[],
                             generated_answer=data.get("conclusion", "Cached Answer"),
                             confidence_score=float(data.get("overall_score") or 1.0),
                             trace={"cache": "hit_semantic"},
@@ -382,10 +384,12 @@ class RAGWorkflow:
                 rag_evidence,
                 memory_hits,
             )
+            evidence_refs = self._build_generation_evidence_refs(rag_evidence)
             
             trace['step_3_generation'] = {
                 'answer_length': len(generated_answer),
-                'generation_success': bool(generated_answer)
+                'generation_success': bool(generated_answer),
+                'evidence_ref_count': len(evidence_refs),
             }
             
             logger.info(f"✓ 生成答案 ({len(generated_answer)} 字)")
@@ -433,6 +437,7 @@ class RAGWorkflow:
                 focused_points=focused_points,
                 memory_hits=memory_hits,
                 rag_evidence=rag_evidence,
+                evidence_refs=evidence_refs,
                 generated_answer=generated_answer,
                 confidence_score=self._calculate_confidence(
                     focused_points, rag_evidence, generated_answer
@@ -452,6 +457,7 @@ class RAGWorkflow:
                 focused_points=[],
                 memory_hits=[],
                 rag_evidence=[],
+                evidence_refs=[],
                 generated_answer=f"发生错误: {str(e)}",
                 confidence_score=0.0,
                 trace={'error': str(e), **trace},
@@ -566,20 +572,25 @@ class RAGWorkflow:
         # 策略 3: 最终回退（空结果）
         logger.warning("所有检索策略均未命中，返回空列表")
         return []
-    
-    async def _generate_answer(
+
+    def _pack_generation_evidence(
         self,
-        user_query: str,
-        focused_points: List[str],
         rag_evidence: List[Dict[str, Any]],
-        memory_hits: List[Dict[str, Any]],
-    ) -> str:
+    ) -> List[Dict[str, Any]]:
+        """Pack retrieved evidence for generation and machine-readable artifacts.
+
+        Args:
+            rag_evidence: Retrieval hits represented as dictionaries. The list is
+                never mutated; malformed callers fail early so provenance output
+                cannot silently diverge from the answer prompt.
+
+        Returns:
+            Evidence candidates after token budget, per-material, and top-k
+            constraints are applied.
         """
-        调用大模型生成最终答案
-        
-        输入：用户问题 + 关注点 + RAG 证据
-        输出：学术性的综合回答
-        """
+        if not isinstance(rag_evidence, list):
+            raise TypeError("rag_evidence must be a list")
+
         evidence_budget = max(1, int(os.environ.get("EVIDENCE_TOKEN_BUDGET", "4000")))
         evidence_hard_cap = max(
             evidence_budget,
@@ -590,13 +601,35 @@ class RAGWorkflow:
             1,
             int(os.environ.get("EVIDENCE_MAX_PER_MATERIAL", "2")),
         )
-        packed_evidence = pack_evidence(
+        return pack_evidence(
             rag_evidence,
             budget_tokens=evidence_budget,
             hard_cap_tokens=evidence_hard_cap,
             max_per_material=evidence_max_per_material,
             top_k=evidence_top_k,
         )
+
+    def _build_generation_evidence_refs(
+        self,
+        rag_evidence: List[Dict[str, Any]],
+    ) -> List[EvidenceReference]:
+        """Return the evidence references that match the generation context."""
+        return build_evidence_references(self._pack_generation_evidence(rag_evidence))
+
+    async def _generate_answer(
+        self,
+        user_query: str,
+        focused_points: List[str],
+        rag_evidence: List[Dict[str, Any]],
+        memory_hits: List[Dict[str, Any]],
+    ) -> str:
+        """
+        调用大模型生成最终答案
+
+        输入：用户问题 + 关注点 + RAG 证据
+        输出：学术性的综合回答
+        """
+        packed_evidence = self._pack_generation_evidence(rag_evidence)
 
         # ------------------------------------------------------------------
         # Sprint 4: 冲突决策逻辑 (Conflict Detection)
