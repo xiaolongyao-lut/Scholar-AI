@@ -737,6 +737,21 @@ def _search_chunks_hybrid(query: str, project_id: str, top_k: int = 10) -> list[
     return [{"score": round(score, 2), **chunk} for score, chunk in top if score > 0]
 
 
+def search_project_chunks_for_query(project_id: str, query: str, top_k: int = 10) -> list[dict[str, Any]]:
+    """Return ranked project chunks for API consumers that need local RAG context.
+
+    Args:
+        project_id: Existing writing project identifier.
+        query: Non-empty retrieval query.
+        top_k: Positive maximum number of chunks to return.
+
+    Returns:
+        Ranked chunk dictionaries with a numeric ``score`` field and original
+        chunk provenance preserved.
+    """
+    return _search_chunks_hybrid(query=query, project_id=project_id, top_k=top_k)
+
+
 def _ensure_project_chunks(
     project_id: str,
     material_id: str | None = None,

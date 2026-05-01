@@ -12,6 +12,7 @@ import {
   ChatSessionSummary,
   ChatResumeMessage,
 } from '@/services/intelligentChatApi';
+import { useWriting } from '@/contexts/WritingContext';
 
 interface ChatMessage {
   id: string;
@@ -80,13 +81,14 @@ function toChatMessage(message: ChatResumeMessage): ChatMessage {
     content: message.content,
     tierUsed: message.tier_used ?? undefined,
     contextMetadata: message.context_metadata ?? undefined,
-    evidenceRefs: undefined,
+    evidenceRefs: message.evidence_refs ?? undefined,
     timestamp: parseChatTimestamp(message.timestamp),
     insufficientContext: message.role === 'assistant' && !message.context_metadata,
   };
 }
 
 export function IntelligentChat() {
+  const { activeProjectId } = useWriting();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
@@ -177,6 +179,7 @@ export function IntelligentChat() {
         query,
         session_id: sessionId,
         tier: selectedTier,
+        project_id: activeProjectId || undefined,
       });
 
       if (!sessionId) {
@@ -234,6 +237,9 @@ export function IntelligentChat() {
             <h1 className="text-xl font-semibold text-gray-900">Intelligent Chat</h1>
             {sessionId && (
               <p className="text-sm text-gray-500">Session: {sessionId}</p>
+            )}
+            {activeProjectId && (
+              <p className="text-xs text-gray-500">Project context: {activeProjectId}</p>
             )}
           </div>
         </div>

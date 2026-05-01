@@ -700,6 +700,13 @@
               }
             ]
           },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceReferencePayload"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1042,6 +1049,17 @@
       "ContextChunkPayload": {
         "description": "Single context chunk disclosed under an assistant message.",
         "properties": {
+          "chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
           "content": {
             "minLength": 1,
             "title": "Content",
@@ -1051,6 +1069,31 @@
             "minimum": 1.0,
             "title": "Index",
             "type": "integer"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
           },
           "relevance_score": {
             "anyOf": [
@@ -1064,10 +1107,50 @@
             ],
             "title": "Relevance Score"
           },
+          "section_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Title"
+          },
           "source": {
             "minLength": 1,
             "title": "Source",
             "type": "string"
+          },
+          "source_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hint"
+          },
+          "source_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Labels",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           }
         },
         "required": [
@@ -1745,6 +1828,20 @@
             ],
             "title": "Material Id"
           },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
           "quote": {
             "title": "Quote",
             "type": "string"
@@ -1763,6 +1860,17 @@
           "source": {
             "title": "Source",
             "type": "string"
+          },
+          "source_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hint"
           },
           "source_labels": {
             "items": {
@@ -2095,6 +2203,17 @@
       "IntelligentChatRequest": {
         "description": "Request payload for the frontend Intelligent Chat endpoint.",
         "properties": {
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
           "query": {
             "maxLength": 5000,
             "minLength": 1,

@@ -25,6 +25,8 @@ from pydantic import BaseModel, Field
 from project_paths import REPO_ROOT, runtime_state_path
 from routers.chat_router import ChatRequest, LLMConfig, chat_ask
 from routers.llm_cost_router import _read_cost_aggregate
+from routers.resources_router import search_project_chunks_for_query
+from writing_resources import get_writing_resource_store
 
 
 ContextTier = Literal["fast", "balanced", "thorough"]
@@ -69,6 +71,13 @@ class ContextChunkPayload(BaseModel):
     source: str = Field(..., min_length=1)
     content: str = Field(..., min_length=1)
     relevance_score: float | None = Field(default=None, ge=0.0)
+    chunk_id: str | None = None
+    material_id: str | None = None
+    title: str | None = None
+    section_title: str | None = None
+    page: int | str | None = None
+    source_labels: list[str] = Field(default_factory=list)
+    source_hint: str | None = None
 
 
 class ContextMetadataPayload(BaseModel):
@@ -89,6 +98,8 @@ class EvidenceReferencePayload(BaseModel):
     label: str = "context"
     score: float | None = None
     source_labels: list[str] = Field(default_factory=lambda: ["local_context"])
+    page: int | str | None = None
+    source_hint: str | None = None
 
 
 class SamplingParamsPayload(BaseModel):
@@ -106,6 +117,7 @@ class IntelligentChatRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=5000)
     session_id: str | None = None
     tier: ContextTier = "balanced"
+    project_id: str | None = None
     source_paths: list[str] | None = None
 
 
@@ -156,6 +168,7 @@ class ChatResumeMessagePayload(BaseModel):
     tier_used: ContextTier | None = None
     context_metadata: ContextMetadataPayload | None = None
     tokens_used: TokenUsagePayload | None = None
+    evidence_refs: list[EvidenceReferencePayload] = Field(default_factory=list)
 
 
 class ChatResumeResponse(BaseModel):
@@ -253,6 +266,57 @@ def _score_text(query_terms: set[str], text: str) -> float:
     return hits / max(1, len(query_terms))
 
 
+def _clean_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _validate_project_id(project_id: str | None) -> str | None:
+    normalized = str(project_id or "").strip()
+    if not normalized:
+        return None
+    try:
+        store = get_writing_resource_store()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail="Writing resource store is unavailable") from exc
+    if store.get_project(normalized) is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {normalized}")
+    return normalized
+
+
+def _extract_project_chunk_content(chunk: dict[str, Any]) -> str:
+    return str(
+        chunk.get("content")
+        or chunk.get("raw_content")
+        or chunk.get("text")
+        or chunk.get("source_text")
+        or ""
+    ).strip()
+
+
+def _extract_project_chunk_source(chunk: dict[str, Any]) -> str:
+    return str(
+        chunk.get("title")
+        or chunk.get("source_relative_path")
+        or chunk.get("material_id")
+        or chunk.get("chunk_id")
+        or "project_chunk"
+    ).strip()
+
+
+def _extract_source_labels(chunk: dict[str, Any], fallback: str) -> list[str]:
+    raw_labels = chunk.get("source_labels")
+    labels: list[str] = []
+    if isinstance(raw_labels, list):
+        labels.extend(str(label).strip() for label in raw_labels if str(label).strip())
+    raw_label = chunk.get("source_label")
+    if raw_label is not None and str(raw_label).strip():
+        labels.append(str(raw_label).strip())
+    return labels or [fallback]
+
+
 def _chunk_text(text: str, *, chunk_chars: int = 1200) -> list[str]:
     paragraphs = [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
     chunks: list[str] = []
@@ -306,8 +370,67 @@ def _build_context_chunks(query: str, source_paths: list[Path], tier: ContextTie
     return chunks, truncated
 
 
+def _build_project_context_chunks(query: str, project_id: str, tier: ContextTier) -> tuple[list[ContextChunkPayload], bool]:
+    max_chunks, max_chars = _TIER_LIMITS[tier]
+    results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
+    chunks: list[ContextChunkPayload] = []
+    used_chars = 0
+    truncated = False
+
+    for result in results:
+        remaining = max_chars - used_chars
+        if len(chunks) >= max_chunks or remaining <= 0:
+            truncated = True
+            break
+
+        full_content = _extract_project_chunk_content(result)
+        if not full_content:
+            continue
+        content = full_content[:remaining].strip()
+        if not content:
+            continue
+        if len(full_content) > len(content):
+            truncated = True
+
+        score = result.get("score")
+        numeric_score = float(score) if isinstance(score, int | float) else None
+        title = _clean_optional_text(result.get("title"))
+        chunks.append(
+            ContextChunkPayload(
+                index=len(chunks) + 1,
+                source=_extract_project_chunk_source(result),
+                content=content,
+                relevance_score=round(numeric_score, 4) if numeric_score is not None else None,
+                chunk_id=_clean_optional_text(result.get("chunk_id")),
+                material_id=_clean_optional_text(result.get("material_id")),
+                title=title,
+                section_title=_clean_optional_text(result.get("section_title")),
+                page=result.get("page") if isinstance(result.get("page"), int | str) else None,
+                source_labels=_extract_source_labels(result, "project_chunks"),
+                source_hint=_clean_optional_text(result.get("source_hint")),
+            )
+        )
+        used_chars += len(content)
+
+    if len(results) > len(chunks):
+        truncated = True
+    return chunks, truncated
+
+
 def _build_context_strings(chunks: list[ContextChunkPayload]) -> list[str]:
-    return [f"[{chunk.index}] {chunk.source}\n{chunk.content}" for chunk in chunks]
+    context_strings: list[str] = []
+    for chunk in chunks:
+        meta_parts = [f"source={chunk.source}"]
+        if chunk.chunk_id:
+            meta_parts.append(f"chunk_id={chunk.chunk_id}")
+        if chunk.material_id:
+            meta_parts.append(f"material_id={chunk.material_id}")
+        if chunk.section_title:
+            meta_parts.append(f"section={chunk.section_title}")
+        if chunk.page is not None:
+            meta_parts.append(f"page={chunk.page}")
+        context_strings.append(f"[{chunk.index}] {'; '.join(meta_parts)}\n{chunk.content}")
+    return context_strings
 
 
 def _build_evidence_refs(chunks: list[ContextChunkPayload]) -> list[EvidenceReferencePayload]:
@@ -315,12 +438,16 @@ def _build_evidence_refs(chunks: list[ContextChunkPayload]) -> list[EvidenceRefe
     for chunk in chunks:
         refs.append(
             EvidenceReferencePayload(
-                chunk_id=f"local-{chunk.index}",
-                material_id=chunk.source,
+                chunk_id=chunk.chunk_id or f"local-{chunk.index}",
+                material_id=chunk.material_id,
                 source=chunk.source,
                 text=chunk.content,
                 quote=chunk.content[:300],
+                label="project_chunk" if chunk.material_id else "local_context",
                 score=chunk.relevance_score,
+                source_labels=chunk.source_labels or (["project_chunks"] if chunk.material_id else ["local_context"]),
+                page=chunk.page,
+                source_hint=chunk.source_hint,
             )
         )
     return refs
@@ -466,6 +593,7 @@ def _persist_turns(
                     response.context_metadata.model_dump() if response.context_metadata is not None else None
                 ),
                 "tokens_used": response.tokens_used.model_dump(),
+                "evidence_refs": [ref.model_dump() for ref in response.evidence_refs],
             }
         )
         session["updated_at"] = now
@@ -497,11 +625,15 @@ def _session_summary(session: dict[str, Any]) -> ChatSessionSummaryPayload:
 @router.post("/chat", response_model=IntelligentChatResponse)
 async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatResponse:
     """Answer a literature-grounded frontend chat request."""
-    source_paths = _resolve_source_paths(req.source_paths)
-    if not source_paths:
-        raise HTTPException(status_code=400, detail="No literature source paths configured")
+    project_id = _validate_project_id(req.project_id)
+    if project_id is not None:
+        chunks, truncated = _build_project_context_chunks(req.query, project_id, req.tier)
+    else:
+        source_paths = _resolve_source_paths(req.source_paths)
+        if not source_paths:
+            raise HTTPException(status_code=400, detail="No literature source paths configured")
+        chunks, truncated = _build_context_chunks(req.query, source_paths, req.tier)
 
-    chunks, truncated = _build_context_chunks(req.query, source_paths, req.tier)
     session_id = (req.session_id or "").strip() or f"session_{uuid.uuid4().hex[:12]}"
     context_metadata = ContextMetadataPayload(chunks=chunks, truncated=truncated)
     evidence_refs = _build_evidence_refs(chunks)

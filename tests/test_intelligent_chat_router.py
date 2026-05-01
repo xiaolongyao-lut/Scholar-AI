@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from python_adapter_server import app
 from routers import intelligent_chat_router
+from routers import resources_router
 
 
 class _FakeChatAnswer:
@@ -51,6 +52,74 @@ def test_api_chat_returns_context_and_evidence_refs(monkeypatch, tmp_path) -> No
     assert payload["context_metadata"]["chunks"][0]["source"].endswith("paper.txt")
     assert payload["evidence_refs"][0]["source"].endswith("paper.txt")
     assert payload["actual_sampling_params"]["max_tokens"] == 2048
+
+
+def test_api_chat_uses_project_chunks_when_project_id_is_supplied(monkeypatch, tmp_path) -> None:
+    session_store = tmp_path / "sessions.json"
+    doc_store_dir = tmp_path / "doc_store"
+    chunk_store_dir = tmp_path / "chunk_store"
+    doc_store_dir.mkdir(parents=True)
+    chunk_store_dir.mkdir(parents=True)
+    monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
+    monkeypatch.setattr(resources_router, "_DOC_STORE_DIR", doc_store_dir)
+    monkeypatch.setattr(resources_router, "_CHUNK_STORE_DIR", chunk_store_dir)
+    monkeypatch.setattr(resources_router, "_CHUNK_QUARANTINE_LOG_PATH", tmp_path / "chunk_quarantine.jsonl")
+    monkeypatch.setenv("CHAT_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
+    monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
+    monkeypatch.setattr(intelligent_chat_router, "chat_ask", _fake_chat_ask)
+
+    client = TestClient(app)
+    project_response = client.post("/resources/project", json={"title": "Project Chat Grounding"})
+    assert project_response.status_code == 200
+    project_id = project_response.json()["project_id"]
+
+    resources_router._save_doc_store(
+        project_id,
+        {
+            "mat_laser": {
+                "title": "Laser Process Study",
+                "content": "Laser power improves hardness and changes the molten pool.",
+            }
+        },
+    )
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "query": "laser power hardness",
+            "tier": "balanced",
+            "project_id": project_id,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["context_chunks_used"] == 1
+    assert payload["context_metadata"]["chunks"][0]["material_id"] == "mat_laser"
+    assert payload["context_metadata"]["chunks"][0]["chunk_id"] == "mat_laser_chunk_0"
+    assert payload["evidence_refs"][0]["material_id"] == "mat_laser"
+    assert payload["evidence_refs"][0]["chunk_id"] == "mat_laser_chunk_0"
+    assert payload["evidence_refs"][0]["source_labels"] == ["project_chunks"]
+
+    resumed = client.post("/api/chat/resume", json={"session_id": payload["session_id"], "limit": 1})
+    assert resumed.status_code == 200
+    assert resumed.json()["messages"][0]["evidence_refs"][0]["material_id"] == "mat_laser"
+
+
+def test_api_chat_returns_404_for_unknown_project_id() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={
+            "query": "laser power",
+            "tier": "fast",
+            "project_id": "missing_project",
+        },
+    )
+
+    assert response.status_code == 404
+    assert "Project not found" in response.text
 
 
 def test_api_chat_sessions_and_resume_return_recent_turns(monkeypatch, tmp_path) -> None:

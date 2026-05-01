@@ -2546,6 +2546,8 @@ export interface components {
             /** Content */
             content: string;
             context_metadata?: components["schemas"]["ContextMetadataPayload"] | null;
+            /** Evidence Refs */
+            evidence_refs?: components["schemas"]["EvidenceReferencePayload"][];
             /** Id */
             id: string;
             /**
@@ -2704,14 +2706,28 @@ export interface components {
          * @description Single context chunk disclosed under an assistant message.
          */
         ContextChunkPayload: {
+            /** Chunk Id */
+            chunk_id?: string | null;
             /** Content */
             content: string;
             /** Index */
             index: number;
+            /** Material Id */
+            material_id?: string | null;
+            /** Page */
+            page?: number | string | null;
             /** Relevance Score */
             relevance_score?: number | null;
+            /** Section Title */
+            section_title?: string | null;
             /** Source */
             source: string;
+            /** Source Hint */
+            source_hint?: string | null;
+            /** Source Labels */
+            source_labels?: string[];
+            /** Title */
+            title?: string | null;
         };
         /**
          * ContextMetadataPayload
@@ -3023,12 +3039,16 @@ export interface components {
             label: string;
             /** Material Id */
             material_id?: string | null;
+            /** Page */
+            page?: number | string | null;
             /** Quote */
             quote: string;
             /** Score */
             score?: number | null;
             /** Source */
             source: string;
+            /** Source Hint */
+            source_hint?: string | null;
             /** Source Labels */
             source_labels?: string[];
             /** Text */
@@ -3178,6 +3198,8 @@ export interface components {
          * @description Request payload for the frontend Intelligent Chat endpoint.
          */
         IntelligentChatRequest: {
+            /** Project Id */
+            project_id?: string | null;
             /** Query */
             query: string;
             /** Session Id */

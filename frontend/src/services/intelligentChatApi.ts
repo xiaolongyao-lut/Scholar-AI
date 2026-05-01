@@ -8,6 +8,13 @@ export interface ContextChunk {
   source: string;
   content: string;
   relevance_score?: number;
+  chunk_id?: string | null;
+  material_id?: string | null;
+  title?: string | null;
+  section_title?: string | null;
+  page?: number | string | null;
+  source_labels?: string[];
+  source_hint?: string | null;
 }
 
 export interface ContextMetadata {
@@ -24,6 +31,8 @@ export interface EvidenceReference {
   label?: string;
   score?: number | null;
   source_labels?: string[];
+  page?: number | string | null;
+  source_hint?: string | null;
 }
 
 export interface TokenUsage {
@@ -36,6 +45,7 @@ export interface IntelligentChatRequest {
   query: string;
   session_id?: string;
   tier?: ContextTier;
+  project_id?: string;
   source_paths?: string[];
 }
 
@@ -90,6 +100,7 @@ export interface ChatResumeMessage {
   tier_used?: ContextTier | null;
   context_metadata?: ContextMetadata | null;
   tokens_used?: TokenUsage | null;
+  evidence_refs?: EvidenceReference[];
 }
 
 export interface ChatResumeResponse {
@@ -138,6 +149,7 @@ export async function sendIntelligentChatMessage(
       query: request.query,
       session_id: request.session_id,
       tier: request.tier || 'balanced',
+      project_id: request.project_id,
       source_paths: request.source_paths,
     },
     { timeout: timeoutMs }
