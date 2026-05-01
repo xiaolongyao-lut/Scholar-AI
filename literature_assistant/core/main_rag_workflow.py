@@ -224,6 +224,60 @@ class RAGWorkflow:
             raise TypeError("LLM response payload must be a dict")
 
         return str(data["choices"][0]["message"]["content"])
+
+    async def _build_semantic_cache_query_vector(self, user_query: str) -> Optional[np.ndarray]:
+        """Return an optional semantic-cache vector without blocking local RAG.
+
+        Why:
+            Project-local chat may not have a remote RAGFlow adapter. Semantic
+            cache is an optimization, so missing embedding support must not
+            prevent the retrieve-then-generate path from running.
+        """
+        if self.rag_adapter is None or not hasattr(self.rag_adapter, "_embed_query"):
+            return None
+
+        embedding_params = resolve_llm_params("embedding")
+        try:
+            query_vec_list = await asyncio.to_thread(
+                gated_call,
+                kind="embedding",
+                cache_key_parts={
+                    "model": embedding_params.get("model", "BAAI/bge-m3"),
+                    "prompt_hash": sha256(user_query.encode("utf-8")).hexdigest(),
+                    "task": "semantic_cache_lookup",
+                },
+                payload={"input": [user_query]},
+                invoke=lambda: self.rag_adapter._embed_query(user_query),
+                validate_result=lambda value: isinstance(value, list) and len(value) > 0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Semantic cache lookup skipped: %s", exc)
+            return None
+
+        return np.array(query_vec_list) if query_vec_list else None
+
+    def _resolve_corpus_version(self, project_id: str = "target_project") -> str:
+        """Return a corpus fingerprint for cache scoping.
+
+        Args:
+            project_id: Best-effort project identifier for manifest-backed
+                corpora. Local in-memory corpora fall back to a deterministic
+                hash of ``self.local_data``.
+        """
+        if self.local_data:
+            material = json.dumps(
+                self.local_data,
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+                separators=(",", ":"),
+            )
+            return sha256(material.encode("utf-8")).hexdigest()
+        try:
+            return _compute_corpus_version(project_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Corpus version fallback used: %s", exc)
+            return "unknown-corpus"
     
     async def ask_my_literature(
         self,
@@ -252,23 +306,10 @@ class RAGWorkflow:
             # ========================================
             # Sprint 4: 语义缓存预检 (Semantic Cache Bypass)
             # ========================================
-            # 备注：我们先获取 query 的向量，用于语义碰撞
-            embedding_params = resolve_llm_params("embedding")
-            query_vec_list = await asyncio.to_thread(
-                gated_call,
-                kind="embedding",
-                cache_key_parts={
-                    "model": embedding_params.get("model", "BAAI/bge-m3"),
-                    "prompt_hash": sha256(user_query.encode("utf-8")).hexdigest(),
-                    "task": "semantic_cache_lookup",
-                },
-                payload={"input": [user_query]},
-                invoke=lambda: self.rag_adapter._embed_query(user_query) if hasattr(self.rag_adapter, "_embed_query") else None,
-                validate_result=lambda v: isinstance(v, list) and len(v) > 0
+            current_query_vec = await self._build_semantic_cache_query_vector(user_query)
+            corpus_version = self._resolve_corpus_version(
+                association_project_id or os.environ.get("RAG_PROJECT_ID", "target_project")
             )
-
-            current_query_vec = np.array(query_vec_list) if query_vec_list else None
-            corpus_version = _compute_corpus_version("target_project")
 
             # --- 加载会话历史 (FR-3 Resume) ---
             session_id = os.environ.get("RAG_SESSION_ID", "default_session")

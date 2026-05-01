@@ -752,6 +752,26 @@ def search_project_chunks_for_query(project_id: str, query: str, top_k: int = 10
     return _search_chunks_hybrid(query=query, project_id=project_id, top_k=top_k)
 
 
+def load_project_chunks_for_rag(project_id: str) -> list[dict[str, Any]]:
+    """Return all normalized project chunks for local RAG workflow consumers.
+
+    Args:
+        project_id: Existing writing project identifier.
+
+    Returns:
+        A flat list of chunk dictionaries with project chunk-store provenance.
+    """
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        raise ValueError("project_id must be a non-empty string")
+
+    chunk_store = _ensure_project_chunks(normalized_project_id)
+    chunks: list[dict[str, Any]] = []
+    for material_chunks in chunk_store.values():
+        chunks.extend(dict(chunk) for chunk in material_chunks if isinstance(chunk, dict))
+    return chunks
+
+
 def _ensure_project_chunks(
     project_id: str,
     material_id: str | None = None,

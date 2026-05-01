@@ -232,3 +232,54 @@ async def test_ask_result_exposes_generation_evidence_refs(monkeypatch) -> None:
         }
     ]
     assert result.trace["step_3_generation"]["evidence_ref_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_ask_local_data_without_rag_adapter_skips_semantic_cache_manifest(monkeypatch) -> None:
+    class _FakeRouter:
+        async def route_query(self, _query: str, top_k: int) -> list[str]:
+            assert top_k == 1
+            return ["laser hardness"]
+
+    async def fake_decompose_query_async(*_args, **_kwargs) -> list[dict]:
+        return [{"id": 1, "task": "laser hardness"}]
+
+    def fake_compute_corpus_version(_project_id: str) -> str:
+        raise AssertionError("local_data should not require a chunk-store manifest")
+
+    def fake_gated_call(**kwargs):
+        assert kwargs["cache_key_parts"].get("task") == "generation"
+        return '{"status": "success", "overall_score": 1.0, "conclusion": "ok"}'
+
+    monkeypatch.setattr(main_rag_workflow, "decompose_query_async", fake_decompose_query_async, raising=False)
+    monkeypatch.setattr(main_rag_workflow, "_compute_corpus_version", fake_compute_corpus_version, raising=False)
+    monkeypatch.setattr(main_rag_workflow, "gated_call", fake_gated_call, raising=False)
+
+    workflow = main_rag_workflow.RAGWorkflow(
+        semantic_router=_FakeRouter(),
+        ragflow_adapter=None,
+        local_data={
+            "chunks": [
+                {
+                    "chunk_id": "local-c1",
+                    "material_id": "mat-local",
+                    "content": "Laser power improves hardness.",
+                }
+            ]
+        },
+        api_key="test-key",
+        llm_client=object(),
+        enable_requests_fallback=False,
+        memory_adapter=None,
+    )
+
+    result = await workflow.ask_my_literature(
+        "laser hardness",
+        top_k_points=1,
+        top_k_evidence=2,
+        association_project_id="proj-local",
+    )
+
+    assert result.generated_answer
+    assert result.rag_evidence[0]["chunk_id"] == "local-c1"
+    assert result.evidence_refs[0]["chunk_id"] == "local-c1"

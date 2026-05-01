@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from project_paths import REPO_ROOT, runtime_state_path
 from routers.chat_router import ChatRequest, LLMConfig, chat_ask
 from routers.llm_cost_router import _read_cost_aggregate
-from routers.resources_router import search_project_chunks_for_query
+from routers.resources_router import load_project_chunks_for_rag, search_project_chunks_for_query
 from writing_resources import get_writing_resource_store
 
 
@@ -195,6 +195,10 @@ def _now_iso() -> str:
 
 def _truthy(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _ragworkflow_chat_enabled() -> bool:
+    return _truthy(os.getenv("INTELLIGENT_CHAT_RAGWORKFLOW_ENABLED"))
 
 
 def _split_source_paths(raw_value: str) -> list[str]:
@@ -453,6 +457,70 @@ def _build_evidence_refs(chunks: list[ContextChunkPayload]) -> list[EvidenceRefe
     return refs
 
 
+def _coerce_evidence_refs(raw_refs: Any) -> list[EvidenceReferencePayload]:
+    refs: list[EvidenceReferencePayload] = []
+    if not isinstance(raw_refs, list):
+        return refs
+    for raw_ref in raw_refs:
+        if not isinstance(raw_ref, dict):
+            continue
+        text = str(raw_ref.get("text") or raw_ref.get("compressed_text") or raw_ref.get("quote") or "").strip()
+        source = str(raw_ref.get("source") or raw_ref.get("material_id") or raw_ref.get("chunk_id") or "").strip()
+        chunk_id = str(raw_ref.get("chunk_id") or "").strip()
+        if not chunk_id or not source or not text:
+            continue
+        refs.append(
+            EvidenceReferencePayload(
+                chunk_id=chunk_id,
+                material_id=_clean_optional_text(raw_ref.get("material_id")),
+                source=source,
+                text=text,
+                quote=str(raw_ref.get("quote") or text[:300]).strip(),
+                label=str(raw_ref.get("label") or "rag_workflow").strip() or "rag_workflow",
+                score=float(raw_ref["score"]) if isinstance(raw_ref.get("score"), int | float) else None,
+                source_labels=_extract_source_labels(raw_ref, "rag_workflow"),
+                page=raw_ref.get("page") if isinstance(raw_ref.get("page"), int | str) else None,
+                source_hint=_clean_optional_text(raw_ref.get("source_hint")),
+            )
+        )
+    return refs
+
+
+def _context_chunks_from_evidence_refs(refs: list[EvidenceReferencePayload], tier: ContextTier) -> tuple[list[ContextChunkPayload], bool]:
+    max_chunks, max_chars = _TIER_LIMITS[tier]
+    chunks: list[ContextChunkPayload] = []
+    used_chars = 0
+    truncated = False
+    for ref in refs:
+        if len(chunks) >= max_chunks:
+            truncated = True
+            break
+        remaining = max_chars - used_chars
+        if remaining <= 0:
+            truncated = True
+            break
+        content = ref.text[:remaining].strip()
+        if not content:
+            continue
+        if len(ref.text) > len(content):
+            truncated = True
+        chunks.append(
+            ContextChunkPayload(
+                index=len(chunks) + 1,
+                source=ref.source,
+                content=content,
+                relevance_score=ref.score,
+                chunk_id=ref.chunk_id,
+                material_id=ref.material_id,
+                page=ref.page,
+                source_labels=ref.source_labels,
+                source_hint=ref.source_hint,
+            )
+        )
+        used_chars += len(content)
+    return chunks, truncated
+
+
 def _load_default_llm_config() -> LLMConfig:
     if os.getenv("CHAT_BASE_URL") and os.getenv("CHAT_MODEL"):
         return LLMConfig(
@@ -514,6 +582,68 @@ async def _call_llm_answer(query: str, context: list[str]) -> tuple[str, TokenUs
     return (
         response.answer,
         _usage_from_mapping(response.usage),
+        SamplingParamsPayload(
+            temperature=llm.temperature,
+            top_p=llm.top_p,
+            top_k=llm.top_k,
+            max_tokens=llm.max_tokens,
+        ),
+    )
+
+
+async def _call_project_ragworkflow_answer(
+    *,
+    query: str,
+    project_id: str,
+    tier: ContextTier,
+) -> tuple[str, list[ContextChunkPayload], bool, list[EvidenceReferencePayload], SamplingParamsPayload | None]:
+    from main_rag_workflow import RAGWorkflow
+
+    class _NoopSemanticRouter:
+        async def route_query(self, user_query: str, top_k: int = 3) -> list[str]:
+            del top_k
+            return [user_query]
+
+    local_chunks = load_project_chunks_for_rag(project_id)
+    if not local_chunks:
+        return (
+            "No relevant literature context was found for this query.",
+            [],
+            False,
+            [],
+            None,
+        )
+
+    llm = _load_default_llm_config()
+    workflow = RAGWorkflow(
+        semantic_router=_NoopSemanticRouter(),
+        local_data={"chunks": local_chunks},
+        api_key=llm.api_key,
+        base_url=llm.base_url,
+        model=llm.model,
+        enable_requests_fallback=False,
+        memory_adapter=None,
+    )
+    try:
+        result = await workflow.ask_my_literature(
+            query,
+            top_k_points=1,
+            top_k_evidence=_TIER_LIMITS[tier][0],
+            include_association=False,
+            association_project_id=project_id,
+        )
+    finally:
+        await workflow.close()
+
+    refs = _coerce_evidence_refs(list(result.evidence_refs))
+    chunks, truncated = _context_chunks_from_evidence_refs(refs, tier)
+    if "error" in result.trace:
+        raise HTTPException(status_code=502, detail=f"RAGWorkflow failed: {result.trace['error']}")
+    return (
+        result.generated_answer,
+        chunks,
+        truncated,
+        refs,
         SamplingParamsPayload(
             temperature=llm.temperature,
             top_p=llm.top_p,
@@ -626,32 +756,49 @@ def _session_summary(session: dict[str, Any]) -> ChatSessionSummaryPayload:
 async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatResponse:
     """Answer a literature-grounded frontend chat request."""
     project_id = _validate_project_id(req.project_id)
-    if project_id is not None:
+    ragworkflow_answer: str | None = None
+    ragworkflow_sampling: SamplingParamsPayload | None = None
+    evidence_refs: list[EvidenceReferencePayload]
+
+    if project_id is not None and _ragworkflow_chat_enabled():
+        ragworkflow_answer, chunks, truncated, evidence_refs, ragworkflow_sampling = await _call_project_ragworkflow_answer(
+            query=req.query,
+            project_id=project_id,
+            tier=req.tier,
+        )
+    elif project_id is not None:
         chunks, truncated = _build_project_context_chunks(req.query, project_id, req.tier)
+        evidence_refs = _build_evidence_refs(chunks)
     else:
         source_paths = _resolve_source_paths(req.source_paths)
         if not source_paths:
             raise HTTPException(status_code=400, detail="No literature source paths configured")
         chunks, truncated = _build_context_chunks(req.query, source_paths, req.tier)
+        evidence_refs = _build_evidence_refs(chunks)
 
     session_id = (req.session_id or "").strip() or f"session_{uuid.uuid4().hex[:12]}"
     context_metadata = ContextMetadataPayload(chunks=chunks, truncated=truncated)
-    evidence_refs = _build_evidence_refs(chunks)
 
     if not chunks:
         response = IntelligentChatResponse(
-            response="No relevant literature context was found for this query.",
+            response=ragworkflow_answer or "No relevant literature context was found for this query.",
             session_id=session_id,
             context_chunks_used=0,
             tokens_used=TokenUsagePayload(),
             tier_used=req.tier,
             context_metadata=ContextMetadataPayload(chunks=[], truncated=False),
             evidence_refs=[],
+            actual_sampling_params=ragworkflow_sampling,
         )
         _persist_turns(session_id=session_id, query=req.query, response=response)
         return response
 
-    answer, usage, sampling = await _call_llm_answer(req.query, _build_context_strings(chunks))
+    if ragworkflow_answer is not None:
+        answer = ragworkflow_answer
+        usage = TokenUsagePayload()
+        sampling = ragworkflow_sampling
+    else:
+        answer, usage, sampling = await _call_llm_answer(req.query, _build_context_strings(chunks))
     response = IntelligentChatResponse(
         response=answer,
         session_id=session_id,

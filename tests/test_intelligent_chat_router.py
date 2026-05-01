@@ -107,6 +107,73 @@ def test_api_chat_uses_project_chunks_when_project_id_is_supplied(monkeypatch, t
     assert resumed.json()["messages"][0]["evidence_refs"][0]["material_id"] == "mat_laser"
 
 
+def test_api_chat_uses_ragworkflow_when_project_adapter_enabled(monkeypatch, tmp_path) -> None:
+    session_store = tmp_path / "sessions.json"
+    monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
+    monkeypatch.setenv("CHAT_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
+    monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
+    monkeypatch.setenv("INTELLIGENT_CHAT_RAGWORKFLOW_ENABLED", "1")
+
+    client = TestClient(app)
+    project_response = client.post("/resources/project", json={"title": "RAGWorkflow Chat"})
+    assert project_response.status_code == 200
+    project_id = project_response.json()["project_id"]
+
+    async def fake_ragworkflow_answer(*, query: str, project_id: str, tier: str):
+        assert query == "laser power"
+        assert tier == "fast"
+        evidence_ref = intelligent_chat_router.EvidenceReferencePayload(
+            chunk_id="rag-c1",
+            material_id="mat-rag",
+            source="RAG Paper",
+            text="RAGWorkflow evidence text.",
+            quote="RAGWorkflow evidence text.",
+            label="rag_workflow",
+            score=0.91,
+            source_labels=["rag_workflow"],
+        )
+        chunk = intelligent_chat_router.ContextChunkPayload(
+            index=1,
+            source="RAG Paper",
+            content="RAGWorkflow evidence text.",
+            relevance_score=0.91,
+            chunk_id="rag-c1",
+            material_id="mat-rag",
+            source_labels=["rag_workflow"],
+        )
+        return (
+            "RAGWorkflow answer",
+            [chunk],
+            False,
+            [evidence_ref],
+            intelligent_chat_router.SamplingParamsPayload(
+                temperature=0.1,
+                top_p=0.9,
+                top_k=50,
+                max_tokens=2048,
+            ),
+        )
+
+    monkeypatch.setattr(intelligent_chat_router, "_call_project_ragworkflow_answer", fake_ragworkflow_answer)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "query": "laser power",
+            "tier": "fast",
+            "project_id": project_id,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response"] == "RAGWorkflow answer"
+    assert payload["context_metadata"]["chunks"][0]["chunk_id"] == "rag-c1"
+    assert payload["evidence_refs"][0]["label"] == "rag_workflow"
+    assert payload["tokens_used"] == {"prompt": 0, "completion": 0, "total": 0}
+
+
 def test_api_chat_returns_404_for_unknown_project_id() -> None:
     client = TestClient(app)
     response = client.post(
