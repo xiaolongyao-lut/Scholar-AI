@@ -56,7 +56,35 @@ def _base_manifest(tmp_path: Path) -> dict[str, Any]:
         "reranker": {
             "model": "qwen3-rerank",
         },
+        "safety": {
+            "requires_paired_no_rerank_control": False,
+        },
     }
+
+
+def _paired_control_manifest(tmp_path: Path) -> dict[str, Any]:
+    manifest = _base_manifest(tmp_path)
+    manifest["paired_control"] = {
+        "inputs": dict(manifest["inputs"]),
+        "outputs": {
+            "metrics_path": str(tmp_path / "control" / "metrics.json"),
+            "progress_path": str(tmp_path / "control" / "progress.jsonl"),
+            "per_query_output": str(tmp_path / "control" / "per_query.jsonl"),
+            "rerank_trace_output": str(tmp_path / "control" / "rerank_trace.jsonl"),
+            "resume_guard_path": str(tmp_path / "control" / "resume_config.json"),
+            "run_log_path": str(tmp_path / "control" / "run.log"),
+        },
+        "retrieval_config": {
+            "use_rerank": False,
+            "top_k": 5,
+            "recall_top_n": 100,
+            "query_concurrency": 16,
+        },
+        "runtime_env_overrides": {
+            "RAG_RUNTIME_RERANK_ENABLED": "0",
+        },
+    }
+    return manifest
 
 
 def test_dry_run_manifest_accepts_guarded_rerank_manifest(tmp_path: Path) -> None:
@@ -84,6 +112,16 @@ def test_dry_run_manifest_rejects_missing_runtime_opt_in(tmp_path: Path) -> None
         dry_run_manifest(manifest_path, require_runtime_rerank_opt_in=True)
 
 
+def test_dry_run_manifest_rejects_string_false_rerank_flag(tmp_path: Path) -> None:
+    manifest = _base_manifest(tmp_path)
+    manifest["retrieval_config"]["use_rerank"] = "false"
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(RuntimeError, match="use_rerank=true"):
+        dry_run_manifest(manifest_path, require_runtime_rerank_opt_in=True)
+
+
 def test_dry_run_manifest_rejects_duplicate_outputs(tmp_path: Path) -> None:
     manifest = _base_manifest(tmp_path)
     manifest["outputs"]["run_log_path"] = manifest["outputs"]["metrics_path"]
@@ -104,6 +142,82 @@ def test_run_manifest_reuses_preflight_before_mutating_outputs(tmp_path: Path) -
         run_manifest(manifest_path)
 
     assert not (tmp_path / "out").exists()
+
+
+def test_dry_run_manifest_accepts_paired_no_rerank_control(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, _paired_control_manifest(tmp_path))
+
+    report = dry_run_manifest(manifest_path, require_runtime_rerank_opt_in=True)
+
+    assert report["status"] == "ok"
+    assert report["paired_control"]["status"] == "ok"
+    assert report["paired_control"]["retrieval_config"]["use_rerank"] is False
+    assert report["paired_control"]["queries_path"] == report["queries_path"]
+    assert report["paired_control"]["qrels_path"] == report["qrels_path"]
+    assert report["paired_control"]["stale_outputs"] == []
+
+
+def test_dry_run_manifest_enforces_required_paired_control(tmp_path: Path) -> None:
+    manifest = _base_manifest(tmp_path)
+    manifest["safety"]["requires_paired_no_rerank_control"] = True
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(RuntimeError, match="requires paired_control"):
+        dry_run_manifest(manifest_path, require_runtime_rerank_opt_in=True)
+
+
+def test_dry_run_manifest_rejects_paired_control_with_rerank_enabled(tmp_path: Path) -> None:
+    manifest = _paired_control_manifest(tmp_path)
+    manifest["paired_control"]["retrieval_config"]["use_rerank"] = True
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(RuntimeError, match="Control retrieval_config.use_rerank must be false"):
+        dry_run_manifest(manifest_path, require_runtime_rerank_opt_in=True)
+
+
+def test_dry_run_manifest_requires_explicit_paired_control_rerank_flag(tmp_path: Path) -> None:
+    manifest = _paired_control_manifest(tmp_path)
+    manifest["paired_control"]["retrieval_config"].pop("use_rerank")
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(RuntimeError, match="must be set explicitly"):
+        dry_run_manifest(manifest_path, require_runtime_rerank_opt_in=True)
+
+
+def test_dry_run_manifest_rejects_paired_control_query_mismatch(tmp_path: Path) -> None:
+    manifest = _paired_control_manifest(tmp_path)
+    other_queries = tmp_path / "other_queries.jsonl"
+    other_queries.write_text('{"query_id":"q2","query_text":"arc"}\n', encoding="utf-8")
+    manifest["paired_control"]["inputs"]["queries_path"] = str(other_queries)
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(RuntimeError, match="Control queries_path must match"):
+        dry_run_manifest(manifest_path, require_runtime_rerank_opt_in=True)
+
+
+def test_dry_run_manifest_rejects_paired_control_output_overlap(tmp_path: Path) -> None:
+    manifest = _paired_control_manifest(tmp_path)
+    manifest["paired_control"]["outputs"]["metrics_path"] = manifest["outputs"]["metrics_path"]
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(RuntimeError, match="must not overlap rerank outputs"):
+        dry_run_manifest(manifest_path, require_runtime_rerank_opt_in=True)
+
+
+def test_dry_run_manifest_rejects_paired_control_config_drift(tmp_path: Path) -> None:
+    manifest = _paired_control_manifest(tmp_path)
+    manifest["paired_control"]["retrieval_config"]["top_k"] = 3
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(RuntimeError, match="Control retrieval_config.top_k must match"):
+        dry_run_manifest(manifest_path, require_runtime_rerank_opt_in=True)
 
 
 def test_dry_run_manifest_rejects_query_count_mismatch(tmp_path: Path) -> None:
@@ -128,5 +242,6 @@ def test_repository_sample_manifest_stays_dry_run_safe() -> None:
     assert report["queries_nonempty_lines"] == 30
     assert report["qrels_nonempty_lines"] == 40
     assert report["runtime_rerank_opt_in"] is True
+    assert report["paired_control"]["retrieval_config"]["use_rerank"] is False
     metrics_path = Path(str(report["output_paths"]["metrics_path"]))
     assert metrics_path.parts[:3] == ("workspace_artifacts", "generated", "eval")

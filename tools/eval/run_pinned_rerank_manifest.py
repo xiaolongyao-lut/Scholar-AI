@@ -88,11 +88,178 @@ def _optional_nonnegative_int(section: dict[str, Any], key: str) -> int | None:
     return parsed
 
 
+def _optional_bool(section: dict[str, Any], key: str, *, default: bool | None = None) -> bool | None:
+    value = section.get(key)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(f"Manifest field {key!r} must be a boolean")
+
+
 def _display_path(path: Path) -> str:
     try:
         return str(path.resolve().relative_to(REPO_ROOT))
     except ValueError:
         return str(path)
+
+
+def _validate_output_paths(outputs: dict[str, Any], *, required_keys: list[str]) -> dict[str, Path]:
+    output_paths = {key: _required_repo_path(outputs, key) for key in required_keys}
+    output_path_texts = [str(path.resolve()) for path in output_paths.values()]
+    duplicate_outputs = sorted(
+        path for path in set(output_path_texts) if output_path_texts.count(path) > 1
+    )
+    if duplicate_outputs:
+        raise RuntimeError(f"Manifest output paths must be unique: {duplicate_outputs}")
+    return output_paths
+
+
+def _validate_rerank_target(
+    *,
+    retrieval_config: dict[str, Any],
+    runtime_env_overrides: dict[str, Any],
+    reranker: dict[str, Any],
+    require_runtime_rerank_opt_in: bool,
+) -> dict[str, Any]:
+    if _optional_bool(retrieval_config, "use_rerank", default=False) is not True:
+        raise RuntimeError("Pinned rerank manifest must set retrieval_config.use_rerank=true")
+
+    target_base_url = str(
+        runtime_env_overrides.get("DASHSCOPE_RERANK_BASE_URL")
+        or runtime_env_overrides.get("SILICONFLOW_RERANK_BASE_URL")
+        or ""
+    ).strip()
+    target_model = str(
+        runtime_env_overrides.get("DASHSCOPE_RERANK_MODEL")
+        or runtime_env_overrides.get("SILICONFLOW_RERANK_MODEL")
+        or reranker.get("model")
+        or ""
+    ).strip()
+    if not target_base_url or not target_model:
+        raise RuntimeError("Manifest must pin rerank base_url and model")
+
+    runtime_opt_in = _truthy(runtime_env_overrides.get("RAG_RUNTIME_RERANK_ENABLED"))
+    if require_runtime_rerank_opt_in and not runtime_opt_in:
+        raise RuntimeError("Manifest must set runtime_env_overrides.RAG_RUNTIME_RERANK_ENABLED=1")
+
+    return {
+        "base_url": target_base_url,
+        "model": target_model,
+        "provider": "dashscope" if "dashscope" in target_base_url.lower() else "siliconflow",
+        "runtime_rerank_opt_in": runtime_opt_in,
+    }
+
+
+def _validate_control_manifest(
+    manifest: dict[str, Any],
+    rerank_inputs: dict[str, Any],
+    rerank_outputs: dict[str, Path],
+) -> dict[str, Any] | None:
+    control = manifest.get("paired_control")
+    safety = manifest.get("safety") or {}
+    if not isinstance(safety, dict):
+        raise RuntimeError("Manifest section 'safety' must be an object when present")
+    if control is None:
+        if _optional_bool(safety, "requires_paired_no_rerank_control", default=False):
+            raise RuntimeError("Manifest safety.requires_paired_no_rerank_control=true requires paired_control")
+        return None
+    if not isinstance(control, dict):
+        raise RuntimeError("Manifest section 'paired_control' must be an object")
+
+    control_inputs = _require_mapping(control, "inputs")
+    control_outputs = _require_mapping(control, "outputs")
+    control_retrieval_config = _require_mapping(control, "retrieval_config")
+    control_runtime_env = control.get("runtime_env_overrides") or {}
+    if not isinstance(control_runtime_env, dict):
+        raise RuntimeError("Control runtime_env_overrides must be an object when present")
+
+    rerank_queries_path = _required_repo_path(rerank_inputs, "queries_path", must_exist=True)
+    rerank_qrels_path = _required_repo_path(rerank_inputs, "qrels_path", must_exist=True)
+    control_queries_path = _required_repo_path(control_inputs, "queries_path", must_exist=True)
+    control_qrels_path = _required_repo_path(control_inputs, "qrels_path", must_exist=True)
+    if control_queries_path.resolve() != rerank_queries_path.resolve():
+        raise RuntimeError("Control queries_path must match rerank manifest inputs.queries_path")
+    if control_qrels_path.resolve() != rerank_qrels_path.resolve():
+        raise RuntimeError("Control qrels_path must match rerank manifest inputs.qrels_path")
+
+    expected_queries = _optional_nonnegative_int(rerank_inputs, "queries_nonempty_lines")
+    control_expected_queries = _optional_nonnegative_int(control_inputs, "queries_nonempty_lines")
+    if expected_queries is not None and control_expected_queries != expected_queries:
+        raise RuntimeError("Control queries_nonempty_lines must match rerank manifest")
+    expected_qrels = _optional_nonnegative_int(rerank_inputs, "qrels_nonempty_lines")
+    control_expected_qrels = _optional_nonnegative_int(control_inputs, "qrels_nonempty_lines")
+    if expected_qrels is not None and control_expected_qrels != expected_qrels:
+        raise RuntimeError("Control qrels_nonempty_lines must match rerank manifest")
+
+    if "use_rerank" not in control_retrieval_config:
+        raise RuntimeError("Control retrieval_config.use_rerank must be set explicitly")
+    if _optional_bool(control_retrieval_config, "use_rerank") is not False:
+        raise RuntimeError("Control retrieval_config.use_rerank must be false")
+    if _truthy(control_runtime_env.get("RAG_RUNTIME_RERANK_ENABLED")):
+        raise RuntimeError("Control runtime_env_overrides.RAG_RUNTIME_RERANK_ENABLED must not be truthy")
+
+    comparable_keys = [
+        "top_k",
+        "recall_top_n",
+        "use_prefilter",
+        "prefilter_threshold",
+        "use_dynamic_topk",
+        "dynamic_low_rerank_top_n",
+        "dynamic_high_rerank_top_n",
+        "dynamic_score_gap_threshold",
+        "use_expansion",
+        "use_contextual",
+        "query_concurrency",
+        "strict_cache_guard",
+    ]
+    rerank_retrieval_config = _require_mapping(manifest, "retrieval_config")
+    for key in comparable_keys:
+        if key in rerank_retrieval_config and control_retrieval_config.get(key) != rerank_retrieval_config.get(key):
+            raise RuntimeError(f"Control retrieval_config.{key} must match rerank manifest")
+
+    output_keys = [
+        "metrics_path",
+        "progress_path",
+        "per_query_output",
+        "rerank_trace_output",
+        "resume_guard_path",
+        "run_log_path",
+    ]
+    control_output_paths = _validate_output_paths(control_outputs, required_keys=output_keys)
+    rerank_output_path_texts = {str(path.resolve()) for path in rerank_outputs.values()}
+    overlapping_outputs = sorted(
+        _display_path(path)
+        for path in control_output_paths.values()
+        if str(path.resolve()) in rerank_output_path_texts
+    )
+    if overlapping_outputs:
+        raise RuntimeError(f"Control output paths must not overlap rerank outputs: {overlapping_outputs}")
+    stale_outputs = [
+        _display_path(path)
+        for path in control_output_paths.values()
+        if path.exists()
+    ]
+    return {
+        "queries_path": str(control_queries_path),
+        "qrels_path": str(control_qrels_path),
+        "retrieval_config": {
+            "use_rerank": False,
+            "top_k": control_retrieval_config.get("top_k"),
+            "query_concurrency": control_retrieval_config.get("query_concurrency"),
+        },
+        "output_paths": {
+            key: _display_path(path)
+            for key, path in control_output_paths.items()
+        },
+        "stale_outputs": stale_outputs,
+        "status": "ok",
+    }
 
 
 def dry_run_manifest(manifest_path: Path, *, require_runtime_rerank_opt_in: bool = False) -> dict[str, Any]:
@@ -139,34 +306,14 @@ def dry_run_manifest(manifest_path: Path, *, require_runtime_rerank_opt_in: bool
         "resume_guard_path",
         "run_log_path",
     ]
-    output_paths = {key: _required_repo_path(outputs, key) for key in output_keys}
-    output_path_texts = [str(path.resolve()) for path in output_paths.values()]
-    duplicate_outputs = sorted(
-        path for path in set(output_path_texts) if output_path_texts.count(path) > 1
+    output_paths = _validate_output_paths(outputs, required_keys=output_keys)
+    pinned_reranker = _validate_rerank_target(
+        retrieval_config=retrieval_config,
+        runtime_env_overrides=runtime_env_overrides,
+        reranker=reranker,
+        require_runtime_rerank_opt_in=require_runtime_rerank_opt_in,
     )
-    if duplicate_outputs:
-        raise RuntimeError(f"Manifest output paths must be unique: {duplicate_outputs}")
-
-    if not bool(retrieval_config.get("use_rerank", False)):
-        raise RuntimeError("Pinned rerank manifest must set retrieval_config.use_rerank=true")
-
-    target_base_url = str(
-        runtime_env_overrides.get("DASHSCOPE_RERANK_BASE_URL")
-        or runtime_env_overrides.get("SILICONFLOW_RERANK_BASE_URL")
-        or ""
-    ).strip()
-    target_model = str(
-        runtime_env_overrides.get("DASHSCOPE_RERANK_MODEL")
-        or runtime_env_overrides.get("SILICONFLOW_RERANK_MODEL")
-        or reranker.get("model")
-        or ""
-    ).strip()
-    if not target_base_url or not target_model:
-        raise RuntimeError("Manifest must pin rerank base_url and model")
-
-    runtime_opt_in = _truthy(runtime_env_overrides.get("RAG_RUNTIME_RERANK_ENABLED"))
-    if require_runtime_rerank_opt_in and not runtime_opt_in:
-        raise RuntimeError("Manifest must set runtime_env_overrides.RAG_RUNTIME_RERANK_ENABLED=1")
+    control_report = _validate_control_manifest(manifest, inputs, output_paths)
 
     stale_outputs = [
         _display_path(path)
@@ -181,21 +328,22 @@ def dry_run_manifest(manifest_path: Path, *, require_runtime_rerank_opt_in: bool
         "queries_nonempty_lines": queries_nonempty_lines,
         "qrels_nonempty_lines": qrels_nonempty_lines,
         "retrieval_config": {
-            "use_rerank": bool(retrieval_config.get("use_rerank")),
+            "use_rerank": bool(_optional_bool(retrieval_config, "use_rerank", default=False)),
             "top_k": retrieval_config.get("top_k"),
             "rerank_top_n": retrieval_config.get("rerank_top_n"),
             "query_concurrency": retrieval_config.get("query_concurrency"),
         },
         "pinned_reranker": {
-            "base_url": target_base_url,
-            "model": target_model,
-            "provider": "dashscope" if "dashscope" in target_base_url.lower() else "siliconflow",
+            "base_url": pinned_reranker["base_url"],
+            "model": pinned_reranker["model"],
+            "provider": pinned_reranker["provider"],
         },
-        "runtime_rerank_opt_in": runtime_opt_in,
+        "runtime_rerank_opt_in": bool(pinned_reranker["runtime_rerank_opt_in"]),
         "output_paths": {
             key: _display_path(path)
             for key, path in output_paths.items()
         },
+        "paired_control": control_report,
         "stale_outputs": stale_outputs,
         "status": "ok",
     }
