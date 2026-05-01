@@ -1,6 +1,22 @@
 import type { EvidenceReference } from '@/types/writing';
 
-const KNOWN_EVIDENCE_KEYS = new Set(['chunk_id', 'source_id', 'title', 'content', 'quote', 'score']);
+const KNOWN_EVIDENCE_KEYS = new Set([
+  'chunk_id',
+  'material_id',
+  'source_id',
+  'title',
+  'content',
+  'text',
+  'compressed_text',
+  'quote',
+  'label',
+  'score',
+  'page',
+  'source',
+  'source_label',
+  'source_labels',
+  'source_hint',
+]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -20,6 +36,28 @@ const readFiniteNumber = (value: unknown): number | null => {
   }
 
   return value;
+};
+
+const readPage = (value: unknown): number | string | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  return readNonEmptyString(value);
+};
+
+const readStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.reduce<string[]>((items, item) => {
+    const text = readNonEmptyString(item);
+    if (text) {
+      items.push(text);
+    }
+    return items;
+  }, []);
 };
 
 const formatScore = (value: number): string => {
@@ -66,6 +104,11 @@ export function normalizeEvidenceReference(value: unknown): EvidenceReference | 
     normalized.chunk_id = chunkId;
   }
 
+  const materialId = readNonEmptyString(value.material_id);
+  if (materialId) {
+    normalized.material_id = materialId;
+  }
+
   const sourceId = readNonEmptyString(value.source_id);
   if (sourceId) {
     normalized.source_id = sourceId;
@@ -81,14 +124,54 @@ export function normalizeEvidenceReference(value: unknown): EvidenceReference | 
     normalized.content = content;
   }
 
+  const text = readNonEmptyString(value.text);
+  if (text) {
+    normalized.text = text;
+  }
+
+  const compressedText = readNonEmptyString(value.compressed_text);
+  if (compressedText) {
+    normalized.compressed_text = compressedText;
+  }
+
   const quote = readNonEmptyString(value.quote);
   if (quote) {
     normalized.quote = quote;
   }
 
+  const label = readNonEmptyString(value.label);
+  if (label) {
+    normalized.label = label;
+  }
+
   const score = readFiniteNumber(value.score);
   if (score !== null) {
     normalized.score = score;
+  }
+
+  const page = readPage(value.page);
+  if (page !== null) {
+    normalized.page = page;
+  }
+
+  const source = readNonEmptyString(value.source);
+  if (source) {
+    normalized.source = source;
+  }
+
+  const sourceLabel = readNonEmptyString(value.source_label);
+  if (sourceLabel) {
+    normalized.source_label = sourceLabel;
+  }
+
+  const sourceLabels = readStringArray(value.source_labels);
+  if (sourceLabels.length > 0) {
+    normalized.source_labels = sourceLabels;
+  }
+
+  const sourceHint = readNonEmptyString(value.source_hint);
+  if (sourceHint) {
+    normalized.source_hint = sourceHint;
   }
 
   return Object.keys(normalized).length > 0 ? normalized : null;
@@ -123,9 +206,12 @@ export function parseEvidenceReferences(value: unknown): EvidenceReference[] {
 export function getEvidenceReferenceBody(reference: EvidenceReference): string | null {
   const directText = firstText([
     reference.content,
+    reference.compressed_text,
+    reference.text,
     reference.quote,
     reference.title,
     reference.chunk_id,
+    reference.material_id,
     reference.source_id,
   ]);
 
@@ -145,7 +231,7 @@ export function getEvidenceReferenceBody(reference: EvidenceReference): string |
  * Returns the compact title shown above an evidence body.
  */
 export function getEvidenceReferenceTitle(reference: EvidenceReference, fallbackLabel: string): string {
-  return firstText([reference.title, reference.chunk_id, reference.source_id]) ?? fallbackLabel;
+  return firstText([reference.title, reference.chunk_id, reference.material_id, reference.source_id]) ?? fallbackLabel;
 }
 
 /**
@@ -167,10 +253,18 @@ export function getEvidenceReferenceMetaParts(
 
   if (reference.source_id) {
     parts.push(`${labels.source}: ${reference.source_id}`);
+  } else if (reference.material_id) {
+    parts.push(`${labels.source}: ${reference.material_id}`);
   }
 
   if (typeof reference.score === 'number') {
     parts.push(`${labels.score}: ${formatScore(reference.score)}`);
+  }
+
+  if (reference.source_labels && reference.source_labels.length > 0) {
+    parts.push(reference.source_labels.join('+'));
+  } else if (reference.source_hint) {
+    parts.push(reference.source_hint);
   }
 
   return parts;

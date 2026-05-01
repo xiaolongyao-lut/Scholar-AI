@@ -12,23 +12,39 @@ describe('evidenceReferences', () => {
   it('normalizes known evidence fields while preserving primitive metadata', () => {
     const normalized = normalizeEvidenceReference({
       chunk_id: '  chunk-1  ',
+      material_id: 'paper-a',
       source_id: 'source-a',
       title: 'Evidence title',
       content: 'Evidence body',
+      text: 'Full RAG text',
+      compressed_text: 'Compressed RAG text',
       quote: '',
+      label: 'relevant',
       score: 0.875,
       page: 12,
+      source: 'paper.pdf',
+      source_label: 'dense',
+      source_labels: ['bm25', ' dense ', '', null],
+      source_hint: 'bm25+dense',
       ignored: undefined,
       callback: () => 'unsafe',
     });
 
     expect(normalized).toEqual({
-      page: 12,
       chunk_id: 'chunk-1',
+      material_id: 'paper-a',
       source_id: 'source-a',
       title: 'Evidence title',
       content: 'Evidence body',
+      text: 'Full RAG text',
+      compressed_text: 'Compressed RAG text',
+      label: 'relevant',
       score: 0.875,
+      page: 12,
+      source: 'paper.pdf',
+      source_label: 'dense',
+      source_labels: ['bm25', 'dense'],
+      source_hint: 'bm25+dense',
     });
   });
 
@@ -54,6 +70,26 @@ describe('evidenceReferences', () => {
       source: 'Source',
       score: 'Score',
     })).toEqual(['Chunk: chunk-2', 'Source: source-b', 'Score: 1']);
+  });
+
+  it('renders backend RAG evidence text and retrieval source labels', () => {
+    const reference = normalizeEvidenceReference({
+      chunk_id: 'chunk-3',
+      material_id: 'paper-c',
+      text: 'Full retrieved passage.',
+      compressed_text: 'Compressed retrieved passage.',
+      source_labels: ['bm25', 'rerank'],
+      score: 0.7712,
+    });
+
+    expect(reference).not.toBeNull();
+    expect(getEvidenceReferenceTitle(reference!, 'Evidence 3')).toBe('chunk-3');
+    expect(getEvidenceReferenceBody(reference!)).toBe('Compressed retrieved passage.');
+    expect(getEvidenceReferenceMetaParts(reference!, {
+      chunk: 'Chunk',
+      source: 'Source',
+      score: 'Score',
+    })).toEqual(['Chunk: chunk-3', 'Source: paper-c', 'Score: 0.771', 'bm25+rerank']);
   });
 
   it('falls back to primitive metadata for sparse provider-specific references', () => {

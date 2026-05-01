@@ -14,11 +14,20 @@ export interface WritingAction {
 
 export interface EvidenceReference {
   chunk_id?: string;
+  material_id?: string;
   source_id?: string;
   title?: string;
   content?: string;
+  text?: string;
+  compressed_text?: string;
   quote?: string;
+  label?: string;
   score?: number;
+  page?: number | string;
+  source?: string;
+  source_label?: string;
+  source_labels?: string[];
+  source_hint?: string;
   [key: string]: unknown;
 }
 
