@@ -19,6 +19,7 @@ interface ChatMessage {
   content: string;
   tierUsed?: ContextTier;
   contextMetadata?: IntelligentChatResponse['context_metadata'];
+  evidenceRefs?: IntelligentChatResponse['evidence_refs'];
   actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
   timestamp: Date;
   insufficientContext?: boolean;
@@ -30,7 +31,7 @@ type HistoryState = 'idle' | 'loading' | 'error';
 
 function getChatErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error) && error.response) {
-    const detail = error.response.data?.detail;
+    const detail = error.response.data?.detail ?? error.response.data?.error?.message;
     if (typeof detail === 'string') {
       return detail;
     }
@@ -57,7 +58,8 @@ function isUnavailableError(error: unknown): boolean {
   }
 
   const detail = error.response.data?.detail;
-  return typeof detail === 'string' && detail.toLowerCase().includes('no literature source paths configured');
+  const message = typeof detail === 'string' ? detail : error.response.data?.error?.message;
+  return typeof message === 'string' && message.toLowerCase().includes('no literature source paths configured');
 }
 
 function parseChatTimestamp(value: string): Date {
@@ -78,6 +80,7 @@ function toChatMessage(message: ChatResumeMessage): ChatMessage {
     content: message.content,
     tierUsed: message.tier_used ?? undefined,
     contextMetadata: message.context_metadata ?? undefined,
+    evidenceRefs: undefined,
     timestamp: parseChatTimestamp(message.timestamp),
     insufficientContext: message.role === 'assistant' && !message.context_metadata,
   };
@@ -189,6 +192,7 @@ export function IntelligentChat() {
         content: response.response,
         tierUsed: response.tier_used,
         contextMetadata: response.context_metadata,
+        evidenceRefs: response.evidence_refs,
         actualSamplingParams: response.actual_sampling_params,
         timestamp: new Date(),
         insufficientContext: hasInsufficientContext,
@@ -359,6 +363,7 @@ export function IntelligentChat() {
               content={message.content}
               tierUsed={message.tierUsed}
               contextMetadata={message.contextMetadata}
+              evidenceRefs={message.evidenceRefs}
               actualSamplingParams={message.actualSamplingParams}
               timestamp={message.timestamp}
               insufficientContext={message.insufficientContext}

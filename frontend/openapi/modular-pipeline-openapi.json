@@ -367,6 +367,51 @@
         "title": "Body_post_resources_upload_batch",
         "type": "object"
       },
+      "BudgetStatusPayload": {
+        "description": "Budget status shape consumed by the frontend status bar.",
+        "properties": {
+          "budget_usd": {
+            "minimum": 0.0,
+            "title": "Budget Usd",
+            "type": "number"
+          },
+          "call_cap": {
+            "minimum": 1.0,
+            "title": "Call Cap",
+            "type": "integer"
+          },
+          "call_count": {
+            "minimum": 0.0,
+            "title": "Call Count",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "minimum": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "percent_calls": {
+            "minimum": 0.0,
+            "title": "Percent Calls",
+            "type": "number"
+          },
+          "percent_usd": {
+            "minimum": 0.0,
+            "title": "Percent Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "call_count",
+          "call_cap",
+          "cost_usd",
+          "budget_usd",
+          "percent_calls",
+          "percent_usd"
+        ],
+        "title": "BudgetStatusPayload",
+        "type": "object"
+      },
       "BuildAssociationRequest": {
         "description": "Request to build associative writing guidance for a project.",
         "properties": {
@@ -638,6 +683,186 @@
         "title": "ChatResponse",
         "type": "object"
       },
+      "ChatResumeMessagePayload": {
+        "description": "Saved chat message returned during session restore.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "context_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContextMetadataPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "tier_used": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fast",
+                  "balanced",
+                  "thorough"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier Used"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "tokens_used": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TokenUsagePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "timestamp"
+        ],
+        "title": "ChatResumeMessagePayload",
+        "type": "object"
+      },
+      "ChatResumeRequest": {
+        "description": "Request body for restoring saved chat turns.",
+        "properties": {
+          "limit": {
+            "default": 100,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "session_id": {
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "ChatResumeRequest",
+        "type": "object"
+      },
+      "ChatResumeResponse": {
+        "description": "Response for ``POST /api/chat/resume``.",
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatResumeMessagePayload"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "messages"
+        ],
+        "title": "ChatResumeResponse",
+        "type": "object"
+      },
+      "ChatSessionListResponse": {
+        "description": "List wrapper returned by ``GET /api/chat/sessions``.",
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ChatSessionSummaryPayload"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "title": "ChatSessionListResponse",
+        "type": "object"
+      },
+      "ChatSessionSummaryPayload": {
+        "description": "Small session row for the history drawer.",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "preview": {
+            "default": "",
+            "title": "Preview",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "total_tokens": {
+            "minimum": 0.0,
+            "title": "Total Tokens",
+            "type": "integer"
+          },
+          "total_turns": {
+            "minimum": 0.0,
+            "title": "Total Turns",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "session_id",
+          "total_turns",
+          "total_tokens"
+        ],
+        "title": "ChatSessionSummaryPayload",
+        "type": "object"
+      },
       "ChatStreamRequest": {
         "description": "Request body for streaming chat — same fields as ChatRequest.",
         "properties": {
@@ -812,6 +1037,64 @@
           }
         },
         "title": "CleanupRequest",
+        "type": "object"
+      },
+      "ContextChunkPayload": {
+        "description": "Single context chunk disclosed under an assistant message.",
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "index": {
+            "minimum": 1.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "relevance_score": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance Score"
+          },
+          "source": {
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "source",
+          "content"
+        ],
+        "title": "ContextChunkPayload",
+        "type": "object"
+      },
+      "ContextMetadataPayload": {
+        "description": "Context metadata for progressive disclosure in the frontend.",
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ContextChunkPayload"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "title": "ContextMetadataPayload",
         "type": "object"
       },
       "ContinuationResponse": {
@@ -1439,6 +1722,69 @@
         "title": "EvidenceGapPayload",
         "type": "object"
       },
+      "EvidenceReferencePayload": {
+        "description": "Machine-readable provenance reference for context used in a response.",
+        "properties": {
+          "chunk_id": {
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "label": {
+            "default": "context",
+            "title": "Label",
+            "type": "string"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Labels",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "source",
+          "text",
+          "quote"
+        ],
+        "title": "EvidenceReferencePayload",
+        "type": "object"
+      },
       "FactInvalidationPayload": {
         "description": "Response for fact invalidation operation.",
         "properties": {
@@ -1744,6 +2090,123 @@
           "success"
         ],
         "title": "ImportUserSkillResponse",
+        "type": "object"
+      },
+      "IntelligentChatRequest": {
+        "description": "Request payload for the frontend Intelligent Chat endpoint.",
+        "properties": {
+          "query": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "source_paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Paths"
+          },
+          "tier": {
+            "default": "balanced",
+            "enum": [
+              "fast",
+              "balanced",
+              "thorough"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "IntelligentChatRequest",
+        "type": "object"
+      },
+      "IntelligentChatResponse": {
+        "description": "Typed Intelligent Chat response matching the frontend contract.",
+        "properties": {
+          "actual_sampling_params": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SamplingParamsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context_chunks_used": {
+            "minimum": 0.0,
+            "title": "Context Chunks Used",
+            "type": "integer"
+          },
+          "context_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContextMetadataPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceReferencePayload"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "response": {
+            "title": "Response",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "tier_used": {
+            "enum": [
+              "fast",
+              "balanced",
+              "thorough"
+            ],
+            "title": "Tier Used",
+            "type": "string"
+          },
+          "tokens_used": {
+            "$ref": "#/components/schemas/TokenUsagePayload"
+          }
+        },
+        "required": [
+          "response",
+          "session_id",
+          "context_chunks_used",
+          "tokens_used",
+          "tier_used"
+        ],
+        "title": "IntelligentChatResponse",
         "type": "object"
       },
       "InvalidFactRequest": {
@@ -3747,6 +4210,35 @@
         "title": "RunActionRequest",
         "type": "object"
       },
+      "SamplingParamsPayload": {
+        "description": "Actual generation sampling settings used for the backend call.",
+        "properties": {
+          "max_tokens": {
+            "title": "Max Tokens",
+            "type": "integer"
+          },
+          "temperature": {
+            "title": "Temperature",
+            "type": "number"
+          },
+          "top_k": {
+            "title": "Top K",
+            "type": "integer"
+          },
+          "top_p": {
+            "title": "Top P",
+            "type": "number"
+          }
+        },
+        "required": [
+          "temperature",
+          "top_p",
+          "top_k",
+          "max_tokens"
+        ],
+        "title": "SamplingParamsPayload",
+        "type": "object"
+      },
       "SamplingPayload": {
         "properties": {
           "tasks": {
@@ -4844,6 +5336,31 @@
         "title": "TimelinePagePayload",
         "type": "object"
       },
+      "TokenUsagePayload": {
+        "description": "Token usage payload consumed by the chat UI.",
+        "properties": {
+          "completion": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Completion",
+            "type": "integer"
+          },
+          "prompt": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Prompt",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "TokenUsagePayload",
+        "type": "object"
+      },
       "UpdateProjectRequest": {
         "properties": {
           "description": {
@@ -5224,6 +5741,134 @@
         "summary": "List Tools",
         "tags": [
           "Agent"
+        ]
+      }
+    },
+    "/api/budget/status": {
+      "get": {
+        "description": "Return a lightweight daily LLM budget summary for the status bar.",
+        "operationId": "get_api_budget_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetStatusPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Budget Status",
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "description": "Answer a literature-grounded frontend chat request.",
+        "operationId": "post_api_chat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntelligentChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelligentChatResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intelligent Chat",
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
+    "/api/chat/resume": {
+      "post": {
+        "description": "Return the most recent saved turns for one Intelligent Chat session.",
+        "operationId": "post_api_chat_resume",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResumeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Chat Session",
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
+    "/api/chat/sessions": {
+      "get": {
+        "description": "Return saved Intelligent Chat sessions sorted by update time.",
+        "operationId": "get_api_chat_sessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSessionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Chat Sessions",
+        "tags": [
+          "Chat"
         ]
       }
     },

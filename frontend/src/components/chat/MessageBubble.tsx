@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
-import { ContextMetadata, ContextTier } from '@/services/intelligentChatApi';
+import { ContextMetadata, ContextTier, EvidenceReference } from '@/services/intelligentChatApi';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { clsx } from 'clsx';
 
@@ -9,6 +9,7 @@ interface MessageBubbleProps {
   content: string;
   tierUsed?: ContextTier;
   contextMetadata?: ContextMetadata;
+  evidenceRefs?: EvidenceReference[];
   timestamp?: Date;
   insufficientContext?: boolean;
   actualSamplingParams?: {
@@ -24,6 +25,7 @@ export function MessageBubble({
   content,
   tierUsed,
   contextMetadata,
+  evidenceRefs,
   timestamp,
   insufficientContext,
   actualSamplingParams,
@@ -122,6 +124,31 @@ export function MessageBubble({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {!isUser && evidenceRefs && evidenceRefs.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Evidence References
+            </div>
+            <div className="space-y-2">
+              {evidenceRefs.slice(0, 5).map((ref, index) => (
+                <div
+                  key={`${ref.chunk_id}-${index}`}
+                  className="rounded border border-blue-100 bg-blue-50/60 p-2 text-xs text-gray-700"
+                >
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-blue-700">[{ref.chunk_id}]</span>
+                    <span className="font-medium text-gray-800">{ref.source}</span>
+                    {typeof ref.score === 'number' && (
+                      <span className="text-gray-500">score {ref.score.toFixed(3)}</span>
+                    )}
+                  </div>
+                  <div className="line-clamp-2 text-gray-600">{ref.quote || ref.text}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

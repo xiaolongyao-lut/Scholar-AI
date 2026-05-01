@@ -64,6 +64,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/budget/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Budget Status
+         * @description Return a lightweight daily LLM budget summary for the status bar.
+         */
+        get: operations["get_api_budget_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Intelligent Chat
+         * @description Answer a literature-grounded frontend chat request.
+         */
+        post: operations["post_api_chat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Chat Session
+         * @description Return the most recent saved turns for one Intelligent Chat session.
+         */
+        post: operations["post_api_chat_resume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Chat Sessions
+         * @description Return saved Intelligent Chat sessions sorted by update time.
+         */
+        get: operations["get_api_chat_sessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/capabilities": {
         parameters: {
             query?: never;
@@ -2318,6 +2398,24 @@ export interface components {
             project_id: string;
         };
         /**
+         * BudgetStatusPayload
+         * @description Budget status shape consumed by the frontend status bar.
+         */
+        BudgetStatusPayload: {
+            /** Budget Usd */
+            budget_usd: number;
+            /** Call Cap */
+            call_cap: number;
+            /** Call Count */
+            call_count: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Percent Calls */
+            percent_calls: number;
+            /** Percent Usd */
+            percent_usd: number;
+        };
+        /**
          * BuildAssociationRequest
          * @description Request to build associative writing guidance for a project.
          */
@@ -2441,6 +2539,79 @@ export interface components {
             } | null;
         };
         /**
+         * ChatResumeMessagePayload
+         * @description Saved chat message returned during session restore.
+         */
+        ChatResumeMessagePayload: {
+            /** Content */
+            content: string;
+            context_metadata?: components["schemas"]["ContextMetadataPayload"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Tier Used */
+            tier_used?: ("fast" | "balanced" | "thorough") | null;
+            /** Timestamp */
+            timestamp: string;
+            tokens_used?: components["schemas"]["TokenUsagePayload"] | null;
+        };
+        /**
+         * ChatResumeRequest
+         * @description Request body for restoring saved chat turns.
+         */
+        ChatResumeRequest: {
+            /**
+             * Limit
+             * @default 100
+             */
+            limit: number;
+            /** Session Id */
+            session_id: string;
+        };
+        /**
+         * ChatResumeResponse
+         * @description Response for ``POST /api/chat/resume``.
+         */
+        ChatResumeResponse: {
+            /** Messages */
+            messages: components["schemas"]["ChatResumeMessagePayload"][];
+            /** Session Id */
+            session_id: string;
+        };
+        /**
+         * ChatSessionListResponse
+         * @description List wrapper returned by ``GET /api/chat/sessions``.
+         */
+        ChatSessionListResponse: {
+            /** Sessions */
+            sessions?: components["schemas"]["ChatSessionSummaryPayload"][];
+        };
+        /**
+         * ChatSessionSummaryPayload
+         * @description Small session row for the history drawer.
+         */
+        ChatSessionSummaryPayload: {
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Preview
+             * @default
+             */
+            preview: string;
+            /** Session Id */
+            session_id: string;
+            /** Total Tokens */
+            total_tokens: number;
+            /** Total Turns */
+            total_turns: number;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
          * ChatStreamRequest
          * @description Request body for streaming chat — same fields as ChatRequest.
          */
@@ -2527,6 +2698,33 @@ export interface components {
              * @default true
              */
             dry_run: boolean;
+        };
+        /**
+         * ContextChunkPayload
+         * @description Single context chunk disclosed under an assistant message.
+         */
+        ContextChunkPayload: {
+            /** Content */
+            content: string;
+            /** Index */
+            index: number;
+            /** Relevance Score */
+            relevance_score?: number | null;
+            /** Source */
+            source: string;
+        };
+        /**
+         * ContextMetadataPayload
+         * @description Context metadata for progressive disclosure in the frontend.
+         */
+        ContextMetadataPayload: {
+            /** Chunks */
+            chunks?: components["schemas"]["ContextChunkPayload"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** ContinuationResponse */
         ContinuationResponse: {
@@ -2812,6 +3010,31 @@ export interface components {
             severity: string;
         };
         /**
+         * EvidenceReferencePayload
+         * @description Machine-readable provenance reference for context used in a response.
+         */
+        EvidenceReferencePayload: {
+            /** Chunk Id */
+            chunk_id: string;
+            /**
+             * Label
+             * @default context
+             */
+            label: string;
+            /** Material Id */
+            material_id?: string | null;
+            /** Quote */
+            quote: string;
+            /** Score */
+            score?: number | null;
+            /** Source */
+            source: string;
+            /** Source Labels */
+            source_labels?: string[];
+            /** Text */
+            text: string;
+        };
+        /**
          * FactInvalidationPayload
          * @description Response for fact invalidation operation.
          */
@@ -2949,6 +3172,46 @@ export interface components {
             success: boolean;
             /** Warnings */
             warnings?: string[];
+        };
+        /**
+         * IntelligentChatRequest
+         * @description Request payload for the frontend Intelligent Chat endpoint.
+         */
+        IntelligentChatRequest: {
+            /** Query */
+            query: string;
+            /** Session Id */
+            session_id?: string | null;
+            /** Source Paths */
+            source_paths?: string[] | null;
+            /**
+             * Tier
+             * @default balanced
+             * @enum {string}
+             */
+            tier: "fast" | "balanced" | "thorough";
+        };
+        /**
+         * IntelligentChatResponse
+         * @description Typed Intelligent Chat response matching the frontend contract.
+         */
+        IntelligentChatResponse: {
+            actual_sampling_params?: components["schemas"]["SamplingParamsPayload"] | null;
+            /** Context Chunks Used */
+            context_chunks_used: number;
+            context_metadata?: components["schemas"]["ContextMetadataPayload"] | null;
+            /** Evidence Refs */
+            evidence_refs?: components["schemas"]["EvidenceReferencePayload"][];
+            /** Response */
+            response: string;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Tier Used
+             * @enum {string}
+             */
+            tier_used: "fast" | "balanced" | "thorough";
+            tokens_used: components["schemas"]["TokenUsagePayload"];
         };
         /**
          * InvalidFactRequest
@@ -3798,6 +4061,20 @@ export interface components {
             /** Scope */
             scope?: string | null;
         };
+        /**
+         * SamplingParamsPayload
+         * @description Actual generation sampling settings used for the backend call.
+         */
+        SamplingParamsPayload: {
+            /** Max Tokens */
+            max_tokens: number;
+            /** Temperature */
+            temperature: number;
+            /** Top K */
+            top_k: number;
+            /** Top P */
+            top_p: number;
+        };
         /** SamplingPayload */
         SamplingPayload: {
             /** Tasks */
@@ -4261,6 +4538,27 @@ export interface components {
             /** Session Id */
             session_id: string;
         };
+        /**
+         * TokenUsagePayload
+         * @description Token usage payload consumed by the chat UI.
+         */
+        TokenUsagePayload: {
+            /**
+             * Completion
+             * @default 0
+             */
+            completion: number;
+            /**
+             * Prompt
+             * @default 0
+             */
+            prompt: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
         /** UpdateProjectRequest */
         UpdateProjectRequest: {
             /** Description */
@@ -4430,6 +4728,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_api_budget_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetStatusPayload"];
+                };
+            };
+        };
+    };
+    post_api_chat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntelligentChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntelligentChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_resume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatResumeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatResumeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSessionListResponse"];
                 };
             };
         };

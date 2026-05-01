@@ -282,6 +282,7 @@ FRONTEND_DIST_DIR = FRONTEND_ROOT / "dist"
 FRONTEND_INDEX_FILE = FRONTEND_DIST_DIR / "index.html"
 FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
 _API_ROUTE_PREFIXES = (
+    "api",
     "health",
     "runtime",
     "resources",
@@ -436,6 +437,7 @@ from recovery_autopilot_router import router as autopilot_router
 from routers.inspiration_router import router as inspiration_router
 from routers.agent_router import router as agent_router
 from routers.chat_router import router as chat_router
+from routers.intelligent_chat_router import router as intelligent_chat_router
 from routers.llm_cost_router import router as llm_cost_router
 from routers.sampling_router import router as sampling_router
 from routers.volume_router import router as volume_router
@@ -450,6 +452,7 @@ app.include_router(autopilot_router)
 app.include_router(inspiration_router)
 app.include_router(agent_router)
 app.include_router(chat_router)
+app.include_router(intelligent_chat_router)
 app.include_router(llm_cost_router)
 app.include_router(sampling_router)
 app.include_router(volume_router)

@@ -15,6 +15,17 @@ export interface ContextMetadata {
   truncated: boolean;
 }
 
+export interface EvidenceReference {
+  chunk_id: string;
+  material_id?: string | null;
+  source: string;
+  text: string;
+  quote: string;
+  label?: string;
+  score?: number | null;
+  source_labels?: string[];
+}
+
 export interface TokenUsage {
   prompt: number;
   completion: number;
@@ -35,6 +46,7 @@ export interface IntelligentChatResponse {
   tokens_used: TokenUsage;
   tier_used: ContextTier;
   context_metadata?: ContextMetadata;
+  evidence_refs?: EvidenceReference[];
   actual_sampling_params?: {
     temperature: number;
     top_p: number;
