@@ -1,0 +1,54 @@
+{
+  "schema_version": "1",
+  "purpose": "Dry-run-only sample for a guarded rerank canary manifest. Do not add secrets here.",
+  "inputs": {
+    "queries_path": "workspace_tests/evaluation_data/eval_queries_v2.1_canary30_ALIGNED.jsonl",
+    "qrels_path": "workspace_tests/evaluation_data/gateb_goldset.jsonl",
+    "queries_nonempty_lines": 30,
+    "qrels_nonempty_lines": 40
+  },
+  "outputs": {
+    "metrics_path": "workspace_artifacts/generated/eval/rerank_canary_sample/20260502-dashscope-qwen3-rerank-c16.metrics.json",
+    "progress_path": "workspace_artifacts/generated/eval/rerank_canary_sample/20260502-dashscope-qwen3-rerank-c16.progress.jsonl",
+    "per_query_output": "workspace_artifacts/generated/eval/rerank_canary_sample/20260502-dashscope-qwen3-rerank-c16.per_query.jsonl",
+    "rerank_trace_output": "workspace_artifacts/generated/eval/rerank_canary_sample/20260502-dashscope-qwen3-rerank-c16.rerank_trace.jsonl",
+    "resume_guard_path": "workspace_artifacts/generated/eval/rerank_canary_sample/20260502-dashscope-qwen3-rerank-c16.metrics.json.resume_config.json",
+    "run_log_path": "workspace_artifacts/generated/eval/rerank_canary_sample/20260502-dashscope-qwen3-rerank-c16.run.log"
+  },
+  "retrieval_config": {
+    "top_k": 5,
+    "recall_top_n": 100,
+    "use_rerank": true,
+    "rerank_top_n": 40,
+    "use_prefilter": false,
+    "prefilter_threshold": 0.3,
+    "use_dynamic_topk": false,
+    "dynamic_low_rerank_top_n": 20,
+    "dynamic_high_rerank_top_n": 60,
+    "dynamic_score_gap_threshold": 0.15,
+    "use_expansion": false,
+    "use_contextual": false,
+    "query_concurrency": 16,
+    "strict_cache_guard": true
+  },
+  "runtime_env_overrides": {
+    "RAG_RUNTIME_RERANK_ENABLED": "1",
+    "DASHSCOPE_RERANK_BASE_URL": "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+    "DASHSCOPE_RERANK_MODEL": "qwen3-rerank",
+    "SILICONFLOW_RERANK_CONCURRENCY": "16",
+    "EMBED_CONCURRENCY": "32"
+  },
+  "reranker": {
+    "provider": "dashscope",
+    "model": "qwen3-rerank",
+    "credential_source": "ambient-env-only",
+    "secret_policy": "No API keys or tokens may be stored in this manifest."
+  },
+  "safety": {
+    "dry_run_first": true,
+    "requires_runtime_rerank_opt_in": true,
+    "requires_unique_output_paths": true,
+    "requires_no_goldset_mutation": true,
+    "requires_user_or_independent_release_gate_for_final_verdict": true
+  }
+}

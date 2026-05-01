@@ -14,6 +14,7 @@ This is the canonical location for active project plans, specs, and AI execution
 - `kilo/`: plans migrated from `.kilo/plans/`.
 - `copilot/`: plans migrated from `.copilot-tracking/plans/`.
 - `specs/`: design specs that should be read as project plans.
+- `runbooks/`: operational runbooks for repeatable guarded execution.
 - `superpowers/`: reserved for future superpower-specific plans.
 
 ## Rules For AI Agents

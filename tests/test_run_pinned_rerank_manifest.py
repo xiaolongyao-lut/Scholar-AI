@@ -6,7 +6,12 @@ from typing import Any
 
 import pytest
 
-from tools.eval.run_pinned_rerank_manifest import dry_run_manifest
+from tools.eval.run_pinned_rerank_manifest import dry_run_manifest, run_manifest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SAMPLE_MANIFEST = (
+    REPO_ROOT / "workspace_tests" / "evaluation_manifests" / "rerank_canary_dry_run_sample.json"
+)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -25,6 +30,7 @@ def _base_manifest(tmp_path: Path) -> dict[str, Any]:
             "queries_path": str(queries),
             "qrels_path": str(qrels),
             "queries_nonempty_lines": 1,
+            "qrels_nonempty_lines": 1,
         },
         "outputs": {
             "metrics_path": str(tmp_path / "out" / "metrics.json"),
@@ -86,3 +92,41 @@ def test_dry_run_manifest_rejects_duplicate_outputs(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="output paths must be unique"):
         dry_run_manifest(manifest_path)
+
+
+def test_run_manifest_reuses_preflight_before_mutating_outputs(tmp_path: Path) -> None:
+    manifest = _base_manifest(tmp_path)
+    manifest["outputs"]["run_log_path"] = manifest["outputs"]["metrics_path"]
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(RuntimeError, match="output paths must be unique"):
+        run_manifest(manifest_path)
+
+    assert not (tmp_path / "out").exists()
+
+
+def test_dry_run_manifest_rejects_query_count_mismatch(tmp_path: Path) -> None:
+    manifest = _base_manifest(tmp_path)
+    manifest["inputs"]["queries_nonempty_lines"] = 2
+    manifest_path = tmp_path / "manifest.json"
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(RuntimeError, match="queries_nonempty_lines mismatch"):
+        dry_run_manifest(manifest_path)
+
+
+def test_repository_sample_manifest_stays_dry_run_safe() -> None:
+    sample_text = SAMPLE_MANIFEST.read_text(encoding="utf-8")
+
+    assert "sk-" not in sample_text
+    assert "api_key" not in sample_text.lower()
+
+    report = dry_run_manifest(SAMPLE_MANIFEST, require_runtime_rerank_opt_in=True)
+
+    assert report["status"] == "ok"
+    assert report["queries_nonempty_lines"] == 30
+    assert report["qrels_nonempty_lines"] == 40
+    assert report["runtime_rerank_opt_in"] is True
+    metrics_path = Path(str(report["output_paths"]["metrics_path"]))
+    assert metrics_path.parts[:3] == ("workspace_artifacts", "generated", "eval")

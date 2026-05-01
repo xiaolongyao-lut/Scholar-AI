@@ -73,6 +73,21 @@ def _required_repo_path(section: dict[str, Any], key: str, *, must_exist: bool =
     return resolved
 
 
+def _optional_nonnegative_int(section: dict[str, Any], key: str) -> int | None:
+    value = section.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise RuntimeError(f"Manifest field {key!r} must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Manifest field {key!r} must be an integer") from exc
+    if parsed < 0:
+        raise RuntimeError(f"Manifest field {key!r} must be non-negative")
+    return parsed
+
+
 def _display_path(path: Path) -> str:
     try:
         return str(path.resolve().relative_to(REPO_ROOT))
@@ -100,6 +115,21 @@ def dry_run_manifest(manifest_path: Path, *, require_runtime_rerank_opt_in: bool
 
     queries_path = _required_repo_path(inputs, "queries_path", must_exist=True)
     qrels_path = _required_repo_path(inputs, "qrels_path", must_exist=True)
+    queries_nonempty_lines = _count_nonempty_lines(queries_path)
+    qrels_nonempty_lines = _count_nonempty_lines(qrels_path)
+
+    expected_queries = _optional_nonnegative_int(inputs, "queries_nonempty_lines")
+    if expected_queries is not None and queries_nonempty_lines != expected_queries:
+        raise RuntimeError(
+            "Manifest inputs.queries_nonempty_lines mismatch: "
+            f"expected={expected_queries} actual={queries_nonempty_lines}"
+        )
+    expected_qrels = _optional_nonnegative_int(inputs, "qrels_nonempty_lines")
+    if expected_qrels is not None and qrels_nonempty_lines != expected_qrels:
+        raise RuntimeError(
+            "Manifest inputs.qrels_nonempty_lines mismatch: "
+            f"expected={expected_qrels} actual={qrels_nonempty_lines}"
+        )
 
     output_keys = [
         "metrics_path",
@@ -148,8 +178,8 @@ def dry_run_manifest(manifest_path: Path, *, require_runtime_rerank_opt_in: bool
         "manifest_path": str(manifest_path),
         "queries_path": str(queries_path),
         "qrels_path": str(qrels_path),
-        "queries_nonempty_lines": _count_nonempty_lines(queries_path),
-        "qrels_nonempty_lines": _count_nonempty_lines(qrels_path),
+        "queries_nonempty_lines": queries_nonempty_lines,
+        "qrels_nonempty_lines": qrels_nonempty_lines,
         "retrieval_config": {
             "use_rerank": bool(retrieval_config.get("use_rerank")),
             "top_k": retrieval_config.get("top_k"),
@@ -230,6 +260,7 @@ def _patch_rerank_resolution(selected_api_key: str, selected_base_url: str, sele
 
 
 def run_manifest(manifest_path: Path) -> int:
+    dry_run_manifest(manifest_path)
     manifest = _load_manifest(manifest_path)
     outputs = manifest.get("outputs") or {}
     retrieval_config = manifest.get("retrieval_config") or {}
