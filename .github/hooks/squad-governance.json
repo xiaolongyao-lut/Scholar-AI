@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "windows": "py -3 tools\\squad\\squad_governance_hook.py",
+        "linux": "python3 tools/squad/squad_governance_hook.py",
+        "osx": "python3 tools/squad/squad_governance_hook.py",
+        "timeout": 10
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "windows": "py -3 tools\\squad\\squad_governance_hook.py",
+        "linux": "python3 tools/squad/squad_governance_hook.py",
+        "osx": "python3 tools/squad/squad_governance_hook.py",
+        "timeout": 10
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "windows": "py -3 tools\\squad\\squad_governance_hook.py",
+        "linux": "python3 tools/squad/squad_governance_hook.py",
+        "osx": "python3 tools/squad/squad_governance_hook.py",
+        "timeout": 10
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "windows": "py -3 tools\\squad\\squad_governance_hook.py",
+        "linux": "python3 tools/squad/squad_governance_hook.py",
+        "osx": "python3 tools/squad/squad_governance_hook.py",
+        "timeout": 10
+      }
+    ]
+  }
+}

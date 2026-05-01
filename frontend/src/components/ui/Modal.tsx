@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -13,6 +13,10 @@ interface ModalProps {
   showCloseButton?: boolean;
   closeOnBackdrop?: boolean;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  role?: 'dialog' | 'alertdialog';
+  labelledBy?: string;
+  describedBy?: string;
+  initialFocusRef?: RefObject<HTMLElement>;
 }
 
 const sizeMap = {
@@ -22,7 +26,19 @@ const sizeMap = {
   xl: 'max-w-xl',
 };
 
-export function Modal({ open, onClose, children, className, showCloseButton = true, closeOnBackdrop = true, size = 'md' }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  children,
+  className,
+  showCloseButton = true,
+  closeOnBackdrop = true,
+  size = 'md',
+  role = 'dialog',
+  labelledBy,
+  describedBy,
+  initialFocusRef,
+}: ModalProps) {
   const { t } = useI18n();
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose();
@@ -32,12 +48,15 @@ export function Modal({ open, onClose, children, className, showCloseButton = tr
     if (open) {
       document.addEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'hidden';
+      window.setTimeout(() => {
+        initialFocusRef?.current?.focus();
+      }, 0);
     }
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
     };
-  }, [open, handleKeyDown]);
+  }, [open, handleKeyDown, initialFocusRef]);
 
   return createPortal(
     <AnimatePresence>
@@ -49,8 +68,10 @@ export function Modal({ open, onClose, children, className, showCloseButton = tr
           transition={{ duration: 0.15 }}
           className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/40"
           onClick={closeOnBackdrop ? onClose : undefined}
-          role="dialog"
+          role={role}
           aria-modal="true"
+          aria-labelledby={labelledBy}
+          aria-describedby={describedBy}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 8 }}

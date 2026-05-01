@@ -26,6 +26,7 @@ export interface WorkspaceConfig {
   localStoragePath: string;
   autoIndex: boolean;
   retrievalTopK: number;
+  aiCostProfile?: 'balanced' | 'aggressive' | 'quality';
 }
 
 export interface AppSettings {

@@ -11,6 +11,7 @@ import {
   RefreshCw,
   FolderOpen,
   Files,
+  AlertCircle,
   CheckCircle2,
   AlertTriangle,
   Pencil,
@@ -94,6 +95,13 @@ function formatAxiosError(err: unknown): string {
   return '未知错误';
 }
 
+interface ScanResultItem {
+  filename: string;
+  status: 'ok' | 'error' | 'skipped';
+  reason?: string;
+  chunks?: number;
+}
+
 export function KnowledgeBase() {
   const { t } = useI18n();
   const [search, setSearch] = useState('');
@@ -104,7 +112,14 @@ export function KnowledgeBase() {
   const [uploadSelection, setUploadSelection] = useState<string[]>([]);
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<{ indexed: number; skipped: number; failed: number; folder: string } | null>(null);
+  const [scanResult, setScanResult] = useState<{ 
+    indexed: number; 
+    skipped: number; 
+    failed: number; 
+    folder: string;
+    results?: ScanResultItem[];
+  } | null>(null);
+  const [showFailedDetails, setShowFailedDetails] = useState(false);
   const [projectSourceFolder, setProjectSourceFolder] = useState('');
   const [editingFolder, setEditingFolder] = useState(false);
   const [folderDraft, setFolderDraft] = useState('');
@@ -190,10 +205,17 @@ export function KnowledgeBase() {
     if (!activeProjectId || scanning) return;
     setScanning(true);
     setScanResult(null);
+    setShowFailedDetails(false);
     try {
       const baseUrl = getApiBaseUrl();
       const { data } = await axios.post(`${baseUrl}/resources/project/${activeProjectId}/scan-folder`, {}, { timeout: 300000 });
-      setScanResult({ indexed: data.indexed, skipped: data.skipped, failed: data.failed, folder: data.folder });
+      setScanResult({ 
+        indexed: data.indexed, 
+        skipped: data.skipped, 
+        failed: data.failed, 
+        folder: data.folder,
+        results: data.results 
+      });
       await loadMaterials();
     } catch (err: unknown) {
       const msg = formatAxiosError(err);
@@ -401,17 +423,111 @@ export function KnowledgeBase() {
         </div>
       )}
       {scanResult && (
-        <div className={`mb-4 flex items-start gap-2 px-3 py-2 rounded-lg text-xs font-label ${
-          scanResult.failed > 0 && scanResult.indexed === 0 ? 'bg-red-50 border border-red-200/60 text-red-700' : 'bg-emerald-50/50 border border-emerald-200/60 text-emerald-700'
-        }`}>
-          <CheckCircle2 size={13} className="flex-shrink-0 mt-0.5" />
-          <span>
-            扫描完成：<strong>{scanResult.indexed}</strong> 个新文件已索引，
-            {scanResult.skipped > 0 && <> <strong>{scanResult.skipped}</strong> 个已跳过，</>}
-            {scanResult.failed > 0 && <> <strong>{scanResult.failed}</strong> 个失败，</>}
-            文件夹: {scanResult.folder}
-          </span>
-          <button type="button" className="ml-auto" onClick={() => setScanResult(null)}>×</button>
+        <div className={cn(
+          "mb-4 flex flex-col gap-3 px-4 py-3 rounded-xl border text-sm font-label shadow-sm transition-all",
+          scanResult.failed > 0 && scanResult.indexed === 0
+            ? "bg-red-50/50 border-red-200/60 text-red-800"
+            : scanResult.failed > 0
+              ? "bg-amber-50/50 border-amber-200/60 text-amber-800"
+              : "bg-emerald-50/50 border-emerald-200/60 text-emerald-800"
+        )}>
+          <div className="flex items-start gap-2.5">
+            {scanResult.failed > 0 && scanResult.indexed === 0 ? (
+              <AlertCircle size={16} className="text-red-600 mt-0.5 flex-shrink-0" />
+            ) : scanResult.failed > 0 ? (
+              <AlertTriangle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
+            ) : (
+              <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 flex-shrink-0" />
+            )}
+            
+            <div className="flex-1 min-w-0 space-y-1">
+              <h4 className="font-semibold text-[13px]">
+                {scanResult.failed > 0 && scanResult.indexed === 0 
+                  ? t('kb.scan_all_failed') 
+                  : scanResult.failed > 0 
+                    ? t('kb.scan_partial') 
+                    : t('kb.scan_done')}
+              </h4>
+              <div className="text-[11px] opacity-80 leading-relaxed">
+                <p>
+                  <strong>{scanResult.indexed}</strong> {t('kb.scan_indexed_short')},
+                  {scanResult.skipped > 0 && <> <strong>{scanResult.skipped}</strong> {t('kb.scan_skipped_short')},</>}
+                  <span className={cn(scanResult.failed > 0 && "text-red-600 font-bold")}>
+                    {" "}<strong>{scanResult.failed}</strong> {t('kb.scan_failed_short')}
+                  </span>.
+                </p>
+                <p className="font-mono text-[10px] opacity-70 mt-1 break-all flex items-center gap-1">
+                  <FolderOpen size={10} /> {scanResult.folder}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+              {scanResult.failed > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowFailedDetails(!showFailedDetails)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium bg-black/5 hover:bg-black/10 transition-colors"
+                  >
+                    {showFailedDetails ? t('common.close') : t('common.details') || '详情'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleScanFolder()}
+                    disabled={scanning}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors disabled:opacity-50",
+                      scanResult.indexed === 0
+                        ? "bg-red-100 hover:bg-red-200 text-red-700"
+                        : "bg-amber-100 hover:bg-amber-200 text-amber-700"
+                    )}
+                  >
+                    {scanning ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                    {t('kb.scan_retry')}
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => setScanResult(null)}
+                className="p-1.5 rounded-md hover:bg-black/5 opacity-60 hover:opacity-100 transition-all"
+                title={t('kb.scan_clear')}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Failed Items Detail List */}
+          {showFailedDetails && scanResult.results && scanResult.results.filter(r => r.status === 'error').length > 0 && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              className="mt-2 pt-2 border-t border-black/5 overflow-hidden"
+            >
+              <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                {scanResult.results.filter(r => r.status === 'error').slice(0, 20).map((res, i) => (
+                  <div key={i} className="flex flex-col gap-0.5 bg-black/5 rounded px-2 py-1.5">
+                    <div className="flex items-center gap-2 text-[11px] font-medium text-red-800">
+                      <AlertCircle size={10} />
+                      <span className="truncate">{res.filename}</span>
+                    </div>
+                    {res.reason && (
+                      <p className="text-[10px] text-red-700/70 ml-4 leading-normal">
+                        {res.reason}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {scanResult.results.filter(r => r.status === 'error').length > 20 && (
+                  <p className="text-[10px] text-center opacity-40 py-1 italic">
+                    ...及另外 {scanResult.results.filter(r => r.status === 'error').length - 20} 个错误
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          )}
         </div>
       )}
 

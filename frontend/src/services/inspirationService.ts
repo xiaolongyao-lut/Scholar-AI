@@ -5,6 +5,8 @@
 
 import axios, { AxiosInstance } from "axios";
 import { getApiBaseUrl } from "./apiBaseUrl";
+import { toBackendLLMConfig } from "./chatApi";
+import { getLLMConfig } from "./settingsStore";
 import type { InspirationSpark, ContinuationContext } from "@/types/writing";
 
 interface GenerateSparksResponse {
@@ -39,7 +41,12 @@ class InspirationService {
   async generateSparks(query: string, limit = 10, projectId?: string): Promise<InspirationSpark[]> {
     const { data } = await this.http.post<GenerateSparksResponse>(
       "/inspiration/generate",
-      { query, limit, project_id: projectId ?? null }
+      {
+        query,
+        limit,
+        project_id: projectId ?? null,
+        llm: toBackendLLMConfig(getLLMConfig()),
+      }
     );
     return data.sparks;
   }

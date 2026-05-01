@@ -4,8 +4,20 @@ Pytest configuration and shared fixtures
 
 import json
 import pytest
+import sys
 from pathlib import Path
 from typing import Dict, Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CORE = ROOT / "literature_assistant" / "core"
+EVALUATION_SCRIPTS = ROOT / "workspace_tests" / "evaluation_scripts"
+EXPERIMENT_MY_PROJECT_SRC = ROOT / "workspace_references" / "experiments" / "my-project" / "src"
+for import_root in (EXPERIMENT_MY_PROJECT_SRC, EVALUATION_SCRIPTS, CORE):
+    import_root_text = str(import_root)
+    if import_root.is_dir():
+        while import_root_text in sys.path:
+            sys.path.remove(import_root_text)
+        sys.path.insert(0, import_root_text)
 
 from modules.configuration_manager import ConfigurationManager
 from modules.evidence_classifier import EvidenceClassifier

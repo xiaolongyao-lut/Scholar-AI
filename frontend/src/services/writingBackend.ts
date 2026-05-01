@@ -603,3 +603,14 @@ export function getWritingBackendService(
 
 // Default export for convenience
 export default WritingBackendService;
+
+// =========================================================================
+// Session Persistence API re-export (conversation-persistence-mvp §S-3.3)
+// =========================================================================
+// Keep a single import entry point for frontend callers. Session APIs live in
+// their own module (`sessionApi.ts`) so the persistence scope stays separately
+// revertable, but consumers can still resolve them through `writingBackend`.
+export {
+  SessionApiService,
+  getSessionApi,
+} from "./sessionApi";

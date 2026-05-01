@@ -24,6 +24,8 @@ export const createCitationAnchorId = (materialId?: string | null) => {
 
 export const createCitationToken = (anchorId: string) => `[^${anchorId}]`;
 
+export const getCitationAnchorInstanceId = (anchorId: string, startOffset: number) => `${anchorId}@${startOffset}`;
+
 export const parseCitationMaterialId = (anchorId: string): string | null => {
   const match = anchorId.match(/^cite:(.+):([a-z0-9-]+)$/i);
 
@@ -48,6 +50,7 @@ export const parseCitationAnchors = (content: string): CitationAnchor[] => {
 
     anchors.push({
       id: anchorId,
+      instanceId: getCitationAnchorInstanceId(anchorId, match.index),
       materialId: parseCitationMaterialId(anchorId),
       token: match[0],
       startOffset: match.index,
@@ -59,8 +62,20 @@ export const parseCitationAnchors = (content: string): CitationAnchor[] => {
   return anchors;
 };
 
-export const findCitationAnchorRange = (content: string, anchorId: string) => {
+export const findCitationAnchorRange = (content: string, anchorId: string, preferredStartOffset?: number | null) => {
   const token = createCitationToken(anchorId);
+
+  if (
+    typeof preferredStartOffset === 'number'
+    && preferredStartOffset >= 0
+    && content.slice(preferredStartOffset, preferredStartOffset + token.length) === token
+  ) {
+    return {
+      startOffset: preferredStartOffset,
+      endOffset: preferredStartOffset + token.length,
+    };
+  }
+
   const startOffset = content.indexOf(token);
 
   if (startOffset < 0) {

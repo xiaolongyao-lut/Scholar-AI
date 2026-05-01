@@ -1,0 +1,297 @@
+param(
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Args
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Resolve-RepoRoot {
+    if ($env:SQUAD_TEST_ROOT -and (Test-Path $env:SQUAD_TEST_ROOT)) {
+        return $env:SQUAD_TEST_ROOT
+    }
+    $scriptDir = Split-Path -Parent $PSCommandPath
+    return (Resolve-Path (Join-Path $scriptDir "..\..")).Path
+}
+
+function Resolve-RealSquadCli {
+    if ($env:SQUAD_REAL_CLI -and (Test-Path $env:SQUAD_REAL_CLI)) {
+        return $env:SQUAD_REAL_CLI
+    }
+
+    $isTestRoot = -not [string]::IsNullOrWhiteSpace($env:SQUAD_TEST_ROOT)
+    $pathIsEmpty = [string]::IsNullOrWhiteSpace($env:PATH)
+
+    # 2026-04-26: PATH-shim layout — original mco-org binary was renamed to
+    # squad-real.exe and a squad.cmd shim was placed alongside it. We MUST
+    # resolve to the renamed binary, not to "squad" via Get-Command, or we
+    # would re-enter our own shim and recurse infinitely.
+    $renamed = 'C:\Tools\squad\squad-real.exe'
+    if ((-not $isTestRoot) -and (-not $pathIsEmpty) -and (Test-Path $renamed)) {
+        return $renamed
+    }
+
+    # Backwards-compat: pre-shim installations still ship squad.exe at the
+    # original location. Safe to call directly because no shim exists yet.
+    $installed = 'C:\Tools\squad\squad.exe'
+    if ((-not $isTestRoot) -and (-not $pathIsEmpty) -and (Test-Path $installed)) {
+        return $installed
+    }
+
+    # Last resort: find anything named squad on PATH that is not our own
+    # function or .cmd shim. Filter out Application matches that point at
+    # squad.cmd (which would recurse).
+    $cmd = Get-Command squad -All -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandType -eq 'Application' -and $_.Source -notlike '*\squad.cmd' }
+    if ($cmd) { return ($cmd | Select-Object -First 1).Source }
+
+    return $null
+}
+
+$repoRoot = Resolve-RepoRoot
+
+# ------------------------------------------------------------------
+# Identity-lock interception (2026-04-26):
+#   `squad join <role>` — typed by humans inside `/squad <role>` slash
+#   commands AND by morpheus-headless.ps1 itself — is the moment when the
+#   anti-collision check has to fire. Route through Acquire-SquadIdentity
+#   so a dead-PID lock is purged with `squad leave` before the real join
+#   call goes out, killing the morpheus-2 / morpheus-3 suffix problem at
+#   the source.
+#
+#   We only intercept the bare two-arg form (`squad join <role>`) without
+#   --role / --client / --protocol-version flags, which is what /squad
+#   slash commands send. Calls that already pass --role (e.g. headless,
+#   supervisor) are left to Acquire-SquadIdentity itself, which calls the
+#   real CLI internally.
+# ------------------------------------------------------------------
+if ($Args.Count -ge 2 -and $Args[0] -eq 'join') {
+    $roleArg = $Args[1]
+    $hasFlags = $false
+    if ($Args.Count -gt 2) {
+        foreach ($a in $Args[2..($Args.Count - 1)]) {
+            if ($a -like '--*') { $hasFlags = $true; break }
+        }
+    }
+    if (-not $hasFlags -and -not [string]::IsNullOrWhiteSpace($roleArg)) {
+        . (Join-Path $PSScriptRoot 'squad-lock.ps1')
+        $acq = Acquire-SquadIdentity -Role $roleArg
+        if (-not $acq.ok) {
+            [Console]::Error.WriteLine("squad join refused: $($acq.reason)")
+            exit 17
+        }
+        Write-Host "Joined as $roleArg (role: $roleArg)." -ForegroundColor Green
+        exit 0
+    }
+}
+
+# ------------------------------------------------------------------
+# Local commands - handled before real CLI resolution
+# ------------------------------------------------------------------
+if ($Args.Count -gt 0) {
+
+    switch ($Args[0]) {
+
+        'tier' {
+            . (Join-Path $PSScriptRoot 'lib\output.ps1')
+            . (Join-Path $PSScriptRoot 'lib\config.ps1')
+            . (Join-Path $PSScriptRoot 'lib\rules.ps1')
+            . (Join-Path $PSScriptRoot 'commands\tier.ps1')
+            $tierArgs = if ($Args.Count -gt 1) { [string[]]($Args[1..($Args.Count - 1)]) } else { @() }
+            Invoke-TierCommand -RepoRoot $repoRoot -CmdArgs $tierArgs
+            exit 0
+        }
+
+        'blocker' {
+            . (Join-Path $PSScriptRoot 'lib\output.ps1')
+            . (Join-Path $PSScriptRoot 'lib\jsonl.ps1')
+            . (Join-Path $PSScriptRoot 'lib\config.ps1')
+            . (Join-Path $PSScriptRoot 'lib\rules.ps1')
+            . (Join-Path $PSScriptRoot 'commands\blocker.ps1')
+            $blockerArgs = if ($Args.Count -gt 1) { [string[]]($Args[1..($Args.Count - 1)]) } else { @() }
+            Invoke-BlockerCommand -RepoRoot $repoRoot -CmdArgs $blockerArgs
+            exit 0
+        }
+
+        'pool' {
+            . (Join-Path $PSScriptRoot 'lib\output.ps1')
+            . (Join-Path $PSScriptRoot 'lib\jsonl.ps1')
+            . (Join-Path $PSScriptRoot 'commands\pool.ps1')
+            $poolArgs = if ($Args.Count -gt 1) { [string[]]($Args[1..($Args.Count - 1)]) } else { @() }
+            Invoke-PoolCommand -RepoRoot $repoRoot -CmdArgs $poolArgs
+            exit 0
+        }
+
+        'memory' {
+            if ($Args.Count -gt 1 -and $Args[1] -eq 'audit') {
+                . (Join-Path $PSScriptRoot 'lib\output.ps1')
+                . (Join-Path $PSScriptRoot 'lib\jsonl.ps1')
+                . (Join-Path $PSScriptRoot 'commands\memory-audit.ps1')
+                Invoke-MemoryAudit -RepoRoot $repoRoot
+            } else {
+                [Console]::Error.WriteLine("Unknown memory sub-command. Did you mean: squad memory audit")
+                exit 1
+            }
+        }
+
+        'decision' {
+            . (Join-Path $PSScriptRoot 'commands\decision.ps1')
+            $decisionArgs = if ($Args.Count -gt 1) { [string[]]($Args[1..($Args.Count - 1)]) } else { @() }
+            $code = Invoke-SquadDecision -RepoRoot $repoRoot -CmdArgs $decisionArgs
+            if ($code -is [array]) { $code = $code[-1] }
+            if ($null -eq $code) { $code = 0 }
+            exit [int]$code
+        }
+
+        'spawn' {
+            . (Join-Path $PSScriptRoot 'commands\spawn.ps1')
+            $spawnArgs = if ($Args.Count -gt 1) { [string[]]($Args[1..($Args.Count - 1)]) } else { @() }
+            $code = Invoke-SquadSpawn -RepoRoot $repoRoot -CmdArgs $spawnArgs
+            if ($code -is [array]) { $code = $code[-1] }
+            if ($null -eq $code) { $code = 0 }
+            exit [int]$code
+        }
+
+        'agent' {
+            . (Join-Path $PSScriptRoot 'commands\agent.ps1')
+            $agentArgs = if ($Args.Count -gt 1) { [string[]]($Args[1..($Args.Count - 1)]) } else { @() }
+            $code = Invoke-SquadAgentBridge -RepoRoot $repoRoot -CmdArgs $agentArgs
+            if ($code -is [array]) { $code = $code[-1] }
+            if ($null -eq $code) { $code = 0 }
+            exit [int]$code
+        }
+
+        'tell' {
+            # Sugar: `squad tell "msg"` = `squad task create <dispatcher> morpheus --title <msg-head> --body <msg>`.
+            # Reads dispatcher id from .squad/state/dispatcher.txt (set by long-run --supervised).
+            # Falls back to 'owner' if file missing.
+            #
+            # Why task vs send: morpheus's charter mandates response to structured tasks
+            # (ack/complete state machine), but treats freeform `send` as informational.
+            # Using `task create` makes squad-tell-from-dispatcher a real dispatch verb
+            # that morpheus must process, not just a notification it can ignore.
+            # Switched from `send` to `task create` 2026-04-26.
+            if ($Args.Count -lt 2) {
+                [Console]::Error.WriteLine("usage: squad tell `"<task description for morpheus>`"")
+                exit 2
+            }
+            $dispFile = Join-Path $repoRoot '.squad\state\dispatcher.txt'
+            $from = if (Test-Path $dispFile) { (Get-Content $dispFile -Raw).Trim() } else { 'owner' }
+            if ([string]::IsNullOrWhiteSpace($from)) { $from = 'owner' }
+            $msg = ($Args[1..($Args.Count - 1)]) -join ' '
+            # Title = first 60 chars of msg (squad task list shows titles in roster).
+            $title = if ($msg.Length -gt 60) { $msg.Substring(0, 60) + '...' } else { $msg }
+            $realCli = Resolve-RealSquadCli
+            if (-not $realCli) {
+                [Console]::Error.WriteLine("squad CLI not found.")
+                exit 4
+            }
+            & $realCli task create $from 'morpheus' --title $title --body $msg
+            exit $LASTEXITCODE
+        }
+
+        'long-run' {
+            . (Join-Path $PSScriptRoot 'commands\long.ps1')
+            $longArgs = if ($Args.Count -gt 1) { [string[]]($Args[1..($Args.Count - 1)]) } else { @() }
+            $code = Invoke-SquadLong -SubCmd 'run' -RepoRoot $repoRoot -CmdArgs $longArgs
+            if ($code -is [array]) { $code = $code[-1] }
+            if ($null -eq $code) { $code = 0 }
+            exit [int]$code
+        }
+
+        'long-stop' {
+            . (Join-Path $PSScriptRoot 'commands\long.ps1')
+            $longArgs = if ($Args.Count -gt 1) { [string[]]($Args[1..($Args.Count - 1)]) } else { @() }
+            $code = Invoke-SquadLong -SubCmd 'stop' -RepoRoot $repoRoot -CmdArgs $longArgs
+            if ($code -is [array]) { $code = $code[-1] }
+            if ($null -eq $code) { $code = 0 }
+            exit [int]$code
+        }
+
+        'long-status' {
+            . (Join-Path $PSScriptRoot 'commands\long.ps1')
+            $longArgs = if ($Args.Count -gt 1) { [string[]]($Args[1..($Args.Count - 1)]) } else { @() }
+            # Let the function's stdout flow straight through; read the exit code from $LASTEXITCODE.
+            $global:LASTEXITCODE = 0
+            Invoke-SquadLong -SubCmd 'status' -RepoRoot $repoRoot -CmdArgs $longArgs
+            $code = $global:LASTEXITCODE
+            if ($null -eq $code) { $code = 0 }
+            exit $code
+        }
+
+        'doctor' {
+            $realCli = Resolve-RealSquadCli
+            if ($realCli) {
+                & $realCli doctor
+                $officialExit = $LASTEXITCODE
+            } else {
+                Write-Host "[INFO] Official squad CLI not installed; skipping official doctor checks."
+                $officialExit = 0
+            }
+
+            Write-Host ""
+            Write-Host "--- Local autonomy checks ---"
+
+            . (Join-Path $PSScriptRoot 'lib\output.ps1')
+            . (Join-Path $PSScriptRoot 'lib\config.ps1')
+            . (Join-Path $PSScriptRoot 'lib\jsonl.ps1')
+
+            $localFailed = $false
+
+            # Sync role files from charters so doctor catches drift.
+            $syncScript = Join-Path $PSScriptRoot 'sync-roles.ps1'
+            if (Test-Path $syncScript) {
+                Write-Host "Running sync-roles (charter -> .squad/roles)..." -ForegroundColor DarkGray
+                & $syncScript -Quiet
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "[OK]   sync-roles clean" -ForegroundColor Green
+                } else {
+                    Write-Host "[WARN] sync-roles reported errors (exit=$LASTEXITCODE)" -ForegroundColor Yellow
+                }
+            } else {
+                Write-Host "[WARN] sync-roles.ps1 missing" -ForegroundColor Yellow
+            }
+
+            $tier = Get-AutonomyTier -RepoRoot $repoRoot
+            Write-Host "autonomy_tier: $tier" -ForegroundColor Green
+
+            $kernelPath = Join-Path $repoRoot '.squad\kernel\defaults.json'
+            if (Test-Path $kernelPath) {
+                Write-Host "[OK]   .squad/kernel/defaults.json found" -ForegroundColor Green
+            } else {
+                Write-Host "[FAIL] .squad/kernel/defaults.json missing" -ForegroundColor Red
+                $localFailed = $true
+            }
+
+            foreach ($sf in @('blockers.jsonl','pool.jsonl')) {
+                $sp = Join-Path $repoRoot ".squad\state\$sf"
+                if (Test-Path $sp) {
+                    Write-Host "[OK]   .squad/state/$sf readable" -ForegroundColor Green
+                } else {
+                    Write-Host "[WARN] .squad/state/$sf not found (will be created on first use)" -ForegroundColor Yellow
+                }
+            }
+
+            if ($localFailed) { exit 1 }
+            exit $officialExit
+        }
+    }
+}
+
+# ------------------------------------------------------------------
+# Passthrough to official CLI for all other commands
+# ------------------------------------------------------------------
+$realCli = Resolve-RealSquadCli
+
+if (-not $realCli) {
+    [Console]::Error.WriteLine("Official squad CLI not found. Expected mco-org squad at C:\Tools\squad\squad-real.exe (install from https://github.com/mco-org/squad/releases; the project's PATH shim renamed it from squad.exe).")
+    exit 4
+}
+
+if ($Args.Count -eq 0) {
+    & $realCli
+    exit $LASTEXITCODE
+}
+
+& $realCli @Args
+exit $LASTEXITCODE

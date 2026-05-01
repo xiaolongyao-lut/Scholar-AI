@@ -168,6 +168,162 @@ def test_material_endpoints_round_trip_project_scoped_cards() -> None:
     assert get_response.json()["summary_en"] == "Analyzes major bottlenecks in quantum synchronization."
 
 
+def test_project_json_export_includes_academic_evidence_contract() -> None:
+    """Project JSON export should expose evidence rows and citation chain."""
+    client = TestClient(app)
+
+    project_response = client.post("/resources/project", json={"title": "Academic Export Project"})
+    assert project_response.status_code == 200
+    project_payload = project_response.json()
+
+    section_response = client.post(
+        "/resources/section",
+        json={
+            "project_id": project_payload["project_id"],
+            "title": "Introduction",
+            "order": 1,
+        },
+    )
+    assert section_response.status_code == 200
+    section_payload = section_response.json()
+
+    material_response = client.post(
+        "/resources/material",
+        json={
+            "project_id": project_payload["project_id"],
+            "title": "量子纠缠协议 2024",
+            "summary": "分析了当前量子同步的主要瓶颈。",
+            "focus_points": ["同步效率"],
+        },
+    )
+    assert material_response.status_code == 200
+    material_payload = material_response.json()
+
+    draft_prefix = "量子同步仍受误码率限制 "
+    anchor = _build_anchor(
+        f"cite:{material_payload['material_id']}:intro",
+        material_payload["material_id"],
+        f"[^cite:{material_payload['material_id']}:intro]",
+        len(draft_prefix),
+        len(draft_prefix) + len(f"[^cite:{material_payload['material_id']}:intro]"),
+        1,
+    )
+    draft_response = client.post(
+        "/resources/draft",
+        json={
+            "project_id": project_payload["project_id"],
+            "section_id": section_payload["section_id"],
+            "title": "Intro Draft",
+            "content": f"{draft_prefix}{anchor['token']}",
+            "citation_anchors": [anchor],
+        },
+    )
+    assert draft_response.status_code == 200
+
+    export_response = client.get(
+        f"/resources/project/{project_payload['project_id']}/export",
+        params={"format": "json"},
+    )
+
+    assert export_response.status_code == 200
+    export_payload = export_response.json()
+    assert export_payload["evidence_rows"] == [
+        {
+            "evidence_id": f"evidence:{material_payload['material_id']}",
+            "material_id": material_payload["material_id"],
+            "chunk_id": None,
+            "page": None,
+            "excerpt": "分析了当前量子同步的主要瓶颈。",
+            "score": None,
+            "provenance": {
+                "material_title": "量子纠缠协议 2024",
+                "material_type": "reference",
+            },
+            "anchor_ids": [anchor["id"]],
+            "status": "used",
+        }
+    ]
+    assert export_payload["citation_chain"] == [
+        {
+            "anchor_id": anchor["id"],
+            "section_id": section_payload["section_id"],
+            "paragraph_index": 1,
+            "material_id": material_payload["material_id"],
+            "evidence_id": f"evidence:{material_payload['material_id']}",
+            "claim_excerpt": "量子同步仍受误码率限制",
+            "source_excerpt": "分析了当前量子同步的主要瓶颈。",
+            "page": None,
+            "confidence": None,
+        }
+    ]
+    assert export_payload["review_findings"] == []
+
+
+def test_project_markdown_export_includes_evidence_table_and_citation_chain() -> None:
+    """Markdown export should carry source evidence and anchor traceability."""
+    client = TestClient(app)
+
+    project_response = client.post("/resources/project", json={"title": "Markdown Evidence Project"})
+    assert project_response.status_code == 200
+    project_payload = project_response.json()
+
+    section_response = client.post(
+        "/resources/section",
+        json={
+            "project_id": project_payload["project_id"],
+            "title": "Methods",
+            "order": 1,
+        },
+    )
+    assert section_response.status_code == 200
+    section_payload = section_response.json()
+
+    material_response = client.post(
+        "/resources/material",
+        json={
+            "project_id": project_payload["project_id"],
+            "title": "Photocatalysis Review",
+            "summary": "Reports catalyst stability evidence.",
+        },
+    )
+    assert material_response.status_code == 200
+    material_payload = material_response.json()
+
+    prefix = "The catalyst remains stable "
+    anchor = _build_anchor(
+        f"cite:{material_payload['material_id']}:methods",
+        material_payload["material_id"],
+        f"[^cite:{material_payload['material_id']}:methods]",
+        len(prefix),
+        len(prefix) + len(f"[^cite:{material_payload['material_id']}:methods]"),
+        1,
+    )
+    draft_response = client.post(
+        "/resources/draft",
+        json={
+            "project_id": project_payload["project_id"],
+            "section_id": section_payload["section_id"],
+            "title": "Method Draft",
+            "content": f"{prefix}{anchor['token']}",
+            "citation_anchors": [anchor],
+        },
+    )
+    assert draft_response.status_code == 200
+
+    export_response = client.get(
+        f"/resources/project/{project_payload['project_id']}/export",
+        params={"format": "markdown"},
+    )
+
+    assert export_response.status_code == 200
+    content = export_response.json()["content"]
+    assert "## 证据表" in content
+    assert "| Evidence ID | Material | Status | Anchors | Excerpt |" in content
+    assert f"| evidence:{material_payload['material_id']} | Photocatalysis Review | used | {anchor['id']} | Reports catalyst stability evidence. |" in content
+    assert "## 引用链" in content
+    assert f"| {anchor['id']} | Methods | 1 | Photocatalysis Review | The catalyst remains stable | Reports catalyst stability evidence. |" in content
+
+
 def test_chunk_search_query_driven_ingest_indexes_relevant_files(tmp_path) -> None:
     """chunks/search should optionally ingest query-relevant files before retrieval."""
     client = TestClient(app)

@@ -5,29 +5,26 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
 import { useWriting } from '@/contexts/WritingContext';
 import {
+  getEvidenceReferenceBody,
+  getEvidenceReferenceMetaParts,
+  getEvidenceReferenceTitle,
+} from '@/lib/evidenceReferences';
+import {
   ManuscriptSection,
   DraftContent,
   TransformResult,
   WritingMaterial,
   CitationAnchor,
+  CitationInsertRequest,
+  CitationFocusRequest,
 } from '@/types/writing';
 import {
   createCitationAnchorId,
   createCitationToken,
   findCitationAnchorRange,
+  getCitationAnchorInstanceId,
   getCitationAnchorLabel,
 } from '@/lib/citationAnchors';
-
-type CitationInsertRequest = {
-  requestId: string;
-  materialId: string | null;
-};
-
-type CitationFocusRequest = {
-  requestId: string;
-  anchorId: string;
-  materialId: string | null;
-};
 
 interface WritingCanvasProps {
   activeSection: ManuscriptSection | undefined;
@@ -47,13 +44,13 @@ interface WritingCanvasProps {
   materials: WritingMaterial[];
   citationAnchors: CitationAnchor[];
   citationCountByMaterial: Record<string, number>;
-  activeCitationAnchorId: string | null;
+  activeCitationAnchorInstanceId: string | null;
   focusedMaterialId: string | null;
   citationInsertRequest: CitationInsertRequest | null;
   citationFocusRequest: CitationFocusRequest | null;
   onRequestCitationInsertion: (materialId: string | null) => void;
-  onRequestAnchorFocus: (anchorId: string, materialId: string | null) => void;
-  onCitationInsertHandled: (requestId: string, anchorId: string, materialId: string | null) => void;
+  onRequestAnchorFocus: (anchor: CitationAnchor) => void;
+  onCitationInsertHandled: (requestId: string, anchorInstanceId: string, materialId: string | null) => void;
   onCitationFocusHandled: (requestId: string) => void;
 }
 
@@ -75,7 +72,7 @@ export function WritingCanvas({
   materials,
   citationAnchors,
   citationCountByMaterial,
-  activeCitationAnchorId,
+  activeCitationAnchorInstanceId,
   focusedMaterialId,
   citationInsertRequest,
   citationFocusRequest,
@@ -126,6 +123,8 @@ export function WritingCanvas({
     const needsSpaceBefore = before.length > 0 && !/\s$/.test(before);
     const needsSpaceAfter = after.length > 0 && !/^\s/.test(after);
     const insertText = `${needsSpaceBefore ? ' ' : ''}${token}${needsSpaceAfter ? ' ' : ''}`;
+    const tokenStartOffset = cursorEnd + (needsSpaceBefore ? 1 : 0);
+    const anchorInstanceId = getCitationAnchorInstanceId(anchorId, tokenStartOffset);
     const nextContent = `${before}${insertText}${after}`;
     const nextCursor = cursorEnd + insertText.length;
     const materialLabel = request.materialId ? materialLookup.get(request.materialId)?.titleZh || request.materialId : t('writing.canvas.unbound');
@@ -142,7 +141,7 @@ export function WritingCanvas({
     setIsDirty(true);
     setSessionStatus('idle');
     setSessionMessage(t('writing.canvas.citation_inserted', { label: materialLabel }));
-    onCitationInsertHandled(request.requestId, anchorId, request.materialId);
+    onCitationInsertHandled(request.requestId, anchorInstanceId, request.materialId);
   }, [citationInsertRequest, draft, materialLookup, onCitationInsertHandled, setDraft, setIsDirty, setSessionMessage, setSessionStatus]);
 
   useEffect(() => {
@@ -164,7 +163,7 @@ export function WritingCanvas({
       return;
     }
 
-    const range = findCitationAnchorRange(draft.content || '', request.anchorId);
+    const range = findCitationAnchorRange(draft.content || '', request.anchorId, request.anchorStartOffset);
 
     handledFocusRequestRef.current = request.requestId;
 
@@ -190,11 +189,11 @@ export function WritingCanvas({
   };
 
   const handleAnchorChipClick = (anchor: CitationAnchor) => {
-    onRequestAnchorFocus(anchor.id, anchor.materialId ?? null);
+    onRequestAnchorFocus(anchor);
   };
 
   const activeMaterial = focusedMaterialId ? materialLookup.get(focusedMaterialId) : null;
-  const activeAnchor = citationAnchors.find((anchor) => anchor.id === activeCitationAnchorId) || null;
+  const activeAnchor = citationAnchors.find((anchor) => anchor.instanceId === activeCitationAnchorInstanceId) || null;
 
   const saveLabel = saving
     ? t('writing.canvas.saving')
@@ -263,7 +262,8 @@ export function WritingCanvas({
            >
               <BookOpen size={18} />
            </button>
-           )}
+           )
+           }
            <button 
               onClick={handleRequestCitationInsertion}
               title={activeMaterial ? t('writing.canvas.insert_cite', { title: activeMaterial.titleZh }) : t('writing.canvas.insert_cite_generic')}
@@ -348,11 +348,11 @@ export function WritingCanvas({
                   const material = anchor.materialId ? materialLookup.get(anchor.materialId) : null;
                   const materialTitle = material ? material.titleZh : (anchor.materialId || t('writing.canvas.unbound'));
                   const materialCount = citationCountByMaterial[anchor.materialId || '__unbound__'] || 0;
-                  const isActive = activeCitationAnchorId === anchor.id;
+                  const isActive = activeCitationAnchorInstanceId === anchor.instanceId;
 
                   return (
                     <button
-                      key={anchor.id}
+                      key={anchor.instanceId}
                       type="button"
                       onClick={() => handleAnchorChipClick(anchor)}
                       title={`${materialTitle} · ${getCitationAnchorLabel(anchor)}`}
@@ -396,6 +396,41 @@ export function WritingCanvas({
                   <div className="flex-1 p-6 bg-surface-low rounded-sm border border-outline-variant text-xs text-foreground/60 leading-relaxed overflow-auto custom-scrollbar font-doc italic">
                     {transformResult.inputText}
                   </div>
+                  {transformResult.evidenceRefs && transformResult.evidenceRefs.length > 0 && (
+                    <div className="mt-4 flex flex-col gap-2">
+                      <span className="font-label text-[10px] font-medium uppercase tracking-wider text-primary/70">
+                        {t('writing.canvas.evidence_refs')}
+                      </span>
+                      <div className="flex flex-col gap-2 max-h-[120px] overflow-auto custom-scrollbar">
+                        {transformResult.evidenceRefs.map((ref, idx) => {
+                          const title = getEvidenceReferenceTitle(ref, t('writing.canvas.evidence_item', { index: idx + 1 }));
+                          const body = getEvidenceReferenceBody(ref) ?? t('writing.canvas.evidence_empty');
+                          const metaParts = getEvidenceReferenceMetaParts(ref, {
+                            chunk: t('writing.canvas.evidence_chunk'),
+                            source: t('writing.canvas.evidence_source'),
+                            score: t('writing.canvas.evidence_score'),
+                          });
+                          const key = `${ref.chunk_id ?? ref.source_id ?? title}-${idx}`;
+
+                          return (
+                            <div key={key} className="p-2 bg-surface-lowest rounded-sm border border-outline-variant text-[11px] leading-relaxed text-foreground/70">
+                              <div className="font-label text-[10px] font-medium text-foreground/70 truncate">
+                                {title}
+                              </div>
+                              {metaParts.length > 0 && (
+                                <div className="mt-1 font-label text-[9px] uppercase tracking-wider text-foreground/40">
+                                  {metaParts.join(' · ')}
+                                </div>
+                              )}
+                              <div className="mt-1 text-foreground/70">
+                                {body}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center justify-between">
@@ -424,7 +459,6 @@ export function WritingCanvas({
                 animate={{ opacity: 1 }}
                 className="w-full relative"
               >
-                {/* Paper card — gives a clear white writing surface */}
                 <div className="rounded-sm border border-outline-variant/60 bg-white dark:bg-surface-lowest shadow-[0_2px_12px_0_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_0_rgba(0,0,0,0.25)] px-10 py-8 min-h-[80vh]">
                   <textarea
                     ref={textareaRef}

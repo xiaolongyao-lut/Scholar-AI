@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -14,8 +14,10 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getInspirationService } from '@/services/inspirationService';
+import { getSampling } from '@/services/samplingApi';
 import { useWriting } from '@/contexts/WritingContext';
 import type { InspirationSpark, ContinuationContext } from '@/types/writing';
+import { summarizeInspirationSampling } from './inspirationSamplingStatus';
 
 const inspirationService = getInspirationService();
 
@@ -40,6 +42,7 @@ export function InspirationPanel({ onContinueWrite }: InspirationPanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [continuationLoading, setContinuationLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [samplingStatus, setSamplingStatus] = useState(() => summarizeInspirationSampling());
 
   const handleSearch = useCallback(async () => {
     if (!query.trim()) return;
@@ -57,6 +60,26 @@ export function InspirationPanel({ onContinueWrite }: InspirationPanelProps) {
       setLoading(false);
     }
   }, [query]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getSampling()
+      .then((data) => {
+        if (!cancelled) {
+          setSamplingStatus(summarizeInspirationSampling(data.tasks?.inspiration));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSamplingStatus(summarizeInspirationSampling());
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -97,6 +120,12 @@ export function InspirationPanel({ onContinueWrite }: InspirationPanelProps) {
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : '探索'}
         </button>
+      </div>
+      <div className="flex items-center gap-2 text-[10px] font-label text-foreground/40">
+        <span>{samplingStatus}</span>
+        <a href="/settings#section-sampling" className="text-primary hover:text-primary/80 transition-colors">
+          去设置
+        </a>
       </div>
 
       {/* 错误/空状态 */}

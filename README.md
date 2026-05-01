@@ -31,6 +31,7 @@ Local-only or generated content should stay outside git, especially:
 - `modules/paper_processor.py`: paper-level evidence aggregation and scoring
 - `modules/parallel_processor.py`: deterministic parallel batch scoring
 - `config/scoring_rules.json`: default scoring configuration used by `modules.configuration_manager`
+- `eval_retrieval_runtime.py`: retrieval evaluation runner (supports `--progress`, `--per-query-output`, and non-secret `--rerank-trace-output` JSONL)
 
 ## Evidence Scoring Package
 
@@ -98,6 +99,12 @@ Check output JSON for `"llm_status": "enabled"`.
 |------|-------|------|---------|
 | **With LLM** | ~2-5s per PDF | ~$0.01-0.05 per PDF | High (GPT enrichment) |
 | **Without LLM** | ~0.5-1s per PDF | Free | Good (rule-based) |
+
+## Retrieval Notes
+
+- The retrieval path already chunks documents before ranking: `output\chunk_store\*.json` is loaded in `eval_retrieval_runtime.py`, and dense embeddings are built/cached via `ChunkVectorStore.build(...)`.
+- Rerank now defaults to `qwen3-rerank`. `DASHSCOPE_*` settings keep the DashScope request shape, while `SILICONFLOW_RERANK_*` still use the existing SiliconFlow request shape.
+- Rerank budget guard envs: `RERANK_DAILY_CALL_CAP` and `RERANK_DAILY_TOKEN_CAP` are hard fallback caps; `RERANK_DAILY_BUDGET_USD` is telemetry-only soft warning.
 
 ## Validation
 

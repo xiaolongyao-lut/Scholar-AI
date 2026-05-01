@@ -1,6 +1,8 @@
 {
+  "env": {
+    "RAG_SESSION_ID": "modular-pipeline-codex-gateb-goldset"
+  },
   "permissions": {
-    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(python -m pytest tests/test_reranker.py tests/test_eval_runtime.py tests/test_query_expander.py tests/test_contextual_chunker.py tests/test_dense_rrf_retrieval.py tests/test_graph_keyword_retriever.py tests/test_chunk_structure.py -q)",
       "Bash(head -30 eval_queries_v2.0.jsonl)",
@@ -26,7 +28,35 @@
       "Bash(D:/anaconda/python.exe -m pytest tests/test_reranker.py tests/test_dense_rrf_retrieval.py tests/test_eval_runtime.py -v)",
       "Bash(D:/anaconda/python.exe -m pytest tests/test_eval_runtime.py tests/test_dense_rrf_retrieval.py tests/test_reranker.py -v)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(mkdir -p ~/.claude/commands)",
+      "Bash(cat)",
+      "Bash(rm -rf \"/c/Users/xiao/Desktop/tools/Modular-Pipeline-Script/.claude_squad/plugin.json\" \"/c/Users/xiao/Desktop/tools/Modular-Pipeline-Script/.claude_squad/.claude-plugin\")",
+      "Bash(rm -f \"/c/Users/xiao/Desktop/tools/Modular-Pipeline-Script/.claude/agents.json\")"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "enableAllProjectMcpServers": false,
+  "statusLine": {
+    "type": "command",
+    "command": "pwsh -NoProfile -NonInteractive -File 'C:/Users/xiao/.claude/statusline.ps1'",
+    "padding": 0,
+    "refreshInterval": 15
+  },
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/c/Users/xiao/.claude/plugins/marketplaces/mempalace/hooks/mempal_precompact_hook.sh",
+            "timeout": 60
+          }
+        ]
+      }
     ]
-  }
+  },
+  "disableAllHooks": false,
+  "autoMemoryEnabled": true
 }

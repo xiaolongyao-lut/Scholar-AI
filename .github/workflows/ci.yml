@@ -82,6 +82,11 @@ jobs:
           python -X utf8 -m pytest \
             tests/test_batch_controller_smoke.py -q --tb=short
 
+      - name: Verify Pinned Environment (P2 L8)
+        run: |
+          python -m pip install -r requirements-pin.txt
+          python -X utf8 -m pytest tests/test_rotate_output.py -q --tb=short
+
       - name: Run GraphRAG Acceptance
         run: |
           python -X utf8 -m layers.g_synthesis_graphrag_bridge

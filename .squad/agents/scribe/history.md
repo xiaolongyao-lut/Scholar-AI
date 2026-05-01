@@ -11,6 +11,8 @@ Agent Scribe initialized and ready for work.
 
 📌 Team initialized on 2026-04-19
 
+- **2026-04-26: Trinity aligned canary30 rerank-off batch — logged** (Created orchestration/session logs, merged the decision note into `decisions.md`, and verified output artifacts on disk)
+
 ## Learnings
 
 **Phase 5 (2026-04-20): Documentation Synthesis**

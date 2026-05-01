@@ -34,6 +34,16 @@ How to decide who handles what.
 
 ## Rules
 
+### Owner Profile v4 Adaptation (Active)
+
+- All routing and dispatch decisions must read `C:\Users\xiao\Desktop\tools\用户画像_v4_AI协作治理型工程主理人.md`, then `.squad/identity/owner-profile-v4.md`; v3 references are archival unless explicitly used for evidence archaeology.
+- Every dispatched brief must carry the owner-profile packet: verify current state, surgical change, no-touch list, rollback point, blast radius, DoD, evidence path, actual exit code, and cleanup expectation.
+- Before fan-out, run a duplicate/work-exists preflight against task list, recent `.squad/decisions/inbox/`, `.squad/orchestration-log/`, `.squad/log/`, and relevant artifacts.
+- Requirement-pool writes must go through `.squad/tools/pool_append.py`; non-zero exit is a hard stop, not permission to heredoc or whole-file rewrite.
+- Decision-grade outputs from autonomous agents are provisional until independently reviewed by Morpheus/Tank/user or explicitly marked provisional.
+- Two externally verifiable checkpoints without code diff, test artifact, data artifact, task transition, or eval delta trigger stop-and-report rather than more meta-observation.
+- The completion formula is mandatory for closure: primary artifact on disk, state synchronized, gate passed, environment cleaned up.
+
 ### Aggressive Profile (Active)
 
 - `profile`: aggressive
@@ -138,3 +148,51 @@ For multi-agent tasks, each ordered heartbeat summary should include: `task_id`,
 - **Trinity:** owner-runner diagnostics and minimal recovery command path.
 - **Morpheus:** arbitration only when architecture/hard-stop boundary is crossed.
 - **Scribe:** append supervision timeline and evidence (who/when/what verdict).
+
+
+---
+
+## Coordinator Auto-Routing Rules (2026-04-27, Squad 0.9.3-modular)
+
+These rules apply at the Squad coordinator surface (chat agent), in addition to the Routing Table above.
+
+### D4=B — Plan agent auto-route (no confirmation)
+
+When the user request matches **multi-step**, **refactor**, **cross-file change**, or **unclear approach**, the Coordinator MUST call `switch_agent('Plan')` directly **without asking the user first**. Plan agent produces the implementation plan, then control returns to Squad for dispatch.
+
+### D7=B — Long-run handoff to Copilot CLI Sessions
+
+When the user request is long-running (>10 minutes wall time, paid eval, batch processing), the Coordinator MUST:
+
+1. Refuse to execute it inline in chat.
+2. Produce a `Facts / Decisions / Open / Next` handoff packet.
+3. Explicitly route the user to **Copilot CLI Sessions** for execution.
+
+The previous `tools/squad/squad.ps1` CLI parity bridge is **retired** and must not be invoked.
+
+### DD2 — GitHub MCP write-operation gate
+
+- Read MCP calls (search_code, list_issues, get_*) — automatic.
+- Write MCP calls (create_*, update_*, delete_*, push_files, merge_pull_request, add_*_comment, request_copilot_review) — **must ask user before each invocation**.
+- At long-run completion / milestone, proactively remind user of git→GitHub sync.
+
+
+---
+
+## Coordinator Auto-Routing Rules (2026-04-27, Squad 0.9.3-modular)
+
+These rules apply at the Squad coordinator surface (chat agent), in addition to the Routing Table above.
+
+### D4=B - Plan agent auto-route (no confirmation)
+
+When the user request matches multi-step, refactor, cross-file change, or unclear approach, the Coordinator MUST call switch_agent('Plan') directly without asking the user first. Plan agent produces the plan, then control returns to Squad for dispatch.
+
+### D7=B - Long-run handoff to Copilot CLI Sessions
+
+When the user request is long-running (>10 minutes wall time, paid eval, batch processing), the Coordinator MUST: (1) refuse to execute it inline in chat; (2) produce a Facts/Decisions/Open/Next handoff packet; (3) explicitly route the user to Copilot CLI Sessions for execution. The previous tools/squad/squad.ps1 CLI parity bridge is retired and must not be invoked.
+
+### DD2 - GitHub MCP write-operation gate
+
+- Read MCP calls (search_code, list_issues, get_*) - automatic.
+- Write MCP calls (create_*, update_*, delete_*, push_files, merge_pull_request, add_*_comment, request_copilot_review) - must ask user before each invocation.
+- At long-run completion / milestone, proactively remind user of git->GitHub sync.

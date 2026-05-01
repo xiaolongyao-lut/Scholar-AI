@@ -29,6 +29,18 @@
 
 ## Recent Milestones
 
+### 2026-04-26: Aligned Canary30 Rerank OFF — COMPLETED
+
+- **Scope:** Runtime/config-only confirmation slice using the aligned 30-query canary
+- **Trinity execution:**
+  - ✅ Ran `eval_queries_v2.1_canary30_ALIGNED.jsonl` with rerank disabled
+  - ✅ Produced full artifact set: metrics, progress, per-query, run log
+  - ✅ No code-default changes made
+- **Results:** Recall@5=0.5333, Recall@10=0.6333, MRR=0.3219, P95=510.19ms
+- **Orchestration:** `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.squad\orchestration-log\2026-04-26T15-06-04Z-trinity-aligned-canary30-rerank-off.md`
+- **Decision merged:** `.squad/decisions.md` (aligned canary30 rerank-off section)
+- **Status:** ✅ Complete. Runtime-only slice closed.
+
 - **2026-04-26: env key-type audit — COMPLETED** (Audited embedding/rerank routing against live `.env`; found prefix/heuristic dependencies in key_pool.py, _repo_env(), chunk_vector_store.py; verified live HTTP behavior: embedding 200+HTML, rerank 200+JSON; identified minimum fixes; decision inbox note merged to decisions.md)
 - **2026-04-26: Rerank Budget Contract Alignment — COMPLETED** (Audited hard-cap vs soft-telemetry contract; `reranker_client.RerankBudgetGuard` as source of truth; `rerank_budget.py` as compatibility wrapper; 39/39 regression passed; Tank QA validation complete)
 - **2026-04-24: Rerank Key Redesign — COMPLETED** (Backup created, TDD tests green, validity-first probing + process-local cache + kill switch, regression bundle 48/48 green, smoke no 401, Tank review gate launched)
@@ -38,6 +50,8 @@
 
 ## Learnings
 
+- 2026-04-27 startup-loading defect map: existing identity docs already define the needed owner-profile and long-run sources, but Copilot coordinator startup/spawn instructions do not fully enforce or propagate that load chain.
+- Minimum likely repair surface for Squad startup loading is instruction-only: `.github/agents/squad.agent.md` first, then `.github/copilot-instructions.md`, then small parity sync in `.squad/charter.md` / `.squad/identity/start-here.md`; `owner-profile-v4.md`, `long-run-prompt.md`, and `CLAUDE.md` are reference/non-edit files for this lane.
 - User wants implementation to sit primarily with GPT-5.4.
 - Team members should reuse project rules and skills instead of coding from isolated local assumptions.
 - Implemented Phase 1 LiteLLM gateway with env-driven configs, added .env.example and tests.
@@ -45,6 +59,34 @@
 - Required backup path for this lane: `.squad/backups/2026-04-24-rerank-key-redesign/reranker_client.py.pre`.
 - Regression anchor for rerank key selection lives in `tests/test_reranker.py`; focused bundle for this area is `tests/test_reranker.py`, `tests/test_llm_provider_routing.py`, `tests/test_model_call_gateway.py`, `tests/test_llm_defaults.py`, `tests/test_query_expander.py`.
 - Live rerank smoke can be masked by existing runtime budget state in `output/rerank_cost.jsonl`; `rerank_api_* = 0.0` does not automatically mean key-selection regression.
+- 2026-04-27 paired aligned canary30 rerank-ON runtime slice completed cleanly with parity knobs preserved (`use_contextual=false`, same query SHA/count as OFF) and produced the full four-file artifact set under `output\trinity_aligned_canary30_rerank_on.*`.
+- 2026-04-27 paired OFF vs ON evidence on the aligned 30-query slice is strongly negative for rerank-on (`Recall@5 0.5333 -> 0.1333`, `MRR 0.3219 -> 0.1002`, `P95 510.19ms -> 18932.52ms`), with large rerank API/queue timing now visible.
+- Current eval runtime still has a trace gap: `--per-query-output` records timing/quality only, not returned material IDs/ranks, so paired verdicts can prove degradation but not fully localize wrong-material ranking without an existing richer trace mode.
+
+### 2026-04-27: Paired Aligned Canary30 Rerank ON — COMPLETED
+
+- **Scope:** Runtime/config-only paired A/B run against the verified rerank-OFF canary.
+- **Trinity execution:**
+  - ✅ Ran `eval_queries_v2.1_canary30_ALIGNED.jsonl` with `use_rerank=true` and `use_contextual=false`
+  - ✅ Matched verified OFF knobs on query file/count and retrieval settings
+  - ✅ Produced metrics, progress, per-query, and sanitized run-log artifacts
+- **Results:** Recall@5=`0.1333`, Recall@10=`0.3`, MRR=`0.1002`, P95=`18932.52ms`, rerank API p95=`7154.59ms`, rerank queue p95=`11503.02ms`
+- **Decision note:** `.squad/decisions/inbox/trinity-paired-rerank-on.md`
+- **Status:** ✅ Complete. Clean paired rerank-ON evidence now exists locally.
+
+### 2026-04-26: Rerank Diagnostics Lane — VERIFIED BASELINE, FOUND ENV-LEAK ROOT CAUSE
+
+- Verified `output\trinity_aligned_canary30_rerank_off.*` artifact set exists and matches recorded metrics/counts; only discrepancy is wording in decisions.md because `use_rerank` and `evaluated_queries` live under nested `run_provenance.*` fields, not top-level keys.
+- Confirmed rerank-off baseline did not touch live rerank telemetry: `output\rerank_budget_state.json` and `output\rerank_cost.jsonl` remain last-written on 2026-04-25.
+- Focused request-shape test passed in isolation: `py -3 -m pytest -q tests\test_reranker.py::test_rerank_async_reorders_using_api` (`output\trinity_rerank_diag_pytest.log`).
+- Narrow 5-test rerank bundle failed 1/5 because `tests\test_eval_runtime.py` imports `eval_retrieval_runtime` at module import, and `eval_retrieval_runtime.py` calls `load_dotenv()` during import; this sets `RERANK_MODEL=netease-youdao/bce-reranker-base_v1` inside the pytest process and contaminates reranker tests that expect default `qwen3-rerank`.
+- Safe next action for Morpheus review: guard/defer `eval_retrieval_runtime` dotenv loading, then rerun the same 5-test local bundle before any paid rerank-on smoke.
+
+### 2026-04-26: Dotenv Leak Fix — COMPLETE
+
+- Guarding `eval_retrieval_runtime.py` with `runtime_env._dotenv_disabled()` fixed the approved root cause: when `RUNTIME_ENV_DISABLE_DOTENV=1`, importing/reloading the module no longer calls dotenv or injects `.env` values into rerank config resolution.
+- The mixed rerank bundle still needed one test-side isolation adjustment: `tests\test_eval_runtime.py` must set `RUNTIME_ENV_DISABLE_DOTENV=1` before its module-level `eval_retrieval_runtime` import, otherwise pytest collection can contaminate sibling tests before fixtures run.
+- Validation landed cleanly: exact Trinity 5-test bundle passed (`5 passed`), and focused eval runtime suite passed (`25 passed`) after the surgical fix.
 
 ### 2026-04-26: Rerank Budget Contract Alignment — COMPLETE
 

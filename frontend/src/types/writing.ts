@@ -12,6 +12,16 @@ export interface WritingAction {
   icon: string;
 }
 
+export interface EvidenceReference {
+  chunk_id?: string;
+  source_id?: string;
+  title?: string;
+  content?: string;
+  quote?: string;
+  score?: number;
+  [key: string]: unknown;
+}
+
 export interface TransformResult {
   jobId: string;
   actionId: string;
@@ -19,6 +29,7 @@ export interface TransformResult {
   outputText: string;
   applied: boolean;
   createdAt: string;
+  evidenceRefs?: EvidenceReference[];
 }
 
 export interface WritingMaterial {
@@ -34,6 +45,7 @@ export interface WritingMaterial {
 
 export interface CitationAnchor {
   id: string;
+  instanceId: string;
   materialId?: string | null;
   token: string;
   startOffset: number;
@@ -41,7 +53,6 @@ export interface CitationAnchor {
   ordinal: number;
 }
 
-// Alias for compatibility if needed
 export interface ManuscriptSection {
   id: string;
   projectId: string;
@@ -72,8 +83,6 @@ export interface Revision {
   label: string;
 }
 
-// --- Inspiration / 启发点 ---
-
 export type SparkType = 'causal_extension' | 'conflict' | 'analogy' | 'gap' | 'synthesis' | 'memory_association';
 
 export interface InspirationSpark {
@@ -93,3 +102,16 @@ export interface ContinuationContext {
   suggested_angles: string[];
   related_figures: string[];
 }
+
+export type CitationInsertRequest = {
+  requestId: string;
+  materialId: string | null;
+};
+
+export type CitationFocusRequest = {
+  requestId: string;
+  anchorId: string;
+  anchorInstanceId: string;
+  anchorStartOffset: number;
+  materialId: string | null;
+};

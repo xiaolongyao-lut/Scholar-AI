@@ -6,6 +6,7 @@ __pycache__/
 *.log
 
 output/
+.modular/
 legacy_archive/
 github/
 .rollback_snapshots/
@@ -14,10 +15,22 @@ github/
 _backups/
 scratch/
 scoring_reports/
+workspace_ai/local_state/
+workspace_artifacts/backups/
+workspace_artifacts/connectivity/
+workspace_artifacts/generated/
+workspace_artifacts/runtime_state/
+workspace_references/experiments/
+workspace_tests/diagnostics/
+workspace_tests/scratch/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/out/
+frontend/test-results/
 *.db
+*.db-shm
+*.db-wal
 *_facts.db
 *_state.db
 *_events.db
@@ -32,6 +45,51 @@ jian.md
 .vs/
 .idea/
 .pytest_cache/
+.tmp/
+.config/
+.continue/
+.claude_squad/
+.claude/*.lock
+.cursor/
+locks/
+.mcp.json
 
 test_output.txt
 final_test_result.txt
+
+# Edge/Chromium app profile runtime — added 2026-04-26.
+# Was historically tracked (700 files). Untracked via `git rm -r --cached`
+# in the same commit; on-disk files remain untouched.
+.app-profile/
+
+# Squad runtime/team state: keep noisy live artifacts ignored, but allow a small
+# canonical governance surface to be tracked and reviewed.
+# Already tracked historical `.squad` files remain tracked; untracking them is a
+# separate cleanup decision and should not be mixed with ignore-policy changes.
+.squad/*
+!.squad/INDEX.md
+!.squad/team.md
+!.squad/routing.md
+!.squad/charter.md
+!.squad/config.json
+!.squad/ceremonies.md
+!.squad/scribe-charter.md
+!.squad/issue-lifecycle.md
+!.squad/decisions.md
+!.squad/decisions-archive.md
+!.squad/tools/
+.squad/tools/*
+!.squad/tools/pool_append.py
+!.squad/tools/test_pool_append.py
+.squad/orchestration-log/
+.squad/log/
+.squad/decisions/inbox/
+.squad/sessions/
+.squad/state/
+.squad/locks/
+.squad/autopilot-logs/
+.squad/tmp/
+.squad/scratch/
+.squad/watch-logs/
+.squad-workstream
+.squad/

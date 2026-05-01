@@ -2,13 +2,34 @@
 
 You are working on a project that uses **Squad**, an AI team framework. When picking up issues autonomously, follow these guidelines.
 
+## Required Workspace Guide
+
+Before editing, moving files, running tests, or giving commands, read `AI_WORKSPACE_GUIDE.md`.
+
+The active literature-assistant workspace is organized as:
+
+- Backend/core Python: `literature_assistant/core/`
+- ASGI app: `literature_assistant.core.python_adapter_server:app`
+- Frontend: `frontend/`
+- Runtime/generated artifacts: `workspace_artifacts/`
+- Plans/specs/execution plans: `docs/plans/`
+- Evaluation/diagnostic scripts: `workspace_tests/`
+- Experiments/references: `workspace_references/`
+- External RAG reference repositories: read-only `github/`
+
+Do not recreate old root-level entrypoints such as `python_adapter_server.py`, `batch_controller.py`, or `my-project/`. Use the canonical commands in `AI_WORKSPACE_GUIDE.md`.
+
 ## Team Context
 
 Before starting work on any issue:
 
-1. Read `.squad/team.md` for the team roster, member roles, and your capability profile.
-2. Read `.squad/routing.md` for work routing rules.
-3. If the issue has a `squad:{member}` label, read that member's charter at `.squad/agents/{member}/charter.md` to understand their domain expertise and coding style — work in their voice.
+1. Read `C:\Users\xiao\Desktop\tools\用户画像_v4_AI协作治理型工程主理人.md` for the canonical owner profile.
+2. Read `.squad/identity/owner-profile-v4.md` for the Squad adapter rules.
+3. Read `.squad/team.md` for the team roster, member roles, and your capability profile.
+4. Read `.squad/routing.md` for work routing rules.
+5. If the issue has a `squad:{member}` label, read that member's charter at `.squad/agents/{member}/charter.md` to understand their domain expertise and coding style — work in their voice.
+
+Owner-profile v4 supersedes older user-profile v3 references. Use v3 only as archival evidence, not as the active behavior source.
 
 ## Capability Self-Check
 
@@ -67,3 +88,14 @@ For any task that runs across multiple turns, terminals, or sessions, you MUST c
 These rules apply to every agent in the squad regardless of profile, but the
 aggressive profile additionally enforces the safety guardrails defined in
 `.squad/charter.md` (Aggressive Safety Guardrails).
+
+## Owner Profile v4 Closure Rule
+
+Do not claim completion until all four are true:
+
+1. primary artifact is on disk and downstream-readable;
+2. state/decision/docs are synchronized where applicable;
+3. smoke/canary/full gate is reported with actual command and exit code;
+4. environment cleanup is checked for stale locks, ghost-running, orphan tmp, mixed-run artifacts, and duplicate append pollution.
+
+If you dispatch another agent, include the owner-profile packet from the canonical v4 profile plus `.squad/identity/owner-profile-v4.md` in the brief. Missing propagation is a coordinator failure.

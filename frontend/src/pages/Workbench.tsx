@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BookOpen, Search, MessageSquare, Loader2, Send, Sparkles, FileText, ChevronRight, Trash2 } from 'lucide-react';
+import { BookOpen, Search, MessageSquare, Loader2, Send, Sparkles, FileText, ChevronRight, Trash2, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
 import { useWriting } from '@/contexts/WritingContext';
-import { getLLMConfig, loadSettings } from '@/services/settingsStore';
+import { getLLMConfig, loadSettings, saveSettings } from '@/services/settingsStore';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { askChatWithConfig, type ChatHistoryMessage } from '@/services/chatApi';
 import axios from 'axios';
+import { SessionDrawer } from '@/components/writing/SessionDrawer';
+import type { ResumeSessionResult } from '@/types/runtime';
 
 interface TokenUsage {
   prompt_tokens?: number;
@@ -19,15 +21,9 @@ interface TokenUsage {
   output_tokens?: number;
 }
 
-interface Message {
-  id: number;
-  role: 'user' | 'assistant';
-  content: string;
-  sources?: { title: string; page: string }[];
-  error?: boolean;
-  usage?: TokenUsage;
-  model?: string;
-}
+import { mapTimelineToMessages, type WorkbenchMessage } from '@/components/writing/sessionDrawerHelpers';
+
+type Message = WorkbenchMessage;
 
 interface RetrievedChunk {
   chunk_id: string;
@@ -45,6 +41,16 @@ const EXAMPLE_QUERIES = [
 ];
 
 const CHAT_HISTORY_KEY = 'smart_reading_history_v1';
+
+const RETRIEVAL_TOP_K_MIN = 3;
+const RETRIEVAL_TOP_K_MAX = 20;
+const RETRIEVAL_TOP_K_DEFAULT = 6;
+const FIRST_QUESTION_SCAN_DEFAULTS = {
+  ingestLimit: 8,
+  scanMode: 'fast',
+  scanBatchSize: 24,
+  scanMaxWorkers: 8,
+} as const;
 
 /** Normalize token usage across OpenAI-compatible (prompt_tokens/completion_tokens)
  *  and Claude (input_tokens/output_tokens) response formats. */
@@ -83,14 +89,61 @@ function TokenBadge({ usage, model }: { usage: TokenUsage; model?: string }) {
   );
 }
 
+import { useToast } from '@/components/ui/Toast';
+
 export function Workbench() {
   const { t } = useI18n();
+  const { toast } = useToast();
   const navigate = useNavigate();
   const { activeProjectId } = useWriting();
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [ingestMode, setIngestMode] = useState<'none' | 'query' | 'full'>('query');
+  const [aiCostProfile, setAiCostProfile] = useState<'balanced' | 'aggressive' | 'quality'>(
+    loadSettings().workspace.aiCostProfile ?? 'balanced'
+  );
+  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
+  const [isRehydrating, setIsRehydrating] = useState(false);
+
+  /**
+   * Resume handler — minimal MVP hook. Full timeline rehydration into the
+   * Workbench chat view lives behind the backend session memory contract;
+   * here we surface a toast so the user sees the action landed, then close
+   * the drawer. Richer rewire (replay timeline into `messages`) is queued
+   * for post-MVP (`OPEN_THREADS.md A7`).
+   */
+  const handleSessionResumed = useCallback((result: ResumeSessionResult) => {
+    setIsRehydrating(true);
+    const mappedMessages = mapTimelineToMessages(result.timeline || []);
+    setTimeout(() => {
+      setMessages(mappedMessages);
+      setIsRehydrating(false);
+      toast(t('workbench.session_resumed'), 'success');
+      setSessionDrawerOpen(false);
+    }, 600);
+  }, [t, toast]);
+
+  const handleSessionForked = useCallback((result: ResumeSessionResult) => {
+    setIsRehydrating(true);
+    const mappedMessages = mapTimelineToMessages(result.timeline || []);
+    setTimeout(() => {
+      setMessages(mappedMessages);
+      setIsRehydrating(false);
+      toast(t('workbench.session_forked'), 'success');
+      setSessionDrawerOpen(false);
+    }, 800);
+  }, [t, toast]);
+
+  const handleSessionRewound = useCallback((result: ResumeSessionResult) => {
+    setIsRehydrating(true);
+    const mappedMessages = mapTimelineToMessages(result.timeline || []);
+    setTimeout(() => {
+      setMessages(mappedMessages);
+      setIsRehydrating(false);
+      toast(t('workbench.session_rewound'), 'success');
+    }, 500);
+  }, [t, toast]);
 
   // Load saved messages when project changes
   useEffect(() => {
@@ -124,12 +177,16 @@ export function Workbench() {
         params: {
           project_id: activeProjectId,
           query: currentQuery,
-          top_k: Math.min(20, Math.max(3, loadSettings().workspace.retrievalTopK ?? 6)),
+          top_k: Math.min(
+            RETRIEVAL_TOP_K_MAX,
+            Math.max(RETRIEVAL_TOP_K_MIN, loadSettings().workspace.retrievalTopK ?? RETRIEVAL_TOP_K_DEFAULT),
+          ),
           ingest_mode: ingestMode,
-          ingest_limit: 8,
-          scan_mode: 'fast',
-          scan_batch_size: 24,
-          scan_max_workers: 8,
+          ai_cost_profile: aiCostProfile,
+          ingest_limit: FIRST_QUESTION_SCAN_DEFAULTS.ingestLimit,
+          scan_mode: FIRST_QUESTION_SCAN_DEFAULTS.scanMode,
+          scan_batch_size: FIRST_QUESTION_SCAN_DEFAULTS.scanBatchSize,
+          scan_max_workers: FIRST_QUESTION_SCAN_DEFAULTS.scanMaxWorkers,
         },
         timeout: 60000,
       });
@@ -167,7 +224,7 @@ export function Workbench() {
     } catch {
       return { context: [] as string[], sources: [] as { title: string; page: string }[] };
     }
-  }, [activeProjectId, ingestMode]);
+  }, [activeProjectId, ingestMode, aiCostProfile]);
 
   const handleClearHistory = () => {
     if (activeProjectId) localStorage.removeItem(`${CHAT_HISTORY_KEY}_${activeProjectId}`);
@@ -196,6 +253,7 @@ export function Workbench() {
         context: retrieval.context,
         history: historySnapshot,
         llm: llmConfig,
+        aiCostProfile,
       });
 
       const assistantMsg: Message = {
@@ -205,6 +263,7 @@ export function Workbench() {
         sources: retrieval.sources.length > 0 ? retrieval.sources : undefined,
         usage: data.usage ?? undefined,
         model: data.model ?? undefined,
+        fallback: data.fallback ?? undefined,
       };
       setMessages(prev => [...prev, assistantMsg]);
     } catch (err: unknown) {
@@ -241,7 +300,26 @@ export function Workbench() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full">
+      {/* Session drawer trigger — top-right floating button */}
+      <button
+        type="button"
+        onClick={() => setSessionDrawerOpen(true)}
+        aria-label="打开会话历史"
+        title="会话历史（恢复 / fork / rewind）"
+        className="absolute top-4 right-4 z-40 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-surface-high/80 backdrop-blur border border-outline-variant/60 font-label text-[11px] text-foreground/70 hover:text-foreground hover:border-primary/30 transition-all shadow-sm"
+      >
+        <History size={13} />
+        <span>会话</span>
+      </button>
+      <SessionDrawer
+        isOpen={sessionDrawerOpen}
+        onClose={() => setSessionDrawerOpen(false)}
+        onSessionResumed={handleSessionResumed}
+        onSessionForked={handleSessionForked}
+        onSessionRewound={handleSessionRewound}
+      />
+
       {messages.length === 0 ? (
         /* Empty state — welcome screen */
         <div className="flex-1 flex flex-col items-center justify-center p-8">
@@ -306,6 +384,18 @@ export function Workbench() {
             </motion.div>
           )}
         </div>
+      ) : isRehydrating ? (
+        /* Skeleton rehydration state */
+        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+          {[1, 2, 3].map(i => (
+            <div key={i} className={cn('max-w-2xl', i % 2 === 0 ? 'ml-auto' : '')}>
+              <div className="rounded-lg px-4 py-3 bg-surface-high/40 border border-outline-variant/30 animate-pulse">
+                <div className="h-4 bg-foreground/5 rounded w-3/4 mb-2" />
+                <div className="h-4 bg-foreground/5 rounded w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         /* Messages list */
         <div className="flex-1 overflow-y-auto custom-scrollbar px-8 py-6 space-y-6">
@@ -324,6 +414,11 @@ export function Workbench() {
                     : msg.error ? 'glass-card border-red-200 bg-red-50/50' : 'glass-card'
                 )}>
                   <p className="font-body text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  {msg.fallback && !msg.error && (
+                    <p className="mt-2 text-[11px] font-label text-amber-700/80">
+                      已自动回退：{msg.fallback.attemptedProvider} → {msg.fallback.activeProvider}
+                    </p>
+                  )}
                   {msg.sources && (
                     <div className="mt-3 pt-3 border-t border-outline-variant/30 flex flex-wrap gap-2">
                       {msg.sources.map((s, i) => (
@@ -390,6 +485,43 @@ export function Workbench() {
                 )}
               >
                 {mode === 'none' ? '无入库' : mode === 'query' ? '按需入库' : '全量入库'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="max-w-2xl mx-auto mb-3 flex items-center gap-2">
+          <span className="text-xs font-label text-foreground/60 min-w-fit">AI 成本模式：</span>
+          <div className="flex gap-1">
+            {([
+              ['balanced', '平衡'],
+              ['aggressive', '省钱'],
+              ['quality', '质量优先'],
+            ] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setAiCostProfile(mode);
+                  const s = loadSettings();
+                  s.workspace.aiCostProfile = mode;
+                  saveSettings(s);
+                }}
+                disabled={!activeProjectId}
+                title={
+                  mode === 'aggressive'
+                    ? '减少高成本 AI 步骤，优先省钱'
+                    : mode === 'quality'
+                    ? '保留更多增强步骤，质量优先'
+                    : '默认平衡策略'
+                }
+                className={cn(
+                  'px-2.5 py-1 rounded-md text-xs font-label transition-all',
+                  aiCostProfile === mode
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-surface-high text-foreground/60 hover:text-foreground/80',
+                  !activeProjectId && 'opacity-40 cursor-not-allowed'
+                )}
+              >
+                {label}
               </button>
             ))}
           </div>

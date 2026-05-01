@@ -1,0 +1,24 @@
+{
+  "agents": {
+    "Squad": {
+      "role": "morpheus",
+      "notes": "Coordinator-oriented requests route to morpheus as architect lead in CLI lane"
+    },
+    "Expert React Frontend Engineer": {
+      "role": "dozer",
+      "notes": "Frontend implementation"
+    },
+    "Frontend Orchestrator": {
+      "role": "trinity",
+      "notes": "Cross-component implementation orchestration"
+    },
+    "Frontend Performance Investigator": {
+      "role": "tank",
+      "notes": "Performance/QA lane"
+    },
+    "gem-designer": {
+      "role": "switch",
+      "notes": "Frontend design lane"
+    }
+  }
+}

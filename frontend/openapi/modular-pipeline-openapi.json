@@ -272,6 +272,101 @@
         "title": "AutopilotStatusResponse",
         "type": "object"
       },
+      "BatchDeleteRequest": {
+        "properties": {
+          "material_ids": {
+            "description": "要删除的素材 ID 列表",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Material Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "material_ids"
+        ],
+        "title": "BatchDeleteRequest",
+        "type": "object"
+      },
+      "BatchProcessRequest": {
+        "description": "Batch PDF processing request payload.",
+        "properties": {
+          "batch_size": {
+            "default": 13,
+            "description": "Number of PDFs to collect before triggering volume merge",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "goal": {
+            "description": "Processing goal/theme",
+            "title": "Goal",
+            "type": "string"
+          },
+          "output_root": {
+            "description": "Root output directory for processed materials",
+            "title": "Output Root",
+            "type": "string"
+          },
+          "pdf_folder": {
+            "description": "Path to folder containing PDF files",
+            "title": "Pdf Folder",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pdf_folder",
+          "output_root",
+          "goal"
+        ],
+        "title": "BatchProcessRequest",
+        "type": "object"
+      },
+      "Body_post_resources_upload": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "file"
+        ],
+        "title": "Body_post_resources_upload",
+        "type": "object"
+      },
+      "Body_post_resources_upload_batch": {
+        "properties": {
+          "files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "files"
+        ],
+        "title": "Body_post_resources_upload_batch",
+        "type": "object"
+      },
       "BuildAssociationRequest": {
         "description": "Request to build associative writing guidance for a project.",
         "properties": {
@@ -410,6 +505,259 @@
         "title": "CapabilityPayload",
         "type": "object"
       },
+      "ChatMessage": {
+        "description": "A single turn in the conversation history.",
+        "properties": {
+          "content": {
+            "description": "Message content",
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "description": "'user' or 'assistant'",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "ChatMessage",
+        "type": "object"
+      },
+      "ChatRequest": {
+        "properties": {
+          "ai_cost_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "balanced | aggressive | quality",
+            "title": "Ai Cost Profile"
+          },
+          "context": {
+            "description": "Document text chunks as context",
+            "items": {
+              "type": "string"
+            },
+            "title": "Context",
+            "type": "array"
+          },
+          "history": {
+            "description": "Previous conversation turns",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "llm": {
+            "$ref": "#/components/schemas/LLMConfig"
+          },
+          "query": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "sampling": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-task sampling overrides",
+            "title": "Sampling"
+          }
+        },
+        "required": [
+          "query",
+          "llm"
+        ],
+        "title": "ChatRequest",
+        "type": "object"
+      },
+      "ChatResponse": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "sampling_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Actual sampling params used",
+            "title": "Sampling Params"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage"
+          }
+        },
+        "required": [
+          "answer",
+          "model"
+        ],
+        "title": "ChatResponse",
+        "type": "object"
+      },
+      "ChatStreamRequest": {
+        "description": "Request body for streaming chat — same fields as ChatRequest.",
+        "properties": {
+          "ai_cost_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "balanced | aggressive | quality",
+            "title": "Ai Cost Profile"
+          },
+          "context": {
+            "description": "文档上下文片段",
+            "items": {
+              "type": "string"
+            },
+            "title": "Context",
+            "type": "array"
+          },
+          "history": {
+            "description": "历史对话记录",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "llm": {
+            "$ref": "#/components/schemas/LLMConfig"
+          },
+          "query": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "sampling": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-task sampling overrides",
+            "title": "Sampling"
+          },
+          "stream": {
+            "default": true,
+            "description": "启用流式输出",
+            "title": "Stream",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query",
+          "llm"
+        ],
+        "title": "ChatStreamRequest",
+        "type": "object"
+      },
+      "CheckpointPayload": {
+        "description": "Checkpoint summary payload.",
+        "properties": {
+          "active": {
+            "default": false,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "checkpoint_id": {
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkpoint_id",
+          "session_id",
+          "event_id",
+          "created_at",
+          "kind"
+        ],
+        "title": "CheckpointPayload",
+        "type": "object"
+      },
       "CitationAnchorPayload": {
         "description": "Stable citation anchor metadata exchanged with the frontend editor.",
         "properties": {
@@ -453,6 +801,58 @@
           "ordinal"
         ],
         "title": "CitationAnchorPayload",
+        "type": "object"
+      },
+      "CleanupRequest": {
+        "properties": {
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          }
+        },
+        "title": "CleanupRequest",
+        "type": "object"
+      },
+      "ContinuationResponse": {
+        "properties": {
+          "causal_chain_summary": {
+            "default": "",
+            "title": "Causal Chain Summary",
+            "type": "string"
+          },
+          "evidence_texts": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Texts",
+            "type": "array"
+          },
+          "related_figures": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Related Figures",
+            "type": "array"
+          },
+          "spark": {
+            "$ref": "#/components/schemas/SparkResponse"
+          },
+          "suggested_angles": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Angles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "spark"
+        ],
+        "title": "ContinuationResponse",
         "type": "object"
       },
       "CreateDraftRequest": {
@@ -649,6 +1049,11 @@
             "title": "Description",
             "type": "string"
           },
+          "source_folder": {
+            "default": "",
+            "title": "Source Folder",
+            "type": "string"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -710,6 +1115,22 @@
       "CreateSessionRequest": {
         "description": "Request to create a writing session.",
         "properties": {
+          "entry_cwd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Cwd"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
           "mode": {
             "title": "Mode",
             "type": "string"
@@ -726,6 +1147,17 @@
             "title": "Tags",
             "type": "array"
           },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
           "user_id": {
             "anyOf": [
               {
@@ -736,12 +1168,72 @@
               }
             ],
             "title": "User Id"
+          },
+          "workspace_root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Root"
           }
         },
         "required": [
           "mode"
         ],
         "title": "CreateSessionRequest",
+        "type": "object"
+      },
+      "DispatchRequest": {
+        "properties": {
+          "query": {
+            "description": "用户查询/意图",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "DispatchRequest",
+        "type": "object"
+      },
+      "DispatchResponse": {
+        "properties": {
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "default": [],
+            "items": {},
+            "title": "Results",
+            "type": "array"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "tool_calls": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tool Calls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "DispatchResponse",
         "type": "object"
       },
       "DraftPayload": {
@@ -997,6 +1489,121 @@
         "title": "FactInvalidationPayload",
         "type": "object"
       },
+      "ForkSessionRequest": {
+        "description": "Request to fork a session from a checkpoint.",
+        "properties": {
+          "checkpoint_id": {
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "checkpoint_id"
+        ],
+        "title": "ForkSessionRequest",
+        "type": "object"
+      },
+      "GenerateSparksRequest": {
+        "properties": {
+          "limit": {
+            "default": 10,
+            "description": "最大返回数",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "llm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LLMConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional LLM config for real inspiration generation"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "项目ID，用于从知识库生成启发点",
+            "title": "Project Id"
+          },
+          "query": {
+            "description": "查询/主题",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "sampling": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-task sampling overrides",
+            "title": "Sampling"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "GenerateSparksRequest",
+        "type": "object"
+      },
+      "GenerateSparksResponse": {
+        "properties": {
+          "sparks": {
+            "items": {
+              "$ref": "#/components/schemas/SparkResponse"
+            },
+            "title": "Sparks",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sparks",
+          "total"
+        ],
+        "title": "GenerateSparksResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1008,6 +1615,135 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImportUserSkillManifestPayload": {
+        "description": "Minimal manifest summary returned after importing a user skill.",
+        "properties": {
+          "high_risk_flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "High Risk Flags",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "kind"
+        ],
+        "title": "ImportUserSkillManifestPayload",
+        "type": "object"
+      },
+      "ImportUserSkillRequest": {
+        "description": "Request to import a local user skill directory or zip package into the managed root.",
+        "properties": {
+          "managed_root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Managed Root"
+          },
+          "origin": {
+            "default": "user_import",
+            "title": "Origin",
+            "type": "string"
+          },
+          "source_path": {
+            "title": "Source Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_path"
+        ],
+        "title": "ImportUserSkillRequest",
+        "type": "object"
+      },
+      "ImportUserSkillResponse": {
+        "description": "Result of importing a user skill package.",
+        "properties": {
+          "content_hash": {
+            "default": "",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "installed_at": {
+            "default": "",
+            "title": "Installed At",
+            "type": "string"
+          },
+          "installed_path": {
+            "default": "",
+            "title": "Installed Path",
+            "type": "string"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportUserSkillManifestPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "default": "",
+            "title": "Origin",
+            "type": "string"
+          },
+          "skill_id": {
+            "default": "",
+            "title": "Skill Id",
+            "type": "string"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ImportUserSkillResponse",
         "type": "object"
       },
       "InvalidFactRequest": {
@@ -1225,6 +1961,57 @@
           "is_cancelled"
         ],
         "title": "JobStatusPayload",
+        "type": "object"
+      },
+      "LLMConfig": {
+        "properties": {
+          "api_key": {
+            "default": "",
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "default": "https://api.deepseek.com",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "max_tokens": {
+            "default": 4096,
+            "title": "Max Tokens",
+            "type": "integer"
+          },
+          "model": {
+            "default": "deepseek-chat",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "default": "DeepSeek",
+            "title": "Provider",
+            "type": "string"
+          },
+          "system_prompt": {
+            "default": "",
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "temperature": {
+            "default": 0.7,
+            "title": "Temperature",
+            "type": "number"
+          },
+          "top_k": {
+            "default": 50,
+            "title": "Top K",
+            "type": "integer"
+          },
+          "top_p": {
+            "default": 0.9,
+            "title": "Top P",
+            "type": "number"
+          }
+        },
+        "title": "LLMConfig",
         "type": "object"
       },
       "MaterialPayload": {
@@ -1713,6 +2500,45 @@
         "title": "MemoryWakeupPayload",
         "type": "object"
       },
+      "ModelInfo": {
+        "description": "LLM model information.",
+        "properties": {
+          "context_window": {
+            "default": 0,
+            "title": "Context Window",
+            "type": "integer"
+          },
+          "default_base_url": {
+            "default": "",
+            "title": "Default Base Url",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "provider"
+        ],
+        "title": "ModelInfo",
+        "type": "object"
+      },
       "PipelineRequest": {
         "description": "Pipeline execution request payload.",
         "properties": {
@@ -2010,6 +2836,363 @@
         "title": "PolicyInfo",
         "type": "object"
       },
+      "ProjectExportCitationChainPayload": {
+        "description": "Trace from a draft anchor back to its source evidence.",
+        "properties": {
+          "anchor_id": {
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "claim_excerpt": {
+            "title": "Claim Excerpt",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "paragraph_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paragraph Index"
+          },
+          "section_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Id"
+          },
+          "source_excerpt": {
+            "title": "Source Excerpt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "anchor_id",
+          "claim_excerpt",
+          "source_excerpt"
+        ],
+        "title": "ProjectExportCitationChainPayload",
+        "type": "object"
+      },
+      "ProjectExportEvidenceProvenancePayload": {
+        "description": "Source metadata for one project export evidence row.",
+        "properties": {
+          "material_title": {
+            "title": "Material Title",
+            "type": "string"
+          },
+          "material_type": {
+            "title": "Material Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_title",
+          "material_type"
+        ],
+        "title": "ProjectExportEvidenceProvenancePayload",
+        "type": "object"
+      },
+      "ProjectExportEvidenceRowPayload": {
+        "description": "Academic evidence row derived for project export.",
+        "properties": {
+          "anchor_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Anchor Ids",
+            "type": "array"
+          },
+          "chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/ProjectExportEvidenceProvenancePayload"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "material_id",
+          "excerpt",
+          "provenance",
+          "status"
+        ],
+        "title": "ProjectExportEvidenceRowPayload",
+        "type": "object"
+      },
+      "ProjectExportFormat": {
+        "enum": [
+          "markdown",
+          "json"
+        ],
+        "title": "ProjectExportFormat",
+        "type": "string"
+      },
+      "ProjectExportPayload": {
+        "description": "Project export response for JSON and Markdown formats.",
+        "properties": {
+          "citation_chain": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectExportCitationChainPayload"
+            },
+            "title": "Citation Chain",
+            "type": "array"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count"
+          },
+          "drafts": {
+            "items": {
+              "$ref": "#/components/schemas/DraftPayload"
+            },
+            "title": "Drafts",
+            "type": "array"
+          },
+          "evidence_rows": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectExportEvidenceRowPayload"
+            },
+            "title": "Evidence Rows",
+            "type": "array"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "materials": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialPayload"
+            },
+            "title": "Materials",
+            "type": "array"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "review_findings": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectExportReviewFindingPayload"
+            },
+            "title": "Review Findings",
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SectionPayload"
+            },
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "ProjectExportPayload",
+        "type": "object"
+      },
+      "ProjectExportReviewFindingPayload": {
+        "description": "Export-time writing evidence review finding.",
+        "properties": {
+          "draft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "section_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Id"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "severity",
+          "message"
+        ],
+        "title": "ProjectExportReviewFindingPayload",
+        "type": "object"
+      },
       "ProjectPayload": {
         "description": "Writing project response.",
         "properties": {
@@ -2027,6 +3210,11 @@
           },
           "project_id": {
             "title": "Project Id",
+            "type": "string"
+          },
+          "source_folder": {
+            "default": "",
+            "title": "Source Folder",
             "type": "string"
           },
           "status": {
@@ -2071,6 +3259,48 @@
           "tags"
         ],
         "title": "ProjectPayload",
+        "type": "object"
+      },
+      "ProviderInfo": {
+        "description": "Provider with grouped models.",
+        "properties": {
+          "api_type": {
+            "default": "openai-compatible",
+            "title": "Api Type",
+            "type": "string"
+          },
+          "auth_tip": {
+            "default": "",
+            "title": "Auth Tip",
+            "type": "string"
+          },
+          "default_base_url": {
+            "title": "Default Base Url",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelInfo"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "display_name",
+          "default_base_url",
+          "models"
+        ],
+        "title": "ProviderInfo",
         "type": "object"
       },
       "RecommendationEvidencePayload": {
@@ -2313,6 +3543,59 @@
         "title": "RecoveryRecommendationPayload",
         "type": "object"
       },
+      "ResumeSessionPayload": {
+        "description": "Session resume response payload.",
+        "properties": {
+          "head_checkpoint_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Checkpoint Id"
+          },
+          "head_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Event Id"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionPayload"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineItemPayload"
+            },
+            "title": "Timeline",
+            "type": "array"
+          }
+        },
+        "required": [
+          "session"
+        ],
+        "title": "ResumeSessionPayload",
+        "type": "object"
+      },
       "RevisionPayload": {
         "description": "Writing revision response.",
         "properties": {
@@ -2373,6 +3656,25 @@
           "message"
         ],
         "title": "RevisionPayload",
+        "type": "object"
+      },
+      "RewindSessionRequest": {
+        "description": "Request to rewind a session to a checkpoint.",
+        "properties": {
+          "checkpoint_id": {
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "conversation_only",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkpoint_id"
+        ],
+        "title": "RewindSessionRequest",
         "type": "object"
       },
       "RunActionAcceptedPayload": {
@@ -2443,6 +3745,20 @@
           "action_id"
         ],
         "title": "RunActionRequest",
+        "type": "object"
+      },
+      "SamplingPayload": {
+        "properties": {
+          "tasks": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tasks",
+            "type": "object"
+          }
+        },
+        "title": "SamplingPayload",
         "type": "object"
       },
       "SaveDraftRequest": {
@@ -2558,6 +3874,11 @@
             "title": "Created At",
             "type": "string"
           },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
           "mode": {
             "title": "Mode",
             "type": "string"
@@ -2599,6 +3920,186 @@
           "tags"
         ],
         "title": "SessionPayload",
+        "type": "object"
+      },
+      "SkillApprovalDecisionCreate": {
+        "description": "Request body for recording a user decision on an approval request.",
+        "properties": {
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "SkillApprovalDecisionCreate",
+        "type": "object"
+      },
+      "SkillApprovalDecisionPayload": {
+        "description": "Persistent approval decision payload returned by the Skills API.",
+        "properties": {
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "request_id",
+          "decision",
+          "timestamp"
+        ],
+        "title": "SkillApprovalDecisionPayload",
+        "type": "object"
+      },
+      "SkillApprovalDetailPayload": {
+        "description": "Approval request with its latest decision and decision history.",
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/SkillApprovalDecisionPayload"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "latest_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkillApprovalDecisionPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "$ref": "#/components/schemas/SkillApprovalRequestPayload"
+          }
+        },
+        "required": [
+          "request"
+        ],
+        "title": "SkillApprovalDetailPayload",
+        "type": "object"
+      },
+      "SkillApprovalRequestCreate": {
+        "description": "Request body for creating a persistent skill approval request.",
+        "properties": {
+          "capability_id": {
+            "title": "Capability Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capability_id",
+          "capability_name",
+          "reason"
+        ],
+        "title": "SkillApprovalRequestCreate",
+        "type": "object"
+      },
+      "SkillApprovalRequestPayload": {
+        "description": "Persistent approval request payload returned by the Skills API.",
+        "properties": {
+          "capability_id": {
+            "title": "Capability Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "capability_id",
+          "capability_name",
+          "reason",
+          "timestamp"
+        ],
+        "title": "SkillApprovalRequestPayload",
         "type": "object"
       },
       "SkillCompatibilityPayload": {
@@ -2840,6 +4341,60 @@
         "title": "SkillPackPayload",
         "type": "object"
       },
+      "SkillRollbackRequest": {
+        "description": "Request body for restoring a managed user skill from a rollback snapshot.",
+        "properties": {
+          "backup_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Path"
+          }
+        },
+        "title": "SkillRollbackRequest",
+        "type": "object"
+      },
+      "SkillRollbackResponse": {
+        "description": "Response returned after restoring a managed user skill snapshot.",
+        "properties": {
+          "backup_path": {
+            "title": "Backup Path",
+            "type": "string"
+          },
+          "restored_path": {
+            "title": "Restored Path",
+            "type": "string"
+          },
+          "rolled_back": {
+            "title": "Rolled Back",
+            "type": "boolean"
+          },
+          "skill_id": {
+            "title": "Skill Id",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "skill_id",
+          "rolled_back",
+          "restored_path",
+          "backup_path"
+        ],
+        "title": "SkillRollbackResponse",
+        "type": "object"
+      },
       "SkillRunResultPayload": {
         "description": "Transform result payload returned to the frontend.",
         "properties": {
@@ -2892,6 +4447,482 @@
           "applied"
         ],
         "title": "SkillRunResultPayload",
+        "type": "object"
+      },
+      "SkillSecurityAssessmentPayload": {
+        "description": "Machine-readable Skill safety assessment for UI and audit gates.",
+        "properties": {
+          "allowed_operations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Operations",
+            "type": "array"
+          },
+          "approval_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Reason"
+          },
+          "block_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Reason"
+          },
+          "denied_operations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Denied Operations",
+            "type": "array"
+          },
+          "enable_requires_approval": {
+            "title": "Enable Requires Approval",
+            "type": "boolean"
+          },
+          "high_risk_flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "High Risk Flags",
+            "type": "array"
+          },
+          "required_sandbox_controls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Sandbox Controls",
+            "type": "array"
+          },
+          "risk_level": {
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "runtime_executable": {
+            "title": "Runtime Executable",
+            "type": "boolean"
+          },
+          "runtime_gate": {
+            "title": "Runtime Gate",
+            "type": "string"
+          },
+          "skill_id": {
+            "title": "Skill Id",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_id",
+          "source",
+          "risk_level",
+          "runtime_gate",
+          "runtime_executable",
+          "enable_requires_approval"
+        ],
+        "title": "SkillSecurityAssessmentPayload",
+        "type": "object"
+      },
+      "SkillTestRunResponse": {
+        "description": "Structured result returned by user skill test-run execution.",
+        "properties": {
+          "audit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Id"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "execution_time_ms": {
+            "default": 0,
+            "title": "Execution Time Ms",
+            "type": "integer"
+          },
+          "input_text": {
+            "title": "Input Text",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "output_text": {
+            "default": "",
+            "title": "Output Text",
+            "type": "string"
+          },
+          "skill_id": {
+            "title": "Skill Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "structured_output": {
+            "additionalProperties": true,
+            "title": "Structured Output",
+            "type": "object"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_id",
+          "skill_id",
+          "status",
+          "input_text",
+          "timestamp"
+        ],
+        "title": "SkillTestRunResponse",
+        "type": "object"
+      },
+      "SkillToggleResponse": {
+        "description": "Response returned after enabling or disabling a user skill.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "skill_id": {
+            "title": "Skill Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_id",
+          "enabled"
+        ],
+        "title": "SkillToggleResponse",
+        "type": "object"
+      },
+      "SkillUninstallResponse": {
+        "description": "Response returned after uninstalling a managed user skill.",
+        "properties": {
+          "backup_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Path"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "removed_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed Path"
+          },
+          "skill_id": {
+            "title": "Skill Id",
+            "type": "string"
+          },
+          "uninstalled": {
+            "title": "Uninstalled",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "skill_id",
+          "uninstalled"
+        ],
+        "title": "SkillUninstallResponse",
+        "type": "object"
+      },
+      "SparkResponse": {
+        "properties": {
+          "actionable": {
+            "default": true,
+            "title": "Actionable",
+            "type": "boolean"
+          },
+          "confidence": {
+            "default": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "related_point_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Related Point Ids",
+            "type": "array"
+          },
+          "source_papers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Papers",
+            "type": "array"
+          },
+          "spark_type": {
+            "title": "Spark Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "content",
+          "spark_type"
+        ],
+        "title": "SparkResponse",
+        "type": "object"
+      },
+      "TimelineItemPayload": {
+        "description": "Append-only transcript event payload.",
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_kind": {
+            "title": "Event Kind",
+            "type": "string"
+          },
+          "parent_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Event Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "workspace_key": {
+            "title": "Workspace Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "session_id",
+          "event_kind",
+          "timestamp",
+          "workspace_key",
+          "payload"
+        ],
+        "title": "TimelineItemPayload",
+        "type": "object"
+      },
+      "TimelinePagePayload": {
+        "description": "Cursor-paginated transcript page.",
+        "properties": {
+          "head_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Event Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineItemPayload"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "TimelinePagePayload",
+        "type": "object"
+      },
+      "UpdateProjectRequest": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "UpdateProjectRequest",
+        "type": "object"
+      },
+      "UpdateSectionRequest": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "UpdateSectionRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -3102,8 +5133,9 @@
     }
   },
   "info": {
-    "title": "Modular Pipeline Adapter API",
-    "version": "0.1.0"
+    "description": "学术研究智能体 — 论文分析、知识管理与智能写作辅助平台",
+    "title": "Scholar AI API",
+    "version": "1.3.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3133,6 +5165,68 @@
         ]
       }
     },
+    "/agent/dispatch": {
+      "post": {
+        "description": "AI 自由调度：根据用户意图调用合适的工具组合。",
+        "operationId": "post_agent_dispatch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Agent Dispatch",
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
+    "/agent/tools": {
+      "get": {
+        "description": "列出所有已注册的工具及其描述。",
+        "operationId": "get_agent_tools",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tools",
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
     "/capabilities": {
       "get": {
         "description": "List stable capability metadata exposed to the frontend.",
@@ -3159,6 +5253,227 @@
         ]
       }
     },
+    "/chat/ask": {
+      "post": {
+        "description": "Send user query + context to configured LLM and return the answer.",
+        "operationId": "post_chat_ask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Chat Ask",
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
+    "/chat/models": {
+      "get": {
+        "description": "List known LLM model options. Optionally filter by provider.",
+        "operationId": "get_chat_models",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelInfo"
+                  },
+                  "title": "Response Get Chat Models",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Supported Models",
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
+    "/chat/models/discover": {
+      "get": {
+        "description": "Auto-discover models from an OpenAI-compatible endpoint.\n\nTries GET /v1/models to discover available models.\nWorks with Ollama, vLLM, LM Studio, LocalAI, etc.",
+        "operationId": "get_chat_models_discover",
+        "parameters": [
+          {
+            "description": "Base URL of LLM service",
+            "in": "query",
+            "name": "base_url",
+            "required": true,
+            "schema": {
+              "description": "Base URL of LLM service",
+              "title": "Base Url",
+              "type": "string"
+            }
+          },
+          {
+            "description": "API key (optional for local)",
+            "in": "query",
+            "name": "api_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "API key (optional for local)",
+              "title": "Api Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Chat Models Discover",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Discover Models",
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
+    "/chat/providers": {
+      "get": {
+        "description": "List all supported LLM providers with their models.",
+        "operationId": "get_chat_providers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderInfo"
+                  },
+                  "title": "Response Get Chat Providers",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Providers",
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
+    "/chat/stream": {
+      "post": {
+        "description": "Stream LLM response via Server-Sent Events (SSE).\n\nEach event is a JSON line:\n  data: {\"event\":\"text_delta\",\"delta\":\"...\"}\n  data: {\"event\":\"usage\",\"usage\":{...},\"model\":\"...\"}\n  data: {\"event\":\"done\"}\n  data: {\"event\":\"error\",\"error\":\"...\"}",
+        "operationId": "post_chat_stream",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatStreamRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Chat Stream",
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "description": "Return adapter server system health state.",
@@ -3180,6 +5495,193 @@
         "summary": "Health Check",
         "tags": [
           "System"
+        ]
+      }
+    },
+    "/inspiration/generate": {
+      "post": {
+        "description": "基于查询生成启发点列表。",
+        "operationId": "post_inspiration_generate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateSparksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateSparksResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Inspirations",
+        "tags": [
+          "Inspiration"
+        ]
+      }
+    },
+    "/inspiration/reload": {
+      "post": {
+        "description": "重新加载启发引擎（例如新论文入库后调用）。",
+        "operationId": "post_inspiration_reload",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reload Inspiration Engine",
+        "tags": [
+          "Inspiration"
+        ]
+      }
+    },
+    "/inspiration/{spark_id}/context": {
+      "get": {
+        "description": "获取启发点的续写上下文。",
+        "operationId": "get_inspiration_spark_id_context",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "spark_id",
+            "required": true,
+            "schema": {
+              "title": "Spark Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinuationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Spark Context",
+        "tags": [
+          "Inspiration"
+        ]
+      }
+    },
+    "/llm/cost/range": {
+      "get": {
+        "operationId": "get_llm_cost_range",
+        "parameters": [
+          {
+            "description": "Inclusive start date in YYYY-MM-DD format",
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "description": "Inclusive start date in YYYY-MM-DD format",
+              "format": "date",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive end date in YYYY-MM-DD format",
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "description": "Inclusive end date in YYYY-MM-DD format",
+              "format": "date",
+              "title": "End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Llm Cost Range",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Llm Cost Range",
+        "tags": [
+          "Statistics"
+        ]
+      }
+    },
+    "/llm/cost/today": {
+      "get": {
+        "operationId": "get_llm_cost_today",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Llm Cost Today",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Llm Cost Today",
+        "tags": [
+          "Statistics"
         ]
       }
     },
@@ -3346,6 +5848,177 @@
         "summary": "Get Memory Wakeup",
         "tags": [
           "Memory"
+        ]
+      }
+    },
+    "/pipeline/batch/submit": {
+      "post": {
+        "description": "Submit a batch PDF processing job.",
+        "operationId": "post_pipeline_batch_submit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchProcessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineTaskSubmitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Batch Processing",
+        "tags": [
+          "Pipeline"
+        ]
+      }
+    },
+    "/pipeline/run": {
+      "post": {
+        "description": "Run the pipeline synchronously.",
+        "operationId": "post_pipeline_run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Pipeline Run",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Pipeline Endpoint",
+        "tags": [
+          "Pipeline"
+        ]
+      }
+    },
+    "/pipeline/run_async": {
+      "post": {
+        "description": "Submit an asynchronous pipeline job.",
+        "operationId": "post_pipeline_run_async",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineTaskSubmitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Pipeline Async Endpoint",
+        "tags": [
+          "Pipeline"
+        ]
+      }
+    },
+    "/pipeline/task/{task_id}": {
+      "get": {
+        "description": "Return async task status by task ID.",
+        "operationId": "get_pipeline_task_task_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineTaskStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Pipeline Task Status",
+        "tags": [
+          "Pipeline"
         ]
       }
     },
@@ -3969,6 +6642,256 @@
         ]
       }
     },
+    "/resources/chunks": {
+      "get": {
+        "description": "Get chunked document content for a project (for smarter RAG context).\n\nReturns chunks instead of full documents, allowing the frontend to\nsend only relevant chunks to the LLM.",
+        "operationId": "get_resources_chunks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by material",
+            "in": "query",
+            "name": "material_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by material",
+              "title": "Material Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Resources Chunks",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Chunks",
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/resources/chunks/search": {
+      "get": {
+        "description": "Chunk search with optional query-driven pre-ingestion.\n\n- ingest_mode=none: pure retrieval on existing chunks\n- ingest_mode=query: ingest only query-relevant pending files\n- ingest_mode=full: ingest all pending files before retrieval",
+        "operationId": "get_resources_chunks_search",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "搜索词",
+            "in": "query",
+            "name": "query",
+            "required": true,
+            "schema": {
+              "description": "搜索词",
+              "minLength": 1,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "description": "返回最相关的 N 个chunk",
+            "in": "query",
+            "name": "top_k",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "返回最相关的 N 个chunk",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top K",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "提问前置入库模式：none/query/full",
+            "in": "query",
+            "name": "ingest_mode",
+            "required": false,
+            "schema": {
+              "default": "none",
+              "description": "提问前置入库模式：none/query/full",
+              "title": "Ingest Mode",
+              "type": "string"
+            }
+          },
+          {
+            "description": "query 模式最多入库候选文件数",
+            "in": "query",
+            "name": "ingest_limit",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "description": "query 模式最多入库候选文件数",
+              "maximum": 128,
+              "minimum": 1,
+              "title": "Ingest Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "入库执行模式：legacy/fast",
+            "in": "query",
+            "name": "scan_mode",
+            "required": false,
+            "schema": {
+              "default": "fast",
+              "description": "入库执行模式：legacy/fast",
+              "title": "Scan Mode",
+              "type": "string"
+            }
+          },
+          {
+            "description": "入库批大小",
+            "in": "query",
+            "name": "scan_batch_size",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "description": "入库批大小",
+              "maximum": 256,
+              "minimum": 1,
+              "title": "Scan Batch Size",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "入库并发 worker 数",
+            "in": "query",
+            "name": "scan_max_workers",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "description": "入库并发 worker 数",
+              "maximum": 64,
+              "minimum": 1,
+              "title": "Scan Max Workers",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Resources Chunks Search",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Chunks",
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/resources/documents": {
+      "get": {
+        "description": "Get all document contents for a project (for RAG context).",
+        "operationId": "get_resources_documents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "title": "Response Get Resources Documents",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Documents",
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
     "/resources/draft": {
       "post": {
         "description": "Create a new draft.",
@@ -4012,6 +6935,52 @@
       }
     },
     "/resources/draft/{draft_id}": {
+      "delete": {
+        "description": "Delete a draft by ID.",
+        "operationId": "delete_resources_draft_draft_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Resources Draft Draft Id",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Draft",
+        "tags": [
+          "Resources",
+          "Resources"
+        ]
+      },
       "get": {
         "description": "Get a draft by ID.",
         "operationId": "get_resources_draft_draft_id",
@@ -4220,6 +7189,51 @@
         ]
       }
     },
+    "/resources/maintenance/cleanup": {
+      "post": {
+        "description": "Preview or execute cleanup for duplicate projects and non-extractable materials.",
+        "operationId": "post_resources_maintenance_cleanup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Resources Maintenance Cleanup",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cleanup Historical Dirty Data",
+        "tags": [
+          "Resources",
+          "Resources"
+        ]
+      }
+    },
     "/resources/material": {
       "post": {
         "description": "Create a project-scoped reference material.",
@@ -4263,6 +7277,52 @@
       }
     },
     "/resources/material/{material_id}": {
+      "delete": {
+        "description": "Delete a single material by ID.",
+        "operationId": "delete_resources_material_material_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Resources Material Material Id",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Material",
+        "tags": [
+          "Resources",
+          "Resources"
+        ]
+      },
       "get": {
         "description": "Get a project-scoped material by ID.",
         "operationId": "get_resources_material_material_id",
@@ -4300,6 +7360,60 @@
           }
         },
         "summary": "Get Material",
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/resources/material/{material_id}/chunks": {
+      "get": {
+        "description": "Get chunks for a specific material.",
+        "operationId": "get_resources_material_material_id_chunks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Resources Material Material Id Chunks",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Material Chunks",
         "tags": [
           "Resources"
         ]
@@ -4352,6 +7466,51 @@
         ]
       }
     },
+    "/resources/materials/batch-delete": {
+      "post": {
+        "description": "Batch delete materials from a project.",
+        "operationId": "post_resources_materials_batch_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Resources Materials Batch Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Batch Delete Materials",
+        "tags": [
+          "Resources",
+          "Resources"
+        ]
+      }
+    },
     "/resources/project": {
       "post": {
         "description": "Create a new writing project.",
@@ -4395,6 +7554,51 @@
       }
     },
     "/resources/project/{project_id}": {
+      "delete": {
+        "description": "Delete a project and all its associated resources.",
+        "operationId": "delete_resources_project_project_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Resources Project Project Id",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project",
+        "tags": [
+          "Resources"
+        ]
+      },
       "get": {
         "description": "Get a project by ID.",
         "operationId": "get_resources_project_project_id",
@@ -4434,6 +7638,298 @@
         "summary": "Get Project",
         "tags": [
           "Resources"
+        ]
+      },
+      "put": {
+        "description": "Update project title, description, or tags.",
+        "operationId": "put_resources_project_project_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project",
+        "tags": [
+          "Resources",
+          "Resources"
+        ]
+      }
+    },
+    "/resources/project/{project_id}/export": {
+      "get": {
+        "description": "Export a complete project with its sections, drafts, and materials.",
+        "operationId": "get_resources_project_project_id_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "导出格式",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectExportFormat",
+              "default": "markdown",
+              "description": "导出格式"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectExportPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Project",
+        "tags": [
+          "Resources",
+          "Export"
+        ]
+      }
+    },
+    "/resources/project/{project_id}/scan-folder": {
+      "post": {
+        "description": "Scan the project's source_folder and ingest all literature files.\n\nReads all supported files (.pdf, .docx, .doc, .txt, .md) from the project's\nsource_folder and indexes them into the knowledge base.  Already-indexed\nfiles (same filename) are skipped.  Returns a summary of what was processed.",
+        "operationId": "post_resources_project_project_id_scan_folder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "扫描模式：legacy（串行兼容）/ fast（元数据预扫 + 分批并发解析）",
+            "in": "query",
+            "name": "scan_mode",
+            "required": false,
+            "schema": {
+              "default": "fast",
+              "description": "扫描模式：legacy（串行兼容）/ fast（元数据预扫 + 分批并发解析）",
+              "title": "Scan Mode",
+              "type": "string"
+            }
+          },
+          {
+            "description": "fast 模式下每批处理文件数",
+            "in": "query",
+            "name": "batch_size",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "description": "fast 模式下每批处理文件数",
+              "maximum": 256,
+              "minimum": 1,
+              "title": "Batch Size",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "fast 模式下并发 worker 数（建议 4-16）",
+            "in": "query",
+            "name": "max_workers",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "description": "fast 模式下并发 worker 数（建议 4-16）",
+              "maximum": 64,
+              "minimum": 1,
+              "title": "Max Workers",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Resources Project Project Id Scan Folder",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scan Project Folder",
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/resources/project/{project_id}/source-folder": {
+      "put": {
+        "description": "Update the source_folder of a project.\n\nWhen set, chunk / doc store JSON files will be saved inside\n``{source_folder}/.scholarai/`` alongside the user's literature files.",
+        "operationId": "put_resources_project_project_id_source_folder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "绝对路径，留空则恢复默认存储位置",
+            "in": "query",
+            "name": "source_folder",
+            "required": true,
+            "schema": {
+              "description": "绝对路径，留空则恢复默认存储位置",
+              "title": "Source Folder",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project Source Folder",
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/resources/project/{project_id}/stats": {
+      "get": {
+        "description": "Get comprehensive statistics for a project.",
+        "operationId": "get_resources_project_project_id_stats",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Resources Project Project Id Stats",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Stats",
+        "tags": [
+          "Resources",
+          "Statistics"
         ]
       }
     },
@@ -4493,7 +7989,7 @@
     },
     "/resources/projects": {
       "get": {
-        "description": "List all projects, optionally filtered by user.",
+        "description": "List all projects, optionally filtered by user. Supports pagination via query params.",
         "operationId": "get_resources_projects",
         "parameters": [
           {
@@ -4510,6 +8006,33 @@
                 }
               ],
               "title": "User Id"
+            }
+          },
+          {
+            "description": "页码",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "页码",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "每页条数",
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "每页条数",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
             }
           }
         ],
@@ -4678,6 +8201,52 @@
       }
     },
     "/resources/section/{section_id}": {
+      "delete": {
+        "description": "Delete a section by ID.",
+        "operationId": "delete_resources_section_section_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Resources Section Section Id",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Section",
+        "tags": [
+          "Resources",
+          "Resources"
+        ]
+      },
       "get": {
         "description": "Get a section by ID.",
         "operationId": "get_resources_section_section_id",
@@ -4716,6 +8285,58 @@
         },
         "summary": "Get Section",
         "tags": [
+          "Resources"
+        ]
+      },
+      "put": {
+        "description": "Update section title, description, or order.",
+        "operationId": "put_resources_section_section_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Section",
+        "tags": [
+          "Resources",
           "Resources"
         ]
       }
@@ -4767,15 +8388,40 @@
         ]
       }
     },
-    "/run": {
+    "/resources/stats/overview": {
+      "get": {
+        "description": "Get global statistics across all projects.",
+        "operationId": "get_resources_stats_overview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Resources Stats Overview",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Global Stats",
+        "tags": [
+          "Resources",
+          "Statistics"
+        ]
+      }
+    },
+    "/resources/upload": {
       "post": {
-        "description": "Run the pipeline synchronously.",
-        "operationId": "post_run",
+        "description": "Upload a document file, extract text content, and store as a material.",
+        "operationId": "post_resources_upload",
         "requestBody": {
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/PipelineRequest"
+                "$ref": "#/components/schemas/Body_post_resources_upload"
               }
             }
           },
@@ -4787,7 +8433,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Post Run",
+                  "title": "Response Post Resources Upload",
                   "type": "object"
                 }
               }
@@ -4805,9 +8451,53 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Run Pipeline Endpoint",
+        "summary": "Upload Document",
         "tags": [
-          "Pipeline"
+          "Resources"
+        ]
+      }
+    },
+    "/resources/upload/batch": {
+      "post": {
+        "description": "Upload multiple knowledge-base documents in one request and summarize outcomes.",
+        "operationId": "post_resources_upload_batch",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_resources_upload_batch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Resources Upload Batch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Documents Batch",
+        "tags": [
+          "Resources"
         ]
       }
     },
@@ -4850,48 +8540,6 @@
         "summary": "Run Action",
         "tags": [
           "Skills"
-        ]
-      }
-    },
-    "/run_async": {
-      "post": {
-        "description": "Submit an asynchronous pipeline job.",
-        "operationId": "post_run_async",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PipelineRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PipelineTaskSubmitResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Run Pipeline Async Endpoint",
-        "tags": [
-          "Pipeline"
         ]
       }
     },
@@ -5074,7 +8722,7 @@
     },
     "/runtime/job/{job_id}/events": {
       "get": {
-        "description": "Get all events for a job.",
+        "description": "Get all events for a job, optionally filtered for polling.",
         "operationId": "get_runtime_job_job_id_events",
         "parameters": [
           {
@@ -5084,6 +8732,50 @@
             "schema": {
               "title": "Job Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since_timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since Timestamp"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Event Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
             }
           }
         ],
@@ -5339,6 +9031,88 @@
         ]
       }
     },
+    "/runtime/session/current": {
+      "get": {
+        "description": "Get the latest active session for the current workspace binding.",
+        "operationId": "get_runtime_session_current",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_root",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Root"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Key"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entry_cwd",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entry Cwd"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Current Session",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
     "/runtime/session/{session_id}": {
       "get": {
         "description": "Get a session by ID.",
@@ -5379,6 +9153,455 @@
         "summary": "Get Session",
         "tags": [
           "Runtime"
+        ]
+      }
+    },
+    "/runtime/session/{session_id}/checkpoints": {
+      "get": {
+        "description": "List rewind/fork checkpoints for a session.",
+        "operationId": "get_runtime_session_session_id_checkpoints",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CheckpointPayload"
+                  },
+                  "title": "Response Get Runtime Session Session Id Checkpoints",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Checkpoints",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/session/{session_id}/fork": {
+      "post": {
+        "description": "Fork a new session branch from a checkpoint.",
+        "operationId": "post_runtime_session_session_id_fork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForkSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeSessionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fork Session",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/session/{session_id}/resume": {
+      "post": {
+        "description": "Resume a persisted session and return its current transcript head.",
+        "operationId": "post_runtime_session_session_id_resume",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeSessionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Session",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/session/{session_id}/rewind": {
+      "post": {
+        "description": "Rewind a session back to a checkpoint.",
+        "operationId": "post_runtime_session_session_id_rewind",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RewindSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeSessionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rewind Session",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/session/{session_id}/timeline": {
+      "get": {
+        "description": "Fetch the active transcript lineage for a session.",
+        "operationId": "get_runtime_session_session_id_timeline",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Event Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelinePagePayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Timeline",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/sessions": {
+      "get": {
+        "description": "List sessions scoped to a workspace binding.",
+        "operationId": "get_runtime_sessions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_root",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Root"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionPayload"
+                  },
+                  "title": "Response Get Runtime Sessions",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/sampling": {
+      "get": {
+        "operationId": "get_sampling",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Sampling",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Sampling",
+        "tags": [
+          "Sampling"
+        ]
+      },
+      "put": {
+        "operationId": "put_sampling",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SamplingPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Put Sampling",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Sampling",
+        "tags": [
+          "Sampling"
+        ]
+      }
+    },
+    "/sampling/{task}": {
+      "delete": {
+        "operationId": "delete_sampling_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task",
+            "required": true,
+            "schema": {
+              "title": "Task",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Delete Sampling Task",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Sampling",
+        "tags": [
+          "Sampling"
         ]
       }
     },
@@ -5510,7 +9733,331 @@
         ]
       }
     },
+    "/skills/approvals/pending": {
+      "get": {
+        "description": "List approval requests without a final approve or deny decision.",
+        "operationId": "get_skills_approvals_pending",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillApprovalRequestPayload"
+                  },
+                  "title": "Response Get Skills Approvals Pending",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Pending Skill Approvals",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/skills/approvals/requests": {
+      "post": {
+        "description": "Create a persistent approval request for a skill capability.",
+        "operationId": "post_skills_approvals_requests",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillApprovalRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillApprovalRequestPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Skill Approval Request",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/skills/approvals/{request_id}": {
+      "get": {
+        "description": "Return one approval request with latest decision and full decision history.",
+        "operationId": "get_skills_approvals_request_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillApprovalDetailPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Approval Detail",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/skills/approvals/{request_id}/decide": {
+      "post": {
+        "description": "Record a user decision for one approval request.",
+        "operationId": "post_skills_approvals_request_id_decide",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillApprovalDecisionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillApprovalDecisionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Skill Approval Request",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/skills/audit": {
+      "get": {
+        "description": "Get audit events for skill operations.",
+        "operationId": "get_skills_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "skill_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Skill Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Skills Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Audit",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/skills/import": {
+      "post": {
+        "description": "Import a user skill package from a local directory or zip archive.",
+        "operationId": "post_skills_import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportUserSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportUserSkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import User Skill Endpoint",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
     "/skills/{skill_id}": {
+      "delete": {
+        "description": "Uninstall a managed user skill after creating a rollback snapshot.",
+        "operationId": "delete_skills_skill_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillUninstallResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Uninstall Skill",
+        "tags": [
+          "Skills"
+        ]
+      },
       "get": {
         "description": "Return one skill descriptor by ID.",
         "operationId": "get_skills_skill_id",
@@ -5553,17 +10100,27 @@
         ]
       }
     },
-    "/task/{task_id}": {
-      "get": {
-        "description": "Return async task status by task ID.",
-        "operationId": "get_task_task_id",
+    "/skills/{skill_id}/disable": {
+      "post": {
+        "description": "Disable a user skill.",
+        "operationId": "post_skills_skill_id_disable",
         "parameters": [
           {
             "in": "path",
-            "name": "task_id",
+            "name": "skill_id",
             "required": true,
             "schema": {
-              "title": "Task Id",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "default": "Disabled by user",
+              "title": "Reason",
               "type": "string"
             }
           }
@@ -5573,7 +10130,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PipelineTaskStatusResponse"
+                  "$ref": "#/components/schemas/SkillToggleResponse"
                 }
               }
             },
@@ -5590,9 +10147,208 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Pipeline Task Status",
+        "summary": "Disable Skill",
         "tags": [
-          "Pipeline"
+          "Skills"
+        ]
+      }
+    },
+    "/skills/{skill_id}/enable": {
+      "post": {
+        "description": "Enable a user skill.",
+        "operationId": "post_skills_skill_id_enable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillToggleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable Skill",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/skills/{skill_id}/rollback": {
+      "post": {
+        "description": "Restore a managed user skill from a rollback snapshot.",
+        "operationId": "post_skills_skill_id_rollback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SkillRollbackRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillRollbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Skill",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/skills/{skill_id}/security": {
+      "get": {
+        "description": "Return the current machine-readable runtime safety policy for one Skill.",
+        "operationId": "get_skills_skill_id_security",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillSecurityAssessmentPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Security Assessment",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/skills/{skill_id}/test-run": {
+      "post": {
+        "description": "Test-run a skill with sample input.",
+        "operationId": "post_skills_skill_id_test_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "input_text",
+            "required": false,
+            "schema": {
+              "default": "This is a test input for skill validation.",
+              "title": "Input Text",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillTestRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Run Skill",
+        "tags": [
+          "Skills"
         ]
       }
     },
@@ -5638,6 +10394,143 @@
           "Skills"
         ]
       }
+    },
+    "/volumes": {
+      "get": {
+        "operationId": "get_volumes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Volumes",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Volumes",
+        "tags": [
+          "Volume"
+        ]
+      }
+    },
+    "/volumes/{volume_key}/analysis": {
+      "get": {
+        "operationId": "get_volumes_volume_key_analysis",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "volume_key",
+            "required": true,
+            "schema": {
+              "title": "Volume Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Force rebuild the cached analysis artifacts",
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Force rebuild the cached analysis artifacts",
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Volumes Volume Key Analysis",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Volume Analysis Endpoint",
+        "tags": [
+          "Volume"
+        ]
+      }
     }
-  }
+  },
+  "tags": [
+    {
+      "description": "系统健康与状态",
+      "name": "System"
+    },
+    {
+      "description": "LLM 对话代理（同步 + 流式）",
+      "name": "Chat"
+    },
+    {
+      "description": "项目、章节、素材、草稿管理",
+      "name": "Resources"
+    },
+    {
+      "description": "批处理合卷与跨论文对比分析",
+      "name": "Volume"
+    },
+    {
+      "description": "分析管线执行与任务管理",
+      "name": "Pipeline"
+    },
+    {
+      "description": "写作运行时：会话、作业、事件",
+      "name": "Runtime"
+    },
+    {
+      "description": "技能注册与执行",
+      "name": "Skills"
+    },
+    {
+      "description": "MemPalace 记忆搜索与同步",
+      "name": "Memory"
+    },
+    {
+      "description": "启发点生成与续写上下文",
+      "name": "Inspiration"
+    },
+    {
+      "description": "恢复控制台、事件、推荐",
+      "name": "Recovery"
+    },
+    {
+      "description": "自动驾驶恢复与可观测性",
+      "name": "Recovery: Autopilot & Observability"
+    },
+    {
+      "description": "AI 调度与工具注册",
+      "name": "Agent"
+    },
+    {
+      "description": "项目导出（Markdown / BibTeX / ZIP）",
+      "name": "Export"
+    },
+    {
+      "description": "项目统计与分析数据",
+      "name": "Statistics"
+    }
+  ]
 }

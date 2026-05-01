@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Settings as SettingsIcon, Key, Cpu, Network, FolderOpen,
+  Settings as SettingsIcon, Key, Cpu, Network, FolderOpen, Layers,
   Activity, Check, Eye, EyeOff, ChevronRight, Info, Zap,
   Loader2, RefreshCw, AlertCircle, AlertTriangle, CheckCircle2, XCircle, Play,
 } from 'lucide-react';
@@ -11,11 +11,30 @@ import axios from 'axios';
 import { loadSettings, saveSettings, type AppSettings } from '@/services/settingsStore';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { testChatConnectionWithConfig } from '@/services/chatApi';
+import { getSampling, putSampling, deleteSamplingTask, type SamplingParams, type TaskDefaults } from '@/services/samplingApi';
+import { buildSamplingSaveRequest, hasSamplingOverrides, updateSamplingOverrides } from '@/services/samplingPayload';
+
+const SkillManagerLazy = React.lazy(() => import('@/components/skills/SkillManager'));
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
-type SectionId = 'chat' | 'embedding' | 'workspace';
+type SectionId = 'chat' | 'embedding' | 'workspace' | 'sampling' | 'skills';
+
+const SECTION_IDS: readonly SectionId[] = ['chat', 'embedding', 'workspace', 'sampling', 'skills'];
+
+function isSectionId(value: string | null): value is SectionId {
+  return typeof value === 'string' && (SECTION_IDS as readonly string[]).includes(value);
+}
+
+function getInitialSection(): SectionId {
+  if (typeof window === 'undefined') {
+    return 'chat';
+  }
+
+  const section = new URLSearchParams(window.location.search).get('section');
+  return isSectionId(section) ? section : 'chat';
+}
 
 interface HealthEntry {
   labelKey: string;
@@ -624,6 +643,346 @@ function SectionWorkspace({
             onChange={next => setWs({ autoIndex: next })}
           />
         </div>
+        <Field
+          label="检索 Top-K"
+          tooltip="Workbench 文献问答每次向后端请求的候选片段数量，范围 3-20。"
+          htmlFor="workspace-retrieval-top-k"
+        >
+          <input
+            id="workspace-retrieval-top-k"
+            type="number"
+            min={3}
+            max={20}
+            step={1}
+            value={ws.retrievalTopK}
+            aria-label="检索 Top-K"
+            onChange={event => {
+              const next = Number(event.target.value);
+              if (Number.isFinite(next)) {
+                setWs({ retrievalTopK: Math.min(20, Math.max(3, Math.round(next))) });
+              }
+            }}
+            className="w-full bg-surface-high rounded-lg px-3 py-2 border border-outline-variant/50 text-sm text-foreground focus:outline-none focus:border-primary/40 transition-colors"
+          />
+        </Field>
+      </div>
+    </section>
+  );
+}
+
+function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | number>) => string }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [taskDefaults, setTaskDefaults] = useState<Record<string, TaskDefaults>>({});
+  const [modelMaxTokens, setModelMaxTokens] = useState(32768);
+  const [userOverrides, setUserOverrides] = useState<Record<string, SamplingParams>>({});
+  const [expandedTask, setExpandedTask] = useState<string | null>('chat');
+  const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
+  const [saveError, setSaveError] = useState<Record<string, string>>({});
+
+  const tasks = [
+    { id: 'chat', labelKey: 'settings.sampling_task_chat', tooltip: 'settings.sampling_task_chat_tooltip' },
+    { id: 'inspiration', labelKey: 'settings.sampling_task_inspiration', tooltip: 'settings.sampling_task_inspiration_tooltip' },
+    { id: 'extraction', labelKey: 'settings.sampling_task_extraction', tooltip: 'settings.sampling_task_extraction_tooltip' },
+    { id: 'summarization', labelKey: 'settings.sampling_task_summarization', tooltip: 'settings.sampling_task_summarization_tooltip' },
+    { id: 'rewrite', labelKey: 'settings.sampling_task_rewrite', tooltip: 'settings.sampling_task_rewrite_tooltip' },
+  ];
+
+  const loadSamplingData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getSampling();
+      setTaskDefaults(data.task_defaults);
+      setModelMaxTokens(data.model_max_tokens);
+      setUserOverrides(data.tasks || {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadSamplingData(); }, [loadSamplingData]);
+
+  const getEffectiveValue = (task: string, field: keyof TaskDefaults): number => {
+    return userOverrides[task]?.[field] ?? taskDefaults[task]?.[field] ?? 0;
+  };
+
+  const handleFieldChange = (task: string, field: keyof SamplingParams, value: number | undefined) => {
+    setUserOverrides(prev => {
+      const nextTaskOverrides = updateSamplingOverrides(prev[task], field, value);
+
+      if (!nextTaskOverrides) {
+        const next = { ...prev };
+        delete next[task];
+        return next;
+      }
+
+      return {
+        ...prev,
+        [task]: nextTaskOverrides,
+      };
+    });
+  };
+
+  const handleSave = async (task: string) => {
+    setSaveStatus(prev => ({ ...prev, [task]: 'saving' }));
+    setSaveError(prev => ({ ...prev, [task]: '' }));
+    try {
+      const request = buildSamplingSaveRequest(task, userOverrides[task]);
+
+      if (request.type === 'delete') {
+        await deleteSamplingTask(request.task);
+        setUserOverrides(prev => {
+          const next = { ...prev };
+          delete next[task];
+          return next;
+        });
+      } else {
+        await putSampling(request.payload);
+        setUserOverrides(prev => ({
+          ...prev,
+          [task]: request.payload[task],
+        }));
+      }
+
+      setSaveStatus(prev => ({ ...prev, [task]: 'saved' }));
+      setTimeout(() => setSaveStatus(prev => ({ ...prev, [task]: 'idle' })), 2000);
+    } catch (err) {
+      let msg = err instanceof Error ? err.message : String(err);
+      if (axios.isAxiosError(err) && err.response?.status === 422) {
+        const detail = err.response.data?.detail;
+        msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      }
+      setSaveStatus(prev => ({ ...prev, [task]: 'error' }));
+      setSaveError(prev => ({ ...prev, [task]: msg }));
+      setTimeout(() => setSaveStatus(prev => ({ ...prev, [task]: 'idle' })), 4000);
+    }
+  };
+
+  const handleReset = async (task: string) => {
+    try {
+      await deleteSamplingTask(task);
+      setUserOverrides(prev => {
+        const next = { ...prev };
+        delete next[task];
+        return next;
+      });
+      setSaveError(prev => {
+        const next = { ...prev };
+        delete next[task];
+        return next;
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSaveError(prev => ({ ...prev, [task]: msg }));
+    }
+  };
+
+  if (loading) {
+    return (
+      <section className="space-y-5">
+        <div className="flex items-center gap-2 text-foreground/40">
+          <Loader2 size={16} className="animate-spin" />
+          <span className="text-sm">{t('common.loading')}</span>
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="space-y-5">
+        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <AlertCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="font-body text-xs text-red-700">{error}</p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section id="section-sampling" className="space-y-5">
+      <h3 className="font-headline text-sm font-semibold text-foreground flex items-center gap-2">
+        <Cpu size={16} className="text-primary" />
+        {t('settings.section_sampling')}
+        <Tooltip text={t('settings.section_sampling_tooltip')} />
+      </h3>
+      <p className="text-xs text-foreground/50 leading-relaxed">
+        {t('settings.sampling_description')}
+      </p>
+
+      <div className="space-y-2">
+        {tasks.map(task => {
+          const isExpanded = expandedTask === task.id;
+          const defaults = taskDefaults[task.id];
+          const overrides = userOverrides[task.id];
+          const hasOverrides = hasSamplingOverrides(overrides);
+          const status = saveStatus[task.id] || 'idle';
+          const errMsg = saveError[task.id];
+
+          if (!defaults) return null;
+
+          return (
+            <div key={task.id} className="border border-outline-variant rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setExpandedTask(isExpanded ? null : task.id)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-surface-high hover:bg-surface-highest transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <ChevronRight size={14} className={cn('transition-transform text-foreground/40', isExpanded && 'rotate-90')} />
+                  <span className="font-label text-sm text-foreground">{t(task.labelKey)}</span>
+                  <Tooltip text={t(task.tooltip)} />
+                  {hasOverrides && (
+                    <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded-full font-label">
+                      {t('settings.sampling_customized')}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-foreground/30 font-mono">
+                  T={getEffectiveValue(task.id, 'temperature').toFixed(2)}
+                </span>
+              </button>
+
+              {isExpanded && (
+                <div className="px-4 py-4 space-y-4 bg-surface-low border-t border-outline-variant">
+                  {errMsg && (
+                    <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-md">
+                      <AlertCircle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+                      <p className="font-body text-[11px] text-red-700 leading-relaxed">{errMsg}</p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field
+                      label={`${t('settings.temperature')} (0-2)`}
+                      tooltip={t('settings.sampling_temperature_tooltip')}
+                      htmlFor={`sampling-${task.id}-temperature`}
+                    >
+                      <div className="space-y-1">
+                        <input
+                          id={`sampling-${task.id}-temperature`}
+                          type="number"
+                          min={0}
+                          max={2}
+                          step={0.05}
+                          value={overrides?.temperature ?? ''}
+                          placeholder={defaults.temperature.toFixed(2)}
+                          onChange={e => handleFieldChange(task.id, 'temperature', e.target.value ? Number(e.target.value) : undefined)}
+                          className="w-full bg-surface-highest rounded-lg px-3 py-2 border border-outline-variant/50 text-sm font-mono text-foreground focus:outline-none focus:border-primary/40 transition-colors"
+                        />
+                        <p className="text-[10px] text-foreground/40">
+                          {t('settings.sampling_default')}: {defaults.temperature.toFixed(2)}
+                        </p>
+                      </div>
+                    </Field>
+
+                    <Field
+                      label={`${t('settings.top_p')} (0-1)`}
+                      tooltip={t('settings.sampling_top_p_tooltip')}
+                      htmlFor={`sampling-${task.id}-top-p`}
+                    >
+                      <div className="space-y-1">
+                        <input
+                          id={`sampling-${task.id}-top-p`}
+                          type="number"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={overrides?.top_p ?? ''}
+                          placeholder={defaults.top_p.toFixed(2)}
+                          onChange={e => handleFieldChange(task.id, 'top_p', e.target.value ? Number(e.target.value) : undefined)}
+                          className="w-full bg-surface-highest rounded-lg px-3 py-2 border border-outline-variant/50 text-sm font-mono text-foreground focus:outline-none focus:border-primary/40 transition-colors"
+                        />
+                        <p className="text-[10px] text-foreground/40">
+                          {t('settings.sampling_default')}: {defaults.top_p.toFixed(2)}
+                        </p>
+                      </div>
+                    </Field>
+
+                    <Field
+                      label={`${t('settings.top_k')} (1-200)`}
+                      tooltip={t('settings.sampling_top_k_tooltip')}
+                      htmlFor={`sampling-${task.id}-top-k`}
+                    >
+                      <div className="space-y-1">
+                        <input
+                          id={`sampling-${task.id}-top-k`}
+                          type="number"
+                          min={1}
+                          max={200}
+                          step={1}
+                          value={overrides?.top_k ?? ''}
+                          placeholder={String(defaults.top_k)}
+                          onChange={e => handleFieldChange(task.id, 'top_k', e.target.value ? Number(e.target.value) : undefined)}
+                          className="w-full bg-surface-highest rounded-lg px-3 py-2 border border-outline-variant/50 text-sm font-mono text-foreground focus:outline-none focus:border-primary/40 transition-colors"
+                        />
+                        <p className="text-[10px] text-foreground/40">
+                          {t('settings.sampling_default')}: {defaults.top_k}
+                        </p>
+                      </div>
+                    </Field>
+
+                    <Field
+                      label={`${t('settings.max_tokens')} (1-${modelMaxTokens})`}
+                      tooltip={t('settings.sampling_max_tokens_tooltip')}
+                      htmlFor={`sampling-${task.id}-max-tokens`}
+                    >
+                      <div className="space-y-1">
+                        <input
+                          id={`sampling-${task.id}-max-tokens`}
+                          type="number"
+                          min={1}
+                          max={modelMaxTokens}
+                          step={128}
+                          value={overrides?.max_tokens ?? ''}
+                          placeholder={String(defaults.max_tokens)}
+                          onChange={e => handleFieldChange(task.id, 'max_tokens', e.target.value ? Number(e.target.value) : undefined)}
+                          className="w-full bg-surface-highest rounded-lg px-3 py-2 border border-outline-variant/50 text-sm font-mono text-foreground focus:outline-none focus:border-primary/40 transition-colors"
+                        />
+                        <p className="text-[10px] text-foreground/40">
+                          {t('settings.sampling_default')}: {defaults.max_tokens}
+                        </p>
+                      </div>
+                    </Field>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleReset(task.id)}
+                      className="px-3 py-1.5 text-xs font-label text-foreground/60 hover:text-foreground border border-outline-variant rounded-lg transition-colors"
+                    >
+                      {t('settings.sampling_reset')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSave(task.id)}
+                      disabled={status === 'saving'}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-label font-medium transition-colors',
+                        status === 'saved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        status === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
+                        'bg-primary text-primary-foreground hover:bg-primary/90',
+                      )}
+                    >
+                      {status === 'saving' ? <Loader2 size={12} className="animate-spin" /> :
+                       status === 'saved' ? <Check size={12} /> :
+                       status === 'error' ? <XCircle size={12} /> : null}
+                      {status === 'saving' ? t('common.saving') :
+                       status === 'saved' ? t('common.saved') :
+                       status === 'error' ? t('common.error') :
+                       t('common.save')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -637,12 +996,14 @@ function SectionWorkspace({
 const TABS: { id: SectionId; icon: React.ElementType; labelKey: string }[] = [
   { id: 'chat', icon: Zap, labelKey: 'settings.section_chat' },
   { id: 'embedding', icon: Network, labelKey: 'settings.section_embedding' },
+  { id: 'sampling', icon: Cpu, labelKey: 'settings.section_sampling' },
   { id: 'workspace', icon: FolderOpen, labelKey: 'settings.section_workspace' },
+  { id: 'skills', icon: Layers, labelKey: 'skills.settings_section' },
 ];
 
 export function SettingsPage() {
   const { t } = useI18n();
-  const [activeSection, setActiveSection] = useState<SectionId>('chat');
+  const [activeSection, setActiveSection] = useState<SectionId>(getInitialSection);
   const [healthEntries, setHealthEntries] = useState<HealthEntry[]>(HEALTH_ENTRIES);
   const [healthLoading, setHealthLoading] = useState(false);
   const [lastCheck, setLastCheck] = useState<string | null>(null);
@@ -651,10 +1012,22 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const isDirty = JSON.stringify(settings) !== JSON.stringify(loadSettings());
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const section = new URLSearchParams(window.location.search).get('section');
+    if (isSectionId(section)) {
+      setActiveSection(section);
+    }
+  }, []);
+
   const checkHealth = useCallback(async () => {
     setHealthLoading(true);
     try {
-      const base = localStorage.getItem('scholar-ai-api-base') || 'http://127.0.0.1:8000';
+      const storedBase = localStorage.getItem('scholar-ai-api-base')?.trim().replace(/\/+$/, '') ?? '';
+      const base = storedBase.length > 0 ? storedBase : getApiBaseUrl();
       const { data } = await axios.get(`${base}/health`, { timeout: 5000 });
       const newEntries: HealthEntry[] = [
         { labelKey: 'settings.health_backend', status: data.status === 'ok' ? 'online' : 'offline' },
@@ -696,7 +1069,9 @@ export function SettingsPage() {
   const sectionMap: Record<SectionId, React.ReactNode> = {
     chat: <SectionChat t={t} settings={settings} onChange={setSettings} isDirty={isDirty} />,
     embedding: <SectionEmbedding t={t} settings={settings} onChange={setSettings} />,
+    sampling: <SectionSampling t={t} />,
     workspace: <SectionWorkspace t={t} settings={settings} onChange={setSettings} />,
+    skills: <SkillManagerLazy />,
   };
 
   return (

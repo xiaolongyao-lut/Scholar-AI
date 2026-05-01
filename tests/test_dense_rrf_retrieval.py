@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 
+import httpx
 import numpy as np
 import pytest
 
+import chunk_vector_store as cvs
 from chunk_vector_store import ChunkVectorStore, EMBEDDING_DIM
 from eval_retrieval_runtime import _rrf_fuse
 
@@ -25,6 +28,24 @@ def _make_chunks_with_embeddings(n: int, dim: int = EMBEDDING_DIM) -> tuple:
     return chunks, embeddings
 
 
+def _isolate_embedding_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RUNTIME_ENV_DISABLE_DOTENV", "1")
+    for name in (
+        "API_KEY",
+        "BASE_URL",
+        "MODEL",
+        "EMBEDDING_API_KEY",
+        "EMBEDDING_BASE_URL",
+        "EMBEDDING_MODEL",
+        "SILICONFLOW_API_KEY",
+        "SILICONFLOW_EMBEDDING_API_KEY",
+        "SILICONFLOW_EMBEDDING_BASE_URL",
+        "SILICONFLOW_EMBEDDING_MODEL",
+        "EMBEDDING_KEY_PROBE_DISABLE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_cosine_search_returns_correct_top_k():
     chunks, embeddings = _make_chunks_with_embeddings(10)
     store = ChunkVectorStore(chunks, embeddings)
@@ -36,6 +57,8 @@ def test_cosine_search_returns_correct_top_k():
     assert len(results) <= 3
     assert results[0]["chunk_id"] == "c_0"
     assert results[0]["dense_score"] > 0.99  # near-perfect self-similarity
+    assert results[0]["source_labels"] == ["dense"]
+    assert results[0]["source_hint"] == "dense"
 
 
 def test_cosine_search_empty_store():
@@ -81,12 +104,97 @@ def test_build_empty_chunks():
 
 def test_build_no_api_key_graceful(monkeypatch):
     """Without API key and without pre-computed embeddings, should return zero-filled store."""
-    monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
-    monkeypatch.delenv("SILICONFLOW_EMBEDDING_API_KEY", raising=False)
+    _isolate_embedding_env(monkeypatch)
     chunks = [{"chunk_id": "c_0", "content": "hello"}]
     store = asyncio.run(ChunkVectorStore.build(chunks))
     assert store._embeddings.shape == (1, EMBEDDING_DIM)
     assert store.has_embeddings is False
+
+
+def test_build_reuses_gateway_exact_cache_for_same_chunk(monkeypatch, tmp_path):
+    _isolate_embedding_env(monkeypatch)
+    monkeypatch.setenv("SILICONFLOW_API_KEY", "test-key")
+    monkeypatch.setenv("MODEL_CALL_GATEWAY_CACHE_DIR", str(tmp_path / "gateway_cache"))
+    monkeypatch.setenv("MODEL_CALL_GATEWAY_METRICS_PATH", str(tmp_path / "gateway_metrics.jsonl"))
+    calls = 0
+
+    def _response() -> httpx.Response:
+        request = httpx.Request("POST", "https://example.test/embeddings")
+        return httpx.Response(
+            200,
+            json={"data": [{"index": 0, "embedding": [0.25] * EMBEDDING_DIM}]},
+            request=request,
+        )
+
+    async def fake_async_post(self, url, *, headers=None, json=None):  # noqa: ANN001
+        del self, url, headers, json
+        nonlocal calls
+        calls += 1
+        return _response()
+
+    def fake_sync_post(self, url, *, headers=None, json=None):  # noqa: ANN001
+        del self, url, headers, json
+        nonlocal calls
+        calls += 1
+        return _response()
+
+    monkeypatch.setattr(cvs.httpx.AsyncClient, "post", fake_async_post)
+    monkeypatch.setattr(cvs.httpx.Client, "post", fake_sync_post)
+
+    chunk = {"chunk_id": "c_0", "material_id": "mat_0", "content": "hello gateway"}
+
+    first = asyncio.run(ChunkVectorStore.build([chunk]))
+    second = asyncio.run(ChunkVectorStore.build([chunk]))
+
+    assert first.has_embeddings is True
+    assert second.has_embeddings is True
+    assert calls == 1
+
+
+def test_build_passes_gateway_embedding_key_parts(monkeypatch):
+    _isolate_embedding_env(monkeypatch)
+    monkeypatch.setenv("SILICONFLOW_API_KEY", "test-key")
+    seen: list[dict[str, object]] = []
+
+    def fake_gated_call(**kwargs):
+        seen.append(kwargs)
+        return [0.5] * EMBEDDING_DIM
+
+    async def fail_unexpected_async_post(self, url, *, headers=None, json=None):  # noqa: ANN001
+        del self, url, headers, json
+        raise AssertionError("build should route embedding requests through gateway")
+
+    monkeypatch.setattr(cvs, "gated_call", fake_gated_call, raising=False)
+    monkeypatch.setattr(cvs.httpx.AsyncClient, "post", fail_unexpected_async_post)
+
+    chunk = {"chunk_id": "c_0", "material_id": "mat_0", "content": "hello gateway"}
+    store = asyncio.run(ChunkVectorStore.build([chunk]))
+
+    assert store.has_embeddings is True
+    assert len(seen) == 1
+    assert seen[0]["kind"] == "embedding"
+    assert seen[0]["cache_key_parts"] == {
+        "model": os.getenv("SILICONFLOW_EMBEDDING_MODEL", cvs.DEFAULT_MODEL),
+        "normalized_text": "hello gateway",
+        "chunking_version": cvs.CHUNKING_VERSION,
+    }
+
+
+def test_build_truncates_oversized_api_vectors(monkeypatch):
+    _isolate_embedding_env(monkeypatch)
+    monkeypatch.setenv("SILICONFLOW_API_KEY", "test-key")
+
+    async def fake_batch_embed(*args, **kwargs):  # noqa: ANN002, ANN003
+        del args, kwargs
+        return [[0.5] * (EMBEDDING_DIM + 16)]
+
+    monkeypatch.setattr(cvs, "_batch_embed", fake_batch_embed)
+
+    chunk = {"chunk_id": "c_0", "material_id": "mat_0", "content": "oversized vector"}
+    store = asyncio.run(ChunkVectorStore.build([chunk]))
+
+    assert store.has_embeddings is True
+    assert store._embeddings.shape == (1, EMBEDDING_DIM)
 
 
 def test_build_raises_when_cache_shape_or_count_mismatch(tmp_path):
@@ -96,10 +204,13 @@ def test_build_raises_when_cache_shape_or_count_mismatch(tmp_path):
         {"chunk_id": "c_1", "content": "world", "embedding": list(np.random.randn(EMBEDDING_DIM))},
     ]
     cache_path = tmp_path / "corpus_embeddings.npy"
+    # Build resolves cache path with model-hash injection; write the fake cache
+    # to the resolved path so the guard actually inspects it.
+    effective = cvs._resolve_effective_cache_path(cache_path, chunks)
 
     # Deliberately wrong cache shape: expected (2, EMBEDDING_DIM), actual (1, EMBEDDING_DIM).
-    np.save(str(cache_path), np.zeros((1, EMBEDDING_DIM), dtype=np.float32))
-    (tmp_path / "corpus_embeddings.manifest.json").write_text(
+    np.save(str(effective), np.zeros((1, EMBEDDING_DIM), dtype=np.float32))
+    cvs._cache_manifest_path(effective).write_text(
         json.dumps(
             {
                 "version": 1,
@@ -123,8 +234,9 @@ def test_build_raises_when_contextual_mode_mismatch(tmp_path):
         {"chunk_id": "c_0", "content": "plain content", "embedding": list(np.random.randn(EMBEDDING_DIM))},
     ]
     cache_path = tmp_path / "corpus_embeddings.npy"
-    np.save(str(cache_path), np.zeros((1, EMBEDDING_DIM), dtype=np.float32))
-    (tmp_path / "corpus_embeddings.manifest.json").write_text(
+    effective = cvs._resolve_effective_cache_path(cache_path, chunks)
+    np.save(str(effective), np.zeros((1, EMBEDDING_DIM), dtype=np.float32))
+    cvs._cache_manifest_path(effective).write_text(
         json.dumps(
             {
                 "version": 1,
@@ -195,6 +307,18 @@ def test_rrf_fuse_three_way():
     fused = _rrf_fuse([list_bm25, list_graph, list_dense], top_k=3)
     # "y" appears in all three lists → should rank first
     assert fused[0]["chunk_id"] == "y"
+
+
+def test_rrf_fuse_merges_source_labels():
+    list_bm25 = [{"chunk_id": "x", "source_labels": ["bm25"]}]
+    list_graph = [{"chunk_id": "x", "source_labels": ["graph"]}]
+    list_dense = [{"chunk_id": "x", "source_labels": ["dense"]}]
+
+    fused = _rrf_fuse([list_bm25, list_graph, list_dense], top_k=1)
+
+    assert fused[0]["chunk_id"] == "x"
+    assert fused[0]["source_labels"] == ["bm25", "hybrid", "graph", "dense", "rrf"]
+    assert fused[0]["source_hint"] == "bm25+hybrid+graph+dense+rrf"
 
 
 # ───── Dense branch integration check ─────

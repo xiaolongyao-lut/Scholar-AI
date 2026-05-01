@@ -100,7 +100,7 @@ When there are active background agents, run patrol continuously:
 
 Before running work, use `TEAM ROOT` (or `git rev-parse --show-toplevel`) and resolve all `.squad/` paths from repo root.
 
-Always read `.squad/decisions.md` and `.squad/routing.md` before first dispatch in a session.
+Before first dispatch in a session, read `.squad/identity/start-here.md` and follow its mandatory read order. This must include owner-profile boundaries via the canonical profile source/adapter, `.squad/routing.md`, `.squad/decisions.md`, current focus, memory/open threads when present, and task-relevant instructions/skills. For long-run, self-decision, unattended, or resume work, also read `.squad/identity/long-run-prompt.md` before producing the preflight envelope.
 
 Before dispatching non-trivial implementation work, check `.squad/identity/requirement-pool.md` and apply this gate:
 

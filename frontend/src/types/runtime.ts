@@ -138,6 +138,102 @@ export interface WritingRuntimeClient {
 }
 
 // ==========================================================================
+// Session Persistence (U2 / conversation-persistence-mvp)
+// ==========================================================================
+//
+// These types mirror `models/runtime.py` Pydantic classes and stay in lockstep
+// with the backend contract until `frontend/src/generated/openapi.ts` is
+// regenerated. When that happens, replace hand-written types with:
+//   export type TimelineEvent = components["schemas"]["TimelineItemPayload"];
+//   ... etc.
+// Plan reference: docs/superpowers/plans/2026-04-20-conversation-persistence-mvp.md §S-3
+
+/** Session summary used in list / drawer UI. */
+export interface SessionSummary {
+  session_id: string;
+  user_id?: string | null;
+  mode: string;                          // "prompt" | "skill" | "hybrid"
+  created_at: string;                    // ISO 8601
+  settings: Record<string, unknown>;
+  tags: string[];
+  metadata: Record<string, unknown>;     // may contain workspace_root / entry_cwd / title / parent_session_id / branch_point_checkpoint_id
+}
+
+/** Single append-only transcript event. */
+export interface TimelineEvent {
+  event_id: string;
+  session_id: string;
+  event_kind: string;                    // "user" | "assistant" | "tool_call" | "tool_result" | "checkpoint"
+  timestamp: string;                     // ISO 8601
+  workspace_key: string;
+  payload: Record<string, unknown>;      // kept as record; consumers narrow by event_kind
+  parent_event_id?: string | null;
+  /** Optional blob reference for spill (>64 KB tool results). Populated only when payload points to an external blob. */
+  ref?: string;
+}
+
+/** Cursor-paginated transcript page. */
+export interface TimelinePage {
+  session_id: string;
+  head_event_id?: string | null;
+  items: TimelineEvent[];
+  next_cursor?: string | null;
+}
+
+/** Checkpoint summary attached to a timeline event. */
+export interface CheckpointMeta {
+  checkpoint_id: string;
+  session_id: string;
+  event_id: string;
+  created_at: string;                    // ISO 8601
+  kind: string;                          // "auto" | "manual" | "rewind" | "fork"
+  metadata: Record<string, unknown>;
+  active: boolean;
+}
+
+/** Response from POST /runtime/session/{id}/resume, /rewind, /fork. */
+export interface ResumeSessionResult {
+  session: SessionSummary;
+  head_event_id?: string | null;
+  head_checkpoint_id?: string | null;
+  timeline: TimelineEvent[];
+  next_cursor?: string | null;
+}
+
+/** Request body for POST /runtime/session/{id}/rewind. */
+export interface RewindSessionRequest {
+  checkpoint_id: string;
+  /** "conversation_only" (default) keeps workspace files intact; "with_files" restores via .rollback_snapshots/. */
+  mode?: 'conversation_only' | 'with_files';
+}
+
+/** Request body for POST /runtime/session/{id}/fork. */
+export interface ForkSessionRequest {
+  checkpoint_id: string;
+  title?: string | null;
+}
+
+/** Query params for GET /runtime/sessions. */
+export interface ListSessionsQuery {
+  workspace_root?: string;
+  workspace_key?: string;
+}
+
+/** Query params for GET /runtime/session/current. */
+export interface GetCurrentSessionQuery {
+  workspace_root?: string;
+  workspace_key?: string;
+  entry_cwd?: string;
+}
+
+/** Query params for GET /runtime/session/{id}/timeline. */
+export interface GetTimelineQuery {
+  after_event_id?: string;
+  /** 1..1000, default 100 (server-side clamp). */
+  limit?: number;
+}
+
+// ==========================================================================
 // Compatibility - Legacy action execution through runtime
 // ==========================================================================
 

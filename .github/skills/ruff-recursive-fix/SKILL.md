@@ -41,7 +41,7 @@ python -m black --check --diff .
 python -m black .
 
 # Apply to a specific file or folder only
-python -m black modules/ pipeline_core.py
+python -m black literature_assistant/core/modules/ literature_assistant/core/pipeline_core.py
 ```
 
 ### Step 2 — Fix import order with isort

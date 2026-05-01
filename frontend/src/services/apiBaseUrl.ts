@@ -5,6 +5,8 @@
  * The browser dev server should reuse Vite's same-origin proxy, while desktop
  * or file-based shells still need a direct fallback to the local Python API.
  */
+import { readEnv } from './env.ts';
+
 const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, '');
 
 const getWindowAwareFallback = (): string => {
@@ -21,9 +23,7 @@ const getWindowAwareFallback = (): string => {
 };
 
 export const getApiBaseUrl = (): string => {
-  const configuredValue = typeof import.meta.env.VITE_API_BASE_URL === 'string'
-    ? import.meta.env.VITE_API_BASE_URL.trim()
-    : '';
+  const configuredValue = readEnv('VITE_API_BASE_URL');
 
   if (configuredValue.length > 0) {
     return trimTrailingSlash(configuredValue);

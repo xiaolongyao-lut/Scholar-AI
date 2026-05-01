@@ -1,3 +1,13 @@
 {
-    "markdown.validate.enabled": true
+    "markdown.validate.enabled": true,
+    "python.terminal.activateEnvironment": false,
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.profiles.windows": {
+        "PowerShell": {
+            "source": "PowerShell",
+            "icon": "terminal-powershell",
+            "args": ["-NoLogo"]
+        }
+    },
+    "chat.tools.terminal.shellIntegration.enabled": true
 }

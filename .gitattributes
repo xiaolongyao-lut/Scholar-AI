@@ -1,0 +1,9 @@
+# Append-only Squad ledgers can safely keep both sides during branch merges.
+# This also covers historical tracked logs/histories even when new runtime files
+# are ignored by `.gitignore`.
+.squad/decisions.md merge=union
+.squad/decisions-archive.md merge=union
+.squad/agents/*/history.md merge=union
+.squad/agents/history-*.md merge=union
+.squad/log/** merge=union
+.squad/orchestration-log/** merge=union

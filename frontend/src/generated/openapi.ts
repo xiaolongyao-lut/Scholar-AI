@@ -24,6 +24,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent/dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Agent Dispatch
+         * @description AI 自由调度：根据用户意图调用合适的工具组合。
+         */
+        post: operations["post_agent_dispatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tools
+         * @description 列出所有已注册的工具及其描述。
+         */
+        get: operations["get_agent_tools"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/capabilities": {
         parameters: {
             query?: never;
@@ -44,6 +84,115 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat Ask
+         * @description Send user query + context to configured LLM and return the answer.
+         */
+        post: operations["post_chat_ask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Supported Models
+         * @description List known LLM model options. Optionally filter by provider.
+         */
+        get: operations["get_chat_models"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/models/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discover Models
+         * @description Auto-discover models from an OpenAI-compatible endpoint.
+         *
+         *     Tries GET /v1/models to discover available models.
+         *     Works with Ollama, vLLM, LM Studio, LocalAI, etc.
+         */
+        get: operations["get_chat_models_discover"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Providers
+         * @description List all supported LLM providers with their models.
+         */
+        get: operations["get_chat_providers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat Stream
+         * @description Stream LLM response via Server-Sent Events (SSE).
+         *
+         *     Each event is a JSON line:
+         *       data: {"event":"text_delta","delta":"..."}
+         *       data: {"event":"usage","usage":{...},"model":"..."}
+         *       data: {"event":"done"}
+         *       data: {"event":"error","error":"..."}
+         */
+        post: operations["post_chat_stream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -56,6 +205,100 @@ export interface paths {
          * @description Return adapter server system health state.
          */
         get: operations["get_health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inspiration/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Inspirations
+         * @description 基于查询生成启发点列表。
+         */
+        post: operations["post_inspiration_generate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inspiration/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reload Inspiration Engine
+         * @description 重新加载启发引擎（例如新论文入库后调用）。
+         */
+        post: operations["post_inspiration_reload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inspiration/{spark_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Spark Context
+         * @description 获取启发点的续写上下文。
+         */
+        get: operations["get_inspiration_spark_id_context"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/cost/range": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Llm Cost Range */
+        get: operations["get_llm_cost_range"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/cost/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Llm Cost Today */
+        get: operations["get_llm_cost_today"];
         put?: never;
         post?: never;
         delete?: never;
@@ -136,6 +379,86 @@ export interface paths {
          * @description Render Layer0 + Layer1 context for the current project wing.
          */
         get: operations["get_memory_wakeup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipeline/batch/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Batch Processing
+         * @description Submit a batch PDF processing job.
+         */
+        post: operations["post_pipeline_batch_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipeline/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Pipeline Endpoint
+         * @description Run the pipeline synchronously.
+         */
+        post: operations["post_pipeline_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipeline/run_async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Pipeline Async Endpoint
+         * @description Submit an asynchronous pipeline job.
+         */
+        post: operations["post_pipeline_run_async"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipeline/task/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pipeline Task Status
+         * @description Return async task status by task ID.
+         */
+        get: operations["get_pipeline_task_task_id"];
         put?: never;
         post?: never;
         delete?: never;
@@ -424,6 +747,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/resources/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Chunks
+         * @description Get chunked document content for a project (for smarter RAG context).
+         *
+         *     Returns chunks instead of full documents, allowing the frontend to
+         *     send only relevant chunks to the LLM.
+         */
+        get: operations["get_resources_chunks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/chunks/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Chunks
+         * @description Chunk search with optional query-driven pre-ingestion.
+         *
+         *     - ingest_mode=none: pure retrieval on existing chunks
+         *     - ingest_mode=query: ingest only query-relevant pending files
+         *     - ingest_mode=full: ingest all pending files before retrieval
+         */
+        get: operations["get_resources_chunks_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Documents
+         * @description Get all document contents for a project (for RAG context).
+         */
+        get: operations["get_resources_documents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/resources/draft": {
         parameters: {
             query?: never;
@@ -462,7 +852,11 @@ export interface paths {
          */
         put: operations["put_resources_draft_draft_id"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete Draft
+         * @description Delete a draft by ID.
+         */
+        delete: operations["delete_resources_draft_draft_id"];
         options?: never;
         head?: never;
         patch?: never;
@@ -508,6 +902,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/resources/maintenance/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cleanup Historical Dirty Data
+         * @description Preview or execute cleanup for duplicate projects and non-extractable materials.
+         */
+        post: operations["post_resources_maintenance_cleanup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/resources/material": {
         parameters: {
             query?: never;
@@ -542,6 +956,30 @@ export interface paths {
         get: operations["get_resources_material_material_id"];
         put?: never;
         post?: never;
+        /**
+         * Delete Material
+         * @description Delete a single material by ID.
+         */
+        delete: operations["delete_resources_material_material_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/material/{material_id}/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Material Chunks
+         * @description Get chunks for a specific material.
+         */
+        get: operations["get_resources_material_material_id_chunks"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -562,6 +1000,26 @@ export interface paths {
         get: operations["get_resources_materials"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/materials/batch-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Delete Materials
+         * @description Batch delete materials from a project.
+         */
+        post: operations["post_resources_materials_batch_delete"];
         delete?: never;
         options?: never;
         head?: never;
@@ -600,6 +1058,101 @@ export interface paths {
          * @description Get a project by ID.
          */
         get: operations["get_resources_project_project_id"];
+        /**
+         * Update Project
+         * @description Update project title, description, or tags.
+         */
+        put: operations["put_resources_project_project_id"];
+        post?: never;
+        /**
+         * Delete Project
+         * @description Delete a project and all its associated resources.
+         */
+        delete: operations["delete_resources_project_project_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/project/{project_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Project
+         * @description Export a complete project with its sections, drafts, and materials.
+         */
+        get: operations["get_resources_project_project_id_export"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/project/{project_id}/scan-folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Project Folder
+         * @description Scan the project's source_folder and ingest all literature files.
+         *
+         *     Reads all supported files (.pdf, .docx, .doc, .txt, .md) from the project's
+         *     source_folder and indexes them into the knowledge base.  Already-indexed
+         *     files (same filename) are skipped.  Returns a summary of what was processed.
+         */
+        post: operations["post_resources_project_project_id_scan_folder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/project/{project_id}/source-folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Project Source Folder
+         * @description Update the source_folder of a project.
+         *
+         *     When set, chunk / doc store JSON files will be saved inside
+         *     ``{source_folder}/.scholarai/`` alongside the user's literature files.
+         */
+        put: operations["put_resources_project_project_id_source_folder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/project/{project_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Stats
+         * @description Get comprehensive statistics for a project.
+         */
+        get: operations["get_resources_project_project_id_stats"];
         put?: never;
         post?: never;
         delete?: never;
@@ -637,7 +1190,7 @@ export interface paths {
         };
         /**
          * List Projects
-         * @description List all projects, optionally filtered by user.
+         * @description List all projects, optionally filtered by user. Supports pagination via query params.
          */
         get: operations["get_resources_projects"];
         put?: never;
@@ -720,9 +1273,17 @@ export interface paths {
          * @description Get a section by ID.
          */
         get: operations["get_resources_section_section_id"];
-        put?: never;
+        /**
+         * Update Section
+         * @description Update section title, description, or order.
+         */
+        put: operations["put_resources_section_section_id"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete Section
+         * @description Delete a section by ID.
+         */
+        delete: operations["delete_resources_section_section_id"];
         options?: never;
         head?: never;
         patch?: never;
@@ -748,7 +1309,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/run": {
+    "/resources/stats/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Global Stats
+         * @description Get global statistics across all projects.
+         */
+        get: operations["get_resources_stats_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/upload": {
         parameters: {
             query?: never;
             header?: never;
@@ -758,10 +1339,30 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Run Pipeline Endpoint
-         * @description Run the pipeline synchronously.
+         * Upload Document
+         * @description Upload a document file, extract text content, and store as a material.
          */
-        post: operations["post_run"];
+        post: operations["post_resources_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/upload/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Documents Batch
+         * @description Upload multiple knowledge-base documents in one request and summarize outcomes.
+         */
+        post: operations["post_resources_upload_batch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -782,26 +1383,6 @@ export interface paths {
          * @description Run a writing action by delegating to the skill runtime.
          */
         post: operations["post_run_action"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/run_async": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Run Pipeline Async Endpoint
-         * @description Submit an asynchronous pipeline job.
-         */
-        post: operations["post_run_async"];
         delete?: never;
         options?: never;
         head?: never;
@@ -897,7 +1478,7 @@ export interface paths {
         };
         /**
          * Get Job Events
-         * @description Get all events for a job.
+         * @description Get all events for a job, optionally filtered for polling.
          */
         get: operations["get_runtime_job_job_id_events"];
         put?: never;
@@ -1008,6 +1589,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/session/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Current Session
+         * @description Get the latest active session for the current workspace binding.
+         */
+        get: operations["get_runtime_session_current"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/session/{session_id}": {
         parameters: {
             query?: never;
@@ -1023,6 +1624,161 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/session/{session_id}/checkpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Checkpoints
+         * @description List rewind/fork checkpoints for a session.
+         */
+        get: operations["get_runtime_session_session_id_checkpoints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/session/{session_id}/fork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fork Session
+         * @description Fork a new session branch from a checkpoint.
+         */
+        post: operations["post_runtime_session_session_id_fork"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/session/{session_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Session
+         * @description Resume a persisted session and return its current transcript head.
+         */
+        post: operations["post_runtime_session_session_id_resume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/session/{session_id}/rewind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rewind Session
+         * @description Rewind a session back to a checkpoint.
+         */
+        post: operations["post_runtime_session_session_id_rewind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/session/{session_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Timeline
+         * @description Fetch the active transcript lineage for a session.
+         */
+        get: operations["get_runtime_session_session_id_timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description List sessions scoped to a workspace binding.
+         */
+        get: operations["get_runtime_sessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sampling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sampling */
+        get: operations["get_sampling"];
+        /** Put Sampling */
+        put: operations["put_sampling"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sampling/{task}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Sampling */
+        delete: operations["delete_sampling_task"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1068,6 +1824,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/skills/approvals/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pending Skill Approvals
+         * @description List approval requests without a final approve or deny decision.
+         */
+        get: operations["get_skills_approvals_pending"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/approvals/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Skill Approval Request
+         * @description Create a persistent approval request for a skill capability.
+         */
+        post: operations["post_skills_approvals_requests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/approvals/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Skill Approval Detail
+         * @description Return one approval request with latest decision and full decision history.
+         */
+        get: operations["get_skills_approvals_request_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/approvals/{request_id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Skill Approval Request
+         * @description Record a user decision for one approval request.
+         */
+        post: operations["post_skills_approvals_request_id_decide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Skill Audit
+         * @description Get audit events for skill operations.
+         */
+        get: operations["get_skills_audit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import User Skill Endpoint
+         * @description Import a user skill package from a local directory or zip archive.
+         */
+        post: operations["post_skills_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/skills/{skill_id}": {
         parameters: {
             query?: never;
@@ -1082,13 +1958,77 @@ export interface paths {
         get: operations["get_skills_skill_id"];
         put?: never;
         post?: never;
+        /**
+         * Uninstall Skill
+         * @description Uninstall a managed user skill after creating a rollback snapshot.
+         */
+        delete: operations["delete_skills_skill_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/{skill_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable Skill
+         * @description Disable a user skill.
+         */
+        post: operations["post_skills_skill_id_disable"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/task/{task_id}": {
+    "/skills/{skill_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enable Skill
+         * @description Enable a user skill.
+         */
+        post: operations["post_skills_skill_id_enable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/{skill_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback Skill
+         * @description Restore a managed user skill from a rollback snapshot.
+         */
+        post: operations["post_skills_skill_id_rollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/{skill_id}/security": {
         parameters: {
             query?: never;
             header?: never;
@@ -1096,12 +2036,32 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Pipeline Task Status
-         * @description Return async task status by task ID.
+         * Get Skill Security Assessment
+         * @description Return the current machine-readable runtime safety policy for one Skill.
          */
-        get: operations["get_task_task_id"];
+        get: operations["get_skills_skill_id_security"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/{skill_id}/test-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Run Skill
+         * @description Test-run a skill with sample input.
+         */
+        post: operations["post_skills_skill_id_test_run"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1120,6 +2080,40 @@ export interface paths {
          * @description Retrieve the result of a completed action transformation.
          */
         get: operations["get_transform_result_job_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/volumes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Volumes */
+        get: operations["get_volumes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/volumes/{volume_key}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Volume Analysis Endpoint */
+        get: operations["get_volumes_volume_key_analysis"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1274,6 +2268,55 @@ export interface components {
              */
             state: string;
         };
+        /** BatchDeleteRequest */
+        BatchDeleteRequest: {
+            /**
+             * Material Ids
+             * @description 要删除的素材 ID 列表
+             */
+            material_ids: string[];
+        };
+        /**
+         * BatchProcessRequest
+         * @description Batch PDF processing request payload.
+         */
+        BatchProcessRequest: {
+            /**
+             * Batch Size
+             * @description Number of PDFs to collect before triggering volume merge
+             * @default 13
+             */
+            batch_size: number;
+            /**
+             * Goal
+             * @description Processing goal/theme
+             */
+            goal: string;
+            /**
+             * Output Root
+             * @description Root output directory for processed materials
+             */
+            output_root: string;
+            /**
+             * Pdf Folder
+             * @description Path to folder containing PDF files
+             */
+            pdf_folder: string;
+        };
+        /** Body_post_resources_upload */
+        Body_post_resources_upload: {
+            /** File */
+            file: string;
+            /** Project Id */
+            project_id: string;
+        };
+        /** Body_post_resources_upload_batch */
+        Body_post_resources_upload_batch: {
+            /** Files */
+            files: string[];
+            /** Project Id */
+            project_id: string;
+        };
         /**
          * BuildAssociationRequest
          * @description Request to build associative writing guidance for a project.
@@ -1336,6 +2379,130 @@ export interface components {
             name: string;
         };
         /**
+         * ChatMessage
+         * @description A single turn in the conversation history.
+         */
+        ChatMessage: {
+            /**
+             * Content
+             * @description Message content
+             */
+            content: string;
+            /**
+             * Role
+             * @description 'user' or 'assistant'
+             */
+            role: string;
+        };
+        /** ChatRequest */
+        ChatRequest: {
+            /**
+             * Ai Cost Profile
+             * @description balanced | aggressive | quality
+             */
+            ai_cost_profile?: string | null;
+            /**
+             * Context
+             * @description Document text chunks as context
+             */
+            context?: string[];
+            /**
+             * History
+             * @description Previous conversation turns
+             */
+            history?: components["schemas"]["ChatMessage"][];
+            llm: components["schemas"]["LLMConfig"];
+            /** Query */
+            query: string;
+            /**
+             * Sampling
+             * @description Per-task sampling overrides
+             */
+            sampling?: {
+                [key: string]: number;
+            } | null;
+        };
+        /** ChatResponse */
+        ChatResponse: {
+            /** Answer */
+            answer: string;
+            /** Model */
+            model: string;
+            /**
+             * Sampling Params
+             * @description Actual sampling params used
+             */
+            sampling_params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Usage */
+            usage?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * ChatStreamRequest
+         * @description Request body for streaming chat — same fields as ChatRequest.
+         */
+        ChatStreamRequest: {
+            /**
+             * Ai Cost Profile
+             * @description balanced | aggressive | quality
+             */
+            ai_cost_profile?: string | null;
+            /**
+             * Context
+             * @description 文档上下文片段
+             */
+            context?: string[];
+            /**
+             * History
+             * @description 历史对话记录
+             */
+            history?: components["schemas"]["ChatMessage"][];
+            llm: components["schemas"]["LLMConfig"];
+            /** Query */
+            query: string;
+            /**
+             * Sampling
+             * @description Per-task sampling overrides
+             */
+            sampling?: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Stream
+             * @description 启用流式输出
+             * @default true
+             */
+            stream: boolean;
+        };
+        /**
+         * CheckpointPayload
+         * @description Checkpoint summary payload.
+         */
+        CheckpointPayload: {
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+            /** Checkpoint Id */
+            checkpoint_id: string;
+            /** Created At */
+            created_at: string;
+            /** Event Id */
+            event_id: string;
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Session Id */
+            session_id: string;
+        };
+        /**
          * CitationAnchorPayload
          * @description Stable citation anchor metadata exchanged with the frontend editor.
          */
@@ -1352,6 +2519,38 @@ export interface components {
             startOffset: number;
             /** Token */
             token: string;
+        };
+        /** CleanupRequest */
+        CleanupRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+        };
+        /** ContinuationResponse */
+        ContinuationResponse: {
+            /**
+             * Causal Chain Summary
+             * @default
+             */
+            causal_chain_summary: string;
+            /**
+             * Evidence Texts
+             * @default []
+             */
+            evidence_texts: string[];
+            /**
+             * Related Figures
+             * @default []
+             */
+            related_figures: string[];
+            spark: components["schemas"]["SparkResponse"];
+            /**
+             * Suggested Angles
+             * @default []
+             */
+            suggested_angles: string[];
         };
         /**
          * CreateDraftRequest
@@ -1451,18 +2650,17 @@ export interface components {
              * @default
              */
             description: string;
+            /**
+             * Source Folder
+             * @default
+             */
+            source_folder: string;
             /** Tags */
             tags?: string[];
             /** Title */
             title: string;
             /** User Id */
             user_id?: string | null;
-            /**
-             * Source Folder
-             * @description Optional: local folder path where literature files are stored
-             * @default
-             */
-            source_folder: string;
         };
         /**
          * CreateSectionRequest
@@ -1486,6 +2684,12 @@ export interface components {
          * @description Request to create a writing session.
          */
         CreateSessionRequest: {
+            /** Entry Cwd */
+            entry_cwd?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
             /** Mode */
             mode: string;
             /** Settings */
@@ -1494,8 +2698,42 @@ export interface components {
             };
             /** Tags */
             tags?: string[];
+            /** Title */
+            title?: string | null;
             /** User Id */
             user_id?: string | null;
+            /** Workspace Root */
+            workspace_root?: string | null;
+        };
+        /** DispatchRequest */
+        DispatchRequest: {
+            /**
+             * Query
+             * @description 用户查询/意图
+             */
+            query: string;
+        };
+        /** DispatchResponse */
+        DispatchResponse: {
+            /** Query */
+            query: string;
+            /**
+             * Results
+             * @default []
+             */
+            results: unknown[];
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Tool Calls
+             * @default []
+             */
+            tool_calls: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * DraftPayload
@@ -1593,10 +2831,124 @@ export interface components {
             /** Success */
             success: boolean;
         };
+        /**
+         * ForkSessionRequest
+         * @description Request to fork a session from a checkpoint.
+         */
+        ForkSessionRequest: {
+            /** Checkpoint Id */
+            checkpoint_id: string;
+            /** Title */
+            title?: string | null;
+        };
+        /** GenerateSparksRequest */
+        GenerateSparksRequest: {
+            /**
+             * Limit
+             * @description 最大返回数
+             * @default 10
+             */
+            limit: number;
+            /** @description Optional LLM config for real inspiration generation */
+            llm?: components["schemas"]["LLMConfig"] | null;
+            /**
+             * Project Id
+             * @description 项目ID，用于从知识库生成启发点
+             */
+            project_id?: string | null;
+            /**
+             * Query
+             * @description 查询/主题
+             */
+            query: string;
+            /**
+             * Sampling
+             * @description Per-task sampling overrides
+             */
+            sampling?: {
+                [key: string]: number;
+            } | null;
+        };
+        /** GenerateSparksResponse */
+        GenerateSparksResponse: {
+            /** Sparks */
+            sparks: components["schemas"]["SparkResponse"][];
+            /** Total */
+            total: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * ImportUserSkillManifestPayload
+         * @description Minimal manifest summary returned after importing a user skill.
+         */
+        ImportUserSkillManifestPayload: {
+            /** High Risk Flags */
+            high_risk_flags?: string[];
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * ImportUserSkillRequest
+         * @description Request to import a local user skill directory or zip package into the managed root.
+         */
+        ImportUserSkillRequest: {
+            /** Managed Root */
+            managed_root?: string | null;
+            /**
+             * Origin
+             * @default user_import
+             */
+            origin: string;
+            /** Source Path */
+            source_path: string;
+        };
+        /**
+         * ImportUserSkillResponse
+         * @description Result of importing a user skill package.
+         */
+        ImportUserSkillResponse: {
+            /**
+             * Content Hash
+             * @default
+             */
+            content_hash: string;
+            /** Errors */
+            errors?: string[];
+            /**
+             * Installed At
+             * @default
+             */
+            installed_at: string;
+            /**
+             * Installed Path
+             * @default
+             */
+            installed_path: string;
+            manifest?: components["schemas"]["ImportUserSkillManifestPayload"] | null;
+            /**
+             * Origin
+             * @default
+             */
+            origin: string;
+            /**
+             * Skill Id
+             * @default
+             */
+            skill_id: string;
+            /** Success */
+            success: boolean;
+            /** Warnings */
+            warnings?: string[];
         };
         /**
          * InvalidFactRequest
@@ -1678,6 +3030,54 @@ export interface components {
             started_at?: string | null;
             /** Status */
             status: string;
+        };
+        /** LLMConfig */
+        LLMConfig: {
+            /**
+             * Api Key
+             * @default
+             */
+            api_key: string;
+            /**
+             * Base Url
+             * @default https://api.deepseek.com
+             */
+            base_url: string;
+            /**
+             * Max Tokens
+             * @default 4096
+             */
+            max_tokens: number;
+            /**
+             * Model
+             * @default deepseek-chat
+             */
+            model: string;
+            /**
+             * Provider
+             * @default DeepSeek
+             */
+            provider: string;
+            /**
+             * System Prompt
+             * @default
+             */
+            system_prompt: string;
+            /**
+             * Temperature
+             * @default 0.7
+             */
+            temperature: number;
+            /**
+             * Top K
+             * @default 50
+             */
+            top_k: number;
+            /**
+             * Top P
+             * @default 0.9
+             */
+            top_p: number;
         };
         /**
          * MaterialPayload
@@ -1878,6 +3278,33 @@ export interface components {
             wing?: string | null;
         };
         /**
+         * ModelInfo
+         * @description LLM model information.
+         */
+        ModelInfo: {
+            /**
+             * Context Window
+             * @default 0
+             */
+            context_window: number;
+            /**
+             * Default Base Url
+             * @default
+             */
+            default_base_url: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Provider */
+            provider: string;
+        };
+        /**
          * PipelineRequest
          * @description Pipeline execution request payload.
          */
@@ -2030,6 +3457,115 @@ export interface components {
             status: string;
         };
         /**
+         * ProjectExportCitationChainPayload
+         * @description Trace from a draft anchor back to its source evidence.
+         */
+        ProjectExportCitationChainPayload: {
+            /** Anchor Id */
+            anchor_id: string;
+            /** Claim Excerpt */
+            claim_excerpt: string;
+            /** Confidence */
+            confidence?: number | null;
+            /** Evidence Id */
+            evidence_id?: string | null;
+            /** Material Id */
+            material_id?: string | null;
+            /** Page */
+            page?: number | null;
+            /** Paragraph Index */
+            paragraph_index?: number | null;
+            /** Section Id */
+            section_id?: string | null;
+            /** Source Excerpt */
+            source_excerpt: string;
+        };
+        /**
+         * ProjectExportEvidenceProvenancePayload
+         * @description Source metadata for one project export evidence row.
+         */
+        ProjectExportEvidenceProvenancePayload: {
+            /** Material Title */
+            material_title: string;
+            /** Material Type */
+            material_type: string;
+        };
+        /**
+         * ProjectExportEvidenceRowPayload
+         * @description Academic evidence row derived for project export.
+         */
+        ProjectExportEvidenceRowPayload: {
+            /** Anchor Ids */
+            anchor_ids?: string[];
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Material Id */
+            material_id: string;
+            /** Page */
+            page?: number | null;
+            provenance: components["schemas"]["ProjectExportEvidenceProvenancePayload"];
+            /** Score */
+            score?: number | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ProjectExportFormat
+         * @enum {string}
+         */
+        ProjectExportFormat: "markdown" | "json";
+        /**
+         * ProjectExportPayload
+         * @description Project export response for JSON and Markdown formats.
+         */
+        ProjectExportPayload: {
+            /** Citation Chain */
+            citation_chain?: components["schemas"]["ProjectExportCitationChainPayload"][];
+            /** Content */
+            content?: string | null;
+            /** Document Count */
+            document_count?: number | null;
+            /** Drafts */
+            drafts?: components["schemas"]["DraftPayload"][];
+            /** Evidence Rows */
+            evidence_rows?: components["schemas"]["ProjectExportEvidenceRowPayload"][];
+            /** Filename */
+            filename?: string | null;
+            /** Format */
+            format: string;
+            /** Materials */
+            materials?: components["schemas"]["MaterialPayload"][];
+            project?: components["schemas"]["ProjectPayload"] | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Review Findings */
+            review_findings?: components["schemas"]["ProjectExportReviewFindingPayload"][];
+            /** Sections */
+            sections?: components["schemas"]["SectionPayload"][];
+        };
+        /**
+         * ProjectExportReviewFindingPayload
+         * @description Export-time writing evidence review finding.
+         */
+        ProjectExportReviewFindingPayload: {
+            /** Draft Id */
+            draft_id?: string | null;
+            /** Id */
+            id: string;
+            /** Material Id */
+            material_id?: string | null;
+            /** Message */
+            message: string;
+            /** Section Id */
+            section_id?: string | null;
+            /** Severity */
+            severity: string;
+        };
+        /**
          * ProjectPayload
          * @description Writing project response.
          */
@@ -2042,6 +3578,11 @@ export interface components {
             description: string;
             /** Project Id */
             project_id: string;
+            /**
+             * Source Folder
+             * @default
+             */
+            source_folder: string;
             /** Status */
             status: string;
             /** Tags */
@@ -2052,12 +3593,30 @@ export interface components {
             updated_at: string;
             /** User Id */
             user_id?: string | null;
+        };
+        /**
+         * ProviderInfo
+         * @description Provider with grouped models.
+         */
+        ProviderInfo: {
             /**
-             * Source Folder
-             * @description User-specified folder for literature files & chunk storage
+             * Api Type
+             * @default openai-compatible
+             */
+            api_type: string;
+            /**
+             * Auth Tip
              * @default
              */
-            source_folder: string;
+            auth_tip: string;
+            /** Default Base Url */
+            default_base_url: string;
+            /** Display Name */
+            display_name: string;
+            /** Models */
+            models: components["schemas"]["ModelInfo"][];
+            /** Provider */
+            provider: string;
         };
         /**
          * RecommendationEvidencePayload
@@ -2151,6 +3710,21 @@ export interface components {
             time_to_remediate_minutes?: number | null;
         };
         /**
+         * ResumeSessionPayload
+         * @description Session resume response payload.
+         */
+        ResumeSessionPayload: {
+            /** Head Checkpoint Id */
+            head_checkpoint_id?: string | null;
+            /** Head Event Id */
+            head_event_id?: string | null;
+            /** Next Cursor */
+            next_cursor?: string | null;
+            session: components["schemas"]["SessionPayload"];
+            /** Timeline */
+            timeline?: components["schemas"]["TimelineItemPayload"][];
+        };
+        /**
          * RevisionPayload
          * @description Writing revision response.
          */
@@ -2173,6 +3747,19 @@ export interface components {
             revision_id: string;
             /** Revision Number */
             revision_number: number;
+        };
+        /**
+         * RewindSessionRequest
+         * @description Request to rewind a session to a checkpoint.
+         */
+        RewindSessionRequest: {
+            /** Checkpoint Id */
+            checkpoint_id: string;
+            /**
+             * Mode
+             * @default conversation_only
+             */
+            mode: string;
         };
         /**
          * RunActionAcceptedPayload
@@ -2210,6 +3797,15 @@ export interface components {
             output_mode?: string | null;
             /** Scope */
             scope?: string | null;
+        };
+        /** SamplingPayload */
+        SamplingPayload: {
+            /** Tasks */
+            tasks?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
         };
         /**
          * SaveDraftRequest
@@ -2262,6 +3858,10 @@ export interface components {
         SessionPayload: {
             /** Created At */
             created_at: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
             /** Mode */
             mode: string;
             /** Session Id */
@@ -2274,6 +3874,80 @@ export interface components {
             tags: string[];
             /** User Id */
             user_id: string | null;
+        };
+        /**
+         * SkillApprovalDecisionCreate
+         * @description Request body for recording a user decision on an approval request.
+         */
+        SkillApprovalDecisionCreate: {
+            /** Decision */
+            decision: string;
+            /** Reason */
+            reason?: string | null;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * SkillApprovalDecisionPayload
+         * @description Persistent approval decision payload returned by the Skills API.
+         */
+        SkillApprovalDecisionPayload: {
+            /** Decision */
+            decision: string;
+            /** Reason */
+            reason?: string | null;
+            /** Request Id */
+            request_id: string;
+            /** Timestamp */
+            timestamp: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * SkillApprovalDetailPayload
+         * @description Approval request with its latest decision and decision history.
+         */
+        SkillApprovalDetailPayload: {
+            /** Decisions */
+            decisions?: components["schemas"]["SkillApprovalDecisionPayload"][];
+            latest_decision?: components["schemas"]["SkillApprovalDecisionPayload"] | null;
+            request: components["schemas"]["SkillApprovalRequestPayload"];
+        };
+        /**
+         * SkillApprovalRequestCreate
+         * @description Request body for creating a persistent skill approval request.
+         */
+        SkillApprovalRequestCreate: {
+            /** Capability Id */
+            capability_id: string;
+            /** Capability Name */
+            capability_name: string;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * SkillApprovalRequestPayload
+         * @description Persistent approval request payload returned by the Skills API.
+         */
+        SkillApprovalRequestPayload: {
+            /** Capability Id */
+            capability_id: string;
+            /** Capability Name */
+            capability_name: string;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+            /** Request Id */
+            request_id: string;
+            /** Timestamp */
+            timestamp: string;
         };
         /**
          * SkillCompatibilityPayload
@@ -2370,6 +4044,30 @@ export interface components {
             skillIds: string[];
         };
         /**
+         * SkillRollbackRequest
+         * @description Request body for restoring a managed user skill from a rollback snapshot.
+         */
+        SkillRollbackRequest: {
+            /** Backup Path */
+            backup_path?: string | null;
+        };
+        /**
+         * SkillRollbackResponse
+         * @description Response returned after restoring a managed user skill snapshot.
+         */
+        SkillRollbackResponse: {
+            /** Backup Path */
+            backup_path: string;
+            /** Restored Path */
+            restored_path: string;
+            /** Rolled Back */
+            rolled_back: boolean;
+            /** Skill Id */
+            skill_id: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
          * SkillRunResultPayload
          * @description Transform result payload returned to the frontend.
          */
@@ -2392,6 +4090,194 @@ export interface components {
             scope: string;
             /** Skillid */
             skillId: string;
+        };
+        /**
+         * SkillSecurityAssessmentPayload
+         * @description Machine-readable Skill safety assessment for UI and audit gates.
+         */
+        SkillSecurityAssessmentPayload: {
+            /** Allowed Operations */
+            allowed_operations?: string[];
+            /** Approval Reason */
+            approval_reason?: string | null;
+            /** Block Reason */
+            block_reason?: string | null;
+            /** Denied Operations */
+            denied_operations?: string[];
+            /** Enable Requires Approval */
+            enable_requires_approval: boolean;
+            /** High Risk Flags */
+            high_risk_flags?: string[];
+            /** Required Sandbox Controls */
+            required_sandbox_controls?: string[];
+            /** Risk Level */
+            risk_level: string;
+            /** Runtime Executable */
+            runtime_executable: boolean;
+            /** Runtime Gate */
+            runtime_gate: string;
+            /** Skill Id */
+            skill_id: string;
+            /** Source */
+            source: string;
+        };
+        /**
+         * SkillTestRunResponse
+         * @description Structured result returned by user skill test-run execution.
+         */
+        SkillTestRunResponse: {
+            /** Audit Id */
+            audit_id?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Execution Time Ms
+             * @default 0
+             */
+            execution_time_ms: number;
+            /** Input Text */
+            input_text: string;
+            /** Job Id */
+            job_id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Output Text
+             * @default
+             */
+            output_text: string;
+            /** Skill Id */
+            skill_id: string;
+            /** Status */
+            status: string;
+            /** Structured Output */
+            structured_output?: {
+                [key: string]: unknown;
+            };
+            /** Timestamp */
+            timestamp: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * SkillToggleResponse
+         * @description Response returned after enabling or disabling a user skill.
+         */
+        SkillToggleResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Skill Id */
+            skill_id: string;
+        };
+        /**
+         * SkillUninstallResponse
+         * @description Response returned after uninstalling a managed user skill.
+         */
+        SkillUninstallResponse: {
+            /** Backup Path */
+            backup_path?: string | null;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Removed Path */
+            removed_path?: string | null;
+            /** Skill Id */
+            skill_id: string;
+            /** Uninstalled */
+            uninstalled: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** SparkResponse */
+        SparkResponse: {
+            /**
+             * Actionable
+             * @default true
+             */
+            actionable: boolean;
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /** Content */
+            content: string;
+            /** Id */
+            id: string;
+            /**
+             * Related Point Ids
+             * @default []
+             */
+            related_point_ids: string[];
+            /**
+             * Source Papers
+             * @default []
+             */
+            source_papers: string[];
+            /** Spark Type */
+            spark_type: string;
+        };
+        /**
+         * TimelineItemPayload
+         * @description Append-only transcript event payload.
+         */
+        TimelineItemPayload: {
+            /** Event Id */
+            event_id: string;
+            /** Event Kind */
+            event_kind: string;
+            /** Parent Event Id */
+            parent_event_id?: string | null;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Session Id */
+            session_id: string;
+            /** Timestamp */
+            timestamp: string;
+            /** Workspace Key */
+            workspace_key: string;
+        };
+        /**
+         * TimelinePagePayload
+         * @description Cursor-paginated transcript page.
+         */
+        TimelinePagePayload: {
+            /** Head Event Id */
+            head_event_id?: string | null;
+            /** Items */
+            items?: components["schemas"]["TimelineItemPayload"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Session Id */
+            session_id: string;
+        };
+        /** UpdateProjectRequest */
+        UpdateProjectRequest: {
+            /** Description */
+            description?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** UpdateSectionRequest */
+        UpdateSectionRequest: {
+            /** Description */
+            description?: string | null;
+            /** Order */
+            order?: number | null;
+            /** Title */
+            title?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -2495,6 +4381,59 @@ export interface operations {
             };
         };
     };
+    post_agent_dispatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_tools: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     get_capabilities: {
         parameters: {
             query?: never;
@@ -2515,7 +4454,302 @@ export interface operations {
             };
         };
     };
+    post_chat_ask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_models: {
+        parameters: {
+            query?: {
+                provider?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_models_discover: {
+        parameters: {
+            query: {
+                /** @description Base URL of LLM service */
+                base_url: string;
+                /** @description API key (optional for local) */
+                api_key?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_providers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderInfo"][];
+                };
+            };
+        };
+    };
+    post_chat_stream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatStreamRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_health: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    post_inspiration_generate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateSparksRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerateSparksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_inspiration_reload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_inspiration_spark_id_context: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                spark_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContinuationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_cost_range: {
+        parameters: {
+            query: {
+                /** @description Inclusive start date in YYYY-MM-DD format */
+                start: string;
+                /** @description Inclusive end date in YYYY-MM-DD format */
+                end: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_cost_today: {
         parameters: {
             query?: never;
             header?: never;
@@ -2641,6 +4875,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryWakeupPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pipeline_batch_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchProcessRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineTaskSubmitResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pipeline_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pipeline_run_async: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineTaskSubmitResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pipeline_task_task_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineTaskStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3077,6 +5443,121 @@ export interface operations {
             };
         };
     };
+    get_resources_chunks: {
+        parameters: {
+            query: {
+                project_id: string;
+                /** @description Filter by material */
+                material_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_chunks_search: {
+        parameters: {
+            query: {
+                project_id: string;
+                /** @description 搜索词 */
+                query: string;
+                /** @description 返回最相关的 N 个chunk */
+                top_k?: number;
+                /** @description 提问前置入库模式：none/query/full */
+                ingest_mode?: string;
+                /** @description query 模式最多入库候选文件数 */
+                ingest_limit?: number;
+                /** @description 入库执行模式：legacy/fast */
+                scan_mode?: string;
+                /** @description 入库批大小 */
+                scan_batch_size?: number;
+                /** @description 入库并发 worker 数 */
+                scan_max_workers?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_documents: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_resources_draft: {
         parameters: {
             query?: never;
@@ -3176,6 +5657,39 @@ export interface operations {
             };
         };
     };
+    delete_resources_draft_draft_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_resources_draft_draft_id_restore: {
         parameters: {
             query: {
@@ -3228,6 +5742,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DraftPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resources_maintenance_cleanup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CleanupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -3305,6 +5854,74 @@ export interface operations {
             };
         };
     };
+    delete_resources_material_material_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_material_material_id_chunks: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_resources_materials: {
         parameters: {
             query: {
@@ -3323,6 +5940,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaterialPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resources_materials_batch_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -3400,6 +6052,215 @@ export interface operations {
             };
         };
     };
+    put_resources_project_project_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_resources_project_project_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_project_project_id_export: {
+        parameters: {
+            query?: {
+                /** @description 导出格式 */
+                format?: components["schemas"]["ProjectExportFormat"];
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectExportPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resources_project_project_id_scan_folder: {
+        parameters: {
+            query?: {
+                /** @description 扫描模式：legacy（串行兼容）/ fast（元数据预扫 + 分批并发解析） */
+                scan_mode?: string;
+                /** @description fast 模式下每批处理文件数 */
+                batch_size?: number;
+                /** @description fast 模式下并发 worker 数（建议 4-16） */
+                max_workers?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_resources_project_project_id_source_folder: {
+        parameters: {
+            query: {
+                /** @description 绝对路径，留空则恢复默认存储位置 */
+                source_folder: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_project_project_id_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     put_resources_project_project_id_status: {
         parameters: {
             query: {
@@ -3438,6 +6299,10 @@ export interface operations {
         parameters: {
             query?: {
                 user_id?: string | null;
+                /** @description 页码 */
+                page?: number;
+                /** @description 每页条数 */
+                page_size?: number;
             };
             header?: never;
             path?: never;
@@ -3591,6 +6456,74 @@ export interface operations {
             };
         };
     };
+    put_resources_section_section_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                section_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_resources_section_section_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                section_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_resources_sections: {
         parameters: {
             query: {
@@ -3622,7 +6555,29 @@ export interface operations {
             };
         };
     };
-    post_run: {
+    get_resources_stats_overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    post_resources_upload: {
         parameters: {
             query?: never;
             header?: never;
@@ -3631,7 +6586,42 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PipelineRequest"];
+                "multipart/form-data": components["schemas"]["Body_post_resources_upload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resources_upload_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_post_resources_upload_batch"];
             };
         };
         responses: {
@@ -3677,39 +6667,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunActionAcceptedPayload"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_run_async: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PipelineRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PipelineTaskSubmitResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3853,7 +6810,11 @@ export interface operations {
     };
     get_runtime_job_job_id_events: {
         parameters: {
-            query?: never;
+            query?: {
+                since_timestamp?: string | null;
+                after_event_id?: string | null;
+                limit?: number;
+            };
             header?: never;
             path: {
                 job_id: string;
@@ -4045,6 +7006,39 @@ export interface operations {
             };
         };
     };
+    get_runtime_session_current: {
+        parameters: {
+            query?: {
+                workspace_root?: string | null;
+                workspace_key?: string | null;
+                entry_cwd?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_runtime_session_session_id: {
         parameters: {
             query?: never;
@@ -4063,6 +7057,294 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_session_session_id_checkpoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckpointPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_runtime_session_session_id_fork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForkSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumeSessionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_runtime_session_session_id_resume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumeSessionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_runtime_session_session_id_rewind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RewindSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumeSessionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_session_session_id_timeline: {
+        parameters: {
+            query?: {
+                after_event_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePagePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_sessions: {
+        parameters: {
+            query?: {
+                workspace_root?: string | null;
+                workspace_key?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sampling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_sampling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SamplingPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_sampling_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4140,6 +7422,192 @@ export interface operations {
             };
         };
     };
+    get_skills_approvals_pending: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillApprovalRequestPayload"][];
+                };
+            };
+        };
+    };
+    post_skills_approvals_requests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillApprovalRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillApprovalRequestPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skills_approvals_request_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillApprovalDetailPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_skills_approvals_request_id_decide: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillApprovalDecisionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillApprovalDecisionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skills_audit: {
+        parameters: {
+            query?: {
+                skill_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_skills_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportUserSkillRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportUserSkillResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_skills_skill_id: {
         parameters: {
             query?: never;
@@ -4171,12 +7639,14 @@ export interface operations {
             };
         };
     };
-    get_task_task_id: {
+    delete_skills_skill_id: {
         parameters: {
-            query?: never;
+            query?: {
+                dry_run?: boolean;
+            };
             header?: never;
             path: {
-                task_id: string;
+                skill_id: string;
             };
             cookie?: never;
         };
@@ -4188,7 +7658,170 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PipelineTaskStatusResponse"];
+                    "application/json": components["schemas"]["SkillUninstallResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_skills_skill_id_disable: {
+        parameters: {
+            query?: {
+                reason?: string;
+            };
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillToggleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_skills_skill_id_enable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillToggleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_skills_skill_id_rollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SkillRollbackRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillRollbackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skills_skill_id_security: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillSecurityAssessmentPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_skills_skill_id_test_run: {
+        parameters: {
+            query?: {
+                input_text?: string;
+            };
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillTestRunResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4220,6 +7853,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SkillRunResultPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_volumes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_volumes_volume_key_analysis: {
+        parameters: {
+            query?: {
+                /** @description Force rebuild the cached analysis artifacts */
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                volume_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

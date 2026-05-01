@@ -180,3 +180,23 @@ Ralph's canonical merge attempt failed `gateb_schema_validator.py` validation. C
 - **Architectural risk:** Silent contract drift (entrypoint binding, wrong precedence order, broken persistence semantics).
 - **Evidence basis:** `.copilot-tracking/plans/2026-04-21-cost-and-defaults.md`, live app sources, llm_defaults.py.
 - **Decision trail:** Consolidated to `.squad/decisions/decisions.md` § 2026-04-21 Task 2.1.2 Design Review.
+### 2026-04-26: Rerank Isolation Decision Tree
+
+- **Decision:** Import-time dotenv loading in `eval_retrieval_runtime.py` is a valid surgical defect because it ignores `RUNTIME_ENV_DISABLE_DOTENV` and contaminates reranker tests; patch authorized only for dotenv guard plus focused regression.
+- **Boundary:** Clean paired 30q rerank-ON run remains blocked until local env leak is fixed, exact 5-test bundle passes, and budget/credential approval is explicit.
+- **Evidence:** `.squad\decisions\inbox\tank-rerank-layer-audit.md`, `.squad\decisions\inbox\oracle-ranking-evidence.md`, `.squad\decisions\inbox\trinity-rerank-diagnostics.md`, `eval_retrieval_runtime.py:13-25`, `runtime_env.py:18-67`.
+- **Next:** Coordinator dispatches surgical env-loading guard; independent validation precedes any paid rerank smoke.
+
+### 2026-04-26: Autonomy/Profile/.env Calibration
+
+- **Decision:** Current free/public-interest rerank-on validation may continue using existing `.env` capability; paid-budget language is superseded for this slice.
+- **Hard stop:** Do not expose secret values, edit `.env`, change external resources, mutate goldset/corpus scope, or duplicate the already-running `trinity-paired-rerank-on` task.
+- **Coordinator phrasing:** Use capability/secret-safety/goldset-scope language: capability present, secret-safe, no scope mutation, continue.
+- **Evidence:** `.squad/decisions/inbox/morpheus-autonomy-profile-env-calibration.md`; directives `copilot-directive-2026-04-26T16-18-03Z-external-rerank-testing.md` and `copilot-directive-2026-04-26T16-20-13Z-autonomy-profile-env.md`.
+
+
+### 2026-04-26: Copilot Squad Startup Loading Root Cause
+
+- **Finding:** Copilot Squad startup contract loads a minimal/as-needed source set and does not force `.squad/identity/start-here.md` mandatory read order; this explains missing profile/project/phase/memory context on entry.
+- **Decision:** Durable repair requires a narrow `.github/agents/squad.agent.md` Team Mode startup patch; restart notice is mandatory after that file changes.
+- **Evidence:** `.squad/decisions/inbox/morpheus-startup-loading-audit.md`; anchors include `.github/agents/squad.agent.md:100-108`, `.squad/identity/start-here.md:3-28`, `.github/copilot-instructions.md:71-75` and `:107-109`.

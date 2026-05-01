@@ -14,6 +14,9 @@ import type {
   TransformResult, 
   WritingMaterial,
   ContinuationContext,
+  CitationAnchor,
+  CitationInsertRequest,
+  CitationFocusRequest,
 } from '@/types/writing';
 
 // Sub-components
@@ -23,20 +26,10 @@ import { AssistantDock } from './writing/AssistantDock';
 import { ReferenceDrawer } from './writing/ReferenceDrawer';
 import { StatusBar } from './writing/StatusBar';
 import { useJobEventPolling } from '@/hooks/useJobEventPolling';
+import { ExportPreviewModal } from './writing/ExportPreviewModal';
 
 const writingBackend = getWritingBackendService();
 const runtimeClient = getWritingRuntimeClient();
-
-type CitationInsertRequest = {
-  requestId: string;
-  materialId: string | null;
-};
-
-type CitationFocusRequest = {
-  requestId: string;
-  anchorId: string;
-  materialId: string | null;
-};
 
 type ActiveJobTracking = {
   jobId: string;
@@ -132,6 +125,7 @@ export function DraftStudio() {
   const [transformResult, setTransformResult] = useState<TransformResult | null>(null);
   const [showComparison, setShowComparison] = useState(false);
   const [activeJobTracking, setActiveJobTracking] = useState<ActiveJobTracking | null>(null);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const citationAnchors = React.useMemo(
     () => parseCitationAnchors(draft?.content || ''),
@@ -608,13 +602,15 @@ export function DraftStudio() {
     }
   };
 
-  const handleRequestAnchorFocus = (anchorId: string, materialId: string | null) => {
-    setActiveCitationAnchorId(anchorId);
-    setFocusedMaterialId(materialId || null);
+  const handleRequestAnchorFocus = (anchor: CitationAnchor) => {
+    setActiveCitationAnchorId(anchor.instanceId);
+    setFocusedMaterialId(anchor.materialId || null);
     setCitationFocusRequest({
       requestId: createRequestId(),
-      anchorId,
-      materialId: materialId || null,
+      anchorId: anchor.id,
+      anchorInstanceId: anchor.instanceId,
+      anchorStartOffset: anchor.startOffset,
+      materialId: anchor.materialId || null,
     });
     setCitationDrawerOpen(true);
   };
@@ -734,7 +730,7 @@ export function DraftStudio() {
           materials={materials}
           citationAnchors={citationAnchors}
           citationCountByMaterial={citationCountByMaterial}
-          activeCitationAnchorId={activeCitationAnchorId}
+          activeCitationAnchorInstanceId={activeCitationAnchorId}
           focusedMaterialId={focusedMaterialId}
           citationInsertRequest={citationInsertRequest}
           citationFocusRequest={citationFocusRequest}
@@ -775,19 +771,34 @@ export function DraftStudio() {
           isOpen={citationDrawerOpen} 
           onClose={() => setCitationDrawerOpen(false)}
           materials={materials}
+          draft={draft}
           citationAnchors={citationAnchors}
           citationCountByMaterial={citationCountByMaterial}
           activeMaterialId={focusedMaterialId}
-          activeCitationAnchorId={activeCitationAnchorId}
-          onRequestCitationInsertion={handleRequestCitationInsertion}
-          onRequestAnchorFocus={handleRequestAnchorFocus}
-          onSelectMaterial={setFocusedMaterialId}
+          activeCitationAnchorInstanceId={activeCitationAnchorId}
+          activeSectionTitle={sections.find(s => s.id === activeSectionId)?.titleZh}
+          onRequestCitationInsertion={(materialId: string | null) => setCitationInsertRequest({ requestId: createRequestId(), materialId })}
+          onRequestAnchorFocus={(anchor: CitationAnchor) => setCitationFocusRequest({ 
+            requestId: createRequestId(), 
+            anchorId: anchor.id,
+            anchorInstanceId: anchor.instanceId,
+            anchorStartOffset: anchor.startOffset,
+            materialId: anchor.materialId || null 
+          })}
+          onSelectMaterial={(id: string | null) => setFocusedMaterialId(id)}
         />
       </div>
       <StatusBar 
-        wordCount={draft?.content?.length ? draft.content.split(/\s+/).filter(Boolean).length : 0}
+        wordCount={draft?.content?.length || 0}
         isRunningAction={runningActionId !== null}
         citationCount={citationAnchors.length}
+        onOpenExport={() => setShowExportModal(true)}
+      />
+
+      <ExportPreviewModal 
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        projectId={activeProjectId || ''}
       />
     </div>
   );

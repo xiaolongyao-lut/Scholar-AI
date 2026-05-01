@@ -19,6 +19,7 @@ import {
   Layers,
   LayoutDashboard,
   List,
+  MessageCircle,
   PencilLine,
   Settings, 
   Bell,
@@ -327,6 +328,7 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
     if (location.pathname.startsWith('/jobs')) return t('jobs.title');
     if (location.pathname.startsWith('/volume')) return t('volume.title');
     if (location.pathname.startsWith('/inspiration')) return t('nav.inspiration');
+    if (location.pathname.startsWith('/chat')) return 'Intelligent Chat';
     return t('workbench.title');
   };
 
@@ -465,6 +467,7 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
 
           <NavItem to="/knowledge" icon={<Database size={20} />} label={t('nav.knowledge')} collapsed={leftNavCollapsed} />
           <NavItem to="/projects" icon={<FolderKanban size={20} />} label={t('nav.projects')} collapsed={leftNavCollapsed} />
+          <NavItem to="/chat" icon={<MessageCircle size={20} />} label="Chat" collapsed={leftNavCollapsed} />
           <NavItem to="/inspiration" icon={<Lightbulb size={20} />} label={t('nav.inspiration')} collapsed={leftNavCollapsed} />
           <NavItem to="/volume" icon={<FileText size={20} />} label={t('nav.volume')} collapsed={leftNavCollapsed} />
           <NavItem to="/jobs" icon={<Activity size={20} />} label={t('nav.jobs')} collapsed={leftNavCollapsed} />

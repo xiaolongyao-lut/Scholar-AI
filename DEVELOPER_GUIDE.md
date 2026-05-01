@@ -127,6 +127,28 @@ c:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.venv-1\Scripts\python.exe .
 c:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.venv-1\Scripts\python.exe .\word_generator.py --help
 ```
 
+## Team API Connectivity Check
+
+Before letting Squad/team workflows call paid or public AI endpoints, run the safe connectivity checker:
+
+```powershell
+# 只读测试：不改 .env，只输出结果 JSON 与 team 摘要
+c:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.venv-1\Scripts\python.exe .\scripts\safe_env_connectivity_check.py --env .env --no-write
+
+# 正常测试：刷新 .env 中的联通性备注，并生成 team 摘要
+c:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.venv-1\Scripts\python.exe .\scripts\safe_env_connectivity_check.py --env .env --json .connectivity_results.json --summary-json .team_api_health.json
+
+# 严格模式：如果出现 auth_failed / unreachable，则返回退出码 2
+c:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.venv-1\Scripts\python.exe .\scripts\safe_env_connectivity_check.py --env .env --strict --no-write
+```
+
+Notes:
+
+- The script never edits `*_API_KEY` / `API_KEY` lines.
+- Before any write-back, it verifies that all key lines are byte-for-byte unchanged.
+- It creates a backup file named `.env.backup_connectivity_YYYYMMDD_HHMMSS` before updating notes.
+- `.team_api_health.json` is intended for team/automation consumption and reports `teamReady`, per-verdict counts, usable entries, and strict failures.
+
 ## Naming Policy
 
 - Public entrypoints use duty-driven names such as `batch_controller.py` and `word_generator.py`.

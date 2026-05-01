@@ -5,6 +5,29 @@ Records of key implementation phases and delivery milestones by Trinity.
 > **Scope:** team-facing delivery record.
 > **Agent-internal working log:** see `agents/trinity/history.md`. Audit 2026-04-24.
 
+## 2026-04-26: Trinity Aligned Canary30 Rerank OFF (15:06 UTC)
+
+**Date/Time:** 2026-04-26 15:06 UTC  
+**Role:** trinity (implementation)  
+**Task:** Record aligned canary30 rerank-off completion  
+**Status:** ✅ COMPLETED
+
+### Summary
+
+- Ran `eval_queries_v2.1_canary30_ALIGNED.jsonl` with rerank disabled
+- Evaluated 30/30 queries
+- Metrics: Recall@5=0.5333, Recall@10=0.6333, MRR=0.3219, P95=510.19ms
+- Artifacts complete: metrics, progress, per-query, run log
+- Decision note merged into `decisions.md`
+
+### Artifacts
+
+- Orchestration log: `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.squad\orchestration-log\2026-04-26T15-06-04Z-trinity-aligned-canary30-rerank-off.md`
+- Session log: `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.squad\log\2026-04-26T15-06-04Z-trinity-aligned-canary30-rerank-off.md`
+- Decision record: `.squad/decisions.md#Trinity Aligned Canary30 Rerank OFF`
+
+---
+
 ## 2026-04-24: API Remediation — Local `.env` Compatibility Reader (19:07 UTC)
 
 **Date/Time:** 2026-04-24 19:07 UTC  

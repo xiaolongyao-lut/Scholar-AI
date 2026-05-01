@@ -27,13 +27,17 @@
 ## Project Context
 
 - **Owner:** xiao
-- **Stack:** 多模态 RAG / 文献处理 / 智能对话，前后端协同推进
-- **Description:** 多模态 RAG 文献助手项目，当前只聚焦文献提取、关键词相关性遍历与智能对话，为后续写作助手奠定基础
+- **Stack:** TOLF 目标架构 / 多模态文献处理 / 检索评测 / 智能对话 / 写作交付，前后端协同推进
+- **Description:** 本地优先文献助手与科研写作管线。标准 RAG 是当前对照组和过渡参考系，TOLF 是长期目标；当前重点是文献接入、关键词相关性遍历、检索/重排门禁、智能对话与可读交付产物。
 - **Created:** 2026-04-20
 
 ## Owner Decision Profile (Autopilot)
 
-- **Primary profile source:** `my-project/.copilot/skills/user-profile/SKILL.md`
-- **Evidence profile source:** `..\用户画像_AI协作工程画像.md` (workspace sibling)
-- **Execution intent:** 在 `autopilot` 档位下，Morpheus 的审批与执行默认以 Owner 画像优先（求真、可回滚、门禁可验、blast radius 可控）。
-- **Approval default:** 非红线事项满足 `surgical + rollback + DoD + controlled blast radius` 时，默认 `DO NOW`，不等待额外人工确认。
+- **Primary profile source:** `C:\Users\xiao\Desktop\tools\用户画像_v4_AI协作治理型工程主理人.md`
+- **Squad adapter:** `.squad/identity/owner-profile-v4.md` (shim only; do not duplicate profile text)
+- **Evidence profile source:** `C:\Users\xiao\Desktop\tools\用户画像_AI协作工程画像.md`
+- **Operational reference:** `C:\Users\xiao\Desktop\tools\用户画像_AI编码参考_v2.md`
+- **Superseded:** `C:\Users\xiao\Desktop\tools\用户画像_v3.md` remains archival only; v4 overrides it for Squad behavior.
+- **Execution intent:** 在 `autopilot` 档位下，Morpheus 与 Coordinator 的审批与执行默认以 Owner v4 画像优先：求真、可回滚、门禁可验、blast radius 可控、完成证据明确。
+- **Approval default:** 非红线事项满足 `surgical + rollback + DoD + controlled blast radius + evidence + cleanup` 时，默认 `DO NOW`，不等待额外人工确认。
+- **Non-negotiable completion:** `主产物落盘 ∧ 状态同步 ∧ 门禁通过 ∧ 环境收尾`。

@@ -5,12 +5,42 @@ from layers.ai_adapter import AIAdapter
 from layers.r_layer_hybrid_retriever import HybridRetrieverWithRerank
 
 
+def _disable_local_dotenv(monkeypatch):
+    for name in (
+        "API_KEY",
+        "BASE_URL",
+        "MODEL",
+        "RERANK_API_KEY",
+        "RERANK_BASE_URL",
+        "RERANK_MODEL",
+        "DASHSCOPE_API_KEY",
+        "DASHSCOPE_RERANK_API_KEY",
+        "DASHSCOPE_RERANK_BASE_URL",
+        "DASHSCOPE_RERANK_MODEL",
+        "SILICONFLOW_API_KEY",
+        "SILICONFLOW_RERANK_API_KEY",
+        "SILICONFLOW_RERANK_BASE_URL",
+        "SILICONFLOW_RERANK_MODEL",
+        "EMBEDDING_API_KEY",
+        "EMBEDDING_MODEL",
+        "EMBEDDING_BASE_URL",
+        "SILICONFLOW_EMBEDDING_API_KEY",
+        "SILICONFLOW_EMBEDDING_MODEL",
+        "SILICONFLOW_EMBEDDING_BASE_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("RUNTIME_ENV_DISABLE_DOTENV", "1")
+    monkeypatch.setenv("RERANK_KEY_PROBE_DISABLE", "1")
+    monkeypatch.setenv("EMBEDDING_KEY_PROBE_DISABLE", "1")
+
+
 class _DummyOpenAIClient:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
 
 
 def test_ai_adapter_uses_ark_env_when_openai_missing(monkeypatch):
+    _disable_local_dotenv(monkeypatch)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
@@ -46,43 +76,26 @@ class _StubResponse:
         return self._payload
 
 
-class _StubAsyncClient:
-    def __init__(self, *args, **kwargs):
-        self.kwargs = kwargs
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-    async def post(self, url, headers=None, json=None):
-        # Validate rerank endpoint and model usage
-        assert url == "https://api.siliconflow.cn/v1/rerank"
-        assert json["model"] == "Qwen/Qwen3-Reranker-8B"
-        assert json["query"] == "laser query"
-        assert len(json["documents"]) == 2
-
-        # index=1 has higher score -> should become first after rerank
-        return _StubResponse(
-            status_code=200,
-            payload={
-                "results": [
-                    {"index": 1, "relevance_score": 0.95},
-                    {"index": 0, "relevance_score": 0.12},
-                ]
-            },
-        )
-
-
 def test_hybrid_retriever_uses_siliconflow_rerank(monkeypatch):
+    _disable_local_dotenv(monkeypatch)
     monkeypatch.setenv("SILICONFLOW_RERANK_API_KEY", "sf_rerank_key")
     monkeypatch.setenv("SILICONFLOW_RERANK_BASE_URL", "https://api.siliconflow.cn/v1/rerank")
-    monkeypatch.setenv("SILICONFLOW_RERANK_MODEL", "Qwen/Qwen3-Reranker-8B")
+    monkeypatch.delenv("SILICONFLOW_RERANK_MODEL", raising=False)
 
     import layers.r_layer_hybrid_retriever as retriever_mod
 
-    monkeypatch.setattr(retriever_mod.httpx, "AsyncClient", _StubAsyncClient)
+    observed = {}
+
+    async def _fake_rerank_async(query, candidates, top_k=10, **_kwargs):
+        observed["query"] = query
+        observed["candidate_count"] = len(candidates)
+        observed["top_k"] = top_k
+        return [
+            {**candidates[1], "rerank_score": 0.95, "rerank_model": "qwen3-rerank", "rerank_source": "env"},
+            {**candidates[0], "rerank_score": 0.12, "rerank_model": "qwen3-rerank", "rerank_source": "env"},
+        ]
+
+    monkeypatch.setattr(retriever_mod, "rerank_async", _fake_rerank_async)
 
     retriever = HybridRetrieverWithRerank(use_reranker=True)
     candidates = [
@@ -95,3 +108,56 @@ def test_hybrid_retriever_uses_siliconflow_rerank(monkeypatch):
     assert reranked[0]["claim"] == "doc B"
     assert reranked[0]["rerank_score"] == 0.95
     assert reranked[1]["rerank_score"] == 0.12
+    assert observed == {"query": "laser query", "candidate_count": 2, "top_k": 2}
+
+
+def test_hybrid_retriever_search_caps_rerank_candidates_and_warms_once(monkeypatch):
+    _disable_local_dotenv(monkeypatch)
+    monkeypatch.setenv("SILICONFLOW_RERANK_API_KEY", "sf_rerank_key")
+    monkeypatch.setenv("RERANK_PRE_TOPN", "3")
+    monkeypatch.setenv("RERANK_PRE_TOPN_HARD_CAP", "4")
+
+    import layers.r_layer_hybrid_retriever as retriever_mod
+
+    observed = {}
+
+    async def _fake_hybrid_search(raw_data, query, top_k=50, focus_keywords=None):
+        observed["retrieval_top_k"] = top_k
+        return [
+            {"claim": f"doc {idx}", "hybrid_score": 0.95 - idx * 0.05}
+            for idx in range(6)
+        ]
+
+    async def _fake_warmup():
+        observed["warmup_calls"] = observed.get("warmup_calls", 0) + 1
+        return {"warmed": True, "candidate_source": "env", "candidate_model": "qwen3-rerank"}
+
+    async def _fake_rerank_async(query, candidates, top_k=10, **_kwargs):
+        observed["rerank_query"] = query
+        observed["rerank_candidate_count"] = len(candidates)
+        observed["rerank_top_k"] = top_k
+        return [
+            {**item, "rerank_score": 0.99 - idx * 0.1, "rerank_model": "qwen3-rerank", "rerank_source": "env"}
+            for idx, item in enumerate(candidates)
+        ]
+
+    monkeypatch.setattr(retriever_mod, "warm_rerank_live_candidate", _fake_warmup)
+    monkeypatch.setattr(retriever_mod, "rerank_async", _fake_rerank_async)
+
+    retriever = HybridRetrieverWithRerank(use_reranker=True)
+    retriever.rerank_api_key = "sf_rerank_key"
+    retriever.durable_cache = types.SimpleNamespace(
+        lookup=lambda *_args, **_kwargs: None,
+        update=lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(retriever.base_retriever, "hybrid_search", _fake_hybrid_search)
+
+    reranked = asyncio.run(retriever.search({"claim_index": []}, "laser query", top_k=2))
+
+    assert observed["retrieval_top_k"] == 50
+    assert observed["warmup_calls"] == 1
+    assert observed["rerank_query"] == "laser query"
+    assert observed["rerank_candidate_count"] == 3
+    assert observed["rerank_top_k"] == 3
+    assert len(reranked) == 2
+    assert reranked[0]["rerank_score"] == 0.99

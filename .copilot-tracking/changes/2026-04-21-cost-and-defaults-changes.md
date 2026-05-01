@@ -54,6 +54,7 @@ This tracking file records progress for the 2026-04-21 cost-and-defaults plan st
 - `scripts/rotate_output.py` - Added P2 L7 output rotation script that archives llm_cost.jsonl and rerank_cost.jsonl to output/archive/YYYY-MM/ when files exceed 64 MB threshold with timestamp-based filenames.
 - `tests/test_rotate_output.py` - Added focused P2 L7 regression coverage for rotation when exceeding threshold, preservation when below threshold, multiple file handling, and graceful skip of non-existent files.
 - `docs/output_rotation.md` - Added P2 L7 operator documentation with manual Monday rotation schedule, file behavior, archive structure, and example output.
+- `requirements-pin.txt` - Added P2 L8 pinned dependency baseline from current environment using `pip freeze` semantics (150 pinned packages including pytest 9.0.2, fastapi 0.135.3, chromadb 1.5.8, and all transitive dependencies for reproducible CI builds).
 
 ### Modified
 
@@ -68,6 +69,7 @@ This tracking file records progress for the 2026-04-21 cost-and-defaults plan st
 - `tests/test_chunk_store_concurrency.py` - Added focused P2 L1 regression tests for chunk-store thread safety: two-material concurrent write preservation and same-material concurrent append with proper atomic operations.
 - `tests/test_chunk_vector_store_model_aware_cache.py` - Added focused P2 L2 regression coverage for model-aware cache invalidation: two models building two independent cache artifacts, cache miss on model switch with same base path, and cache hit on same model rebuild.
 - `rerank_cache.py` - Added RERANK_CACHE_MODE environment variable with two modes (ttl=default time-based expiry, corpus_version=cache persists when corpus SHA unchanged), _compute_corpus_version_fallback() helper for stable corpus hashing across all project manifests, mode-aware expiry logic in get/set/disk_get/disk_set, and graceful fallback to TTL when corpus version unavailable (P2 L6 complete).
+- `.github/workflows/ci.yml` - Added P2 L8 "Verify Pinned Environment" step that installs from requirements-pin.txt and runs pytest with test_rotate_output.py to ensure pinned dependencies support pytest execution in CI (surgical addition after batch controller smoke test step).
 
 ### Modified
 

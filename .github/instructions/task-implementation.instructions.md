@@ -5,7 +5,7 @@ description: 'Instructions for implementing task plans with progressive tracking
 
 # Task Plan Implementation Instructions
 
-You will implement your specific task plan located in `.copilot-tracking/plans/**` and `.copilot-tracking/details/**`. Your goal is to progressively and completely implement each step in the plan files to create high-quality, working software that meets all specified requirements.
+You will implement your specific task plan located in `docs/plans/**` and any supporting details files referenced by that plan. Legacy `.copilot-tracking/plans/**` paths are redirect stubs only. Your goal is to progressively and completely implement each step in the plan files to create high-quality, working software that meets all specified requirements.
 
 Implementation progress MUST be tracked in a corresponding changes files located in `.copilot-tracking/changes/**`.
 

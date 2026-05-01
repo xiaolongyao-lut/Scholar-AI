@@ -1,0 +1,679 @@
+from __future__ import annotations
+
+import logging
+import os
+from functools import lru_cache
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+def _clean(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _dotenv_disabled() -> bool:
+    return _clean(os.getenv("RUNTIME_ENV_DISABLE_DOTENV")) in {"1", "true", "yes"}
+
+
+@lru_cache(maxsize=1)
+def _repo_env() -> dict[str, str]:
+    if _dotenv_disabled():
+        return {}
+    env_path = Path(__file__).resolve().with_name(".env")
+    if not env_path.exists():
+        return {}
+
+    values: dict[str, str] = {}
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower().startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        elif " #" in value:
+            value = value.split(" #", 1)[0].rstrip()
+        values[key] = value
+    return values
+
+
+def env_value(*names: str, default: str | None = None) -> str | None:
+    for name in names:
+        value = _clean(os.getenv(name))
+        if value is not None:
+            return value
+        if _dotenv_disabled():
+            continue
+        value = _clean(_repo_env().get(name))
+        if value is not None:
+            return value
+    return default
+
+
+def resolve_llm_config(
+    api_key: str | None = None,
+    *,
+    base_url: str | None = None,
+    model: str | None = None,
+    default_base_url: str,
+    default_model: str,
+) -> tuple[str | None, str, str]:
+    return (
+        _clean(api_key) or env_value("ARK_API_KEY", "VOLCANO_API_KEY", "OPENAI_API_KEY", "API_KEY"),
+        _clean(base_url) or env_value("ARK_BASE_URL", "OPENAI_BASE_URL", "BASE_URL", default=default_base_url) or default_base_url,
+        _clean(model) or env_value("ARK_MODEL", "OPENAI_MODEL", "MODEL", default=default_model) or default_model,
+    )
+
+
+DEFAULT_JINA_EMBEDDING_BASE_URL = "https://api.jina.ai/v1/embeddings"
+DEFAULT_JINA_EMBEDDING_MODEL = "jina-embeddings-v3"
+DEFAULT_EMBEDDING_FAILOVER_COOLDOWN_SECONDS = 900.0
+
+
+def is_dashscope_multimodal_embedding_url(url: str | None) -> bool:
+    haystack = str(url or "").strip().lower()
+    return "dashscope.aliyuncs.com" in haystack and "multimodal-embedding" in haystack
+
+
+def _looks_like_dashscope_multimodal_embedding_model(model: str | None) -> bool:
+    haystack = str(model or "").strip().lower()
+    return any(
+        token in haystack
+        for token in (
+            "multimodal-embedding",
+            "qwen3-vl-embedding",
+            "qwen2.5-vl-embedding",
+            "tongyi-embedding-vision",
+        )
+    )
+
+
+def is_dashscope_multimodal_embedding_config(base_url: str | None, model: str | None) -> bool:
+    return is_dashscope_multimodal_embedding_url(base_url) or _looks_like_dashscope_multimodal_embedding_model(model)
+
+
+def resolve_embedding_request_url(base_url: str, model: str | None = None) -> str:
+    trimmed = str(base_url or "").rstrip("/")
+    if is_dashscope_multimodal_embedding_config(trimmed, model):
+        return trimmed
+    if trimmed.lower().endswith("/embeddings"):
+        return trimmed
+    return f"{trimmed}/embeddings"
+
+
+def build_embedding_request_payload(
+    texts: list[str],
+    *,
+    base_url: str | None,
+    model: str | None,
+    dimensions: int | None = None,
+) -> dict[str, object]:
+    clean_model = str(model or "").strip()
+    if is_dashscope_multimodal_embedding_config(base_url, model):
+        return {
+            "model": clean_model,
+            "input": {"contents": [{"text": text} for text in texts]},
+        }
+
+    payload: dict[str, object] = {
+        "model": clean_model,
+        "input": texts,
+        "encoding_format": "float",
+    }
+    if dimensions is not None:
+        payload["dimensions"] = dimensions
+    return payload
+
+
+def extract_embedding_vectors(payload: object) -> list[list[float]]:
+    if not isinstance(payload, dict):
+        return []
+
+    output = payload.get("output")
+    if isinstance(output, dict):
+        embeddings = output.get("embeddings")
+        if isinstance(embeddings, list):
+            parsed = [
+                embedding
+                for item in embeddings
+                if isinstance(item, dict)
+                for embedding in [item.get("embedding")]
+                if isinstance(embedding, list)
+            ]
+            if parsed:
+                return parsed
+
+    data = payload.get("data")
+    if not isinstance(data, list):
+        return []
+
+    indexed: list[tuple[int, list[float]]] = []
+    ordered: list[list[float]] = []
+    for fallback_index, item in enumerate(data):
+        if not isinstance(item, dict):
+            return []
+        embedding = item.get("embedding")
+        if not isinstance(embedding, list):
+            return []
+        index = item.get("index")
+        if isinstance(index, int):
+            indexed.append((index, embedding))
+        else:
+            indexed.append((fallback_index, embedding))
+            ordered = []
+    if indexed:
+        return [embedding for _index, embedding in sorted(indexed, key=lambda pair: pair[0])]
+    return ordered
+
+# --- Embedding key probe (validity-first selection) ---------------------------
+# Mirrors reranker_client._probe_rerank_key per
+# notes/2026-04-25-morpheus-key-resolution-audit.md §5. Per-process cache,
+# no disk I/O, never raises, never logs the raw key.
+_KEY_PROBE_CACHE_EMBED: dict[tuple[str, str, str], bool] = {}
+_EMBED_PROBE_TIMEOUT_S = 5.0
+
+
+def _is_embedding_probe_payload_valid(response: object) -> bool:
+    json_loader = getattr(response, "json", None)
+    if not callable(json_loader):
+        return True
+    try:
+        payload = json_loader()
+    except Exception:
+        return False
+    return bool(extract_embedding_vectors(payload))
+
+
+def _probe_embedding_key(
+    api_key: str,
+    base_url: str,
+    model: str,
+    *,
+    timeout: float = _EMBED_PROBE_TIMEOUT_S,
+) -> bool:
+    """Send a minimal embedding request to verify the key is accepted.
+
+    Returns True only when the endpoint accepts the key *and* the response
+    looks like an embedding payload. Cached per process. Never raises.
+    """
+    if not api_key or not base_url or not model:
+        return False
+
+    cache_key = (base_url, model, api_key)
+    cached = _KEY_PROBE_CACHE_EMBED.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        import httpx  # local import so runtime_env stays importable offline
+    except Exception:  # httpx unavailable — treat probe as fail-closed
+        _KEY_PROBE_CACHE_EMBED[cache_key] = False
+        return False
+
+    payload = build_embedding_request_payload(["probe"], base_url=base_url, model=model)
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(
+                resolve_embedding_request_url(base_url, model),
+                headers=headers,
+                json=payload,
+            )
+        ok = 200 <= response.status_code < 300 and _is_embedding_probe_payload_valid(response)
+    except Exception:
+        ok = False
+
+    _KEY_PROBE_CACHE_EMBED[cache_key] = ok
+    if not ok:
+        suffix = api_key[-4:] if len(api_key) >= 4 else "****"
+        logger.warning(
+            "Embedding key probe failed: base_url=%s model=%s key_len=%d key_suffix=***%s",
+            base_url,
+            model,
+            len(api_key),
+            suffix,
+        )
+    return ok
+
+
+def _select_embedding_provider() -> str:
+    """Resolve the active embedding provider name.
+
+    Priority:
+      1. `EMBEDDING_PROVIDER` env var (explicit override).
+      2. If a SiliconFlow-family *embedding* key is present → "siliconflow".
+      3. Else if `JINA_API_KEY` is present → "jina".
+      4. Else → "siliconflow" (legacy default; callers guard on None api_key).
+
+    Note: we intentionally do NOT include `RERANK_API_KEY` in step 2 — that
+    would reintroduce Gap B from the 2026-04-25 audit (rerank key bleeding
+    into the embedding candidate list).
+    """
+    explicit = _clean(env_value("EMBEDDING_PROVIDER"))
+    if explicit:
+        return explicit.lower()
+    if env_value("SILICONFLOW_EMBEDDING_API_KEY", "SILICONFLOW_API_KEY"):
+        return "siliconflow"
+    if env_value("JINA_API_KEY"):
+        return "jina"
+    return "siliconflow"
+
+
+def _siliconflow_embedding_candidates() -> list[tuple[int, str, str]]:
+    """Collect SiliconFlow-side embedding key candidates in priority order.
+
+    Each item is (priority, key, source). `RERANK_API_KEY` is deliberately
+    excluded (audit Gap B).
+    """
+    candidates: list[tuple[int, str, str]] = []
+    for priority, (env_name, source) in enumerate(
+        [
+            ("SILICONFLOW_EMBEDDING_API_KEY", "siliconflow-embedding-specific"),
+            ("EMBEDDING_API_KEY", "legacy-embedding"),
+            ("SILICONFLOW_API_KEY", "siliconflow-generic"),
+        ]
+    ):
+        raw = env_value(env_name)
+        if raw:
+            candidates.append((priority, raw, source))
+    generic_catalog_key = _catalog_embedding_api_key()
+    if generic_catalog_key:
+        candidates.append((len(candidates), generic_catalog_key, "generic-api-key-catalog"))
+    return candidates
+
+
+def _jina_embedding_candidates() -> list[tuple[int, str, str]]:
+    candidates: list[tuple[int, str, str]] = []
+    for priority, (env_name, source) in enumerate(
+        [
+            ("JINA_API_KEY", "jina-specific"),
+            ("EMBEDDING_API_KEY", "legacy-embedding"),
+        ]
+    ):
+        raw = env_value(env_name)
+        if raw:
+            candidates.append((priority, raw, source))
+    generic_catalog_key = _catalog_embedding_api_key()
+    if generic_catalog_key:
+        candidates.append((len(candidates), generic_catalog_key, "generic-api-key-catalog"))
+    return candidates
+
+
+def _catalog_embedding_api_key() -> str | None:
+    api_key = env_value("API_KEY")
+    if not api_key:
+        return None
+    explicit_base_url = env_value("SILICONFLOW_EMBEDDING_BASE_URL", "EMBEDDING_BASE_URL", "BASE_URL")
+    if explicit_base_url and "embed" in explicit_base_url.lower():
+        return api_key
+    return None
+
+
+def _is_multimodal_embedding_catalog(base_url: str | None, model: str | None) -> bool:
+    haystack = f"{base_url or ''} {model or ''}".lower()
+    return any(token in haystack for token in ("multimodal", "vision", "-vl", "/vl"))
+
+
+def _looks_like_embedding_catalog(base_url: str | None, model: str | None) -> bool:
+    haystack = f"{base_url or ''} {model or ''}".lower()
+    return "embed" in haystack
+
+
+def _candidate_signature(api_key: str | None, base_url: str | None, model: str | None) -> tuple[str, str, str]:
+    return (str(api_key or "").strip(), str(base_url or "").strip(), str(model or "").strip())
+
+
+def _embedding_candidates_from_key_pool(
+    default_model: str,
+    *,
+    target_base_url: str | None = None,
+    target_model: str | None = None,
+) -> list[tuple[str, str, str, str]]:
+    if _dotenv_disabled():
+        return []
+    try:
+        from key_pool import get_pool
+    except Exception:
+        return []
+
+    try:
+        pool = get_pool()
+        credentials = [
+            cred
+            for category in ("embedding", "rerank", "generation")
+            for cred in pool.list(category)
+            if _looks_like_embedding_catalog(
+                getattr(cred, "base_url", None),
+                getattr(cred, "model", None),
+            )
+        ]
+    except Exception:
+        return []
+
+    if not credentials:
+        return []
+
+    wants_multimodal = _is_multimodal_embedding_catalog(target_base_url, target_model or default_model)
+    ordered = sorted(
+        credentials,
+        key=lambda cred: (
+            _is_multimodal_embedding_catalog(
+                getattr(cred, "base_url", None),
+                getattr(cred, "model", None),
+            ) != wants_multimodal,
+            int(getattr(cred, "line_no", 0) or 0),
+        ),
+    )
+
+    out: list[tuple[str, str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for cred in ordered:
+        api_key = _clean(getattr(cred, "api_key", None))
+        base_url = _clean(getattr(cred, "base_url", None))
+        model = _clean(getattr(cred, "model", None))
+        if not api_key or not base_url or not model:
+            continue
+        sig = _candidate_signature(api_key, base_url, model)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append((api_key, base_url, model, f"key-pool:{getattr(cred, 'provider', 'unknown')}"))
+    return out
+
+
+def _first_embedding_credential_from_key_pool(default_model: str) -> tuple[str, str, str] | None:
+    candidates = _embedding_candidates_from_key_pool(default_model)
+    if not candidates:
+        return None
+    api_key, base_url, model, _source = candidates[0]
+    return api_key, base_url, model
+
+
+def resolve_embedding_candidates(
+    api_key: str | None = None,
+    *,
+    base_url: str | None = None,
+    model: str | None = None,
+    default_base_url: str,
+    default_model: str,
+) -> list[tuple[str, str, str, str]]:
+    """Return ordered embedding candidates as (api_key, base_url, model, source)."""
+    provider = _select_embedding_provider()
+
+    if provider == "jina":
+        resolved_base_url = (
+            _clean(base_url)
+            or env_value(
+                "JINA_EMBEDDING_BASE_URL",
+                "EMBEDDING_BASE_URL",
+                "BASE_URL",
+                default=DEFAULT_JINA_EMBEDDING_BASE_URL,
+            )
+            or DEFAULT_JINA_EMBEDDING_BASE_URL
+        )
+        resolved_model = (
+            _clean(model)
+            or env_value(
+                "JINA_EMBEDDING_MODEL",
+                "EMBEDDING_MODEL",
+                "MODEL",
+                default=DEFAULT_JINA_EMBEDDING_MODEL,
+            )
+            or DEFAULT_JINA_EMBEDDING_MODEL
+        )
+        env_candidates = _jina_embedding_candidates()
+    else:
+        resolved_base_url = (
+            _clean(base_url)
+            or env_value(
+                "SILICONFLOW_EMBEDDING_BASE_URL",
+                "EMBEDDING_BASE_URL",
+                "BASE_URL",
+                default=default_base_url,
+            )
+            or default_base_url
+        )
+        resolved_model = (
+            _clean(model)
+            or env_value(
+                "SILICONFLOW_EMBEDDING_MODEL",
+                "EMBEDDING_MODEL",
+                "MODEL",
+                default=default_model,
+            )
+            or default_model
+        )
+        env_candidates = _siliconflow_embedding_candidates()
+
+    explicit_api_key = _clean(api_key)
+    if explicit_api_key is not None:
+        return [(explicit_api_key, resolved_base_url, resolved_model, "explicit")]
+
+    candidates: list[tuple[str, str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    for candidate in _embedding_candidates_from_key_pool(
+        default_model,
+        target_base_url=resolved_base_url,
+        target_model=resolved_model,
+    ):
+        api_key_value, base_url_value, model_value, source = candidate
+        sig = _candidate_signature(api_key_value, base_url_value, model_value)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        candidates.append((api_key_value, base_url_value, model_value, source))
+
+    for _priority, candidate_key, source in env_candidates:
+        sig = _candidate_signature(candidate_key, resolved_base_url, resolved_model)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        candidates.append((candidate_key, resolved_base_url, resolved_model, source))
+
+    return candidates
+
+
+def build_embedding_failover_pool(
+    api_key: str | None = None,
+    *,
+    base_url: str | None = None,
+    model: str | None = None,
+    default_base_url: str,
+    default_model: str,
+    cooldown_seconds: float = DEFAULT_EMBEDDING_FAILOVER_COOLDOWN_SECONDS,
+):
+    """Build a KeyPool for embedding consumers using resolved candidates."""
+    try:
+        from key_pool import Credential, KeyPool
+    except Exception:
+        return None
+
+    candidates = resolve_embedding_candidates(
+        api_key,
+        base_url=base_url,
+        model=model,
+        default_base_url=default_base_url,
+        default_model=default_model,
+    )
+    if not candidates:
+        return None
+
+    creds = [
+        Credential(
+            category="embedding",
+            provider=source,
+            api_key=candidate_key,
+            base_url=candidate_base_url,
+            model=candidate_model,
+        )
+        for candidate_key, candidate_base_url, candidate_model, source in candidates
+    ]
+    return KeyPool(
+        {"embedding": creds, "rerank": [], "generation": []},
+        cooldown_seconds=cooldown_seconds,
+    )
+
+
+def resolve_embedding_config(
+    api_key: str | None = None,
+    *,
+    base_url: str | None = None,
+    model: str | None = None,
+    default_base_url: str,
+    default_model: str,
+    probe_candidates: bool = True,
+) -> tuple[str | None, str, str]:
+    """Validity-first embedding credential resolution.
+
+    Per `notes/2026-04-25-morpheus-key-resolution-audit.md`:
+      - Explicit caller-passed `api_key` is trusted without probing.
+      - `EMBEDDING_KEY_PROBE_DISABLE=1` restores the legacy static-order path.
+      - Otherwise each candidate is probed; first 2xx wins; all-fail falls
+        back to the first candidate with a loud WARN log.
+      - `RERANK_API_KEY` is no longer accepted as an embedding credential
+        (Gap B closed).
+      - The `/v1/rerank → /v1/embeddings` string-replace heuristic is removed
+        (Gap C closed). A misconfigured base URL will now fail its probe
+        loudly instead of silently rewriting.
+    """
+    explicit_api_key = _clean(api_key)
+    explicit_base_url = _clean(base_url)
+    explicit_model = _clean(model)
+
+    provider = _select_embedding_provider()
+    if provider == "jina":
+        resolved_base_url = (
+            explicit_base_url
+            or env_value(
+                "JINA_EMBEDDING_BASE_URL",
+                "EMBEDDING_BASE_URL",
+                "BASE_URL",
+                default=DEFAULT_JINA_EMBEDDING_BASE_URL,
+            )
+            or DEFAULT_JINA_EMBEDDING_BASE_URL
+        )
+        resolved_model = (
+            explicit_model
+            or env_value(
+                "JINA_EMBEDDING_MODEL",
+                "EMBEDDING_MODEL",
+                "MODEL",
+                default=DEFAULT_JINA_EMBEDDING_MODEL,
+            )
+            or DEFAULT_JINA_EMBEDDING_MODEL
+        )
+    else:
+        resolved_base_url = (
+            explicit_base_url
+            or env_value(
+                "SILICONFLOW_EMBEDDING_BASE_URL",
+                "EMBEDDING_BASE_URL",
+                "BASE_URL",
+                default=default_base_url,
+            )
+            or default_base_url
+        )
+        resolved_model = (
+            explicit_model
+            or env_value(
+                "SILICONFLOW_EMBEDDING_MODEL",
+                "EMBEDDING_MODEL",
+                "MODEL",
+                default=default_model,
+            )
+            or default_model
+        )
+
+    if explicit_api_key is not None:
+        return explicit_api_key, resolved_base_url, resolved_model
+
+    def _finalize_candidate(
+        candidate_key: str,
+        candidate_base_url: str,
+        candidate_model: str,
+    ) -> tuple[str, str, str]:
+        return (
+            candidate_key,
+            explicit_base_url or candidate_base_url or resolved_base_url,
+            explicit_model or candidate_model or resolved_model,
+        )
+
+    candidates = resolve_embedding_candidates(
+        api_key,
+        base_url=base_url,
+        model=model,
+        default_base_url=default_base_url,
+        default_model=default_model,
+    )
+
+    if not probe_candidates:
+        if candidates:
+            candidate_key, candidate_base_url, candidate_model, _source = candidates[0]
+            return _finalize_candidate(candidate_key, candidate_base_url, candidate_model)
+        return None, resolved_base_url, resolved_model
+
+    # Kill switch: restore legacy static-order behaviour (first candidate wins,
+    # no probe). Matches reranker_client's RERANK_KEY_PROBE_DISABLE.
+    if env_value("EMBEDDING_KEY_PROBE_DISABLE") == "1":
+        if candidates:
+            candidate_key, candidate_base_url, candidate_model, _source = candidates[0]
+            return _finalize_candidate(candidate_key, candidate_base_url, candidate_model)
+        return None, resolved_base_url, resolved_model
+
+    # Validity-first: try each candidate, first 2xx wins.
+    for candidate_key, candidate_base_url, candidate_model, source in candidates:
+        if _probe_embedding_key(candidate_key, candidate_base_url, candidate_model):
+            logger.info(
+                "Embedding key selected: source=%s key_len=%d",
+                source,
+                len(candidate_key),
+            )
+            return _finalize_candidate(candidate_key, candidate_base_url, candidate_model)
+
+    # All probes failed — fall back to first candidate with loud WARN.
+    if candidates:
+        fallback_key, fallback_base_url, fallback_model, fallback_source = candidates[0]
+        logger.warning(
+            "All embedding key probes failed; falling back to static order "
+            "(source=%s). Expect 401/403 downstream.",
+            fallback_source,
+        )
+        return _finalize_candidate(fallback_key, fallback_base_url, fallback_model)
+
+    logger.error("No embedding API key found in any known env var.")
+    return None, resolved_base_url, resolved_model
+
+
+__all__ = [
+    "build_embedding_request_payload",
+    "build_embedding_failover_pool",
+    "env_value",
+    "extract_embedding_vectors",
+    "is_dashscope_multimodal_embedding_config",
+    "resolve_embedding_request_url",
+    "resolve_embedding_candidates",
+    "resolve_embedding_config",
+    "resolve_llm_config",
+    "_probe_embedding_key",
+]

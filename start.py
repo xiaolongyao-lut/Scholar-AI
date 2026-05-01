@@ -13,9 +13,16 @@ import urllib.request
 import shutil
 from pathlib import Path
 
+from literature_assistant.bootstrap import configure_runtime_paths
+from literature_assistant.core.project_paths import app_profile_path
+
+
+configure_runtime_paths()
+
 ROOT = Path(__file__).resolve().parent
 VENV_PYTHON = ROOT / ".venv-1" / "Scripts" / "python.exe"
 FRONTEND_DIST = ROOT / "frontend" / "dist" / "index.html"
+APP_PROFILE = app_profile_path()
 
 DEFAULT_PORT = 8000
 WINDOW_TITLE = "Modular Pipeline — 文献处理工作台"
@@ -68,7 +75,7 @@ def _wait_for_server(port: int, timeout: float = 15.0) -> bool:
 
 def _start_server(python: str, port: int) -> subprocess.Popen:
     return subprocess.Popen(
-        [python, "-m", "uvicorn", "python_adapter_server:app",
+        [python, "-m", "uvicorn", "literature_assistant.core.python_adapter_server:app",
          "--host", "127.0.0.1", "--port", str(port)],
         cwd=str(ROOT),
     )
@@ -100,7 +107,7 @@ def _open_app_window(url: str) -> subprocess.Popen | None:
     browser = _find_browser_for_app_mode()
     if not browser:
         return None
-    user_data = str(ROOT / ".app-profile")
+    user_data = str(APP_PROFILE)
     # Clear stale browser cache to ensure latest frontend build is served
     cache_dir = Path(user_data) / "Default" / "Cache"
     if cache_dir.is_dir():

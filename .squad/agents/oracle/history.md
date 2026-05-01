@@ -312,3 +312,11 @@
 
 **Status:** ✅ Runtime activation is PROVEN. No blockers remain. Implementation ready for merge.
 
+### 2026-04-26T16:04:40Z: Ranking Evidence Audit — Aligned Canary30 Rerank Isolation
+
+- **Scope:** Read-only analysis of no-rerank aligned canary30 and local rerank-enabled comparators.
+- **Facts:** No-rerank 30q is complete (`R@5=0.5333`, `R@10=0.6333`, `MRR=0.3219`); only local aligned rerank-ON evidence is 5q with `use_contextual=true`, not a clean 30q A/B.
+- **Learning:** Failures are mixed: `q_0016/q_0019/q_0020` are rank≈6 top-5 inversions, `q_0001` is rank≈25, and `q_0021`–`q_0030` are retrieval misses against existing `mat_f76878df9d8d` chunks.
+- **Decision posture:** Insufficient evidence for final config/code/design classification; safe next action is a paired 30q rerank-ON run with identical knobs and richer per-query material/rank traces.
+- **Evidence:** `.squad/decisions/inbox/oracle-ranking-evidence.md`.
+

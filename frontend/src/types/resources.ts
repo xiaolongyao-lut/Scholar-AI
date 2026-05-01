@@ -124,20 +124,22 @@ export type WritingActionResource = components["schemas"]["WritingActionPayload"
 // ---------------------------------------------------------------------------
 
 /** Project export formats */
-export type ProjectExportFormat = "markdown" | "json";
+export type ProjectExportFormat = components["schemas"]["ProjectExportFormat"];
+
+export type ProjectExportEvidenceProvenance =
+  components["schemas"]["ProjectExportEvidenceProvenancePayload"];
+
+export type ProjectExportEvidenceRow =
+  components["schemas"]["ProjectExportEvidenceRowPayload"];
+
+export type ProjectExportCitationChainRow =
+  components["schemas"]["ProjectExportCitationChainPayload"];
+
+export type ProjectExportReviewFinding =
+  components["schemas"]["ProjectExportReviewFindingPayload"];
 
 /** Project export response */
-export interface ProjectExportResult {
-  project_id: string;
-  format: string;
-  filename?: string;
-  content?: string;
-  project?: WritingProject;
-  sections?: WritingSection[];
-  drafts?: WritingDraft[];
-  materials?: WritingMaterialResource[];
-  document_count?: number;
-}
+export type ProjectExportResult = components["schemas"]["ProjectExportPayload"];
 
 /** Project statistics */
 export interface ProjectStats {

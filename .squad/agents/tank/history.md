@@ -48,6 +48,13 @@
 
 ## Learnings
 
+### 2026-04-27: Rerank-Layer QA Audit (No-Rerank Baseline)
+
+- Focused rerank QA bundle remains green under current contract: `py -m pytest tests\test_rerank_budget.py tests\test_rerank_short_circuit_and_budget.py tests\test_rerank_budget_concurrency.py tests\test_reranker.py` → **40/40 PASS**.
+- `RerankBudgetGuard` contract remains stable: only call/token caps hard-block (`budget_capped`); USD budget is soft warning telemetry (`budget_soft_warn`) and must not force fallback.
+- When run provenance is `--no-rerank`, `rerank_api_* = 0` and null per-query rerank fields are expected config-only signals, not evidence of rerank-code regression.
+- No-rerank baseline can expose retrieval/design weaknesses (e.g., clustered zero-recall queries), but cannot independently prove rerank runtime defects.
+
 ### 2026-04-26: Rerank Budget Contract Validation (APPROVED)
 
 - **Trinity alignment:** Audited `reranker_client.RerankBudgetGuard` as hard-cap enforcement source; `rerank_budget.py` as compatibility wrapper; helper state schema aligned to `output/rerank_budget_state.json`
@@ -480,3 +487,18 @@ This approval follows strict lockout semantics:
 - **Orchestration:** `.squad/orchestration-log/2026-04-25T17-59-29Z-tank-embedding-batch-env-qa.md`
 - **Decision merged:** `.squad/decisions.md` (E2 Embedding Batch Size Environment Variable Wiring section)
 - **Status:** ✅ Complete. No open items for E2 contract scope. E2 marked CLOSED in handoff plan.
+
+### 2026-04-27: Dotenv Import-Leak QA Review (APPROVED)
+- Morpheus-authorized scope validated: only `eval_retrieval_runtime.py` + `tests/test_eval_runtime.py` changed for this fix slice.
+- Confirmed import-time guard behavior: with `RUNTIME_ENV_DISABLE_DOTENV=1`, `eval_retrieval_runtime` no longer triggers dotenv or key_pool env mutation; with guard unset, dotenv/key_pool import-time behavior remains active.
+- Required focused regressions rerun cleanly: exact 5-test bundle **5/5 PASS** and `tests/test_eval_runtime.py` **25/25 PASS**.
+- Decision artifact: `.squad/decisions/inbox/tank-dotenv-leak-review.md`.
+
+
+
+### 2026-04-27: Rerank-ON Evidence Gate QA Review (APPROVED)
+- Independently validated ON/OFF artifact completeness and integrity for aligned canary30: metrics present, per-query 30 lines, progress 6 checkpoints ending 30/30, and ON run log reaches STATUS: COMPLETED.
+- Verified provenance parity from metrics JSON: same query SHA/config baseline and use_contextual=false, with only rerank state differing (use_rerank/rerank_model).
+- Confirmed decision-grade degradation signal (Recall@5 0.5333 -> 0.1333, MRR 0.3219 -> 0.1002, P95 510.19ms -> 18932.52ms) and recommended rerank default remain OFF for this canary slice pending fix.
+- Recorded that trace gap persists (no returned material IDs/ranks in per-query output), which blocks root-cause rank-path audit.
+- Decision artifact: .squad/decisions/inbox/tank-rerank-on-gate.md.
