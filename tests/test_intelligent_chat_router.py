@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+import main_rag_workflow
 from python_adapter_server import app
 from routers import intelligent_chat_router
 from routers import resources_router
+import writing_resources
 
 
 class _FakeChatAnswer:
@@ -172,6 +174,100 @@ def test_api_chat_uses_ragworkflow_when_project_adapter_enabled(monkeypatch, tmp
     assert payload["context_metadata"]["chunks"][0]["chunk_id"] == "rag-c1"
     assert payload["evidence_refs"][0]["label"] == "rag_workflow"
     assert payload["tokens_used"] == {"prompt": 0, "completion": 0, "total": 0}
+
+
+def test_api_chat_ragworkflow_adapter_preserves_project_chunk_provenance(monkeypatch, tmp_path) -> None:
+    class _NoopSemanticCache:
+        def __init__(self, *_args, **_kwargs) -> None:
+            return None
+
+        def lookup(self, *_args, **_kwargs) -> None:
+            return None
+
+    class _MemoryOnlyConversationManager:
+        def resume_session(self, _session_id: str) -> list[dict]:
+            return []
+
+        def log_event(self, *_args, **_kwargs) -> None:
+            return None
+
+    def fake_gated_call(**kwargs):
+        assert kwargs["cache_key_parts"]["task"] == "generation"
+        prompt_messages = kwargs["payload"]["messages"]
+        serialized_messages = "\n".join(str(message.get("content", "")) for message in prompt_messages)
+        assert "mat_contract_chunk_0" in serialized_messages
+        assert "Laser power increases hardness in project-local evidence." in serialized_messages
+        return (
+            '{"status":"success","overall_score":0.88,'
+            '"conclusion":"Project-local RAGWorkflow answer."}'
+        )
+
+    async def fake_decompose_query_async(*_args, **_kwargs) -> list[dict]:
+        return [{"id": 1, "task": "laser hardness"}]
+
+    session_store = tmp_path / "sessions.json"
+    doc_store_dir = tmp_path / "doc_store"
+    chunk_store_dir = tmp_path / "chunk_store"
+    doc_store_dir.mkdir(parents=True)
+    chunk_store_dir.mkdir(parents=True)
+    resource_store = writing_resources.WritingResourceStore()
+    monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
+    monkeypatch.setattr(resources_router, "_DOC_STORE_DIR", doc_store_dir)
+    monkeypatch.setattr(resources_router, "_CHUNK_STORE_DIR", chunk_store_dir)
+    monkeypatch.setattr(resources_router, "_CHUNK_QUARANTINE_LOG_PATH", tmp_path / "chunk_quarantine.jsonl")
+    monkeypatch.setattr(resources_router, "get_writing_resource_store", lambda: resource_store)
+    monkeypatch.setattr(intelligent_chat_router, "get_writing_resource_store", lambda: resource_store)
+    monkeypatch.setattr(main_rag_workflow, "SemanticCache", _NoopSemanticCache)
+    monkeypatch.setattr(main_rag_workflow, "get_conv_manager", lambda: _MemoryOnlyConversationManager())
+    monkeypatch.setattr(main_rag_workflow, "gated_call", fake_gated_call, raising=False)
+    monkeypatch.setattr(main_rag_workflow, "decompose_query_async", fake_decompose_query_async, raising=False)
+    monkeypatch.setattr(main_rag_workflow, "output_path", lambda *parts: (tmp_path / "output").joinpath(*parts))
+    monkeypatch.setenv("CHAT_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
+    monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
+    monkeypatch.setenv("INTELLIGENT_CHAT_RAGWORKFLOW_ENABLED", "1")
+    monkeypatch.delenv("RAGFLOW_API_KEY", raising=False)
+
+    client = TestClient(app)
+    project_response = client.post("/resources/project", json={"title": "RAGWorkflow Contract"})
+    assert project_response.status_code == 200
+    project_id = project_response.json()["project_id"]
+    resources_router._save_doc_store(
+        project_id,
+        {
+            "mat_contract": {
+                "title": "Contract Paper",
+                "content": "Laser power increases hardness in project-local evidence.",
+            }
+        },
+    )
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "query": "laser power hardness",
+            "tier": "fast",
+            "project_id": project_id,
+            "session_id": "session_ragworkflow_contract",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "Project-local RAGWorkflow answer" in payload["response"]
+    assert payload["context_chunks_used"] == 1
+    assert payload["context_metadata"]["chunks"][0]["chunk_id"] == "mat_contract_chunk_0"
+    assert payload["context_metadata"]["chunks"][0]["material_id"] == "mat_contract"
+    assert payload["context_metadata"]["chunks"][0]["source_labels"]
+    assert payload["evidence_refs"][0]["chunk_id"] == "mat_contract_chunk_0"
+    assert payload["evidence_refs"][0]["material_id"] == "mat_contract"
+    assert "Laser power increases hardness in project-local evidence." in payload["evidence_refs"][0]["text"]
+    assert payload["evidence_refs"][0]["source_labels"]
+    assert payload["tokens_used"] == {"prompt": 0, "completion": 0, "total": 0}
+
+    resumed = client.post("/api/chat/resume", json={"session_id": payload["session_id"], "limit": 1})
+    assert resumed.status_code == 200
+    assert resumed.json()["messages"][0]["evidence_refs"][0]["chunk_id"] == "mat_contract_chunk_0"
 
 
 def test_api_chat_returns_404_for_unknown_project_id() -> None:
