@@ -21,10 +21,11 @@ import argparse
 import asyncio
 import json
 import logging
+import math
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Union, cast
 
 from project_paths import CORE_ROOT
 from text_utils import cjk_aware_tokenize
@@ -54,6 +55,73 @@ DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
 DEFAULT_EMBEDDING_API_KEY_ENV = "SILICONFLOW_API_KEY"
 LEGACY_LLM_API_KEY_ENV_NAMES = ("SILICONFLOW_API_KEY",)
 LEGACY_EMBEDDING_API_KEY_ENV_NAMES = ("SILICONFLOW_EMBEDDING_API_KEY",)
+JsonValue = Union[None, bool, int, float, str, List["JsonValue"], Dict[str, "JsonValue"]]
+
+
+class _RAGResultLike(Protocol):
+    query: str
+    focused_points: Sequence[str]
+    memory_hits: Sequence[Mapping[str, object]]
+    rag_evidence: Sequence[Mapping[str, object]]
+    evidence_refs: Sequence[Mapping[str, object]]
+    generated_answer: str
+    confidence_score: float
+    trace: Mapping[str, object]
+    association_bundle: Optional[Mapping[str, object]]
+
+
+def _json_safe(value: object) -> JsonValue:
+    """Return a deterministic JSON-safe value for CLI machine output.
+
+    Args:
+        value: Arbitrary nested result data. Mapping keys are stringified and
+            unsupported objects are converted to strings so CLI output never
+            fails after a successful RAG run.
+    """
+    if value is None or isinstance(value, (bool, str)):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else str(value)
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_safe(item)
+            for key, item in value.items()
+            if isinstance(key, (str, int, float, bool))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return str(value)
+
+
+def _serialize_rag_result(result: _RAGResultLike) -> Dict[str, JsonValue]:
+    """Serialize a RAG result for stable CLI/API handoff.
+
+    Args:
+        result: RAG workflow result with answer text, retrieved evidence, and
+            machine-readable evidence references.
+
+    Returns:
+        A JSON-safe object that preserves citation provenance for downstream
+        agents and UI consumers.
+    """
+    if not isinstance(result.query, str):
+        raise TypeError("result.query must be a string")
+    if not isinstance(result.generated_answer, str):
+        raise TypeError("result.generated_answer must be a string")
+
+    return {
+        "query": result.query,
+        "focused_points": _json_safe(list(result.focused_points)),
+        "memory_hits": _json_safe(list(result.memory_hits)),
+        "rag_evidence": _json_safe(list(result.rag_evidence)),
+        "evidence_refs": _json_safe(list(result.evidence_refs)),
+        "generated_answer": result.generated_answer,
+        "confidence_score": _json_safe(float(result.confidence_score)),
+        "trace": _json_safe(dict(result.trace)),
+        "association_bundle": _json_safe(result.association_bundle),
+    }
 
 
 def _normalize_env_name(value: Any, default: str) -> str:
@@ -293,6 +361,7 @@ async def cmd_ask(
     project_id: Optional[str] = None,
     draft_id: Optional[str] = None,
     section_id: Optional[str] = None,
+    json_output: bool = False,
 ) -> None:
     """
     ask 命令: 通过 RAGWorkflow 执行完整的 RAG 问答流程。
@@ -336,6 +405,10 @@ async def cmd_ask(
         )
 
         # 输出结果
+        if json_output:
+            print(json.dumps(_serialize_rag_result(result), ensure_ascii=False, indent=2))
+            return
+
         print("\n" + "=" * 60)
         print(f"Query: {result.query}")
         print(f"Focus Points: {result.focused_points}")
@@ -487,6 +560,7 @@ Examples:
     ask_parser.add_argument("--project-id", help="Existing writing project ID for association context")
     ask_parser.add_argument("--draft-id", help="Existing draft ID for association context")
     ask_parser.add_argument("--section-id", help="Existing section ID for association context")
+    ask_parser.add_argument("--json-output", action="store_true", help="Print full machine-readable RAG result JSON")
 
     # ── graphrag 子命令 ──
     graphrag_parser = subparsers.add_parser("graphrag", help="GraphRAG community query")
@@ -518,6 +592,7 @@ Examples:
                 project_id=args.project_id,
                 draft_id=args.draft_id,
                 section_id=args.section_id,
+                json_output=cast(bool, args.json_output),
             )
         )
 
