@@ -24,6 +24,7 @@ logger = logging.getLogger("RLayer_HybridRetriever")
 
 DEFAULT_RERANK_PRE_TOPN = 30
 DEFAULT_RERANK_PRE_TOPN_HARD_CAP = 60
+RUNTIME_RERANK_ENABLED_ENV = "RAG_RUNTIME_RERANK_ENABLED"
 
 def normalize_text(text: str) -> str:
     return re.sub(r'\s+', ' ', (text or '').replace('\xa0', ' ')).strip()
@@ -37,6 +38,23 @@ def _get_env_int(name: str, default: int) -> int:
         return int(raw)
     except (TypeError, ValueError):
         return default
+
+
+def _get_env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    logger.warning("Invalid boolean env %s=%r; using default=%s", name, raw, default)
+    return default
+
+
+def _runtime_rerank_enabled() -> bool:
+    return _get_env_bool(RUNTIME_RERANK_ENABLED_ENV, default=False)
 
 
 def _rerank_pre_topn_hard_cap() -> int:
@@ -303,9 +321,9 @@ class HybridRetrieverWithRerank:
     P1 WBS 1.3.2: 检索 + 重排 完整流程
     """
     
-    def __init__(self, use_reranker: bool = True, cache_manager=None):
+    def __init__(self, use_reranker: Optional[bool] = None, cache_manager=None):
         self.base_retriever = ContextAwareRetriever()
-        self.use_reranker = use_reranker
+        self.use_reranker = _runtime_rerank_enabled() if use_reranker is None else bool(use_reranker)
         self.rerank_api_key, self.rerank_base_url, self.rerank_model = resolve_rerank_config()
         self.cache_manager = cache_manager
         self.durable_cache = get_rerank_cache() # 加固层

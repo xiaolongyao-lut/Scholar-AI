@@ -21,6 +21,7 @@ def _disable_local_dotenv(monkeypatch):
         "SILICONFLOW_RERANK_API_KEY",
         "SILICONFLOW_RERANK_BASE_URL",
         "SILICONFLOW_RERANK_MODEL",
+        "RAG_RUNTIME_RERANK_ENABLED",
         "EMBEDDING_API_KEY",
         "EMBEDDING_MODEL",
         "EMBEDDING_BASE_URL",
@@ -161,3 +162,34 @@ def test_hybrid_retriever_search_caps_rerank_candidates_and_warms_once(monkeypat
     assert observed["rerank_top_k"] == 3
     assert len(reranked) == 2
     assert reranked[0]["rerank_score"] == 0.99
+
+
+def test_hybrid_retriever_runtime_rerank_defaults_off(monkeypatch):
+    _disable_local_dotenv(monkeypatch)
+    monkeypatch.setenv("SILICONFLOW_RERANK_API_KEY", "sf_rerank_key")
+
+    retriever = HybridRetrieverWithRerank()
+
+    assert retriever.rerank_api_key == "sf_rerank_key"
+    assert retriever.use_reranker is False
+
+
+def test_hybrid_retriever_runtime_rerank_env_canary_opt_in(monkeypatch):
+    _disable_local_dotenv(monkeypatch)
+    monkeypatch.setenv("RAG_RUNTIME_RERANK_ENABLED", "1")
+    monkeypatch.setenv("SILICONFLOW_RERANK_API_KEY", "sf_rerank_key")
+
+    retriever = HybridRetrieverWithRerank()
+
+    assert retriever.rerank_api_key == "sf_rerank_key"
+    assert retriever.use_reranker is True
+
+
+def test_hybrid_retriever_explicit_constructor_overrides_runtime_env(monkeypatch):
+    _disable_local_dotenv(monkeypatch)
+    monkeypatch.setenv("RAG_RUNTIME_RERANK_ENABLED", "0")
+    monkeypatch.setenv("SILICONFLOW_RERANK_API_KEY", "sf_rerank_key")
+
+    retriever = HybridRetrieverWithRerank(use_reranker=True)
+
+    assert retriever.use_reranker is True
