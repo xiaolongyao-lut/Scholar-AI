@@ -104,6 +104,7 @@ Check output JSON for `"llm_status": "enabled"`.
 
 - The retrieval path already chunks documents before ranking: `output\chunk_store\*.json` is loaded in `eval_retrieval_runtime.py`, and dense embeddings are built/cached via `ChunkVectorStore.build(...)`.
 - Rerank model resolution defaults to `qwen3-rerank`. Runtime RAG keeps rerank default-off unless `RAG_RUNTIME_RERANK_ENABLED=1` or a caller explicitly constructs `HybridRetrieverWithRerank(use_reranker=True)`, while eval scripts keep their explicit `--no-rerank` / `use_rerank` controls.
+- Intelligent Chat can trial text-only TOLF context selection with `INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED=1`; it is default-off, uses local hashed embeddings, keeps project chunk provenance, and falls back to the normal project chunk search when TOLF yields no context.
 - `DASHSCOPE_*` settings keep the DashScope request shape, while `SILICONFLOW_RERANK_*` still use the existing SiliconFlow request shape.
 - Rerank budget guard envs: `RERANK_DAILY_CALL_CAP` and `RERANK_DAILY_TOKEN_CAP` are hard fallback caps; `RERANK_DAILY_BUDGET_USD` is telemetry-only soft warning.
 

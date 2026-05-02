@@ -26,6 +26,7 @@ from project_paths import REPO_ROOT, runtime_state_path
 from routers.chat_router import ChatRequest, LLMConfig, chat_ask
 from routers.llm_cost_router import _read_cost_aggregate
 from routers.resources_router import load_project_chunks_for_rag, search_project_chunks_for_query
+from tolf_text_selector import select_tolf_context_chunks
 from writing_resources import get_writing_resource_store
 
 
@@ -203,6 +204,10 @@ def _ragworkflow_chat_enabled() -> bool:
     return _truthy(os.getenv("INTELLIGENT_CHAT_RAGWORKFLOW_ENABLED"))
 
 
+def _tolf_context_enabled() -> bool:
+    return _truthy(os.getenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED"))
+
+
 def _split_source_paths(raw_value: str) -> list[str]:
     normalized = raw_value.replace("\n", ";").replace(",", ";")
     return [item.strip() for item in normalized.split(";") if item.strip()]
@@ -378,7 +383,20 @@ def _build_context_chunks(query: str, source_paths: list[Path], tier: ContextTie
 
 def _build_project_context_chunks(query: str, project_id: str, tier: ContextTier) -> tuple[list[ContextChunkPayload], bool]:
     max_chunks, max_chars = _TIER_LIMITS[tier]
-    results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
+    candidate_limit = max_chunks
+    if _tolf_context_enabled():
+        candidate_limit = max(
+            max_chunks,
+            min(max_chunks * 3, int(os.getenv("INTELLIGENT_CHAT_TOLF_CONTEXT_CANDIDATES", "45"))),
+        )
+    results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=candidate_limit)
+    if _tolf_context_enabled() and results:
+        try:
+            tolfs = select_tolf_context_chunks(query, results, top_k=max_chunks, max_candidates=candidate_limit)
+        except (RuntimeError, TypeError, ValueError):
+            tolfs = []
+        if tolfs:
+            results = tolfs
     chunks: list[ContextChunkPayload] = []
     used_chars = 0
     truncated = False
