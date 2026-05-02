@@ -18,6 +18,19 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_rerank_env(monkeypatch):
+    """Ensure no live .env rerank keys leak into mocked tests."""
+    for var in (
+        "RERANK_API_KEY",
+        "RERANK_BASE_URL",
+        "RERANK_MODEL",
+        "DASHSCOPE_RERANK_API_KEY",
+        "DASHSCOPE_API_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 @pytest.fixture
 def isolated_telemetry(monkeypatch, tmp_path):
     """Redirect rerank_budget output files into tmp_path and reset env."""

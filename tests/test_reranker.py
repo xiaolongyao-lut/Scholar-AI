@@ -15,6 +15,19 @@ def disable_local_dotenv(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_rerank_env(monkeypatch):
+    """Ensure no live .env rerank keys leak into mocked tests."""
+    for var in (
+        "RERANK_API_KEY",
+        "RERANK_BASE_URL",
+        "RERANK_MODEL",
+        "DASHSCOPE_RERANK_API_KEY",
+        "DASHSCOPE_API_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def isolated_budget_guard(monkeypatch, tmp_path):
     import model_call_gateway as gateway_mod
     import reranker_client as reranker_mod
@@ -145,6 +158,10 @@ class _DashScopeStubAsyncClient:
 def test_rerank_preserves_order_without_api_key(monkeypatch):
     monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
     monkeypatch.delenv("SILICONFLOW_RERANK_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_RERANK_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.delenv("RERANK_API_KEY", raising=False)
+    monkeypatch.setenv("RERANK_KEY_PROBE_DISABLE", "1")
     from reranker_client import rerank
 
     candidates = [
@@ -355,6 +372,89 @@ def test_resolve_rerank_config_uses_key_pool_pairs_from_dotenv(monkeypatch, tmp_
     assert model == "qwen3-rerank"
 
 
+def test_resolve_rerank_config_sanitizes_nested_env_assignment_in_url(monkeypatch, tmp_path):
+    import key_pool as key_pool_mod
+    import runtime_env as runtime_env_mod
+
+    monkeypatch.delenv("RUNTIME_ENV_DISABLE_DOTENV", raising=False)
+    monkeypatch.delenv("RERANK_KEY_PROBE_DISABLE", raising=False)
+    for name in (
+        "SILICONFLOW_API_KEY",
+        "SILICONFLOW_RERANK_API_KEY",
+        "SILICONFLOW_RERANK_BASE_URL",
+        "SILICONFLOW_RERANK_MODEL",
+        "DASHSCOPE_API_KEY",
+        "DASHSCOPE_RERANK_API_KEY",
+        "DASHSCOPE_RERANK_BASE_URL",
+        "DASHSCOPE_RERANK_MODEL",
+        "RERANK_API_KEY",
+        "RERANK_BASE_URL",
+        "RERANK_MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "##rerank##",
+                "RERANK_API_KEY=rerank-good-key",
+                "RERANK_BASE_URL=OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "RERANK_MODEL=qwen3-rerank",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    runtime_env_mod._repo_env.cache_clear()
+    monkeypatch.setattr(key_pool_mod, "_singleton", None, raising=False)
+    monkeypatch.setattr(key_pool_mod, "_singleton_path", None, raising=False)
+    monkeypatch.setattr(rc, "_KEY_PROBE_CACHE", {}, raising=False)
+    monkeypatch.setattr(rc, "_RERANK_CREDENTIAL_COOLDOWN", {}, raising=False)
+
+    expected_url = rc.DEFAULT_DASHSCOPE_RERANKER_URL
+    probed: list[tuple[str, str, str]] = []
+
+    def fake_probe(api_key: str, base_url: str, model: str, **_kwargs: object) -> bool:
+        probed.append((api_key, base_url, model))
+        return base_url == expected_url
+
+    monkeypatch.setattr(rc, "_probe_rerank_key", fake_probe)
+
+    key, base_url, model = rc.resolve_rerank_config()
+
+    assert probed == [("rerank-good-key", expected_url, "qwen3-rerank")]
+    assert key == "rerank-good-key"
+    assert base_url == expected_url
+    assert model == "qwen3-rerank"
+
+
+def test_resolve_rerank_config_normalizes_dashscope_compatible_mode_url(monkeypatch):
+    monkeypatch.setenv("RERANK_API_KEY", "rerank-good-key")
+    monkeypatch.setenv("RERANK_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("RERANK_MODEL", "qwen3-vl-rerank")
+    monkeypatch.delenv("RERANK_KEY_PROBE_DISABLE", raising=False)
+
+    probed: list[tuple[str, str, str]] = []
+
+    def fake_probe(api_key: str, base_url: str, model: str, **_kwargs: object) -> bool:
+        probed.append((api_key, base_url, model))
+        return base_url == rc.DEFAULT_DASHSCOPE_RERANKER_URL
+
+    monkeypatch.setattr(rc, "_probe_rerank_key", fake_probe)
+
+    key, base_url, model = rc.resolve_rerank_config()
+
+    assert probed == [(
+        "rerank-good-key",
+        rc.DEFAULT_DASHSCOPE_RERANKER_URL,
+        "qwen3-vl-rerank",
+    )]
+    assert key == "rerank-good-key"
+    assert base_url == rc.DEFAULT_DASHSCOPE_RERANKER_URL
+    assert model == "qwen3-vl-rerank"
+
+
 def test_rerank_async_fails_over_to_next_key_pool_credential(monkeypatch, tmp_path):
     import key_pool as key_pool_mod
     import runtime_env as runtime_env_mod
@@ -558,6 +658,11 @@ def test_rerank_async_reorders_using_api(monkeypatch):
     monkeypatch.setattr(reranker_mod.httpx, "AsyncClient", _StubAsyncClient)
     monkeypatch.delenv("SILICONFLOW_RERANK_BASE_URL", raising=False)
     monkeypatch.delenv("SILICONFLOW_RERANK_MODEL", raising=False)
+    monkeypatch.delenv("DASHSCOPE_RERANK_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.delenv("RERANK_API_KEY", raising=False)
+    monkeypatch.delenv("RERANK_BASE_URL", raising=False)
+    monkeypatch.delenv("RERANK_MODEL", raising=False)
 
     candidates = [
         {"chunk_id": "c1", "content": "doc A", "rrf_score": 0.8},
