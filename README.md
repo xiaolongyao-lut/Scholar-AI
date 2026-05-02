@@ -122,19 +122,28 @@ python -m pytest .\tests\test_parallel_processor.py .\tests\test_scoring_plugin_
 
 ## Skill Flow Integration
 
-`skill-flow` visual integration is wired through the local export catalog under `skills/catalog/`.
+`skill-flow` visual integration is generated from canonical repo-local skills under `.github/skills/*/SKILL.md` into the local export catalog `skills/catalog/`.
+
+Canonical authored skills live under `.github/skills/`. The new `env-test-discipline` skill is the reference pattern for dynamic `.env` API usage, provider role selection, temporary test overrides, connectivity probes, and Windows-first long-run safety; other AI runtimes should borrow or adapt it instead of silently maintaining separate divergent copies.
 
 ```powershell
 pwsh -File .\skill_sync_bridge.ps1
 python -X utf8 .\skills\skill_flow_adapter.py --strict
 ```
 
+`skills\skill_flow_adapter.py` is a thin CLI wrapper over `literature_assistant/core/skills/skill_flow_adapter.py`. It mirrors repo-local `SKILL.md` files into `skills/catalog/` and writes `.skill-flow-export.json`. `--strict` is the fail-closed verification mode for malformed frontmatter or duplicate slugs.
+
 `skill_sync_bridge.ps1` will:
 
 - create a rollback snapshot under `.rollback_snapshots/`
-- export or mirror local `SKILL.md` entries into `skills/catalog/`
-- sync the source through the official `skill-flow bridge --json` protocol instead of editing state files directly
-- register a repo-scoped custom target at `skills/imported/skill-flow/` for later imports
+- export or mirror canonical repo-local `SKILL.md` entries from `.github/skills/` into `skills/catalog/`
+- verify bridge health through the official `skill-flow bridge --json` protocol using a machine-readable `doctor` probe
+- write a bridge doctor snapshot to `skills/catalog/.skill-flow-bridge-doctor.json`
+
+If you want to adapt the env/test guidance for Claude, Codex, Copilot, Gemini, or another runtime, start from:
+
+- `.github/skills/env-test-discipline/SKILL.md`
+- `docs/superpowers/env-test-discipline.md`
 
 ## Retained Documents
 

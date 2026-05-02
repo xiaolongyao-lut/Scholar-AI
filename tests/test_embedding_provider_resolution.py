@@ -324,3 +324,70 @@ def test_resolver_prefers_grouped_embedding_credential_over_mismatched_flat_env(
     assert api_key == "pool-text-key"
     assert base_url == "https://api.siliconflow.cn/v1/embeddings"
     assert model == "BAAI/bge-m3"
+
+
+def test_resolve_embedding_config_sanitizes_nested_env_assignment_in_url(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pytest.PathLike[str],
+) -> None:
+    """Malformed `.env` URL values like `EMBEDDING_BASE_URL=OPENAI_BASE_URL=...` should be recovered.
+
+    This guards long-running evals against copy-paste mistakes in grouped env
+    blocks: runtime_env + key_pool must probe and return the cleaned URL, not the
+    literal nested assignment string.
+    """
+    import key_pool as key_pool_mod
+    import runtime_env as rte
+
+    monkeypatch.delenv("RUNTIME_ENV_DISABLE_DOTENV", raising=False)
+    monkeypatch.delenv("EMBEDDING_KEY_PROBE_DISABLE", raising=False)
+    for name in (
+        "API_KEY",
+        "SILICONFLOW_API_KEY",
+        "SILICONFLOW_EMBEDDING_API_KEY",
+        "EMBEDDING_API_KEY",
+        "EMBEDDING_BASE_URL",
+        "SILICONFLOW_EMBEDDING_BASE_URL",
+        "BASE_URL",
+        "EMBEDDING_MODEL",
+        "SILICONFLOW_EMBEDDING_MODEL",
+        "MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "##embedding##",
+                "EMBEDDING_API_KEY=embed-good-key",
+                "EMBEDDING_BASE_URL=OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "EMBEDDING_MODEL=qwen3-vl-embedding",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    rte._repo_env.cache_clear()
+    monkeypatch.setattr(key_pool_mod, "_singleton", None, raising=False)
+    monkeypatch.setattr(key_pool_mod, "_singleton_path", None, raising=False)
+    monkeypatch.setattr(rte, "_KEY_PROBE_CACHE_EMBED", {}, raising=False)
+
+    expected_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    probed: list[tuple[str, str, str]] = []
+
+    def fake_probe(api_key: str, base_url: str, model: str, **_kwargs: object) -> bool:
+        probed.append((api_key, base_url, model))
+        return base_url == expected_url
+
+    monkeypatch.setattr(rte, "_probe_embedding_key", fake_probe)
+
+    api_key, base_url, model = rte.resolve_embedding_config(
+        default_base_url="https://api.siliconflow.cn/v1",
+        default_model="BAAI/bge-m3",
+    )
+
+    assert probed == [("embed-good-key", expected_url, "qwen3-vl-embedding")]
+    assert api_key == "embed-good-key"
+    assert base_url == expected_url
+    assert model == "qwen3-vl-embedding"

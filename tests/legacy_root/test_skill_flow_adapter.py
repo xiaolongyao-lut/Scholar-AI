@@ -3,18 +3,12 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-# Conditional import: SkillFlowAdapter is not part of Phase G recovery scope
-# If skills.skill_flow_adapter is implemented in the future, remove the skip decorator
-try:
-    from skills.skill_flow_adapter import SkillFlowAdapter
-    SKILL_FLOW_ADAPTER_AVAILABLE = True
-except ImportError:
-    SKILL_FLOW_ADAPTER_AVAILABLE = False
-    SkillFlowAdapter = None  # type: ignore
+from skills.skill_flow_adapter import SkillFlowAdapter
 
 from skills.models import (
     SkillCompatibility,
@@ -47,10 +41,6 @@ def build_descriptor(skill_id: str, name: str, description: str) -> SkillDescrip
     )
 
 
-@unittest.skipIf(
-    not SKILL_FLOW_ADAPTER_AVAILABLE,
-    "SkillFlowAdapter module not available - skill catalog export not in Phase G recovery scope"
-)
 class SkillFlowAdapterTests(unittest.TestCase):
     """Validate descriptor export and manual document mirroring."""
 
@@ -92,6 +82,8 @@ class SkillFlowAdapterTests(unittest.TestCase):
             )
 
             self.assertEqual(1, len(report.exported))
+            self.assertEqual("descriptor", report.exported[0].origin)
+            self.assertEqual("test-analyzer", report.exported[0].slug)
             exported_path = skills_root / "catalog" / "test-analyzer" / "SKILL.md"
             self.assertTrue(exported_path.exists())
             exported_text = exported_path.read_text(encoding="utf-8")
@@ -167,6 +159,85 @@ class SkillFlowAdapterTests(unittest.TestCase):
                     ],
                     mirror_existing=False,
                 )
+
+    def test_sync_strict_rejects_existing_skill_without_frontmatter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_root = Path(temp_dir, ".github", "skills")
+            source_root.mkdir(parents=True, exist_ok=True)
+            template_path = Path(temp_dir, "SKILL.md.template")
+            template_path.write_text("# {{title}}\n", encoding="utf-8")
+
+            broken_skill_dir = source_root / "broken-skill"
+            broken_skill_dir.mkdir(parents=True, exist_ok=True)
+            (broken_skill_dir / "SKILL.md").write_text(
+                "# Broken Skill\n\nNo frontmatter here.\n",
+                encoding="utf-8",
+            )
+
+            adapter = SkillFlowAdapter(
+                source_root=source_root,
+                output_root=Path(temp_dir, "skills", "catalog"),
+                template_path=template_path,
+            )
+
+            with self.assertRaisesRegex(ValueError, "frontmatter"):
+                adapter.sync([], mirror_existing=True, strict=True)
+
+    def test_sync_summary_records_mirrored_skill_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_root = Path(temp_dir, ".github", "skills")
+            source_root.mkdir(parents=True, exist_ok=True)
+            template_path = Path(temp_dir, "SKILL.md.template")
+            template_path.write_text("# {{title}}\n", encoding="utf-8")
+
+            env_skill_dir = source_root / "env-test-discipline"
+            env_skill_dir.mkdir(parents=True, exist_ok=True)
+            (env_skill_dir / "SKILL.md").write_text(
+                "\n".join(
+                    [
+                        "---",
+                        'name: "env-test-discipline"',
+                        'description: "Canonical env + test safety rules."',
+                        "---",
+                        "",
+                        "# Env Test Discipline",
+                        "",
+                        "Canonical env + test safety rules.",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            output_root = Path(temp_dir, "skills", "catalog")
+            summary_path = output_root / ".skill-flow-export.json"
+            adapter = SkillFlowAdapter(
+                source_root=source_root,
+                output_root=output_root,
+                template_path=template_path,
+            )
+
+            report = adapter.sync([], mirror_existing=True, strict=True, summary_path=summary_path)
+
+            self.assertEqual(1, len(report.exported))
+            self.assertTrue(summary_path.exists())
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(1, payload["exported_count"])
+            exported = payload["exported"][0]
+            self.assertEqual("env-test-discipline", exported["slug"])
+            self.assertEqual("existing", exported["origin"])
+            self.assertEqual("env-test-discipline", exported["name"])
+            self.assertIn("generated_at", payload)
+            self.assertTrue(
+                exported["source_locator"].replace("\\", "/").endswith(
+                    "/.github/skills/env-test-discipline/SKILL.md"
+                )
+            )
+            self.assertTrue(
+                exported["output_path"].replace("\\", "/").endswith(
+                    "/skills/catalog/env-test-discipline/SKILL.md"
+                )
+            )
 
 
 if __name__ == "__main__":

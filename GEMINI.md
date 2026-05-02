@@ -11,6 +11,7 @@ Key rules:
 - Put project plan/spec files under `docs/plans/`.
 - Treat `github/` as read-only external references unless the user explicitly asks.
 - Create rollback snapshots and check mature/official references before nontrivial changes.
+- For dynamic `.env` API usage, env/test configuration, temporary `.env` overrides, connectivity probes, or provider-resolution regressions, prefer the canonical skill `.github/skills/env-test-discipline/SKILL.md` and `docs/superpowers/env-test-discipline.md` before inventing a Gemini-only variant.
 
 ## Squad Collaboration
 

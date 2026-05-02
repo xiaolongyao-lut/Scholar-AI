@@ -218,6 +218,32 @@ def test_run_eval_contextualizes_chunks_when_enabled(monkeypatch, tmp_path) -> N
     assert out_file.exists()
 
 
+def test_eval_runtime_main_accepts_json_output_flag(monkeypatch, tmp_path, capsys) -> None:
+    import eval_retrieval_runtime as eval_mod
+
+    output_path = tmp_path / "metrics.json"
+    payload = {
+        "timestamp": "2026-05-02 18:45:00",
+        "total_queries": 1,
+        "oversize_count": 0,
+        "aggregated_metrics": {"recall_at_5": 1.0, "mrr": 1.0, "p95_latency_ms": 12.0},
+        "per_difficulty": {},
+    }
+
+    def _fake_run_eval(**kwargs):
+        assert kwargs["output_path"] == str(output_path)
+        return payload
+
+    monkeypatch.setattr(eval_mod, "run_eval", _fake_run_eval)
+
+    result = eval_mod.main(["--output", str(output_path), "--json-output"])
+
+    captured = capsys.readouterr()
+    assert result == payload
+    assert json.loads(captured.out) == payload
+    assert "Evaluation completed." not in captured.out
+
+
 def test_run_eval_writes_per_query_output_jsonl(monkeypatch, tmp_path) -> None:
     import eval_retrieval_runtime as eval_mod
 

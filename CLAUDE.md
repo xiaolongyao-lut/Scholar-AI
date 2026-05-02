@@ -40,6 +40,8 @@ Claude should prefer the project-local skills under `.claude/skills/` when a tas
 
 Use the matching skill instead of re-deriving the same checklist or playbook in the main conversation.
 
+For dynamic `.env` API usage, env/test configuration, temporary `.env` overrides, connectivity probes, or provider-resolution regressions, borrow the canonical repo-local source `.github/skills/env-test-discipline/SKILL.md` (and `docs/superpowers/env-test-discipline.md`) rather than maintaining a divergent Claude-only fork unless the user explicitly asks for one.
+
 ## Repository-Wide Working Style
 
 ### 1. Think Before Coding

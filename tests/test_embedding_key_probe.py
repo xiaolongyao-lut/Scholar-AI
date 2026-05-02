@@ -345,3 +345,23 @@ def test_probe_dashscope_multimodal_payload(
     )
 
     assert ok is True
+
+
+def test_dashscope_compatible_mode_vl_embedding_uses_multimodal_service_path() -> None:
+    base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    request_url = rte.resolve_embedding_request_url(base_url, "qwen3-vl-embedding")
+    payload = rte.build_embedding_request_payload(
+        ["probe"],
+        base_url=base_url,
+        model="qwen3-vl-embedding",
+    )
+
+    assert request_url == (
+        "https://dashscope.aliyuncs.com/api/v1/services/embeddings/"
+        "multimodal-embedding/multimodal-embedding"
+    )
+    assert payload == {
+        "model": "qwen3-vl-embedding",
+        "input": {"contents": [{"text": "probe"}]},
+    }

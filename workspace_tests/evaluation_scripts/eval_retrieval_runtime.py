@@ -1554,7 +1554,7 @@ async def _run_eval_async(
     return results
 
 
-if __name__ == "__main__":
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run retrieval evaluation.")
     parser.add_argument("--queries", default=DEFAULT_QUERIES_PATH)
     parser.add_argument("--output", default="BASELINE_METRICS.json")
@@ -1706,7 +1706,17 @@ if __name__ == "__main__":
         default=None,
         help="可选：追加写入非正文 rerank trace JSONL（ID/rank/score，用于诊断重排降级）。",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--json-output",
+        action="store_true",
+        help="将完整评测结果 JSON 打印到 stdout；仍会按 --output 写文件。",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> dict[str, Any]:
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
 
     final_metrics = run_eval(
         queries_path=args.queries,
@@ -1733,6 +1743,10 @@ if __name__ == "__main__":
         per_query_output=args.per_query_output,
         rerank_trace_output=args.rerank_trace_output,
     )
+    if args.json_output:
+        print(json.dumps(final_metrics, ensure_ascii=False))
+        return final_metrics
+
     agg = final_metrics.get("aggregated_metrics", {})
     print("Evaluation completed.")
     print(
@@ -1742,3 +1756,8 @@ if __name__ == "__main__":
         f"API-p95={agg.get('rerank_api_p95_ms', 0.0)}ms | "
         f"Queue-p95={agg.get('rerank_queue_p95_ms', 0.0)}ms"
     )
+    return final_metrics
+
+
+if __name__ == "__main__":
+    main()

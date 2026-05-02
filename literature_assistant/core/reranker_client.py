@@ -381,6 +381,13 @@ def _clean(value: str | None) -> str | None:
     return text or None
 
 
+def _normalize_rerank_base_url(value: str | None) -> str | None:
+    text = _clean(value)
+    if text and is_dashscope_rerank_url(text) and "compatible-mode" in text.lower():
+        return DEFAULT_DASHSCOPE_RERANKER_URL
+    return text
+
+
 def _rerank_candidate_signature(
     api_key: str | None,
     base_url: str | None,
@@ -388,7 +395,7 @@ def _rerank_candidate_signature(
 ) -> tuple[str, str, str]:
     return (
         str(api_key or "").strip(),
-        str(base_url or "").strip(),
+        str(_normalize_rerank_base_url(base_url) or ""),
         str(model or "").strip(),
     )
 
@@ -421,7 +428,7 @@ def _resolve_rerank_targets(
     base_url: str | None = None,
     model: str | None = None,
 ) -> dict[str, str | None]:
-    explicit_base_url = _clean(base_url)
+    explicit_base_url = _normalize_rerank_base_url(base_url)
     explicit_model = _clean(model)
 
     siliconflow_specific_api_key = env_value("SILICONFLOW_RERANK_API_KEY")
@@ -429,9 +436,9 @@ def _resolve_rerank_targets(
     dashscope_specific_api_key = env_value("DASHSCOPE_RERANK_API_KEY")
     dashscope_generic_api_key = env_value("DASHSCOPE_API_KEY")
 
-    siliconflow_base_url = env_value("SILICONFLOW_RERANK_BASE_URL")
-    dashscope_base_url = env_value("DASHSCOPE_RERANK_BASE_URL")
-    legacy_base_url = env_value("RERANK_BASE_URL")
+    siliconflow_base_url = _normalize_rerank_base_url(env_value("SILICONFLOW_RERANK_BASE_URL"))
+    dashscope_base_url = _normalize_rerank_base_url(env_value("DASHSCOPE_RERANK_BASE_URL"))
+    legacy_base_url = _normalize_rerank_base_url(env_value("RERANK_BASE_URL"))
 
     siliconflow_model = env_value("SILICONFLOW_RERANK_MODEL")
     dashscope_model = env_value("DASHSCOPE_RERANK_MODEL")
@@ -530,12 +537,12 @@ def _rerank_candidates_from_key_pool(
     if not credentials:
         return []
 
-    target_base_url = _clean(target_base_url)
+    target_base_url = _normalize_rerank_base_url(target_base_url)
     target_model = _clean(target_model)
     ordered = sorted(
         credentials,
         key=lambda cred: (
-            target_base_url is not None and _clean(getattr(cred, "base_url", None)) != target_base_url,
+            target_base_url is not None and _normalize_rerank_base_url(getattr(cred, "base_url", None)) != target_base_url,
             target_model is not None and _clean(getattr(cred, "model", None)) != target_model,
             int(getattr(cred, "line_no", 0) or 0),
         ),
@@ -545,7 +552,7 @@ def _rerank_candidates_from_key_pool(
     seen: set[tuple[str, str, str]] = set()
     for cred in ordered:
         api_key = _clean(getattr(cred, "api_key", None))
-        base_url = _clean(getattr(cred, "base_url", None))
+        base_url = _normalize_rerank_base_url(getattr(cred, "base_url", None))
         model = _clean(getattr(cred, "model", None))
         if not api_key or not base_url or not model:
             continue
@@ -568,7 +575,7 @@ def resolve_rerank_candidates(
     targets = _resolve_rerank_targets(base_url=base_url, model=model)
     resolved_base_url = str(targets["resolved_base_url"] or DEFAULT_RERANKER_URL)
     resolved_model = str(targets["resolved_model"] or DEFAULT_RERANKER_MODEL)
-    explicit_base_url = _clean(base_url)
+    explicit_base_url = _normalize_rerank_base_url(base_url)
     explicit_model = _clean(model)
 
     if explicit_api_key is not None:

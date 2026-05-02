@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
+
+_NESTED_ENV_URL_VALUE_RE = re.compile(r"^(?:[A-Z][A-Z0-9_]*=)+(https?://.+)$")
 
 
 def _clean(value: str | None) -> str | None:
@@ -13,6 +17,16 @@ def _clean(value: str | None) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _clean_urlish(value: str | None) -> str | None:
+    text = _clean(value)
+    if text is None:
+        return None
+    match = _NESTED_ENV_URL_VALUE_RE.match(text)
+    if match:
+        return match.group(1).strip() or None
+    return text
 
 
 def _dotenv_disabled() -> bool:
@@ -56,14 +70,19 @@ def _repo_env() -> dict[str, str]:
 
 def env_value(*names: str, default: str | None = None) -> str | None:
     for name in names:
-        value = _clean(os.getenv(name))
+        cleaner = _clean_urlish if "URL" in str(name).upper() else _clean
+        value = cleaner(os.getenv(name))
         if value is not None:
             return value
         if _dotenv_disabled():
             continue
-        value = _clean(_repo_env().get(name))
+        value = cleaner(_repo_env().get(name))
         if value is not None:
             return value
+    if default is None:
+        return None
+    if any("URL" in str(name).upper() for name in names):
+        return _clean_urlish(default)
     return default
 
 
@@ -77,12 +96,16 @@ def resolve_llm_config(
 ) -> tuple[str | None, str, str]:
     return (
         _clean(api_key) or env_value("ARK_API_KEY", "VOLCANO_API_KEY", "OPENAI_API_KEY", "API_KEY"),
-        _clean(base_url) or env_value("ARK_BASE_URL", "OPENAI_BASE_URL", "BASE_URL", default=default_base_url) or default_base_url,
+        _clean_urlish(base_url) or env_value("ARK_BASE_URL", "OPENAI_BASE_URL", "BASE_URL", default=default_base_url) or default_base_url,
         _clean(model) or env_value("ARK_MODEL", "OPENAI_MODEL", "MODEL", default=default_model) or default_model,
     )
 
 
 DEFAULT_JINA_EMBEDDING_BASE_URL = "https://api.jina.ai/v1/embeddings"
+DEFAULT_DASHSCOPE_MULTIMODAL_EMBEDDING_URL = (
+    "https://dashscope.aliyuncs.com/api/v1/services/embeddings/"
+    "multimodal-embedding/multimodal-embedding"
+)
 DEFAULT_JINA_EMBEDDING_MODEL = "jina-embeddings-v3"
 DEFAULT_EMBEDDING_FAILOVER_COOLDOWN_SECONDS = 900.0
 
@@ -109,10 +132,24 @@ def is_dashscope_multimodal_embedding_config(base_url: str | None, model: str | 
     return is_dashscope_multimodal_embedding_url(base_url) or _looks_like_dashscope_multimodal_embedding_model(model)
 
 
+def _resolve_dashscope_multimodal_embedding_url(base_url: str) -> str:
+    trimmed = str(base_url or "").rstrip("/")
+    lowered = trimmed.lower()
+    if "compatible-mode" not in lowered:
+        return trimmed or DEFAULT_DASHSCOPE_MULTIMODAL_EMBEDDING_URL
+    parsed = urlsplit(trimmed)
+    if parsed.scheme and parsed.netloc:
+        return (
+            f"{parsed.scheme}://{parsed.netloc}/api/v1/services/embeddings/"
+            "multimodal-embedding/multimodal-embedding"
+        )
+    return DEFAULT_DASHSCOPE_MULTIMODAL_EMBEDDING_URL
+
+
 def resolve_embedding_request_url(base_url: str, model: str | None = None) -> str:
     trimmed = str(base_url or "").rstrip("/")
     if is_dashscope_multimodal_embedding_config(trimmed, model):
-        return trimmed
+        return _resolve_dashscope_multimodal_embedding_url(trimmed)
     if trimmed.lower().endswith("/embeddings"):
         return trimmed
     return f"{trimmed}/embeddings"
@@ -340,7 +377,11 @@ def _looks_like_embedding_catalog(base_url: str | None, model: str | None) -> bo
 
 
 def _candidate_signature(api_key: str | None, base_url: str | None, model: str | None) -> tuple[str, str, str]:
-    return (str(api_key or "").strip(), str(base_url or "").strip(), str(model or "").strip())
+    return (
+        str(_clean(api_key) or ""),
+        str(_clean_urlish(base_url) or ""),
+        str(_clean(model) or ""),
+    )
 
 
 def _embedding_candidates_from_key_pool(
@@ -389,7 +430,7 @@ def _embedding_candidates_from_key_pool(
     seen: set[tuple[str, str, str]] = set()
     for cred in ordered:
         api_key = _clean(getattr(cred, "api_key", None))
-        base_url = _clean(getattr(cred, "base_url", None))
+        base_url = _clean_urlish(getattr(cred, "base_url", None))
         model = _clean(getattr(cred, "model", None))
         if not api_key or not base_url or not model:
             continue
@@ -422,7 +463,7 @@ def resolve_embedding_candidates(
 
     if provider == "jina":
         resolved_base_url = (
-            _clean(base_url)
+            _clean_urlish(base_url)
             or env_value(
                 "JINA_EMBEDDING_BASE_URL",
                 "EMBEDDING_BASE_URL",
@@ -444,7 +485,7 @@ def resolve_embedding_candidates(
         env_candidates = _jina_embedding_candidates()
     else:
         resolved_base_url = (
-            _clean(base_url)
+            _clean_urlish(base_url)
             or env_value(
                 "SILICONFLOW_EMBEDDING_BASE_URL",
                 "EMBEDDING_BASE_URL",
@@ -558,7 +599,7 @@ def resolve_embedding_config(
         loudly instead of silently rewriting.
     """
     explicit_api_key = _clean(api_key)
-    explicit_base_url = _clean(base_url)
+    explicit_base_url = _clean_urlish(base_url)
     explicit_model = _clean(model)
 
     provider = _select_embedding_provider()

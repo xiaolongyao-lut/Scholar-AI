@@ -19,9 +19,11 @@ Parsing rules (kept deliberately small):
   the URL substring (``embedding`` vs ``rerank``) decides the category and
   causes a flush when the URL flips mid-section.
 
-The module never mutates the values — only the format of how they are
-grouped — so user-supplied API keys / base URLs / model ids are passed
-through verbatim.
+The module keeps values as-is except for a narrow URL repair: if a URL line is
+mistakenly written as ``EMBEDDING_BASE_URL=OPENAI_BASE_URL=https://...`` (or a
+similar nested env assignment), the leading ``OPENAI_BASE_URL=`` wrapper is
+stripped before grouping so long-running jobs do not inherit malformed request
+URLs.
 """
 
 from __future__ import annotations
@@ -61,6 +63,17 @@ _CATEGORY_HEADER_RE = re.compile(
 )
 _PROVIDER_HEADER_RE = re.compile(r"^\s*#+\s*([^#=\n]+?)\s*#+\s*$")
 _AUTH_FAIL_HINTS = ("401", "403", "429", "404", "400", "unauthor", "invalid api key", "invalid_api_key")
+_NESTED_ENV_URL_VALUE_RE = re.compile(r"^(?:[A-Z][A-Z0-9_]*=)+(https?://.+)$")
+
+
+def _normalize_url_value(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = _NESTED_ENV_URL_VALUE_RE.match(text)
+    if match:
+        return match.group(1).strip() or None
+    return text
 
 
 def _model_indicates_rerank(model: str | None) -> bool:
@@ -279,8 +292,8 @@ def parse_env_pools(path: str | Path = ".env") -> dict[Category, list[Credential
             if forced:
                 active_category = forced
             else:
-                active_category = _normalise_category(value)
-            pending["url"] = value
+                active_category = _normalise_category(_normalize_url_value(value))
+            pending["url"] = _normalize_url_value(value)
         elif var_kind == "model":
             pending.setdefault("models", []).append((value, idx, forced))  # type: ignore[union-attr]
 

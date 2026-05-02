@@ -236,16 +236,21 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path -LiteralPath $repoRoot).Path
 $skillsRoot = Join-Path $repoRoot "skills"
 $catalogRoot = Join-Path $skillsRoot "catalog"
-$summaryJsonPath = Join-Path $catalogRoot ".skill-flow-export.json"
+$doctorSnapshotPath = Join-Path $catalogRoot ".skill-flow-bridge-doctor.json"
 $pythonPath = Resolve-PythonExecutable -RequestedPath $PythonExe
 $skillFlowInvoker = Resolve-SkillFlowInvoker -RepositoryRoot $repoRoot -FallbackVersion $SkillFlowVersion
 
-Write-Host ">>> [1/2] Syncing Skill-Flow bridge..." -ForegroundColor Cyan
+Write-Host ">>> [1/2] Exporting repo-local Skill-Flow catalog..." -ForegroundColor Cyan
 & $pythonPath (Join-Path $skillsRoot "skill_flow_adapter.py")
-
-Invoke-SkillFlowBridge -Invoker $skillFlowInvoker -Request @{
-    protocolVersion = "1.0"
-    command = "list"
+if (-not (Test-Path -LiteralPath (Join-Path $catalogRoot ".skill-flow-export.json") -PathType Leaf)) {
+    throw "Skill catalog export summary missing: $(Join-Path $catalogRoot '.skill-flow-export.json')"
 }
+
+Write-Host ">>> [2/2] Running machine-readable Skill-Flow doctor probe..." -ForegroundColor Cyan
+$doctorResponse = Invoke-SkillFlowBridge -Invoker $skillFlowInvoker -Request @{
+    protocolVersion = "1.0"
+    command = "doctor"
+}
+Save-JsonSnapshot -Path $doctorSnapshotPath -Value $doctorResponse
 
 Write-Host "`nSkill-Flow synchronization complete." -ForegroundColor Green
