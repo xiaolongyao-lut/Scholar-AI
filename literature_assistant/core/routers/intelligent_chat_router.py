@@ -200,6 +200,51 @@ def _truthy(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _positive_int_env(name: str, default: int, *, minimum: int = 1) -> int:
+    """Resolve a positive integer env var without failing request handlers.
+
+    Args:
+        name: Environment variable name.
+        default: Fallback value used when the env var is absent or invalid.
+        minimum: Inclusive lower bound for the returned value.
+
+    Returns:
+        A value greater than or equal to ``minimum``.
+
+    Raises:
+        ValueError: If ``default`` or ``minimum`` cannot produce a positive value.
+    """
+    if not isinstance(default, int) or not isinstance(minimum, int):
+        raise ValueError("default and minimum must be integers")
+    if minimum < 1:
+        raise ValueError("minimum must be positive")
+    if default < minimum:
+        raise ValueError("default must be greater than or equal to minimum")
+
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        parsed = int(str(raw_value).strip())
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, parsed)
+
+
+def _non_negative_float_env(name: str, default: float) -> float:
+    """Resolve a non-negative float env var without failing request handlers."""
+    if not isinstance(default, int | float) or float(default) < 0.0:
+        raise ValueError("default must be a non-negative number")
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return float(default)
+    try:
+        parsed = float(str(raw_value).strip())
+    except (TypeError, ValueError):
+        return float(default)
+    return max(0.0, parsed)
+
+
 def _ragworkflow_chat_enabled() -> bool:
     return _truthy(os.getenv("INTELLIGENT_CHAT_RAGWORKFLOW_ENABLED"))
 
@@ -230,7 +275,7 @@ def _resolve_source_paths(request_paths: list[str] | None) -> list[Path]:
 
 
 def _iter_source_files(paths: list[Path]) -> list[Path]:
-    max_files = max(1, int(os.getenv("INTELLIGENT_CHAT_MAX_SOURCE_FILES", "200")))
+    max_files = _positive_int_env("INTELLIGENT_CHAT_MAX_SOURCE_FILES", 200)
     files: list[Path] = []
     for path in paths:
         if path.is_file() and path.suffix.lower() in _TEXT_SUFFIXES:
@@ -254,7 +299,7 @@ def _display_path(path: Path) -> str:
 
 
 def _read_text_file(path: Path) -> str:
-    max_bytes = max(4096, int(os.getenv("INTELLIGENT_CHAT_MAX_FILE_BYTES", "65536")))
+    max_bytes = _positive_int_env("INTELLIGENT_CHAT_MAX_FILE_BYTES", 65536, minimum=4096)
     try:
         payload = path.read_bytes()[:max_bytes]
     except OSError:
@@ -387,7 +432,7 @@ def _build_project_context_chunks(query: str, project_id: str, tier: ContextTier
     if _tolf_context_enabled():
         candidate_limit = max(
             max_chunks,
-            min(max_chunks * 3, int(os.getenv("INTELLIGENT_CHAT_TOLF_CONTEXT_CANDIDATES", "45"))),
+            min(max_chunks * 3, _positive_int_env("INTELLIGENT_CHAT_TOLF_CONTEXT_CANDIDATES", 45)),
         )
     results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=candidate_limit)
     if _tolf_context_enabled() and results:
@@ -875,8 +920,8 @@ async def get_budget_status() -> BudgetStatusPayload:
     aggregate = _read_cost_aggregate(date.today(), date.today())
     call_count = int(aggregate.get("total_calls") or 0)
     cost_usd = round(float(aggregate.get("total_cost_usd") or 0.0), 6)
-    call_cap = max(1, int(os.getenv("INTELLIGENT_CHAT_DAILY_CALL_CAP", "200")))
-    budget_usd = max(0.0, float(os.getenv("INTELLIGENT_CHAT_DAILY_BUDGET_USD", "5")))
+    call_cap = _positive_int_env("INTELLIGENT_CHAT_DAILY_CALL_CAP", 200)
+    budget_usd = _non_negative_float_env("INTELLIGENT_CHAT_DAILY_BUDGET_USD", 5.0)
     percent_calls = min(100.0, round(call_count / call_cap * 100, 2))
     percent_usd = 0.0 if budget_usd <= 0 else min(100.0, round(cost_usd / budget_usd * 100, 2))
     return BudgetStatusPayload(

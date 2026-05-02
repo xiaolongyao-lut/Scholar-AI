@@ -209,6 +209,50 @@ def test_api_chat_tolf_context_selector_falls_back_when_empty(monkeypatch, tmp_p
     assert payload["evidence_refs"][0]["source_labels"] == ["project_chunks"]
 
 
+def test_api_chat_tolf_context_selector_ignores_invalid_candidate_env(monkeypatch, tmp_path) -> None:
+    session_store = tmp_path / "sessions.json"
+    doc_store_dir = tmp_path / "doc_store"
+    chunk_store_dir = tmp_path / "chunk_store"
+    doc_store_dir.mkdir(parents=True)
+    chunk_store_dir.mkdir(parents=True)
+    monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
+    monkeypatch.setattr(resources_router, "_DOC_STORE_DIR", doc_store_dir)
+    monkeypatch.setattr(resources_router, "_CHUNK_STORE_DIR", chunk_store_dir)
+    monkeypatch.setattr(resources_router, "_CHUNK_QUARANTINE_LOG_PATH", tmp_path / "chunk_quarantine.jsonl")
+    monkeypatch.setenv("CHAT_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
+    monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "1")
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_CANDIDATES", "not-a-number")
+    monkeypatch.setattr(intelligent_chat_router, "chat_ask", _fake_chat_ask)
+
+    client = TestClient(app)
+    project_response = client.post("/resources/project", json={"title": "TOLF Bad Env"})
+    assert project_response.status_code == 200
+    project_id = project_response.json()["project_id"]
+    resources_router._save_doc_store(
+        project_id,
+        {
+            "mat_laser": {
+                "title": "Laser Process Study",
+                "content": "This study reports laser power increased hardness to 280 HV.",
+            }
+        },
+    )
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "query": "laser power hardness",
+            "tier": "balanced",
+            "project_id": project_id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["context_chunks_used"] == 1
+
+
 def test_api_chat_uses_ragworkflow_when_project_adapter_enabled(monkeypatch, tmp_path) -> None:
     session_store = tmp_path / "sessions.json"
     monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
@@ -450,3 +494,20 @@ def test_api_budget_status_and_openapi_contract(monkeypatch) -> None:
     assert "/api/budget/status" in schema["paths"]
     assert "IntelligentChatResponse" in schema["components"]["schemas"]
     assert "EvidenceReferencePayload" in schema["components"]["schemas"]
+
+
+def test_api_budget_status_uses_defaults_for_invalid_env(monkeypatch) -> None:
+    monkeypatch.setattr(
+        intelligent_chat_router,
+        "_read_cost_aggregate",
+        lambda _start, _end: {"total_calls": 3, "total_cost_usd": 0.25},
+    )
+    monkeypatch.setenv("INTELLIGENT_CHAT_DAILY_CALL_CAP", "invalid")
+    monkeypatch.setenv("INTELLIGENT_CHAT_DAILY_BUDGET_USD", "invalid")
+
+    client = TestClient(app)
+    response = client.get("/api/budget/status")
+
+    assert response.status_code == 200
+    assert response.json()["call_cap"] == 200
+    assert response.json()["budget_usd"] == 5.0
