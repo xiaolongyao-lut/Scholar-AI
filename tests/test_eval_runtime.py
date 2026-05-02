@@ -178,6 +178,70 @@ def test_retrieve_with_expansion_uses_translated_query_for_retrieval(monkeypatch
     assert all("rerank_score" in h for h in hits)
 
 
+def test_retrieve_with_expansion_embeds_translation_while_hybrid_runs(monkeypatch) -> None:
+    """Expanded retrieval should overlap translated dense embedding with async BM25 work."""
+    import eval_retrieval_runtime as eval_mod
+
+    async def _fake_translate(query: str, **_kwargs) -> str:
+        assert query == "热输入影响"
+        return "heat input effect"
+
+    async def _run_case() -> list[str]:
+        order: list[str] = []
+        hybrid_started = asyncio.Event()
+        embedding_started = asyncio.Event()
+
+        async def _fake_hybrid(_corpus, query_text: str, top_k: int = 10) -> list[dict[str, object]]:
+            assert query_text == "热输入影响"
+            order.append("hybrid-start")
+            hybrid_started.set()
+            await embedding_started.wait()
+            order.append("hybrid-end")
+            return [{"chunk_id": "h1", "content": "bm25 hit", "rrf_score": 0.9}][:top_k]
+
+        class _FakeVectorStore:
+            async def embed_query(self, text: str) -> list[float]:
+                assert text == "heat input effect"
+                await hybrid_started.wait()
+                order.append("embed-start")
+                embedding_started.set()
+                return [0.2, 0.4]
+
+        async def _fake_dense_precomputed(
+            _store: _FakeVectorStore, query_vec: list[float], top_k: int
+        ) -> list[dict[str, object]]:
+            assert query_vec == [0.2, 0.4]
+            return [{"chunk_id": "d1", "content": "dense hit", "rrf_score": 0.95}][:top_k]
+
+        monkeypatch.setattr(eval_mod, "translate_query_async", _fake_translate)
+        monkeypatch.setattr(eval_mod, "hybrid_search_async", _fake_hybrid)
+        monkeypatch.setattr(eval_mod, "graph_keyword_search", None)
+        monkeypatch.setattr(eval_mod, "_dense_retrieve_precomputed", _fake_dense_precomputed)
+        monkeypatch.setattr(eval_mod, "rerank_async", None)
+
+        retrieve_with_expansion_fn = getattr(eval_mod, "_retrieve_with_expansion")
+        hits = await asyncio.wait_for(
+            retrieve_with_expansion_fn(
+                "热输入影响",
+                {"chunks": [{"chunk_id": "c0"}]},
+                top_k=2,
+                keyword_graph=None,
+                vector_store=_FakeVectorStore(),
+                query_vec=[0.0, 0.0],
+                use_rerank=False,
+                use_expansion=True,
+            ),
+            timeout=1.0,
+        )
+
+        assert {hit["chunk_id"] for hit in hits} == {"h1", "d1"}
+        return order
+
+    order = asyncio.run(_run_case())
+
+    assert order == ["hybrid-start", "embed-start", "hybrid-end"]
+
+
 def test_run_eval_contextualizes_chunks_when_enabled(monkeypatch, tmp_path) -> None:
     import eval_retrieval_runtime as eval_mod
 

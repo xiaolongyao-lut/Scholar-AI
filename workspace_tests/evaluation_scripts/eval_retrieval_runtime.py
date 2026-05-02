@@ -695,7 +695,7 @@ async def retrieve_then_rerank(
         int(os.getenv("SILICONFLOW_RERANK_CONCURRENCY", str(DEFAULT_RERANK_CONCURRENCY)))
     ) if use_rerank else None
     expansion_semaphore = asyncio.Semaphore(
-        int(os.getenv("ARK_EXPANSION_CONCURRENCY", "2"))
+        int(os.getenv("ARK_EXPANSION_CONCURRENCY", "5"))
     ) if use_expansion else None
 
     if use_rerank and warm_rerank_live_candidate is not None:
@@ -941,26 +941,28 @@ async def _retrieve_with_expansion(
             rerank_trace=rerank_trace,
         )
 
-    # --- 3. 英文 query 重嵌（dense 路专用）---------------------------
-    translated_vec = query_vec
-    if vector_store is not None:
+    # --- 3. 并行：翻译 + 重嵌 与 BM25+Graph 同时进行 ---------------
+    async def _embed_translated() -> Any:
+        if vector_store is None:
+            return query_vec
         try:
-            translated_vec = await vector_store.embed_query(translated)
+            return await vector_store.embed_query(translated)
         except (RuntimeError, TypeError, ValueError):
-            translated_vec = query_vec
+            return query_vec
 
-    # --- 4. 并行：BM25+Graph 走中文原 query，Dense 走英文 -----------
+    embed_task = asyncio.create_task(_embed_translated())
+
     hybrid_hits: list[dict[str, Any]] = []
     graph_hits: list[dict[str, Any]] = []
     dense_hits: list[dict[str, Any]] = []
 
+    # BM25 + Graph 用原中文 query，与翻译重嵌并行
     hybrid_task = None
     if hybrid_search_async:
         hybrid_task = asyncio.create_task(
             hybrid_search_async(corpus, query_text, top_k=merge_top)
         )
 
-    # Graph / Dense 是同步或轻量协程，顺序调用即可
     if keyword_graph and graph_keyword_search:
         try:
             chunks = corpus.get("chunks", []) if isinstance(corpus.get("chunks"), list) else []
@@ -970,6 +972,8 @@ async def _retrieve_with_expansion(
         except (RuntimeError, TypeError, ValueError):
             graph_hits = []
 
+    # 等待重嵌完成后再跑 dense 检索
+    translated_vec = await embed_task
     if vector_store is not None and translated_vec is not None:
         try:
             dense_hits = await _dense_retrieve_precomputed(
@@ -1423,7 +1427,7 @@ async def _run_eval_async(
     ) if use_rerank else None
 
     expansion_semaphore = asyncio.Semaphore(
-        int(os.getenv("ARK_EXPANSION_CONCURRENCY", "2"))
+        int(os.getenv("ARK_EXPANSION_CONCURRENCY", "5"))
     ) if use_expansion else None
 
     if use_rerank and warm_rerank_live_candidate is not None:
