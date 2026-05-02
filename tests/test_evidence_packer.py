@@ -224,3 +224,43 @@ def test_build_evidence_reference_uses_source_text_fallback() -> None:
     )
 
     assert reference["text"] == "Source text from local fallback."
+
+
+def test_build_evidence_reference_includes_rank_when_provided() -> None:
+    reference = evidence_packer.build_evidence_reference(
+        {"chunk_id": "c1", "material_id": "m", "text": "evidence text"},
+        rank=2,
+    )
+    assert reference["rank"] == 2
+
+
+def test_build_evidence_reference_omits_rank_when_none() -> None:
+    reference = evidence_packer.build_evidence_reference(
+        {"chunk_id": "c1", "material_id": "m", "text": "evidence text"},
+    )
+    assert "rank" not in reference
+
+
+def test_build_evidence_reference_includes_query_overlap_tokens() -> None:
+    reference = evidence_packer.build_evidence_reference(
+        {"chunk_id": "c1", "material_id": "m", "text": "Laser welding porosity affects quality."},
+        query_tokens={"laser", "welding", "defect"},
+    )
+    assert reference["query_overlap_tokens"] == ["laser", "welding"]
+
+
+def test_build_evidence_reference_omits_overlap_when_no_match() -> None:
+    reference = evidence_packer.build_evidence_reference(
+        {"chunk_id": "c1", "material_id": "m", "text": "Completely unrelated content."},
+        query_tokens={"laser", "welding"},
+    )
+    assert "query_overlap_tokens" not in reference
+
+
+def test_build_evidence_references_assigns_sequential_rank() -> None:
+    candidates = [
+        {"chunk_id": f"c{i}", "material_id": "m", "text": f"text {i}"}
+        for i in range(3)
+    ]
+    refs = evidence_packer.build_evidence_references(candidates)
+    assert [r["rank"] for r in refs] == [0, 1, 2]
