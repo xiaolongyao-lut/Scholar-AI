@@ -1,3 +1,7 @@
+---
+description: "Structured long-running self-decision workflow. Phase 0: global project scan. Phase 1: preflight envelope (9 fields). Phase 2: 10-step execution round loop. Phase 3: exit protocol with evidence package. Derived from Copilot long-run-prompt.md."
+---
+
 # Autonomous Execution Workflow
 
 > Structured self-decision flow. Every long task follows this sequence.

@@ -1,3 +1,7 @@
+---
+description: "Anti-interruption discipline for long tasks. Prevents habitual segmentation — after answering a question, continue executing if the task is not closed. Defines stop gate, anti-pattern table, and self-check protocol."
+---
+
 # Long-Task Continuation
 
 > Anti-interruption discipline. Prevents habitual segmentation during multi-step work.
