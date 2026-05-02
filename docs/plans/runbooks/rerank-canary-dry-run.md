@@ -30,6 +30,20 @@ Expected behavior:
 - Verifies `queries_path`, `qrels_path`, pinned rerank model identity, unique output paths, and `RAG_RUNTIME_RERANK_ENABLED=1`.
 - Verifies `paired_control` uses the same `queries_path` and `qrels_path`, has unique output paths, and explicitly sets `retrieval_config.use_rerank=false`.
 
+## Materialize A Dated Manifest
+
+```powershell
+cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
+.\.venv-1\Scripts\python.exe tools\eval\run_pinned_rerank_manifest.py workspace_tests\evaluation_manifests\rerank_canary_dry_run_sample.json --materialize-dated --run-id 20260502-dashscope-qwen3-rerank-c16 --require-runtime-rerank-opt-in
+```
+
+Expected behavior:
+
+- Writes a dated manifest under `workspace_artifacts/generated/eval/manifests/`.
+- Rewrites rerank and no-rerank control output paths under `workspace_artifacts/generated/eval/<run-id>/`.
+- Re-runs dry-run validation immediately after writing.
+- Still does not call model providers.
+
 ## Real Canary Guardrails
 
 - Copy the sample manifest to a new dated filename before a real run.

@@ -4,7 +4,9 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,50 @@ def _write_log(log_path: Path, message: str) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(f"{message}\n")
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write JSON through a same-directory temporary file to avoid partial manifests."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            tmp_name = handle.name
+        os.replace(tmp_name, path)
+    finally:
+        if tmp_name is not None:
+            tmp_path = Path(tmp_name)
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+
+
+def _temporary_candidate_path(path: Path) -> Path:
+    """Return a same-directory validation path that is not the final manifest."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.candidate.",
+        suffix=".json",
+        delete=False,
+    )
+    handle.close()
+    candidate = Path(handle.name)
+    candidate.unlink(missing_ok=True)
+    return candidate
 
 
 def _count_nonempty_lines(path: Path | None) -> int:
@@ -107,6 +153,29 @@ def _display_path(path: Path) -> str:
         return str(path.resolve().relative_to(REPO_ROOT))
     except ValueError:
         return str(path)
+
+
+def _safe_run_id(raw_value: str) -> str:
+    run_id = str(raw_value or "").strip()
+    if not run_id:
+        raise RuntimeError("run_id must be a non-empty string")
+    if any(separator in run_id for separator in ("/", "\\")) or run_id in {".", ".."}:
+        raise RuntimeError("run_id must be a filename-safe identifier, not a path")
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+    if any(char not in allowed for char in run_id):
+        raise RuntimeError("run_id may only contain letters, digits, dot, underscore, and dash")
+    return run_id
+
+
+def _manifest_output_paths(output_dir: Path, prefix: str) -> dict[str, str]:
+    return {
+        "metrics_path": _display_path(output_dir / f"{prefix}.metrics.json"),
+        "progress_path": _display_path(output_dir / f"{prefix}.progress.jsonl"),
+        "per_query_output": _display_path(output_dir / f"{prefix}.per_query.jsonl"),
+        "rerank_trace_output": _display_path(output_dir / f"{prefix}.rerank_trace.jsonl"),
+        "resume_guard_path": _display_path(output_dir / f"{prefix}.metrics.json.resume_config.json"),
+        "run_log_path": _display_path(output_dir / f"{prefix}.run.log"),
+    }
 
 
 def _validate_output_paths(outputs: dict[str, Any], *, required_keys: list[str]) -> dict[str, Path]:
@@ -349,6 +418,83 @@ def dry_run_manifest(manifest_path: Path, *, require_runtime_rerank_opt_in: bool
     }
 
 
+def materialize_dated_manifest(
+    template_path: Path,
+    *,
+    run_id: str,
+    output_manifest: Path | None = None,
+    output_dir: Path | None = None,
+    force: bool = False,
+    require_runtime_rerank_opt_in: bool = True,
+) -> dict[str, Any]:
+    """Create a dated rerank manifest from a safe template and validate it.
+
+    Args:
+        template_path: Existing template manifest path.
+        run_id: Filename-safe run identifier used in output artifact names.
+        output_manifest: Optional destination manifest path.
+        output_dir: Optional artifact directory for metrics/progress/per-query files.
+        force: Allow replacing an existing destination manifest.
+        require_runtime_rerank_opt_in: Pass-through validation guard.
+
+    Returns:
+        JSON-safe report containing destination paths and dry-run preflight.
+    """
+    safe_run_id = _safe_run_id(run_id)
+    manifest = _load_manifest(template_path)
+    destination = output_manifest or (REPO_ROOT / "workspace_artifacts" / "generated" / "eval" / "manifests" / f"{safe_run_id}.json")
+    destination = destination if destination.is_absolute() else REPO_ROOT / destination
+    if destination.exists() and not force:
+        raise RuntimeError(f"Destination manifest already exists: {_display_path(destination)}")
+
+    artifact_dir = output_dir or (REPO_ROOT / "workspace_artifacts" / "generated" / "eval" / safe_run_id)
+    artifact_dir = artifact_dir if artifact_dir.is_absolute() else REPO_ROOT / artifact_dir
+    manifest["schema_version"] = str(manifest.get("schema_version") or "1")
+    manifest["materialized_from"] = _display_path(template_path)
+    manifest["materialized_run_id"] = safe_run_id
+    manifest["materialized_at_utc"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    outputs = _require_mapping(manifest, "outputs")
+    outputs.clear()
+    outputs.update(_manifest_output_paths(artifact_dir, safe_run_id))
+
+    control = manifest.get("paired_control")
+    if isinstance(control, dict):
+        control_outputs = _require_mapping(control, "outputs")
+        control_outputs.clear()
+        control_outputs.update(_manifest_output_paths(artifact_dir, f"{safe_run_id}-no-rerank-control"))
+
+    safety = manifest.setdefault("safety", {})
+    if not isinstance(safety, dict):
+        raise RuntimeError("Manifest section 'safety' must be an object when present")
+    safety["requires_paired_no_rerank_control"] = True
+    safety["requires_unique_output_paths"] = True
+
+    candidate = _temporary_candidate_path(destination)
+    try:
+        _atomic_write_json(candidate, manifest)
+        preflight = dry_run_manifest(
+            candidate,
+            require_runtime_rerank_opt_in=require_runtime_rerank_opt_in,
+        )
+        os.replace(candidate, destination)
+        preflight = dry_run_manifest(
+            destination,
+            require_runtime_rerank_opt_in=require_runtime_rerank_opt_in,
+        )
+    except Exception:
+        if candidate.exists():
+            candidate.unlink()
+        raise
+
+    return {
+        "status": "ok",
+        "run_id": safe_run_id,
+        "manifest_path": _display_path(destination),
+        "output_dir": _display_path(artifact_dir),
+        "dry_run": preflight,
+    }
+
+
 def _select_pinned_candidate(target_base_url: str, target_model: str) -> tuple[str, str, str, str, str]:
     import reranker_client as rc
 
@@ -545,10 +691,28 @@ def main() -> int:
     parser.add_argument("manifest", help="Path to the eval manifest JSON file.")
     parser.add_argument("--dry-run", action="store_true", help="Validate manifest and print a JSON preflight report without invoking models.")
     parser.add_argument("--require-runtime-rerank-opt-in", action="store_true", help="Require RAG_RUNTIME_RERANK_ENABLED=1 in runtime_env_overrides during dry-run.")
+    parser.add_argument("--materialize-dated", action="store_true", help="Create a dated rerank+control manifest from the template, then validate it without invoking models.")
+    parser.add_argument("--run-id", help="Filename-safe run identifier for --materialize-dated.")
+    parser.add_argument("--output-manifest", help="Optional destination path for --materialize-dated.")
+    parser.add_argument("--output-dir", help="Optional artifact directory for materialized output paths.")
+    parser.add_argument("--force", action="store_true", help="Allow --materialize-dated to replace an existing destination manifest.")
     args = parser.parse_args()
     manifest_path = _repo_path(args.manifest)
     if manifest_path is None or not manifest_path.exists():
         raise RuntimeError(f"Manifest not found: {args.manifest!r}")
+    if args.materialize_dated:
+        if not args.run_id:
+            raise RuntimeError("--materialize-dated requires --run-id")
+        report = materialize_dated_manifest(
+            manifest_path,
+            run_id=str(args.run_id),
+            output_manifest=_repo_path(args.output_manifest) if args.output_manifest else None,
+            output_dir=_repo_path(args.output_dir) if args.output_dir else None,
+            force=bool(args.force),
+            require_runtime_rerank_opt_in=bool(args.require_runtime_rerank_opt_in),
+        )
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
     if args.dry_run:
         report = dry_run_manifest(
             manifest_path,

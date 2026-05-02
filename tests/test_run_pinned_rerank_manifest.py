@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from tools.eval.run_pinned_rerank_manifest import dry_run_manifest, run_manifest
+from tools.eval.run_pinned_rerank_manifest import dry_run_manifest, materialize_dated_manifest, run_manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_MANIFEST = (
@@ -245,3 +245,74 @@ def test_repository_sample_manifest_stays_dry_run_safe() -> None:
     assert report["paired_control"]["retrieval_config"]["use_rerank"] is False
     metrics_path = Path(str(report["output_paths"]["metrics_path"]))
     assert metrics_path.parts[:3] == ("workspace_artifacts", "generated", "eval")
+
+
+def test_materialize_dated_manifest_rewrites_outputs_and_validates(tmp_path: Path) -> None:
+    template_path = tmp_path / "template.json"
+    output_manifest = tmp_path / "manifests" / "20260502-rerank.json"
+    output_dir = tmp_path / "generated" / "20260502-rerank"
+    _write_json(template_path, _paired_control_manifest(tmp_path))
+
+    report = materialize_dated_manifest(
+        template_path,
+        run_id="20260502-rerank",
+        output_manifest=output_manifest,
+        output_dir=output_dir,
+        require_runtime_rerank_opt_in=True,
+    )
+
+    assert report["status"] == "ok"
+    assert report["run_id"] == "20260502-rerank"
+    assert output_manifest.exists()
+    materialized = json.loads(output_manifest.read_text(encoding="utf-8"))
+    assert materialized["materialized_from"].endswith("template.json")
+    assert materialized["materialized_run_id"] == "20260502-rerank"
+    assert materialized["safety"]["requires_paired_no_rerank_control"] is True
+    assert materialized["outputs"]["metrics_path"].endswith("20260502-rerank.metrics.json")
+    assert materialized["paired_control"]["outputs"]["metrics_path"].endswith(
+        "20260502-rerank-no-rerank-control.metrics.json"
+    )
+    assert report["dry_run"]["paired_control"]["status"] == "ok"
+
+
+def test_materialize_dated_manifest_rejects_path_like_run_id(tmp_path: Path) -> None:
+    template_path = tmp_path / "template.json"
+    _write_json(template_path, _paired_control_manifest(tmp_path))
+
+    with pytest.raises(RuntimeError, match="filename-safe"):
+        materialize_dated_manifest(template_path, run_id="../bad")
+
+
+def test_materialize_dated_manifest_does_not_overwrite_without_force(tmp_path: Path) -> None:
+    template_path = tmp_path / "template.json"
+    output_manifest = tmp_path / "manifest.json"
+    output_manifest.write_text("{}", encoding="utf-8")
+    _write_json(template_path, _paired_control_manifest(tmp_path))
+
+    with pytest.raises(RuntimeError, match="already exists"):
+        materialize_dated_manifest(
+            template_path,
+            run_id="20260502-rerank",
+            output_manifest=output_manifest,
+            output_dir=tmp_path / "generated",
+        )
+
+
+def test_materialize_dated_manifest_force_preserves_existing_on_validation_failure(tmp_path: Path) -> None:
+    template_path = tmp_path / "template.json"
+    output_manifest = tmp_path / "manifest.json"
+    output_manifest.write_text('{"existing": true}', encoding="utf-8")
+    manifest = _paired_control_manifest(tmp_path)
+    manifest["paired_control"]["inputs"]["queries_path"] = str(tmp_path / "missing.jsonl")
+    _write_json(template_path, manifest)
+
+    with pytest.raises(RuntimeError, match="does not exist"):
+        materialize_dated_manifest(
+            template_path,
+            run_id="20260502-rerank",
+            output_manifest=output_manifest,
+            output_dir=tmp_path / "generated",
+            force=True,
+        )
+
+    assert json.loads(output_manifest.read_text(encoding="utf-8")) == {"existing": True}
