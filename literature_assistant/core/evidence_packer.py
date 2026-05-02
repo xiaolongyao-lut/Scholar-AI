@@ -26,6 +26,8 @@ class EvidenceReference(TypedDict):
     source_label: NotRequired[str]
     source_labels: NotRequired[list[str]]
     source_hint: NotRequired[str]
+    rank: NotRequired[int]
+    query_overlap_tokens: NotRequired[list[str]]
 
 
 def _get_text(candidate: dict[str, Any]) -> str:
@@ -114,13 +116,20 @@ def _coerce_page_value(value: Any) -> Optional[Union[int, str]]:
         return text
 
 
-def build_evidence_reference(candidate: dict[str, Any]) -> EvidenceReference:
+def build_evidence_reference(
+    candidate: dict[str, Any],
+    *,
+    rank: Optional[int] = None,
+    query_tokens: Optional[set[str]] = None,
+) -> EvidenceReference:
     """Return a stable evidence reference for JSON artifacts and UI consumers.
 
     Args:
         candidate: Retrieval or compression candidate containing at least text,
             compressed_text, quote, or source text. Missing chunk IDs are filled
             with the same deterministic fallback used by prompt rendering.
+        rank: 0-indexed position in the final evidence list.
+        query_tokens: Lowercased query tokens for overlap computation.
 
     Returns:
         A JSON-serializable provenance record that keeps chunk identity, material
@@ -161,14 +170,30 @@ def build_evidence_reference(candidate: dict[str, Any]) -> EvidenceReference:
     if source_labels:
         reference["source_labels"] = source_labels
 
+    if rank is not None:
+        reference["rank"] = rank
+
+    if query_tokens:
+        evidence_tokens = _token_set(compressed_text or text)
+        overlap = sorted(query_tokens & evidence_tokens)
+        if overlap:
+            reference["query_overlap_tokens"] = overlap
+
     return reference
 
 
-def build_evidence_references(candidates: list[dict[str, Any]]) -> list[EvidenceReference]:
+def build_evidence_references(
+    candidates: list[dict[str, Any]],
+    *,
+    query_tokens: Optional[set[str]] = None,
+) -> list[EvidenceReference]:
     """Build JSON-safe provenance records for packed evidence candidates."""
     if not isinstance(candidates, list):
         raise TypeError("candidates must be a list")
-    return [build_evidence_reference(candidate) for candidate in candidates]
+    return [
+        build_evidence_reference(candidate, rank=idx, query_tokens=query_tokens)
+        for idx, candidate in enumerate(candidates)
+    ]
 
 
 def format_evidence_item(candidate: dict[str, Any]) -> str:

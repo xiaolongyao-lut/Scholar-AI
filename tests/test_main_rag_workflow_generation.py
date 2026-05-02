@@ -229,6 +229,7 @@ async def test_ask_result_exposes_generation_evidence_refs(monkeypatch) -> None:
             "label": "",
             "score": 0.99,
             "source_labels": ["bm25", "dense"],
+            "rank": 0,
         }
     ]
     assert result.trace["step_3_generation"]["evidence_ref_count"] == 1

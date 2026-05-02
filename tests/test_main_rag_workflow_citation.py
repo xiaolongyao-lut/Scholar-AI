@@ -131,6 +131,7 @@ def test_last_answer_json_preserves_compressed_evidence_refs(
             "score": 0.77,
             "page": 5,
             "source_labels": ["dense", "rerank"],
+            "rank": 0,
         }
     ]
 

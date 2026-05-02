@@ -100,6 +100,8 @@ class EvidenceReferencePayload(BaseModel):
     source_labels: list[str] = Field(default_factory=lambda: ["local_context"])
     page: int | str | None = None
     source_hint: str | None = None
+    rank: int | None = None
+    query_overlap_tokens: list[str] = Field(default_factory=list)
 
 
 class SamplingParamsPayload(BaseModel):
@@ -439,7 +441,7 @@ def _build_context_strings(chunks: list[ContextChunkPayload]) -> list[str]:
 
 def _build_evidence_refs(chunks: list[ContextChunkPayload]) -> list[EvidenceReferencePayload]:
     refs: list[EvidenceReferencePayload] = []
-    for chunk in chunks:
+    for idx, chunk in enumerate(chunks):
         refs.append(
             EvidenceReferencePayload(
                 chunk_id=chunk.chunk_id or f"local-{chunk.index}",
@@ -452,6 +454,7 @@ def _build_evidence_refs(chunks: list[ContextChunkPayload]) -> list[EvidenceRefe
                 source_labels=chunk.source_labels or (["project_chunks"] if chunk.material_id else ["local_context"]),
                 page=chunk.page,
                 source_hint=chunk.source_hint,
+                rank=idx,
             )
         )
     return refs
@@ -481,6 +484,8 @@ def _coerce_evidence_refs(raw_refs: Any) -> list[EvidenceReferencePayload]:
                 source_labels=_extract_source_labels(raw_ref, "rag_workflow"),
                 page=raw_ref.get("page") if isinstance(raw_ref.get("page"), int | str) else None,
                 source_hint=_clean_optional_text(raw_ref.get("source_hint")),
+                rank=raw_ref.get("rank") if isinstance(raw_ref.get("rank"), int) else None,
+                query_overlap_tokens=[str(t) for t in raw_ref.get("query_overlap_tokens", []) if isinstance(t, str)],
             )
         )
     return refs

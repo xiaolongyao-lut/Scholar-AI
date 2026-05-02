@@ -54,7 +54,7 @@ DEFAULT_LLM_MODEL = env_value("ARK_MODEL", "OPENAI_MODEL", "MODEL", default="ep-
 LEGACY_LLM_API_ENV_NAMES = ("SILICONFLOW_API_KEY",)
 from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
 from layers.r_layer_hybrid_retriever import hybrid_search
-from evidence_packer import EvidenceReference, build_evidence_references, format_evidence_item, pack_evidence
+from evidence_packer import EvidenceReference, _token_set, build_evidence_references, format_evidence_item, pack_evidence
 from model_call_gateway import gated_call, _compute_corpus_version
 from query_expander import decompose_query_async
 from retrieval_provenance import attach_source_labels, merge_source_labels
@@ -425,7 +425,7 @@ class RAGWorkflow:
                 rag_evidence,
                 memory_hits,
             )
-            evidence_refs = self._build_generation_evidence_refs(rag_evidence)
+            evidence_refs = self._build_generation_evidence_refs(rag_evidence, query=user_query)
             
             trace['step_3_generation'] = {
                 'answer_length': len(generated_answer),
@@ -653,9 +653,14 @@ class RAGWorkflow:
     def _build_generation_evidence_refs(
         self,
         rag_evidence: List[Dict[str, Any]],
+        query: str = "",
     ) -> List[EvidenceReference]:
         """Return the evidence references that match the generation context."""
-        return build_evidence_references(self._pack_generation_evidence(rag_evidence))
+        query_tokens = _token_set(query) if query else None
+        return build_evidence_references(
+            self._pack_generation_evidence(rag_evidence),
+            query_tokens=query_tokens,
+        )
 
     async def _generate_answer(
         self,
@@ -820,7 +825,7 @@ class RAGWorkflow:
                     "query": user_query,
                     "response": answer_text,
                     "chunk_ids": [str(ev.get("chunk_id")) for ev in packed_evidence],
-                    "evidence_refs": build_evidence_references(packed_evidence),
+                    "evidence_refs": build_evidence_references(packed_evidence, query_tokens=_token_set(user_query)),
                 }
             )
             self._persist_last_answer(
@@ -872,7 +877,7 @@ class RAGWorkflow:
                 "query": user_query,
                 "answer": answer,
                 "chunk_ids": chunk_ids,
-                "evidence_refs": build_evidence_references(packed_evidence or []),
+                "evidence_refs": build_evidence_references(packed_evidence or [], query_tokens=_token_set(user_query)),
             }
             if error:
                 payload["error"] = error
