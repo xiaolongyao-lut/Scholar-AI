@@ -691,8 +691,8 @@ class RAGWorkflow:
 
         # 构造上下文
         context_str = "\n\n".join(
-            format_evidence_item(ev)
-            for ev in packed_evidence
+            format_evidence_item(ev, rank=idx)
+            for idx, ev in enumerate(packed_evidence)
         )
         memory_str = "\n".join([
             (

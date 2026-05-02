@@ -196,7 +196,7 @@ def build_evidence_references(
     ]
 
 
-def format_evidence_item(candidate: dict[str, Any]) -> str:
+def format_evidence_item(candidate: dict[str, Any], *, rank: Optional[int] = None) -> str:
     # Preserve retrieval/compression provenance so downstream prompts can
     # require real [chunk_id], quotes, and compressed evidence consistently.
     chunk_id = _get_chunk_id(candidate)
@@ -216,6 +216,8 @@ def format_evidence_item(candidate: dict[str, Any]) -> str:
         lines.append(f"SCORE: {score}")
     if label:
         lines.append(f"LABEL: {label}")
+    if rank is not None:
+        lines.append(f"RANK: {rank}")
     if source_labels:
         lines.append(f"SOURCE_LABELS: {', '.join(source_labels)}")
     if quote:

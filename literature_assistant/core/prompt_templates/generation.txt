@@ -15,6 +15,8 @@
 - MATERIAL: 来源材料标识
 - SCORE: 检索分数（若提供）
 - LABEL: 相关性标签（若提供）
+- SOURCE_LABELS: 检索来源标签（如 bm25, dense, rrf, rerank）
+- RANK: 证据在排序列表中的位置（0 = 最高相关性）
 - QUOTE: 原文可定位短句（若提供）
 - BODY: 压缩后的证据正文；若无压缩结果，则为原始证据正文
 
