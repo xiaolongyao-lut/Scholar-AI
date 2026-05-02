@@ -37,9 +37,13 @@ py "$env:USERPROFILE\.codex\skills\longrun-autopilot\scripts\checkpoint.py" crea
 # Mature-solution check: review GraphRAG/RAG retrieval evaluation docs before changing interpretation thresholds.
 
 cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
+.\.venv-1\Scripts\python.exe tools\eval\export_project_chunks_for_tolf_comparison.py `
+  --project-id "<project_id>" `
+  --output workspace_artifacts\generated\tolf_context_selector\project_chunks.jsonl
+
 .\.venv-1\Scripts\python.exe tools\eval\compare_tolf_context_selector.py `
   --queries workspace_tests\evaluation_data\eval_queries_v2.1_canary30_ALIGNED.jsonl `
-  --chunks path\to\project_chunks.jsonl `
+  --chunks workspace_artifacts\generated\tolf_context_selector\project_chunks.jsonl `
   --output workspace_artifacts\generated\tolf_context_selector\comparison.json `
   --top-k 5 `
   --max-queries 30 `
@@ -51,6 +55,7 @@ cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
 ```powershell
 .\.venv-1\Scripts\python.exe -m pytest tests\test_compare_tolf_context_selector.py tests\test_tolf_text_selector.py -q
 .\.venv-1\Scripts\python.exe -m compileall -q tools\eval\compare_tolf_context_selector.py tests\test_compare_tolf_context_selector.py
+.\.venv-1\Scripts\python.exe -m pytest tests\test_export_project_chunks_for_tolf_comparison.py -q
 ```
 
 ## Output Fields
