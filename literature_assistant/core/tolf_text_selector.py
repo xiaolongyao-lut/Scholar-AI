@@ -199,6 +199,7 @@ def select_tolf_context_chunks(
         evidence_threshold=0.2,
         umap_n_components=max(embedding_dim, len(candidates)),
         umap_n_neighbors=2,
+        log_small_corpus_fallback=False,
     )
     fish_results = TOLFEngine(config).run(
         goal=normalized_query,

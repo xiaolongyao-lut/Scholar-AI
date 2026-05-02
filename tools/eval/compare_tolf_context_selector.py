@@ -93,6 +93,13 @@ def _ids(chunks: Sequence[Mapping[str, Any]]) -> list[str]:
     return [str(chunk.get("chunk_id") or chunk.get("id") or "").strip() for chunk in chunks]
 
 
+def _has_query_overlap(hit: Mapping[str, Any]) -> bool:
+    raw_tokens = hit.get("query_overlap_tokens")
+    if not isinstance(raw_tokens, list):
+        return False
+    return any(isinstance(token, str) and token.strip() for token in raw_tokens)
+
+
 def compare_context_selectors(
     queries: Sequence[Mapping[str, Any]],
     chunks: Sequence[Mapping[str, Any]],
@@ -155,16 +162,20 @@ def compare_context_selectors(
         default_ids = _ids(default_hits)
         tolf_ids = _ids(tolf_hits)
         overlap = [chunk_id for chunk_id in default_ids if chunk_id in set(tolf_ids)]
+        tolf_hits_without_query_overlap = sum(1 for hit in tolf_hits if not _has_query_overlap(hit))
         comparisons.append(
             {
                 "query_id": query_id,
                 "query_text": query,
+                "default_empty": not default_ids,
+                "tolf_empty": not tolf_ids,
                 "default_top_ids": default_ids,
                 "tolf_top_ids": tolf_ids,
                 "overlap_ids": overlap,
                 "only_default_ids": [chunk_id for chunk_id in default_ids if chunk_id not in set(tolf_ids)],
                 "only_tolf_ids": [chunk_id for chunk_id in tolf_ids if chunk_id not in set(default_ids)],
                 "overlap_at_top_k": round(len(overlap) / max(1, top_k), 4),
+                "tolf_hits_without_query_overlap": tolf_hits_without_query_overlap,
                 "tolf_source_labels": [
                     list(hit.get("source_labels") or [])
                     for hit in tolf_hits
@@ -194,6 +205,17 @@ def compare_context_selectors(
         "summary": {
             "mean_overlap_at_top_k": mean_overlap,
             "queries_with_tolf_hits": sum(1 for item in comparisons if item["tolf_top_ids"]),
+            "queries_with_empty_default": sum(1 for item in comparisons if item["default_empty"]),
+            "queries_with_empty_tolf": sum(1 for item in comparisons if item["tolf_empty"]),
+            "queries_where_all_tolf_hits_lack_query_overlap": sum(
+                1
+                for item in comparisons
+                if item["tolf_top_ids"]
+                and item["tolf_hits_without_query_overlap"] == len(item["tolf_top_ids"])
+            ),
+            "tolf_hits_without_query_overlap": sum(
+                int(item["tolf_hits_without_query_overlap"]) for item in comparisons
+            ),
         },
         "comparisons": comparisons,
     }

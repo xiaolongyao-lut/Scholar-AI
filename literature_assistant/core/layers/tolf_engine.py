@@ -82,6 +82,7 @@ class TOLFConfig:
     aspect_names: list = field(
         default_factory=lambda: ["knowledge", "structure", "result", "value"]
     )
+    log_small_corpus_fallback: bool = True
 
 
 @dataclass
@@ -333,10 +334,11 @@ class MAQWeightEngine:
             - aspect_weight_dict: {aspect_name: normalized_weight}
         """
         if len(corpus_embeddings) < self.config.umap_n_components + 2:
-            logger.warning(
-                "语料库太小 (%d chunks)，无法做 UMAP/ConvexHull，全部选中",
-                len(corpus_embeddings),
-            )
+            if self.config.log_small_corpus_fallback:
+                logger.warning(
+                    "语料库太小 (%d chunks)，无法做 UMAP/ConvexHull，全部选中",
+                    len(corpus_embeddings),
+                )
             inside = np.ones(len(corpus_embeddings), dtype=bool)
             weights = [self.config.k_max] * len(aspect_query_embeddings)
             names = self.config.aspect_names[: len(weights)]
