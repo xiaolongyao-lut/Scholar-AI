@@ -1,0 +1,15 @@
+Synthesize an answer to the following question using the provided evidence.
+
+Question: {query}
+
+Evidence:
+{evidence_text}
+
+Output must be valid JSON with this schema:
+{
+  "answer": "string (comprehensive answer with citations)",
+  "evidence_refs": ["string", ...],
+  "confidence": "high|medium|low"
+}
+
+Respond with JSON only, no additional text.
