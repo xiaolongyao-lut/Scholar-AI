@@ -131,6 +131,7 @@ def test_batch_contextualize_logs_miss_without_online_generation(monkeypatch, tm
 
     result = chunker.batch_contextualize(
         chunks,
+        api_key="test-key",
         project_id="demo",
         summaries_root=tmp_path / "output" / "contextual_summaries",
         miss_log_path=miss_log_path,

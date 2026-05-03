@@ -38,11 +38,21 @@ def _should_print_help(argv: list[str]) -> bool:
     return any(arg in {"-h", "--help"} for arg in argv)
 
 
+def run_pipeline(*args, **kwargs):
+    """Lazy re-export from pipeline_core to avoid heavy imports at module level."""
+    from pipeline_core import run_pipeline as _run
+    return _run(*args, **kwargs)
+
+
+def main(*args, **kwargs):
+    """Lazy re-export from pipeline_core to avoid heavy imports at module level."""
+    from pipeline_core import main as _main
+    return _main(*args, **kwargs)
+
+
 if __name__ == "__main__":
     if _should_print_help(sys.argv[1:]):
         _build_help_parser().print_help()
         raise SystemExit(0)
-
-    from pipeline_core import main
 
     main()
