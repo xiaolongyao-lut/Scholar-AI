@@ -169,46 +169,205 @@ class TestExpandLinkedPages:
         expanded = expand_linked_pages(primary_results, page_store, max_linked=3)
         assert len(expanded) == 0
 
+    def test_expand_linked_pages_deduplicates_primary(self, page_store: WikiPageStore) -> None:
+        from literature_assistant.core.wiki.page_store import render_page
+        from literature_assistant.core.wiki.query import expand_linked_pages
+
+        fm1 = {"id": "page1", "kind": "concept", "title": "Page 1"}
+        fm2 = {"id": "page2", "kind": "concept", "title": "Page 2"}
+        fm3 = {"id": "page3", "kind": "concept", "title": "Page 3"}
+        rendered1 = render_page(Path("page1.md"), fm1, "Links to [[page2.md]] and [[page3.md]].")
+        rendered2 = render_page(Path("page2.md"), fm2, "Links back to [[page1.md]].")
+        rendered3 = render_page(Path("page3.md"), fm3, "Independent content.")
+        page_store.write_rendered(rendered1)
+        page_store.write_rendered(rendered2)
+        page_store.write_rendered(rendered3)
+
+        primary_results = [
+            WikiSearchResult(page_path=Path("page1.md"), title="Page 1", score=1.0, snippet=""),
+            WikiSearchResult(page_path=Path("page2.md"), title="Page 2", score=0.8, snippet=""),
+        ]
+        expanded = expand_linked_pages(primary_results, page_store, max_linked=5)
+        expanded_paths = {r.page_path for r in expanded}
+        assert Path("page1.md") not in expanded_paths
+        assert Path("page2.md") not in expanded_paths
+        assert Path("page3.md") in expanded_paths
+
 
 class TestWikiQueryWithFallback:
     @pytest.fixture
-    def index(self, tmp_path: Path) -> WikiQueryIndex:
+    def setup(self, tmp_path: Path) -> tuple[WikiQueryIndex, WikiPageStore]:
+        from literature_assistant.core.wiki.page_store import render_page
+
+        wiki_root = tmp_path / "wiki"
+        page_store = WikiPageStore(wiki_root)
+        fm1 = {"id": "page1", "kind": "concept", "title": "Test Page"}
+        rendered1 = render_page(Path("page1.md"), fm1, "Test content.")
+        page_store.write_rendered(rendered1)
+
         db_path = tmp_path / "wiki_index.db"
         idx = WikiQueryIndex(db_path)
         idx.initialize()
-        idx.index_page(Path("test.md"), "Test Page", "Test content.")
-        return idx
+        idx.index_page(Path("page1.md"), "Test Page", "Test content.")
+        return idx, page_store
 
-    @pytest.fixture
-    def page_store(self, tmp_path: Path) -> WikiPageStore:
-        wiki_root = tmp_path / "wiki"
-        return WikiPageStore(wiki_root)
-
-    def test_wiki_query_with_fallback_no_hits(
-        self, index: WikiQueryIndex, page_store: WikiPageStore
-    ) -> None:
+    def test_wiki_query_with_fallback_no_hits(self, setup: tuple[WikiQueryIndex, WikiPageStore]) -> None:
         from literature_assistant.core.wiki.query import wiki_query_with_fallback
 
-        result = wiki_query_with_fallback(
-            "Nonexistent", index, page_store, enabled=True, limit=5
-        )
+        index, page_store = setup
+        result = wiki_query_with_fallback("Nonexistent", index, page_store, enabled=True)
         assert result.fallback_used
         assert result.fallback_reason == "no wiki hits"
         assert len(result.wiki_hits) == 0
 
-    def test_wiki_query_with_fallback_with_hits(
-        self, index: WikiQueryIndex, page_store: WikiPageStore
-    ) -> None:
-        from literature_assistant.core.wiki.page_store import render_page
+    def test_wiki_query_with_fallback_with_hits(self, setup: tuple[WikiQueryIndex, WikiPageStore]) -> None:
         from literature_assistant.core.wiki.query import wiki_query_with_fallback
 
-        fm = {"id": "test1", "kind": "concept", "title": "Test Page"}
-        rendered = render_page(Path("test.md"), fm, "Test content.")
-        page_store.write_rendered(rendered)
-
-        result = wiki_query_with_fallback(
-            "Test", index, page_store, enabled=True, limit=5
-        )
+        index, page_store = setup
+        result = wiki_query_with_fallback("Test", index, page_store, enabled=True)
         assert not result.fallback_used
         assert len(result.wiki_hits) == 1
-        assert result.wiki_hits[0].title == "Test Page"
+
+
+class TestRenderContextPack:
+    @pytest.fixture
+    def context_page_store(self, tmp_path: Path) -> WikiPageStore:
+        from literature_assistant.core.wiki.page_store import render_page
+
+        wiki_root = tmp_path / "wiki"
+        print(f"[FIXTURE] Creating WikiPageStore at {wiki_root}")
+        store = WikiPageStore(wiki_root)
+        fm1 = {"id": "page1", "kind": "concept", "title": "Page 1"}
+        fm2 = {"id": "page2", "kind": "concept", "title": "Page 2"}
+        rendered1 = render_page(Path("page1.md"), fm1, "Content of page 1.")
+        rendered2 = render_page(Path("page2.md"), fm2, "Content of page 2.")
+        print(f"[FIXTURE] Writing page1.md")
+        store.write_rendered(rendered1)
+        print(f"[FIXTURE] Writing page2.md")
+        store.write_rendered(rendered2)
+
+        # Verify files were written
+        page1_path = store.wiki_root / "page1.md"
+        page2_path = store.wiki_root / "page2.md"
+        print(f"[FIXTURE] page1.md exists: {page1_path.exists()}")
+        print(f"[FIXTURE] page2.md exists: {page2_path.exists()}")
+        assert page1_path.exists(), f"page1.md not found at {page1_path}"
+        assert page2_path.exists(), f"page2.md not found at {page2_path}"
+
+        return store
+
+    def test_render_context_pack_basic(self, context_page_store: WikiPageStore) -> None:
+        from literature_assistant.core.wiki.query import WikiQueryResult, render_context_pack
+
+        # Debug: verify page exists
+        print(f"Wiki root: {context_page_store.wiki_root}")
+        print(f"Wiki root exists: {context_page_store.wiki_root.exists()}")
+        print(f"page1.md path: {context_page_store.wiki_root / 'page1.md'}")
+        print(f"page1.md exists: {(context_page_store.wiki_root / 'page1.md').exists()}")
+
+        content = context_page_store.read_page(Path("page1.md"))
+        print(f"Read content: {content[:100] if content else 'None'}")
+        assert content is not None, "page1.md should exist"
+
+        query_result = WikiQueryResult(
+            wiki_hits=[
+                WikiSearchResult(page_path=Path("page1.md"), title="Page 1", score=1.0, snippet="")
+            ],
+            linked_hits=[],
+            fallback_used=False,
+            fallback_reason="",
+        )
+        pack = render_context_pack("test query", query_result, context_page_store, max_tokens=1000)
+        assert pack.query == "test query"
+        assert len(pack.primary_pages) == 1, f"Expected 1 primary page, got {len(pack.primary_pages)}"
+        assert "Page 1" in pack.primary_pages[0]
+        assert "Content of page 1" in pack.primary_pages[0]
+        assert not pack.truncated
+
+    def test_render_context_pack_with_linked(self, context_page_store: WikiPageStore) -> None:
+        from literature_assistant.core.wiki.query import WikiQueryResult, render_context_pack
+
+        query_result = WikiQueryResult(
+            wiki_hits=[
+                WikiSearchResult(page_path=Path("page1.md"), title="Page 1", score=1.0, snippet="")
+            ],
+            linked_hits=[
+                WikiSearchResult(page_path=Path("page2.md"), title="Page 2", score=0.5, snippet="")
+            ],
+            fallback_used=False,
+            fallback_reason="",
+        )
+        pack = render_context_pack("test query", query_result, context_page_store, max_tokens=2000)
+        assert len(pack.primary_pages) == 1
+        assert len(pack.linked_pages) == 1
+        assert "Page 2" in pack.linked_pages[0]
+        assert "(linked)" in pack.linked_pages[0]
+
+    def test_render_context_pack_truncates(self, context_page_store: WikiPageStore) -> None:
+        from literature_assistant.core.wiki.query import WikiQueryResult, render_context_pack
+
+        query_result = WikiQueryResult(
+            wiki_hits=[
+                WikiSearchResult(page_path=Path("page1.md"), title="Page 1", score=1.0, snippet=""),
+                WikiSearchResult(page_path=Path("page2.md"), title="Page 2", score=0.9, snippet=""),
+            ],
+            linked_hits=[],
+            fallback_used=False,
+            fallback_reason="",
+        )
+        pack = render_context_pack("test query", query_result, context_page_store, max_tokens=10)
+        assert pack.truncated
+        assert len(pack.primary_pages) < 2
+
+
+class TestBuildQueryTrace:
+    def test_build_query_trace_with_hits(self) -> None:
+        from literature_assistant.core.wiki.query import (
+            WikiQueryResult,
+            WikiContextPack,
+            build_query_trace,
+        )
+
+        query_result = WikiQueryResult(
+            wiki_hits=[
+                WikiSearchResult(page_path=Path("p1.md"), title="P1", score=1.0, snippet="")
+            ],
+            linked_hits=[
+                WikiSearchResult(page_path=Path("p2.md"), title="P2", score=0.5, snippet="")
+            ],
+            fallback_used=False,
+            fallback_reason="",
+        )
+        context_pack = WikiContextPack(
+            query="test", primary_pages=["page1"], linked_pages=["page2"], total_tokens=100, truncated=False
+        )
+        trace = build_query_trace("test", query_result, context_pack, enabled=True)
+        assert trace.query == "test"
+        assert trace.enabled
+        assert trace.fts_hits == 1
+        assert trace.linked_hits == 1
+        assert not trace.fallback_used
+        assert trace.total_pages == 2
+        assert trace.context_tokens == 100
+
+    def test_build_query_trace_fallback(self) -> None:
+        from literature_assistant.core.wiki.query import WikiQueryResult, build_query_trace
+
+        query_result = WikiQueryResult(
+            wiki_hits=[],
+            linked_hits=[],
+            fallback_used=True,
+            fallback_reason="no wiki hits",
+        )
+        trace = build_query_trace("test", query_result, None, enabled=True)
+        assert trace.fallback_used
+        assert trace.fallback_reason == "no wiki hits"
+        assert trace.fts_hits == 0
+        assert trace.total_pages == 0
+        assert trace.context_tokens == 0
+
+
+
+
+
+

@@ -64,3 +64,38 @@ def test_select_tolf_context_chunks_rejects_invalid_contracts() -> None:
 
     with pytest.raises(TypeError, match="chunks must be a sequence"):
         select_tolf_context_chunks("laser", "not chunks", top_k=1)  # type: ignore[arg-type]
+
+
+def test_select_tolf_context_chunks_boosts_lexical_overlap() -> None:
+    chunks = [
+        {
+            "chunk_id": "c_overlap",
+            "material_id": "mat_overlap",
+            "title": "Laser Welding Paper",
+            "content": "Laser welding power optimization increased hardness to 300 HV.",
+            "source_labels": ["project_chunks"],
+        },
+        {
+            "chunk_id": "c_semantic",
+            "material_id": "mat_semantic",
+            "title": "Beam Joining Paper",
+            "content": "High-energy beam joining process improved mechanical properties significantly.",
+            "source_labels": ["project_chunks"],
+        },
+    ]
+
+    selected = select_tolf_context_chunks(
+        "laser welding power hardness",
+        chunks,
+        top_k=2,
+        embedding_dim=16,
+        max_candidates=2,
+    )
+
+    assert len(selected) >= 1
+    top_chunk = selected[0]
+    assert top_chunk["chunk_id"] == "c_overlap"
+    assert len(top_chunk["query_overlap_tokens"]) >= 3
+    assert "laser" in top_chunk["query_overlap_tokens"]
+    assert "welding" in top_chunk["query_overlap_tokens"]
+    assert "power" in top_chunk["query_overlap_tokens"]

@@ -186,7 +186,13 @@ def test_translate_query_async_fallbacks_on_ark_content_type_error(monkeypatch) 
         (
             lambda mod: asyncio.run(mod.translate_query_async("海洋碳循环", api_key="k")),
             "query_translation",
-            "将以下中文查询翻译为准确、简洁的英文检索查询。仅输出英文翻译，不要解释。\n\n查询：海洋碳循环",
+            "你是科研文献检索翻译专家。将以下中文查询翻译为英文检索查询。\n"
+            "要求：\n"
+            "1. 保留所有专业术语、材料名称、工艺名称的标准英文表达\n"
+            "2. 保留关键量化词（如：高、低、优化、提升）的检索友好译法\n"
+            "3. 使用学术文献常见表述，避免口语化\n"
+            "4. 仅输出英文翻译，不要解释或添加额外内容\n\n"
+            "查询：海洋碳循环",
             "Ocean carbon cycle",
             "Ocean carbon cycle",
         ),
@@ -314,3 +320,23 @@ def test_expand_multi_query_strips_numbered_markers(monkeypatch) -> None:
     result = asyncio.run(expander_mod.expand_multi_query_async("碳循环机制", api_key="k", n=4))
 
     assert result == ["碳循环机制", "碳循环研究", "碳循环路径"]
+
+
+def test_translate_query_prompt_includes_domain_terminology_guidance(monkeypatch) -> None:
+    import query_expander as expander_mod
+
+    captured_prompt = None
+
+    async def fake_call(prompt, *_args, **_kwargs):
+        nonlocal captured_prompt
+        captured_prompt = prompt
+        return "laser welding process optimization"
+
+    monkeypatch.setattr(expander_mod, "_call_ark_async", fake_call, raising=False)
+
+    asyncio.run(expander_mod.translate_query_async("激光焊接工艺优化", api_key="k"))
+
+    assert captured_prompt is not None
+    assert "专业术语" in captured_prompt or "材料名称" in captured_prompt
+    assert "学术文献" in captured_prompt or "检索友好" in captured_prompt
+

@@ -51,6 +51,9 @@ logger = logging.getLogger(__name__)
 
 RepresentativeReranker = Callable[[str, List["FishResult"]], List["FishResult"]]
 
+# Token extraction pattern for lexical grounding
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_一-鿿]+", re.UNICODE)
+
 
 # ============================================================
 # 数据结构
@@ -586,7 +589,7 @@ class EvidenceGate:
     def __init__(self, config: TOLFConfig):
         self.config = config
 
-    def compute_evidence_score(self, chunk: Dict[str, Any]) -> float:
+    def compute_evidence_score(self, chunk: Dict[str, Any], query_tokens: Optional[set[str]] = None) -> float:
         """
         计算单个 chunk 的证据质量 e(u)。
 
@@ -594,6 +597,7 @@ class EvidenceGate:
         - point_type 的证据等级
         - 是否有数值/图表/参考文献支撑
         - 当前工作 vs 文献引用
+        - 查询词汇重叠（lexical grounding）
         """
         point_type = chunk.get("point_type", "discussion")
 
@@ -631,13 +635,22 @@ class EvidenceGate:
         ))
         hedge_penalty = 0.10 if hedge else 0.0
 
-        score = min(1.0, base + num_bonus + current_bonus - hedge_penalty)
+        # 查询词汇重叠加分（lexical grounding）
+        lexical_bonus = 0.0
+        if query_tokens:
+            content_lower = content.lower()
+            overlap_count = sum(1 for token in query_tokens if token in content_lower)
+            if overlap_count > 0:
+                lexical_bonus = min(0.20, overlap_count * 0.05)
+
+        score = min(1.0, base + num_bonus + current_bonus + lexical_bonus - hedge_penalty)
         return round(score, 4)
 
     def gate(
         self,
         activation_scores: Dict[str, float],
         chunks: List[Dict[str, Any]],
+        query_tokens: Optional[set[str]] = None,
     ) -> List[FishResult]:
         """
         执行证据门控 = 激活分 + 证据质量双阈值过滤。
@@ -651,7 +664,7 @@ class EvidenceGate:
         for chunk in chunks:
             cid = chunk.get("id", "")
             a_score = activation_scores.get(cid, 0.0)
-            e_score = self.compute_evidence_score(chunk)
+            e_score = self.compute_evidence_score(chunk, query_tokens=query_tokens)
 
             fish = FishResult(
                 chunk_id=cid,
@@ -864,8 +877,9 @@ class TOLFEngine:
             if not inside_mask[chunk_id_to_idx[cid]]:
                 activation_scores[cid] = activation_scores.get(cid, 0.0) * 0.5
 
-        # --- Step 4: 证据门控 ---
-        results = self.gate.gate(activation_scores, chunks)
+        # --- Step 4: 证据门控（含 lexical grounding）---
+        query_tokens = set(_TOKEN_RE.findall(goal.lower()))
+        results = self.gate.gate(activation_scores, chunks, query_tokens=query_tokens)
 
         # 填入 aspect_weights
         for r in results:

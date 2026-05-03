@@ -167,6 +167,8 @@ def expand_linked_pages(
     import re
 
     linked_pages: dict[Path, float] = {}
+    primary_paths = {r.page_path for r in primary_results}
+
     for result in primary_results:
         content = page_store.read_page(result.page_path)
         if not content:
@@ -174,6 +176,8 @@ def expand_linked_pages(
         wikilinks = re.findall(r"\[\[([^\]]+)\]\]", content)
         for link in wikilinks:
             link_path = Path(link.strip())
+            if link_path in primary_paths:
+                continue
             if link_path not in linked_pages:
                 linked_pages[link_path] = 0.0
             linked_pages[link_path] += result.score * 0.5
@@ -249,3 +253,106 @@ def wiki_query_with_fallback(
         fallback_used=False,
         fallback_reason="",
     )
+
+
+@dataclass(frozen=True)
+class WikiContextPack:
+    query: str
+    primary_pages: list[str]
+    linked_pages: list[str]
+    total_tokens: int
+    truncated: bool
+
+
+@dataclass(frozen=True)
+class WikiQueryTrace:
+    query: str
+    enabled: bool
+    fts_hits: int
+    linked_hits: int
+    fallback_used: bool
+    fallback_reason: str
+    total_pages: int
+    context_tokens: int
+
+
+def render_context_pack(
+    query: str,
+    query_result: WikiQueryResult,
+    page_store: WikiPageStore,
+    *,
+    max_tokens: int = 4000,
+    tokens_per_char: float = 0.25,
+) -> WikiContextPack:
+    import re
+
+    primary_pages: list[str] = []
+    linked_pages: list[str] = []
+    total_chars = 0
+    max_chars = int(max_tokens / tokens_per_char)
+    truncated = False
+
+    def _strip_frontmatter(content: str) -> str:
+        lines = content.split("\n")
+        if lines and lines[0].strip() == "---json":
+            for i, line in enumerate(lines[1:], start=1):
+                if line.strip() == "---":
+                    return "\n".join(lines[i + 1 :])
+        return content
+
+    for result in query_result.wiki_hits:
+        content = page_store.read_page(result.page_path)
+        if not content:
+            continue
+        body = _strip_frontmatter(content)
+        header = f"## {result.title}\n\n"
+        page_text = header + body
+        if total_chars + len(page_text) > max_chars:
+            truncated = True
+            break
+        primary_pages.append(page_text)
+        total_chars += len(page_text)
+
+    for result in query_result.linked_hits:
+        if total_chars >= max_chars:
+            truncated = True
+            break
+        content = page_store.read_page(result.page_path)
+        if not content:
+            continue
+        body = _strip_frontmatter(content)
+        header = f"### {result.title} (linked)\n\n"
+        page_text = header + body
+        if total_chars + len(page_text) > max_chars:
+            truncated = True
+            break
+        linked_pages.append(page_text)
+        total_chars += len(page_text)
+
+    return WikiContextPack(
+        query=query,
+        primary_pages=primary_pages,
+        linked_pages=linked_pages,
+        total_tokens=int(total_chars * tokens_per_char),
+        truncated=truncated,
+    )
+
+
+def build_query_trace(
+    query: str,
+    query_result: WikiQueryResult,
+    context_pack: WikiContextPack | None = None,
+    *,
+    enabled: bool = False,
+) -> WikiQueryTrace:
+    return WikiQueryTrace(
+        query=query,
+        enabled=enabled,
+        fts_hits=len(query_result.wiki_hits),
+        linked_hits=len(query_result.linked_hits),
+        fallback_used=query_result.fallback_used,
+        fallback_reason=query_result.fallback_reason,
+        total_pages=len(query_result.wiki_hits) + len(query_result.linked_hits),
+        context_tokens=context_pack.total_tokens if context_pack else 0,
+    )
+

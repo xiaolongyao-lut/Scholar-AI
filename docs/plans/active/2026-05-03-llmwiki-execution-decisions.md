@@ -65,7 +65,7 @@
 6. ✅ Wave 5: Evidence adapter (26 tests)
 7. ✅ Wave 6: Compiler dry-run (10 tests)
 8. ✅ Wave 7: LLM gateway integration (15 tests, stub mode)
-9. ⏸️ Wave 8: Wiki-aware retrieval
+9. 🔄 Wave 8: Wiki-aware retrieval (10 tests, 基础功能完成)
 10. ⏸️ Wave 9: Graph
 11. ⏸️ Wave 10: Doctor/review queue
 12. ⏸️ Wave 11: API contract
@@ -74,8 +74,15 @@
 15. ⏸️ Wave 14: 评测和质量门禁
 16. ⏸️ Wave 15: 迁移、MCP、长期维护
 
-**进度**：175 wiki tests passing, 7 waves完成
-**核心能力**：数据模型、注册表、页面存储、引用验证、证据适配、编译器、LLM网关（stub模式）
+**进度**：185 wiki tests passing, 8 waves 完成（Wave 8 基础功能）
+**核心能力**：数据模型、注册表、页面存储、引用验证、证据适配、编译器、LLM网关（stub模式）、FTS 检索（基础）
+
+**Wave 8 剩余任务**：
+- Linked page expansion（参考 WikiLoom）
+- RAG fallback bridge（wiki 无命中时回退）
+- Context pack renderer（token bounded）
+- Query debug trace
+- Saved exploration page flow
 
 ### D9: 回档策略
 - 每个 Wave 开始前创建回档点
