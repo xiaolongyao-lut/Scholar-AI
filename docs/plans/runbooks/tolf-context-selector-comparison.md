@@ -15,7 +15,8 @@ This runbook compares default project chunk search with the default-off text-onl
 - GraphRAG-style evaluation separates query/retrieval modes and keeps a basic search/control path.
 - Retrieval-first RAG evaluation should inspect selected chunks before judging generation quality.
 - Azure AI Search hybrid search, Elastic hybrid search, and Vespa hybrid retrieval all treat lexical and semantic retrieval as complementary signals, commonly combining them through fusion/ranking rather than using semantic hit-count alone as a quality verdict.
-- Official references: `https://learn.microsoft.com/en-us/azure/search/hybrid-search-how-to-query`, `https://www.elastic.co/guide/en/elasticsearch/reference/8.19/semantic-text-hybrid-search.html`, `https://docs.vespa.ai/en/learn/tutorials/hybrid-search`.
+- Query-time synonym and expansion systems should be treated as diagnostic or ranking-assist signals unless they are backed by a controlled analyzer/index contract.
+- Official references: `https://learn.microsoft.com/en-us/azure/search/hybrid-search-how-to-query`, `https://learn.microsoft.com/en-us/azure/search/search-synonyms`, `https://www.elastic.co/guide/en/elasticsearch/reference/8.19/semantic-text-hybrid-search.html`, `https://www.elastic.co/guide/en/elasticsearch/reference/current/search-with-synonyms.html`, `https://docs.vespa.ai/en/learn/tutorials/hybrid-search`.
 
 ## Input Shape
 
@@ -67,17 +68,23 @@ cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
 - `summary.queries_with_empty_default`: queries where default project chunk search returned no chunks.
 - `summary.queries_with_empty_tolf`: queries where TOLF returned no chunks.
 - `summary.queries_where_all_tolf_hits_lack_query_overlap`: risk signal for cross-lingual or weakly grounded TOLF hits.
+- `summary.queries_where_all_tolf_hits_lack_query_or_bridge_overlap`: stricter risk signal after zero-cost query bridge diagnostics.
 - `summary.tolf_hits_without_query_overlap`: total TOLF-selected chunks with no lexical query overlap.
+- `summary.tolf_hits_without_query_or_bridge_overlap`: total TOLF-selected chunks with neither lexical overlap nor configured query bridge matches.
+- `summary.tolf_hits_with_query_bridge_overlap`: TOLF-selected chunks that lack literal token overlap but match configured Chinese/English technical bridge terms.
 - `comparisons[].only_default_ids`: chunks default search selected but TOLF did not.
 - `comparisons[].only_tolf_ids`: chunks TOLF selected but default search did not.
 - `comparisons[].tolf_source_labels`: provenance labels added by TOLF selector.
 - `comparisons[].tolf_query_overlap_tokens`: query tokens found in TOLF-selected chunks.
+- `comparisons[].tolf_query_bridge_matches`: diagnostic matches from query terms to configured bridge terms, for example `激光焊接 -> laser/welding`.
 
 ## Interpretation Guardrails
 
 - If `queries_with_empty_default` is high, the current keyword-heavy default project chunk search is missing those queries and should be treated as a weak control for that slice.
 - If `queries_where_all_tolf_hits_lack_query_overlap` is high, TOLF is behaving more like a semantic fallback than a grounded retrieval win. Do not treat "TOLF returned something" as evidence that it is better.
-- If both signals are high at the same time, keep `INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED` default-off and require manual chunk inspection, query rewrite/translation, or a stronger control path before any default-chain decision.
+- If `queries_where_all_tolf_hits_lack_query_or_bridge_overlap` remains high after bridge diagnostics, keep `INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED` default-off and prioritize query translation or stronger control retrieval before tuning TOLF.
+- If bridge overlap is high but literal query overlap is low, treat the report as evidence that Chinese/English terminology bridging may be needed; do not treat bridge matches alone as relevance labels.
+- If both default-empty and no-bridge risk signals are high at the same time, require manual chunk inspection, query rewrite/translation, or a stronger control path before any default-chain decision.
 - Use this report to decide what to inspect next, not to grant a release verdict.
 
 ## Rollback

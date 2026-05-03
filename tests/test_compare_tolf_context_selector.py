@@ -31,12 +31,16 @@ def test_compare_context_selectors_reports_overlap() -> None:
     assert report["summary"]["queries_with_tolf_hits"] == 1
     assert report["summary"]["queries_with_empty_default"] == 0
     assert report["summary"]["queries_where_all_tolf_hits_lack_query_overlap"] == 0
+    assert report["summary"]["queries_where_all_tolf_hits_lack_query_or_bridge_overlap"] == 0
+    assert report["summary"]["tolf_hits_with_query_bridge_overlap"] == 0
     assert report["comparisons"][0]["default_top_ids"] == ["c_result"]
     assert report["comparisons"][0]["tolf_top_ids"] == ["c_result"]
     assert report["comparisons"][0]["overlap_at_top_k"] == 1.0
     assert report["comparisons"][0]["default_empty"] is False
     assert report["comparisons"][0]["tolf_empty"] is False
     assert report["comparisons"][0]["tolf_hits_without_query_overlap"] == 0
+    assert report["comparisons"][0]["tolf_hits_without_query_or_bridge_overlap"] == 0
+    assert report["comparisons"][0]["tolf_hits_with_query_bridge_overlap"] == 0
     assert report["comparisons"][0]["tolf_query_overlap_tokens"] == [["hardness", "laser", "power"]]
 
 
@@ -54,10 +58,46 @@ def test_compare_context_selectors_flags_tolf_hits_without_query_overlap() -> No
     assert report["summary"]["queries_with_empty_default"] == 1
     assert report["summary"]["queries_with_tolf_hits"] == 1
     assert report["summary"]["queries_where_all_tolf_hits_lack_query_overlap"] == 1
+    assert report["summary"]["queries_where_all_tolf_hits_lack_query_or_bridge_overlap"] == 1
     assert report["summary"]["tolf_hits_without_query_overlap"] == 1
+    assert report["summary"]["tolf_hits_without_query_or_bridge_overlap"] == 1
+    assert report["summary"]["tolf_hits_with_query_bridge_overlap"] == 0
     assert report["comparisons"][0]["default_empty"] is True
     assert report["comparisons"][0]["tolf_empty"] is False
     assert report["comparisons"][0]["tolf_hits_without_query_overlap"] == 1
+    assert report["comparisons"][0]["tolf_hits_without_query_or_bridge_overlap"] == 1
+    assert report["comparisons"][0]["tolf_hits_with_query_bridge_overlap"] == 0
+
+
+def test_compare_context_selectors_reports_query_bridge_overlap() -> None:
+    queries = [{"query_id": "q1", "query_text": "激光焊接的最新研究进展"}]
+    chunks = [
+        {
+            "chunk_id": "c1",
+            "content": "Recent laser welding research reports melt pool stability and hardness changes.",
+        }
+    ]
+
+    report = compare_context_selectors(queries, chunks, top_k=1, embedding_dim=16)
+
+    comparison = report["comparisons"][0]
+    assert report["summary"]["queries_where_all_tolf_hits_lack_query_overlap"] == 1
+    assert report["summary"]["queries_where_all_tolf_hits_lack_query_or_bridge_overlap"] == 0
+    assert report["summary"]["tolf_hits_without_query_overlap"] == 1
+    assert report["summary"]["tolf_hits_without_query_or_bridge_overlap"] == 0
+    assert report["summary"]["tolf_hits_with_query_bridge_overlap"] == 1
+    assert comparison["tolf_query_overlap_tokens"] == [[]]
+    assert comparison["tolf_hits_without_query_or_bridge_overlap"] == 0
+    assert comparison["tolf_hits_with_query_bridge_overlap"] == 1
+    hit_matches = {
+        item["query_term"]: set(item["matched_terms"])
+        for item in comparison["tolf_query_bridge_matches"][0]
+    }
+    assert {"laser", "welding", "laser welding"} <= hit_matches["激光焊接"]
+    assert hit_matches["激光"] == {"laser"}
+    assert "welding" in hit_matches["焊接"]
+    assert "research" in hit_matches["研究进展"]
+    assert hit_matches["最新"] == {"recent"}
 
 
 def test_compare_context_selectors_rejects_invalid_args() -> None:

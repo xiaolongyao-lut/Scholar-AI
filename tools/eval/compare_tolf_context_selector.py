@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -15,6 +16,40 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tolf_text_selector import select_tolf_context_chunks
+
+
+_BRIDGE_TOKEN_RE = re.compile(r"[A-Za-z0-9_\u4e00-\u9fff]+", re.UNICODE)
+_QUERY_BRIDGE_LEXICON: Mapping[str, tuple[str, ...]] = {
+    "激光焊接": ("laser", "welding", "weld", "laser welding"),
+    "激光": ("laser",),
+    "焊接": ("welding", "weld", "welded", "welds"),
+    "力学性能": ("mechanical", "mechanical properties", "tensile", "hardness", "strength", "ductility"),
+    "机械性能": ("mechanical", "mechanical properties", "tensile", "hardness", "strength", "ductility"),
+    "钛合金": ("titanium", "titanium alloy", "ti alloy", "ti-6al-4v", "ti6al4v"),
+    "铝合金": ("aluminum", "aluminium", "aluminum alloy", "aluminium alloy", "al alloy"),
+    "镁合金": ("magnesium", "magnesium alloy", "mg alloy"),
+    "高熵合金": ("high entropy alloy", "hea"),
+    "显微组织": ("microstructure", "microstructural", "grain", "grains", "phase"),
+    "微观组织": ("microstructure", "microstructural", "grain", "grains", "phase"),
+    "组织": ("microstructure", "microstructural", "grain", "phase"),
+    "硬度": ("hardness", "hv", "microhardness"),
+    "强度": ("strength", "tensile strength", "yield strength", "uts"),
+    "拉伸": ("tensile", "elongation", "ductility"),
+    "疲劳": ("fatigue",),
+    "断裂": ("fracture", "fractographic"),
+    "裂纹": ("crack", "cracks", "cracking"),
+    "气孔": ("porosity", "pore", "pores", "void"),
+    "孔隙": ("porosity", "pore", "pores", "void"),
+    "熔池": ("melt pool", "molten pool", "pool"),
+    "热输入": ("heat input", "energy input", "line energy"),
+    "冷却速度": ("cooling rate", "solidification rate"),
+    "残余应力": ("residual stress", "residual stresses"),
+    "晶粒": ("grain", "grains", "grain size"),
+    "相变": ("phase transformation", "phase transition"),
+    "工艺参数": ("process parameters", "processing parameters", "laser power", "scan speed", "welding speed"),
+    "研究进展": ("review", "progress", "recent", "research", "study"),
+    "最新": ("recent", "latest", "current"),
+}
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -100,6 +135,79 @@ def _has_query_overlap(hit: Mapping[str, Any]) -> bool:
     return any(isinstance(token, str) and token.strip() for token in raw_tokens)
 
 
+def _bridge_tokens(value: str) -> set[str]:
+    return {token.lower() for token in _BRIDGE_TOKEN_RE.findall(value)}
+
+
+def _compact(value: str) -> str:
+    return "".join(_BRIDGE_TOKEN_RE.findall(value.lower()))
+
+
+def _contains_bridge_term(term: str, *, text: str, tokens: set[str], compact_text: str) -> bool:
+    normalized = str(term or "").strip().lower()
+    if not normalized:
+        return False
+    if " " in normalized:
+        return normalized in text
+    if normalized in tokens:
+        return True
+    compact_term = _compact(normalized)
+    return bool(compact_term and compact_term in compact_text)
+
+
+def _query_bridge_matches(query: str, content: str) -> list[dict[str, Any]]:
+    """Return zero-cost query-time bridge matches for diagnostic reporting.
+
+    The output is intentionally additive and does not alter retrieval ranking.
+    It mirrors mature query-expansion practice where synonyms explain recall gaps
+    without replacing the original control query.
+    """
+    normalized_query = str(query or "").strip().lower()
+    normalized_content = str(content or "").strip().lower()
+    if not normalized_query or not normalized_content:
+        return []
+
+    query_tokens = _bridge_tokens(normalized_query)
+    content_tokens = _bridge_tokens(normalized_content)
+    query_compact = _compact(normalized_query)
+    content_compact = _compact(normalized_content)
+    matches: list[dict[str, Any]] = []
+
+    for query_term, bridge_terms in _QUERY_BRIDGE_LEXICON.items():
+        query_term_normalized = query_term.lower()
+        if not (
+            query_term_normalized in normalized_query
+            or query_term_normalized in query_tokens
+            or _compact(query_term_normalized) in query_compact
+        ):
+            continue
+        matched_terms = [
+            term
+            for term in bridge_terms
+            if _contains_bridge_term(
+                term,
+                text=normalized_content,
+                tokens=content_tokens,
+                compact_text=content_compact,
+            )
+        ]
+        if matched_terms:
+            matches.append({"query_term": query_term, "matched_terms": matched_terms})
+
+    return matches
+
+
+def _has_bridge_overlap(matches: Sequence[Any]) -> bool:
+    for match in matches:
+        if not isinstance(match, Mapping):
+            continue
+        matched_terms = match.get("matched_terms")
+        if isinstance(matched_terms, Sequence) and not isinstance(matched_terms, (str, bytes)):
+            if any(isinstance(term, str) and term.strip() for term in matched_terms):
+                return True
+    return False
+
+
 def compare_context_selectors(
     queries: Sequence[Mapping[str, Any]],
     chunks: Sequence[Mapping[str, Any]],
@@ -162,7 +270,21 @@ def compare_context_selectors(
         default_ids = _ids(default_hits)
         tolf_ids = _ids(tolf_hits)
         overlap = [chunk_id for chunk_id in default_ids if chunk_id in set(tolf_ids)]
+        tolf_query_bridge_matches = [
+            _query_bridge_matches(query, _chunk_content(hit))
+            for hit in tolf_hits
+        ]
         tolf_hits_without_query_overlap = sum(1 for hit in tolf_hits if not _has_query_overlap(hit))
+        tolf_hits_without_query_or_bridge_overlap = sum(
+            1
+            for hit, bridge_matches in zip(tolf_hits, tolf_query_bridge_matches, strict=False)
+            if not _has_query_overlap(hit) and not _has_bridge_overlap(bridge_matches)
+        )
+        tolf_hits_with_query_bridge_overlap = sum(
+            1
+            for hit, bridge_matches in zip(tolf_hits, tolf_query_bridge_matches, strict=False)
+            if not _has_query_overlap(hit) and _has_bridge_overlap(bridge_matches)
+        )
         comparisons.append(
             {
                 "query_id": query_id,
@@ -176,6 +298,8 @@ def compare_context_selectors(
                 "only_tolf_ids": [chunk_id for chunk_id in tolf_ids if chunk_id not in set(default_ids)],
                 "overlap_at_top_k": round(len(overlap) / max(1, top_k), 4),
                 "tolf_hits_without_query_overlap": tolf_hits_without_query_overlap,
+                "tolf_hits_without_query_or_bridge_overlap": tolf_hits_without_query_or_bridge_overlap,
+                "tolf_hits_with_query_bridge_overlap": tolf_hits_with_query_bridge_overlap,
                 "tolf_source_labels": [
                     list(hit.get("source_labels") or [])
                     for hit in tolf_hits
@@ -184,6 +308,7 @@ def compare_context_selectors(
                     list(hit.get("query_overlap_tokens") or [])
                     for hit in tolf_hits
                 ],
+                "tolf_query_bridge_matches": tolf_query_bridge_matches,
             }
         )
 
@@ -213,8 +338,20 @@ def compare_context_selectors(
                 if item["tolf_top_ids"]
                 and item["tolf_hits_without_query_overlap"] == len(item["tolf_top_ids"])
             ),
+            "queries_where_all_tolf_hits_lack_query_or_bridge_overlap": sum(
+                1
+                for item in comparisons
+                if item["tolf_top_ids"]
+                and item["tolf_hits_without_query_or_bridge_overlap"] == len(item["tolf_top_ids"])
+            ),
             "tolf_hits_without_query_overlap": sum(
                 int(item["tolf_hits_without_query_overlap"]) for item in comparisons
+            ),
+            "tolf_hits_without_query_or_bridge_overlap": sum(
+                int(item["tolf_hits_without_query_or_bridge_overlap"]) for item in comparisons
+            ),
+            "tolf_hits_with_query_bridge_overlap": sum(
+                int(item["tolf_hits_with_query_bridge_overlap"]) for item in comparisons
             ),
         },
         "comparisons": comparisons,
