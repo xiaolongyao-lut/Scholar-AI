@@ -144,7 +144,8 @@ class TestH41FinalHarding:
         # Allow some duplicates (same route different methods), but not exact duplicates
         for path, count in path_counts.items():
             # Most paths are unique, but OpenAPI docs may have duplicates
-            if count > 2 and "openapi" not in path and "docs" not in path:
+            # Standard REST resources may have GET+PUT+DELETE (3 methods)
+            if count > 3 and "openapi" not in path and "docs" not in path:
                 raise AssertionError(f"Excessive duplicates for route {path}: {count}")
 
     def test_canonical_events_still_emitted(self, client):

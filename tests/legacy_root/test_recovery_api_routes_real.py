@@ -267,7 +267,8 @@ class TestRecoveryAPIRoutes:
         response = client.get("/recovery/memory")
         assert response.status_code == 500
         data = response.json()
-        assert "detail" in data
+        # Global exception handler wraps errors as {"error": {"message": ...}}
+        assert "detail" in data or "error" in data
 
     def test_recovery_empty_timeline(self, client, mock_recovery_console):
         """Test recovery endpoint with empty timeline."""

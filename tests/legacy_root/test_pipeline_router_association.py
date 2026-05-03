@@ -222,7 +222,7 @@ class TestPipelineAssociationRouter:
         client, _ = client_and_output_dir
 
         response = client.post(
-            "/run",
+            "/pipeline/run",
             json={
                 "input_path": "demo.pdf",
                 "goal": "improve literature review transitions",
@@ -253,7 +253,7 @@ class TestPipelineAssociationRouter:
         client, _ = client_and_output_dir
 
         response = client.post(
-            "/run",
+            "/pipeline/run",
             json={
                 "input_path": "demo.pdf",
                 "goal": "improve literature review transitions",
@@ -316,7 +316,7 @@ class TestPipelineAssociationRouter:
             json.dump({"nothing": "here"}, handle)
 
         response = client.post(
-            "/run",
+            "/pipeline/run",
             json={
                 "input_path": "demo.pdf",
                 "goal": "improve literature review transitions",
@@ -427,7 +427,7 @@ class TestPipelineAssociationRouter:
             return_value=None,
         ):
             response = client.post(
-                "/run",
+                "/pipeline/run",
                 json={
                     "input_path": "demo.pdf",
                     "goal": "improve literature review transitions",

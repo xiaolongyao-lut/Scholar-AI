@@ -2112,6 +2112,9 @@ async def search_chunks(
     - ingest_mode=query: ingest only query-relevant pending files
     - ingest_mode=full: ingest all pending files before retrieval
     """
+    # When called directly (not via FastAPI DI), Query params are descriptor objects
+    if hasattr(ingest_mode, "default"):
+        ingest_mode = ingest_mode.default
     normalized_ingest_mode = str(ingest_mode or "").strip().lower()
     if normalized_ingest_mode not in _INGEST_MODES:
         raise HTTPException(status_code=400, detail=f"ingest_mode 不支持: {ingest_mode}，可选值: none, query, full")
