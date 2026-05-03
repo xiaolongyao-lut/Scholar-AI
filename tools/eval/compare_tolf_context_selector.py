@@ -197,6 +197,44 @@ def _query_bridge_matches(query: str, content: str) -> list[dict[str, Any]]:
     return matches
 
 
+def _expanded_query_bridge_terms(query: str) -> list[str]:
+    """Return deterministic query-time bridge terms for control diagnostics.
+
+    The terms are appended only inside this evaluation tool so raw default
+    search remains available as the primary control path.
+    """
+    normalized_query = str(query or "").strip().lower()
+    if not normalized_query:
+        return []
+
+    query_tokens = _bridge_tokens(normalized_query)
+    query_compact = _compact(normalized_query)
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for query_term, bridge_terms in _QUERY_BRIDGE_LEXICON.items():
+        query_term_normalized = query_term.lower()
+        if not (
+            query_term_normalized in normalized_query
+            or query_term_normalized in query_tokens
+            or _compact(query_term_normalized) in query_compact
+        ):
+            continue
+        for bridge_term in bridge_terms:
+            normalized_bridge = str(bridge_term or "").strip().lower()
+            if normalized_bridge and normalized_bridge not in seen:
+                seen.add(normalized_bridge)
+                expanded.append(normalized_bridge)
+    return expanded
+
+
+def _build_bilingual_control_query(query: str) -> tuple[str, list[str]]:
+    terms = _expanded_query_bridge_terms(query)
+    normalized_query = str(query or "").strip()
+    if not terms:
+        return normalized_query, []
+    return f"{normalized_query} {' '.join(terms)}".strip(), terms
+
+
 def _has_bridge_overlap(matches: Sequence[Any]) -> bool:
     for match in matches:
         if not isinstance(match, Mapping):
@@ -256,6 +294,12 @@ def compare_context_selectors(
             continue
         query_id, query = _query_text(row, index)
         default_hits = _score_default_chunks(query, normalized_chunks, top_k)
+        bilingual_control_query, bilingual_query_terms = _build_bilingual_control_query(query)
+        bilingual_default_hits = (
+            _score_default_chunks(bilingual_control_query, normalized_chunks, top_k)
+            if bilingual_query_terms
+            else default_hits
+        )
         try:
             tolf_hits = select_tolf_context_chunks(
                 query,
@@ -268,8 +312,12 @@ def compare_context_selectors(
             tolf_hits = []
 
         default_ids = _ids(default_hits)
+        bilingual_default_ids = _ids(bilingual_default_hits)
         tolf_ids = _ids(tolf_hits)
         overlap = [chunk_id for chunk_id in default_ids if chunk_id in set(tolf_ids)]
+        bilingual_control_overlap = [
+            chunk_id for chunk_id in bilingual_default_ids if chunk_id in set(tolf_ids)
+        ]
         tolf_query_bridge_matches = [
             _query_bridge_matches(query, _chunk_content(hit))
             for hit in tolf_hits
@@ -290,13 +338,24 @@ def compare_context_selectors(
                 "query_id": query_id,
                 "query_text": query,
                 "default_empty": not default_ids,
+                "bilingual_default_empty": not bilingual_default_ids,
                 "tolf_empty": not tolf_ids,
+                "bilingual_query_terms": bilingual_query_terms,
                 "default_top_ids": default_ids,
+                "bilingual_default_top_ids": bilingual_default_ids,
                 "tolf_top_ids": tolf_ids,
                 "overlap_ids": overlap,
+                "bilingual_control_overlap_ids": bilingual_control_overlap,
                 "only_default_ids": [chunk_id for chunk_id in default_ids if chunk_id not in set(tolf_ids)],
+                "only_bilingual_default_ids": [
+                    chunk_id for chunk_id in bilingual_default_ids if chunk_id not in set(tolf_ids)
+                ],
                 "only_tolf_ids": [chunk_id for chunk_id in tolf_ids if chunk_id not in set(default_ids)],
                 "overlap_at_top_k": round(len(overlap) / max(1, top_k), 4),
+                "bilingual_control_overlap_at_top_k": round(
+                    len(bilingual_control_overlap) / max(1, top_k),
+                    4,
+                ),
                 "tolf_hits_without_query_overlap": tolf_hits_without_query_overlap,
                 "tolf_hits_without_query_or_bridge_overlap": tolf_hits_without_query_or_bridge_overlap,
                 "tolf_hits_with_query_bridge_overlap": tolf_hits_with_query_bridge_overlap,
@@ -331,7 +390,24 @@ def compare_context_selectors(
             "mean_overlap_at_top_k": mean_overlap,
             "queries_with_tolf_hits": sum(1 for item in comparisons if item["tolf_top_ids"]),
             "queries_with_empty_default": sum(1 for item in comparisons if item["default_empty"]),
+            "queries_with_empty_bilingual_default": sum(
+                1 for item in comparisons if item["bilingual_default_empty"]
+            ),
+            "queries_where_bilingual_default_recovers_empty_default": sum(
+                1
+                for item in comparisons
+                if item["default_empty"] and not item["bilingual_default_empty"]
+            ),
             "queries_with_empty_tolf": sum(1 for item in comparisons if item["tolf_empty"]),
+            "mean_bilingual_control_overlap_at_top_k": (
+                round(
+                    sum(float(item["bilingual_control_overlap_at_top_k"]) for item in comparisons)
+                    / len(comparisons),
+                    4,
+                )
+                if comparisons
+                else 0.0
+            ),
             "queries_where_all_tolf_hits_lack_query_overlap": sum(
                 1
                 for item in comparisons

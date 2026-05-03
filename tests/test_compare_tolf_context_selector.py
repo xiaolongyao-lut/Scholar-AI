@@ -30,13 +30,20 @@ def test_compare_context_selectors_reports_overlap() -> None:
     assert report["input"]["external_api_calls"] == 0
     assert report["summary"]["queries_with_tolf_hits"] == 1
     assert report["summary"]["queries_with_empty_default"] == 0
+    assert report["summary"]["queries_with_empty_bilingual_default"] == 0
+    assert report["summary"]["queries_where_bilingual_default_recovers_empty_default"] == 0
+    assert report["summary"]["mean_bilingual_control_overlap_at_top_k"] == 1.0
     assert report["summary"]["queries_where_all_tolf_hits_lack_query_overlap"] == 0
     assert report["summary"]["queries_where_all_tolf_hits_lack_query_or_bridge_overlap"] == 0
     assert report["summary"]["tolf_hits_with_query_bridge_overlap"] == 0
     assert report["comparisons"][0]["default_top_ids"] == ["c_result"]
+    assert report["comparisons"][0]["bilingual_default_top_ids"] == ["c_result"]
+    assert report["comparisons"][0]["bilingual_query_terms"] == []
     assert report["comparisons"][0]["tolf_top_ids"] == ["c_result"]
     assert report["comparisons"][0]["overlap_at_top_k"] == 1.0
+    assert report["comparisons"][0]["bilingual_control_overlap_at_top_k"] == 1.0
     assert report["comparisons"][0]["default_empty"] is False
+    assert report["comparisons"][0]["bilingual_default_empty"] is False
     assert report["comparisons"][0]["tolf_empty"] is False
     assert report["comparisons"][0]["tolf_hits_without_query_overlap"] == 0
     assert report["comparisons"][0]["tolf_hits_without_query_or_bridge_overlap"] == 0
@@ -56,6 +63,8 @@ def test_compare_context_selectors_flags_tolf_hits_without_query_overlap() -> No
     report = compare_context_selectors(queries, chunks, top_k=1, embedding_dim=16)
 
     assert report["summary"]["queries_with_empty_default"] == 1
+    assert report["summary"]["queries_with_empty_bilingual_default"] == 1
+    assert report["summary"]["queries_where_bilingual_default_recovers_empty_default"] == 0
     assert report["summary"]["queries_with_tolf_hits"] == 1
     assert report["summary"]["queries_where_all_tolf_hits_lack_query_overlap"] == 1
     assert report["summary"]["queries_where_all_tolf_hits_lack_query_or_bridge_overlap"] == 1
@@ -63,6 +72,8 @@ def test_compare_context_selectors_flags_tolf_hits_without_query_overlap() -> No
     assert report["summary"]["tolf_hits_without_query_or_bridge_overlap"] == 1
     assert report["summary"]["tolf_hits_with_query_bridge_overlap"] == 0
     assert report["comparisons"][0]["default_empty"] is True
+    assert report["comparisons"][0]["bilingual_default_empty"] is True
+    assert report["comparisons"][0]["bilingual_query_terms"] == []
     assert report["comparisons"][0]["tolf_empty"] is False
     assert report["comparisons"][0]["tolf_hits_without_query_overlap"] == 1
     assert report["comparisons"][0]["tolf_hits_without_query_or_bridge_overlap"] == 1
@@ -81,12 +92,21 @@ def test_compare_context_selectors_reports_query_bridge_overlap() -> None:
     report = compare_context_selectors(queries, chunks, top_k=1, embedding_dim=16)
 
     comparison = report["comparisons"][0]
+    assert report["summary"]["queries_with_empty_default"] == 1
+    assert report["summary"]["queries_with_empty_bilingual_default"] == 0
+    assert report["summary"]["queries_where_bilingual_default_recovers_empty_default"] == 1
+    assert report["summary"]["mean_bilingual_control_overlap_at_top_k"] == 1.0
     assert report["summary"]["queries_where_all_tolf_hits_lack_query_overlap"] == 1
     assert report["summary"]["queries_where_all_tolf_hits_lack_query_or_bridge_overlap"] == 0
     assert report["summary"]["tolf_hits_without_query_overlap"] == 1
     assert report["summary"]["tolf_hits_without_query_or_bridge_overlap"] == 0
     assert report["summary"]["tolf_hits_with_query_bridge_overlap"] == 1
     assert comparison["tolf_query_overlap_tokens"] == [[]]
+    assert comparison["default_top_ids"] == []
+    assert comparison["bilingual_default_top_ids"] == ["c1"]
+    assert {"laser", "welding", "laser welding", "recent"} <= set(comparison["bilingual_query_terms"])
+    assert comparison["bilingual_control_overlap_ids"] == ["c1"]
+    assert comparison["bilingual_control_overlap_at_top_k"] == 1.0
     assert comparison["tolf_hits_without_query_or_bridge_overlap"] == 0
     assert comparison["tolf_hits_with_query_bridge_overlap"] == 1
     hit_matches = {
@@ -98,6 +118,30 @@ def test_compare_context_selectors_reports_query_bridge_overlap() -> None:
     assert "welding" in hit_matches["焊接"]
     assert "research" in hit_matches["研究进展"]
     assert hit_matches["最新"] == {"recent"}
+
+
+def test_compare_context_selectors_keeps_bilingual_control_separate_from_raw_default() -> None:
+    queries = [{"query_id": "q1", "query_text": "力学性能"}]
+    chunks = [
+        {
+            "chunk_id": "mechanical",
+            "content": "Mechanical properties include tensile strength and hardness.",
+        },
+        {
+            "chunk_id": "noise",
+            "content": "The manuscript describes microscope calibration.",
+        },
+    ]
+
+    report = compare_context_selectors(queries, chunks, top_k=1, embedding_dim=16)
+    comparison = report["comparisons"][0]
+
+    assert comparison["default_empty"] is True
+    assert comparison["bilingual_default_empty"] is False
+    assert comparison["default_top_ids"] == []
+    assert comparison["bilingual_default_top_ids"] == ["mechanical"]
+    assert "mechanical properties" in comparison["bilingual_query_terms"]
+    assert report["summary"]["queries_where_bilingual_default_recovers_empty_default"] == 1
 
 
 def test_compare_context_selectors_rejects_invalid_args() -> None:
