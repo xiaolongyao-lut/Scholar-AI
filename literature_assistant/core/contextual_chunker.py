@@ -450,6 +450,15 @@ async def batch_contextualize_async(
     """
     if not chunks:
         return []
+
+    import os
+    cost_profile = os.environ.get("LITERATURE_AI_COST_PROFILE", "").strip().lower()
+    if cost_profile == "aggressive":
+        return chunks
+
+    if api_key is None:
+        return chunks
+
     del api_key, base_url, model, cache_path
 
     grouped: dict[str, list[dict[str, Any]]] = {}
