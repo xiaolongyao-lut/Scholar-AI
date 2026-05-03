@@ -370,6 +370,109 @@ def test_cli_rejects_judgment_template_without_inspection(monkeypatch, tmp_path)
         main()
 
 
+def test_cli_summarizes_filled_judgment_jsonl(monkeypatch, tmp_path, capsys) -> None:
+    judgment_path = tmp_path / "filled.jsonl"
+    summary_path = tmp_path / "summary.json"
+    judgment_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "schema_version": "tolf-comparison-judgment/v1",
+                        "query_id": "q1",
+                        "query_text": "激光焊接",
+                        "arm": "bilingual_default",
+                        "rank": 1,
+                        "chunk_id": "c1",
+                        "judgment": "relevant",
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "schema_version": "tolf-comparison-judgment/v1",
+                        "query_id": "q1",
+                        "query_text": "激光焊接",
+                        "arm": "tolf",
+                        "rank": 1,
+                        "chunk_id": "c2",
+                        "judgment": "partial",
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "schema_version": "tolf-comparison-judgment/v1",
+                        "query_id": "q2",
+                        "query_text": "力学性能",
+                        "arm": "tolf",
+                        "rank": 1,
+                        "chunk_id": "c3",
+                        "judgment": "unknown",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "compare_tolf_context_selector.py",
+            "--queries",
+            "unused_queries.jsonl",
+            "--chunks",
+            "unused_chunks.jsonl",
+            "--output",
+            "unused_report.json",
+            "--judgment-input",
+            str(judgment_path),
+            "--judgment-summary-output",
+            str(summary_path),
+        ],
+    )
+
+    main()
+
+    printed = json.loads(capsys.readouterr().out)
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert printed["status"] == "ok"
+    assert printed["row_count"] == 3
+    assert summary["schema_version"] == "tolf-comparison-judgment-summary/v1"
+    assert summary["row_count"] == 3
+    assert summary["reviewed_count"] == 2
+    assert summary["unknown_count"] == 1
+    assert summary["invalid_count"] == 0
+    assert summary["by_arm"]["bilingual_default"]["relevant"] == 1
+    assert summary["by_arm"]["tolf"]["partial"] == 1
+    assert summary["by_arm"]["tolf"]["unknown"] == 1
+    assert summary["by_query"]["q1"]["tolf"]["partial"] == 1
+
+
+def test_cli_requires_judgment_summary_pair(monkeypatch, tmp_path) -> None:
+    judgment_path = tmp_path / "filled.jsonl"
+    judgment_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "compare_tolf_context_selector.py",
+            "--queries",
+            "unused_queries.jsonl",
+            "--chunks",
+            "unused_chunks.jsonl",
+            "--output",
+            "unused_report.json",
+            "--judgment-input",
+            str(judgment_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        main()
+
+
 def test_cli_stdout_remains_json_when_tolf_uses_small_corpus_fallback(
     monkeypatch, tmp_path, capsys
 ) -> None:

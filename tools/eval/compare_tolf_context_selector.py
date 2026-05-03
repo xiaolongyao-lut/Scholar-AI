@@ -706,6 +706,76 @@ def _write_judgment_template_jsonl(path: Path, report: Mapping[str, Any], *, max
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def _load_judgment_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        raise FileNotFoundError(f"judgment JSONL not found: {path}")
+
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            payload = json.loads(stripped)
+            if not isinstance(payload, dict):
+                raise TypeError(f"judgment row {line_number} must be an object")
+            rows.append(payload)
+    return rows
+
+
+def _summarize_judgment_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    allowed = {"relevant", "partial", "offtopic", "unknown"}
+    summary: dict[str, Any] = {
+        "schema_version": "tolf-comparison-judgment-summary/v1",
+        "row_count": 0,
+        "reviewed_count": 0,
+        "unknown_count": 0,
+        "invalid_count": 0,
+        "by_arm": {},
+        "by_query": {},
+    }
+    for row in rows:
+        if not isinstance(row, Mapping):
+            summary["invalid_count"] += 1
+            continue
+        arm = str(row.get("arm") or "").strip()
+        query_id = str(row.get("query_id") or "").strip()
+        judgment = str(row.get("judgment") or "").strip().lower()
+        if not arm or not query_id or judgment not in allowed:
+            summary["invalid_count"] += 1
+            continue
+
+        summary["row_count"] += 1
+        if judgment == "unknown":
+            summary["unknown_count"] += 1
+        else:
+            summary["reviewed_count"] += 1
+
+        arm_bucket = summary["by_arm"].setdefault(
+            arm,
+            {"total": 0, "relevant": 0, "partial": 0, "offtopic": 0, "unknown": 0},
+        )
+        arm_bucket["total"] += 1
+        arm_bucket[judgment] += 1
+
+        query_bucket = summary["by_query"].setdefault(query_id, {})
+        query_arm = query_bucket.setdefault(
+            arm,
+            {"total": 0, "relevant": 0, "partial": 0, "offtopic": 0, "unknown": 0},
+        )
+        query_arm["total"] += 1
+        query_arm[judgment] += 1
+    return summary
+
+
+def _write_judgment_summary_json(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(_summarize_judgment_rows(rows), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compare default project chunk search with text-only TOLF context selection.")
     parser.add_argument("--queries", required=True, help="JSONL file with query_id/query_text rows.")
@@ -721,7 +791,17 @@ def main() -> None:
     parser.add_argument("--review-max-queries", type=int, default=None)
     parser.add_argument("--judgment-template-output", default=None, help="Optional JSONL template for manual relevance judgments; requires inspection output.")
     parser.add_argument("--judgment-max-queries", type=int, default=None)
+    parser.add_argument("--judgment-input", default=None, help="Filled judgment JSONL to summarize without changing qrels/goldset.")
+    parser.add_argument("--judgment-summary-output", default=None)
     args = parser.parse_args()
+
+    if args.judgment_input or args.judgment_summary_output:
+        if not args.judgment_input or not args.judgment_summary_output:
+            parser.error("--judgment-input and --judgment-summary-output must be provided together")
+        rows = _load_judgment_jsonl(Path(args.judgment_input))
+        _write_judgment_summary_json(Path(args.judgment_summary_output), rows)
+        print(json.dumps({"status": "ok", "output": args.judgment_summary_output, "row_count": len(rows)}, ensure_ascii=False))
+        return
 
     if args.review_markdown_output and not args.include_inspection:
         parser.error("--review-markdown-output requires --include-inspection")
