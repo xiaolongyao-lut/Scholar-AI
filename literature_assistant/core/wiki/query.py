@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from literature_assistant.core.wiki.page_store import WikiPageStore
+
+
+@dataclass(frozen=True)
+class WikiRetrievalStatus:
+    index_hash: str
+    page_count: int
+    stale: bool
+    last_indexed: str
+
+
+@dataclass(frozen=True)
+class WikiSearchResult:
+    page_path: Path
+    title: str
+    score: float
+    snippet: str
+
+
+class WikiQueryIndex:
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
+        self._conn: sqlite3.Connection | None = None
+
+    def _get_conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(self.db_path)
+            self._conn.row_factory = sqlite3.Row
+        return self._conn
+
+    def initialize(self) -> None:
+        conn = self._get_conn()
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS wiki_pages_fts
+            USING fts5(page_path, title, body, tokenize='unicode61')
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS wiki_index_status (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+
+    def index_page(self, page_path: Path, title: str, body: str) -> None:
+        conn = self._get_conn()
+        conn.execute(
+            "INSERT OR REPLACE INTO wiki_pages_fts (page_path, title, body) VALUES (?, ?, ?)",
+            (str(page_path), title, body),
+        )
+        conn.commit()
+
+    def search(self, query: str, limit: int = 10) -> list[WikiSearchResult]:
+        if not query or not query.strip():
+            return []
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT page_path, title, snippet(wiki_pages_fts, 2, '<b>', '</b>', '...', 64) as snippet, rank
+            FROM wiki_pages_fts
+            WHERE wiki_pages_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+            """,
+            (query, limit),
+        )
+        results: list[WikiSearchResult] = []
+        for row in cursor:
+            results.append(
+                WikiSearchResult(
+                    page_path=Path(row["page_path"]),
+                    title=row["title"],
+                    score=-row["rank"],
+                    snippet=row["snippet"],
+                )
+            )
+        return results
+
+    def get_status(self) -> WikiRetrievalStatus:
+        conn = self._get_conn()
+        cursor = conn.execute("SELECT COUNT(*) as count FROM wiki_pages_fts")
+        page_count = cursor.fetchone()["count"]
+        cursor = conn.execute("SELECT value FROM wiki_index_status WHERE key = 'index_hash'")
+        row = cursor.fetchone()
+        index_hash = row["value"] if row else "none"
+        cursor = conn.execute("SELECT value FROM wiki_index_status WHERE key = 'last_indexed'")
+        row = cursor.fetchone()
+        last_indexed = row["value"] if row else "never"
+        return WikiRetrievalStatus(
+            index_hash=index_hash,
+            page_count=page_count,
+            stale=False,
+            last_indexed=last_indexed,
+        )
+
+    def close(self) -> None:
+        if self._conn:
+            self._conn.close()
+            self._conn = None
+
+
+def build_wiki_index(page_store: WikiPageStore, index: WikiQueryIndex) -> None:
+    import json
+
+    index.initialize()
+    pages = page_store.list_pages()
+    for page_path in pages:
+        content = page_store.read_page(page_path)
+        if content:
+            lines = content.split("\n")
+            title = "Untitled"
+            body_start = 0
+            in_frontmatter = False
+            frontmatter_lines: list[str] = []
+            for i, line in enumerate(lines):
+                if i == 0 and line.strip() == "---json":
+                    in_frontmatter = True
+                    continue
+                if in_frontmatter:
+                    if line.strip() == "---":
+                        in_frontmatter = False
+                        body_start = i + 1
+                        try:
+                            fm = json.loads("\n".join(frontmatter_lines))
+                            if "title" in fm:
+                                title = fm["title"]
+                        except json.JSONDecodeError:
+                            pass
+                        continue
+                    frontmatter_lines.append(line)
+                if not in_frontmatter and line.startswith("# "):
+                    if title == "Untitled":
+                        title = line[2:].strip()
+                    body_start = i + 1
+                    break
+            body = "\n".join(lines[body_start:])
+            index.index_page(page_path, title, body)
+
+
+def wiki_first_search(
+    query: str,
+    index: WikiQueryIndex,
+    *,
+    enabled: bool = False,
+    limit: int = 5,
+) -> tuple[list[WikiSearchResult], bool]:
+    if not enabled:
+        return [], False
+    results = index.search(query, limit=limit)
+    return results, len(results) > 0
