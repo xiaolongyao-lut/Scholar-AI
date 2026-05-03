@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from literature_assistant.core.wiki.page_store import WikiPageStore
+from literature_assistant.core.wiki.evidence_adapter import build_synthesis_body, coerce_evidence_refs
+from literature_assistant.core.wiki.models import WikiPageKind, WikiPageStatus
+from literature_assistant.core.wiki.page_store import WikiPageStore, render_page, stable_slug
 
 
 @dataclass(frozen=True)
@@ -385,3 +389,93 @@ def build_query_trace(
         context_tokens=context_pack.total_tokens if context_pack else 0,
     )
 
+
+@dataclass(frozen=True)
+class ExplorationSaveResult:
+    """Result of saving an exploration page (LMWR-353)."""
+
+    success: bool
+    relative_path: Path | None
+    content_hash: str | None
+    error: str | None = None
+
+
+def save_exploration(
+    query: str,
+    answer: str,
+    evidence_refs: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    page_store: WikiPageStore,
+    *,
+    source_ids: tuple[str, ...] = (),
+) -> ExplorationSaveResult:
+    """Save query answer as exploration page (LMWR-353).
+
+    Generates exploration page with:
+      - kind=exploration
+      - status=draft (requires citation validation before finalization per LMWR-357)
+      - frontmatter with id, kind, title, status
+      - body with question, answer, and evidence section
+
+    Args:
+        query: Query question
+        answer: Answer text
+        evidence_refs: List of evidence reference dicts
+        page_store: WikiPageStore instance for atomic write
+        source_ids: Optional tuple of source IDs for frontmatter
+
+    Returns:
+        ExplorationSaveResult with success flag, path, and hash or error.
+
+    Raises:
+        ValueError: If query/answer empty or no evidence refs.
+    """
+    try:
+        # Coerce and validate evidence refs
+        refs = coerce_evidence_refs(evidence_refs)
+
+        # Build body using synthesis pattern
+        body = build_synthesis_body(query, answer, refs)
+
+        # Generate stable slug from query
+        slug = stable_slug(query)
+
+        # Build page ID and relative path
+        page_id = f"{WikiPageKind.exploration.value}/{slug}"
+        relative_path = Path(WikiPageKind.exploration.value) / f"{slug}.md"
+
+        # Build frontmatter
+        frontmatter = {
+            "id": page_id,
+            "kind": WikiPageKind.exploration.value,
+            "title": query.strip(),
+            "status": WikiPageStatus.draft.value,
+        }
+        if source_ids:
+            frontmatter["source_ids"] = list(source_ids)
+
+        # Render page (atomic write pattern from Blueprint C)
+        rendered = render_page(relative_path, frontmatter, body)
+
+        # Write atomically
+        page_store.write_rendered(rendered, allow_overwrite=True)
+
+        return ExplorationSaveResult(
+            success=True,
+            relative_path=relative_path,
+            content_hash=rendered.content_hash,
+        )
+
+    except (ValueError, TypeError) as e:
+        return ExplorationSaveResult(
+            success=False,
+            relative_path=None,
+            content_hash=None,
+            error=str(e),
+        )
+    except Exception as e:
+        return ExplorationSaveResult(
+            success=False,
+            relative_path=None,
+            content_hash=None,
+            error=f"Unexpected error: {str(e)}",
+        )

@@ -34,6 +34,7 @@ class WikiPageKind(str, Enum):
     """Taxonomy of wiki page types (LMWR-239)."""
 
     synthesis = "synthesis"    # answer/synthesis page for a query
+    exploration = "exploration"  # saved query exploration page (LMWR-353)
     concept = "concept"        # background concept / definition
     paper = "paper"            # per-paper summary
     experiment = "experiment"  # experimental result

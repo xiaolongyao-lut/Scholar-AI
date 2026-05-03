@@ -109,6 +109,83 @@ def parse_prompt_evidence(prompt_line: str) -> dict[str, str]:
     return result
 
 
+def coerce_evidence_refs(raw_refs: Any) -> tuple[dict[str, Any], ...]:
+    """Coerce raw evidence references to normalized tuple of dicts (LMWR-299).
+
+    Accepts:
+      - list/tuple of dicts
+      - list/tuple of objects with __dict__ or _asdict()
+      - single dict or object (wrapped in tuple)
+
+    Raises ValueError if empty or cannot coerce.
+    """
+    if raw_refs is None:
+        raise ValueError("raw_refs cannot be None")
+
+    # Normalize to list
+    if isinstance(raw_refs, (list, tuple)):
+        items = list(raw_refs)
+    else:
+        items = [raw_refs]
+
+    if not items:
+        raise ValueError("at least one evidence reference is required")
+
+    refs: list[dict[str, Any]] = []
+    for raw in items:
+        if isinstance(raw, dict):
+            refs.append(raw)
+        elif hasattr(raw, "__dict__"):
+            refs.append(vars(raw))
+        elif hasattr(raw, "_asdict"):
+            refs.append(raw._asdict())
+        else:
+            raise TypeError(f"Cannot coerce {type(raw)} to evidence reference")
+
+    return tuple(refs)
+
+
+def evidence_ref_to_markdown(ref: dict[str, Any]) -> str:
+    """Render evidence reference as markdown citation (LMWR-300).
+
+    Uses quote > compressed_text > text for citation body.
+    Raises ValueError if no quotable text found.
+    """
+    quote = ref.get("quote") or ref.get("compressed_text") or ref.get("text", "")
+    if not quote or not str(quote).strip():
+        raise ValueError("evidence reference has no quotable text")
+
+    # Build citation target: prefer source_id, fallback to chunk_id
+    target = ref.get("source_id") or ref.get("chunk_id") or "unknown"
+    return f"{str(quote).strip()} [[{target}]]"
+
+
+def build_synthesis_body(question: str, answer: str, refs: tuple[dict[str, Any], ...]) -> str:
+    """Build markdown body for synthesis/exploration page (LMWR-301).
+
+    Args:
+        question: Query question (becomes H1)
+        answer: Answer text
+        refs: Tuple of evidence references
+
+    Returns:
+        Markdown body with question, answer, and evidence section.
+
+    Raises ValueError if question/answer empty or no refs.
+    """
+    question = question.strip()
+    answer = answer.strip()
+    if not question:
+        raise ValueError("question cannot be empty")
+    if not answer:
+        raise ValueError("answer cannot be empty")
+    if not refs:
+        raise ValueError("synthesis requires evidence references")
+
+    evidence_lines = "\n".join(f"- {evidence_ref_to_markdown(ref)}" for ref in refs)
+    return f"# {question}\n\n{answer}\n\n## Evidence\n\n{evidence_lines}\n"
+
+
 def last_answer_to_synthesis_draft(
     last_answer: Mapping[str, Any],
     registry: WikiRegistry,
