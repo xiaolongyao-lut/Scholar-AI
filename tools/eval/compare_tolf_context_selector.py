@@ -502,6 +502,123 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _markdown_escape(value: Any) -> str:
+    text = "" if value is None else str(value).strip()
+    return text.replace("|", "\\|")
+
+
+def _format_markdown_hits(label: str, hits: Sequence[Mapping[str, Any]]) -> list[str]:
+    lines = [f"### {label}", ""]
+    if not hits:
+        return [*lines, "_No hits._", ""]
+
+    for rank, hit in enumerate(hits, start=1):
+        chunk_id = _markdown_escape(hit.get("chunk_id"))
+        title = _markdown_escape(hit.get("title"))
+        score = _markdown_escape(hit.get("score"))
+        source_labels = ", ".join(str(item) for item in hit.get("source_labels") or [])
+        overlap = ", ".join(str(item) for item in hit.get("query_overlap_tokens") or [])
+        lines.extend(
+            [
+                f"{rank}. `{chunk_id}` | score `{score or 'n/a'}` | {title or 'untitled'}",
+                f"   - source_labels: `{_markdown_escape(source_labels) or 'n/a'}`",
+                f"   - query_overlap_tokens: `{_markdown_escape(overlap) or 'n/a'}`",
+            ]
+        )
+        bridge_matches = hit.get("query_bridge_matches")
+        if isinstance(bridge_matches, Sequence) and not isinstance(bridge_matches, (str, bytes)):
+            bridge_text = "; ".join(
+                f"{match.get('query_term')} -> {', '.join(str(term) for term in match.get('matched_terms') or [])}"
+                for match in bridge_matches
+                if isinstance(match, Mapping)
+            )
+            if bridge_text:
+                lines.append(f"   - query_bridge_matches: `{_markdown_escape(bridge_text)}`")
+        snippet = _markdown_escape(hit.get("snippet"))
+        if snippet:
+            lines.append(f"   - snippet: {snippet}")
+    lines.append("")
+    return lines
+
+
+def _build_review_markdown(report: Mapping[str, Any], *, max_queries: int | None = None) -> str:
+    comparisons = report.get("comparisons")
+    if not isinstance(comparisons, Sequence) or isinstance(comparisons, (str, bytes)):
+        raise TypeError("report comparisons must be a sequence")
+    if max_queries is not None and (not isinstance(max_queries, int) or max_queries <= 0):
+        raise ValueError("max_queries must be a positive integer when provided")
+
+    query_rows = list(comparisons[:max_queries] if max_queries is not None else comparisons)
+    summary = report.get("summary") if isinstance(report.get("summary"), Mapping) else {}
+    lines = [
+        "# TOLF Comparison Review Packet",
+        "",
+        "This packet is for manual or goldset-aligned inspection. It is not a release gate.",
+        "",
+        "## Summary",
+        "",
+        "| Metric | Value |",
+        "| --- | ---: |",
+    ]
+    for key in sorted(summary):
+        lines.append(f"| `{_markdown_escape(key)}` | `{_markdown_escape(summary[key])}` |")
+    lines.extend(
+        [
+            "",
+            "## Review Rubric",
+            "",
+            "- Mark each arm as `relevant`, `partial`, `offtopic`, or `unknown`.",
+            "- Prefer evidence that directly supports the query, not merely topic-adjacent chunks.",
+            "- Do not treat bilingual bridge terms or TOLF activation as relevance labels.",
+            "- If all arms are weak, record the query as needing rewrite, translation, or corpus inspection.",
+            "",
+            "## Queries",
+            "",
+        ]
+    )
+
+    for item in query_rows:
+        if not isinstance(item, Mapping):
+            continue
+        inspection = item.get("inspection")
+        if not isinstance(inspection, Mapping):
+            continue
+        query_id = _markdown_escape(item.get("query_id"))
+        query_text = _markdown_escape(item.get("query_text"))
+        bilingual_terms = ", ".join(str(term) for term in item.get("bilingual_query_terms") or [])
+        lines.extend(
+            [
+                f"## {query_id}: {query_text}",
+                "",
+                f"- raw_default_empty: `{bool(item.get('default_empty'))}`",
+                f"- bilingual_default_empty: `{bool(item.get('bilingual_default_empty'))}`",
+                f"- tolf_empty: `{bool(item.get('tolf_empty'))}`",
+                f"- bilingual_query_terms: `{_markdown_escape(bilingual_terms) or 'n/a'}`",
+                f"- raw_tolf_overlap_ids: `{_markdown_escape(', '.join(str(x) for x in item.get('overlap_ids') or [])) or 'n/a'}`",
+                f"- bilingual_tolf_overlap_ids: `{_markdown_escape(', '.join(str(x) for x in item.get('bilingual_control_overlap_ids') or [])) or 'n/a'}`",
+                "",
+                "Manual judgment:",
+                "",
+                "| Arm | Judgment | Notes |",
+                "| --- | --- | --- |",
+                "| raw_default | unknown |  |",
+                "| bilingual_default | unknown |  |",
+                "| tolf | unknown |  |",
+                "",
+            ]
+        )
+        lines.extend(_format_markdown_hits("Raw Default Hits", list(inspection.get("raw_default_hits") or [])))
+        lines.extend(_format_markdown_hits("Bilingual Default Hits", list(inspection.get("bilingual_default_hits") or [])))
+        lines.extend(_format_markdown_hits("TOLF Hits", list(inspection.get("tolf_hits") or [])))
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _write_review_markdown(path: Path, report: Mapping[str, Any], *, max_queries: int | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_build_review_markdown(report, max_queries=max_queries), encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compare default project chunk search with text-only TOLF context selection.")
     parser.add_argument("--queries", required=True, help="JSONL file with query_id/query_text rows.")
@@ -513,7 +630,12 @@ def main() -> None:
     parser.add_argument("--max-candidates", type=int, default=45)
     parser.add_argument("--include-inspection", action="store_true", help="Include side-by-side hit snippets for manual review.")
     parser.add_argument("--inspection-snippet-chars", type=int, default=360)
+    parser.add_argument("--review-markdown-output", default=None, help="Optional Markdown review packet path; requires inspection output.")
+    parser.add_argument("--review-max-queries", type=int, default=None)
     args = parser.parse_args()
+
+    if args.review_markdown_output and not args.include_inspection:
+        parser.error("--review-markdown-output requires --include-inspection")
 
     report = compare_context_selectors(
         _load_jsonl(Path(args.queries)),
@@ -526,6 +648,8 @@ def main() -> None:
         inspection_snippet_chars=args.inspection_snippet_chars,
     )
     _write_json(Path(args.output), report)
+    if args.review_markdown_output:
+        _write_review_markdown(Path(args.review_markdown_output), report, max_queries=args.review_max_queries)
     print(json.dumps({"status": "ok", "output": args.output, "query_count": report["input"]["query_count"]}, ensure_ascii=False))
 
 

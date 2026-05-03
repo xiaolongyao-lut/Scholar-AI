@@ -227,6 +227,78 @@ def test_cli_writes_comparison_report(monkeypatch, tmp_path, capsys) -> None:
     assert report["comparisons"][0]["inspection"]["raw_default_hits"][0]["chunk_id"] == "c1"
 
 
+def test_cli_writes_review_markdown_when_inspection_enabled(monkeypatch, tmp_path, capsys) -> None:
+    queries_path = tmp_path / "queries.jsonl"
+    chunks_path = tmp_path / "chunks.jsonl"
+    output_path = tmp_path / "report.json"
+    review_path = tmp_path / "review.md"
+    queries_path.write_text('{"query_id":"q1","query_text":"激光焊接"}\n', encoding="utf-8")
+    chunks_path.write_text(
+        '{"chunk_id":"c1","content":"Laser welding improved joint stability.","material_id":"m1","title":"Paper"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "compare_tolf_context_selector.py",
+            "--queries",
+            str(queries_path),
+            "--chunks",
+            str(chunks_path),
+            "--output",
+            str(output_path),
+            "--top-k",
+            "1",
+            "--embedding-dim",
+            "16",
+            "--include-inspection",
+            "--review-markdown-output",
+            str(review_path),
+            "--review-max-queries",
+            "1",
+        ],
+    )
+
+    main()
+
+    printed = json.loads(capsys.readouterr().out)
+    markdown = review_path.read_text(encoding="utf-8")
+    assert printed["status"] == "ok"
+    assert "# TOLF Comparison Review Packet" in markdown
+    assert "## q1: 激光焊接" in markdown
+    assert "| raw_default | unknown |  |" in markdown
+    assert "| `queries_with_empty_default` | `1` |" in markdown
+    assert "| `mean_bilingual_control_overlap_at_top_k` | `1.0` |" in markdown
+    assert "### Bilingual Default Hits" in markdown
+    assert "`c1`" in markdown
+
+
+def test_cli_rejects_review_markdown_without_inspection(monkeypatch, tmp_path) -> None:
+    queries_path = tmp_path / "queries.jsonl"
+    chunks_path = tmp_path / "chunks.jsonl"
+    output_path = tmp_path / "report.json"
+    review_path = tmp_path / "review.md"
+    queries_path.write_text('{"query_id":"q1","query_text":"laser"}\n', encoding="utf-8")
+    chunks_path.write_text('{"chunk_id":"c1","content":"Laser welding."}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "compare_tolf_context_selector.py",
+            "--queries",
+            str(queries_path),
+            "--chunks",
+            str(chunks_path),
+            "--output",
+            str(output_path),
+            "--review-markdown-output",
+            str(review_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        main()
+
+
 def test_cli_stdout_remains_json_when_tolf_uses_small_corpus_fallback(
     monkeypatch, tmp_path, capsys
 ) -> None:

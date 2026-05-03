@@ -62,6 +62,18 @@ cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
   --embedding-dim 64 `
   --include-inspection `
   --inspection-snippet-chars 360
+
+.\.venv-1\Scripts\python.exe tools\eval\compare_tolf_context_selector.py `
+  --queries workspace_tests\evaluation_data\eval_queries_v2.1_canary30_ALIGNED.jsonl `
+  --chunks workspace_artifacts\generated\tolf_context_selector\project_chunks.jsonl `
+  --output workspace_artifacts\generated\tolf_context_selector\comparison_inspection.json `
+  --top-k 5 `
+  --max-queries 30 `
+  --embedding-dim 64 `
+  --include-inspection `
+  --inspection-snippet-chars 360 `
+  --review-markdown-output workspace_artifacts\generated\tolf_context_selector\comparison_review.md `
+  --review-max-queries 30
 ```
 
 ## Verification
@@ -98,6 +110,7 @@ cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
 - `comparisons[].inspection.raw_default_hits`: optional side-by-side snippets for raw default hits when `--include-inspection` is set.
 - `comparisons[].inspection.bilingual_default_hits`: optional side-by-side snippets for bilingual-control hits.
 - `comparisons[].inspection.tolf_hits`: optional side-by-side snippets for TOLF hits, including bridge matches.
+- `comparison_review.md`: optional Markdown review packet with a summary table, a simple manual scoring rubric, and per-query empty judgment rows for raw default / bilingual default / TOLF.
 
 ## Interpretation Guardrails
 
@@ -105,6 +118,7 @@ cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
 - If `queries_where_bilingual_default_recovers_empty_default` is high, prioritize bilingual query rewrite/translation or controlled synonym maps before tuning TOLF/rerank.
 - If bilingual-control overlap with TOLF rises materially while raw-default overlap stays low, inspect those shared chunks manually before changing the runtime chain.
 - If bilingual-control overlap with TOLF stays low, use `--include-inspection` to compare snippets before deciding whether TOLF or bilingual-control hits are better grounded.
+- Use `--review-markdown-output` when a human or separate evaluator needs a compact judgment packet. The Markdown's blank judgment rows are manual review scaffolding, not automatic relevance labels.
 - If `queries_where_all_tolf_hits_lack_query_overlap` is high, TOLF is behaving more like a semantic fallback than a grounded retrieval win. Do not treat "TOLF returned something" as evidence that it is better.
 - If `queries_where_all_tolf_hits_lack_query_or_bridge_overlap` remains high after bridge diagnostics, keep `INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED` default-off and prioritize query translation or stronger control retrieval before tuning TOLF.
 - If bridge overlap is high but literal query overlap is low, treat the report as evidence that Chinese/English terminology bridging may be needed; do not treat bridge matches alone as relevance labels.
