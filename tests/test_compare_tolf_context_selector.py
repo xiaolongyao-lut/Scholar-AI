@@ -273,6 +273,51 @@ def test_cli_writes_review_markdown_when_inspection_enabled(monkeypatch, tmp_pat
     assert "`c1`" in markdown
 
 
+def test_cli_writes_judgment_template_when_inspection_enabled(monkeypatch, tmp_path, capsys) -> None:
+    queries_path = tmp_path / "queries.jsonl"
+    chunks_path = tmp_path / "chunks.jsonl"
+    output_path = tmp_path / "report.json"
+    judgment_path = tmp_path / "judgments.jsonl"
+    queries_path.write_text('{"query_id":"q1","query_text":"激光焊接"}\n', encoding="utf-8")
+    chunks_path.write_text(
+        '{"chunk_id":"c1","content":"Laser welding improved joint stability.","material_id":"m1","title":"Paper"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "compare_tolf_context_selector.py",
+            "--queries",
+            str(queries_path),
+            "--chunks",
+            str(chunks_path),
+            "--output",
+            str(output_path),
+            "--top-k",
+            "1",
+            "--embedding-dim",
+            "16",
+            "--include-inspection",
+            "--judgment-template-output",
+            str(judgment_path),
+            "--judgment-max-queries",
+            "1",
+        ],
+    )
+
+    main()
+
+    printed = json.loads(capsys.readouterr().out)
+    rows = [json.loads(line) for line in judgment_path.read_text(encoding="utf-8").splitlines()]
+    assert printed["status"] == "ok"
+    assert {row["arm"] for row in rows} == {"bilingual_default", "tolf"}
+    assert all(row["schema_version"] == "tolf-comparison-judgment/v1" for row in rows)
+    assert all(row["judgment"] == "unknown" for row in rows)
+    assert rows[0]["allowed_judgments"] == ["relevant", "partial", "offtopic", "unknown"]
+    assert rows[0]["query_id"] == "q1"
+    assert rows[0]["chunk_id"] == "c1"
+
+
 def test_cli_rejects_review_markdown_without_inspection(monkeypatch, tmp_path) -> None:
     queries_path = tmp_path / "queries.jsonl"
     chunks_path = tmp_path / "chunks.jsonl"
@@ -292,6 +337,32 @@ def test_cli_rejects_review_markdown_without_inspection(monkeypatch, tmp_path) -
             str(output_path),
             "--review-markdown-output",
             str(review_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        main()
+
+
+def test_cli_rejects_judgment_template_without_inspection(monkeypatch, tmp_path) -> None:
+    queries_path = tmp_path / "queries.jsonl"
+    chunks_path = tmp_path / "chunks.jsonl"
+    output_path = tmp_path / "report.json"
+    judgment_path = tmp_path / "judgments.jsonl"
+    queries_path.write_text('{"query_id":"q1","query_text":"laser"}\n', encoding="utf-8")
+    chunks_path.write_text('{"chunk_id":"c1","content":"Laser welding."}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "compare_tolf_context_selector.py",
+            "--queries",
+            str(queries_path),
+            "--chunks",
+            str(chunks_path),
+            "--output",
+            str(output_path),
+            "--judgment-template-output",
+            str(judgment_path),
         ],
     )
 

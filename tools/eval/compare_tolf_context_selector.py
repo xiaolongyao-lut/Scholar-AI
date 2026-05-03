@@ -619,6 +619,93 @@ def _write_review_markdown(path: Path, report: Mapping[str, Any], *, max_queries
     path.write_text(_build_review_markdown(report, max_queries=max_queries), encoding="utf-8")
 
 
+def _judgment_rows_for_hits(
+    *,
+    query: Mapping[str, Any],
+    arm: str,
+    hits: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    query_id = str(query.get("query_id") or "").strip()
+    query_text = str(query.get("query_text") or "").strip()
+    if not query_id or not query_text:
+        raise ValueError("query must include query_id and query_text for judgment rows")
+
+    for rank, hit in enumerate(hits, start=1):
+        if not isinstance(hit, Mapping):
+            continue
+        rows.append(
+            {
+                "schema_version": "tolf-comparison-judgment/v1",
+                "query_id": query_id,
+                "query_text": query_text,
+                "arm": arm,
+                "rank": rank,
+                "chunk_id": str(hit.get("chunk_id") or "").strip(),
+                "material_id": str(hit.get("material_id") or "").strip(),
+                "title": str(hit.get("title") or "").strip(),
+                "source_labels": list(hit.get("source_labels") or []),
+                "query_overlap_tokens": list(hit.get("query_overlap_tokens") or []),
+                "query_bridge_matches": list(hit.get("query_bridge_matches") or []),
+                "judgment": "unknown",
+                "allowed_judgments": ["relevant", "partial", "offtopic", "unknown"],
+                "notes": "",
+            }
+        )
+    return rows
+
+
+def _build_judgment_template_rows(report: Mapping[str, Any], *, max_queries: int | None = None) -> list[dict[str, Any]]:
+    comparisons = report.get("comparisons")
+    if not isinstance(comparisons, Sequence) or isinstance(comparisons, (str, bytes)):
+        raise TypeError("report comparisons must be a sequence")
+    if max_queries is not None and (not isinstance(max_queries, int) or max_queries <= 0):
+        raise ValueError("max_queries must be a positive integer when provided")
+
+    rows: list[dict[str, Any]] = []
+    query_rows = list(comparisons[:max_queries] if max_queries is not None else comparisons)
+    for item in query_rows:
+        if not isinstance(item, Mapping):
+            continue
+        inspection = item.get("inspection")
+        if not isinstance(inspection, Mapping):
+            continue
+        query = {
+            "query_id": item.get("query_id"),
+            "query_text": item.get("query_text"),
+        }
+        rows.extend(
+            _judgment_rows_for_hits(
+                query=query,
+                arm="raw_default",
+                hits=list(inspection.get("raw_default_hits") or []),
+            )
+        )
+        rows.extend(
+            _judgment_rows_for_hits(
+                query=query,
+                arm="bilingual_default",
+                hits=list(inspection.get("bilingual_default_hits") or []),
+            )
+        )
+        rows.extend(
+            _judgment_rows_for_hits(
+                query=query,
+                arm="tolf",
+                hits=list(inspection.get("tolf_hits") or []),
+            )
+        )
+    return rows
+
+
+def _write_judgment_template_jsonl(path: Path, report: Mapping[str, Any], *, max_queries: int | None = None) -> None:
+    rows = _build_judgment_template_rows(report, max_queries=max_queries)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compare default project chunk search with text-only TOLF context selection.")
     parser.add_argument("--queries", required=True, help="JSONL file with query_id/query_text rows.")
@@ -632,10 +719,14 @@ def main() -> None:
     parser.add_argument("--inspection-snippet-chars", type=int, default=360)
     parser.add_argument("--review-markdown-output", default=None, help="Optional Markdown review packet path; requires inspection output.")
     parser.add_argument("--review-max-queries", type=int, default=None)
+    parser.add_argument("--judgment-template-output", default=None, help="Optional JSONL template for manual relevance judgments; requires inspection output.")
+    parser.add_argument("--judgment-max-queries", type=int, default=None)
     args = parser.parse_args()
 
     if args.review_markdown_output and not args.include_inspection:
         parser.error("--review-markdown-output requires --include-inspection")
+    if args.judgment_template_output and not args.include_inspection:
+        parser.error("--judgment-template-output requires --include-inspection")
 
     report = compare_context_selectors(
         _load_jsonl(Path(args.queries)),
@@ -650,6 +741,8 @@ def main() -> None:
     _write_json(Path(args.output), report)
     if args.review_markdown_output:
         _write_review_markdown(Path(args.review_markdown_output), report, max_queries=args.review_max_queries)
+    if args.judgment_template_output:
+        _write_judgment_template_jsonl(Path(args.judgment_template_output), report, max_queries=args.judgment_max_queries)
     print(json.dumps({"status": "ok", "output": args.output, "query_count": report["input"]["query_count"]}, ensure_ascii=False))
 
 
