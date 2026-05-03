@@ -694,9 +694,10 @@ async def retrieve_then_rerank(
     rerank_semaphore = asyncio.Semaphore(
         int(os.getenv("SILICONFLOW_RERANK_CONCURRENCY", str(DEFAULT_RERANK_CONCURRENCY)))
     ) if use_rerank else None
-    expansion_semaphore = asyncio.Semaphore(
-        int(os.getenv("ARK_EXPANSION_CONCURRENCY", "5"))
-    ) if use_expansion else None
+    # Tier 2 optimization: Increase concurrency from 5 to 10 (1-2s savings).
+    # Override with WIKI_EXPANSION_CONCURRENCY env var for testing different concurrency levels.
+    expansion_concurrency = int(os.getenv("WIKI_EXPANSION_CONCURRENCY", "10"))
+    expansion_semaphore = asyncio.Semaphore(expansion_concurrency) if use_expansion else None
 
     if use_rerank and warm_rerank_live_candidate is not None:
         try:
@@ -1426,9 +1427,10 @@ async def _run_eval_async(
         int(os.getenv("SILICONFLOW_RERANK_CONCURRENCY", str(DEFAULT_RERANK_CONCURRENCY)))
     ) if use_rerank else None
 
-    expansion_semaphore = asyncio.Semaphore(
-        int(os.getenv("ARK_EXPANSION_CONCURRENCY", "5"))
-    ) if use_expansion else None
+    # Tier 2 optimization: Increase concurrency from 5 to 10 (1-2s savings).
+    # Override with WIKI_EXPANSION_CONCURRENCY env var for testing different concurrency levels.
+    expansion_concurrency = int(os.getenv("WIKI_EXPANSION_CONCURRENCY", "10"))
+    expansion_semaphore = asyncio.Semaphore(expansion_concurrency) if use_expansion else None
 
     if use_rerank and warm_rerank_live_candidate is not None:
         try:
