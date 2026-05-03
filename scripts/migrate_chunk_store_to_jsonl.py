@@ -6,8 +6,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+CORE_ROOT = REPO_ROOT / "literature_assistant" / "core"
+for _p in (str(REPO_ROOT), str(CORE_ROOT)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from routers import resources_router as rr
 
@@ -31,10 +33,13 @@ def migrate_project(root: Path, project_id: str) -> dict[str, object]:
     store = rr._load_chunk_store(project_id)
     rr._save_chunk_store(project_id, store)
 
-    # 迁移��功后将旧文件备份，不再写回 legacy 视图
+    # 迁移成功后将旧文件备份并写回兼容视图
     legacy_bak = legacy_path.with_suffix(".json.legacy.bak")
     if not legacy_bak.exists():
         legacy_path.rename(legacy_bak)
+    # Write compat view so downstream readers still find the legacy file
+    if not legacy_path.exists():
+        legacy_path.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
 
     project_dir = root / rr._safe_project_id(project_id)
     manifest = json.loads((project_dir / "manifest.json").read_text(encoding="utf-8"))

@@ -10,7 +10,6 @@ from contextual_chunker import (
     CONTEXTUAL_SUMMARY_FIELDS,
     DEFAULT_ARK_MODEL,
     DEFAULT_ARK_URL,
-    DEFAULT_CONTEXTUAL_SUMMARIES_DIR,
     summarize_document_json_async,
 )
 
@@ -78,7 +77,7 @@ def precompute_contextual_summaries(
     material_ids: list[str] | None = None,
     *,
     chunk_store_root: Path = Path("output") / "chunk_store",
-    summaries_root: Path = DEFAULT_CONTEXTUAL_SUMMARIES_DIR,
+    summaries_root: Path = Path("output") / "contextual_summaries",
     api_key: str | None = None,
     base_url: str = DEFAULT_ARK_URL,
     model: str = DEFAULT_ARK_MODEL,
