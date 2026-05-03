@@ -58,8 +58,8 @@ _SCHOLAR_SUBDIR = ".scholarai"
 
 # Chunking settings (learned from open-webui / quivr-core)
 CHUNK_SIZE = 800       # chars per chunk
-CHUNK_OVERLAP = 200    # overlap chars between adjacent chunks (was 150, increased for better context continuity)
-MAX_CHUNKS_PER_MATERIAL = 8  # max chunks returned per document in RAG search (was 5, increased for long documents)
+CHUNK_OVERLAP = 150    # overlap chars between adjacent chunks (reverted from 200 due to canary30 regression)
+MAX_CHUNKS_PER_MATERIAL = 5  # max chunks returned per document in RAG search (reverted from 8 due to canary30 regression)
 
 # Supported file extensions for folder scanning
 _SCAN_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".bib", ".ipynb"}
