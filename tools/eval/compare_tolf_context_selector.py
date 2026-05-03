@@ -128,6 +128,43 @@ def _ids(chunks: Sequence[Mapping[str, Any]]) -> list[str]:
     return [str(chunk.get("chunk_id") or chunk.get("id") or "").strip() for chunk in chunks]
 
 
+def _truncate_text(value: str, *, max_chars: int) -> str:
+    normalized = re.sub(r"\s+", " ", str(value or "")).strip()
+    if max_chars <= 0 or len(normalized) <= max_chars:
+        return normalized
+    return f"{normalized[: max_chars - 1].rstrip()}…"
+
+
+def _hit_snapshot(
+    hit: Mapping[str, Any],
+    *,
+    snippet_chars: int,
+    bridge_matches: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    content = _chunk_content(hit)
+    snapshot: dict[str, Any] = {
+        "chunk_id": str(hit.get("chunk_id") or hit.get("id") or "").strip(),
+        "material_id": str(hit.get("material_id") or "").strip(),
+        "title": str(hit.get("title") or "").strip(),
+        "section_title": str(hit.get("section_title") or hit.get("section") or "").strip(),
+        "page": hit.get("page"),
+        "score": hit.get("score"),
+        "source_labels": list(hit.get("source_labels") or []),
+        "query_overlap_tokens": list(hit.get("query_overlap_tokens") or []),
+        "snippet": _truncate_text(content, max_chars=snippet_chars),
+    }
+    if bridge_matches is not None:
+        snapshot["query_bridge_matches"] = [
+            {
+                "query_term": str(match.get("query_term") or ""),
+                "matched_terms": list(match.get("matched_terms") or []),
+            }
+            for match in bridge_matches
+            if isinstance(match, Mapping)
+        ]
+    return snapshot
+
+
 def _has_query_overlap(hit: Mapping[str, Any]) -> bool:
     raw_tokens = hit.get("query_overlap_tokens")
     if not isinstance(raw_tokens, list):
@@ -254,6 +291,8 @@ def compare_context_selectors(
     max_queries: int | None = None,
     embedding_dim: int = 64,
     max_candidates: int = 45,
+    include_inspection: bool = False,
+    inspection_snippet_chars: int = 360,
 ) -> dict[str, Any]:
     """Compare default project chunk search with text-only TOLF selection.
 
@@ -264,6 +303,8 @@ def compare_context_selectors(
         max_queries: Optional positive query cap.
         embedding_dim: Positive local hashing embedding dimension.
         max_candidates: Positive prefilter cap before TOLF.
+        include_inspection: Include side-by-side hit snippets for manual review.
+        inspection_snippet_chars: Positive max snippet length for inspection rows.
 
     Returns:
         JSON-serializable comparison report.
@@ -284,6 +325,10 @@ def compare_context_selectors(
         raise ValueError("embedding_dim must be a positive integer")
     if not isinstance(max_candidates, int) or max_candidates <= 0:
         raise ValueError("max_candidates must be a positive integer")
+    if not isinstance(include_inspection, bool):
+        raise TypeError("include_inspection must be a boolean")
+    if not isinstance(inspection_snippet_chars, int) or inspection_snippet_chars <= 0:
+        raise ValueError("inspection_snippet_chars must be a positive integer")
 
     normalized_chunks = _normalize_chunk_rows(chunks)
     query_rows = list(queries[:max_queries] if max_queries is not None else queries)
@@ -333,43 +378,61 @@ def compare_context_selectors(
             for hit, bridge_matches in zip(tolf_hits, tolf_query_bridge_matches, strict=False)
             if not _has_query_overlap(hit) and _has_bridge_overlap(bridge_matches)
         )
-        comparisons.append(
-            {
-                "query_id": query_id,
-                "query_text": query,
-                "default_empty": not default_ids,
-                "bilingual_default_empty": not bilingual_default_ids,
-                "tolf_empty": not tolf_ids,
-                "bilingual_query_terms": bilingual_query_terms,
-                "default_top_ids": default_ids,
-                "bilingual_default_top_ids": bilingual_default_ids,
-                "tolf_top_ids": tolf_ids,
-                "overlap_ids": overlap,
-                "bilingual_control_overlap_ids": bilingual_control_overlap,
-                "only_default_ids": [chunk_id for chunk_id in default_ids if chunk_id not in set(tolf_ids)],
-                "only_bilingual_default_ids": [
-                    chunk_id for chunk_id in bilingual_default_ids if chunk_id not in set(tolf_ids)
+        comparison: dict[str, Any] = {
+            "query_id": query_id,
+            "query_text": query,
+            "default_empty": not default_ids,
+            "bilingual_default_empty": not bilingual_default_ids,
+            "tolf_empty": not tolf_ids,
+            "bilingual_query_terms": bilingual_query_terms,
+            "default_top_ids": default_ids,
+            "bilingual_default_top_ids": bilingual_default_ids,
+            "tolf_top_ids": tolf_ids,
+            "overlap_ids": overlap,
+            "bilingual_control_overlap_ids": bilingual_control_overlap,
+            "only_default_ids": [chunk_id for chunk_id in default_ids if chunk_id not in set(tolf_ids)],
+            "only_bilingual_default_ids": [
+                chunk_id for chunk_id in bilingual_default_ids if chunk_id not in set(tolf_ids)
+            ],
+            "only_tolf_ids": [chunk_id for chunk_id in tolf_ids if chunk_id not in set(default_ids)],
+            "overlap_at_top_k": round(len(overlap) / max(1, top_k), 4),
+            "bilingual_control_overlap_at_top_k": round(
+                len(bilingual_control_overlap) / max(1, top_k),
+                4,
+            ),
+            "tolf_hits_without_query_overlap": tolf_hits_without_query_overlap,
+            "tolf_hits_without_query_or_bridge_overlap": tolf_hits_without_query_or_bridge_overlap,
+            "tolf_hits_with_query_bridge_overlap": tolf_hits_with_query_bridge_overlap,
+            "tolf_source_labels": [
+                list(hit.get("source_labels") or [])
+                for hit in tolf_hits
+            ],
+            "tolf_query_overlap_tokens": [
+                list(hit.get("query_overlap_tokens") or [])
+                for hit in tolf_hits
+            ],
+            "tolf_query_bridge_matches": tolf_query_bridge_matches,
+        }
+        if include_inspection:
+            comparison["inspection"] = {
+                "raw_default_hits": [
+                    _hit_snapshot(hit, snippet_chars=inspection_snippet_chars)
+                    for hit in default_hits
                 ],
-                "only_tolf_ids": [chunk_id for chunk_id in tolf_ids if chunk_id not in set(default_ids)],
-                "overlap_at_top_k": round(len(overlap) / max(1, top_k), 4),
-                "bilingual_control_overlap_at_top_k": round(
-                    len(bilingual_control_overlap) / max(1, top_k),
-                    4,
-                ),
-                "tolf_hits_without_query_overlap": tolf_hits_without_query_overlap,
-                "tolf_hits_without_query_or_bridge_overlap": tolf_hits_without_query_or_bridge_overlap,
-                "tolf_hits_with_query_bridge_overlap": tolf_hits_with_query_bridge_overlap,
-                "tolf_source_labels": [
-                    list(hit.get("source_labels") or [])
-                    for hit in tolf_hits
+                "bilingual_default_hits": [
+                    _hit_snapshot(hit, snippet_chars=inspection_snippet_chars)
+                    for hit in bilingual_default_hits
                 ],
-                "tolf_query_overlap_tokens": [
-                    list(hit.get("query_overlap_tokens") or [])
-                    for hit in tolf_hits
+                "tolf_hits": [
+                    _hit_snapshot(
+                        hit,
+                        snippet_chars=inspection_snippet_chars,
+                        bridge_matches=bridge_matches,
+                    )
+                    for hit, bridge_matches in zip(tolf_hits, tolf_query_bridge_matches, strict=False)
                 ],
-                "tolf_query_bridge_matches": tolf_query_bridge_matches,
             }
-        )
+        comparisons.append(comparison)
 
     mean_overlap = (
         round(sum(float(item["overlap_at_top_k"]) for item in comparisons) / len(comparisons), 4)
@@ -448,6 +511,8 @@ def main() -> None:
     parser.add_argument("--max-queries", type=int, default=None)
     parser.add_argument("--embedding-dim", type=int, default=64)
     parser.add_argument("--max-candidates", type=int, default=45)
+    parser.add_argument("--include-inspection", action="store_true", help="Include side-by-side hit snippets for manual review.")
+    parser.add_argument("--inspection-snippet-chars", type=int, default=360)
     args = parser.parse_args()
 
     report = compare_context_selectors(
@@ -457,6 +522,8 @@ def main() -> None:
         max_queries=args.max_queries,
         embedding_dim=args.embedding_dim,
         max_candidates=args.max_candidates,
+        include_inspection=args.include_inspection,
+        inspection_snippet_chars=args.inspection_snippet_chars,
     )
     _write_json(Path(args.output), report)
     print(json.dumps({"status": "ok", "output": args.output, "query_count": report["input"]["query_count"]}, ensure_ascii=False))

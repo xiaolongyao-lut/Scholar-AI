@@ -144,12 +144,48 @@ def test_compare_context_selectors_keeps_bilingual_control_separate_from_raw_def
     assert report["summary"]["queries_where_bilingual_default_recovers_empty_default"] == 1
 
 
+def test_compare_context_selectors_can_include_inspection_snapshots() -> None:
+    queries = [{"query_id": "q1", "query_text": "激光焊接"}]
+    chunks = [
+        {
+            "chunk_id": "laser",
+            "material_id": "paper-1",
+            "title": "Laser Welding Paper",
+            "section_title": "Results",
+            "page": 3,
+            "content": "Laser welding improved joint stability and reduced porosity in the weld zone.",
+        }
+    ]
+
+    report = compare_context_selectors(
+        queries,
+        chunks,
+        top_k=1,
+        embedding_dim=16,
+        include_inspection=True,
+        inspection_snippet_chars=48,
+    )
+
+    inspection = report["comparisons"][0]["inspection"]
+    assert inspection["raw_default_hits"] == []
+    assert inspection["bilingual_default_hits"][0]["chunk_id"] == "laser"
+    assert inspection["bilingual_default_hits"][0]["material_id"] == "paper-1"
+    assert inspection["bilingual_default_hits"][0]["section_title"] == "Results"
+    assert inspection["bilingual_default_hits"][0]["page"] == 3
+    assert inspection["bilingual_default_hits"][0]["snippet"].endswith("…")
+    assert inspection["tolf_hits"][0]["query_bridge_matches"]
+    assert "snippet" in inspection["tolf_hits"][0]
+
+
 def test_compare_context_selectors_rejects_invalid_args() -> None:
     with pytest.raises(ValueError, match="top_k must be a positive integer"):
         compare_context_selectors([], [], top_k=0)
 
     with pytest.raises(TypeError, match="queries must be a sequence"):
         compare_context_selectors("bad", [], top_k=1)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="inspection_snippet_chars must be a positive integer"):
+        compare_context_selectors([], [], inspection_snippet_chars=0)
 
 
 def test_cli_writes_comparison_report(monkeypatch, tmp_path, capsys) -> None:
@@ -175,6 +211,9 @@ def test_cli_writes_comparison_report(monkeypatch, tmp_path, capsys) -> None:
             "1",
             "--embedding-dim",
             "16",
+            "--include-inspection",
+            "--inspection-snippet-chars",
+            "80",
         ],
     )
 
@@ -185,6 +224,7 @@ def test_cli_writes_comparison_report(monkeypatch, tmp_path, capsys) -> None:
     assert printed["status"] == "ok"
     assert printed["query_count"] == 1
     assert report["comparisons"][0]["overlap_ids"] == ["c1"]
+    assert report["comparisons"][0]["inspection"]["raw_default_hits"][0]["chunk_id"] == "c1"
 
 
 def test_cli_stdout_remains_json_when_tolf_uses_small_corpus_fallback(

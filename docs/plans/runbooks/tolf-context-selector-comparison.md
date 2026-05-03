@@ -52,6 +52,16 @@ cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
   --top-k 5 `
   --max-queries 30 `
   --embedding-dim 64
+
+.\.venv-1\Scripts\python.exe tools\eval\compare_tolf_context_selector.py `
+  --queries workspace_tests\evaluation_data\eval_queries_v2.1_canary30_ALIGNED.jsonl `
+  --chunks workspace_artifacts\generated\tolf_context_selector\project_chunks.jsonl `
+  --output workspace_artifacts\generated\tolf_context_selector\comparison_inspection.json `
+  --top-k 5 `
+  --max-queries 30 `
+  --embedding-dim 64 `
+  --include-inspection `
+  --inspection-snippet-chars 360
 ```
 
 ## Verification
@@ -85,12 +95,16 @@ cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
 - `comparisons[].tolf_source_labels`: provenance labels added by TOLF selector.
 - `comparisons[].tolf_query_overlap_tokens`: query tokens found in TOLF-selected chunks.
 - `comparisons[].tolf_query_bridge_matches`: diagnostic matches from query terms to configured bridge terms, for example `激光焊接 -> laser/welding`.
+- `comparisons[].inspection.raw_default_hits`: optional side-by-side snippets for raw default hits when `--include-inspection` is set.
+- `comparisons[].inspection.bilingual_default_hits`: optional side-by-side snippets for bilingual-control hits.
+- `comparisons[].inspection.tolf_hits`: optional side-by-side snippets for TOLF hits, including bridge matches.
 
 ## Interpretation Guardrails
 
 - If `queries_with_empty_default` is high, the current keyword-heavy default project chunk search is missing those queries and should be treated as a weak control for that slice.
 - If `queries_where_bilingual_default_recovers_empty_default` is high, prioritize bilingual query rewrite/translation or controlled synonym maps before tuning TOLF/rerank.
 - If bilingual-control overlap with TOLF rises materially while raw-default overlap stays low, inspect those shared chunks manually before changing the runtime chain.
+- If bilingual-control overlap with TOLF stays low, use `--include-inspection` to compare snippets before deciding whether TOLF or bilingual-control hits are better grounded.
 - If `queries_where_all_tolf_hits_lack_query_overlap` is high, TOLF is behaving more like a semantic fallback than a grounded retrieval win. Do not treat "TOLF returned something" as evidence that it is better.
 - If `queries_where_all_tolf_hits_lack_query_or_bridge_overlap` remains high after bridge diagnostics, keep `INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED` default-off and prioritize query translation or stronger control retrieval before tuning TOLF.
 - If bridge overlap is high but literal query overlap is low, treat the report as evidence that Chinese/English terminology bridging may be needed; do not treat bridge matches alone as relevance labels.
