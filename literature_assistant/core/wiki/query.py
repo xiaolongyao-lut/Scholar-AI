@@ -155,3 +155,97 @@ def wiki_first_search(
         return [], False
     results = index.search(query, limit=limit)
     return results, len(results) > 0
+
+
+def expand_linked_pages(
+    primary_results: list[WikiSearchResult],
+    page_store: WikiPageStore,
+    *,
+    max_linked: int = 3,
+) -> list[WikiSearchResult]:
+    import json
+    import re
+
+    linked_pages: dict[Path, float] = {}
+    for result in primary_results:
+        content = page_store.read_page(result.page_path)
+        if not content:
+            continue
+        wikilinks = re.findall(r"\[\[([^\]]+)\]\]", content)
+        for link in wikilinks:
+            link_path = Path(link.strip())
+            if link_path not in linked_pages:
+                linked_pages[link_path] = 0.0
+            linked_pages[link_path] += result.score * 0.5
+
+    sorted_linked = sorted(linked_pages.items(), key=lambda x: x[1], reverse=True)
+    expanded: list[WikiSearchResult] = []
+    for link_path, score in sorted_linked[:max_linked]:
+        content = page_store.read_page(link_path)
+        if content:
+            lines = content.split("\n")
+            title = "Untitled"
+            in_frontmatter = False
+            frontmatter_lines: list[str] = []
+            for i, line in enumerate(lines):
+                if i == 0 and line.strip() == "---json":
+                    in_frontmatter = True
+                    continue
+                if in_frontmatter:
+                    if line.strip() == "---":
+                        in_frontmatter = False
+                        try:
+                            fm = json.loads("\n".join(frontmatter_lines))
+                            if "title" in fm:
+                                title = fm["title"]
+                        except json.JSONDecodeError:
+                            pass
+                        break
+                    frontmatter_lines.append(line)
+            snippet = content[:100].replace("\n", " ")
+            expanded.append(
+                WikiSearchResult(
+                    page_path=link_path,
+                    title=title,
+                    score=score,
+                    snippet=snippet,
+                )
+            )
+    return expanded
+
+
+@dataclass(frozen=True)
+class WikiQueryResult:
+    wiki_hits: list[WikiSearchResult]
+    linked_hits: list[WikiSearchResult]
+    fallback_used: bool
+    fallback_reason: str
+
+
+def wiki_query_with_fallback(
+    query: str,
+    index: WikiQueryIndex,
+    page_store: WikiPageStore,
+    *,
+    enabled: bool = False,
+    limit: int = 5,
+    expand_links: bool = True,
+    max_linked: int = 3,
+) -> WikiQueryResult:
+    primary_results, found = wiki_first_search(query, index, enabled=enabled, limit=limit)
+    if not found:
+        return WikiQueryResult(
+            wiki_hits=[],
+            linked_hits=[],
+            fallback_used=True,
+            fallback_reason="no wiki hits",
+        )
+    linked_results: list[WikiSearchResult] = []
+    if expand_links:
+        linked_results = expand_linked_pages(primary_results, page_store, max_linked=max_linked)
+    return WikiQueryResult(
+        wiki_hits=primary_results,
+        linked_hits=linked_results,
+        fallback_used=False,
+        fallback_reason="",
+    )
