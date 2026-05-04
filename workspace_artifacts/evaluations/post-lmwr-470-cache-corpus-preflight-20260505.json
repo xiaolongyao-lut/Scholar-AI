@@ -1,0 +1,114 @@
+{
+  "corpus_source": {
+    "kind": "chunk_store",
+    "path": "workspace_artifacts/generated/output/chunk_store/laser_welding_30"
+  },
+  "corpus_summary": {
+    "chunk_count": 1985,
+    "chunks_hash": "dc64353161735c00f92a8f6315db1f1f532b7e1c757402ef87c252565f7daf5e",
+    "is_contextual": true
+  },
+  "fail_count": 2,
+  "manifest_count": 2,
+  "manifest_evaluations": [
+    {
+      "checks": {
+        "chunk_count_match": false,
+        "chunks_hash_match": false,
+        "contextual_match": true,
+        "embedding_dim_match": true,
+        "shape_dim_match": true,
+        "shape_row_match": false,
+        "zero_rows_absent": true
+      },
+      "expected": {
+        "chunk_count": 1985,
+        "chunks_hash": "dc64353161735c00f92a8f6315db1f1f532b7e1c757402ef87c252565f7daf5e",
+        "embedding_dim": 1024,
+        "is_contextual": true
+      },
+      "failure_reasons": [
+        "chunk_count_match",
+        "chunks_hash_match",
+        "shape_row_match"
+      ],
+      "manifest": {
+        "chunk_count": 11470,
+        "chunks_hash": "58c76986fdfa125d9e690ad00dfa990b72b2a6b41a564405280d8613a012ddf0",
+        "embedding_dim": 1024,
+        "embedding_shape": [
+          11470,
+          1024
+        ],
+        "is_contextual": true,
+        "model": "Qwen/Qwen3-Embedding-8B",
+        "version": 1,
+        "zero_row_count": 0
+      },
+      "manifest_path": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.manifest.json",
+      "status": "FAIL"
+    },
+    {
+      "checks": {
+        "chunk_count_match": false,
+        "chunks_hash_match": false,
+        "contextual_match": false,
+        "embedding_dim_match": true,
+        "shape_dim_match": true,
+        "shape_row_match": false,
+        "zero_rows_absent": true
+      },
+      "expected": {
+        "chunk_count": 1985,
+        "chunks_hash": "dc64353161735c00f92a8f6315db1f1f532b7e1c757402ef87c252565f7daf5e",
+        "embedding_dim": 1024,
+        "is_contextual": true
+      },
+      "failure_reasons": [
+        "chunk_count_match",
+        "chunks_hash_match",
+        "shape_row_match",
+        "contextual_match"
+      ],
+      "manifest": {
+        "chunk_count": 2,
+        "chunks_hash": "9c2fe44912dd5c3a6a2faccf58df1973229a541aff991a0bc66fa19415ce40e5",
+        "embedding_dim": 1024,
+        "embedding_shape": [
+          2,
+          1024
+        ],
+        "is_contextual": false,
+        "model": "Qwen/Qwen3-Embedding-8B",
+        "version": 1,
+        "zero_row_count": 0
+      },
+      "manifest_path": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_m571cef40de3d.manifest.json",
+      "status": "FAIL"
+    }
+  ],
+  "mature_solution_alignment": [
+    {
+      "applied_rule": "Treat source/chunk hashes as cache invalidation evidence before reusing embeddings.",
+      "source": "LlamaIndex ingestion pipeline",
+      "url": "https://docs.llamaindex.ai/en/stable/module_guides/loading/ingestion_pipeline/"
+    },
+    {
+      "applied_rule": "Use record/hash style bookkeeping to avoid stale retrieval indexes.",
+      "source": "LangChain indexing API",
+      "url": "https://python.langchain.com/docs/how_to/indexing/"
+    },
+    {
+      "applied_rule": "Persisted vector indexes need explicit validation before loading as trusted retrieval state.",
+      "source": "FAISS index IO guidance",
+      "url": "https://github.com/facebookresearch/faiss/wiki/Index-IO%2C-cloning-and-hyper-parameter-tuning"
+    }
+  ],
+  "mode": "read_only_no_embedding_calls",
+  "pass_count": 0,
+  "recommendation": "Do not rerun canary30 or promote 200/8 until cache manifests are rebuilt and pass this preflight.",
+  "review_date": "2026-05-05",
+  "schema_version": 1,
+  "status": "FAIL",
+  "task_id": "Post-LMWR-470-cache-corpus-preflight"
+}

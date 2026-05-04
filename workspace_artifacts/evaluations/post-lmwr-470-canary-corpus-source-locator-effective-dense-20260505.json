@@ -1,0 +1,1348 @@
+{
+  "manifest_count": 2,
+  "manifest_paths": [
+    "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.manifest.json",
+    "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_m571cef40de3d.manifest.json"
+  ],
+  "matching_root_count": 1,
+  "mature_solution_alignment": [
+    {
+      "applied_rule": "Use source/chunk identity, transformation/filter semantics, and hash evidence before reusing an existing embedding cache.",
+      "source": "LlamaIndex ingestion pipeline",
+      "url": "https://docs.llamaindex.ai/en/stable/module_guides/loading/ingestion_pipeline/"
+    },
+    {
+      "applied_rule": "Keep record-manager style source tracking so stale index state is detectable.",
+      "source": "LangChain indexing API",
+      "url": "https://python.langchain.com/docs/how_to/indexing/"
+    },
+    {
+      "applied_rule": "Validate persisted vector-index/cache metadata before trusting it for retrieval evaluation.",
+      "source": "FAISS Index IO",
+      "url": "https://github.com/facebookresearch/faiss/wiki/Index-IO%2C-cloning-and-hyper-parameter-tuning"
+    }
+  ],
+  "mode": "read_only_no_embedding_or_provider_calls",
+  "recommendation": "At least one runtime root has an effective dense corpus matching an embedding manifest; rerun canary only with that exact root/filter/config.",
+  "review_date": "2026-05-05",
+  "root_aliases": [
+    {
+      "canonical_report_root": "output/chunk_store",
+      "requested_root": "workspace_artifacts/generated/output/chunk_store",
+      "resolved_root": "workspace_artifacts/generated/output/chunk_store"
+    }
+  ],
+  "root_reports": [
+    {
+      "dense_embedding_filter": {
+        "fail_count": 1,
+        "filter_semantics": {
+          "function": "filter_embedding_safe_chunks",
+          "hard_max_chars": 5000,
+          "hard_max_tokens": 1200,
+          "rule": "Drop only chunks rejected by inspect_chunk().is_oversize hard max char/token guard.",
+          "source_file": "literature_assistant/core/chunk_size_guard.py"
+        },
+        "filtered_chunks_preview": [],
+        "filtered_count": 0,
+        "input_count": 11470,
+        "kept_count": 11470,
+        "manifest_count": 2,
+        "manifest_evaluations": [
+          {
+            "checks": {
+              "chunk_count_match": true,
+              "chunks_hash_match": true,
+              "contextual_match": true,
+              "embedding_dim_match": true,
+              "shape_dim_match": true,
+              "shape_row_match": true,
+              "zero_rows_absent": true
+            },
+            "expected": {
+              "chunk_count": 11470,
+              "chunks_hash": "58c76986fdfa125d9e690ad00dfa990b72b2a6b41a564405280d8613a012ddf0",
+              "embedding_dim": 1024,
+              "is_contextual": true
+            },
+            "failure_reasons": [],
+            "manifest": {
+              "chunk_count": 11470,
+              "chunks_hash": "58c76986fdfa125d9e690ad00dfa990b72b2a6b41a564405280d8613a012ddf0",
+              "embedding_dim": 1024,
+              "embedding_shape": [
+                11470,
+                1024
+              ],
+              "is_contextual": true,
+              "model": "Qwen/Qwen3-Embedding-8B",
+              "version": 1,
+              "zero_row_count": 0
+            },
+            "manifest_path": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.manifest.json",
+            "status": "PASS"
+          },
+          {
+            "checks": {
+              "chunk_count_match": false,
+              "chunks_hash_match": false,
+              "contextual_match": false,
+              "embedding_dim_match": true,
+              "shape_dim_match": true,
+              "shape_row_match": false,
+              "zero_rows_absent": true
+            },
+            "expected": {
+              "chunk_count": 11470,
+              "chunks_hash": "58c76986fdfa125d9e690ad00dfa990b72b2a6b41a564405280d8613a012ddf0",
+              "embedding_dim": 1024,
+              "is_contextual": true
+            },
+            "failure_reasons": [
+              "chunk_count_match",
+              "chunks_hash_match",
+              "shape_row_match",
+              "contextual_match"
+            ],
+            "manifest": {
+              "chunk_count": 2,
+              "chunks_hash": "9c2fe44912dd5c3a6a2faccf58df1973229a541aff991a0bc66fa19415ce40e5",
+              "embedding_dim": 1024,
+              "embedding_shape": [
+                2,
+                1024
+              ],
+              "is_contextual": false,
+              "model": "Qwen/Qwen3-Embedding-8B",
+              "version": 1,
+              "zero_row_count": 0
+            },
+            "manifest_path": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_m571cef40de3d.manifest.json",
+            "status": "FAIL"
+          }
+        ],
+        "matching_manifests": [
+          "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.manifest.json"
+        ],
+        "pass_count": 1,
+        "summary": {
+          "chunk_count": 11470,
+          "chunks_hash": "58c76986fdfa125d9e690ad00dfa990b72b2a6b41a564405280d8613a012ddf0",
+          "is_contextual": true
+        }
+      },
+      "fail_count": 1,
+      "legacy_json_count": 4,
+      "legacy_json_files": [
+        {
+          "chunk_count": 1,
+          "path": "output/chunk_store/proj_1d2355792fea.json",
+          "project_id": null,
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_1d2355792fea.json"
+        },
+        {
+          "chunk_count": 0,
+          "path": "output/chunk_store/proj_576c777b95b4.json",
+          "project_id": null,
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_576c777b95b4.json"
+        },
+        {
+          "chunk_count": 0,
+          "path": "output/chunk_store/proj_bfa2a1bb39d2.json",
+          "project_id": null,
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_bfa2a1bb39d2.json"
+        },
+        {
+          "chunk_count": 790,
+          "path": "output/chunk_store/proj_eebe0da3f961.json",
+          "project_id": null,
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_eebe0da3f961.json"
+        }
+      ],
+      "manifest_count": 2,
+      "manifest_evaluations": [
+        {
+          "checks": {
+            "chunk_count_match": true,
+            "chunks_hash_match": true,
+            "contextual_match": true,
+            "embedding_dim_match": true,
+            "shape_dim_match": true,
+            "shape_row_match": true,
+            "zero_rows_absent": true
+          },
+          "expected": {
+            "chunk_count": 11470,
+            "chunks_hash": "58c76986fdfa125d9e690ad00dfa990b72b2a6b41a564405280d8613a012ddf0",
+            "embedding_dim": 1024,
+            "is_contextual": true
+          },
+          "failure_reasons": [],
+          "manifest": {
+            "chunk_count": 11470,
+            "chunks_hash": "58c76986fdfa125d9e690ad00dfa990b72b2a6b41a564405280d8613a012ddf0",
+            "embedding_dim": 1024,
+            "embedding_shape": [
+              11470,
+              1024
+            ],
+            "is_contextual": true,
+            "model": "Qwen/Qwen3-Embedding-8B",
+            "version": 1,
+            "zero_row_count": 0
+          },
+          "manifest_path": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.manifest.json",
+          "status": "PASS"
+        },
+        {
+          "checks": {
+            "chunk_count_match": false,
+            "chunks_hash_match": false,
+            "contextual_match": false,
+            "embedding_dim_match": true,
+            "shape_dim_match": true,
+            "shape_row_match": false,
+            "zero_rows_absent": true
+          },
+          "expected": {
+            "chunk_count": 11470,
+            "chunks_hash": "58c76986fdfa125d9e690ad00dfa990b72b2a6b41a564405280d8613a012ddf0",
+            "embedding_dim": 1024,
+            "is_contextual": true
+          },
+          "failure_reasons": [
+            "chunk_count_match",
+            "chunks_hash_match",
+            "shape_row_match",
+            "contextual_match"
+          ],
+          "manifest": {
+            "chunk_count": 2,
+            "chunks_hash": "9c2fe44912dd5c3a6a2faccf58df1973229a541aff991a0bc66fa19415ce40e5",
+            "embedding_dim": 1024,
+            "embedding_shape": [
+              2,
+              1024
+            ],
+            "is_contextual": false,
+            "model": "Qwen/Qwen3-Embedding-8B",
+            "version": 1,
+            "zero_row_count": 0
+          },
+          "manifest_path": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_m571cef40de3d.manifest.json",
+          "status": "FAIL"
+        }
+      ],
+      "matching_manifests": [
+        "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.manifest.json"
+      ],
+      "pass_count": 1,
+      "resolved_root": "workspace_artifacts/generated/output/chunk_store",
+      "root": "output/chunk_store",
+      "root_exists": true,
+      "runtime_summary": {
+        "chunk_count": 11470,
+        "chunks_hash": "58c76986fdfa125d9e690ad00dfa990b72b2a6b41a564405280d8613a012ddf0",
+        "is_contextual": true
+      },
+      "single_group_exclusion_diagnostics": {
+        "count_only_single_group_exclusion_candidate_count": 0,
+        "count_only_single_group_exclusion_candidates_preview": [],
+        "current_chunk_count": 11470,
+        "current_group_count": 80,
+        "exact_single_group_exclusion_matches": []
+      },
+      "skipped_legacy_count": 0,
+      "skipped_legacy_files": [],
+      "unreadable_legacy_count": 0,
+      "unreadable_legacy_files": [],
+      "v2_project_count": 76,
+      "v2_projects": [
+        {
+          "chunk_count": 7225,
+          "material_count": 108,
+          "materials_preview": [
+            {
+              "chunk_count": 34,
+              "declared_total_chunks": 34,
+              "material_id": "mat_1f5242e1034f",
+              "relative_path": "man-等-2011-laser-diffusion-nitriding-of-ti-6al-4_7f099601.jsonl"
+            },
+            {
+              "chunk_count": 31,
+              "declared_total_chunks": 31,
+              "material_id": "mat_f76878df9d8d",
+              "relative_path": "2003-cavitation-erosion-behavior-of-laser-gas-ni_40a20c16.jsonl"
+            },
+            {
+              "chunk_count": 24,
+              "declared_total_chunks": 24,
+              "material_id": "mat_4bfc5f6694d5",
+              "relative_path": "张亮-2012-中厚板激光多层焊温度场与应力应变场的数值模拟_6902767b.jsonl"
+            },
+            {
+              "chunk_count": 61,
+              "declared_total_chunks": 61,
+              "material_id": "mat_522a30ae73ef",
+              "relative_path": "kamat-等-2016-effect-of-processing-parameters-on-_09c88fcd.jsonl"
+            },
+            {
+              "chunk_count": 25,
+              "declared_total_chunks": 25,
+              "material_id": "mat_65a590be532c",
+              "relative_path": "gan-等-2011-study-of-laser-nitriding-on-the-gcr15_01184a05.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/laser_welding_109",
+          "project_id": "laser_welding_109",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/laser_welding_109"
+        },
+        {
+          "chunk_count": 1985,
+          "material_count": 30,
+          "materials_preview": [
+            {
+              "chunk_count": 65,
+              "declared_total_chunks": 65,
+              "material_id": "mat_69d0c6585a34",
+              "relative_path": "chen-等-2018-melt-flow-and-thermal-transfer-durin_4e5d7ba4.jsonl"
+            },
+            {
+              "chunk_count": 84,
+              "declared_total_chunks": 84,
+              "material_id": "mat_5111868bbdd4",
+              "relative_path": "li-等-2019-numerical-and-experimental-study-on-ke_fcb6b476.jsonl"
+            },
+            {
+              "chunk_count": 49,
+              "declared_total_chunks": 49,
+              "material_id": "mat_8dd7f329cb28",
+              "relative_path": "shi-等-2022-numerical-research-on-melt-pool-dynam_a884fa8a.jsonl"
+            },
+            {
+              "chunk_count": 57,
+              "declared_total_chunks": 57,
+              "material_id": "mat_7ada51772c9a",
+              "relative_path": "ai-等-2022-the-investigation-of-molten-pool-dynam_532fb5eb.jsonl"
+            },
+            {
+              "chunk_count": 39,
+              "declared_total_chunks": 39,
+              "material_id": "mat_85684060485b",
+              "relative_path": "chen-等-2019-microstructure-and-mechanical-proper_5cd2593f.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/laser_welding_30",
+          "project_id": "laser_welding_30",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/laser_welding_30"
+        },
+        {
+          "chunk_count": 75,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 75,
+              "declared_total_chunks": 75,
+              "material_id": "mat_man2011_ti6al4v",
+              "relative_path": "man-等-2011-laser-diffusion-nitriding-of-ti-6al-4_bcd75789.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/man2011",
+          "project_id": "man2011",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/man2011"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_0033e752e8ce",
+          "project_id": "proj_0033e752e8ce",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_0033e752e8ce"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_01bb32675ce1",
+          "project_id": "proj_01bb32675ce1",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_01bb32675ce1"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_0276fb86d006",
+          "project_id": "proj_0276fb86d006",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_0276fb86d006"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_0e72480c10a5",
+          "project_id": "proj_0e72480c10a5",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_0e72480c10a5"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_e06c083e6d60",
+              "relative_path": "mat-e06c083e6d60_0d8e9d3e.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_0f82dcd427bb",
+          "project_id": "proj_0f82dcd427bb",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_0f82dcd427bb"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_10d13cc8ff77",
+          "project_id": "proj_10d13cc8ff77",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_10d13cc8ff77"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_11d5d6826cfd",
+          "project_id": "proj_11d5d6826cfd",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_11d5d6826cfd"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_dd27ac15c41e",
+              "relative_path": "mat-dd27ac15c41e_24edd16b.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_120b6776b2a4",
+          "project_id": "proj_120b6776b2a4",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_120b6776b2a4"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_4ca08f13066b",
+              "relative_path": "mat-4ca08f13066b_32757280.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_156390656bfb",
+          "project_id": "proj_156390656bfb",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_156390656bfb"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_16d72960ba83",
+          "project_id": "proj_16d72960ba83",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_16d72960ba83"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_a86a20fe0267",
+              "relative_path": "valid_e92486d3.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_1ee4bb32113c",
+          "project_id": "proj_1ee4bb32113c",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_1ee4bb32113c"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_4d81c9221914",
+              "relative_path": "valid_7d2a1900.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_221f3e1c19ba",
+          "project_id": "proj_221f3e1c19ba",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_221f3e1c19ba"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_dfa728939dd4",
+              "relative_path": "valid_b3856a3c.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_23d200c4caf9",
+          "project_id": "proj_23d200c4caf9",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_23d200c4caf9"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_c47a539e5e1c",
+              "relative_path": "mat-c47a539e5e1c_ddfd2c4d.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_26b8146dc8b7",
+          "project_id": "proj_26b8146dc8b7",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_26b8146dc8b7"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_374f836401ef",
+              "relative_path": "mat-374f836401ef_f6bb1f55.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_2a6a409aaba8",
+          "project_id": "proj_2a6a409aaba8",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_2a6a409aaba8"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_a27a1852cbbb",
+              "relative_path": "mat-a27a1852cbbb_65b769a8.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_32334683ed1b",
+          "project_id": "proj_32334683ed1b",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_32334683ed1b"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_d8fe53f1e837",
+              "relative_path": "mat-d8fe53f1e837_de7bb67a.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_3465b40fbe37",
+          "project_id": "proj_3465b40fbe37",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_3465b40fbe37"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_1b836abf063b",
+              "relative_path": "valid_929a4b99.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_3af2c7cccee6",
+          "project_id": "proj_3af2c7cccee6",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_3af2c7cccee6"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_f7361fa0864e",
+              "relative_path": "mat-f7361fa0864e_8c4b46da.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_3d559336f6fd",
+          "project_id": "proj_3d559336f6fd",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_3d559336f6fd"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_df06a8497f8e",
+              "relative_path": "valid_559f7e25.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_43ad33c870dc",
+          "project_id": "proj_43ad33c870dc",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_43ad33c870dc"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_4414ad25c536",
+          "project_id": "proj_4414ad25c536",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_4414ad25c536"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_9cdfefbafbfa",
+              "relative_path": "mat-9cdfefbafbfa_87789bcf.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_4e32eee15c8a",
+          "project_id": "proj_4e32eee15c8a",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_4e32eee15c8a"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_4e997e097ff5",
+              "relative_path": "valid_abe565c5.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_4eb3f7184c7e",
+          "project_id": "proj_4eb3f7184c7e",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_4eb3f7184c7e"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_5145bfb02ce8",
+          "project_id": "proj_5145bfb02ce8",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_5145bfb02ce8"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_bcbd3986d768",
+              "relative_path": "mat-bcbd3986d768_e1543a8c.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_5d0d903b2a20",
+          "project_id": "proj_5d0d903b2a20",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_5d0d903b2a20"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_605e5a0511c0",
+          "project_id": "proj_605e5a0511c0",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_605e5a0511c0"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_b959c91ace48",
+              "relative_path": "valid_39f6e252.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_61d2a2d076ac",
+          "project_id": "proj_61d2a2d076ac",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_61d2a2d076ac"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_5346906ae9bb",
+              "relative_path": "valid_a9f6efa3.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_62c7c9c729e0",
+          "project_id": "proj_62c7c9c729e0",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_62c7c9c729e0"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_6b65cdef25c3",
+              "relative_path": "mat-6b65cdef25c3_bfb98fc5.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_6624984bea74",
+          "project_id": "proj_6624984bea74",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_6624984bea74"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_af907c59943f",
+              "relative_path": "valid_37db5115.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_685b5c430ddb",
+          "project_id": "proj_685b5c430ddb",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_685b5c430ddb"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_337d88203ef6",
+              "relative_path": "mat-337d88203ef6_4a3857c5.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_68c6a6ee7fca",
+          "project_id": "proj_68c6a6ee7fca",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_68c6a6ee7fca"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_43968dadeb1d",
+              "relative_path": "mat-43968dadeb1d_9d550e5e.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_6b14b8a19cd9",
+          "project_id": "proj_6b14b8a19cd9",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_6b14b8a19cd9"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_8cf88e1906c8",
+              "relative_path": "valid_9bb8a186.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_738b1132843f",
+          "project_id": "proj_738b1132843f",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_738b1132843f"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_77317686410d",
+          "project_id": "proj_77317686410d",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_77317686410d"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_7d00813431dc",
+          "project_id": "proj_7d00813431dc",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_7d00813431dc"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_b7056b87d232",
+              "relative_path": "mat-b7056b87d232_b0042b5b.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_8056188c37af",
+          "project_id": "proj_8056188c37af",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_8056188c37af"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_801c665631ea",
+              "relative_path": "mat-801c665631ea_fd03de19.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_8209dbe3f2ea",
+          "project_id": "proj_8209dbe3f2ea",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_8209dbe3f2ea"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_8bfc745fc002",
+          "project_id": "proj_8bfc745fc002",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_8bfc745fc002"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_c27478fc5762",
+              "relative_path": "mat-c27478fc5762_9602a944.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_8fcc771cda2a",
+          "project_id": "proj_8fcc771cda2a",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_8fcc771cda2a"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_223719592789",
+              "relative_path": "mat-223719592789_a2cfd248.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_937dff80d834",
+          "project_id": "proj_937dff80d834",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_937dff80d834"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_17c6d79f95da",
+              "relative_path": "valid_a74fc6f1.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_94be13cf07ef",
+          "project_id": "proj_94be13cf07ef",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_94be13cf07ef"
+        },
+        {
+          "chunk_count": 790,
+          "material_count": 11,
+          "materials_preview": [
+            {
+              "chunk_count": 83,
+              "declared_total_chunks": 83,
+              "material_id": "mat_726102bd5b44",
+              "relative_path": "1-s2-0-s152661252600277x-main_81ce50c1.jsonl"
+            },
+            {
+              "chunk_count": 94,
+              "declared_total_chunks": 94,
+              "material_id": "mat_a4ff0944f179",
+              "relative_path": "1-s2-0-s0924013625003887-main_e8bcb339.jsonl"
+            },
+            {
+              "chunk_count": 8,
+              "declared_total_chunks": 8,
+              "material_id": "mat_cd965efdc360",
+              "relative_path": "dice-pyramid-rules_d7c3b027.jsonl"
+            },
+            {
+              "chunk_count": 224,
+              "declared_total_chunks": 224,
+              "material_id": "mat_5a80652ab351",
+              "relative_path": "eng-07-00129_cca03434.jsonl"
+            },
+            {
+              "chunk_count": 6,
+              "declared_total_chunks": 6,
+              "material_id": "mat_94920d882231",
+              "relative_path": "ijhmt2025-i-华中科技大学-i-激光焊接过程中三维_1fec1e81.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_9dbd42a14fb2",
+          "project_id": "proj_9dbd42a14fb2",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_9dbd42a14fb2"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_5537f467cba1",
+              "relative_path": "valid_757db403.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_a2b203fbe7d7",
+          "project_id": "proj_a2b203fbe7d7",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_a2b203fbe7d7"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_a65c61391770",
+          "project_id": "proj_a65c61391770",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_a65c61391770"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_32b5ae25e6aa",
+              "relative_path": "valid_b521892c.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_a6f8d5fc2705",
+          "project_id": "proj_a6f8d5fc2705",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_a6f8d5fc2705"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_a93885d852dd",
+          "project_id": "proj_a93885d852dd",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_a93885d852dd"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_b5b43e9407b7",
+              "relative_path": "valid_06764257.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_a93bc622d6c8",
+          "project_id": "proj_a93bc622d6c8",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_a93bc622d6c8"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_ab0daa9fb30f",
+          "project_id": "proj_ab0daa9fb30f",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_ab0daa9fb30f"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_1124665d9240",
+              "relative_path": "mat-1124665d9240_884a4822.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_ac639d513fcb",
+          "project_id": "proj_ac639d513fcb",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_ac639d513fcb"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_afa0bf74a039",
+          "project_id": "proj_afa0bf74a039",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_afa0bf74a039"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_b52f0332eb74",
+          "project_id": "proj_b52f0332eb74",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_b52f0332eb74"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_0724bdfd640c",
+              "relative_path": "mat-0724bdfd640c_08975929.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_b5ea360f77ee",
+          "project_id": "proj_b5ea360f77ee",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_b5ea360f77ee"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_d82618234982",
+              "relative_path": "mat-d82618234982_a000ef43.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_be63cf3f455b",
+          "project_id": "proj_be63cf3f455b",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_be63cf3f455b"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_c1f87b3e7406",
+          "project_id": "proj_c1f87b3e7406",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_c1f87b3e7406"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_c400ad0b1617",
+          "project_id": "proj_c400ad0b1617",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_c400ad0b1617"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_4fa2df97c7a6",
+              "relative_path": "mat-4fa2df97c7a6_62ff01f6.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_c61b60809217",
+          "project_id": "proj_c61b60809217",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_c61b60809217"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_fcd05858b661",
+              "relative_path": "valid_8815d334.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_c621c8e5fbad",
+          "project_id": "proj_c621c8e5fbad",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_c621c8e5fbad"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_07b16da83f40",
+              "relative_path": "valid_1940e554.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_c9d122083ec9",
+          "project_id": "proj_c9d122083ec9",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_c9d122083ec9"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_cd7cf0152750",
+          "project_id": "proj_cd7cf0152750",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_cd7cf0152750"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_a00ccad5bf6c",
+              "relative_path": "mat-a00ccad5bf6c_58d73824.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_cd92b3fb205b",
+          "project_id": "proj_cd92b3fb205b",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_cd92b3fb205b"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_212412dd20fb",
+              "relative_path": "valid_3116bea5.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_cf4a87741cb7",
+          "project_id": "proj_cf4a87741cb7",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_cf4a87741cb7"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_c9957e99df9d",
+              "relative_path": "valid_0912f6d3.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_d15cdb1d0665",
+          "project_id": "proj_d15cdb1d0665",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_d15cdb1d0665"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_a170c5882b23",
+              "relative_path": "valid_103f82cf.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_d2200b045ac6",
+          "project_id": "proj_d2200b045ac6",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_d2200b045ac6"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_d6d91b5cf8a4",
+          "project_id": "proj_d6d91b5cf8a4",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_d6d91b5cf8a4"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_3e63dd70c559",
+              "relative_path": "valid_c80721a5.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_dc2cbb21a6bf",
+          "project_id": "proj_dc2cbb21a6bf",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_dc2cbb21a6bf"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_e22015ddf78e",
+          "project_id": "proj_e22015ddf78e",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_e22015ddf78e"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_ce0460a718b0",
+              "relative_path": "valid_f23c9154.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_e51b38ac4914",
+          "project_id": "proj_e51b38ac4914",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_e51b38ac4914"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_32afc7e9560b",
+              "relative_path": "valid_a2e017b4.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_e82c3635dced",
+          "project_id": "proj_e82c3635dced",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_e82c3635dced"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 0,
+          "materials_preview": [],
+          "path": "output/chunk_store/proj_ebc6bb516670",
+          "project_id": "proj_ebc6bb516670",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_ebc6bb516670"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_85b25df9f437",
+              "relative_path": "mat-85b25df9f437_9280c844.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_eda704069bcc",
+          "project_id": "proj_eda704069bcc",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_eda704069bcc"
+        },
+        {
+          "chunk_count": 1,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 1,
+              "declared_total_chunks": 1,
+              "material_id": "mat_f6e6d049bd7a",
+              "relative_path": "valid_4ead878f.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_ef826b4f3a08",
+          "project_id": "proj_ef826b4f3a08",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_ef826b4f3a08"
+        },
+        {
+          "chunk_count": 0,
+          "material_count": 1,
+          "materials_preview": [
+            {
+              "chunk_count": 0,
+              "declared_total_chunks": 0,
+              "material_id": "mat_39eddc6ff7d4",
+              "relative_path": "mat-39eddc6ff7d4_40e72f1d.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/proj_fac24d33412c",
+          "project_id": "proj_fac24d33412c",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/proj_fac24d33412c"
+        },
+        {
+          "chunk_count": 581,
+          "material_count": 9,
+          "materials_preview": [
+            {
+              "chunk_count": 72,
+              "declared_total_chunks": 72,
+              "material_id": "mat_642d93630df5",
+              "relative_path": "huang-等-2018-numerical-study-of-keyhole-instabil_4540c96b.jsonl"
+            },
+            {
+              "chunk_count": 81,
+              "declared_total_chunks": 81,
+              "material_id": "mat_1f416f87314c",
+              "relative_path": "shi-等-2022-numerical-research-on-melt-pool-dynam_def36056.jsonl"
+            },
+            {
+              "chunk_count": 210,
+              "declared_total_chunks": 210,
+              "material_id": "mat_bf26f6f7038f",
+              "relative_path": "刘浩东和戴京涛-2022-激光焊接技术的应用研究进展与分析_216bd9d4.jsonl"
+            },
+            {
+              "chunk_count": 42,
+              "declared_total_chunks": 42,
+              "material_id": "mat_007c5fe08fd0",
+              "relative_path": "huang-等-2018-numerical-study-of-keyhole-instabil_5f4446ec.jsonl"
+            },
+            {
+              "chunk_count": 49,
+              "declared_total_chunks": 49,
+              "material_id": "mat_dcafc3a13979",
+              "relative_path": "shi-等-2022-numerical-research-on-melt-pool-dynam_5effcfc1.jsonl"
+            }
+          ],
+          "path": "output/chunk_store/test_real_ingest_flow",
+          "project_id": "test_real_ingest_flow",
+          "resolved_path": "workspace_artifacts/generated/output/chunk_store/test_real_ingest_flow"
+        }
+      ]
+    }
+  ],
+  "runtime_loader_semantics": {
+    "default_chunk_store_root": "output/chunk_store",
+    "dense_embedding_behavior": "Before ChunkVectorStore.build, eval filters only chunks rejected by chunk_size_guard.inspect_chunk hard max limits.",
+    "function": "_load_retrieval_corpus",
+    "hash_behavior": "Use runtime chunk order without sorting or deduplication for cache manifest comparison.",
+    "legacy_behavior": "Then load sorted root *.json files; skip *_chunks.json when a same-name v2 project already exists.",
+    "source_file": "workspace_tests/evaluation_scripts/eval_retrieval_runtime.py",
+    "v2_behavior": "Load sorted project directories containing manifest.json and append material JSONL rows in manifest order."
+  },
+  "schema_version": 1,
+  "selected_canary_runtime_source": {
+    "inference": "The eval runtime defaults to this relative path when canary30 is run from the repository root.",
+    "path": "output/chunk_store"
+  },
+  "status": "PASS",
+  "task_id": "Post-LMWR-470-canary-corpus-source-locator"
+}

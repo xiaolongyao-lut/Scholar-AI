@@ -1,0 +1,173 @@
+{
+  "artifact_sources": [
+    {
+      "path": "literature_assistant/core/routers/resources_router.py",
+      "sha256": "94ece68f127dc65a05160c4d319aac99c166af2f30777c7b9ce778d51db4a353"
+    },
+    {
+      "path": "workspace_artifacts/evaluations/canary30-chunk-params-analysis-20260503.json",
+      "sha256": "4b235a392faabde4cebfb8146b7e47fddcd924628f8d4ee53eeb6020a1a59ca7"
+    },
+    {
+      "path": "workspace_artifacts/evaluations/canary30-causality-confirmation-20260503.json",
+      "sha256": "6b20ba4b01612fc6a0cccd20fdec25142726824ec6eeb2fdb7ed23c5b225cd24"
+    },
+    {
+      "path": "workspace_artifacts/evaluations/canary30-cache-rebuild-20260503.json",
+      "sha256": "2272f407c7caf798979b5f36e61c7767ad6e469b15edb590d1c25e58613a89e6"
+    },
+    {
+      "path": "workspace_artifacts/evaluations/canary30-final-20260503.json",
+      "sha256": "0c4b79d190093f6aa222825f68ed7650152f25dbc01b6ac2fcedc6729b5326b4"
+    }
+  ],
+  "backup": {
+    "exists": true,
+    "path": "workspace_artifacts/backups/lmwr-470-20260505/evaluation-inputs",
+    "purpose": "Snapshot of evaluation inputs before any qrels/goldset/canary30 changes."
+  },
+  "cache_evidence": {
+    "has_stale_cache_evidence": true,
+    "old_cache_entries": [
+      {
+        "cache_name": "model_1",
+        "chunk_count": 11445,
+        "chunk_count_delta": 12,
+        "chunks_hash": "376bc3ae4c8391184d746555698b7f5c0910ff92435feead8d5e1444c39bfd1b",
+        "embedding_shape": [
+          11445,
+          1024
+        ],
+        "is_contextual": true,
+        "model": "Qwen/Qwen3-Embedding-8B",
+        "status": "STALE",
+        "target_corpus_chunk_count": 11457
+      },
+      {
+        "cache_name": "model_2",
+        "chunk_count": 11436,
+        "chunk_count_delta": 21,
+        "chunks_hash": "4355f8c13bc4cdf9312abfee9e407a7b70dcaee5adeb7d6d80ff18d44c959b9e",
+        "embedding_shape": [
+          11436,
+          1024
+        ],
+        "is_contextual": true,
+        "model": "multimodal-embedding-v1",
+        "status": "STALE",
+        "target_corpus_chunk_count": 11457
+      }
+    ],
+    "target_corpus_chunk_count": 11457
+  },
+  "comparisons": {
+    "regression_200_8_minus_revert_150_5": {
+      "interpretation": "200/8 and 150/5 produced identical Recall/MRR in the available causality run; the parameter change is not proven as the regression cause.",
+      "metric_delta": {
+        "mrr": 0.0,
+        "recall_at_1": 0.0,
+        "recall_at_10": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0
+      },
+      "rank_metrics_identical": true
+    },
+    "revert_150_5_minus_aligned_baseline": {
+      "interpretation": "The regression persisted after reverting to 150/5, so cache/corpus state must be verified first.",
+      "metric_delta": {
+        "mrr": -0.3486,
+        "recall_at_1": -0.5,
+        "recall_at_10": -0.0334,
+        "recall_at_3": -0.2334,
+        "recall_at_5": -0.1667
+      }
+    }
+  },
+  "current_runtime_constants": {
+    "CHUNK_OVERLAP": 150,
+    "CHUNK_SIZE": 800,
+    "MAX_CHUNKS_PER_MATERIAL": 5
+  },
+  "decision": {
+    "keep_current_defaults": true,
+    "next_gate": "Rebuild/verify embedding cache against current corpus, then rerun aligned canary30 no-rerank control before any 200/8 promotion.",
+    "parameter_causality": "not_proven",
+    "primary_blocker": "post_cache_rebuild_retrieval_verification_missing",
+    "promote_200_8": false,
+    "qrels_goldset_canary30_change": "none",
+    "runtime_constants_change": "none",
+    "status": "closed_for_now"
+  },
+  "historical_runs": {
+    "aligned_baseline_2026_04_27": {
+      "metrics": {
+        "mrr": 0.6667,
+        "recall_at_1": 0.6667,
+        "recall_at_10": 0.6667,
+        "recall_at_3": 0.6667,
+        "recall_at_5": 0.6667
+      },
+      "parameters": "historical_aligned_no_rerank_control"
+    },
+    "regression_run_200_8": {
+      "metrics": {
+        "mrr": 0.3181,
+        "recall_at_1": 0.1667,
+        "recall_at_10": 0.6333,
+        "recall_at_3": 0.4333,
+        "recall_at_5": 0.5
+      },
+      "parameters": {
+        "chunk_overlap": 200,
+        "max_chunks_per_material": 8
+      }
+    },
+    "revert_run_150_5": {
+      "metrics": {
+        "mrr": 0.3181,
+        "recall_at_1": 0.1667,
+        "recall_at_10": 0.6333,
+        "recall_at_3": 0.4333,
+        "recall_at_5": 0.5
+      },
+      "parameters": {
+        "chunk_overlap": 150,
+        "max_chunks_per_material": 5
+      }
+    }
+  },
+  "mature_solution_alignment": [
+    {
+      "applied_rule": "Use chunk_size/chunk_overlap as tunable retrieval parameters, not as unverified defaults.",
+      "source": "LangChain text splitter docs",
+      "url": "https://docs.langchain.com/oss/python/integrations/splitters/index"
+    },
+    {
+      "applied_rule": "Judge retriever changes with ranking metrics such as MRR, hit-rate, precision, and recall.",
+      "source": "LlamaIndex retrieval evaluation docs",
+      "url": "https://docs.llamaindex.ai/en/stable/module_guides/evaluating/"
+    },
+    {
+      "applied_rule": "Evaluate chunk sizes on representative queries and compare quality before promotion.",
+      "source": "Pinecone chunking strategies guide",
+      "url": "https://www.pinecone.io/learn/chunking-strategies/"
+    }
+  ],
+  "mode": "read_only_existing_artifacts",
+  "recommended_next_steps": [
+    "Keep CHUNK_OVERLAP=150 and MAX_CHUNKS_PER_MATERIAL=5 until post-rebuild aligned canary30 metrics exist.",
+    "Verify the rebuilt embedding cache manifest chunk_count and corpus hash match the current corpus.",
+    "Rerun aligned canary30 no-rerank/raw/default control after cache verification.",
+    "Only compare 200/8 against 150/5 after cache sanity passes; record old/new metrics and restore paths.",
+    "Prefer a versioned added query set before editing existing qrels/goldset/canary30 files."
+  ],
+  "requires_cache_rebuild_verification": true,
+  "review_date": "2026-05-05",
+  "schema_version": 1,
+  "stop_conditions": [
+    "Stop before paid or credentialed embedding/model calls unless the environment and authorization are explicit.",
+    "Stop before modifying qrels/goldset/canary30 if backup, old/new metrics, and restore path are missing.",
+    "Stop before changing default runtime chunk constants if 200/8 lacks a passing post-cache control comparison."
+  ],
+  "task_id": "LMWR-470"
+}

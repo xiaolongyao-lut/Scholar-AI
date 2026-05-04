@@ -1,0 +1,603 @@
+{
+  "actions": [
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_29a909d77df0",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_bf26f6f7038f",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_buried_after_top_k",
+        "non_gold_top_k_dominance",
+        "broad_query_competing_topic"
+      ],
+      "expected_doc_ids": [
+        "mat_1f5242e1034f"
+      ],
+      "first_gold_rank": 34,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_generic_query_scope",
+      "query_id": "q_0001",
+      "query_text": "激光焊接的最新研究进展",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf",
+      "top1_material_id": "mat_29a909d77df0",
+      "top1_title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_bf26f6f7038f",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_29a909d77df0",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_ffbc2fb52a62",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_buried_after_top_k",
+        "broad_query_competing_topic"
+      ],
+      "expected_doc_ids": [
+        "mat_1f5242e1034f"
+      ],
+      "first_gold_rank": 6,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_generic_query_scope",
+      "query_id": "q_0007",
+      "query_text": "关于激光焊接的文献综述",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf",
+      "top1_material_id": "mat_bf26f6f7038f",
+      "top1_title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_2f98d33813ce",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_9a475e6a8f13",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 5,
+          "material_id": "mat_894b36510bf8",
+          "source": "existing_eval_trace_top_k",
+          "title": "OLT2026 I 兰州理工大学 I 用于优化焊接成型与微....pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_buried_after_top_k"
+      ],
+      "expected_doc_ids": [
+        "mat_1f5242e1034f"
+      ],
+      "first_gold_rank": 9,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_gold_buried_after_top_k",
+      "query_id": "q_0013",
+      "query_text": "激光焊接对力学性能的影响机制",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf",
+      "top1_material_id": "mat_2f98d33813ce",
+      "top1_title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_6844f200248a",
+          "source": "existing_eval_trace_top_k",
+          "title": "Liu 等 - 2024 - Determination of beam oscillating pattern for tailoring melt flow and microstructural characteristic.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_2f98d33813ce",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 4,
+          "material_id": "mat_9a475e6a8f13",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_buried_after_top_k"
+      ],
+      "expected_doc_ids": [
+        "mat_1f5242e1034f"
+      ],
+      "first_gold_rank": 7,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_gold_buried_after_top_k",
+      "query_id": "q_0019",
+      "query_text": "激光焊接在力学性能条件下对钛合金的耦合效应分析",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf",
+      "top1_material_id": "mat_6844f200248a",
+      "top1_title": "Liu 等 - 2024 - Determination of beam oscillating pattern for tailoring melt flow and microstructural characteristic.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_6844f200248a",
+          "source": "existing_eval_trace_top_k",
+          "title": "Liu 等 - 2024 - Determination of beam oscillating pattern for tailoring melt flow and microstructural characteristic.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_2f98d33813ce",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 4,
+          "material_id": "mat_9a475e6a8f13",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_buried_after_top_k",
+        "non_gold_top_k_dominance"
+      ],
+      "expected_doc_ids": [
+        "mat_1f5242e1034f"
+      ],
+      "first_gold_rank": 7,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_non_gold_top_k_dominance",
+      "query_id": "q_0020",
+      "query_text": "多学科交叉视角下激光焊接与力学性能的钛合金研究",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf",
+      "top1_material_id": "mat_6844f200248a",
+      "top1_title": "Liu 等 - 2024 - Determination of beam oscillating pattern for tailoring melt flow and microstructural characteristic.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_29a909d77df0",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_bf26f6f7038f",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window",
+        "non_gold_top_k_dominance",
+        "broad_query_competing_topic"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_generic_query_scope",
+      "query_id": "q_0021",
+      "query_text": "激光焊接的最新研究进展",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_29a909d77df0",
+      "top1_title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_bf26f6f7038f",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window",
+        "non_gold_top_k_dominance"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_non_gold_top_k_dominance",
+      "query_id": "q_0022",
+      "query_text": "微观组织的最新研究进展",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_bf26f6f7038f",
+      "top1_title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_bf26f6f7038f",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_1f5242e1034f",
+          "source": "existing_eval_trace_top_k",
+          "title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_6844f200248a",
+          "source": "existing_eval_trace_top_k",
+          "title": "Liu 等 - 2024 - Determination of beam oscillating pattern for tailoring melt flow and microstructural characteristic.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_missing_gold_or_query_rewrite",
+      "query_id": "q_0023",
+      "query_text": "力学性能的最新研究进展",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_bf26f6f7038f",
+      "top1_title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_1f5242e1034f",
+          "source": "existing_eval_trace_top_k",
+          "title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_1a1031d432e8",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang和Gao - 2024 - Numerical simulations of oscillating laser welding a review.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_0709176dfdcf",
+          "source": "existing_eval_trace_top_k",
+          "title": "Katayama - 2020 - Fundamentals and details of laser welding.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_missing_gold_or_query_rewrite",
+      "query_id": "q_0024",
+      "query_text": "激光焊接的基本原理和方法",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_1f5242e1034f",
+      "top1_title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_2f98d33813ce",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_47e87c9289dd",
+          "source": "existing_eval_trace_top_k",
+          "title": "《激光氮化过程复杂流场传输特性多场耦合模拟和氮化部件的性能评估》.pdf"
+        },
+        {
+          "first_seen_rank": 4,
+          "material_id": "mat_1f5242e1034f",
+          "source": "existing_eval_trace_top_k",
+          "title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_missing_gold_or_query_rewrite",
+      "query_id": "q_0025",
+      "query_text": "微观组织的基本原理和方法",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_2f98d33813ce",
+      "top1_title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_2f98d33813ce",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_1f5242e1034f",
+          "source": "existing_eval_trace_top_k",
+          "title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_1a1031d432e8",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang和Gao - 2024 - Numerical simulations of oscillating laser welding a review.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_missing_gold_or_query_rewrite",
+      "query_id": "q_0026",
+      "query_text": "力学性能的基本原理和方法",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_2f98d33813ce",
+      "top1_title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_bf26f6f7038f",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_ffbc2fb52a62",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_29a909d77df0",
+          "source": "existing_eval_trace_top_k",
+          "title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window",
+        "broad_query_competing_topic"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_generic_query_scope",
+      "query_id": "q_0027",
+      "query_text": "关于激光焊接的文献综述",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_bf26f6f7038f",
+      "top1_title": "刘浩东和戴京涛 - 2022 - 激光焊接技术的应用研究进展与分析.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_2f98d33813ce",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_9a475e6a8f13",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 4,
+          "material_id": "mat_1f5242e1034f",
+          "source": "existing_eval_trace_top_k",
+          "title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_missing_gold_or_query_rewrite",
+      "query_id": "q_0028",
+      "query_text": "关于微观组织的文献综述",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_2f98d33813ce",
+      "top1_title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_6844f200248a",
+          "source": "existing_eval_trace_top_k",
+          "title": "Liu 等 - 2024 - Determination of beam oscillating pattern for tailoring melt flow and microstructural characteristic.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_2f98d33813ce",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_1f5242e1034f",
+          "source": "existing_eval_trace_top_k",
+          "title": "Man 等 - 2011 - Laser diffusion nitriding of Ti–6Al–4V for improving hardness and wear resistance.pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_missing_gold_or_query_rewrite",
+      "query_id": "q_0029",
+      "query_text": "关于力学性能的文献综述",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_6844f200248a",
+      "top1_title": "Liu 等 - 2024 - Determination of beam oscillating pattern for tailoring melt flow and microstructural characteristic.pdf"
+    },
+    {
+      "candidate_alternates": [
+        {
+          "first_seen_rank": 1,
+          "material_id": "mat_2f98d33813ce",
+          "source": "existing_eval_trace_top_k",
+          "title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+        },
+        {
+          "first_seen_rank": 2,
+          "material_id": "mat_894b36510bf8",
+          "source": "existing_eval_trace_top_k",
+          "title": "OLT2026 I 兰州理工大学 I 用于优化焊接成型与微....pdf"
+        },
+        {
+          "first_seen_rank": 3,
+          "material_id": "mat_bd3a42bfc67f",
+          "source": "existing_eval_trace_top_k",
+          "title": "OLT2026 I 兰州理工大学 I 用于优化焊接成型与微....pdf"
+        }
+      ],
+      "drift_labels": [
+        "gold_missing_in_trace_window"
+      ],
+      "expected_doc_ids": [
+        "mat_f76878df9d8d"
+      ],
+      "first_gold_rank": null,
+      "mutation_allowed_without_backup": false,
+      "proposal_type": "review_missing_gold_or_query_rewrite",
+      "query_id": "q_0030",
+      "query_text": "激光焊接与微观组织之间的关系研究",
+      "review_required": true,
+      "simulated_hit_top_k_if_candidates_accepted": true,
+      "source_title": "2003 - Cavitation erosion behavior of laser gas nitrided Ti and Ti6Al4V alloy.pdf",
+      "top1_material_id": "mat_2f98d33813ce",
+      "top1_title": "Wang 等 - 2025 - Planetary laser welding of medium-thickness aluminum alloys microstructure, texture, and performanc.pdf"
+    }
+  ],
+  "guardrails": {
+    "does_not_modify_queries_qrels_goldset_or_canary30": true,
+    "requires_checkpoint_before_materializing": true,
+    "requires_file_backup_before_materializing": true,
+    "requires_old_new_metrics_before_replacing_old_baseline": true,
+    "trace_simulation_is_not_release_gate": true
+  },
+  "mode": "read_only_goldset_proposal_no_file_mutation",
+  "recommended_versioned_outputs_not_written": {
+    "backup_dir": "workspace_artifacts/backups/canary30-goldset-v2.2-<date>/",
+    "goldset_path": "workspace_tests/evaluation_data/canary30_goldset_v2.2_DRAFT.jsonl",
+    "queries_path": "workspace_tests/evaluation_data/eval_queries_v2.2_canary30_DRAFT.jsonl"
+  },
+  "schema_version": 1,
+  "source_drift_report": {
+    "chunk_store_dir": "workspace_artifacts/generated/output/chunk_store",
+    "queries_path": "workspace_tests/evaluation_data/eval_queries_v2.1_canary30_ALIGNED.jsonl",
+    "trace_path": "workspace_artifacts/evaluations/canary30-post-cache-no-rerank-effective-dense-20260505.rerank_trace.jsonl"
+  },
+  "status": "DRAFT_REVIEW_REQUIRED",
+  "summary": {
+    "current_hit_top_k_count": 15,
+    "current_miss_query_ids": [
+      "q_0001",
+      "q_0007",
+      "q_0013",
+      "q_0019",
+      "q_0020",
+      "q_0021",
+      "q_0022",
+      "q_0023",
+      "q_0024",
+      "q_0025",
+      "q_0026",
+      "q_0027",
+      "q_0028",
+      "q_0029",
+      "q_0030"
+    ],
+    "current_recall_at_top_k": 0.5,
+    "proposed_action_count": 15,
+    "simulated_hit_top_k_count_if_all_candidates_accepted": 30,
+    "simulated_recall_at_top_k_if_all_candidates_accepted": 1.0,
+    "total_queries": 30
+  }
+}

@@ -533,6 +533,61 @@ def test_run_eval_includes_oversize_count_in_report_header(monkeypatch, tmp_path
     assert written["oversize_count"] == 3
 
 
+def test_run_eval_dense_cache_keeps_chunks_inside_hard_guard(monkeypatch) -> None:
+    import eval_retrieval_runtime as eval_mod
+
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("CHUNK_HARD_MAX_TOKENS", "99999")
+
+    class FakeVectorStore:
+        has_embeddings = False
+
+        @classmethod
+        async def build(cls, chunks, **kwargs):
+            captured["chunks"] = list(chunks)
+            captured["kwargs"] = dict(kwargs)
+            return cls()
+
+    monkeypatch.setattr(eval_mod, "ChunkVectorStore", FakeVectorStore)
+    monkeypatch.setattr(eval_mod, "hybrid_search_async", None)
+    monkeypatch.setattr(eval_mod, "graph_keyword_search", None)
+    monkeypatch.setattr(eval_mod, "rerank_async", None)
+
+    near_limit_chunk = {
+        "chunk_id": "near-hard-limit",
+        "material_id": "m1",
+        "content": "x" * 4600,
+    }
+    asyncio.run(
+        eval_mod._run_eval_async(
+            [{"query_id": "q1", "query_text": "q", "evidence_set": []}],
+            {"chunks": [near_limit_chunk]},
+            None,
+            1,
+            recall_top_n=1,
+            use_rerank=False,
+            rerank_top_n=1,
+            use_prefilter=False,
+            prefilter_threshold=0.0,
+            use_dynamic_topk=False,
+            dynamic_low_rerank_top_n=1,
+            dynamic_high_rerank_top_n=1,
+            dynamic_score_gap_threshold=0.15,
+            use_expansion=False,
+            query_concurrency=1,
+            strict_cache_guard=True,
+            template_flags_map=None,
+            progress_path=None,
+            progress_every=1,
+            per_query_output=None,
+        )
+    )
+
+    built_chunks = captured["chunks"]
+    assert isinstance(built_chunks, list)
+    assert [chunk["chunk_id"] for chunk in built_chunks] == ["near-hard-limit"]
+
+
 def test_run_eval_includes_run_provenance(monkeypatch, tmp_path) -> None:
     import eval_retrieval_runtime as eval_mod
 
@@ -595,6 +650,53 @@ def test_run_eval_includes_run_provenance(monkeypatch, tmp_path) -> None:
     assert provenance["template_flags"]["sha256"]
     assert provenance["retrieval_config"]["rerank_model"] == "Qwen/Qwen3-Reranker-8B"
     assert provenance["retrieval_config"]["strict_cache_guard"] is True
+
+
+def test_run_eval_accepts_bounded_chunk_store_and_cache_paths(monkeypatch, tmp_path) -> None:
+    import eval_retrieval_runtime as eval_mod
+
+    queries_path = tmp_path / "queries.jsonl"
+    queries_path.write_text(
+        json.dumps({"query_id": "q1", "query_text": "alpha"}) + "\n",
+        encoding="utf-8",
+    )
+    chunk_store_dir = tmp_path / "chunk_store" / "project"
+    embedding_cache_path = tmp_path / "embedding_cache" / "project.npy"
+    captured: dict[str, object] = {}
+
+    def _fake_load_retrieval_corpus(path):
+        captured["chunk_store_dir"] = path
+        return {"chunks": [], "oversize_count": 0}
+
+    async def _fake_run_eval_async(queries, corpus, keyword_graph, top_k, **kwargs):
+        captured["embedding_cache_path"] = kwargs.get("embedding_cache_path")
+        captured["query_count"] = len(queries)
+        _ = corpus, keyword_graph, top_k
+        return []
+
+    monkeypatch.setattr(eval_mod, "_load_retrieval_corpus", _fake_load_retrieval_corpus)
+    monkeypatch.setattr(eval_mod, "build_keyword_graph", None)
+    monkeypatch.setattr(eval_mod, "_run_eval_async", _fake_run_eval_async)
+
+    output_path = tmp_path / "metrics.json"
+    payload = eval_mod.run_eval(
+        queries_path=str(queries_path),
+        output_path=str(output_path),
+        chunk_store_dir=str(chunk_store_dir),
+        embedding_cache_path=str(embedding_cache_path),
+        progress_path=str(tmp_path / "progress.jsonl"),
+        per_query_output=str(tmp_path / "per_query.jsonl"),
+    )
+
+    assert captured["chunk_store_dir"] == chunk_store_dir
+    assert captured["embedding_cache_path"] == str(embedding_cache_path)
+    assert captured["query_count"] == 1
+    retrieval_config = payload["run_provenance"]["retrieval_config"]
+    assert retrieval_config["chunk_store_dir"] == str(chunk_store_dir.resolve())
+    assert retrieval_config["embedding_cache_path"] == str(embedding_cache_path.resolve())
+    guard = json.loads((tmp_path / "metrics.json.resume_config.json").read_text(encoding="utf-8"))
+    assert guard["retrieval_config"]["chunk_store_dir"] == str(chunk_store_dir.resolve())
+    assert guard["retrieval_config"]["embedding_cache_path"] == str(embedding_cache_path.resolve())
 
 
 def test_retrieve_with_expansion_honors_independent_recall_top_n(monkeypatch) -> None:
@@ -749,6 +851,8 @@ def test_run_eval_rejects_resume_config_mismatch(monkeypatch, tmp_path) -> None:
         use_contextual=False,
         query_concurrency=8,
         strict_cache_guard=True,
+        chunk_store_dir=None,
+        embedding_cache_path=None,
         template_flags_path=None,
         offset=0,
         limit=None,

@@ -1,0 +1,42 @@
+{
+  "manifest": {
+    "chunk_count": 7225,
+    "chunks_hash": "8945b3a707e981a8cfa59c93bce8f34a7872e38c6d37cd822e97ac04fa219eb1",
+    "embedding_dim": 1024,
+    "embedding_shape": [
+      7225,
+      1024
+    ],
+    "is_contextual": true,
+    "model": "Qwen/Qwen3-Embedding-8B",
+    "version": 1,
+    "zero_row_count": 0
+  },
+  "mode": "local_cache_slice_no_provider_calls",
+  "project_chunk_count": 7225,
+  "project_chunk_store_dir": "workspace_artifacts/generated/output/chunk_store/laser_welding_109",
+  "project_chunks_hash": "8945b3a707e981a8cfa59c93bce8f34a7872e38c6d37cd822e97ac04fa219eb1",
+  "review_date": "2026-05-05",
+  "root_prefix_hash": "8945b3a707e981a8cfa59c93bce8f34a7872e38c6d37cd822e97ac04fa219eb1",
+  "schema_version": 1,
+  "source_cache": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.npy",
+  "source_chunk_count": 11470,
+  "source_manifest": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.manifest.json",
+  "target_cache": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_laser_welding_109_contextual_m571cef40de3d.npy",
+  "target_cache_sha256": "115247dd2e319d78fa3d8be69480af9a68c675a6b2a11d7fe1629f34f8ffe6f1",
+  "target_manifest": "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_laser_welding_109_contextual_m571cef40de3d.manifest.json",
+  "target_manifest_sha256": "952089b3fe7f8fe5ff172161a75a7b797711e4c89d641436bb1d252003e033bf",
+  "task_id": "Post-LMWR-470-laser-welding-109-cache-slice",
+  "verification": {
+    "root_prefix_matches_project": true,
+    "source_shape": [
+      11470,
+      1024
+    ],
+    "target_shape": [
+      7225,
+      1024
+    ],
+    "zero_row_count": 0
+  }
+}

@@ -70,7 +70,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional depend
     def get_cost_profile() -> str:
         return "balanced"
 
-from chunk_size_guard import summarize_oversize_chunks
+from chunk_size_guard import filter_embedding_safe_chunks, summarize_oversize_chunks
 from retrieval_provenance import attach_source_labels, merge_source_labels
 
 logger = logging.getLogger(__name__)
@@ -192,6 +192,8 @@ def _build_resume_guard_config(
     use_contextual: bool,
     query_concurrency: int,
     strict_cache_guard: bool,
+    chunk_store_dir: str | None,
+    embedding_cache_path: str | None,
     template_flags_path: str | None,
     offset: int,
     limit: int | None,
@@ -226,6 +228,8 @@ def _build_resume_guard_config(
             "use_contextual": bool(use_contextual),
             "query_concurrency": int(query_concurrency),
             "strict_cache_guard": bool(strict_cache_guard),
+            "chunk_store_dir": _normalize_path(chunk_store_dir),
+            "embedding_cache_path": _normalize_path(embedding_cache_path),
             "template_flags_path": _normalize_path(template_flags_path),
         },
         "append_targets": {
@@ -255,6 +259,8 @@ def _enforce_resume_parity_guard(
     use_contextual: bool,
     query_concurrency: int,
     strict_cache_guard: bool,
+    chunk_store_dir: str | None,
+    embedding_cache_path: str | None,
     template_flags_path: str | None,
     offset: int,
     limit: int | None,
@@ -281,6 +287,8 @@ def _enforce_resume_parity_guard(
         use_contextual=use_contextual,
         query_concurrency=query_concurrency,
         strict_cache_guard=strict_cache_guard,
+        chunk_store_dir=chunk_store_dir,
+        embedding_cache_path=embedding_cache_path,
         template_flags_path=template_flags_path,
         offset=offset,
         limit=limit,
@@ -332,6 +340,8 @@ def _build_run_provenance(
     use_contextual: bool,
     query_concurrency: int,
     strict_cache_guard: bool,
+    chunk_store_dir: str | None,
+    embedding_cache_path: str | None,
     template_flags_path: str | None,
     offset: int,
     limit: int | None,
@@ -368,6 +378,8 @@ def _build_run_provenance(
             "use_contextual": bool(use_contextual),
             "query_concurrency": int(query_concurrency),
             "strict_cache_guard": bool(strict_cache_guard),
+            "chunk_store_dir": _normalize_path(chunk_store_dir),
+            "embedding_cache_path": _normalize_path(embedding_cache_path),
             "cost_profile": get_cost_profile(),
         },
     }
@@ -618,6 +630,9 @@ def _load_retrieval_corpus(chunk_store_dir: Path | None = None) -> dict[str, Any
     chunk_store_dir = chunk_store_dir or (Path("output") / "chunk_store")
     if not chunk_store_dir.exists():
         return {"chunks": [], "oversize_count": 0}
+    if (chunk_store_dir / "manifest.json").exists():
+        chunks = _load_v2_project_chunks(chunk_store_dir)
+        return {"chunks": chunks, **summarize_oversize_chunks(chunks)}
 
     chunks: list[dict[str, Any]] = []
     v2_projects: set[str] = set()
@@ -1214,6 +1229,8 @@ def run_eval(
     use_contextual: bool = False,
     query_concurrency: int = DEFAULT_QUERY_CONCURRENCY,
     strict_cache_guard: bool = DEFAULT_STRICT_CACHE_GUARD,
+    chunk_store_dir: str | None = None,
+    embedding_cache_path: str | None = None,
     template_flags_path: str | None = None,
     offset: int = 0,
     limit: int | None = None,
@@ -1249,6 +1266,8 @@ def run_eval(
         use_contextual=use_contextual,
         query_concurrency=query_concurrency,
         strict_cache_guard=strict_cache_guard,
+        chunk_store_dir=chunk_store_dir,
+        embedding_cache_path=embedding_cache_path,
         template_flags_path=template_flags_path,
         offset=offset,
         limit=limit,
@@ -1262,7 +1281,7 @@ def run_eval(
         start = max(0, int(offset))
         end = start + int(limit) if limit is not None else None
         queries = queries[start:end]
-    corpus = _load_retrieval_corpus()
+    corpus = _load_retrieval_corpus(Path(chunk_store_dir)) if chunk_store_dir else _load_retrieval_corpus()
 
     # Phase 6: optionally prepend document-level context to chunks
     if use_contextual and batch_contextualize:
@@ -1313,6 +1332,7 @@ def run_eval(
             use_expansion=use_expansion,
             query_concurrency=query_concurrency,
             strict_cache_guard=strict_cache_guard,
+            embedding_cache_path=embedding_cache_path,
             template_flags_map=template_flags_map,
             progress_path=progress_path,
             progress_every=progress_every,
@@ -1343,6 +1363,8 @@ def run_eval(
             use_contextual=use_contextual,
             query_concurrency=query_concurrency,
             strict_cache_guard=strict_cache_guard,
+            chunk_store_dir=chunk_store_dir,
+            embedding_cache_path=embedding_cache_path,
             template_flags_path=template_flags_path,
             offset=offset,
             limit=limit,
@@ -1374,6 +1396,7 @@ async def _run_eval_async(
     use_expansion: bool,
     query_concurrency: int = DEFAULT_QUERY_CONCURRENCY,
     strict_cache_guard: bool = DEFAULT_STRICT_CACHE_GUARD,
+    embedding_cache_path: str | None = None,
     template_flags_map: dict[str, bool] | None = None,
     progress_path: str | None = None,
     progress_every: int = 100,
@@ -1387,26 +1410,22 @@ async def _run_eval_async(
     if ChunkVectorStore is not None:
         chunks = corpus.get("chunks", []) if isinstance(corpus.get("chunks"), list) else []
         if chunks:
-            # Filter oversize chunks before embedding (hard guard at API level)
-            # Use conservative threshold (90% of limit) to account for tokenizer variance
-            from chunk_size_guard import inspect_chunk, hard_max_tokens, hard_max_chars
-            safe_token_limit = int(hard_max_tokens() * 0.9)
-            safe_char_limit = int(hard_max_chars() * 0.9)
-            clean_chunks = []
-            for c in chunks:
-                m = inspect_chunk(c)
-                if m["token_count"] <= safe_token_limit and m["char_count"] <= safe_char_limit:
-                    clean_chunks.append(c)
-            oversize_count = len(chunks) - len(clean_chunks)
+            filter_report = filter_embedding_safe_chunks(chunks)
+            clean_chunks = filter_report["chunks"]
+            oversize_count = filter_report["filtered_count"]
             if oversize_count > 0:
                 logger.warning(
-                    "Filtered %d/%d oversize chunks before embedding (conservative: %d tokens, %d chars)",
+                    "Filtered %d/%d chunks outside embedding hard guard (%d tokens, %d chars)",
                     oversize_count,
                     len(chunks),
-                    safe_token_limit,
-                    safe_char_limit,
+                    filter_report["hard_max_tokens"],
+                    filter_report["hard_max_chars"],
                 )
-            cache_path = Path("output") / "embedding_cache" / "corpus_embeddings.npy"
+            cache_path = (
+                Path(embedding_cache_path)
+                if embedding_cache_path
+                else Path("output") / "embedding_cache" / "corpus_embeddings.npy"
+            )
             vector_store = await ChunkVectorStore.build(
                 clean_chunks,
                 cache_path=cache_path,
@@ -1564,6 +1583,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run retrieval evaluation.")
     parser.add_argument("--queries", default=DEFAULT_QUERIES_PATH)
     parser.add_argument("--output", default="BASELINE_METRICS.json")
+    parser.add_argument(
+        "--chunk-store-dir",
+        type=str,
+        default=None,
+        help="可选：指定评测语料目录；可为 chunk_store root 或单个 v2 project manifest 目录。",
+    )
+    parser.add_argument(
+        "--embedding-cache-path",
+        type=str,
+        default=None,
+        help="可选：指定 dense embedding cache base .npy；实际文件仍会追加 contextual/model 后缀。",
+    )
     parser.add_argument(
         "--top-k",
         type=int,
@@ -1741,6 +1772,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         use_contextual=args.contextual,
         query_concurrency=args.query_concurrency,
         strict_cache_guard=args.strict_cache_guard,
+        chunk_store_dir=args.chunk_store_dir,
+        embedding_cache_path=args.embedding_cache_path,
         template_flags_path=args.template_flags,
         offset=args.offset,
         limit=args.limit,
