@@ -164,6 +164,7 @@ def validate_project_contextual_coverage(
             total_chunks += len(chunks)
             batch_contextualize(
                 chunks,
+                api_key="validation-only",
                 project_id=project_id,
                 summaries_root=summaries_root,
                 miss_log_path=validation_miss_log,

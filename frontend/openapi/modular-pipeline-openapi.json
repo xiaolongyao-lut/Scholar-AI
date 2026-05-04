@@ -1842,9 +1842,27 @@
             ],
             "title": "Page"
           },
+          "query_overlap_tokens": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Query Overlap Tokens",
+            "type": "array"
+          },
           "quote": {
             "title": "Quote",
             "type": "string"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
           },
           "score": {
             "anyOf": [
@@ -5601,6 +5619,450 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WikiCompileRequest": {
+        "properties": {
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          }
+        },
+        "title": "WikiCompileRequest",
+        "type": "object"
+      },
+      "WikiCompileResponse": {
+        "properties": {
+          "budget_checks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Budget Checks",
+            "type": "array"
+          },
+          "budget_summary": {
+            "additionalProperties": true,
+            "title": "Budget Summary",
+            "type": "object"
+          },
+          "created": {
+            "default": 0,
+            "title": "Created",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "planned_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Planned Paths",
+            "type": "array"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "updated": {
+            "default": 0,
+            "title": "Updated",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "written_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Written Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "dry_run"
+        ],
+        "title": "WikiCompileResponse",
+        "type": "object"
+      },
+      "WikiDoctorResponse": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "report": {
+            "additionalProperties": true,
+            "title": "Report",
+            "type": "object"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WikiDoctorResponse",
+        "type": "object"
+      },
+      "WikiGraphResponse": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "graph": {
+            "additionalProperties": true,
+            "title": "Graph",
+            "type": "object"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WikiGraphResponse",
+        "type": "object"
+      },
+      "WikiPageListResponse": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/WikiPageSummaryPayload"
+            },
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WikiPageListResponse",
+        "type": "object"
+      },
+      "WikiPageReadResponse": {
+        "properties": {
+          "body": {
+            "default": "",
+            "title": "Body",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "frontmatter": {
+            "additionalProperties": true,
+            "title": "Frontmatter",
+            "type": "object"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "path"
+        ],
+        "title": "WikiPageReadResponse",
+        "type": "object"
+      },
+      "WikiPageSummaryPayload": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "title",
+          "kind",
+          "status"
+        ],
+        "title": "WikiPageSummaryPayload",
+        "type": "object"
+      },
+      "WikiQueryRequest": {
+        "properties": {
+          "debug": {
+            "default": false,
+            "title": "Debug",
+            "type": "boolean"
+          },
+          "query": {
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "save": {
+            "default": false,
+            "title": "Save",
+            "type": "boolean"
+          },
+          "wiki_first": {
+            "default": false,
+            "title": "Wiki First",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "WikiQueryRequest",
+        "type": "object"
+      },
+      "WikiQueryResponse": {
+        "properties": {
+          "answer": {
+            "default": "",
+            "title": "Answer",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "fallback_required": {
+            "title": "Fallback Required",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "fallback_required"
+        ],
+        "title": "WikiQueryResponse",
+        "type": "object"
+      },
+      "WikiReviewDecisionRequest": {
+        "properties": {
+          "decided_by": {
+            "default": "user",
+            "title": "Decided By",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "WikiReviewDecisionRequest",
+        "type": "object"
+      },
+      "WikiReviewItemPayload": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "page_path": {
+            "title": "Page Path",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "kind",
+          "title",
+          "page_path",
+          "summary",
+          "status",
+          "created_at",
+          "source"
+        ],
+        "title": "WikiReviewItemPayload",
+        "type": "object"
+      },
+      "WikiReviewListResponse": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WikiReviewItemPayload"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WikiReviewListResponse",
+        "type": "object"
+      },
+      "WikiStatusResponse": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "graph_db_exists": {
+            "default": false,
+            "title": "Graph Db Exists",
+            "type": "boolean"
+          },
+          "graph_json_exists": {
+            "default": false,
+            "title": "Graph Json Exists",
+            "type": "boolean"
+          },
+          "page_count": {
+            "default": 0,
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "paths": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Paths",
+            "type": "object"
+          },
+          "query_index_exists": {
+            "default": false,
+            "title": "Query Index Exists",
+            "type": "boolean"
+          },
+          "review_queue_exists": {
+            "default": false,
+            "title": "Review Queue Exists",
+            "type": "boolean"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WikiStatusResponse",
+        "type": "object"
+      },
       "WritingActionPayload": {
         "description": "Legacy-compatible writing action payload.",
         "properties": {
@@ -5988,6 +6450,427 @@
         "summary": "List Chat Sessions",
         "tags": [
           "Chat"
+        ]
+      }
+    },
+    "/api/wiki/compile": {
+      "post": {
+        "operationId": "post_api_wiki_compile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiCompileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiCompileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wiki Compile",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/doctor": {
+      "get": {
+        "operationId": "get_api_wiki_doctor",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiDoctorResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Wiki Doctor",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/graph": {
+      "get": {
+        "operationId": "get_api_wiki_graph",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiGraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Wiki Graph",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/pages": {
+      "get": {
+        "operationId": "get_api_wiki_pages",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wiki Pages",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/pages/{page_path}": {
+      "get": {
+        "operationId": "get_api_wiki_pages_page_path",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_path",
+            "required": true,
+            "schema": {
+              "title": "Page Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wiki Page Read",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/query": {
+      "post": {
+        "operationId": "post_api_wiki_query",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiQueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wiki Query",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/review": {
+      "get": {
+        "operationId": "get_api_wiki_review",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiReviewListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wiki Review List",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/review/{item_id}/approve": {
+      "post": {
+        "operationId": "post_api_wiki_review_item_id_approve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiReviewDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiReviewItemPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wiki Review Approve",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/review/{item_id}/reject": {
+      "post": {
+        "operationId": "post_api_wiki_review_item_id_reject",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiReviewDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiReviewItemPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wiki Review Reject",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/status": {
+      "get": {
+        "operationId": "get_api_wiki_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Wiki Status",
+        "tags": [
+          "Wiki"
         ]
       }
     },
@@ -11251,6 +12134,10 @@
     {
       "description": "项目、章节、素材、草稿管理",
       "name": "Resources"
+    },
+    {
+      "description": "Wiki 页面编译、查询、图谱与审计诊断",
+      "name": "Wiki"
     },
     {
       "description": "批处理合卷与跨论文对比分析",

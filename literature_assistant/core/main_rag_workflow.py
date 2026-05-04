@@ -47,7 +47,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 导入适配层
-from runtime_env import env_value, resolve_embedding_config, resolve_llm_config
+from runtime_env import env_value, resolve_embedding_config, resolve_llm_config, wiki_first_retrieval_enabled
 
 DEFAULT_LLM_BASE_URL = env_value("ARK_BASE_URL", "OPENAI_BASE_URL", "BASE_URL", default="https://ark.cn-beijing.volces.com/api/v3")
 DEFAULT_LLM_MODEL = env_value("ARK_MODEL", "OPENAI_MODEL", "MODEL", default="ep-your-ark-endpoint")
@@ -59,13 +59,36 @@ from model_call_gateway import gated_call, _compute_corpus_version
 from query_expander import decompose_query_async
 from retrieval_provenance import attach_source_labels, merge_source_labels
 from llm_defaults import resolve_llm_params
-from project_paths import output_path
+from project_paths import output_path, wiki_generated_root, wiki_query_index_path
 
 # Sprint 4: 高级缓存与路由
 from semantic_cache import SemanticCache
 from model_router import get_router
 from conversation_manager import get_conv_manager
 from citation_auditor import get_auditor # 新增
+
+try:
+    from literature_assistant.core.wiki.page_store import WikiPageStore
+    from literature_assistant.core.wiki.query import (
+        WikiContextPack,
+        WikiQueryIndex,
+        WikiQueryResult,
+        build_query_trace,
+        build_wiki_index,
+        render_context_pack,
+        wiki_query_with_fallback,
+        write_query_trace,
+    )
+except Exception:  # pragma: no cover - wiki integration remains default-off.
+    WikiContextPack = None  # type: ignore[assignment]
+    WikiPageStore = None  # type: ignore[assignment]
+    WikiQueryIndex = None  # type: ignore[assignment]
+    WikiQueryResult = None  # type: ignore[assignment]
+    build_query_trace = None  # type: ignore[assignment]
+    build_wiki_index = None  # type: ignore[assignment]
+    render_context_pack = None  # type: ignore[assignment]
+    wiki_query_with_fallback = None  # type: ignore[assignment]
+    write_query_trace = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -399,17 +422,29 @@ class RAGWorkflow:
             # 第 3 步：RAG 混合检索 (RAGFlow 优先 + 本地兜底)
             # ========================================
             logger.info("[Step 3] RAG 混合检索")
-            
-            rag_evidence = await self._rag_search(
-                enhanced_query,
+
+            wiki_evidence, wiki_trace = self._try_wiki_first_retrieval(
+                user_query=user_query,
                 top_k=top_k_evidence,
-                dataset_ids=dataset_ids
             )
+            if wiki_trace:
+                trace["step_2_wiki_first"] = wiki_trace
+
+            if wiki_evidence:
+                rag_evidence = wiki_evidence
+                logger.info("✓ Wiki-first 检索命中 %s 个上下文片段", len(rag_evidence))
+            else:
+                rag_evidence = await self._rag_search(
+                    enhanced_query,
+                    top_k=top_k_evidence,
+                    dataset_ids=dataset_ids
+                )
             
             trace['step_2_rag_search'] = {
                 'enhanced_query': enhanced_query,
                 'evidence_count': len(rag_evidence),
-                'rag_search_success': bool(rag_evidence)
+                'rag_search_success': bool(rag_evidence),
+                'source': 'wiki_first' if wiki_evidence else 'raw_rag',
             }
             
             logger.info(f"✓ 检索到 {len(rag_evidence)} 个证据")
@@ -526,6 +561,136 @@ class RAGWorkflow:
         )
         
         return enhanced
+
+    def _try_wiki_first_retrieval(
+        self,
+        *,
+        user_query: str,
+        top_k: int,
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any] | None]:
+        """Return wiki evidence when default-off wiki-first retrieval is enabled.
+
+        The branch never raises and never replaces raw RAG fallback when the wiki
+        index is absent, empty, stale, or budget-constrained.
+        """
+        if not wiki_first_retrieval_enabled():
+            return [], None
+        if not user_query or not user_query.strip():
+            return [], None
+        if (
+            WikiPageStore is None
+            or WikiQueryIndex is None
+            or build_wiki_index is None
+            or wiki_query_with_fallback is None
+            or render_context_pack is None
+            or build_query_trace is None
+        ):
+            return [], {
+                "enabled": True,
+                "fallback_used": True,
+                "fallback_reason": "wiki integration imports unavailable",
+            }
+
+        try:
+            page_store = WikiPageStore(wiki_generated_root())
+            index = WikiQueryIndex(wiki_query_index_path())
+            build_wiki_index(page_store, index)
+            query_result = wiki_query_with_fallback(
+                user_query,
+                index,
+                page_store,
+                enabled=True,
+                limit=max(1, top_k),
+                expand_links=True,
+                max_linked=max(1, min(3, top_k)),
+            )
+            context_pack = (
+                render_context_pack(
+                    user_query,
+                    query_result,
+                    page_store,
+                    max_tokens=max(512, int(os.environ.get("WIKI_CONTEXT_PACK_MAX_TOKENS", "4000"))),
+                )
+                if not query_result.fallback_used
+                else None
+            )
+            query_trace = build_query_trace(
+                user_query,
+                query_result,
+                context_pack,
+                enabled=True,
+            )
+            trace_path = write_query_trace(query_trace) if write_query_trace is not None else None
+            trace_payload: Dict[str, Any] = {
+                "enabled": True,
+                "wiki_hits": len(query_result.wiki_hits),
+                "linked_hits": len(query_result.linked_hits),
+                "fallback_used": query_result.fallback_used,
+                "fallback_reason": query_result.fallback_reason,
+                "context_tokens": query_trace.context_tokens,
+                "context_max_tokens": query_trace.context_max_tokens,
+                "context_truncated": query_trace.context_truncated,
+                "omitted_pages": query_trace.omitted_pages,
+                "trace_path": str(trace_path) if trace_path else None,
+            }
+            if query_result.fallback_used or context_pack is None:
+                return [], trace_payload
+            evidence = self._wiki_context_pack_to_evidence(context_pack, query_result)
+            if not evidence:
+                trace_payload["fallback_used"] = True
+                trace_payload["fallback_reason"] = "wiki context pack empty"
+                return [], trace_payload
+            return evidence[:top_k], trace_payload
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Wiki-first retrieval skipped: %s", exc)
+            return [], {
+                "enabled": True,
+                "fallback_used": True,
+                "fallback_reason": f"wiki retrieval error: {exc}",
+            }
+
+    def _wiki_context_pack_to_evidence(
+        self,
+        context_pack: Any,
+        query_result: Any,
+    ) -> List[Dict[str, Any]]:
+        """Convert wiki context pages into RAG evidence-shaped dictionaries."""
+        evidence: List[Dict[str, Any]] = []
+        packed_pages = list(getattr(context_pack, "primary_pages", [])) + list(
+            getattr(context_pack, "linked_pages", [])
+        )
+        hits = list(getattr(query_result, "wiki_hits", [])) + list(getattr(query_result, "linked_hits", []))
+        for idx, page_text in enumerate(packed_pages):
+            if not isinstance(page_text, str) or not page_text.strip():
+                continue
+            hit = hits[idx] if idx < len(hits) else None
+            page_path = getattr(hit, "page_path", Path(f"wiki-page-{idx}.md"))
+            page_title = str(getattr(hit, "title", page_path.stem if isinstance(page_path, Path) else "Wiki Page"))
+            page_path_text = page_path.as_posix() if isinstance(page_path, Path) else str(page_path)
+            chunk_digest = sha256(f"wiki:{page_path_text}:{idx}".encode("utf-8")).hexdigest()[:16]
+            score = float(getattr(hit, "score", 0.0) or 0.0)
+            source_label = str(getattr(hit, "source", "wiki_first") or "wiki_first")
+            evidence.append(
+                attach_source_labels(
+                    {
+                        "chunk_id": f"wiki-{chunk_digest}",
+                        "material_id": page_path_text,
+                        "text": page_text.strip(),
+                        "source": page_path_text,
+                        "score": score,
+                        "label": page_title,
+                        "metadata": {
+                            "type": "wiki_first",
+                            "title": page_title,
+                            "source_labels": ["wiki_first", source_label],
+                            "source_hint": f"wiki_first+{source_label}",
+                        },
+                    },
+                    ["wiki_first", source_label],
+                    source_hint=f"wiki_first+{source_label}",
+                )
+            )
+        return evidence
     
     async def _rag_search(
         self,

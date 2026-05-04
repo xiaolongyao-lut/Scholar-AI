@@ -86,6 +86,35 @@ def env_value(*names: str, default: str | None = None) -> str | None:
     return default
 
 
+def env_bool(*names: str, default: bool = False) -> bool:
+    """Resolve a boolean feature flag from env or repo-local dotenv values."""
+
+    value = env_value(*names)
+    if value is None:
+        return default
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on", "enabled"}:
+        return True
+    if normalized in {"0", "false", "no", "off", "disabled"}:
+        return False
+    return default
+
+
+def wiki_enabled() -> bool:
+    """Return whether the LLM-Wiki integration is globally enabled."""
+
+    return env_bool("LITERATURE_ASSISTANT_WIKI_ENABLED", default=False)
+
+
+def wiki_first_retrieval_enabled() -> bool:
+    """Return whether wiki-first retrieval may run before raw RAG."""
+
+    return wiki_enabled() and env_bool(
+        "LITERATURE_ASSISTANT_WIKI_FIRST_RETRIEVAL",
+        default=False,
+    )
+
+
 def resolve_llm_config(
     api_key: str | None = None,
     *,

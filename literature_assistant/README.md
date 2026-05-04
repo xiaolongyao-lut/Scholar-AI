@@ -23,7 +23,9 @@
 ## 用户入口
 
 - 双击或运行根目录 `start.bat`，由 `start.py` 启动前端和后端。
-- 路径诊断：`python run_literature_assistant.py paths`。
+- 路径诊断：`python run_literature_assistant.py paths`（等价 `python -m literature_assistant paths`）。
+- Wiki 状态诊断：`python run_literature_assistant.py wiki status`。
+- Wiki doctor dry-run：`python run_literature_assistant.py wiki doctor`。
 - 后端开发启动：在仓库根目录执行 `python -m uvicorn literature_assistant.core.python_adapter_server:app --host 127.0.0.1 --port 8000`。
 
 ## 路径工程约定

@@ -120,6 +120,7 @@ OPENAPI_TAGS = [
     {"name": "System", "description": "系统健康与状态"},
     {"name": "Chat", "description": "LLM 对话代理（同步 + 流式）"},
     {"name": "Resources", "description": "项目、章节、素材、草稿管理"},
+    {"name": "Wiki", "description": "Wiki 页面编译、查询、图谱与审计诊断"},
     {"name": "Volume", "description": "批处理合卷与跨论文对比分析"},
     {"name": "Pipeline", "description": "分析管线执行与任务管理"},
     {"name": "Runtime", "description": "写作运行时：会话、作业、事件"},
@@ -441,6 +442,7 @@ from routers.intelligent_chat_router import router as intelligent_chat_router
 from routers.llm_cost_router import router as llm_cost_router
 from routers.sampling_router import router as sampling_router
 from routers.volume_router import router as volume_router
+from routers.wiki_router import router as wiki_router
 
 app.include_router(pipeline_router)
 app.include_router(skills_router)
@@ -456,6 +458,7 @@ app.include_router(intelligent_chat_router)
 app.include_router(llm_cost_router)
 app.include_router(sampling_router)
 app.include_router(volume_router)
+app.include_router(wiki_router)
 
 if FRONTEND_ASSETS_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="frontend-assets")

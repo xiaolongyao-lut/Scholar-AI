@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from literature_assistant.core.project_paths import ensure_directory, wiki_trace_path
 from literature_assistant.core.wiki.evidence_adapter import build_synthesis_body, coerce_evidence_refs
 from literature_assistant.core.wiki.models import WikiPageKind, WikiPageStatus
+from literature_assistant.core.wiki.observability import WikiObservabilitySink
 from literature_assistant.core.wiki.page_store import WikiPageStore, render_page, stable_slug
 
 
@@ -27,13 +29,16 @@ class WikiSearchResult:
     title: str
     score: float
     snippet: str
+    source: str = "wiki_fts"
 
 
 class WikiQueryIndex:
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, *, observability_sink: WikiObservabilitySink | None = None) -> None:
         self.db_path = db_path
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
         self._warmup_done = False
+        self.observability_sink = observability_sink
 
     def _get_conn(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -93,28 +98,56 @@ class WikiQueryIndex:
     def search(self, query: str, limit: int = 10) -> list[WikiSearchResult]:
         if not query or not query.strip():
             return []
-        conn = self._get_conn()
-        cursor = conn.execute(
-            """
-            SELECT page_path, title, snippet(wiki_pages_fts, 2, '<b>', '</b>', '...', 64) as snippet, rank
-            FROM wiki_pages_fts
-            WHERE wiki_pages_fts MATCH ?
-            ORDER BY rank
-            LIMIT ?
-            """,
-            (query, limit),
+        if limit <= 0:
+            return []
+        span = (
+            self.observability_sink.start_span("wiki.query.index.search", {"limit": limit})
+            if self.observability_sink is not None
+            else None
         )
-        results: list[WikiSearchResult] = []
-        for row in cursor:
-            results.append(
-                WikiSearchResult(
-                    page_path=Path(row["page_path"]),
-                    title=row["title"],
-                    score=-row["rank"],
-                    snippet=row["snippet"],
-                )
+        if span is not None:
+            span.__enter__()
+        conn = self._get_conn()
+        span_error: BaseException | None = None
+        try:
+            cursor = conn.execute(
+                """
+                SELECT page_path, title, snippet(wiki_pages_fts, 2, '<b>', '</b>', '...', 64) as snippet, rank
+                FROM wiki_pages_fts
+                WHERE wiki_pages_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+                """,
+                (query, limit),
             )
-        return results
+            results: list[WikiSearchResult] = []
+            for row in cursor:
+                results.append(
+                    WikiSearchResult(
+                        page_path=Path(row["page_path"]),
+                        title=row["title"],
+                        score=-row["rank"],
+                        snippet=row["snippet"],
+                        source="wiki_fts",
+                    )
+                )
+            if self.observability_sink is not None:
+                self.observability_sink.record_metric(
+                    "wiki.query.index.hit_count",
+                    len(results),
+                    {"limit": limit, "query_hash": hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]},
+                    unit="hits",
+            )
+            return results
+        except Exception as exc:
+            span_error = exc
+            raise
+        finally:
+            if span is not None:
+                if span_error is None:
+                    span.__exit__(None, None, None)
+                else:
+                    span.__exit__(type(span_error), span_error, span_error.__traceback__)
 
     def get_status(self) -> WikiRetrievalStatus:
         conn = self._get_conn()
@@ -140,10 +173,12 @@ class WikiQueryIndex:
 
 
 def build_wiki_index(page_store: WikiPageStore, index: WikiQueryIndex) -> None:
-    import json
-
     index.initialize()
+    conn = index._get_conn()
+    conn.execute("DELETE FROM wiki_pages_fts")
+    conn.commit()
     pages = page_store.list_pages()
+    indexed_payload: list[str] = []
     for page_path in pages:
         content = page_store.read_page(page_path)
         if content:
@@ -175,6 +210,17 @@ def build_wiki_index(page_store: WikiPageStore, index: WikiQueryIndex) -> None:
                     break
             body = "\n".join(lines[body_start:])
             index.index_page(page_path, title, body)
+            indexed_payload.append(f"{page_path.as_posix()}:{title}:{hashlib.sha256(body.encode('utf-8')).hexdigest()}")
+    index_hash = hashlib.sha256("\n".join(sorted(indexed_payload)).encode("utf-8")).hexdigest()
+    conn.execute(
+        "INSERT OR REPLACE INTO wiki_index_status (key, value) VALUES (?, ?)",
+        ("index_hash", index_hash),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO wiki_index_status (key, value) VALUES (?, datetime('now'))",
+        ("last_indexed",),
+    )
+    conn.commit()
 
 
 def wiki_first_search(
@@ -196,11 +242,46 @@ def expand_linked_pages(
     *,
     max_linked: int = 3,
 ) -> list[WikiSearchResult]:
-    import json
     import re
 
+    if max_linked <= 0:
+        return []
     linked_pages: dict[Path, float] = {}
+    linked_sources: dict[Path, set[Path]] = {}
     primary_paths = {r.page_path for r in primary_results}
+
+    def _candidate_paths(raw_link: str, source_path: Path) -> list[Path]:
+        link_text = raw_link.strip()
+        if not link_text:
+            return []
+        link_target = link_text.split("|", 1)[0].split("#", 1)[0].strip()
+        if not link_target:
+            return []
+        normalized = Path(link_target)
+        candidates: list[Path] = []
+        if normalized.suffix.lower() != ".md":
+            candidates.append(normalized.with_suffix(".md"))
+        candidates.append(normalized)
+        if len(normalized.parts) == 1:
+            parent = source_path.parent
+            for candidate in list(candidates):
+                if parent != Path("."):
+                    candidates.append(parent / candidate)
+        unique: list[Path] = []
+        seen: set[Path] = set()
+        for candidate in candidates:
+            if candidate.is_absolute() or ".." in candidate.parts:
+                continue
+            if candidate not in seen:
+                seen.add(candidate)
+                unique.append(candidate)
+        return unique
+
+    def _first_existing_link(raw_link: str, source_path: Path) -> Path | None:
+        for candidate in _candidate_paths(raw_link, source_path):
+            if page_store.read_page(candidate):
+                return candidate
+        return None
 
     for result in primary_results:
         content = page_store.read_page(result.page_path)
@@ -208,14 +289,22 @@ def expand_linked_pages(
             continue
         wikilinks = re.findall(r"\[\[([^\]]+)\]\]", content)
         for link in wikilinks:
-            link_path = Path(link.strip())
+            link_path = _first_existing_link(link, result.page_path)
+            if link_path is None:
+                continue
             if link_path in primary_paths:
                 continue
             if link_path not in linked_pages:
                 linked_pages[link_path] = 0.0
+                linked_sources[link_path] = set()
             linked_pages[link_path] += result.score * 0.5
+            linked_sources[link_path].add(result.page_path)
 
-    sorted_linked = sorted(linked_pages.items(), key=lambda x: x[1], reverse=True)
+    sorted_linked = sorted(
+        linked_pages.items(),
+        key=lambda x: (x[1], len(linked_sources.get(x[0], set())), x[0].as_posix()),
+        reverse=True,
+    )
     expanded: list[WikiSearchResult] = []
     for link_path, score in sorted_linked[:max_linked]:
         content = page_store.read_page(link_path)
@@ -246,6 +335,7 @@ def expand_linked_pages(
                     title=title,
                     score=score,
                     snippet=snippet,
+                    source="wiki_linked",
                 )
             )
     return expanded
@@ -295,6 +385,8 @@ class WikiContextPack:
     linked_pages: list[str]
     total_tokens: int
     truncated: bool
+    omitted_pages: list[str] | None = None
+    max_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -307,6 +399,39 @@ class WikiQueryTrace:
     fallback_reason: str
     total_pages: int
     context_tokens: int
+    context_max_tokens: int
+    context_truncated: bool
+    omitted_pages: list[str]
+
+
+def _strip_frontmatter(content: str) -> str:
+    lines = content.split("\n")
+    if lines and lines[0].strip() == "---json":
+        for i, line in enumerate(lines[1:], start=1):
+            if line.strip() == "---":
+                return "\n".join(lines[i + 1 :])
+    return content
+
+
+def _fit_context_text(
+    target: list[str],
+    text: str,
+    *,
+    total_chars: int,
+    max_chars: int,
+) -> tuple[int, bool]:
+    if not text:
+        return total_chars, False
+    remaining = max_chars - total_chars
+    if remaining <= 0:
+        return total_chars, False
+    if len(text) <= remaining:
+        target.append(text)
+        return total_chars + len(text), True
+    if remaining >= 80:
+        target.append(text[: max(0, remaining - 24)].rstrip() + "\n\n...[truncated]")
+        return max_chars, True
+    return total_chars, False
 
 
 def render_context_pack(
@@ -317,57 +442,79 @@ def render_context_pack(
     max_tokens: int = 4000,
     tokens_per_char: float = 0.25,
 ) -> WikiContextPack:
-    import re
-
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("query cannot be empty")
+    if max_tokens <= 0:
+        raise ValueError("max_tokens must be positive")
+    if tokens_per_char <= 0:
+        raise ValueError("tokens_per_char must be positive")
     primary_pages: list[str] = []
     linked_pages: list[str] = []
+    omitted_pages: list[str] = []
     total_chars = 0
     max_chars = int(max_tokens / tokens_per_char)
     truncated = False
 
-    def _strip_frontmatter(content: str) -> str:
-        lines = content.split("\n")
-        if lines and lines[0].strip() == "---json":
-            for i, line in enumerate(lines[1:], start=1):
-                if line.strip() == "---":
-                    return "\n".join(lines[i + 1 :])
-        return content
-
     for result in query_result.wiki_hits:
         content = page_store.read_page(result.page_path)
         if not content:
+            omitted_pages.append(result.page_path.as_posix())
             continue
         body = _strip_frontmatter(content)
-        header = f"## {result.title}\n\n"
+        header = f"## {result.title}\n\nSource: {result.page_path.as_posix()}\nScore: {result.score:.4f}\n\n"
         page_text = header + body
-        if total_chars + len(page_text) > max_chars:
+        next_total, included = _fit_context_text(
+            primary_pages,
+            page_text,
+            total_chars=total_chars,
+            max_chars=max_chars,
+        )
+        if not included:
             truncated = True
+            omitted_pages.append(result.page_path.as_posix())
             break
-        primary_pages.append(page_text)
-        total_chars += len(page_text)
+        total_chars = next_total
+        if total_chars >= max_chars and len(page_text) > max_chars:
+            truncated = True
+            omitted_pages.extend(
+                hit.page_path.as_posix()
+                for hit in query_result.wiki_hits
+                if hit.page_path != result.page_path
+            )
+            break
 
     for result in query_result.linked_hits:
         if total_chars >= max_chars:
             truncated = True
+            omitted_pages.append(result.page_path.as_posix())
             break
         content = page_store.read_page(result.page_path)
         if not content:
+            omitted_pages.append(result.page_path.as_posix())
             continue
         body = _strip_frontmatter(content)
-        header = f"### {result.title} (linked)\n\n"
+        header = f"### {result.title} (linked)\n\nSource: {result.page_path.as_posix()}\nScore: {result.score:.4f}\n\n"
         page_text = header + body
-        if total_chars + len(page_text) > max_chars:
+        next_total, included = _fit_context_text(
+            linked_pages,
+            page_text,
+            total_chars=total_chars,
+            max_chars=max_chars,
+        )
+        if not included:
             truncated = True
+            omitted_pages.append(result.page_path.as_posix())
             break
-        linked_pages.append(page_text)
-        total_chars += len(page_text)
+        total_chars = next_total
 
     return WikiContextPack(
         query=query,
         primary_pages=primary_pages,
         linked_pages=linked_pages,
+        omitted_pages=omitted_pages,
         total_tokens=int(total_chars * tokens_per_char),
         truncated=truncated,
+        max_tokens=max_tokens,
     )
 
 
@@ -387,7 +534,37 @@ def build_query_trace(
         fallback_reason=query_result.fallback_reason,
         total_pages=len(query_result.wiki_hits) + len(query_result.linked_hits),
         context_tokens=context_pack.total_tokens if context_pack else 0,
+        context_max_tokens=context_pack.max_tokens if context_pack else 0,
+        context_truncated=context_pack.truncated if context_pack else False,
+        omitted_pages=list(context_pack.omitted_pages or []) if context_pack else [],
     )
+
+
+def write_query_trace(trace: WikiQueryTrace, *, trace_dir: Path | None = None) -> Path:
+    """Persist a sanitized wiki query trace under workspace runtime artifacts."""
+
+    if not isinstance(trace, WikiQueryTrace):
+        raise TypeError("trace must be a WikiQueryTrace")
+    target_dir = ensure_directory(trace_dir or wiki_trace_path())
+    digest = hashlib.sha256(trace.query.encode("utf-8")).hexdigest()[:12]
+    target = target_dir / f"wiki-query-{digest}.json"
+    payload = {
+        "query_hash": digest,
+        "enabled": trace.enabled,
+        "fts_hits": trace.fts_hits,
+        "linked_hits": trace.linked_hits,
+        "fallback_used": trace.fallback_used,
+        "fallback_reason": trace.fallback_reason,
+        "total_pages": trace.total_pages,
+        "context_tokens": trace.context_tokens,
+        "context_max_tokens": trace.context_max_tokens,
+        "context_truncated": trace.context_truncated,
+        "omitted_pages": trace.omitted_pages,
+    }
+    tmp = target.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(target)
+    return target
 
 
 @dataclass(frozen=True)

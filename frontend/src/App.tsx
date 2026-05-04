@@ -9,6 +9,7 @@ import { CommandPalette } from './components/ui/CommandPalette';
 const Workbench = React.lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
 const Projects = React.lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
 const KnowledgeBase = React.lazy(() => import('./pages/KnowledgeBase').then(m => ({ default: m.KnowledgeBase })));
+const WikiWorkbench = React.lazy(() => import('./pages/WikiWorkbench').then(m => ({ default: m.WikiWorkbench })));
 const SettingsPage = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.SettingsPage })));
 const VolumeAnalysis = React.lazy(() => import('./pages/VolumeAnalysis').then(m => ({ default: m.VolumeAnalysis })));
 const Jobs = React.lazy(() => import('./pages/Jobs').then(m => ({ default: m.Jobs })));
@@ -51,6 +52,7 @@ const App = () => {
 
                   {/* Standalone pages */}
                   <Route path="/knowledge" element={<KnowledgeBase />} />
+                  <Route path="/wiki" element={<WikiWorkbench />} />
                   <Route path="/projects" element={<Projects />} />
                   <Route path="/volume" element={<VolumeAnalysis />} />
                   <Route path="/inspiration" element={<Inspiration />} />

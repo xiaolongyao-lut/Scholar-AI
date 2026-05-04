@@ -171,6 +171,245 @@ const samplingResponse = {
   },
 };
 
+const wikiStatusResponse: JsonValue = {
+  enabled: true,
+  page_count: 2,
+  stale: false,
+  graph_json_exists: true,
+  graph_db_exists: true,
+  query_index_exists: true,
+  review_queue_exists: true,
+  paths: {
+    wiki_root: 'C:\\workspace_artifacts\\generated\\wiki',
+    graph_json: 'C:\\workspace_artifacts\\runtime_state\\wiki\\graph.json',
+    query_index: 'C:\\workspace_artifacts\\runtime_state\\wiki\\query.db',
+  },
+  warnings: ['E2E fixture: wiki is mocked and read-only.'],
+};
+
+const wikiPagesResponse: JsonValue = {
+  enabled: true,
+  pages: [
+    {
+      path: 'sources/paper-a.md',
+      title: 'Laser Welding Paper A',
+      kind: 'source',
+      status: 'draft',
+    },
+    {
+      path: 'claims/claim-a.md',
+      title: 'Claim: Graph context improves recall',
+      kind: 'claim',
+      status: 'review',
+    },
+  ],
+};
+
+const wikiPageDetails: Record<string, JsonValue> = {
+  'sources/paper-a.md': {
+    enabled: true,
+    path: 'sources/paper-a.md',
+    frontmatter: {
+      title: 'Laser Welding Paper A',
+      kind: 'source',
+      status: 'draft',
+      evidence_refs: [
+        {
+          chunk_id: 'chunk-a1',
+          source_id: 'source-paper-a',
+          quote: 'Laser welding quality is sensitive to process window stability.',
+        },
+      ],
+    },
+    body: '## Summary\n\nLaser welding quality is sensitive to process window stability. @cite(chunk-a1)',
+  },
+  'claims/claim-a.md': {
+    enabled: true,
+    path: 'claims/claim-a.md',
+    frontmatter: {
+      title: 'Claim: Graph context improves recall',
+      kind: 'claim',
+      status: 'review',
+      evidence_refs: [
+        {
+          chunk_id: 'chunk-a2',
+          source_id: 'source-paper-a',
+          quote: 'Graph context improves recall for linked technical concepts.',
+        },
+      ],
+    },
+    body: '## Claim\n\nGraph context improves recall for linked technical concepts.\n\n## Evidence\n\n> Graph context improves recall for linked technical concepts.',
+  },
+};
+
+const wikiDoctorResponse: JsonValue = {
+  enabled: true,
+  report: {
+    ok: false,
+    status: 'warning',
+    counts: {
+      ok: 1,
+      warning: 1,
+      error: 0,
+    },
+    checks: [
+      {
+        id: 'citation-density',
+        label: 'Citation density',
+        status: 'warning',
+        summary: 'One draft page needs citation review.',
+        detail: 'Review draft source pages before finalization.',
+        metrics: {
+          draft_pages: 1,
+          review_pages: 1,
+        },
+        actions: [
+          {
+            command: 'wiki doctor --repair safe',
+            description: 'Rebuild derived local artifacts only.',
+            safe_auto_repair: true,
+          },
+        ],
+      },
+    ],
+    warnings: ['Draft pages are not final evidence.'],
+  },
+};
+
+const wikiReviewResponse: JsonValue = {
+  enabled: true,
+  items: [
+    {
+      item_id: 'review-1',
+      kind: 'claim',
+      title: 'Review graph recall claim',
+      page_path: 'claims/claim-a.md',
+      summary: 'Confirm whether graph context should be promoted from review to final.',
+      status: 'pending',
+      created_at: '2026-05-04T12:00:00Z',
+      source: 'wiki-doctor',
+      metadata: {
+        severity: 'warning',
+      },
+      decision: null,
+    },
+    {
+      item_id: 'review-2',
+      kind: 'source',
+      title: 'Approved source summary',
+      page_path: 'sources/paper-a.md',
+      summary: 'Source summary is acceptable for draft retrieval.',
+      status: 'approved',
+      created_at: '2026-05-04T12:05:00Z',
+      source: 'wiki-review',
+      metadata: {},
+      decision: {
+        status: 'approved',
+        reason: 'E2E fixture approval.',
+        decided_at: '2026-05-04T12:06:00Z',
+        decided_by: 'e2e',
+      },
+    },
+  ],
+};
+
+const wikiGraphResponse: JsonValue = {
+  enabled: true,
+  graph: {
+    schema_version: 1,
+    updated_at: '2026-05-04T12:00:00Z',
+    node_count: 2,
+    edge_count: 1,
+    nodes: [
+      {
+        node_id: 'node-source-a',
+        page_path: 'sources/paper-a.md',
+        kind: 'source',
+        title: 'Laser Welding Paper A',
+        status: 'draft',
+        content_hash: 'hash-source-a',
+        frontmatter_id: 'source-paper-a',
+        metadata: {},
+      },
+      {
+        node_id: 'node-claim-a',
+        page_path: 'claims/claim-a.md',
+        kind: 'claim',
+        title: 'Claim: Graph context improves recall',
+        status: 'review',
+        content_hash: 'hash-claim-a',
+        frontmatter_id: 'claim-a',
+        metadata: {},
+      },
+    ],
+    edges: [
+      {
+        edge_id: 'edge-1',
+        source_id: 'node-claim-a',
+        target_id: 'node-source-a',
+        edge_type: 'cites',
+        weight: 0.82,
+        confidence: 'medium',
+        evidence: 'E2E graph fixture',
+        source_path: 'claims/claim-a.md',
+        target_path: 'sources/paper-a.md',
+        metadata: {},
+      },
+    ],
+  },
+};
+
+const wikiCompileResponse: JsonValue = {
+  enabled: true,
+  dry_run: true,
+  created: 1,
+  updated: 0,
+  skipped: 0,
+  planned_paths: ['workspace_artifacts/generated/wiki/sources/source-paper-a.md'],
+  written_paths: [],
+  budget_summary: {
+    input_tokens: 1200,
+    output_tokens: 360,
+    total_tokens: 1560,
+    input_cost_usd: 0,
+    output_cost_usd: 0,
+    estimated_cost_usd: 0,
+    pricing_configured: false,
+    pricing_source: 'not_configured',
+    currency: 'USD',
+  },
+  budget_checks: [
+    {
+      source_id: 'source-paper-a',
+      source_chunks: 3,
+      total_chunk_chars: 4200,
+      estimated_tokens: 1560,
+      over_budget: false,
+      reason: 'within budget',
+    },
+  ],
+  errors: [],
+  warnings: ['Compile dry-run completed without writing wiki pages.'],
+};
+
+const getWikiPageDetailPayload = (url: string): JsonValue => {
+  const prefix = '/api/wiki/pages/';
+  const pathname = new URL(url).pathname;
+  const encodedPath = pathname.includes(prefix)
+    ? pathname.slice(pathname.indexOf(prefix) + prefix.length)
+    : '';
+  const pagePath = encodedPath
+    .split('/')
+    .map((segment) => decodeURIComponent(segment))
+    .join('/');
+  return wikiPageDetails[pagePath] ?? {
+    enabled: true,
+    path: pagePath,
+    frontmatter: {},
+    body: '',
+  };
+};
+
 export async function installE2eApiMocks(page: Page): Promise<void> {
   let skillEnabled = true;
   let skillInstalled = true;
@@ -206,6 +445,15 @@ export async function installE2eApiMocks(page: Page): Promise<void> {
   // ----- Budget / Chat sessions -----
   await page.route('**/api/budget/status', route => json(route, { call_count: 0, call_cap: 100, cost_usd: 0, budget_usd: 10, percent_calls: 0, percent_usd: 0 }));
   await page.route('**/api/chat/sessions**', route => json(route, { sessions: [] }));
+
+  // ----- Wiki workbench -----
+  await page.route('**/api/wiki/status', route => json(route, wikiStatusResponse));
+  await page.route('**/api/wiki/pages', route => json(route, wikiPagesResponse));
+  await page.route('**/api/wiki/pages/**', route => json(route, getWikiPageDetailPayload(route.request().url())));
+  await page.route('**/api/wiki/doctor', route => json(route, wikiDoctorResponse));
+  await page.route('**/api/wiki/review', route => json(route, wikiReviewResponse));
+  await page.route('**/api/wiki/graph', route => json(route, wikiGraphResponse));
+  await page.route('**/api/wiki/compile', route => json(route, wikiCompileResponse));
 
   // ----- Runtime / Jobs -----
   await page.route('**/runtime/sessions**', route => json(route, []));
@@ -329,10 +577,15 @@ export async function installE2eApiMocks(page: Page): Promise<void> {
 
   // ----- Catch-all for any other API endpoints to prevent network errors -----
   await page.route('**/api/**', route => {
-    // Only intercept if not already handled
-    if (!route.request().url().includes('/api/budget') && !route.request().url().includes('/api/chat')) {
-      return json(route, {});
+    const requestUrl = route.request().url();
+    // Playwright runs the newest matching route first; fallback lets specific mocks handle known APIs.
+    if (
+      requestUrl.includes('/api/budget') ||
+      requestUrl.includes('/api/chat') ||
+      requestUrl.includes('/api/wiki/')
+    ) {
+      return route.fallback();
     }
-    return route.continue();
+    return json(route, {});
   });
 }

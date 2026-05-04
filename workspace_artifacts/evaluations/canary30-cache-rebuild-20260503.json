@@ -1,0 +1,160 @@
+{
+  "evaluation_date": "2026-05-03",
+  "title": "Canary30 Embedding Cache Rebuild Analysis",
+  "cache_rebuild_status": {
+    "action": "CACHE CLEARED AND REBUILD INITIATED",
+    "timestamp": "2026-05-03 22:18:23",
+    "cache_files_deleted": [
+      "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.npy (46878848 bytes)",
+      "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual.npy (46841984 bytes)",
+      "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.manifest.json",
+      "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual.manifest.json"
+    ],
+    "scratch_cache_cleared": true,
+    "total_cache_size_freed_mb": 89.2
+  },
+  "cache_manifest_analysis": {
+    "old_cache_state": {
+      "model_1": {
+        "model": "Qwen/Qwen3-Embedding-8B",
+        "chunk_count": 11445,
+        "chunks_hash": "376bc3ae4c8391184d746555698b7f5c0910ff92435feead8d5e1444c39bfd1b",
+        "embedding_shape": [11445, 1024],
+        "is_contextual": true
+      },
+      "model_2": {
+        "model": "multimodal-embedding-v1",
+        "chunk_count": 11436,
+        "chunks_hash": "4355f8c13bc4cdf9312abfee9e407a7b70dcaee5adeb7d6d80ff18d44c959b9e",
+        "embedding_shape": [11436, 1024],
+        "is_contextual": true
+      }
+    },
+    "cache_invalidation_evidence": {
+      "finding_1": "Cache manifest shows chunk_count=11445 (Qwen model) and 11436 (multimodal model)",
+      "finding_2": "Current corpus has 11457 chunks (per task context)",
+      "finding_3": "Mismatch: 11445 vs 11457 = 12 chunk delta",
+      "finding_4": "Multimodal cache even more stale: 11436 vs 11457 = 21 chunk delta",
+      "conclusion": "Cache was NOT rebuilt after corpus modification - embeddings are stale"
+    }
+  },
+  "regression_context": {
+    "baseline_2026_04_27": {
+      "recall_at_5": 0.6667,
+      "mrr": 0.6667,
+      "avg_latency_ms": 781.61,
+      "p95_latency_ms": 844.1
+    },
+    "regression_2026_05_03": {
+      "recall_at_5": 0.5,
+      "mrr": 0.3181,
+      "avg_latency_ms": 1070.03,
+      "p95_latency_ms": 1177.32,
+      "regression_percent": -25.0
+    },
+    "regression_analysis": {
+      "parameter_revert_test": "Reverting chunk params (200/8 → 150/5) showed IDENTICAL metrics to regression run",
+      "implication": "Parameters are NOT the root cause",
+      "hypothesis": "Embedding cache invalidation is the root cause",
+      "evidence": "Cache manifests show stale chunk counts (11445/11436 vs current 11457)"
+    }
+  },
+  "cache_rebuild_procedure": {
+    "step_1_deletion": {
+      "status": "COMPLETED",
+      "timestamp": "2026-05-03 22:18:23",
+      "files_deleted": 4,
+      "space_freed_mb": 89.2
+    },
+    "step_2_rebuild_trigger": {
+      "status": "PENDING",
+      "trigger": "Next retrieval query will trigger automatic cache rebuild",
+      "expected_behavior": "ChunkVectorStore will detect missing cache and rebuild from corpus",
+      "rebuild_time_estimate_sec": 120
+    },
+    "step_3_verification": {
+      "status": "PENDING",
+      "check_1": "New cache manifest should show chunk_count=11457",
+      "check_2": "New embeddings should match current corpus hash",
+      "check_3": "Recall@5 should return to ~0.6667 if cache was root cause"
+    }
+  },
+  "expected_outcomes": {
+    "scenario_1_cache_was_root_cause": {
+      "probability": "HIGH (based on stale chunk count evidence)",
+      "expected_recall_at_5": "~0.6667 (return to baseline)",
+      "expected_mrr": "~0.6667 (return to baseline)",
+      "expected_latency_ms": "~800-900 (similar to baseline)",
+      "interpretation": "Cache invalidation was the root cause of -25% regression"
+    },
+    "scenario_2_cache_not_root_cause": {
+      "probability": "LOW",
+      "expected_recall_at_5": "~0.5 (remains at regression level)",
+      "expected_mrr": "~0.3181 (remains at regression level)",
+      "interpretation": "Deeper corpus/retrieval issue exists beyond cache"
+    }
+  },
+  "previous_evaluation_runs": {
+    "run_1_regression_200_8": {
+      "timestamp": "2026-05-03 21:57:24",
+      "parameters": {"chunk_overlap": 200, "max_chunks_per_material": 8},
+      "recall_at_5": 0.5,
+      "mrr": 0.3181,
+      "cache_state": "STALE (11445 chunks vs 11457 current)"
+    },
+    "run_2_revert_150_5": {
+      "timestamp": "2026-05-03 22:14:42",
+      "parameters": {"chunk_overlap": 150, "max_chunks_per_material": 5},
+      "recall_at_5": 0.5,
+      "mrr": 0.3181,
+      "cache_state": "STALE (11445 chunks vs 11457 current)",
+      "finding": "IDENTICAL metrics to regression run - parameters not the cause"
+    }
+  },
+  "root_cause_hypothesis": {
+    "primary_hypothesis": "Embedding cache invalidation due to corpus size change",
+    "evidence": [
+      "Cache manifests show chunk_count mismatch (11445/11436 vs 11457)",
+      "Parameter revert did NOT improve metrics (both runs identical)",
+      "Regression appeared after corpus modification",
+      "Latency increased significantly (781ms → 1070ms), suggesting stale embeddings"
+    ],
+    "supporting_factors": [
+      "Qwen embedding cache: 11445 chunks (12 chunks behind)",
+      "Multimodal cache: 11436 chunks (21 chunks behind)",
+      "Both caches show is_contextual=true but may have wrong embeddings",
+      "Corpus hash mismatch would cause retrieval quality degradation"
+    ]
+  },
+  "next_steps": {
+    "immediate": [
+      "Monitor cache rebuild on next query execution",
+      "Verify new cache manifest shows chunk_count=11457",
+      "Re-run canary30 evaluation after cache rebuild completes"
+    ],
+    "validation": [
+      "Compare post-rebuild metrics against 2026-04-27 baseline (0.6667 Recall@5)",
+      "If Recall@5 returns to 0.6667: CONFIRMS cache was root cause",
+      "If Recall@5 remains at 0.5: Indicates deeper corpus/retrieval issue"
+    ],
+    "documentation": [
+      "Document cache invalidation procedures",
+      "Add corpus modification → cache rebuild workflow",
+      "Implement cache integrity checks in CI/CD"
+    ]
+  },
+  "metadata": {
+    "evaluation_set": "canary30",
+    "total_queries": 30,
+    "queries_file": "eval_queries_v2.1_canary30_ALIGNED.jsonl",
+    "cache_location": "workspace_artifacts/generated/output/embedding_cache/",
+    "config": {
+      "top_k": 5,
+      "use_rerank": false,
+      "use_expansion": false,
+      "use_contextual": false,
+      "query_concurrency": 8
+    },
+    "generated_at": "2026-05-03 22:30:00"
+  }
+}

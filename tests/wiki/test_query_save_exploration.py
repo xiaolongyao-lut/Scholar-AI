@@ -88,6 +88,30 @@ class TestExplorationPageCreation:
         assert frontmatter["title"] == query
         assert frontmatter["id"].startswith("exploration/")
 
+    def test_exploration_save_never_auto_finalizes(self, page_store: WikiPageStore) -> None:
+        """Test explicit save writes draft only, leaving finalization to review gates."""
+        query = "Finalization policy"
+        answer = "This answer remains a draft until review."
+        evidence_refs = [
+            {
+                "chunk_id": "chunk-011",
+                "source_id": "source-011",
+                "text": "Draft evidence text",
+                "quote": "Draft evidence text",
+            }
+        ]
+
+        result = save_exploration(query, answer, evidence_refs, page_store)
+
+        assert result.success
+        assert result.relative_path is not None
+        content = page_store.read_page(result.relative_path)
+        assert content is not None
+        lines = content.split("\n")
+        fm_end = next(i for i, line in enumerate(lines[1:], start=1) if line.strip() == "---")
+        frontmatter = json.loads("\n".join(lines[1:fm_end]))
+        assert frontmatter["status"] == WikiPageStatus.draft.value
+
     def test_exploration_page_body(self, page_store: WikiPageStore) -> None:
         """Test that exploration page body contains question, answer, and evidence."""
         query = "What is deep learning?"
@@ -230,6 +254,19 @@ class TestErrorHandling:
         assert not result.success
         assert result.error is not None
         assert "question cannot be empty" in result.error
+
+    def test_unquotable_evidence_ref_is_rejected(self, page_store: WikiPageStore) -> None:
+        """Test that exploration save requires citation-safe evidence text."""
+        result = save_exploration(
+            "Query",
+            "Answer",
+            [{"chunk_id": "chunk-no-text", "source_id": "source-no-text", "text": "", "quote": ""}],
+            page_store,
+        )
+
+        assert not result.success
+        assert result.error is not None
+        assert "no quotable text" in result.error
 
     def test_empty_answer_raises_error(self, page_store: WikiPageStore) -> None:
         """Test that empty answer returns error result."""

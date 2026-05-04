@@ -4,6 +4,8 @@ import {
   getEvidenceReferenceBody,
   getEvidenceReferenceMetaParts,
   getEvidenceReferenceTitle,
+  getEvidenceReferenceWikiPagePath,
+  getEvidenceReferenceWikiUrl,
   normalizeEvidenceReference,
   parseEvidenceReferences,
 } from './evidenceReferences';
@@ -95,5 +97,15 @@ describe('evidenceReferences', () => {
   it('falls back to primitive metadata for sparse provider-specific references', () => {
     expect(getEvidenceReferenceTitle({ page: 5 }, 'Evidence 2')).toBe('Evidence 2');
     expect(getEvidenceReferenceBody({ page: 5, verified: true })).toBe('page: 5 · verified: true');
+  });
+
+  it('builds safe wiki deep links only from explicit page paths', () => {
+    expect(getEvidenceReferenceWikiPagePath({ page_store_path: ' sources/paper-a.md ' })).toBe('sources/paper-a.md');
+    expect(getEvidenceReferenceWikiPagePath({ wiki_page_path: 'papers\\paper-b.md' })).toBe('papers/paper-b.md');
+    expect(getEvidenceReferenceWikiUrl({ page_path: 'claims/claim one.md' })).toBe('/wiki?page=claims%2Fclaim+one.md');
+
+    expect(getEvidenceReferenceWikiPagePath({ source_id: 'source-only' })).toBeNull();
+    expect(getEvidenceReferenceWikiPagePath({ page_store_path: '../secrets.md' })).toBeNull();
+    expect(getEvidenceReferenceWikiPagePath({ page_store_path: 'C:\\tmp\\paper.md' })).toBeNull();
   });
 });

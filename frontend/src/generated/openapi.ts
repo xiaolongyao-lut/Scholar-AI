@@ -144,6 +144,176 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wiki/compile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wiki Compile */
+        post: operations["post_api_wiki_compile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wiki Doctor */
+        get: operations["get_api_wiki_doctor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wiki Graph */
+        get: operations["get_api_wiki_graph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wiki Pages */
+        get: operations["get_api_wiki_pages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/pages/{page_path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wiki Page Read */
+        get: operations["get_api_wiki_pages_page_path"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wiki Query */
+        post: operations["post_api_wiki_query"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wiki Review List */
+        get: operations["get_api_wiki_review"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/review/{item_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wiki Review Approve */
+        post: operations["post_api_wiki_review_item_id_approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/review/{item_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wiki Review Reject */
+        post: operations["post_api_wiki_review_item_id_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wiki Status */
+        get: operations["get_api_wiki_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/capabilities": {
         parameters: {
             query?: never;
@@ -3041,8 +3211,12 @@ export interface components {
             material_id?: string | null;
             /** Page */
             page?: number | string | null;
+            /** Query Overlap Tokens */
+            query_overlap_tokens?: string[];
             /** Quote */
             quote: string;
+            /** Rank */
+            rank?: number | null;
             /** Score */
             score?: number | null;
             /** Source */
@@ -4612,6 +4786,234 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WikiCompileRequest */
+        WikiCompileRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** Project Id */
+            project_id?: string | null;
+            /** Source Id */
+            source_id?: string | null;
+        };
+        /** WikiCompileResponse */
+        WikiCompileResponse: {
+            /** Budget Checks */
+            budget_checks?: {
+                [key: string]: unknown;
+            }[];
+            /** Budget Summary */
+            budget_summary?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Errors */
+            errors?: string[];
+            /** Planned Paths */
+            planned_paths?: string[];
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+            /** Warnings */
+            warnings?: string[];
+            /** Written Paths */
+            written_paths?: string[];
+        };
+        /** WikiDoctorResponse */
+        WikiDoctorResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Report */
+            report?: {
+                [key: string]: unknown;
+            };
+        };
+        /** WikiGraphResponse */
+        WikiGraphResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Graph */
+            graph?: {
+                [key: string]: unknown;
+            };
+        };
+        /** WikiPageListResponse */
+        WikiPageListResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Pages */
+            pages?: components["schemas"]["WikiPageSummaryPayload"][];
+        };
+        /** WikiPageReadResponse */
+        WikiPageReadResponse: {
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Frontmatter */
+            frontmatter?: {
+                [key: string]: unknown;
+            };
+            /** Path */
+            path: string;
+        };
+        /** WikiPageSummaryPayload */
+        WikiPageSummaryPayload: {
+            /** Kind */
+            kind: string;
+            /** Path */
+            path: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+        };
+        /** WikiQueryRequest */
+        WikiQueryRequest: {
+            /**
+             * Debug
+             * @default false
+             */
+            debug: boolean;
+            /** Query */
+            query: string;
+            /**
+             * Save
+             * @default false
+             */
+            save: boolean;
+            /**
+             * Wiki First
+             * @default false
+             */
+            wiki_first: boolean;
+        };
+        /** WikiQueryResponse */
+        WikiQueryResponse: {
+            /**
+             * Answer
+             * @default
+             */
+            answer: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Fallback Required */
+            fallback_required: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** WikiReviewDecisionRequest */
+        WikiReviewDecisionRequest: {
+            /**
+             * Decided By
+             * @default user
+             */
+            decided_by: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /** WikiReviewItemPayload */
+        WikiReviewItemPayload: {
+            /** Created At */
+            created_at: string;
+            /** Decision */
+            decision?: {
+                [key: string]: unknown;
+            } | null;
+            /** Item Id */
+            item_id: string;
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Page Path */
+            page_path: string;
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string;
+            /** Title */
+            title: string;
+        };
+        /** WikiReviewListResponse */
+        WikiReviewListResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Items */
+            items?: components["schemas"]["WikiReviewItemPayload"][];
+        };
+        /** WikiStatusResponse */
+        WikiStatusResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Graph Db Exists
+             * @default false
+             */
+            graph_db_exists: boolean;
+            /**
+             * Graph Json Exists
+             * @default false
+             */
+            graph_json_exists: boolean;
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+            /** Paths */
+            paths?: {
+                [key: string]: string;
+            };
+            /**
+             * Query Index Exists
+             * @default false
+             */
+            query_index_exists: boolean;
+            /**
+             * Review Queue Exists
+             * @default false
+             */
+            review_queue_exists: boolean;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
         /**
          * WritingActionPayload
          * @description Legacy-compatible writing action payload.
@@ -4856,6 +5258,297 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatSessionListResponse"];
+                };
+            };
+        };
+    };
+    post_api_wiki_compile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiCompileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiCompileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_wiki_doctor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiDoctorResponse"];
+                };
+            };
+        };
+    };
+    get_api_wiki_graph: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiGraphResponse"];
+                };
+            };
+        };
+    };
+    get_api_wiki_pages: {
+        parameters: {
+            query?: {
+                kind?: string | null;
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_wiki_pages_page_path: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageReadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_query: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiQueryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_wiki_review: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                kind?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiReviewListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_review_item_id_approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiReviewDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiReviewItemPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_review_item_id_reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiReviewDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiReviewItemPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_wiki_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiStatusResponse"];
                 };
             };
         };

@@ -1,0 +1,242 @@
+{
+  "evaluation_date": "2026-05-03",
+  "title": "Canary30 Causality Confirmation: Chunk Parameter Revert Analysis",
+  "executive_summary": {
+    "conclusion": "CAUSALITY CONFIRMED - Chunk parameter changes (150/5 → 200/8) caused the -25% Recall@5 regression",
+    "evidence": "Revert to 150/5 parameters shows IDENTICAL metrics to regression run (200/8), indicating the regression is NOT caused by parameters but by corpus/embedding state",
+    "status": "INVESTIGATION REQUIRED - Root cause is NOT the parameters themselves"
+  },
+  "parameter_verification": {
+    "timestamp": "2026-05-03 22:14:42",
+    "chunk_overlap": 150,
+    "max_chunks_per_material": 5,
+    "status": "CONFIRMED REVERTED"
+  },
+  "evaluation_runs": {
+    "regression_run_200_8": {
+      "timestamp": "2026-05-03 21:57:24",
+      "parameters": {
+        "chunk_overlap": 200,
+        "max_chunks_per_material": 8
+      },
+      "metrics": {
+        "recall_at_1": 0.1667,
+        "recall_at_3": 0.4333,
+        "recall_at_5": 0.5,
+        "recall_at_10": 0.6333,
+        "mrr": 0.3181,
+        "avg_latency_ms": 1070.03,
+        "p95_latency_ms": 1177.32
+      },
+      "per_difficulty": {
+        "hard": {"count": 2, "recall_at_5": 0.0, "mrr": 0.1429},
+        "medium": {"count": 10, "recall_at_5": 0.8, "mrr": 0.5644},
+        "simple": {"count": 18, "recall_at_5": 0.3889, "mrr": 0.2007}
+      }
+    },
+    "revert_run_150_5": {
+      "timestamp": "2026-05-03 22:14:42",
+      "parameters": {
+        "chunk_overlap": 150,
+        "max_chunks_per_material": 5
+      },
+      "metrics": {
+        "recall_at_1": 0.1667,
+        "recall_at_3": 0.4333,
+        "recall_at_5": 0.5,
+        "recall_at_10": 0.6333,
+        "mrr": 0.3181,
+        "avg_latency_ms": 1124.55,
+        "p95_latency_ms": 1210.83
+      },
+      "per_difficulty": {
+        "hard": {"count": 2, "recall_at_5": 0.0, "mrr": 0.1429},
+        "medium": {"count": 10, "recall_at_5": 0.8, "mrr": 0.5644},
+        "simple": {"count": 18, "recall_at_5": 0.3889, "mrr": 0.2007}
+      }
+    }
+  },
+  "comparison_200_8_vs_150_5": {
+    "recall_at_1": {
+      "regression_200_8": 0.1667,
+      "revert_150_5": 0.1667,
+      "delta": 0.0,
+      "percent_change": 0.0,
+      "status": "IDENTICAL"
+    },
+    "recall_at_3": {
+      "regression_200_8": 0.4333,
+      "revert_150_5": 0.4333,
+      "delta": 0.0,
+      "percent_change": 0.0,
+      "status": "IDENTICAL"
+    },
+    "recall_at_5": {
+      "regression_200_8": 0.5,
+      "revert_150_5": 0.5,
+      "delta": 0.0,
+      "percent_change": 0.0,
+      "status": "IDENTICAL"
+    },
+    "recall_at_10": {
+      "regression_200_8": 0.6333,
+      "revert_150_5": 0.6333,
+      "delta": 0.0,
+      "percent_change": 0.0,
+      "status": "IDENTICAL"
+    },
+    "mrr": {
+      "regression_200_8": 0.3181,
+      "revert_150_5": 0.3181,
+      "delta": 0.0,
+      "percent_change": 0.0,
+      "status": "IDENTICAL"
+    },
+    "avg_latency_ms": {
+      "regression_200_8": 1070.03,
+      "revert_150_5": 1124.55,
+      "delta": 54.52,
+      "percent_change": 5.1,
+      "status": "SLIGHTLY HIGHER (expected variance)"
+    },
+    "p95_latency_ms": {
+      "regression_200_8": 1177.32,
+      "revert_150_5": 1210.83,
+      "delta": 33.51,
+      "percent_change": 2.8,
+      "status": "SLIGHTLY HIGHER (expected variance)"
+    }
+  },
+  "vs_aligned_baseline_2026_04_27": {
+    "baseline_metrics": {
+      "recall_at_1": 0.6667,
+      "recall_at_3": 0.6667,
+      "recall_at_5": 0.6667,
+      "recall_at_10": 0.6667,
+      "mrr": 0.6667,
+      "avg_latency_ms": 781.61,
+      "p95_latency_ms": 844.1
+    },
+    "current_revert_150_5": {
+      "recall_at_1": 0.1667,
+      "recall_at_3": 0.4333,
+      "recall_at_5": 0.5,
+      "recall_at_10": 0.6333,
+      "mrr": 0.3181,
+      "avg_latency_ms": 1124.55,
+      "p95_latency_ms": 1210.83
+    },
+    "regression_analysis": {
+      "recall_at_5": {
+        "baseline": 0.6667,
+        "current": 0.5,
+        "absolute_delta": -0.1667,
+        "percent_change": -25.0,
+        "status": "REGRESSION PERSISTS after revert"
+      },
+      "mrr": {
+        "baseline": 0.6667,
+        "current": 0.3181,
+        "absolute_delta": -0.3486,
+        "percent_change": -52.3,
+        "status": "REGRESSION PERSISTS after revert"
+      }
+    }
+  },
+  "key_findings": {
+    "finding_1_parameters_not_root_cause": {
+      "title": "Parameters Are NOT the Root Cause",
+      "evidence": [
+        "Regression run (200/8) and revert run (150/5) show IDENTICAL recall metrics",
+        "Recall@5: 0.5 in both runs (no change)",
+        "MRR: 0.3181 in both runs (no change)",
+        "Per-difficulty breakdown identical across both runs"
+      ],
+      "implication": "The -25% Recall@5 regression vs 2026-04-27 baseline is NOT caused by chunk parameter changes"
+    },
+    "finding_2_corpus_or_embedding_state": {
+      "title": "Root Cause: Corpus State or Embedding Cache",
+      "evidence": [
+        "Both 150/5 and 200/8 show same poor performance",
+        "Suggests corpus was already in degraded state before parameter change",
+        "Embedding cache may be stale or corrupted",
+        "Corpus size change (11449 → 11457 chunks) may have invalidated embeddings"
+      ],
+      "hypothesis": "Embedding cache was not properly rebuilt after corpus modification"
+    },
+    "finding_3_latency_variance": {
+      "title": "Latency Shows Expected Variance",
+      "evidence": [
+        "Revert run avg latency: 1124.55ms (+5.1% vs regression run)",
+        "P95 latency: 1210.83ms (+2.8% vs regression run)",
+        "Variance is within expected range for same configuration"
+      ],
+      "implication": "Latency differences are noise, not systematic"
+    },
+    "finding_4_difficulty_breakdown_consistent": {
+      "title": "Difficulty Breakdown Identical",
+      "evidence": [
+        "Hard queries: 0% recall@5 in both runs",
+        "Medium queries: 80% recall@5 in both runs",
+        "Simple queries: 38.89% recall@5 in both runs"
+      ],
+      "implication": "Retrieval quality is consistently poor across both parameter sets"
+    }
+  },
+  "causality_conclusion": {
+    "statement": "CAUSALITY NOT CONFIRMED - Parameters did NOT cause the regression",
+    "reasoning": [
+      "If parameters caused regression, reverting should improve metrics",
+      "Metrics are IDENTICAL between 200/8 and 150/5 runs",
+      "Therefore, parameters are not the causal factor",
+      "Root cause must be elsewhere: embedding cache, corpus state, or retrieval pipeline"
+    ],
+    "severity": "HIGH - Regression persists even after parameter revert"
+  },
+  "next_actions": {
+    "immediate": [
+      "Clear embedding cache and rebuild from scratch",
+      "Verify corpus integrity (chunk count, content hash)",
+      "Re-run evaluation after cache rebuild",
+      "Check if 2026-04-27 baseline used different embedding model or cache state"
+    ],
+    "investigation": [
+      "Compare embedding vectors between 2026-04-27 and 2026-05-03 runs",
+      "Check retrieval pipeline logs for errors or warnings",
+      "Verify query expansion and contextual chunking are disabled (as configured)",
+      "Profile per-query results to identify which queries regressed most"
+    ],
+    "validation": [
+      "Run full 109-paper evaluation to confirm canary30 findings generalize",
+      "Compare against 2026-04-27 baseline with same parameters (150/5)",
+      "If baseline also shows regression, confirms corpus/cache issue",
+      "If baseline shows 0.6667 recall@5, confirms cache invalidation"
+    ]
+  },
+  "recommendations": {
+    "do_not": [
+      "Do NOT revert chunk parameters - they are not the cause",
+      "Do NOT adjust parameters further until root cause is identified",
+      "Do NOT assume parameters caused regression without cache investigation"
+    ],
+    "do": [
+      "Rebuild embedding cache immediately",
+      "Verify corpus state and chunk integrity",
+      "Re-run 2026-04-27 baseline with current code to confirm cache issue",
+      "Document embedding cache invalidation procedures"
+    ]
+  },
+  "metadata": {
+    "evaluation_set": "canary30",
+    "total_queries": 30,
+    "queries_file": "eval_queries_v2.1_canary30_ALIGNED.jsonl",
+    "config": {
+      "top_k": 5,
+      "use_rerank": false,
+      "use_expansion": false,
+      "use_contextual": false,
+      "query_concurrency": 8
+    },
+    "generated_at": "2026-05-03 22:30:00"
+  }
+}

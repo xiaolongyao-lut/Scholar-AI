@@ -8,6 +8,7 @@ import {
   getEvidenceReferenceBody,
   getEvidenceReferenceMetaParts,
   getEvidenceReferenceTitle,
+  getEvidenceReferenceWikiUrl,
 } from '@/lib/evidenceReferences';
 import {
   ManuscriptSection,
@@ -410,12 +411,23 @@ export function WritingCanvas({
                             source: t('writing.canvas.evidence_source'),
                             score: t('writing.canvas.evidence_score'),
                           });
+                          const wikiUrl = getEvidenceReferenceWikiUrl(ref);
                           const key = `${ref.chunk_id ?? ref.source_id ?? title}-${idx}`;
 
                           return (
                             <div key={key} className="p-2 bg-surface-lowest rounded-sm border border-outline-variant text-[11px] leading-relaxed text-foreground/70">
-                              <div className="font-label text-[10px] font-medium text-foreground/70 truncate">
-                                {title}
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0 truncate font-label text-[10px] font-medium text-foreground/70">
+                                  {title}
+                                </div>
+                                {wikiUrl && (
+                                  <a
+                                    href={wikiUrl}
+                                    className="shrink-0 rounded-sm border border-primary/20 bg-primary/5 px-2 py-0.5 font-label text-[9px] font-medium uppercase tracking-wider text-primary/75 transition-colors hover:border-primary/40 hover:bg-primary/10"
+                                  >
+                                    Wiki
+                                  </a>
+                                )}
                               </div>
                               {metaParts.length > 0 && (
                                 <div className="mt-1 font-label text-[9px] uppercase tracking-wider text-foreground/40">

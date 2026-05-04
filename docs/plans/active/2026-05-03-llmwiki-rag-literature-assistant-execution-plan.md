@@ -2080,6 +2080,10 @@ tests/wiki/
 |LMWR-471|✅ 补充 Wiki 性能基线|`tools/eval/wiki_wave14_performance_baseline.py`、`tests/wiki/test_performance_baseline.py`、`docs/plans/runbooks/llmwiki-slice-LMWR-471-performance-baseline.md`|compile/query/doctor 延迟和吞吐量|
 |LMWR-472|✅ 补充 Wiki 安全审计|`docs/plans/specs/`、`literature_assistant/core/routers/wiki_router.py`、`literature_assistant/core/wiki/backup.py`|路径遍历、输入校验、路径脱敏、只读/备份边界|
 |LMWR-473|✅ 补充 Wiki 可观测性|`wiki/`|日志、指标、追踪的统一接口|
+|LMWR-474|✅ 创建 wiki prompt templates|`prompt_templates/wiki_*.txt`、`wiki/compiler.py`|4 个 prompt 模板 + compiler LLM compile 路径|
+|LMWR-475|⏸️ 补充 graph edge case 测试|`tests/wiki/test_graph.py`|DoD 目标 54，当前 7，差 47 个|
+|LMWR-476|⏸️ 补充 doctor/review lifecycle 测试|`tests/wiki/test_doctor.py`、`test_review_queue.py`|DoD 目标 69，当前 16，差 53 个|
+|LMWR-477|⏸️ 补充 query fallback/linked expansion 测试|`tests/wiki/test_query.py`|DoD 目标 47，当前 39（含 save_exploration），差 8 个|
 
 ## 推荐优先级
 
@@ -2145,6 +2149,10 @@ tests/wiki/
 - ✅ LMWR-471：补充 Wiki 性能基线
 - ✅ LMWR-472：补充 Wiki 安全审计（本地轻量门禁）
 - ✅ LMWR-473：补充 Wiki 可观测性（本地 JSONL 事件/指标/span，默认无网络导出）
+- ✅ LMWR-474：创建 wiki prompt templates + compiler LLM compile 路径
+- ⏸️ LMWR-475：补充 graph edge case 测试
+- ⏸️ LMWR-476：补充 doctor/review lifecycle 测试
+- ⏸️ LMWR-477：补充 query fallback/linked expansion 测试
 
 ### 第三阶段（待启动）：发布准备 / post-cache retrieval gate
 - ⏸️ LMWR-449 ~ LMWR-463：迁移、发布门禁、长期维护
@@ -2362,6 +2370,124 @@ tests/wiki/
 - focused 验证：`pytest tests/wiki/test_observability.py tests/wiki/test_query.py tests/wiki/test_compiler.py tests/wiki/test_doctor.py -q` → `61 passed`；`compileall` PASS。
 - 证据 runbook：`docs/plans/runbooks/llmwiki-slice-LMWR-473-observability.md`。
 
+### Wave 15 Supplement / LMWR-474（2026-05-05 Claude）
+
+- 创建 4 个 wiki prompt templates（LMWR-333~336 实现）：
+  - `prompt_templates/wiki_paper_summary.txt`：论文结构化摘要，JSON 输出含 title/authors/summary/key_findings/methodology/evidence_refs
+  - `prompt_templates/wiki_concept_extract.txt`：概念提取，支持 existing_concepts 去重，JSON 输出含 name/aliases/definition/evidence_refs/related_concepts
+  - `prompt_templates/wiki_claim_extract.txt`：论断提取，每 claim 绑定证据，JSON 输出含 claim_text/confidence/evidence_refs/supports/contradicts
+  - `prompt_templates/wiki_synthesis.txt`：综合回答，支持 RAG 回答 + Wiki 证据双输入，JSON 输出含 answer/evidence_refs/limitations/status
+- `wiki/compiler.py` 新增：
+  - `_load_prompt_template(name)` 函数：从 `prompt_templates/` 目录加载模板
+  - `WikiCompiler.__init__` 新增 `llm_gateway` 参数（默认 stub_mode=True）
+  - `compile_paper_with_llm()`：LLM 论文摘要编译，失败进入 review
+  - `compile_concepts_with_llm()`：LLM 概念提取编译，支持 existing_concepts 去重
+  - `compile_claims_with_llm()`：LLM 论断提取编译，每 claim 创建 draft 页
+  - `compile_synthesis_with_llm()`：LLM 综合回答编译，支持 question/rag_answer/wiki_evidence 三输入
+- 验证：`pytest tests/wiki -q` → `346 passed, 1 skipped`；compileall PASS
+
+### 测试覆盖修复策略（LMWR-475~477）
+
+#### LMWR-475：graph edge case 测试补充
+
+**当前**：7 个测试 | **DoD 目标**：54 个 | **差**：47 个
+
+**核心架构**（需补充的测试分类）：
+
+```text
+1. Edge CRUD（~12 tests）
+   - 新增 typed edge（supports/contradicts/extends/depends_on/related_to/derived_from）
+   - 重复 edge 拒绝
+   - 无效 source/target 拒绝
+   - 自环拒绝
+   - 删除 edge
+
+2. Persistence（~8 tests）
+   - JSON save/load roundtrip
+   - SQLite save/load roundtrip
+   - JSON/SQLite 双写一致性
+   - 空 graph 持久化
+   - 大 graph 持久化（50+ nodes）
+
+3. Backlinks（~8 tests）
+   - 单向 inbound/outbound
+   - 多 typed backlinks
+   - 深 backlinks（3 层）
+   - 删除节点后 backlinks 更新
+
+4. Blast radius（~8 tests）
+   - BFS depth=1/2/3
+   - Weighted blast radius
+   - 阈值过滤
+   - 孤立节点 blast radius=0
+
+5. Wikilink parser（~6 tests）
+   - [[target]] / [[target|display]]
+   - Fenced code 跳过
+   - Inline code 跳过
+   - 嵌套 bracket
+
+6. Export（~5 tests）
+   - JSON export 完整性
+   - 空 graph export
+   - 只读 export 不改 graph
+```
+
+#### LMWR-476：doctor/review lifecycle 测试补充
+
+**当前**：16 个测试（doctor 9 + review 7）| **DoD 目标**：69 个 | **差**：53 个
+
+**核心架构**（需补充的测试分类）：
+
+```text
+1. Doctor checks（~20 tests）
+   - workspace: 存在/不存在/空目录
+   - registry: 有/无 DB、orphan source、stale hash
+   - retrieval: FTS 有/无、stale index、page count drift
+   - citation: final 缺引用、draft 缺引用、坏 chunk_id
+   - graph: broken link、orphan、duplicate candidate、graph artifact
+
+2. Doctor repair（~12 tests）
+   - safe repair: 创建目录、初始化 registry、重建 FTS、重建 graph
+   - unsafe repair 拒绝: 不改正文、不删页面、不 finalize draft
+   - repair 幂等性
+   - repair 后 doctor re-check
+
+3. Review queue lifecycle（~15 tests）
+   - append: draft/fail/warning/manual_edit
+   - list: 全部/按状态/按类型
+   - get: 存在/不存在
+   - approve: 正常流程、已 approve 再 approve 拒绝
+   - reject: 带 reason、status 更新
+   - concurrent append（多条同时入队）
+
+4. Review queue persistence（~6 tests）
+   - JSONL roundtrip
+   - 空 queue 持久化
+   - 大 queue（100+ items）持久化
+   - 损坏 JSONL 行容错
+```
+
+#### LMWR-477：query fallback/linked expansion 测试补充
+
+**当前**：39 个（query 24 + save_exploration 15）| **DoD 目标**：47 个 | **差**：8 个
+
+**核心架构**（需补充的测试分类）：
+
+```text
+1. Fallback bridge（~4 tests）
+   - wiki 无命中 → raw RAG fallback trace
+   - wiki 部分命中 → mixed results
+   - wiki 关闭时 fallback
+   - fallback reason 记录
+
+2. Linked expansion（~4 tests）
+   - primary → outbound expansion
+   - 多 primary 共享 linked page（排名提升）
+   - 循环链接不无限递归
+   - linked expansion token budget 截断
+```
+
 ## Copilot/Agent 单任务指令模板
 
 ```text
@@ -2409,10 +2535,10 @@ py “$env:USERPROFILE\.codex\skills\longrun-autopilot\scripts\checkpoint.py” 
 
 | # | 问题 | 状态 | 影响 | 建议 |
 |---|------|------|------|------|
-| 1 | `prompt_templates/wiki_*.txt` 未创建（LMWR-333~336） | ⏸️ | LLM 生成仍为 stub 模式，prompt 模板缺失 | 启用真实 LLM 调用前必须补齐 |
-| 2 | Wave 9 graph 测试仅 7 个 vs DoD 目标 54 个 | ⏸️ | graph 功能测试覆盖偏低 | 后续补充 graph edge cases |
-| 3 | Wave 10 doctor+review 测试仅 16 个 vs DoD 目标 69 个 | ⏸️ | doctor/review 功能测试覆盖偏低 | 后续补充 doctor repair/review lifecycle |
-| 4 | Wave 8 query 测试实际 39 个 vs DoD 目标 47 个 | ⏸️ | query 功能测试覆盖偏低 | 后续补充 fallback/linked expansion |
+| 1 | `prompt_templates/wiki_*.txt` 未创建（LMWR-333~336） | ✅ 已修复 | LLM 生成已接入 compiler | LMWR-474 完成 |
+| 2 | Wave 9 graph 测试仅 7 个 vs DoD 目标 54 个 | ⏸️ | graph 功能测试覆盖偏低 | LMWR-475 |
+| 3 | Wave 10 doctor+review 测试仅 16 个 vs DoD 目标 69 个 | ⏸️ | doctor/review 功能测试覆盖偏低 | LMWR-476 |
+| 4 | Wave 8 query 测试实际 39 个 vs DoD 目标 47 个 | ⏸️ | query 功能测试覆盖偏低 | LMWR-477 |
 | 5 | Post-LMWR-470 eval 工具未被任务编号覆盖 | ⚠️ | `wiki_cache_corpus_preflight.py`、`wiki_canary_corpus_source_locator.py`、`wiki_lmwr470_chunk_param_review.py` 在 `tools/eval/` 但无 LMWR 编号 | 已记录在第三阶段，不分配新编号 |
 | 6 | `wiki/page_store.py` 中 `frontmatter.py` 功能是否完整合并 | ✅ | 已验证：`page_store.py` 含 `render_frontmatter`、`stable_slug`、`render_page` | 无需额外操作 |
 | 7 | `wiki/models.py` 中 `schema.py` 功能是否完整合并 | ✅ | 已验证：`models.py` 含 `require_non_empty`、类型校验、`__post_init__` | 无需额外操作 |
@@ -2441,7 +2567,7 @@ py “$env:USERPROFILE\.codex\skills\longrun-autopilot\scripts\checkpoint.py” 
 | `wiki/observability.py` | `wiki/observability.py` (19,491 bytes) | ✅ 计划外新增 |
 | `wiki/connectors/` | `wiki/connectors/` (6 files) | ✅ 一致 |
 | `routers/wiki_router.py` | `routers/wiki_router.py` | ✅ 一致 |
-| `prompt_templates/wiki_*.txt` | 不存在 | ⏸️ 待实现 |
+| `prompt_templates/wiki_*.txt` | `wiki_paper_summary.txt`, `wiki_concept_extract.txt`, `wiki_claim_extract.txt`, `wiki_synthesis.txt` | ✅ 已创建（LMWR-474） |
 | `tools/eval/wiki_wave14_performance_baseline.py` | ✅ 存在 | ✅ 一致 |
 | `tools/eval/wiki_wave15_end_to_end_dry_run.py` | ✅ 存在 | ✅ 计划外新增 |
 | `tools/eval/wiki_cache_corpus_preflight.py` | ✅ 存在 | ✅ 计划外新增 |

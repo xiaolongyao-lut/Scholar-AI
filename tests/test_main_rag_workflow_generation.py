@@ -1,4 +1,6 @@
 from __future__ import annotations
+from pathlib import Path
+
 import pytest
 import main_rag_workflow
 
@@ -284,3 +286,61 @@ async def test_ask_local_data_without_rag_adapter_skips_semantic_cache_manifest(
     assert result.generated_answer
     assert result.rag_evidence[0]["chunk_id"] == "local-c1"
     assert result.evidence_refs[0]["chunk_id"] == "local-c1"
+
+
+def test_wiki_first_retrieval_default_off_does_not_build_index(monkeypatch, tmp_path: Path) -> None:
+    workflow = main_rag_workflow.RAGWorkflow(
+        semantic_router=object(),
+        api_key="test-key",
+        llm_client=object(),
+        enable_requests_fallback=False,
+    )
+
+    def fail_build_index(*_args, **_kwargs) -> None:
+        raise AssertionError("wiki index must not be built when flags are off")
+
+    monkeypatch.delenv("LITERATURE_ASSISTANT_WIKI_ENABLED", raising=False)
+    monkeypatch.delenv("LITERATURE_ASSISTANT_WIKI_FIRST_RETRIEVAL", raising=False)
+    monkeypatch.setattr(main_rag_workflow, "build_wiki_index", fail_build_index, raising=False)
+
+    evidence, trace = workflow._try_wiki_first_retrieval(user_query="laser welding", top_k=3)
+
+    assert evidence == []
+    assert trace is None
+
+
+def test_wiki_first_retrieval_enabled_returns_evidence_and_trace(monkeypatch, tmp_path: Path) -> None:
+    from literature_assistant.core.wiki.page_store import WikiPageStore, render_page
+    from literature_assistant.core.wiki.query import WikiQueryIndex
+
+    wiki_root = tmp_path / "generated" / "wiki"
+    runtime_root = tmp_path / "runtime"
+    page_store = WikiPageStore(wiki_root)
+    rendered = render_page(
+        Path("concept/laser-porosity.md"),
+        {"id": "concept/laser-porosity", "kind": "concept", "title": "Laser Porosity"},
+        "Laser welding porosity is linked to keyhole instability and shielding gas.",
+    )
+    page_store.write_rendered(rendered)
+
+    workflow = main_rag_workflow.RAGWorkflow(
+        semantic_router=object(),
+        api_key="test-key",
+        llm_client=object(),
+        enable_requests_fallback=False,
+    )
+
+    monkeypatch.setenv("LITERATURE_ASSISTANT_WIKI_ENABLED", "1")
+    monkeypatch.setenv("LITERATURE_ASSISTANT_WIKI_FIRST_RETRIEVAL", "1")
+    monkeypatch.setattr(main_rag_workflow, "wiki_generated_root", lambda *parts: wiki_root.joinpath(*parts))
+    monkeypatch.setattr(main_rag_workflow, "wiki_query_index_path", lambda: runtime_root / "wiki_query_index.db")
+
+    evidence, trace = workflow._try_wiki_first_retrieval(user_query="Laser porosity", top_k=2)
+
+    assert evidence
+    assert evidence[0]["source_labels"] == ["wiki_first", "wiki_fts"]
+    assert evidence[0]["metadata"]["type"] == "wiki_first"
+    assert trace is not None
+    assert trace["wiki_hits"] == 1
+    assert trace["fallback_used"] is False
+    assert trace["trace_path"] is not None

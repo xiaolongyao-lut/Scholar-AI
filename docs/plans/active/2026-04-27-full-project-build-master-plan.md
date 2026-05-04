@@ -21,6 +21,7 @@
 - 非平凡架构、接口、权限、安全或数据流变更前必须先建立可回档点，并检索成熟方案或官方一手文档；计划、任务指令和交接提示中也必须显式包含“先回档、再对标成熟方案、再实施”的要求。
 - 前端视觉与独立窗口形态参考优先来自 `github/` 参考库中的项目界面、截图与结构文档；当前本地 `localhost` 页面只用于运行态验证与交互 smoke，不作为最终视觉母版。
 - 若页面已在 VS Code 中开启“与智能体共享”，可直接使用共享页面做自动元素交互与回归验证；长跑不得依赖用户手动“添加元素到聊天”作为必经步骤，该动作仅作为可选的精确定位增强。
+- LLM-Wiki/RAG 后续自决策授权以 `docs/plans/active/llmwiki-autonomy-authorization.md` 为准：qrels/goldset/canary30、删除/修改和外部目标操作不再一律停下，但必须先 checkpoint、备份、对照验证并记录恢复路径；无可验证备份、账号/凭据/付费或默认主链替换仍需停下。
 
 ## 当前进度快照（更新于 2026-05-02）
 
@@ -60,6 +61,7 @@
 - **2026-05-04 TOLF comparison Markdown review packet 已补齐**：TASK-227 已为 inspection report 增加 `--review-markdown-output`，生成带 summary、人工打分 rubric、每 query 三路候选 snippet 的 Markdown 审阅包，方便后续人工标注 `relevant/partial/offtopic/unknown`；该包明确不是自动 relevance label 或 release gate。
 - **2026-05-04 TOLF comparison JSONL judgment template 已补齐**：TASK-228 已为 inspection report 增加 `--judgment-template-output`，生成一候选一行的人工标注模板，默认 `judgment=unknown`，允许值固定为 `relevant/partial/offtopic/unknown`；模板可被工具收集，但不得未经 review gate 写回 qrels/goldset。
 - **2026-05-04 TOLF comparison judgment summary 已补齐**：TASK-229 已为已填写的 judgment JSONL 增加 `--judgment-input` / `--judgment-summary-output` 汇总器，按 arm 和 query 统计 `relevant/partial/offtopic/unknown`，用于 review 后分析，不重跑检索，不改 qrels/goldset。
+- **2026-05-04 LLM-Wiki/RAG 文献助手集成计划已推进到 Wave 15**：专用 active plan 见 `docs/plans/active/2026-05-03-llmwiki-rag-literature-assistant-execution-plan.md`；已完成 Wave 0~14 的 registry/page store/citation/compiler/query/doctor/graph/API/frontend/connectors/evaluation gates，并完成 Wave 15 的 migration dry-run、backup/export、cleanup/human-edit/multi-agent/MCP planning、frontend/backend/privacy/rollback checklists 与用户使用指南草稿。该链路保持 default-off，不改默认 RAG/TOLF 主链，不写外部 Zotero/EndNote/Obsidian，不改 qrels/goldset。
 - 参考证据来源：`model_selection_summary_literature_rag_TOLF修订版.md`、`.copilot-tracking/plans/2026-04-21-cost-and-defaults.md`、`.squad/orchestration-log/*`、`.claude_squad/agents/{oracle,morpheus,tank,ralph}/history.md`。
 
 ## 2026-04-30 前端 Wave 9/10 核查回填

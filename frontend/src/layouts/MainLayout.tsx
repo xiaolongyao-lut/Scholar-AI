@@ -323,6 +323,7 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
   const getHeaderTitle = () => {
     if (isWritingRoute) return t('writing.workbench_title');
     if (location.pathname.startsWith('/knowledge')) return t('kb.title');
+    if (location.pathname.startsWith('/wiki')) return 'Wiki 工作台';
     if (location.pathname.startsWith('/projects')) return t('projects.title');
     if (location.pathname.startsWith('/settings')) return t('settings.title');
     if (location.pathname.startsWith('/jobs')) return t('jobs.title');
@@ -466,6 +467,7 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
           />
 
           <NavItem to="/knowledge" icon={<Database size={20} />} label={t('nav.knowledge')} collapsed={leftNavCollapsed} />
+          <NavItem to="/wiki" icon={<BookMarked size={20} />} label="Wiki" collapsed={leftNavCollapsed} />
           <NavItem to="/projects" icon={<FolderKanban size={20} />} label={t('nav.projects')} collapsed={leftNavCollapsed} />
           <NavItem to="/chat" icon={<MessageCircle size={20} />} label="Chat" collapsed={leftNavCollapsed} />
           <NavItem to="/inspiration" icon={<Lightbulb size={20} />} label={t('nav.inspiration')} collapsed={leftNavCollapsed} />

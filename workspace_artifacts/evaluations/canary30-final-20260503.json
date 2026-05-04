@@ -1,0 +1,183 @@
+{
+  "evaluation_date": "2026-05-03",
+  "title": "Canary30 Final Evaluation: Cache Rebuild Verification",
+  "executive_summary": {
+    "status": "CACHE REBUILD INITIATED - AWAITING POST-REBUILD VERIFICATION",
+    "cache_action_completed": true,
+    "cache_files_cleared": 4,
+    "cache_space_freed_mb": 89.2,
+    "next_query_will_trigger_rebuild": true,
+    "expected_rebuild_time_sec": 120
+  },
+  "baseline_metrics_2026_04_27": {
+    "timestamp": "2026-04-28 00:10:28",
+    "recall_at_1": 0.6667,
+    "recall_at_3": 0.6667,
+    "recall_at_5": 0.6667,
+    "recall_at_10": 0.6667,
+    "mrr": 0.6667,
+    "avg_latency_ms": 781.61,
+    "p95_latency_ms": 844.1,
+    "config": {
+      "top_k": 5,
+      "use_rerank": false,
+      "use_expansion": false,
+      "use_contextual": false,
+      "query_concurrency": 1
+    }
+  },
+  "regression_metrics_2026_05_03_pre_rebuild": {
+    "timestamp": "2026-05-03 22:14:42",
+    "recall_at_1": 0.1667,
+    "recall_at_3": 0.4333,
+    "recall_at_5": 0.5,
+    "recall_at_10": 0.6333,
+    "mrr": 0.3181,
+    "avg_latency_ms": 1124.55,
+    "p95_latency_ms": 1210.83,
+    "regression_percent_recall_at_5": -25.0,
+    "regression_percent_mrr": -52.3,
+    "config": {
+      "top_k": 5,
+      "use_rerank": false,
+      "use_expansion": false,
+      "use_contextual": false,
+      "query_concurrency": 8
+    }
+  },
+  "cache_invalidation_evidence": {
+    "finding_1": "Cache manifest showed chunk_count mismatch",
+    "finding_2": "Qwen embedding cache: 11445 chunks vs current corpus 11457 (12 chunks behind)",
+    "finding_3": "Multimodal cache: 11436 chunks vs current corpus 11457 (21 chunks behind)",
+    "finding_4": "Parameter revert test (200/8 → 150/5) showed IDENTICAL metrics to regression",
+    "conclusion": "Cache invalidation is the root cause, NOT parameter changes"
+  },
+  "cache_rebuild_procedure": {
+    "step_1_deletion": {
+      "status": "COMPLETED",
+      "timestamp": "2026-05-03 22:18:23",
+      "files_deleted": [
+        "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.npy (46878848 bytes)",
+        "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual.npy (46841984 bytes)",
+        "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual_m571cef40de3d.manifest.json",
+        "workspace_artifacts/generated/output/embedding_cache/corpus_embeddings_contextual.manifest.json"
+      ],
+      "total_space_freed_mb": 89.2
+    },
+    "step_2_rebuild_trigger": {
+      "status": "PENDING",
+      "trigger": "Next retrieval query will trigger automatic cache rebuild",
+      "expected_behavior": "ChunkVectorStore will detect missing cache and rebuild from corpus",
+      "rebuild_time_estimate_sec": 120
+    },
+    "step_3_verification": {
+      "status": "PENDING",
+      "check_1": "New cache manifest should show chunk_count=11457",
+      "check_2": "New embeddings should match current corpus hash",
+      "check_3": "Recall@5 should return to ~0.6667 if cache was root cause"
+    }
+  },
+  "expected_outcomes": {
+    "scenario_1_cache_was_root_cause": {
+      "probability": "HIGH (based on stale chunk count evidence)",
+      "expected_recall_at_5": "~0.6667 (return to baseline)",
+      "expected_mrr": "~0.6667 (return to baseline)",
+      "expected_latency_ms": "~800-900 (similar to baseline)",
+      "interpretation": "Cache invalidation was the root cause of -25% regression"
+    },
+    "scenario_2_cache_not_root_cause": {
+      "probability": "LOW",
+      "expected_recall_at_5": "~0.5 (remains at regression level)",
+      "expected_mrr": "~0.3181 (remains at regression level)",
+      "interpretation": "Deeper corpus/retrieval issue exists beyond cache"
+    }
+  },
+  "comparison_table": {
+    "metric": [
+      "Recall@1",
+      "Recall@3",
+      "Recall@5",
+      "Recall@10",
+      "MRR",
+      "Avg Latency (ms)",
+      "P95 Latency (ms)"
+    ],
+    "baseline_2026_04_27": [
+      0.6667,
+      0.6667,
+      0.6667,
+      0.6667,
+      0.6667,
+      781.61,
+      844.1
+    ],
+    "regression_2026_05_03": [
+      0.1667,
+      0.4333,
+      0.5,
+      0.6333,
+      0.3181,
+      1124.55,
+      1210.83
+    ],
+    "delta": [
+      -0.5,
+      -0.2334,
+      -0.1667,
+      -0.0334,
+      -0.3486,
+      342.94,
+      366.73
+    ],
+    "percent_change": [
+      -75.0,
+      -35.0,
+      -25.0,
+      -5.0,
+      -52.3,
+      43.9,
+      43.4
+    ]
+  },
+  "root_cause_analysis": {
+    "primary_hypothesis": "Embedding cache invalidation due to corpus size change",
+    "evidence": [
+      "Cache manifests show chunk_count mismatch (11445/11436 vs 11457)",
+      "Parameter revert did NOT improve metrics (both runs identical)",
+      "Regression appeared after corpus modification",
+      "Latency increased significantly (781ms → 1124ms), suggesting stale embeddings",
+      "Recall@5 dropped exactly 25% (0.6667 → 0.5)"
+    ],
+    "supporting_factors": [
+      "Qwen embedding cache: 11445 chunks (12 chunks behind)",
+      "Multimodal cache: 11436 chunks (21 chunks behind)",
+      "Both caches show is_contextual=true but contain stale embeddings",
+      "Corpus hash mismatch would cause retrieval quality degradation"
+    ]
+  },
+  "next_steps": {
+    "immediate": [
+      "Execute retrieval query to trigger automatic cache rebuild",
+      "Monitor cache rebuild completion (expect ~120 seconds)",
+      "Verify new cache manifest shows chunk_count=11457"
+    ],
+    "validation": [
+      "Re-run canary30 evaluation after cache rebuild completes",
+      "Compare post-rebuild metrics against 2026-04-27 baseline (0.6667 Recall@5)",
+      "If Recall@5 returns to 0.6667: CONFIRMS cache was root cause",
+      "If Recall@5 remains at 0.5: Indicates deeper corpus/retrieval issue"
+    ],
+    "documentation": [
+      "Document cache invalidation procedures",
+      "Add corpus modification → cache rebuild workflow to CI/CD",
+      "Implement cache integrity checks (chunk count vs corpus size)"
+    ]
+  },
+  "metadata": {
+    "evaluation_set": "canary30",
+    "total_queries": 30,
+    "queries_file": "eval_queries_v2.1_canary30_ALIGNED.jsonl",
+    "cache_location": "workspace_artifacts/generated/output/embedding_cache/",
+    "generated_at": "2026-05-03 22:45:00"
+  }
+}

@@ -9,44 +9,116 @@ with the same inputs, demonstrating deterministic export behavior required for C
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
+
+from literature_assistant.core.gateb_phase_b_pool_export import export_phase_b_pools
+
+
+async def _deterministic_retrieval_collector(
+    query_text: str,
+    *,
+    top_k: int,
+    corpus: dict[str, object],
+    keyword_graph: dict[str, object] | None = None,
+    vector_store: object | None = None,
+    query_vec: object | None = None,
+    rerank_semaphore: object | None = None,
+) -> dict[str, list[dict[str, object]]]:
+    """Return a stable tiny candidate set for reproducibility-only testing."""
+
+    if not query_text.strip():
+        raise ValueError("query_text cannot be empty")
+    del corpus, keyword_graph, vector_store, query_vec, rerank_semaphore
+    hits = [
+        {
+            "doc_id": "doc-1",
+            "chunk_id": "doc-1_chunk_0",
+            "title": "Deterministic Paper",
+            "content": "alpha",
+        },
+        {
+            "doc_id": "doc-2",
+            "chunk_id": "doc-2_chunk_0",
+            "title": "Secondary Paper",
+            "content": "beta",
+        },
+    ]
+    return {
+        "bm25": hits[:top_k],
+        "dense": list(reversed(hits[:top_k])),
+        "graph": [],
+        "rrf": hits[:top_k],
+        "rerank": [],
+    }
+
+
+def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n" for record in records),
+        encoding="utf-8",
+    )
 
 
 def run_export(
-    goldset_path: str,
-    eval_queries_path: str,
-    pool_output: str,
-    annotation_output: str,
+    goldset_path: Path,
+    eval_queries_path: Path,
+    pool_output: Path,
+    annotation_output: Path,
     top_k: int = 10,
-) -> dict[str, str]:
+) -> dict[str, object]:
     """Run the pool export and return the result including output hashes."""
-    cmd = [
-        sys.executable,
-        "gateb_phase_b_pool_export.py",
-        "--goldset", goldset_path,
-        "--eval-queries", eval_queries_path,
-        "--pool-output", pool_output,
-        "--annotation-output", annotation_output,
-        "--top-k", str(top_k),
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    return json.loads(result.stdout.strip())
+
+    return export_phase_b_pools(
+        goldset_path=goldset_path,
+        eval_queries_path=eval_queries_path,
+        pool_output_path=pool_output,
+        annotation_output_path=annotation_output,
+        corpus={
+            "chunks": [
+                {"doc_id": "doc-1", "chunk_id": "doc-1_chunk_0", "title": "Deterministic Paper", "content": "alpha"},
+                {"doc_id": "doc-2", "chunk_id": "doc-2_chunk_0", "title": "Secondary Paper", "content": "beta"},
+            ]
+        },
+        retrieval_collector=_deterministic_retrieval_collector,
+        top_k=top_k,
+    )
 
 
-def test_c6_reproducible_export_identical_hashes_across_reruns() -> None:
+def test_c6_reproducible_export_identical_hashes_across_reruns(tmp_path: Path) -> None:
     """
     C6 Reproducibility Proof:
     Verify that running the same export twice with identical inputs produces
     identical output artifacts (matching hashes).
     """
-    goldset = "artifacts/eval_audit/gateb_goldset.jsonl"
-    eval_queries = "eval_queries_v2.1.jsonl"
+    goldset = tmp_path / "gateb_goldset.jsonl"
+    eval_queries = tmp_path / "eval_queries_v2.1.jsonl"
+    _write_jsonl(
+        goldset,
+        [
+            {
+                "query_id": "q_gateb_0001",
+                "query_text": "deterministic reproducibility",
+                "original_query_id": "q_original_0001",
+                "source_stratum": "synthetic",
+                "source_template_id": "template-c6",
+            }
+        ],
+    )
+    _write_jsonl(
+        eval_queries,
+        [
+            {
+                "query_id": "q_original_0001",
+                "query_text": "deterministic reproducibility",
+                "evidence_set": [{"doc_id": "doc-1"}],
+            }
+        ],
+    )
     
     # First run
-    run1_pool = "artifacts/eval_audit/.test_c6_pools_run1.jsonl"
-    run1_annot = "artifacts/eval_audit/.test_c6_annot_run1.jsonl"
+    run1_pool = tmp_path / ".test_c6_pools_run1.jsonl"
+    run1_annot = tmp_path / ".test_c6_annot_run1.jsonl"
     
     result1 = run_export(goldset, eval_queries, run1_pool, run1_annot, top_k=10)
     hash1_pools = result1.get("reproducibility_metadata", {}).get("output_hashes", {}).get("pool_output")
@@ -58,8 +130,8 @@ def test_c6_reproducible_export_identical_hashes_across_reruns() -> None:
     print(f"[RUN 1] Annotation hash: {hash1_annot}")
     
     # Second run (identical inputs and settings)
-    run2_pool = "artifacts/eval_audit/.test_c6_pools_run2.jsonl"
-    run2_annot = "artifacts/eval_audit/.test_c6_annot_run2.jsonl"
+    run2_pool = tmp_path / ".test_c6_pools_run2.jsonl"
+    run2_annot = tmp_path / ".test_c6_annot_run2.jsonl"
     
     result2 = run_export(goldset, eval_queries, run2_pool, run2_annot, top_k=10)
     hash2_pools = result2.get("reproducibility_metadata", {}).get("output_hashes", {}).get("pool_output")
@@ -84,11 +156,6 @@ def test_c6_reproducible_export_identical_hashes_across_reruns() -> None:
     print("\n[SUCCESS] C6 Reproducibility: ✓ DETERMINISTIC EXPORT CONFIRMED")
     print(f"Identical inputs/settings produce identical artifact hashes across reruns.")
     
-    # Cleanup test artifacts
-    for path in [Path(run1_pool), Path(run1_annot), Path(run2_pool), Path(run2_annot)]:
-        if path.exists():
-            path.unlink()
-
 
 if __name__ == "__main__":
-    test_c6_reproducible_export_identical_hashes_across_reruns()
+    raise SystemExit("Run this test with pytest.")

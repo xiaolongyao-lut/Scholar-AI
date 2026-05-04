@@ -18,6 +18,8 @@ const KNOWN_EVIDENCE_KEYS = new Set([
   'source_hint',
 ]);
 
+const WIKI_PAGE_PATH_FIELDS = ['page_store_path', 'wiki_page_path', 'page_path'];
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -77,6 +79,25 @@ const firstText = (values: Array<string | undefined>): string | null => {
   }
 
   return null;
+};
+
+const normalizeWikiPagePath = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/\/+/g, '/');
+  if (!normalized || normalized.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(normalized)) {
+    return null;
+  }
+
+  const parts = normalized.split('/');
+  if (parts.some((part) => part === '' || part === '.' || part === '..')) {
+    return null;
+  }
+
+  return normalized;
 };
 
 /**
@@ -268,4 +289,43 @@ export function getEvidenceReferenceMetaParts(
   }
 
   return parts;
+}
+
+/**
+ * Returns an explicit wiki page path carried by an evidence reference.
+ *
+ * This intentionally does not derive paths from source_id/material_id because
+ * wiki page names are slug-based and guessing them can send users to the wrong
+ * page. Backend adapters should provide page_store_path once a wiki page exists.
+ */
+export function getEvidenceReferenceWikiPagePath(reference: unknown): string | null {
+  if (!isRecord(reference)) {
+    return null;
+  }
+
+  for (const field of WIKI_PAGE_PATH_FIELDS) {
+    const candidate = readNonEmptyString(reference[field]);
+    if (!candidate) {
+      continue;
+    }
+
+    const normalized = normalizeWikiPagePath(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Builds the WikiWorkbench deep link for an evidence reference when possible.
+ */
+export function getEvidenceReferenceWikiUrl(reference: unknown): string | null {
+  const pagePath = getEvidenceReferenceWikiPagePath(reference);
+  if (!pagePath) {
+    return null;
+  }
+
+  return `/wiki?${new URLSearchParams({ page: pagePath }).toString()}`;
 }

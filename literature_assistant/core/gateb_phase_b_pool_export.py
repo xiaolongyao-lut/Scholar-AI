@@ -25,6 +25,11 @@ from project_paths import output_path
 
 
 SOURCE_LABELS = ("bm25", "dense", "graph", "rrf", "rerank", "evidence_set")
+EVALUATION_DATA_ROOT = Path("workspace_tests") / "evaluation_data"
+LEGACY_EVALUATION_PATHS = {
+    Path("artifacts") / "eval_audit" / "gateb_goldset.jsonl": EVALUATION_DATA_ROOT / "gateb_goldset.jsonl",
+    Path("eval_queries_v2.1.jsonl"): EVALUATION_DATA_ROOT / "eval_queries_v2.1.jsonl",
+}
 
 
 def _get_git_commit_sha() -> str:
@@ -42,7 +47,7 @@ def _get_git_commit_sha() -> str:
     return "unknown"
 
 
-def _compute_file_hash(path: Path, algorithm: str = "sha256") -> str:
+def _compute_file_hash(path: Path, algorithm: str = "sha256") -> str | None:
     """Compute stable hash of a file for reproducibility proof."""
     if not path.exists():
         return None
@@ -54,6 +59,19 @@ def _compute_file_hash(path: Path, algorithm: str = "sha256") -> str:
                 break
             hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def _resolve_evaluation_data_path(path: Path) -> Path:
+    """Resolve moved legacy evaluation fixture paths without mutating data files."""
+
+    candidate = Path(path)
+    if candidate.exists():
+        return candidate
+    normalized = Path(str(candidate).replace("\\", "/"))
+    fallback = LEGACY_EVALUATION_PATHS.get(normalized)
+    if fallback is not None and fallback.exists():
+        return fallback
+    return candidate
 
 
 def _build_repro_metadata(
@@ -97,9 +115,10 @@ def _build_repro_metadata(
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
+    resolved_path = _resolve_evaluation_data_path(path)
+    if not resolved_path.exists():
         raise FileNotFoundError(f"JSONL file not found: {path}")
-    with path.open("r", encoding="utf-8") as handle:
+    with resolved_path.open("r", encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
 
 
@@ -463,8 +482,10 @@ def export_phase_b_pools(
     retrieval_collector=None,
     top_k: int = 10,
 ) -> dict[str, Any]:
-    goldset_records = load_jsonl(goldset_path)
-    original_query_index = build_original_query_index(_load_queries(eval_queries_path))
+    resolved_goldset_path = _resolve_evaluation_data_path(goldset_path)
+    resolved_eval_queries_path = _resolve_evaluation_data_path(eval_queries_path)
+    goldset_records = load_jsonl(resolved_goldset_path)
+    original_query_index = build_original_query_index(_load_queries(resolved_eval_queries_path))
     active_corpus = corpus if corpus is not None else _load_retrieval_corpus()
     collector = retrieval_collector or collect_query_source_hits
     
@@ -486,8 +507,8 @@ def export_phase_b_pools(
     
     # Build reproducibility metadata
     repro_meta = _build_repro_metadata(
-        goldset_path,
-        eval_queries_path,
+        resolved_goldset_path,
+        resolved_eval_queries_path,
         pool_output_path,
         annotation_output_path,
         top_k,
@@ -509,12 +530,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--goldset",
-        default="artifacts\\eval_audit\\gateb_goldset.jsonl",
+        default=str(EVALUATION_DATA_ROOT / "gateb_goldset.jsonl"),
         help="Canonical scaffold goldset JSONL.",
     )
     parser.add_argument(
         "--eval-queries",
-        default="eval_queries_v2.1.jsonl",
+        default=str(EVALUATION_DATA_ROOT / "eval_queries_v2.1.jsonl"),
         help="Original eval query JSONL used to recover evidence_set.",
     )
     parser.add_argument(

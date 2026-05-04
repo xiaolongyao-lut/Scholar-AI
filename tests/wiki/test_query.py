@@ -93,6 +93,24 @@ class TestBuildWikiIndex:
         status = index.get_status()
         assert status.page_count == 2
 
+    def test_rebuild_index_removes_deleted_pages(
+        self, page_store: WikiPageStore, index: WikiQueryIndex
+    ) -> None:
+        from literature_assistant.core.wiki.page_store import render_page
+
+        rendered1 = render_page(Path("page1.md"), {"id": "page1", "kind": "concept", "title": "First"}, "First content.")
+        rendered2 = render_page(Path("page2.md"), {"id": "page2", "kind": "concept", "title": "Second"}, "Second content.")
+        page_store.write_rendered(rendered1)
+        page_store.write_rendered(rendered2)
+        build_wiki_index(page_store, index)
+
+        page_store.resolve(Path("page2.md")).unlink()
+        build_wiki_index(page_store, index)
+
+        status = index.get_status()
+        assert status.page_count == 1
+        assert index.search("Second", limit=10) == []
+
 
 class TestWikiFirstSearch:
     @pytest.fixture
@@ -192,6 +210,63 @@ class TestExpandLinkedPages:
         assert Path("page1.md") not in expanded_paths
         assert Path("page2.md") not in expanded_paths
         assert Path("page3.md") in expanded_paths
+
+    def test_expand_linked_pages_ranks_shared_link_first(self, page_store: WikiPageStore) -> None:
+        from literature_assistant.core.wiki.page_store import render_page
+        from literature_assistant.core.wiki.query import expand_linked_pages
+
+        page_store.write_rendered(
+            render_page(
+                Path("concept/primary-a.md"),
+                {"id": "primary-a", "kind": "concept", "title": "Primary A"},
+                "Links to [[shared-target]] and [[single-target]].",
+            )
+        )
+        page_store.write_rendered(
+            render_page(
+                Path("concept/primary-b.md"),
+                {"id": "primary-b", "kind": "concept", "title": "Primary B"},
+                "Links to [[shared-target]].",
+            )
+        )
+        page_store.write_rendered(
+            render_page(
+                Path("concept/shared-target.md"),
+                {"id": "shared", "kind": "concept", "title": "Shared Target"},
+                "Shared linked page.",
+            )
+        )
+        page_store.write_rendered(
+            render_page(
+                Path("concept/single-target.md"),
+                {"id": "single", "kind": "concept", "title": "Single Target"},
+                "Single linked page.",
+            )
+        )
+
+        expanded = expand_linked_pages(
+            [
+                WikiSearchResult(
+                    page_path=Path("concept/primary-a.md"),
+                    title="Primary A",
+                    score=1.0,
+                    snippet="",
+                ),
+                WikiSearchResult(
+                    page_path=Path("concept/primary-b.md"),
+                    title="Primary B",
+                    score=0.9,
+                    snippet="",
+                ),
+            ],
+            page_store,
+            max_linked=2,
+        )
+
+        assert [item.page_path for item in expanded] == [
+            Path("concept/shared-target.md"),
+            Path("concept/single-target.md"),
+        ]
 
 
 class TestWikiQueryWithFallback:
@@ -318,6 +393,24 @@ class TestRenderContextPack:
         pack = render_context_pack("test query", query_result, context_page_store, max_tokens=10)
         assert pack.truncated
         assert len(pack.primary_pages) < 2
+        assert pack.omitted_pages
+
+    def test_render_context_pack_records_missing_pages_as_omitted(self, context_page_store: WikiPageStore) -> None:
+        from literature_assistant.core.wiki.query import WikiQueryResult, render_context_pack
+
+        query_result = WikiQueryResult(
+            wiki_hits=[
+                WikiSearchResult(page_path=Path("missing.md"), title="Missing", score=1.0, snippet=""),
+            ],
+            linked_hits=[],
+            fallback_used=False,
+            fallback_reason="",
+        )
+
+        pack = render_context_pack("test query", query_result, context_page_store, max_tokens=100)
+
+        assert pack.primary_pages == []
+        assert pack.omitted_pages == ["missing.md"]
 
 
 class TestBuildQueryTrace:
@@ -349,6 +442,8 @@ class TestBuildQueryTrace:
         assert not trace.fallback_used
         assert trace.total_pages == 2
         assert trace.context_tokens == 100
+        assert trace.context_max_tokens == 0
+        assert not trace.context_truncated
 
     def test_build_query_trace_fallback(self) -> None:
         from literature_assistant.core.wiki.query import WikiQueryResult, build_query_trace
@@ -366,7 +461,23 @@ class TestBuildQueryTrace:
         assert trace.total_pages == 0
         assert trace.context_tokens == 0
 
+    def test_write_query_trace_omits_plain_query(self, tmp_path: Path) -> None:
+        from literature_assistant.core.wiki.query import WikiQueryResult, build_query_trace, write_query_trace
 
+        query_result = WikiQueryResult(
+            wiki_hits=[],
+            linked_hits=[],
+            fallback_used=True,
+            fallback_reason="no wiki hits",
+        )
+        trace = build_query_trace("secret research question", query_result, None, enabled=True)
+
+        trace_path = write_query_trace(trace, trace_dir=tmp_path)
+        payload = trace_path.read_text(encoding="utf-8")
+
+        assert trace_path.exists()
+        assert "secret research question" not in payload
+        assert "query_hash" in payload
 
 
 
