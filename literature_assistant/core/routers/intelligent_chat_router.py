@@ -702,9 +702,9 @@ async def _call_llm_answer(query: str, context: list[str]) -> tuple[str, TokenUs
         )
     )
 
-    # If LLM requested skill execution, run skills and re-prompt with results
-    if response.tool_calls:
-        tool_results = _execute_skill_tool_calls(response.tool_calls)
+    tool_calls = getattr(response, "tool_calls", None) or []
+    if tool_calls:
+        tool_results = _execute_skill_tool_calls(tool_calls)
         if tool_results:
             followup_context = list(context) + [
                 f"[技能执行结果]\n{r}" for r in tool_results
