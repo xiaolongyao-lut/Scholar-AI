@@ -74,12 +74,12 @@ class TOLFConfig:
 
     # --- SA-RAG 扩散参数 ---
     normalization_param: float = 0.4  # 边权归一化下限 c (论文 0.4)
-    activation_threshold: float = 0.5 # 实体激活阈值 τ_a (论文 0.5)
+    activation_threshold: float = 0.6 # 实体激活阈值 τ_a (优化后 0.6)
     pruning_threshold: float = 0.45   # 边剪枝阈值 (论文 0.45)
     k_hop: int = 3                    # 最大传播跳数
 
     # --- 证据门控 ---
-    evidence_threshold: float = 0.25  # 证据质量阈值 τ_e
+    evidence_threshold: float = 0.40  # 证据质量阈值 τ_e (优化后 0.40)
 
     # --- 四层 aspect 名称 ---
     aspect_names: list = field(

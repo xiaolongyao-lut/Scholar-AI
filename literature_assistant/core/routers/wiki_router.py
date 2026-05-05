@@ -20,8 +20,9 @@ from literature_assistant.core.runtime_env import wiki_enabled
 from literature_assistant.core.wiki.compiler import WikiCompiler
 from literature_assistant.core.wiki.doctor import WikiDoctor
 from literature_assistant.core.wiki.graph import WikiGraphStore, build_wiki_graph
+from literature_assistant.core.wiki.observability import default_wiki_observability_sink
 from literature_assistant.core.wiki.page_store import WikiPageStore, stable_slug
-from literature_assistant.core.wiki.query import WikiQueryIndex
+from literature_assistant.core.wiki.query import WikiQueryIndex, WikiSearchResult, wiki_query_with_fallback
 from literature_assistant.core.wiki.review_queue import (
     ReviewItemKind,
     ReviewItemStatus,
@@ -134,22 +135,21 @@ class WikiQueryResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-def _page_store() -> WikiPageStore:
-    return WikiPageStore(wiki_generated_root())
+def _page_store(*, create: bool = True) -> WikiPageStore:
+    return WikiPageStore(wiki_generated_root(), create=create)
 
 
 def _dry_run_page_store() -> WikiPageStore:
-    store = WikiPageStore.__new__(WikiPageStore)
-    store.wiki_root = wiki_generated_root()
-    return store
+    return WikiPageStore(wiki_generated_root(), create=False)
 
 
 def _doctor() -> WikiDoctor:
     return WikiDoctor(
-        _page_store(),
+        _page_store(create=False),
         registry=WikiRegistry(wiki_runtime_db_path()) if wiki_runtime_db_path().exists() else None,
         query_index=WikiQueryIndex(wiki_query_index_path()) if wiki_query_index_path().exists() else None,
         graph_store=WikiGraphStore.default(),
+        observability_sink=default_wiki_observability_sink(),
     )
 
 
@@ -222,6 +222,17 @@ def _normalize_identifier(value: str | None, field_name: str) -> str | None:
     if not _SAFE_IDENTIFIER_RE.fullmatch(normalized):
         raise HTTPException(status_code=400, detail=f"{field_name} contains unsupported characters")
     return normalized
+
+
+def _query_evidence_ref(result: WikiSearchResult) -> dict[str, Any]:
+    return {
+        "page_path": result.page_path.as_posix(),
+        "title": result.title,
+        "score": result.score,
+        "snippet": result.snippet,
+        "source": result.source,
+        "source_labels": ["wiki_first", result.source],
+    }
 
 
 def _normalize_page_path(page_path: str) -> Path:
@@ -300,7 +311,7 @@ def _split_frontmatter(content: str) -> tuple[dict[str, Any], str]:
 @router.get("/status", response_model=WikiStatusResponse)
 def wiki_status() -> WikiStatusResponse:
     enabled = wiki_enabled()
-    store = _page_store()
+    store = _page_store(create=False)
     pages = store.list_pages() if store.wiki_root.exists() else []
     page_count = len(pages) if enabled else 0
     stale, stale_warnings = _status_stale(page_count, enabled=enabled)
@@ -348,7 +359,7 @@ def wiki_compile(request: WikiCompileRequest) -> WikiCompileResponse:
             ],
         )
     registry = WikiRegistry(registry_path)
-    compiler = WikiCompiler(registry, _dry_run_page_store())
+    compiler = WikiCompiler(registry, _dry_run_page_store(), observability_sink=default_wiki_observability_sink())
     if source_id:
         result = compiler.compile_source(source_id, dry_run=True)
         planned_paths = _planned_paths_for_source(registry, source_id)
@@ -381,20 +392,72 @@ def wiki_query(request: WikiQueryRequest) -> WikiQueryResponse:
             fallback_required=True,
             warnings=_disabled_warning(),
         )
+    query = request.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query cannot be empty")
     if request.save:
         raise HTTPException(status_code=400, detail="Saved exploration API requires explicit service integration")
-    return WikiQueryResponse(
-        enabled=True,
-        fallback_required=True,
-        warnings=["Wiki query API contract is available; call the main RAG chain for generated answers."],
-    )
+    index_path = wiki_query_index_path()
+    sink = default_wiki_observability_sink()
+    if not index_path.exists():
+        sink.emit_event("wiki.query.fallback_required", {"reason": "missing_index", "query": query})
+        return WikiQueryResponse(
+            enabled=True,
+            fallback_required=True,
+            warnings=["Wiki query index is not available; call the main RAG chain for raw-corpus fallback."],
+        )
+    index = WikiQueryIndex(index_path, observability_sink=sink)
+    try:
+        with sink.start_span("wiki.router.query", {"wiki_first": request.wiki_first, "debug": request.debug}):
+            result = wiki_query_with_fallback(
+                query,
+                index,
+                _page_store(create=False),
+                enabled=True,
+                limit=5,
+                expand_links=True,
+                max_linked=3,
+            )
+        hits = [*result.wiki_hits, *result.linked_hits]
+        sink.emit_event(
+            "wiki.query.completed",
+            {
+                "query": query,
+                "wiki_hits": len(result.wiki_hits),
+                "linked_hits": len(result.linked_hits),
+                "fallback_required": result.fallback_used,
+                "fallback_reason": result.fallback_reason,
+            },
+            status="warning" if result.fallback_used else "ok",
+        )
+        sink.record_metric("wiki.query.router.evidence_refs", len(hits), {"fallback_required": result.fallback_used})
+        warnings: list[str] = []
+        if result.fallback_used:
+            warnings.append(f"Wiki query returned no usable hits: {result.fallback_reason}.")
+            warnings.append("Call the main RAG chain for raw-corpus fallback.")
+        return WikiQueryResponse(
+            enabled=True,
+            fallback_required=result.fallback_used,
+            answer="" if result.fallback_used else "Wiki evidence is available; use evidence_refs for grounded context.",
+            evidence_refs=[_query_evidence_ref(hit) for hit in hits],
+            warnings=warnings,
+        )
+    except Exception as exc:
+        sink.emit_event("wiki.query.failed", {"query": query, "error": type(exc).__name__}, status="error")
+        return WikiQueryResponse(
+            enabled=True,
+            fallback_required=True,
+            warnings=[f"Wiki query failed; call the main RAG chain for raw-corpus fallback: {type(exc).__name__}"],
+        )
+    finally:
+        index.close()
 
 
 @router.get("/pages", response_model=WikiPageListResponse)
 def wiki_pages(kind: str | None = Query(default=None), status: str | None = Query(default=None)) -> WikiPageListResponse:
     if not wiki_enabled():
         return WikiPageListResponse(enabled=False, pages=[])
-    store = _page_store()
+    store = _page_store(create=False)
     kind_filter = _normalize_filter_token(kind, "kind")
     status_filter = _normalize_filter_token(status, "status")
     pages: list[WikiPageSummaryPayload] = []
@@ -416,7 +479,7 @@ def wiki_page_read(page_path: str) -> WikiPageReadResponse:
     if not wiki_enabled():
         return WikiPageReadResponse(enabled=False, path=page_path)
     relative_path = _normalize_page_path(page_path)
-    content = _page_store().read_page(relative_path)
+    content = _page_store(create=False).read_page(relative_path)
     if content is None:
         raise HTTPException(status_code=404, detail=f"Wiki page not found: {page_path}")
     frontmatter, body = _split_frontmatter(content)
@@ -439,7 +502,7 @@ def wiki_doctor() -> WikiDoctorResponse:
 def wiki_graph() -> WikiGraphResponse:
     if not wiki_enabled():
         return WikiGraphResponse(enabled=False, graph={})
-    snapshot = build_wiki_graph(_page_store())
+    snapshot = build_wiki_graph(_page_store(create=False))
     return WikiGraphResponse(enabled=True, graph=snapshot.to_dict())
 
 

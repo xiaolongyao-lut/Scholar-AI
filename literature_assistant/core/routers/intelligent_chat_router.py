@@ -250,7 +250,10 @@ def _ragworkflow_chat_enabled() -> bool:
 
 
 def _tolf_context_enabled() -> bool:
-    return _truthy(os.getenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED"))
+    val = os.getenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED")
+    if val is None:
+        return True  # default-on after cross-lingual bridge expansion fix
+    return _truthy(val)
 
 
 def _split_source_paths(raw_value: str) -> list[str]:
@@ -426,22 +429,30 @@ def _build_context_chunks(query: str, source_paths: list[Path], tier: ContextTie
     return chunks, truncated
 
 
-def _build_project_context_chunks(query: str, project_id: str, tier: ContextTier) -> tuple[list[ContextChunkPayload], bool]:
+def _build_project_context_chunks(query: str, project_id: str, tier: ContextTier, boost_keywords: list[str] | None = None) -> tuple[list[ContextChunkPayload], bool]:
     max_chunks, max_chars = _TIER_LIMITS[tier]
-    candidate_limit = max_chunks
     if _tolf_context_enabled():
-        candidate_limit = max(
-            max_chunks,
-            min(max_chunks * 3, _positive_int_env("INTELLIGENT_CHAT_TOLF_CONTEXT_CANDIDATES", 45)),
-        )
-    results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=candidate_limit)
-    if _tolf_context_enabled() and results:
-        try:
-            tolfs = select_tolf_context_chunks(query, results, top_k=max_chunks, max_candidates=candidate_limit)
-        except (RuntimeError, TypeError, ValueError):
-            tolfs = []
-        if tolfs:
-            results = tolfs
+        # TOLF needs full corpus — it has its own cosine prefilter internally.
+        # Keyword-search top-k is too small for SA-RAG diffusion to work.
+        all_chunks = load_project_chunks_for_rag(project_id)
+        if all_chunks:
+            try:
+                tolfs = select_tolf_context_chunks(
+                    query, all_chunks,
+                    top_k=max_chunks,
+                    max_candidates=_positive_int_env("INTELLIGENT_CHAT_TOLF_CONTEXT_CANDIDATES", 45),
+                    boost_keywords=boost_keywords,
+                )
+            except (RuntimeError, TypeError, ValueError):
+                tolfs = []
+            if tolfs:
+                results: list[dict[str, Any]] = tolfs
+            else:
+                results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
+        else:
+            results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
+    else:
+        results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
     chunks: list[ContextChunkPayload] = []
     used_chars = 0
     truncated = False
@@ -637,16 +648,76 @@ def _usage_from_mapping(usage: dict[str, Any] | None) -> TokenUsagePayload:
     return TokenUsagePayload(prompt=prompt, completion=completion, total=total)
 
 
+def _load_skill_tool_schemas() -> list[dict[str, Any]] | None:
+    """Get OpenAI-compatible tool schemas for enabled non-experimental skills."""
+    try:
+        from skills.service import get_writing_skill_service
+        from skill_executor import get_active_skill_tool_schemas
+        svc = get_writing_skill_service()
+        schemas = get_active_skill_tool_schemas(svc._registry)
+        return schemas if schemas else None
+    except Exception:
+        return None
+
+
+def _execute_skill_tool_calls(tool_calls: list[dict[str, Any]]) -> list[str]:
+    """Execute skills requested by LLM tool_calls, return result strings."""
+    results: list[str] = []
+    try:
+        from skills.service import get_writing_skill_service
+        from skill_executor import execute_skill
+        svc = get_writing_skill_service()
+        for tc in tool_calls:
+            func = tc.get("function", {})
+            name = func.get("name", "")
+            args_raw = func.get("arguments", "{}")
+            try:
+                args = json.loads(args_raw) if isinstance(args_raw, str) else (args_raw or {})
+            except (json.JSONDecodeError, TypeError):
+                args = {}
+
+            skill = svc._registry.get(name) or svc._registry.get(name.replace("_", "-"))
+            if skill is not None:
+                result = execute_skill(skill, args)
+                tag = f"[{skill.name}]"
+                results.append(
+                    f"{tag}: {result.output[:800]}" if result.success
+                    else f"{tag} 失败: {result.error}"
+                )
+    except Exception as exc:
+        results.append(f"[技能执行异常]: {exc}")
+    return results
+
+
 async def _call_llm_answer(query: str, context: list[str]) -> tuple[str, TokenUsagePayload, SamplingParamsPayload]:
     llm = _load_default_llm_config()
+    tool_schemas = _load_skill_tool_schemas()
     response = await chat_ask(
         ChatRequest(
             query=query,
             context=context,
             history=[],
             llm=llm,
+            tools=tool_schemas,
         )
     )
+
+    # If LLM requested skill execution, run skills and re-prompt with results
+    if response.tool_calls:
+        tool_results = _execute_skill_tool_calls(response.tool_calls)
+        if tool_results:
+            followup_context = list(context) + [
+                f"[技能执行结果]\n{r}" for r in tool_results
+            ]
+            response = await chat_ask(
+                ChatRequest(
+                    query=query,
+                    context=followup_context,
+                    history=[],
+                    llm=llm,
+                )
+            )
+
     return (
         response.answer,
         _usage_from_mapping(response.usage),
@@ -828,6 +899,11 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
     ragworkflow_sampling: SamplingParamsPayload | None = None
     evidence_refs: list[EvidenceReferencePayload]
 
+    # Load user research profile for retrieval boost
+    from user_research_profile import load_profile, get_boost_keywords, extract_keywords, add_direction, save_profile
+    profile = load_profile(runtime_state_path())
+    boost_keywords = get_boost_keywords(profile)
+
     if project_id is not None and _ragworkflow_chat_enabled():
         ragworkflow_answer, chunks, truncated, evidence_refs, ragworkflow_sampling = await _call_project_ragworkflow_answer(
             query=req.query,
@@ -835,7 +911,7 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
             tier=req.tier,
         )
     elif project_id is not None:
-        chunks, truncated = _build_project_context_chunks(req.query, project_id, req.tier)
+        chunks, truncated = _build_project_context_chunks(req.query, project_id, req.tier, boost_keywords=boost_keywords)
         evidence_refs = _build_evidence_refs(chunks)
     else:
         source_paths = _resolve_source_paths(req.source_paths)
@@ -878,6 +954,14 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
         evidence_refs=evidence_refs,
     )
     _persist_turns(session_id=session_id, query=req.query, response=response)
+
+    # Update research profile after conversation turn
+    detected = extract_keywords(req.query, profile)
+    for kw in detected:
+        add_direction(profile, kw, weight=0.2)
+    if detected:
+        save_profile(profile, runtime_state_path())
+
     return response
 
 

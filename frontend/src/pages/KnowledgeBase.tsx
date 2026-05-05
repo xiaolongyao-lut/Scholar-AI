@@ -17,6 +17,8 @@ import {
   Pencil,
   X,
   Check,
+  BookOpen,
+  ArrowLeft,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -25,6 +27,8 @@ import { getWritingBackendService } from '@/services/writingBackend';
 import { useWriting } from '@/contexts/WritingContext';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import axios from 'axios';
+import { PdfViewer } from '@/components/PdfViewer/PdfViewer';
+import { getAnnotations, addHighlight, type Highlight } from '@/services/annotationApi';
 
 type KBDocumentType = 'pdf' | 'docx' | 'bib' | 'txt' | 'other';
 type KBDocumentStatus = 'indexed' | 'no_text';
@@ -111,6 +115,9 @@ export function KnowledgeBase() {
   const [uploadSummary, setUploadSummary] = useState<UploadBatchResult | null>(null);
   const [uploadSelection, setUploadSelection] = useState<string[]>([]);
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
+  const [detailDocId, setDetailDocId] = useState<string | null>(null);
+  const [detailDocName, setDetailDocName] = useState('');
+  const [detailHighlights, setDetailHighlights] = useState<Highlight[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<{ 
     indexed: number; 
@@ -179,6 +186,36 @@ export function KnowledgeBase() {
   useEffect(() => {
     void loadMaterials();
   }, [loadMaterials]);
+
+  // Open document detail view with PDF viewer
+  const openDetail = useCallback(async (doc: KBDocument) => {
+    if (doc.type !== 'pdf') return;
+    setDetailDocId(doc.id);
+    setDetailDocName(doc.name);
+    try {
+      const ann = await getAnnotations(doc.id);
+      setDetailHighlights(ann.highlights || []);
+    } catch {
+      setDetailHighlights([]);
+    }
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    setDetailDocId(null);
+    setDetailDocName('');
+    setDetailHighlights([]);
+  }, []);
+
+  const handleAnalyzeText = useCallback((text: string, page: number) => {
+    // Navigate to workbench with selected text as pre-filled query
+    const encoded = encodeURIComponent(text.slice(0, 500));
+    window.location.hash = `/workbench?prefill=${encoded}`;
+  }, []);
+
+  const handleAddHighlight = useCallback(async (materialId: string, highlight: Highlight) => {
+    const ann = await addHighlight(materialId, highlight);
+    setDetailHighlights(ann.highlights || []);
+  }, []);
 
   const handleUpdateSourceFolder = useCallback(async () => {
     if (!activeProjectId || savingFolder) return;
@@ -284,6 +321,31 @@ export function KnowledgeBase() {
   const noTextCount = docs.filter(doc => doc.status === 'no_text').length;
   const recentSucceeded = (uploadSummary?.results ?? []).filter(item => item.status === 'ok').slice(0, 4);
   const recentFailed = (uploadSummary?.results ?? []).filter(item => item.status === 'error').slice(0, 4);
+
+  // Detail view: PDF viewer
+  if (detailDocId) {
+    const pdfUrl = `${getApiBaseUrl()}/resources/document/${detailDocId}/file`;
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-outline-variant/60 bg-surface-low">
+          <button onClick={closeDetail} className="p-1.5 rounded hover:bg-surface-high transition-all" title="返回列表">
+            <ArrowLeft size={16} />
+          </button>
+          <BookOpen size={15} className="text-primary/60" />
+          <span className="font-label text-sm text-foreground/80 truncate">{detailDocName}</span>
+        </div>
+        <div className="flex-1 min-h-0">
+          <PdfViewer
+            url={pdfUrl}
+            materialId={detailDocId}
+            onAnalyzeText={handleAnalyzeText}
+            onAddHighlight={(h) => handleAddHighlight(detailDocId, h)}
+            highlights={detailHighlights}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -751,6 +813,14 @@ export function KnowledgeBase() {
                           </div>
                         ) : (
                           <p className="text-orange-600">该文档无可提取文本，未建索引</p>
+                        )}
+                        {doc.type === 'pdf' && (
+                          <button
+                            onClick={() => openDetail(doc)}
+                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-[11px] font-label hover:bg-primary/20 transition-all"
+                          >
+                            <BookOpen size={12} /> 阅读 PDF
+                          </button>
                         )}
                       </div>
                     </div>

@@ -33,6 +33,7 @@ export interface EvidenceReference {
   source_labels?: string[];
   page?: number | string | null;
   source_hint?: string | null;
+  query_overlap_tokens?: string[];
 }
 
 export interface TokenUsage {

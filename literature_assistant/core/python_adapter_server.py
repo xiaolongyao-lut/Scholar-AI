@@ -443,6 +443,9 @@ from routers.llm_cost_router import router as llm_cost_router
 from routers.sampling_router import router as sampling_router
 from routers.volume_router import router as volume_router
 from routers.wiki_router import router as wiki_router
+from routers.export_router import router as export_router
+from routers.annotation_router import router as annotation_router
+from routers.discussion_router import router as discussion_router
 
 app.include_router(pipeline_router)
 app.include_router(skills_router)
@@ -459,6 +462,9 @@ app.include_router(llm_cost_router)
 app.include_router(sampling_router)
 app.include_router(volume_router)
 app.include_router(wiki_router)
+app.include_router(export_router)
+app.include_router(annotation_router)
+app.include_router(discussion_router)
 
 if FRONTEND_ASSETS_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="frontend-assets")

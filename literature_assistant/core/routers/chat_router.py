@@ -57,6 +57,7 @@ class ChatRequest(BaseModel):
     llm: LLMConfig
     sampling: dict[str, float | int] | None = Field(default=None, description="Per-task sampling overrides")
     ai_cost_profile: str | None = Field(default=None, description="balanced | aggressive | quality")
+    tools: list[dict[str, Any]] | None = Field(default=None, description="Tool/function definitions for skill calling")
 
 
 class ChatResponse(BaseModel):
@@ -64,6 +65,7 @@ class ChatResponse(BaseModel):
     model: str
     usage: dict[str, Any] | None = None
     sampling_params: dict[str, Any] | None = Field(default=None, description="Actual sampling params used")
+    tool_calls: list[dict[str, Any]] | None = Field(default=None, description="Tool calls from LLM (for skill execution)")
 
 
 def _apply_ai_cost_profile_to_llm(llm: LLMConfig, profile: str | None) -> LLMConfig:
@@ -386,6 +388,7 @@ def _build_chat_request(
     stream: bool = False,
     history: list[ChatMessage] | None = None,
     response_format: dict[str, Any] | None = None,
+    tools: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
     """Build provider-specific URL, headers, and payload."""
     provider_key = _provider_key(llm.provider)
@@ -428,6 +431,8 @@ def _build_chat_request(
                 system_parts.append(m["content"])
         if system_parts:
             payload["system"] = "\n\n".join(system_parts)
+        if tools:
+            payload["tools"] = tools
         if stream:
             payload["stream"] = True
         return url, headers, payload
@@ -452,6 +457,8 @@ def _build_chat_request(
         payload["extra_body"] = {"top_k": llm.top_k}
     if response_format:
         payload["response_format"] = response_format
+    if tools:
+        payload["tools"] = tools
     if stream:
         payload["stream"] = True
     return url, headers, payload
@@ -504,6 +511,30 @@ def _extract_chat_response(data: dict[str, Any], provider: str, fallback_model: 
     return str(answer), usage, model_used
 
 
+def _extract_tool_calls(data: dict[str, Any], provider: str) -> list[dict[str, Any]] | None:
+    """Extract tool_calls from LLM response (OpenAI-compatible or Claude)."""
+    if _provider_key(provider) == "claude":
+        content_blocks = data.get("content", []) if isinstance(data, dict) else []
+        tool_blocks = [
+            {
+                "id": block.get("id", ""),
+                "function": {
+                    "name": block.get("name", ""),
+                    "arguments": json.dumps(block.get("input", {})),
+                },
+                "raw": block,
+            }
+            for block in content_blocks
+            if isinstance(block, dict) and block.get("type") == "tool_use"
+        ]
+        return tool_blocks if tool_blocks else None
+
+    # OpenAI-compatible
+    message = data.get("choices", [{}])[0].get("message", {})
+    tool_calls = message.get("tool_calls")
+    return tool_calls if tool_calls else None
+
+
 def _log_chat_telemetry(
     *,
     model: str | None,
@@ -539,7 +570,7 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
     llm = _apply_ai_cost_profile_to_llm(llm, req.ai_cost_profile)
     with use_cost_profile(req.ai_cost_profile):
         try:
-            url, headers, payload = _build_chat_request(req.query, req.context, llm, history=req.history)
+            url, headers, payload = _build_chat_request(req.query, req.context, llm, history=req.history, tools=req.tools)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -603,6 +634,7 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
 
     try:
         answer, usage, model_used = _extract_chat_response(data, req.llm.provider, req.llm.model)
+        tool_calls = _extract_tool_calls(data, req.llm.provider)
     except (KeyError, IndexError) as exc:
         _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, response=data, status="error")
         logger.error("Unexpected LLM response format: %s", data)
@@ -618,7 +650,8 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
             "top_p": llm.top_p,
             "top_k": llm.top_k,
             "max_tokens": llm.max_tokens
-        }
+        },
+        tool_calls=tool_calls,
     )
 
 

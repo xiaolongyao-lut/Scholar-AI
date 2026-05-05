@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { BookOpen, Search, MessageSquare, Loader2, Send, Sparkles, FileText, ChevronRight, Trash2, History } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { BookOpen, Search, MessageSquare, Loader2, Send, Sparkles, FileText, ChevronRight, Trash2, History, PenLine, Download, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,8 @@ import { askChatWithConfig, type ChatHistoryMessage } from '@/services/chatApi';
 import axios from 'axios';
 import { SessionDrawer } from '@/components/writing/SessionDrawer';
 import type { ResumeSessionResult } from '@/types/runtime';
+import { TipTapEditor } from '@/components/TipTapEditor/TipTapEditor';
+import { exportToDocx, downloadBlob } from '@/services/exportApi';
 
 interface TokenUsage {
   prompt_tokens?: number;
@@ -105,6 +107,10 @@ export function Workbench() {
   );
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
   const [isRehydrating, setIsRehydrating] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorContent, setEditorContent] = useState('');
+  const [editorJson, setEditorJson] = useState<object>({});
+  const [exporting, setExporting] = useState(false);
 
   /**
    * Resume handler — minimal MVP hook. Full timeline rehydration into the
@@ -231,6 +237,11 @@ export function Workbench() {
     setMessages([]);
   };
 
+  const handleInsertToEditor = useCallback((text: string) => {
+    setEditorContent(prev => prev ? prev + '<p>' + text.replace(/\n/g, '<br>') + '</p>' : '<p>' + text.replace(/\n/g, '<br>') + '</p>');
+    if (!editorOpen) setEditorOpen(true);
+  }, [editorOpen]);
+
   const handleSubmit = async () => {
     if (!query.trim() || isLoading) return;
     const userMsg: Message = { id: Date.now(), role: 'user', content: query };
@@ -300,7 +311,9 @@ export function Workbench() {
   };
 
   return (
-    <div className="relative flex flex-col h-full">
+    <div className="relative flex flex-row h-full">
+      {/* Left: Chat panel */}
+      <div className={cn('relative flex flex-col h-full transition-all', editorOpen ? 'w-1/2 min-w-0' : 'w-full')}>
       {/* Session drawer trigger — top-right floating button */}
       <button
         type="button"
@@ -311,6 +324,22 @@ export function Workbench() {
       >
         <History size={13} />
         <span>会话</span>
+      </button>
+      {/* Writing panel toggle */}
+      <button
+        type="button"
+        onClick={() => setEditorOpen(v => !v)}
+        aria-label={editorOpen ? '关闭写作面板' : '打开写作面板'}
+        title={editorOpen ? '关闭写作面板' : '打开写作面板'}
+        className={cn(
+          'absolute top-4 right-24 z-40 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md backdrop-blur border font-label text-[11px] transition-all shadow-sm',
+          editorOpen
+            ? 'bg-primary/15 text-primary border-primary/30 hover:bg-primary/25'
+            : 'bg-surface-high/80 text-foreground/70 border-outline-variant/60 hover:text-foreground hover:border-primary/30'
+        )}
+      >
+        <PenLine size={13} />
+        <span>写作</span>
       </button>
       <SessionDrawer
         isOpen={sessionDrawerOpen}
@@ -430,6 +459,19 @@ export function Workbench() {
                   )}
                   {msg.usage && !msg.error && (
                     <TokenBadge usage={msg.usage} model={msg.model} />
+                  )}
+                  {/* Insert to editor button — only on assistant messages */}
+                  {msg.role === 'assistant' && !msg.error && (
+                    <div className="mt-2 pt-2 border-t border-outline-variant/20 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleInsertToEditor(msg.content)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-label text-primary/70 hover:bg-primary/10 hover:text-primary transition-all"
+                        title="插入到写作面板"
+                      >
+                        <PenLine size={11} /> 插入编辑器
+                      </button>
+                    </div>
                   )}
                 </div>
               </motion.div>
@@ -562,6 +604,68 @@ export function Workbench() {
           </button>
         </div>
       </div>
+      {/* Close chat panel div */}
+      </div>
+
+      {/* Right: Writing panel */}
+      <AnimatePresence>
+        {editorOpen && (
+          <motion.div
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: '50%', opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="flex flex-col h-full border-l border-outline-variant bg-surface-lowest overflow-hidden"
+          >
+            {/* Editor header */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-outline-variant/60 bg-surface-low">
+              <span className="font-label text-xs text-foreground/60">写作面板</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (exporting) return;
+                    setExporting(true);
+                    try {
+                      const { url, filename } = await exportToDocx({
+                        html: editorContent,
+                        json: editorJson,
+                        title: '文献笔记',
+                      });
+                      downloadBlob(url, filename);
+                    } catch (err) {
+                      console.error('Export failed:', err);
+                    } finally {
+                      setExporting(false);
+                    }
+                  }}
+                  disabled={exporting || !editorContent}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-label text-primary/80 hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  title="导出 Word 文档"
+                >
+                  <Download size={12} /> {exporting ? '导出中...' : '导出 .docx'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditorOpen(false)}
+                  className="p-1 rounded text-foreground/40 hover:text-foreground/70 hover:bg-surface-high transition-all"
+                  title="关闭写作面板"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            {/* TipTap editor */}
+            <div className="flex-1 overflow-y-auto">
+              <TipTapEditor
+                content={editorContent}
+                onChange={(html, json) => { setEditorContent(html); setEditorJson(json); }}
+                placeholder="在这里撰写论文笔记..."
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

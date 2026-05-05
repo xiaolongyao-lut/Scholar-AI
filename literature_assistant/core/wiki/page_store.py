@@ -80,9 +80,18 @@ def atomic_write_text(path: Path, text: str) -> None:
 
 
 class WikiPageStore:
-    def __init__(self, wiki_root: Path) -> None:
+    def __init__(self, wiki_root: Path, *, create: bool = True) -> None:
+        """Create a page store rooted at ``wiki_root``.
+
+        Args:
+            wiki_root: Directory that contains generated Wiki Markdown pages.
+            create: When false, read-only callers must not create missing
+                directories just by constructing the store.
+        """
+
         self.wiki_root = Path(wiki_root)
-        self.wiki_root.mkdir(parents=True, exist_ok=True)
+        if create:
+            self.wiki_root.mkdir(parents=True, exist_ok=True)
 
     def resolve(self, relative_path: Path) -> Path:
         candidate = (self.wiki_root / relative_path).resolve()

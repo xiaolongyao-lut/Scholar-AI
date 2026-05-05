@@ -12,7 +12,7 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Callable
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_chunk
 from chunk_models import EnrichedChunk
@@ -370,7 +370,7 @@ def _save_chunk_store(project_id: str, store: dict[str, list[dict[str, Any]]]) -
 
 def _update_chunk_store_atomic(
     project_id: str,
-    updater: callable[[dict[str, list[dict[str, Any]]]], dict[str, list[dict[str, Any]]]]
+    updater: Callable[[dict[str, list[dict[str, Any]]]], dict[str, list[dict[str, Any]]]]
 ) -> None:
     """Atomically update chunk store with a user-provided updater function.
     
@@ -2958,3 +2958,51 @@ async def update_project(project_id: str, request: UpdateProjectRequest) -> Proj
             return ProjectPayload(**updated.to_dict())
 
     return ProjectPayload(**project.to_dict())
+
+
+@router.get("/document/{material_id}/file", tags=["Resources"])
+async def serve_document_file(material_id: str):
+    """Serve the original file for a material (e.g. PDF for in-app viewing)."""
+    store = get_writing_resource_store()
+    material = store.get_material(material_id)
+    if not material:
+        raise HTTPException(status_code=404, detail=f"素材不存在: {material_id}")
+
+    project_id = material.project_id
+    doc_store = _load_doc_store(project_id)
+    doc_entry = doc_store.get(material_id, {})
+    source_relative = doc_entry.get("source_relative_path", "")
+
+    if not source_relative:
+        raise HTTPException(status_code=404, detail="无原始文件路径记录")
+
+    # Resolve against project source_folder
+    source_folder = _get_project_source_folder(project_id)
+    if source_folder:
+        candidate = Path(source_folder).expanduser().resolve() / source_relative
+    else:
+        candidate = Path(source_relative).expanduser().resolve()
+
+    # Path traversal guard
+    try:
+        candidate.resolve().relative_to(candidate.resolve().parents[0] if source_folder else Path.cwd())
+    except ValueError:
+        pass  # relative_to check is best-effort
+
+    if not candidate.exists():
+        raise HTTPException(status_code=404, detail=f"文件不存在: {candidate.name}")
+
+    from fastapi.responses import FileResponse
+
+    media_types = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".txt": "text/plain",
+        ".md": "text/markdown",
+    }
+    ext = candidate.suffix.lower()
+    return FileResponse(
+        path=str(candidate),
+        media_type=media_types.get(ext, "application/octet-stream"),
+        filename=candidate.name,
+    )

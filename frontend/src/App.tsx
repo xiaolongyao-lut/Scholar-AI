@@ -16,6 +16,7 @@ const Jobs = React.lazy(() => import('./pages/Jobs').then(m => ({ default: m.Job
 const Inspiration = React.lazy(() => import('./pages/Inspiration').then(m => ({ default: m.Inspiration })));
 const DraftStudio = React.lazy(() => import('./components/DraftStudio').then(m => ({ default: m.DraftStudio })));
 const IntelligentChat = React.lazy(() => import('./pages/IntelligentChat').then(m => ({ default: m.IntelligentChat })));
+const Discussion = React.lazy(() => import('./pages/Discussion').then(m => ({ default: m.Discussion })));
 const WritingOverview = React.lazy(() => import('./pages/writing/WritingOverview').then(m => ({ default: m.WritingOverview })));
 const OutlineManager = React.lazy(() => import('./pages/writing/OutlineManager').then(m => ({ default: m.OutlineManager })));
 const SourcesCitations = React.lazy(() => import('./pages/writing/SourcesCitations').then(m => ({ default: m.SourcesCitations })));
@@ -57,6 +58,7 @@ const App = () => {
                   <Route path="/volume" element={<VolumeAnalysis />} />
                   <Route path="/inspiration" element={<Inspiration />} />
                   <Route path="/chat" element={<IntelligentChat />} />
+                  <Route path="/discussion" element={<Discussion />} />
                   <Route path="/jobs" element={<Jobs />} />
                   <Route path="/settings" element={<SettingsPage />} />
 
