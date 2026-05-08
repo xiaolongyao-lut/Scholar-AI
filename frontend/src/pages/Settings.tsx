@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Settings as SettingsIcon, Key, Cpu, Network, FolderOpen, Layers,
+  Settings as SettingsIcon, Key, Cpu, Network, FolderOpen, Layers, Server,
   Activity, Check, Eye, EyeOff, ChevronRight, Info, Zap,
   Loader2, RefreshCw, AlertCircle, AlertTriangle, CheckCircle2, XCircle, Play,
 } from 'lucide-react';
@@ -16,13 +16,14 @@ import { buildSamplingSaveRequest, hasSamplingOverrides, updateSamplingOverrides
 
 const SkillManagerLazy = React.lazy(() => import('@/components/skills/SkillManager'));
 const CredentialsSectionLazy = React.lazy(() => import('@/components/settings/CredentialsSection'));
+const McpServersSectionLazy = React.lazy(() => import('@/components/settings/McpServersSection'));
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
-type SectionId = 'chat' | 'embedding' | 'workspace' | 'sampling' | 'skills' | 'credentials';
+type SectionId = 'chat' | 'embedding' | 'workspace' | 'sampling' | 'skills' | 'credentials' | 'mcp';
 
-const SECTION_IDS: readonly SectionId[] = ['chat', 'embedding', 'workspace', 'sampling', 'skills', 'credentials'];
+const SECTION_IDS: readonly SectionId[] = ['chat', 'embedding', 'workspace', 'sampling', 'skills', 'credentials', 'mcp'];
 
 function isSectionId(value: string | null): value is SectionId {
   return typeof value === 'string' && (SECTION_IDS as readonly string[]).includes(value);
@@ -1001,6 +1002,7 @@ const TABS: { id: SectionId; icon: React.ElementType; labelKey: string }[] = [
   { id: 'workspace', icon: FolderOpen, labelKey: 'settings.section_workspace' },
   { id: 'skills', icon: Layers, labelKey: 'skills.settings_section' },
   { id: 'credentials', icon: Key, labelKey: 'settings.section_credentials' },
+  { id: 'mcp', icon: Server, labelKey: 'settings.section_mcp' },
 ];
 
 export function SettingsPage() {
@@ -1077,6 +1079,11 @@ export function SettingsPage() {
     credentials: (
       <React.Suspense fallback={<Loader2 size={16} className="animate-spin text-foreground/40" />}>
         <CredentialsSectionLazy />
+      </React.Suspense>
+    ),
+    mcp: (
+      <React.Suspense fallback={<Loader2 size={16} className="animate-spin text-foreground/40" />}>
+        <McpServersSectionLazy />
       </React.Suspense>
     ),
   };
