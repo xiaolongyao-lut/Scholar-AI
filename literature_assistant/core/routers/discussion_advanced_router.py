@@ -141,8 +141,84 @@ def _make_default_invoke_factory() -> InvokeAgentFactory:
     return factory
 
 
+def make_mcp_enabled_invoke_factory(
+    base_factory: InvokeAgentFactory | None = None,
+) -> InvokeAgentFactory:
+    """Wrap a base ``InvokeAgentFactory`` so each invocation routes through
+    ``McpToolUseRunner`` when the run config carries ``mcp_overrides`` and
+    the env flag ``LITERATURE_ENABLE_MCP_TOOLS=1`` is set.
+
+    Phase 4 only honors the run-level ``server_ids`` list — it applies to
+    every agent. ``per_agent`` is accepted by the model but ignored here
+    (warning logged once per run); a follow-up slice will add per-agent
+    enforcement after UX validation.
+
+    Discussion orchestrator code is not modified — the MCP decision lives
+    entirely inside the factory wrapper, preserving the orchestrator's
+    generic ``invoke_agent`` seam (plan v0.3 §3.2 Q4 / TASK-402).
+    """
+    base = base_factory or _make_default_invoke_factory()
+
+    def factory(config: DiscussionRunConfig) -> InvokeAgentFn:
+        base_invoke = base(config)
+        overrides = config.mcp_overrides
+        # Local import keeps router-level import cost low when MCP is unused.
+        from routers import chat_mcp_integration
+
+        if overrides is None or not chat_mcp_integration.is_mcp_tools_enabled():
+            return base_invoke
+
+        if overrides.per_agent:
+            logger.warning(
+                "discussion mcp_overrides.per_agent supplied but ignored in "
+                "Phase 4 (server_ids applies to all agents): %s",
+                list(overrides.per_agent.keys()),
+            )
+
+        if not overrides.server_ids:
+            # Empty list = audit-recorded zero-server run; same default behavior.
+            return base_invoke
+
+        async def invoke(candidate: DispatchCandidate, prompt: str) -> str:
+            api_key = candidate.metadata.get("api_key") or candidate.metadata.get("_resolved_api_key", "")
+            if not api_key:
+                raise DiscussionOrchestratorError(
+                    f"agent {candidate.agent_id!r}: no api_key on candidate metadata"
+                )
+
+            from routers.chat_router import ChatRequest, LLMConfig, chat_ask
+
+            llm = LLMConfig(
+                provider=candidate.provider,
+                api_key=api_key,
+                model=candidate.model,
+                base_url=candidate.base_url,
+                temperature=float(candidate.metadata.get("temperature", 0.7)),
+                max_tokens=int(candidate.metadata.get("max_tokens", 2048)),
+            )
+            req = ChatRequest(
+                query=prompt,
+                context=[],
+                history=[],
+                llm=llm,
+                mcp_server_ids=list(overrides.server_ids),
+                mcp_allow_high_risk_tools=overrides.allow_high_risk_tools,
+            )
+            response = await chat_ask(req)
+            return getattr(response, "answer", "") or ""
+
+        return invoke
+
+    return factory
+
+
 def _get_invoke_factory() -> InvokeAgentFactory:
-    return _invoke_agent_factory or _make_default_invoke_factory()
+    if _invoke_agent_factory is not None:
+        return _invoke_agent_factory
+    # Always wrap the default factory so MCP can be opted in per-run via
+    # DiscussionRunConfig.mcp_overrides — the wrapper is a no-op when the
+    # env flag is off or the run config has no overrides.
+    return make_mcp_enabled_invoke_factory(_make_default_invoke_factory())
 
 
 # ---------------------------------------------------------------------------
@@ -167,4 +243,8 @@ async def post_discussion_run(config: DiscussionRunConfig) -> DiscussionRunResul
     return result
 
 
-__all__ = ["router", "set_invoke_agent_factory"]
+__all__ = [
+    "router",
+    "set_invoke_agent_factory",
+    "make_mcp_enabled_invoke_factory",
+]

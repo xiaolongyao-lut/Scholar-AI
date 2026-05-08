@@ -44,6 +44,25 @@ class DiscussionLLMConfig(BaseModel):
     max_tokens: int = Field(default=2048, ge=64, le=32_000)
 
 
+class DiscussionMcpOverrides(BaseModel):
+    """Run-level MCP scope for a discussion (Phase 4 / TASK-401).
+
+    Per plan v0.3 §4.6 option (b): a sibling block on
+    ``DiscussionRunConfig`` — the shipped ``DiscussionAgentConfig`` is
+    intentionally not modified to keep Slice D's regression boundary.
+
+    Phase 4 only honors ``server_ids`` (applies to all agents in the run).
+    ``per_agent`` is accepted but ignored — a follow-up slice will add
+    per-agent enforcement once the UX is grilled.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    server_ids: list[str] = Field(default_factory=list, max_length=16)
+    allow_high_risk_tools: bool = Field(default=False)
+    per_agent: dict[str, list[str]] = Field(default_factory=dict)
+
+
 class DiscussionAgentConfig(BaseModel):
     """One agent slot in a discussion.
 
@@ -95,6 +114,14 @@ class DiscussionRunConfig(BaseModel):
     synthesis_strategy: DiscussionSynthesisStrategy = DiscussionSynthesisStrategy.SYNTHESIZE
     timeout_seconds: float = Field(default=60.0, gt=0.0, le=600.0)
     max_concurrency: int | None = Field(default=None, ge=1, le=16)
+    mcp_overrides: DiscussionMcpOverrides | None = Field(
+        default=None,
+        description=(
+            "Optional MCP scope for this run. When set AND env "
+            "LITERATURE_ENABLE_MCP_TOOLS=1, the discussion router wraps "
+            "invoke_agent with McpToolUseRunner. None = no MCP."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_run_shape(self) -> "DiscussionRunConfig":
