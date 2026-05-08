@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp.server_store import (
+from mcp_runtime.server_store import (
     McpApprovalTransitionError,
     McpServerNotFoundError,
     McpServerSchemaError,
