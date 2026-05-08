@@ -10,13 +10,12 @@ Thread-safe: all read/write operations acquire a module-level lock.
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+from _atomic_io import atomic_write_json
 from project_paths import runtime_state_path
 
 from models.credentials import (
@@ -44,26 +43,11 @@ class CredentialSchemaError(ValueError):
 
 
 def _atomic_write_json(path: Path, payload: dict) -> None:
-    """Write JSON atomically under the same directory (DEC-001a / atomic)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(payload, ensure_ascii=False, indent=2)
-    tmp_fd, tmp_name = tempfile.mkstemp(
-        prefix=f"{path.name}.",
-        suffix=".tmp",
-        dir=str(path.parent),
-    )
-    try:
-        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_name, path)
-    finally:
-        try:
-            if Path(tmp_name).exists():
-                Path(tmp_name).unlink()
-        except OSError:
-            pass
+    """Backwards-compat wrapper preserved for any external import (Slice A1
+    public surface). New code should call ``_atomic_io.atomic_write_json``
+    directly. This delegates to the shared implementation.
+    """
+    atomic_write_json(path, payload)
 
 
 class RuntimeCredentialStore:
