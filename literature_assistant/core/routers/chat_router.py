@@ -25,6 +25,7 @@ from llm_defaults import resolve_llm_params
 from llm_cost_logger import log_llm_call
 from llm_pricing import usage_from_response
 from sampling_storage import load_user_sampling
+from routers import chat_mcp_integration
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,23 @@ class ChatRequest(BaseModel):
     sampling: dict[str, float | int] | None = Field(default=None, description="Per-task sampling overrides")
     ai_cost_profile: str | None = Field(default=None, description="balanced | aggressive | quality")
     tools: list[dict[str, Any]] | None = Field(default=None, description="Tool/function definitions for skill calling")
+    mcp_server_ids: list[str] | None = Field(
+        default=None,
+        description=(
+            "Caller-side MCP scope (Phase 2). When non-None AND env "
+            "LITERATURE_ENABLE_MCP_TOOLS=1, the chat_ask handler delegates "
+            "to McpToolUseRunner. `[]` is valid (audit-recorded zero-server "
+            "run). Unknown ids → 400. Never auto-injected."
+        ),
+    )
+    mcp_allow_high_risk_tools: bool = Field(
+        default=False,
+        description=(
+            "Per-request flag to allow tools tagged write/filesystem/"
+            "destructive. Default False — high-risk tools return an "
+            "approval-blocked record."
+        ),
+    )
 
 
 class ChatResponse(BaseModel):
@@ -66,6 +84,14 @@ class ChatResponse(BaseModel):
     usage: dict[str, Any] | None = None
     sampling_params: dict[str, Any] | None = Field(default=None, description="Actual sampling params used")
     tool_calls: list[dict[str, Any]] | None = Field(default=None, description="Tool calls from LLM (for skill execution)")
+    mcp_run: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Phase 2 MCP tool-loop transcript (rounds, stopped_reason, "
+            "per-call records). Only populated when the request triggered "
+            "the MCP runner."
+        ),
+    )
 
 
 def _apply_ai_cost_profile_to_llm(llm: LLMConfig, profile: str | None) -> LLMConfig:
@@ -597,6 +623,67 @@ def _log_chat_telemetry(
         pass
 
 
+async def _post_chat_with_retry(
+    *,
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    telemetry_model: str,
+    started_at: float,
+) -> dict[str, Any]:
+    """POST a fully-built chat payload with bounded exponential backoff.
+
+    Extracted from the chat_ask inline retry loop so the MCP tool-use
+    runner can re-issue rounds without duplicating the retry policy.
+    """
+    timeout_s = float(os.getenv("LLM_HTTP_TIMEOUT", "180"))
+    max_retries = max(0, int(os.getenv("LLM_HTTP_RETRIES", "2")))
+    backoff_base = float(os.getenv("LLM_HTTP_BACKOFF_BASE", "1.5"))
+    retryable_statuses = {408, 409, 425, 429, 500, 502, 503, 504, 529}
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=timeout_s) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+                return resp.json()
+        except httpx.HTTPStatusError as exc:
+            last_exc = exc
+            status_code = exc.response.status_code if exc.response else 0
+            raw = exc.response.text[:500] if exc.response else str(exc)
+            lowered = raw.lower()
+            anthropic_transient = (
+                "overloaded_error" in lowered or "\"type\":\"api_error\"" in lowered
+            )
+            if attempt < max_retries and (status_code in retryable_statuses or anthropic_transient):
+                sleep_s = backoff_base * (2 ** attempt) + random.uniform(0, 0.5)
+                logger.warning(
+                    "LLM API %s (attempt %d/%d), retry in %.2fs: %s",
+                    status_code, attempt + 1, max_retries + 1, sleep_s, raw[:200],
+                )
+                await asyncio.sleep(sleep_s)
+                continue
+            _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
+            logger.error("LLM API error: %s", raw)
+            friendly = _extract_provider_error_message(raw)
+            raise HTTPException(status_code=502, detail=friendly) from exc
+        except httpx.RequestError as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                sleep_s = backoff_base * (2 ** attempt) + random.uniform(0, 0.5)
+                logger.warning(
+                    "LLM connection error (attempt %d/%d), retry in %.2fs: %s",
+                    attempt + 1, max_retries + 1, sleep_s, exc,
+                )
+                await asyncio.sleep(sleep_s)
+                continue
+            _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
+            logger.error("LLM connection error: %s", exc)
+            raise HTTPException(status_code=502, detail=f"无法连接 LLM 服务: {exc}") from exc
+    _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
+    raise HTTPException(status_code=502, detail=f"LLM 调用失败: {last_exc}")
+
+
 @router.post("/ask", response_model=ChatResponse)
 async def chat_ask(req: ChatRequest) -> ChatResponse:
     """Send user query + context to configured LLM and return the answer."""
@@ -613,61 +700,52 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
 
         telemetry_model = str(payload.get("model", llm.model))
         started_at = time.perf_counter()
-        # Third-party Claude proxies and other LLM gateways frequently return
-        # transient 408/429/5xx or drop the connection mid-request. We retry
-        # idempotent POSTs with bounded exponential backoff + jitter.
-        # Knobs (env): LLM_HTTP_TIMEOUT (s), LLM_HTTP_RETRIES, LLM_HTTP_BACKOFF_BASE (s).
-        timeout_s = float(os.getenv("LLM_HTTP_TIMEOUT", "180"))
-        max_retries = max(0, int(os.getenv("LLM_HTTP_RETRIES", "2")))
-        backoff_base = float(os.getenv("LLM_HTTP_BACKOFF_BASE", "1.5"))
-        retryable_statuses = {408, 409, 425, 429, 500, 502, 503, 504, 529}
-        last_exc: Exception | None = None
-        data = None
-        for attempt in range(max_retries + 1):
+
+        # ---- Phase 2: optional MCP tool-use loop -------------------------
+        mcp_run_dump: dict[str, Any] | None = None
+        if req.mcp_server_ids is not None and chat_mcp_integration.is_mcp_tools_enabled():
             try:
-                async with httpx.AsyncClient(timeout=timeout_s) as client:
-                    resp = await client.post(url, json=payload, headers=headers)
-                    resp.raise_for_status()
-                    data = resp.json()
-                    break
-            except httpx.HTTPStatusError as exc:
-                last_exc = exc
-                status_code = exc.response.status_code if exc.response else 0
-                raw = exc.response.text[:500] if exc.response else str(exc)
-                lowered = raw.lower()
-                # Anthropic-specific transient error names: overloaded_error, api_error.
-                anthropic_transient = (
-                    "overloaded_error" in lowered or "\"type\":\"api_error\"" in lowered
+                servers, snapshot = await chat_mcp_integration.collect_enabled_servers_with_catalog(
+                    req.mcp_server_ids
                 )
-                if attempt < max_retries and (status_code in retryable_statuses or anthropic_transient):
-                    sleep_s = backoff_base * (2 ** attempt) + random.uniform(0, 0.5)
-                    logger.warning(
-                        "LLM API %s (attempt %d/%d), retry in %.2fs: %s",
-                        status_code, attempt + 1, max_retries + 1, sleep_s, raw[:200],
-                    )
-                    await asyncio.sleep(sleep_s)
-                    continue
-                _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
-                logger.error("LLM API error: %s", raw)
-                friendly = _extract_provider_error_message(raw)
-                raise HTTPException(status_code=502, detail=friendly) from exc
-            except httpx.RequestError as exc:
-                last_exc = exc
-                if attempt < max_retries:
-                    sleep_s = backoff_base * (2 ** attempt) + random.uniform(0, 0.5)
-                    logger.warning(
-                        "LLM connection error (attempt %d/%d), retry in %.2fs: %s",
-                        attempt + 1, max_retries + 1, sleep_s, exc,
-                    )
-                    await asyncio.sleep(sleep_s)
-                    continue
-                _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
-                logger.error("LLM connection error: %s", exc)
-                raise HTTPException(status_code=502, detail=f"无法连接 LLM 服务: {exc}") from exc
-        if data is None:
-            # Defensive: should not reach here because the loop either breaks or raises.
-            _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
-            raise HTTPException(status_code=502, detail=f"LLM 调用失败: {last_exc}")
+            except chat_mcp_integration.McpRequestValidationError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            async def _post_fn(p: dict[str, Any]) -> dict[str, Any]:
+                return await _post_chat_with_retry(
+                    url=url,
+                    headers=headers,
+                    payload=p,
+                    telemetry_model=telemetry_model,
+                    started_at=started_at,
+                )
+
+            initial_messages = list(payload.get("messages") or [])
+            chat_call = chat_mcp_integration.make_chat_call(
+                base_payload=payload,
+                provider_key=_provider_key(req.llm.provider),
+                post_fn=_post_fn,
+            )
+            runner = chat_mcp_integration.make_runner(
+                servers=servers,
+                catalog_snapshot=snapshot,
+                allow_high_risk_tools=req.mcp_allow_high_risk_tools,
+            )
+            run_result = await runner.run(
+                provider=req.llm.provider,
+                initial_messages=initial_messages,
+                chat_call=chat_call,
+            )
+            data = run_result.final_response
+            mcp_run_dump = chat_mcp_integration.transcript_to_dump(run_result)
+        else:
+            data = await _post_chat_with_retry(
+                url=url,
+                headers=headers,
+                payload=payload,
+                telemetry_model=telemetry_model,
+                started_at=started_at,
+            )
 
     try:
         # Phase P0 hotfix: extract tool_calls FIRST so the parser can
@@ -695,6 +773,7 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
             "max_tokens": llm.max_tokens
         },
         tool_calls=tool_calls,
+        mcp_run=mcp_run_dump,
     )
 
 

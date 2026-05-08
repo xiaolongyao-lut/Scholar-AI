@@ -260,6 +260,45 @@ class CappedStreamBuffer:
         return out
 
 
+# ---------------------------------------------------------------------------
+# Output / preview redaction
+# ---------------------------------------------------------------------------
+
+
+_SECRET_LIKE_TEXT_REGEXES = [
+    # Bearer/JWT-ish tokens (long base64-ish strings).
+    re.compile(r"\b(?:Bearer|Token)\s+[A-Za-z0-9._\-+/=]{16,}", re.IGNORECASE),
+    # api_key / token / secret = "..." or : "..."
+    re.compile(
+        r"((?:api[_-]?key|secret|token|password|authorization)\s*[:=]\s*['\"]?)"
+        r"([A-Za-z0-9._\-+/=]{12,})",
+        re.IGNORECASE,
+    ),
+    # Common provider prefixes.
+    re.compile(r"\b(?:sk-|pk-|key-)[A-Za-z0-9_\-]{16,}\b"),
+]
+
+
+def redact_text_for_audit(text: str) -> str:
+    """Best-effort redaction of secret-like substrings inside free text.
+
+    Used by tool_result_formatter on tool stdout previews so we don't
+    accidentally surface a tool's leaked credentials in the audit log or
+    LLM transcript. Conservative: only matches well-known patterns;
+    anything novel leaks through (an MCP server feeding us its own
+    secrets is itself an integration smell).
+    """
+    if not text:
+        return text
+    out = text
+    for rx in _SECRET_LIKE_TEXT_REGEXES:
+        if rx.groups >= 2:
+            out = rx.sub(r"\1***", out)
+        else:
+            out = rx.sub("***", out)
+    return out
+
+
 __all__ = [
     "CappedStreamBuffer",
     "DEFAULT_LAUNCH_POLICY",
@@ -268,5 +307,6 @@ __all__ = [
     "prepare_isolated_cwd",
     "prepare_subprocess_env",
     "redact_env_for_audit",
+    "redact_text_for_audit",
     "validate_stdio_command",
 ]
