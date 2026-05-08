@@ -22,3 +22,9 @@ pyarrow
 pyyaml
 python-docx
 Pillow
+
+# MCP (Model Context Protocol) — required for MCP integration tests + runtime
+# Mirror of requirements-pin.txt; both must move together when bumping.
+mcp==1.27.0
+fastmcp==3.2.0
+anyio==4.13.0
