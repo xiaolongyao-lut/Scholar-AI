@@ -483,8 +483,29 @@ def _extract_provider_error_message(raw: str) -> str:
     return friendly
 
 
-def _extract_chat_response(data: dict[str, Any], provider: str, fallback_model: str) -> tuple[str, dict[str, Any] | None, str]:
-    """Extract answer text from provider-specific response payloads."""
+def _extract_chat_response(
+    data: dict[str, Any],
+    provider: str,
+    fallback_model: str,
+    *,
+    tool_calls_present: bool = False,
+) -> tuple[str, dict[str, Any] | None, str]:
+    """Extract answer text from provider-specific response payloads.
+
+    When ``tool_calls_present=True`` (caller already detected tool calls),
+    a missing/null text body returns an empty string instead of raising.
+    This supports two legitimate "model chose to call a tool first" shapes:
+
+    - Claude: ``content`` block list contains only ``tool_use`` entries
+      and no ``text`` block.
+    - OpenAI-compatible: ``choices[0].message.content == None`` with a
+      ``tool_calls`` list on the same message.
+
+    When ``tool_calls_present=False`` and text is missing/null, this
+    still raises ``KeyError("content")`` — that's a genuinely malformed
+    response and must surface as an error rather than a silent ``"None"``
+    string in the user-visible answer (Phase P0 hotfix).
+    """
     if _provider_key(provider) == "claude":
         content_blocks = data.get("content", []) if isinstance(data, dict) else []
         text_parts = [
@@ -492,23 +513,39 @@ def _extract_chat_response(data: dict[str, Any], provider: str, fallback_model: 
             for block in content_blocks
             if isinstance(block, dict) and block.get("type") == "text"
         ]
-        if not text_parts:
-            raise KeyError("content")
         usage = data.get("usage") if isinstance(data, dict) else None
-        model_used = data.get("model", fallback_model) if isinstance(data, dict) else fallback_model
+        model_used = (
+            data.get("model", fallback_model)
+            if isinstance(data, dict) else fallback_model
+        )
+        if not text_parts:
+            if tool_calls_present:
+                # tool_use-only response is legitimate; surface empty answer.
+                return "", usage, model_used
+            raise KeyError("content")
         return "".join(text_parts), usage, model_used
 
-    answer = data["choices"][0]["message"]["content"]
-    if isinstance(answer, list):
-        text_parts = [
-            part.get("text", "")
-            for part in answer
-            if isinstance(part, dict) and part.get("type") in {"text", "output_text"}
-        ]
-        answer = "".join(text_parts)
+    # OpenAI-compatible
+    raw = data["choices"][0]["message"]["content"]
     usage = data.get("usage")
     model_used = data.get("model", fallback_model)
-    return str(answer), usage, model_used
+
+    if raw is None:
+        if tool_calls_present:
+            # content=null + tool_calls is the standard tool-only shape.
+            return "", usage, model_used
+        # content=null without tool_calls is malformed; never return "None".
+        raise KeyError("content")
+
+    if isinstance(raw, list):
+        text_parts = [
+            part.get("text", "")
+            for part in raw
+            if isinstance(part, dict) and part.get("type") in {"text", "output_text"}
+        ]
+        return "".join(text_parts), usage, model_used
+
+    return str(raw), usage, model_used
 
 
 def _extract_tool_calls(data: dict[str, Any], provider: str) -> list[dict[str, Any]] | None:
@@ -633,8 +670,14 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
             raise HTTPException(status_code=502, detail=f"LLM 调用失败: {last_exc}")
 
     try:
-        answer, usage, model_used = _extract_chat_response(data, req.llm.provider, req.llm.model)
+        # Phase P0 hotfix: extract tool_calls FIRST so the parser can
+        # tolerate tool_use-only / content=null+tool_calls responses
+        # without raising or returning the literal string "None".
         tool_calls = _extract_tool_calls(data, req.llm.provider)
+        answer, usage, model_used = _extract_chat_response(
+            data, req.llm.provider, req.llm.model,
+            tool_calls_present=tool_calls is not None,
+        )
     except (KeyError, IndexError) as exc:
         _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, response=data, status="error")
         logger.error("Unexpected LLM response format: %s", data)
