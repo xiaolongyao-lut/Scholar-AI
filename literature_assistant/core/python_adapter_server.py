@@ -432,6 +432,7 @@ from routers.pipeline_router import router as pipeline_router
 from routers.skills_router import router as skills_router
 from routers.resources_router import router as resources_router
 from routers.memory_router import router as memory_router
+from routers.semantic_causal_router import router as semantic_causal_router
 from routers.runtime_router import router as runtime_router
 from routers.recovery_router import router as recovery_router
 from recovery_autopilot_router import router as autopilot_router
@@ -446,12 +447,15 @@ from routers.wiki_router import router as wiki_router
 from routers.export_router import router as export_router
 from routers.annotation_router import router as annotation_router
 from routers.discussion_router import router as discussion_router
+from routers.credentials_router import router as credentials_router
+from routers.discussion_advanced_router import router as discussion_advanced_router
 
 app.include_router(pipeline_router)
 app.include_router(skills_router)
 app.include_router(runtime_router)
 app.include_router(resources_router)
 app.include_router(memory_router)
+app.include_router(semantic_causal_router)
 app.include_router(recovery_router)
 app.include_router(autopilot_router)
 app.include_router(inspiration_router)
@@ -465,6 +469,8 @@ app.include_router(wiki_router)
 app.include_router(export_router)
 app.include_router(annotation_router)
 app.include_router(discussion_router)
+app.include_router(credentials_router)
+app.include_router(discussion_advanced_router)
 
 if FRONTEND_ASSETS_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="frontend-assets")

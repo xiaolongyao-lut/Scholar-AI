@@ -1,6 +1,34 @@
 {
   "components": {
     "schemas": {
+      "AddHighlightRequest": {
+        "properties": {
+          "highlight": {
+            "$ref": "#/components/schemas/Highlight"
+          },
+          "material_id": {
+            "minLength": 1,
+            "title": "Material Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_id",
+          "highlight"
+        ],
+        "title": "AddHighlightRequest",
+        "type": "object"
+      },
+      "AgentRole": {
+        "enum": [
+          "proponent",
+          "opponent",
+          "reviewer",
+          "moderator"
+        ],
+        "title": "AgentRole",
+        "type": "string"
+      },
       "ArtifactPayload": {
         "description": "Artifact response payload.",
         "properties": {
@@ -550,6 +578,65 @@
         "title": "CapabilityPayload",
         "type": "object"
       },
+      "CausalChainResponse": {
+        "properties": {
+          "chain": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Chain",
+            "type": "array"
+          },
+          "chain_id": {
+            "title": "Chain Id",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "string"
+          },
+          "confidence_rationale": {
+            "title": "Confidence Rationale",
+            "type": "string"
+          },
+          "evidence_quote": {
+            "title": "Evidence Quote",
+            "type": "string"
+          },
+          "needs_human_review": {
+            "title": "Needs Human Review",
+            "type": "boolean"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "string"
+          },
+          "span_end": {
+            "title": "Span End",
+            "type": "string"
+          },
+          "span_start": {
+            "title": "Span Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "paper_id",
+          "span_start",
+          "span_end",
+          "chain",
+          "evidence_quote",
+          "confidence",
+          "confidence_rationale",
+          "needs_human_review"
+        ],
+        "title": "CausalChainResponse",
+        "type": "object"
+      },
       "ChatMessage": {
         "description": "A single turn in the conversation history.",
         "properties": {
@@ -631,6 +718,22 @@
             ],
             "description": "Per-task sampling overrides",
             "title": "Sampling"
+          },
+          "tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tool/function definitions for skill calling",
+            "title": "Tools"
           }
         },
         "required": [
@@ -662,6 +765,22 @@
             ],
             "description": "Actual sampling params used",
             "title": "Sampling Params"
+          },
+          "tool_calls": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tool calls from LLM (for skill execution)",
+            "title": "Tool Calls"
           },
           "usage": {
             "anyOf": [
@@ -1221,6 +1340,79 @@
         "title": "ContinuationResponse",
         "type": "object"
       },
+      "CreateDiscussionRequest": {
+        "properties": {
+          "llm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LLMConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_turns": {
+            "default": 5,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Turns",
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRole"
+            },
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Roles",
+            "type": "array"
+          },
+          "topic": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "roles"
+        ],
+        "title": "CreateDiscussionRequest",
+        "type": "object"
+      },
+      "CreateDiscussionResponse": {
+        "properties": {
+          "max_turns": {
+            "title": "Max Turns",
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRole"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "topic",
+          "roles",
+          "max_turns"
+        ],
+        "title": "CreateDiscussionResponse",
+        "type": "object"
+      },
       "CreateDraftRequest": {
         "description": "Request to create a writing draft.",
         "properties": {
@@ -1551,6 +1743,636 @@
           "mode"
         ],
         "title": "CreateSessionRequest",
+        "type": "object"
+      },
+      "CredentialCategory": {
+        "enum": [
+          "generation",
+          "embedding",
+          "rerank"
+        ],
+        "title": "CredentialCategory",
+        "type": "string"
+      },
+      "CredentialProtocol": {
+        "enum": [
+          "openai_chat_completions",
+          "openai_responses",
+          "anthropic_messages",
+          "embeddings",
+          "rerank"
+        ],
+        "title": "CredentialProtocol",
+        "type": "string"
+      },
+      "CredentialStrategyHint": {
+        "enum": [
+          "default",
+          "cheap",
+          "fast",
+          "quality",
+          "discussion",
+          "embedding",
+          "rerank"
+        ],
+        "title": "CredentialStrategyHint",
+        "type": "string"
+      },
+      "CredentialTrustSource": {
+        "description": "plan v2 §4.4 — 4-tier trust hierarchy.",
+        "enum": [
+          "official_provider",
+          "env_configured_gateway",
+          "runtime_user_confirmed",
+          "runtime_untrusted_custom"
+        ],
+        "title": "CredentialTrustSource",
+        "type": "string"
+      },
+      "DiscussionAgentConfig": {
+        "additionalProperties": false,
+        "description": "One agent slot in a discussion.\n\nPer DEC-003c: agents bind to capability/model policy by default;\n``credential_id`` is an explicit pin override only.\n\nEither ``credential_id`` or ``llm`` must be set; not both.",
+        "properties": {
+          "agent_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "credential_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Id"
+          },
+          "llm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionLLMConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "priority": {
+            "default": 100,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "role": {
+            "$ref": "#/components/schemas/DiscussionAgentRole",
+            "default": "custom"
+          },
+          "role_label": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Role Label",
+            "type": "string"
+          },
+          "strict_pin": {
+            "default": false,
+            "title": "Strict Pin",
+            "type": "boolean"
+          },
+          "system_prompt": {
+            "default": "",
+            "maxLength": 8192,
+            "title": "System Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "title": "DiscussionAgentConfig",
+        "type": "object"
+      },
+      "DiscussionAgentRole": {
+        "enum": [
+          "proposer",
+          "critic",
+          "devil_advocate",
+          "domain_expert",
+          "synthesizer",
+          "custom"
+        ],
+        "title": "DiscussionAgentRole",
+        "type": "string"
+      },
+      "DiscussionAgentTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "answer": {
+            "default": "",
+            "title": "Answer",
+            "type": "string"
+          },
+          "credential_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "number"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "role_label": {
+            "default": "",
+            "title": "Role Label",
+            "type": "string"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "agent_id",
+          "role",
+          "provider",
+          "model",
+          "latency_ms",
+          "success"
+        ],
+        "title": "DiscussionAgentTrace",
+        "type": "object"
+      },
+      "DiscussionEvidenceMode": {
+        "enum": [
+          "from_project",
+          "manual_chunk_ids",
+          "none"
+        ],
+        "title": "DiscussionEvidenceMode",
+        "type": "string"
+      },
+      "DiscussionEvidencePackPayload": {
+        "additionalProperties": false,
+        "description": "Mirror of evidence_pack.EvidencePack as a transport object.",
+        "properties": {
+          "pack_id": {
+            "title": "Pack Id",
+            "type": "string"
+          },
+          "pack_version": {
+            "title": "Pack Version",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "snippets": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Snippets",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pack_id",
+          "pack_version",
+          "project_id",
+          "query",
+          "snippets",
+          "truncated"
+        ],
+        "title": "DiscussionEvidencePackPayload",
+        "type": "object"
+      },
+      "DiscussionHistoryResponse": {
+        "properties": {
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "messages"
+        ],
+        "title": "DiscussionHistoryResponse",
+        "type": "object"
+      },
+      "DiscussionLLMConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "max_tokens": {
+            "default": 2048,
+            "maximum": 32000.0,
+            "minimum": 64.0,
+            "title": "Max Tokens",
+            "type": "integer"
+          },
+          "model": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "protocol": {
+            "default": "openai_chat_completions",
+            "maxLength": 64,
+            "title": "Protocol",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "temperature": {
+            "default": 0.7,
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Temperature",
+            "type": "number"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "base_url",
+          "api_key"
+        ],
+        "title": "DiscussionLLMConfig",
+        "type": "object"
+      },
+      "DiscussionRunConfig": {
+        "additionalProperties": false,
+        "description": "Top-level request shape for a RAG-aware discussion.",
+        "properties": {
+          "agent_configs": {
+            "items": {
+              "$ref": "#/components/schemas/DiscussionAgentConfig"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Agent Configs",
+            "type": "array"
+          },
+          "evidence_chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Evidence Chunk Ids",
+            "type": "array"
+          },
+          "evidence_inline": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Evidence Inline",
+            "type": "array"
+          },
+          "evidence_mode": {
+            "$ref": "#/components/schemas/DiscussionEvidenceMode",
+            "default": "from_project"
+          },
+          "evidence_top_k": {
+            "default": 8,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Evidence Top K",
+            "type": "integer"
+          },
+          "max_concurrency": {
+            "anyOf": [
+              {
+                "maximum": 16.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Concurrency"
+          },
+          "max_turns": {
+            "default": 1,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Max Turns",
+            "type": "integer"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "query": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "synthesis_strategy": {
+            "$ref": "#/components/schemas/DiscussionSynthesisStrategy",
+            "default": "synthesize"
+          },
+          "synthesizer_agent_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synthesizer Agent Id"
+          },
+          "timeout_seconds": {
+            "default": 60.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 600.0,
+            "title": "Timeout Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "query",
+          "agent_configs"
+        ],
+        "title": "DiscussionRunConfig",
+        "type": "object"
+      },
+      "DiscussionRunResult": {
+        "additionalProperties": false,
+        "properties": {
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "number"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionEvidencePackPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "synthesis": {
+            "$ref": "#/components/schemas/DiscussionSynthesis"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/DiscussionTurnTrace"
+            },
+            "title": "Turns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "query",
+          "turns",
+          "synthesis",
+          "elapsed_ms"
+        ],
+        "title": "DiscussionRunResult",
+        "type": "object"
+      },
+      "DiscussionStatusResponse": {
+        "properties": {
+          "current_turn": {
+            "title": "Current Turn",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "synthesis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synthesis"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          },
+          "total_messages": {
+            "title": "Total Messages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_id",
+          "topic",
+          "status",
+          "current_turn",
+          "total_messages"
+        ],
+        "title": "DiscussionStatusResponse",
+        "type": "object"
+      },
+      "DiscussionSynthesis": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "strategy": {
+            "title": "Strategy",
+            "type": "string"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "synthesizer_agent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synthesizer Agent Id"
+          },
+          "synthesizer_model": {
+            "default": "",
+            "title": "Synthesizer Model",
+            "type": "string"
+          },
+          "synthesizer_provider": {
+            "default": "",
+            "title": "Synthesizer Provider",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "strategy",
+          "success"
+        ],
+        "title": "DiscussionSynthesis",
+        "type": "object"
+      },
+      "DiscussionSynthesisStrategy": {
+        "enum": [
+          "synthesize",
+          "vote",
+          "debate"
+        ],
+        "title": "DiscussionSynthesisStrategy",
+        "type": "string"
+      },
+      "DiscussionTurnTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_traces": {
+            "items": {
+              "$ref": "#/components/schemas/DiscussionAgentTrace"
+            },
+            "title": "Agent Traces",
+            "type": "array"
+          },
+          "turn_index": {
+            "title": "Turn Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "turn_index",
+          "agent_traces"
+        ],
+        "title": "DiscussionTurnTrace",
         "type": "object"
       },
       "DispatchRequest": {
@@ -1911,6 +2733,50 @@
         "title": "EvidenceReferencePayload",
         "type": "object"
       },
+      "ExportDocxRequest": {
+        "properties": {
+          "html": {
+            "maxLength": 500000,
+            "minLength": 1,
+            "title": "Html",
+            "type": "string"
+          },
+          "json": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Json"
+          },
+          "style_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Profile"
+          },
+          "title": {
+            "default": "Untitled",
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "html"
+        ],
+        "title": "ExportDocxRequest",
+        "type": "object"
+      },
       "FactInvalidationPayload": {
         "description": "Response for fact invalidation operation.",
         "properties": {
@@ -2087,6 +2953,32 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Highlight": {
+        "properties": {
+          "color": {
+            "default": "#FFEB3B",
+            "maxLength": 7,
+            "title": "Color",
+            "type": "string"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "text"
+        ],
+        "title": "Highlight",
         "type": "object"
       },
       "ImportUserSkillManifestPayload": {
@@ -4347,6 +5239,324 @@
         "title": "RunActionRequest",
         "type": "object"
       },
+      "RuntimeCredentialCreate": {
+        "additionalProperties": false,
+        "description": "Body of POST /api/credentials. Carries the secret only on input.",
+        "properties": {
+          "api_key": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CredentialCategory"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "model": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "maxLength": 1024,
+            "title": "Notes",
+            "type": "string"
+          },
+          "priority": {
+            "default": 100,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/CredentialProtocol"
+          },
+          "provider": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "strategy_hint": {
+            "$ref": "#/components/schemas/CredentialStrategyHint",
+            "default": "default"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "trust_source": {
+            "$ref": "#/components/schemas/CredentialTrustSource",
+            "default": "runtime_untrusted_custom"
+          }
+        },
+        "required": [
+          "category",
+          "provider",
+          "model",
+          "base_url",
+          "protocol",
+          "api_key"
+        ],
+        "title": "RuntimeCredentialCreate",
+        "type": "object"
+      },
+      "RuntimeCredentialPublic": {
+        "additionalProperties": false,
+        "description": "Safe-to-return shape. Never includes raw api_key.",
+        "properties": {
+          "api_key_masked": {
+            "title": "Api Key Masked",
+            "type": "string"
+          },
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CredentialCategory"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "credential_id": {
+            "title": "Credential Id",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "fingerprint_version": {
+            "title": "Fingerprint Version",
+            "type": "string"
+          },
+          "has_api_key": {
+            "title": "Has Api Key",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/CredentialProtocol"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "strategy_hint": {
+            "$ref": "#/components/schemas/CredentialStrategyHint"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "trust_source": {
+            "$ref": "#/components/schemas/CredentialTrustSource"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential_id",
+          "category",
+          "provider",
+          "model",
+          "base_url",
+          "protocol",
+          "enabled",
+          "priority",
+          "tags",
+          "strategy_hint",
+          "trust_source",
+          "notes",
+          "api_key_masked",
+          "has_api_key",
+          "fingerprint",
+          "fingerprint_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RuntimeCredentialPublic",
+        "type": "object"
+      },
+      "RuntimeCredentialUpdate": {
+        "additionalProperties": false,
+        "description": "Body of PUT /api/credentials/{id}. All fields optional; api_key is\naccepted only when explicitly rotating.",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CredentialProtocol"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "strategy_hint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CredentialStrategyHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "trust_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CredentialTrustSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "RuntimeCredentialUpdate",
+        "type": "object"
+      },
       "SamplingParamsPayload": {
         "description": "Actual generation sampling settings used for the backend call.",
         "properties": {
@@ -4494,6 +5704,70 @@
           "updated_at"
         ],
         "title": "SectionPayload",
+        "type": "object"
+      },
+      "SemanticChunkResponse": {
+        "properties": {
+          "chunk_id": {
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "chunk_type": {
+            "title": "Chunk Type",
+            "type": "string"
+          },
+          "has_causal_link": {
+            "title": "Has Causal Link",
+            "type": "boolean"
+          },
+          "has_result_claim": {
+            "title": "Has Result Claim",
+            "type": "boolean"
+          },
+          "mentioned_figures": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Mentioned Figures",
+            "type": "array"
+          },
+          "mentioned_tables": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Mentioned Tables",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
+          "text_preview": {
+            "title": "Text Preview",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "paper_id",
+          "page",
+          "section",
+          "text_preview",
+          "chunk_type",
+          "has_causal_link",
+          "has_result_claim",
+          "mentioned_figures",
+          "mentioned_tables"
+        ],
+        "title": "SemanticChunkResponse",
         "type": "object"
       },
       "SessionPayload": {
@@ -5377,6 +6651,54 @@
           "spark_type"
         ],
         "title": "SparkResponse",
+        "type": "object"
+      },
+      "StatsResponse": {
+        "properties": {
+          "causal_chunks": {
+            "title": "Causal Chunks",
+            "type": "integer"
+          },
+          "high_confidence_chains": {
+            "title": "High Confidence Chains",
+            "type": "integer"
+          },
+          "narrative_chunks": {
+            "title": "Narrative Chunks",
+            "type": "integer"
+          },
+          "needs_review_chains": {
+            "title": "Needs Review Chains",
+            "type": "integer"
+          },
+          "result_chunks": {
+            "title": "Result Chunks",
+            "type": "integer"
+          },
+          "total_causal_chains": {
+            "title": "Total Causal Chains",
+            "type": "integer"
+          },
+          "total_papers": {
+            "title": "Total Papers",
+            "type": "integer"
+          },
+          "total_semantic_chunks": {
+            "title": "Total Semantic Chunks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_papers",
+          "total_semantic_chunks",
+          "causal_chunks",
+          "result_chunks",
+          "narrative_chunks",
+          "total_causal_chains",
+          "high_confidence_chains",
+          "needs_review_chains"
+        ],
+        "title": "StatsResponse",
         "type": "object"
       },
       "TimelineItemPayload": {
@@ -6325,6 +7647,132 @@
         ]
       }
     },
+    "/api/annotations/{material_id}": {
+      "delete": {
+        "operationId": "delete_api_annotations_material_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Annotations",
+        "tags": [
+          "Annotations"
+        ]
+      },
+      "get": {
+        "operationId": "get_api_annotations_material_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Annotations",
+        "tags": [
+          "Annotations"
+        ]
+      },
+      "post": {
+        "operationId": "post_api_annotations_material_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddHighlightRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Highlight",
+        "tags": [
+          "Annotations"
+        ]
+      }
+    },
     "/api/budget/status": {
       "get": {
         "description": "Return a lightweight daily LLM budget summary for the status bar.",
@@ -6450,6 +7898,1051 @@
         "summary": "List Chat Sessions",
         "tags": [
           "Chat"
+        ]
+      }
+    },
+    "/api/credentials": {
+      "get": {
+        "description": "List credentials with masked api_key. Optionally filter by category /\nenabled.",
+        "operationId": "get_api_credentials",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "enabled_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Enabled Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeCredentialPublic"
+                  },
+                  "title": "Response Get Api Credentials",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Credentials",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "post": {
+        "description": "Create a new runtime credential. Body carries the secret on input only;\nresponse is masked.",
+        "operationId": "post_api_credentials",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeCredentialCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeCredentialPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Credential",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/credentials/{credential_id}": {
+      "delete": {
+        "operationId": "delete_api_credentials_credential_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Api Credentials Credential Id",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Credential",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "get": {
+        "operationId": "get_api_credentials_credential_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeCredentialPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Credential",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "put": {
+        "operationId": "put_api_credentials_credential_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeCredentialUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeCredentialPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Credential",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/credentials/{credential_id}/test": {
+      "post": {
+        "description": "Validate endpoint trust and (if allowed) probe reachability.\n\nPer DEC-002b: the policy ALWAYS runs before any auth header is constructed.\nPer DEC-002c: untrusted_custom returns skipped_network=true unless caller\noverrides with body={\"trust_source_override\": \"runtime_user_confirmed\"}.\nThe override is intentionally NOT persisted — it is a one-shot test mode.",
+        "operationId": "post_api_credentials_credential_id_test",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Credentials Credential Id Test",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Credential",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/discussion/create": {
+      "post": {
+        "description": "Create a new multi-agent discussion session.",
+        "operationId": "post_api_discussion_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDiscussionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateDiscussionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Discussion",
+        "tags": [
+          "discussion"
+        ]
+      }
+    },
+    "/api/discussion/runs": {
+      "post": {
+        "description": "Run a RAG-aware multi-agent discussion.",
+        "operationId": "post_api_discussion_runs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscussionRunConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscussionRunResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Discussion Run",
+        "tags": [
+          "DiscussionAdvanced"
+        ]
+      }
+    },
+    "/api/discussion/{session_id}/history": {
+      "get": {
+        "description": "Get message history for a discussion session.",
+        "operationId": "get_api_discussion_session_id_history",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscussionHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Discussion History",
+        "tags": [
+          "discussion"
+        ]
+      }
+    },
+    "/api/discussion/{session_id}/run": {
+      "post": {
+        "description": "Run one turn of discussion (all agents speak once).",
+        "operationId": "post_api_discussion_session_id_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Discussion Session Id Run",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Discussion Turn",
+        "tags": [
+          "discussion"
+        ]
+      }
+    },
+    "/api/discussion/{session_id}/status": {
+      "get": {
+        "description": "Get current status of a discussion session.",
+        "operationId": "get_api_discussion_session_id_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscussionStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Discussion Status",
+        "tags": [
+          "discussion"
+        ]
+      }
+    },
+    "/api/export/docx": {
+      "post": {
+        "description": "Export TipTap content as formatted DOCX.",
+        "operationId": "post_api_export_docx",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportDocxRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Docx",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/api/semantic-causal/chain/{chain_id}": {
+      "get": {
+        "description": "根据 chain_id 获取因果链",
+        "operationId": "get_api_semantic_causal_chain_chain_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chain_id",
+            "required": true,
+            "schema": {
+              "title": "Chain Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CausalChainResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Chain By Id",
+        "tags": [
+          "semantic-causal"
+        ]
+      }
+    },
+    "/api/semantic-causal/chains/{paper_id}": {
+      "get": {
+        "description": "获取指定论文的因果链",
+        "operationId": "get_api_semantic_causal_chains_paper_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by confidence: high, medium, low",
+            "in": "query",
+            "name": "confidence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by confidence: high, medium, low",
+              "title": "Confidence"
+            }
+          },
+          {
+            "description": "Filter by parameter keyword",
+            "in": "query",
+            "name": "parameter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by parameter keyword",
+              "title": "Parameter"
+            }
+          },
+          {
+            "description": "Filter by outcome keyword",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by outcome keyword",
+              "title": "Outcome"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CausalChainResponse"
+                  },
+                  "title": "Response Get Api Semantic Causal Chains Paper Id",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Chains",
+        "tags": [
+          "semantic-causal"
+        ]
+      }
+    },
+    "/api/semantic-causal/chunk/{chunk_id}": {
+      "get": {
+        "description": "根据 chunk_id 获取语义块",
+        "operationId": "get_api_semantic_causal_chunk_chunk_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chunk_id",
+            "required": true,
+            "schema": {
+              "title": "Chunk Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticChunkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Chunk By Id",
+        "tags": [
+          "semantic-causal"
+        ]
+      }
+    },
+    "/api/semantic-causal/chunks/{paper_id}": {
+      "get": {
+        "description": "获取指定论文的语义块",
+        "operationId": "get_api_semantic_causal_chunks_paper_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by chunk_type: causal, result, narrative",
+            "in": "query",
+            "name": "chunk_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by chunk_type: causal, result, narrative",
+              "title": "Chunk Type"
+            }
+          },
+          {
+            "description": "Filter by section keyword",
+            "in": "query",
+            "name": "section",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by section keyword",
+              "title": "Section"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SemanticChunkResponse"
+                  },
+                  "title": "Response Get Api Semantic Causal Chunks Paper Id",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Chunks",
+        "tags": [
+          "semantic-causal"
+        ]
+      }
+    },
+    "/api/semantic-causal/chunks/{paper_id}/causal": {
+      "get": {
+        "description": "获取包含因果关系的语义块",
+        "operationId": "get_api_semantic_causal_chunks_paper_id_causal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SemanticChunkResponse"
+                  },
+                  "title": "Response Get Api Semantic Causal Chunks Paper Id Causal",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Causal Chunks",
+        "tags": [
+          "semantic-causal"
+        ]
+      }
+    },
+    "/api/semantic-causal/chunks/{paper_id}/results": {
+      "get": {
+        "description": "获取包含结果声明的语义块",
+        "operationId": "get_api_semantic_causal_chunks_paper_id_results",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SemanticChunkResponse"
+                  },
+                  "title": "Response Get Api Semantic Causal Chunks Paper Id Results",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Result Chunks",
+        "tags": [
+          "semantic-causal"
+        ]
+      }
+    },
+    "/api/semantic-causal/papers": {
+      "get": {
+        "description": "列出所有已加载的论文 ID",
+        "operationId": "get_api_semantic_causal_papers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Papers",
+        "tags": [
+          "semantic-causal"
+        ]
+      }
+    },
+    "/api/semantic-causal/reload": {
+      "post": {
+        "description": "重新加载语义块和因果链（新论文入库后调用）",
+        "operationId": "post_api_semantic_causal_reload",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reload Store",
+        "tags": [
+          "semantic-causal"
+        ]
+      }
+    },
+    "/api/semantic-causal/search/causal-path": {
+      "get": {
+        "description": "搜索从参数到结果的因果路径",
+        "operationId": "get_api_semantic_causal_search_causal_path",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Starting parameter/mechanism keyword",
+            "in": "query",
+            "name": "from_keyword",
+            "required": true,
+            "schema": {
+              "description": "Starting parameter/mechanism keyword",
+              "title": "From Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Target outcome keyword",
+            "in": "query",
+            "name": "to_keyword",
+            "required": true,
+            "schema": {
+              "description": "Target outcome keyword",
+              "title": "To Keyword",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Causal Path",
+        "tags": [
+          "semantic-causal"
+        ]
+      }
+    },
+    "/api/semantic-causal/stats": {
+      "get": {
+        "description": "获取语义块和因果链统计信息",
+        "operationId": "get_api_semantic_causal_stats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Stats",
+        "tags": [
+          "semantic-causal"
         ]
       }
     },
@@ -8485,6 +10978,48 @@
         },
         "summary": "Search Chunks",
         "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/resources/document/{material_id}/file": {
+      "get": {
+        "description": "Serve the original file for a material (e.g. PDF for in-app viewing).",
+        "operationId": "get_resources_document_material_id_file",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Serve Document File",
+        "tags": [
+          "Resources",
           "Resources"
         ]
       }

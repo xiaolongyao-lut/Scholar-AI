@@ -199,6 +199,7 @@
   "settings.inactive": "不活跃",
 
   "settings.section_workspace": "输出与工作区",
+  "settings.section_credentials": "API 凭证",
   "settings.local_storage_path": "本地存储路径",
   "settings.retrieval_top_k": "检索 Top-K",
   "settings.retrieval_top_k_tooltip": "⚠️ 由你按场景选择：Top-K 越大，候选越多但噪声和成本也更高；建议先用 5，需更多备选再调到 10。",

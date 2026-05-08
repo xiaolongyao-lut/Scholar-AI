@@ -15,13 +15,14 @@ import { getSampling, putSampling, deleteSamplingTask, type SamplingParams, type
 import { buildSamplingSaveRequest, hasSamplingOverrides, updateSamplingOverrides } from '@/services/samplingPayload';
 
 const SkillManagerLazy = React.lazy(() => import('@/components/skills/SkillManager'));
+const CredentialsSectionLazy = React.lazy(() => import('@/components/settings/CredentialsSection'));
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
-type SectionId = 'chat' | 'embedding' | 'workspace' | 'sampling' | 'skills';
+type SectionId = 'chat' | 'embedding' | 'workspace' | 'sampling' | 'skills' | 'credentials';
 
-const SECTION_IDS: readonly SectionId[] = ['chat', 'embedding', 'workspace', 'sampling', 'skills'];
+const SECTION_IDS: readonly SectionId[] = ['chat', 'embedding', 'workspace', 'sampling', 'skills', 'credentials'];
 
 function isSectionId(value: string | null): value is SectionId {
   return typeof value === 'string' && (SECTION_IDS as readonly string[]).includes(value);
@@ -999,6 +1000,7 @@ const TABS: { id: SectionId; icon: React.ElementType; labelKey: string }[] = [
   { id: 'sampling', icon: Cpu, labelKey: 'settings.section_sampling' },
   { id: 'workspace', icon: FolderOpen, labelKey: 'settings.section_workspace' },
   { id: 'skills', icon: Layers, labelKey: 'skills.settings_section' },
+  { id: 'credentials', icon: Key, labelKey: 'settings.section_credentials' },
 ];
 
 export function SettingsPage() {
@@ -1072,6 +1074,11 @@ export function SettingsPage() {
     sampling: <SectionSampling t={t} />,
     workspace: <SectionWorkspace t={t} settings={settings} onChange={setSettings} />,
     skills: <SkillManagerLazy />,
+    credentials: (
+      <React.Suspense fallback={<Loader2 size={16} className="animate-spin text-foreground/40" />}>
+        <CredentialsSectionLazy />
+      </React.Suspense>
+    ),
   };
 
   return (

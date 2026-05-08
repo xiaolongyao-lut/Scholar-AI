@@ -64,6 +64,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/annotations/{material_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Annotations */
+        get: operations["get_api_annotations_material_id"];
+        put?: never;
+        /** Add Highlight */
+        post: operations["post_api_annotations_material_id"];
+        /** Clear Annotations */
+        delete: operations["delete_api_annotations_material_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/budget/status": {
         parameters: {
             query?: never;
@@ -136,6 +155,306 @@ export interface paths {
          * @description Return saved Intelligent Chat sessions sorted by update time.
          */
         get: operations["get_api_chat_sessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Discussion
+         * @description Create a new multi-agent discussion session.
+         */
+        post: operations["post_api_discussion_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/{session_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discussion History
+         * @description Get message history for a discussion session.
+         */
+        get: operations["get_api_discussion_session_id_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/{session_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Discussion Turn
+         * @description Run one turn of discussion (all agents speak once).
+         */
+        post: operations["post_api_discussion_session_id_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/{session_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discussion Status
+         * @description Get current status of a discussion session.
+         */
+        get: operations["get_api_discussion_session_id_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/docx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Docx
+         * @description Export TipTap content as formatted DOCX.
+         */
+        post: operations["post_api_export_docx"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/chain/{chain_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chain By Id
+         * @description 根据 chain_id 获取因果链
+         */
+        get: operations["get_api_semantic_causal_chain_chain_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/chains/{paper_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chains
+         * @description 获取指定论文的因果链
+         */
+        get: operations["get_api_semantic_causal_chains_paper_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/chunk/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chunk By Id
+         * @description 根据 chunk_id 获取语义块
+         */
+        get: operations["get_api_semantic_causal_chunk_chunk_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/chunks/{paper_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chunks
+         * @description 获取指定论文的语义块
+         */
+        get: operations["get_api_semantic_causal_chunks_paper_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/chunks/{paper_id}/causal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Causal Chunks
+         * @description 获取包含因果关系的语义块
+         */
+        get: operations["get_api_semantic_causal_chunks_paper_id_causal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/chunks/{paper_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Result Chunks
+         * @description 获取包含结果声明的语义块
+         */
+        get: operations["get_api_semantic_causal_chunks_paper_id_results"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/papers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Papers
+         * @description 列出所有已加载的论文 ID
+         */
+        get: operations["get_api_semantic_causal_papers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reload Store
+         * @description 重新加载语义块和因果链（新论文入库后调用）
+         */
+        post: operations["post_api_semantic_causal_reload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/search/causal-path": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Causal Path
+         * @description 搜索从参数到结果的因果路径
+         */
+        get: operations["get_api_semantic_causal_search_causal_path"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/semantic-causal/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stats
+         * @description 获取语义块和因果链统计信息
+         */
+        get: operations["get_api_semantic_causal_stats"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1036,6 +1355,26 @@ export interface paths {
          *     - ingest_mode=full: ingest all pending files before retrieval
          */
         get: operations["get_resources_chunks_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/document/{material_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve Document File
+         * @description Serve the original file for a material (e.g. PDF for in-app viewing).
+         */
+        get: operations["get_resources_document_material_id_file"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2376,6 +2715,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AddHighlightRequest */
+        AddHighlightRequest: {
+            highlight: components["schemas"]["Highlight"];
+            /** Material Id */
+            material_id: string;
+        };
+        /**
+         * AgentRole
+         * @enum {string}
+         */
+        AgentRole: "proponent" | "opponent" | "reviewer" | "moderator";
         /**
          * ArtifactPayload
          * @description Artifact response payload.
@@ -2646,6 +2996,29 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** CausalChainResponse */
+        CausalChainResponse: {
+            /** Chain */
+            chain: {
+                [key: string]: string;
+            }[];
+            /** Chain Id */
+            chain_id: string;
+            /** Confidence */
+            confidence: string;
+            /** Confidence Rationale */
+            confidence_rationale: string;
+            /** Evidence Quote */
+            evidence_quote: string;
+            /** Needs Human Review */
+            needs_human_review: boolean;
+            /** Paper Id */
+            paper_id: string;
+            /** Span End */
+            span_end: string;
+            /** Span Start */
+            span_start: string;
+        };
         /**
          * ChatMessage
          * @description A single turn in the conversation history.
@@ -2689,6 +3062,13 @@ export interface components {
             sampling?: {
                 [key: string]: number;
             } | null;
+            /**
+             * Tools
+             * @description Tool/function definitions for skill calling
+             */
+            tools?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /** ChatResponse */
         ChatResponse: {
@@ -2703,6 +3083,13 @@ export interface components {
             sampling_params?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Tool Calls
+             * @description Tool calls from LLM (for skill execution)
+             */
+            tool_calls?: {
+                [key: string]: unknown;
+            }[] | null;
             /** Usage */
             usage?: {
                 [key: string]: unknown;
@@ -2936,6 +3323,30 @@ export interface components {
              */
             suggested_angles: string[];
         };
+        /** CreateDiscussionRequest */
+        CreateDiscussionRequest: {
+            llm?: components["schemas"]["LLMConfig"] | null;
+            /**
+             * Max Turns
+             * @default 5
+             */
+            max_turns: number;
+            /** Roles */
+            roles: components["schemas"]["AgentRole"][];
+            /** Topic */
+            topic: string;
+        };
+        /** CreateDiscussionResponse */
+        CreateDiscussionResponse: {
+            /** Max Turns */
+            max_turns: number;
+            /** Roles */
+            roles: components["schemas"]["AgentRole"][];
+            /** Session Id */
+            session_id: string;
+            /** Topic */
+            topic: string;
+        };
         /**
          * CreateDraftRequest
          * @description Request to create a writing draft.
@@ -3089,6 +3500,30 @@ export interface components {
             /** Workspace Root */
             workspace_root?: string | null;
         };
+        /** DiscussionHistoryResponse */
+        DiscussionHistoryResponse: {
+            /** Messages */
+            messages: {
+                [key: string]: unknown;
+            }[];
+            /** Session Id */
+            session_id: string;
+        };
+        /** DiscussionStatusResponse */
+        DiscussionStatusResponse: {
+            /** Current Turn */
+            current_turn: number;
+            /** Session Id */
+            session_id: string;
+            /** Status */
+            status: string;
+            /** Synthesis */
+            synthesis?: string | null;
+            /** Topic */
+            topic: string;
+            /** Total Messages */
+            total_messages: number;
+        };
         /** DispatchRequest */
         DispatchRequest: {
             /**
@@ -3228,6 +3663,22 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** ExportDocxRequest */
+        ExportDocxRequest: {
+            /** Html */
+            html: string;
+            /** Json */
+            json?: {
+                [key: string]: unknown;
+            } | null;
+            /** Style Profile */
+            style_profile?: string | null;
+            /**
+             * Title
+             * @default Untitled
+             */
+            title: string;
+        };
         /**
          * FactInvalidationPayload
          * @description Response for fact invalidation operation.
@@ -3297,6 +3748,18 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** Highlight */
+        Highlight: {
+            /**
+             * Color
+             * @default #FFEB3B
+             */
+            color: string;
+            /** Page */
+            page: number;
+            /** Text */
+            text: string;
         };
         /**
          * ImportUserSkillManifestPayload
@@ -4324,6 +4787,29 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /** SemanticChunkResponse */
+        SemanticChunkResponse: {
+            /** Chunk Id */
+            chunk_id: string;
+            /** Chunk Type */
+            chunk_type: string;
+            /** Has Causal Link */
+            has_causal_link: boolean;
+            /** Has Result Claim */
+            has_result_claim: boolean;
+            /** Mentioned Figures */
+            mentioned_figures: number[];
+            /** Mentioned Tables */
+            mentioned_tables: number[];
+            /** Page */
+            page: number;
+            /** Paper Id */
+            paper_id: string;
+            /** Section */
+            section: string;
+            /** Text Preview */
+            text_preview: string;
+        };
         /**
          * SessionPayload
          * @description Writing session response.
@@ -4697,6 +5183,25 @@ export interface components {
             source_papers: string[];
             /** Spark Type */
             spark_type: string;
+        };
+        /** StatsResponse */
+        StatsResponse: {
+            /** Causal Chunks */
+            causal_chunks: number;
+            /** High Confidence Chains */
+            high_confidence_chains: number;
+            /** Narrative Chunks */
+            narrative_chunks: number;
+            /** Needs Review Chains */
+            needs_review_chains: number;
+            /** Result Chunks */
+            result_chunks: number;
+            /** Total Causal Chains */
+            total_causal_chains: number;
+            /** Total Papers */
+            total_papers: number;
+            /** Total Semantic Chunks */
+            total_semantic_chunks: number;
         };
         /**
          * TimelineItemPayload
@@ -5156,6 +5661,103 @@ export interface operations {
             };
         };
     };
+    get_api_annotations_material_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_annotations_material_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddHighlightRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_annotations_material_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_budget_status: {
         parameters: {
             query?: never;
@@ -5258,6 +5860,460 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatSessionListResponse"];
+                };
+            };
+        };
+    };
+    post_api_discussion_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDiscussionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateDiscussionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_discussion_session_id_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscussionHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_discussion_session_id_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_discussion_session_id_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscussionStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_export_docx: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportDocxRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_semantic_causal_chain_chain_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CausalChainResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_semantic_causal_chains_paper_id: {
+        parameters: {
+            query?: {
+                /** @description Filter by confidence: high, medium, low */
+                confidence?: string | null;
+                /** @description Filter by parameter keyword */
+                parameter?: string | null;
+                /** @description Filter by outcome keyword */
+                outcome?: string | null;
+            };
+            header?: never;
+            path: {
+                paper_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CausalChainResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_semantic_causal_chunk_chunk_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticChunkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_semantic_causal_chunks_paper_id: {
+        parameters: {
+            query?: {
+                /** @description Filter by chunk_type: causal, result, narrative */
+                chunk_type?: string | null;
+                /** @description Filter by section keyword */
+                section?: string | null;
+            };
+            header?: never;
+            path: {
+                paper_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticChunkResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_semantic_causal_chunks_paper_id_causal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paper_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticChunkResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_semantic_causal_chunks_paper_id_results: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paper_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticChunkResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_semantic_causal_papers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    post_api_semantic_causal_reload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_api_semantic_causal_search_causal_path: {
+        parameters: {
+            query: {
+                paper_id: string;
+                /** @description Starting parameter/mechanism keyword */
+                from_keyword: string;
+                /** @description Target outcome keyword */
+                to_keyword: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_semantic_causal_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatsResponse"];
                 };
             };
         };
@@ -6631,6 +7687,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_document_material_id_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
