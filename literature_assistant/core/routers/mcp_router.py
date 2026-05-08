@@ -250,6 +250,22 @@ async def list_server_tools(server_id: str) -> list[McpToolDescriptor]:
         ) from exc
 
 
+# ---------------------------------------------------------------------------
+# Audit (Phase 5 / TASK-502): read-only JSONL tail
+# ---------------------------------------------------------------------------
+
+
+@router.get("/audit")
+async def list_audit(limit: int = 200) -> dict[str, Any]:
+    """Tail the MCP tool-call audit log. Records are already redacted
+    (security_policy.redact_text_for_audit on previews); this endpoint is
+    read-only.
+    """
+    from mcp_runtime import audit as mcp_audit
+    records = mcp_audit.read_recent(limit=limit)
+    return {"count": len(records), "records": records}
+
+
 __all__ = [
     "router",
     "set_mcp_server_store",

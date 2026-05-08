@@ -299,6 +299,63 @@ def redact_text_for_audit(text: str) -> str:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Streamable HTTP URL guard (Phase 5 / TASK-503)
+# ---------------------------------------------------------------------------
+
+
+_PRIVATE_HOST_PATTERNS = [
+    re.compile(r"^localhost$", re.IGNORECASE),
+    re.compile(r"^127\."),
+    re.compile(r"^10\."),
+    re.compile(r"^192\.168\."),
+    re.compile(r"^172\.(1[6-9]|2[0-9]|3[0-1])\."),
+    re.compile(r"^169\.254\."),
+    re.compile(r"^::1$"),
+    re.compile(r"^fc[0-9a-f]{2}:", re.IGNORECASE),  # IPv6 ULA
+    re.compile(r"^fe80:", re.IGNORECASE),  # IPv6 link-local
+]
+
+
+def _allow_private_streamable_http() -> bool:
+    return os.environ.get(
+        "LITERATURE_MCP_HTTP_ALLOW_PRIVATE", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def validate_streamable_http_url(url: str) -> None:
+    """Reject obvious SSRF foot-guns before client_manager opens an HTTP
+    session. Even though streamable_http execution is gated behind the
+    LITERATURE_ENABLE_MCP_STREAMABLE_HTTP feature flag, the registry
+    accepts these URLs at any time — validating here as well keeps the
+    audit trail honest.
+
+    Rules:
+      - scheme must be http or https
+      - host must be present
+      - host must not match private/loopback/link-local ranges unless
+        LITERATURE_MCP_HTTP_ALLOW_PRIVATE=1
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise McpSecurityPolicyError(
+            f"streamable_http URL must use http/https scheme, got {parsed.scheme!r}"
+        )
+    host = (parsed.hostname or "").strip()
+    if not host:
+        raise McpSecurityPolicyError("streamable_http URL missing host")
+    if _allow_private_streamable_http():
+        return
+    for pat in _PRIVATE_HOST_PATTERNS:
+        if pat.search(host):
+            raise McpSecurityPolicyError(
+                f"streamable_http host {host!r} is in a private/loopback "
+                f"range; set LITERATURE_MCP_HTTP_ALLOW_PRIVATE=1 to allow"
+            )
+
+
 __all__ = [
     "CappedStreamBuffer",
     "DEFAULT_LAUNCH_POLICY",
@@ -309,4 +366,5 @@ __all__ = [
     "redact_env_for_audit",
     "redact_text_for_audit",
     "validate_stdio_command",
+    "validate_streamable_http_url",
 ]

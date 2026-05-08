@@ -29,6 +29,7 @@ from mcp_runtime.security_policy import (
     prepare_isolated_cwd,
     prepare_subprocess_env,
     validate_stdio_command,
+    validate_streamable_http_url,
 )
 
 
@@ -154,6 +155,7 @@ class McpClientManager:
             raise McpServerLaunchError(
                 f"server {config.server_id}: http block is None"
             )
+        validate_streamable_http_url(config.http.url)
         async with AsyncExitStack() as stack:
             try:
                 read, write, _meta = await stack.enter_async_context(

@@ -32,6 +32,7 @@ from mcp_runtime.client_manager import (
     McpStreamableHttpDisabledError,
     McpToolCallError,
 )
+from mcp_runtime import audit as mcp_audit
 from mcp_runtime.provider_tool_adapter import (
     NamespacedTool,
     ToolNamespaceError,
@@ -101,7 +102,7 @@ def _error_record(
     reason: str,
     elapsed_ms: int,
 ) -> ToolResultRecord:
-    return build_tool_result_record(
+    record = build_tool_result_record(
         tool_call_id=tool_call_id,
         server_id=server_id,
         server_slug=server_slug,
@@ -112,6 +113,8 @@ def _error_record(
         },
         elapsed_ms=elapsed_ms,
     )
+    mcp_audit.append(record)
+    return record
 
 
 class McpToolDispatcher:
@@ -242,7 +245,7 @@ class McpToolDispatcher:
             }
 
         elapsed_ms = int((time.perf_counter() - start) * 1000)
-        return build_tool_result_record(
+        record = build_tool_result_record(
             tool_call_id=call.tool_call_id,
             server_id=ns.server_id,
             server_slug=ns.server_slug,
@@ -250,6 +253,8 @@ class McpToolDispatcher:
             raw=raw,
             elapsed_ms=elapsed_ms,
         )
+        mcp_audit.append(record)
+        return record
 
     async def dispatch_many(
         self, calls: list[DispatchInput], *, max_parallel: int
