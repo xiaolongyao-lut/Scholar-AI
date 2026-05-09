@@ -1,0 +1,34 @@
+{
+  "queries_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\eval_queries_v2.0.jsonl",
+  "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\BASELINE_METRICS.json",
+  "query_slice": {
+    "offset": 0,
+    "limit": null
+  },
+  "retrieval_config": {
+    "top_k": 10,
+    "recall_top_n": 100,
+    "use_rerank": true,
+    "rerank_model": "netease-youdao/bce-reranker-base_v1",
+    "rerank_top_n": 40,
+    "rerank_pre_top_n": 30,
+    "rerank_pre_top_n_hard_cap": 60,
+    "cost_profile": "balanced",
+    "use_prefilter": false,
+    "prefilter_threshold": 0.3,
+    "use_dynamic_topk": false,
+    "dynamic_low_rerank_top_n": 20,
+    "dynamic_high_rerank_top_n": 60,
+    "dynamic_score_gap_threshold": 0.15,
+    "use_expansion": false,
+    "use_contextual": false,
+    "query_concurrency": 8,
+    "strict_cache_guard": true,
+    "template_flags_path": null
+  },
+  "append_targets": {
+    "progress_path": null,
+    "progress_every": 100,
+    "per_query_output": null
+  }
+}

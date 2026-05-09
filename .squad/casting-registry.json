@@ -1,0 +1,44 @@
+{
+  "registry_version": "1.0",
+  "compatibility": {
+    "source": ".claude_squad/casting-registry.json",
+    "mode": "copilot-aggressive",
+    "last_synced_at": "2026-04-25T00:00:00Z",
+    "notes": "激进档已启用：保留Claude席位语义，同时启用高并行与快速巡检策略。"
+  },
+  "agents": {
+    "Dozer": {
+      "seat": "worker",
+      "universe": "The Matrix",
+      "role": "Frontend Implementation Engineer",
+      "model": "gpt-5.3-codex",
+      "source_model": "claude-opus-4.7",
+      "session_id": "modular-pipeline-codex-gateb-goldset",
+      "status": "aggressive-ready",
+      "activated_at": "2026-04-25T00:00:00Z",
+      "last_heartbeat_at": "2026-04-25T03:15:00Z",
+      "charter_ref": ".claude_squad/agents/dozer/charter.md",
+      "last_task": {
+        "id": "#30",
+        "label": "A8 _chat helper diffusion",
+        "outcome": "escalated_then_closed_as_equivalent_done",
+        "code_written": false,
+        "ruling_ref": ".squad/orchestration-log/2026-04-25T03-00-00Z-a8-dozer-escalation-ruling.md",
+        "inbox_notes": [
+          ".squad/decisions/inbox/dozer-a8-diffusion-escalation.md",
+          ".squad/decisions/inbox/dozer-a8-openthreads-inconsistency.md"
+        ]
+      },
+      "resume_hints": {
+        "pending_manager_decisions": [
+          "OPEN_THREADS.md A8/A11 anchor consistency (3 options in dozer-a8-openthreads-inconsistency.md)"
+        ],
+        "next_pickup_candidates": [
+          "#31 already closed by manager (LightRAG memo, 432w)",
+          "OPEN_THREADS Active (phase4-metadata-constraint / async-ingestion-batch) — do not self-pick, require Manager dispatch"
+        ],
+        "fit_preference": "frontend API integration | typed interface sync | service adapter patches"
+      }
+    }
+  }
+}

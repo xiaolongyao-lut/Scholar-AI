@@ -1,0 +1,198 @@
+{
+  "generated_at": "2026-05-02T11:36:51.650885Z",
+  "exported_count": 24,
+  "exported": [
+    {
+      "slug": "acquire-codebase-knowledge",
+      "name": "acquire-codebase-knowledge",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\acquire-codebase-knowledge\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\acquire-codebase-knowledge\\SKILL.md",
+      "description": "Use this skill when the user explicitly asks to map, document, or onboard into an existing codebase. Trigger for prompts like \"map this codebase\", \"document this architecture\", \"onboard me to this repo\", or \"create codebase docs\". Do not trigger for routine feature implementation, bug fixes, or narrow code edits unless the user asks for repository-level discovery."
+    },
+    {
+      "slug": "context-map",
+      "name": "context-map",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\context-map\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\context-map\\SKILL.md",
+      "description": "Generate a map of all files relevant to a task before making changes"
+    },
+    {
+      "slug": "create-implementation-plan",
+      "name": "create-implementation-plan",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\create-implementation-plan\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\create-implementation-plan\\SKILL.md",
+      "description": "Create a new implementation plan file for new features, refactoring existing code or upgrading packages, design, architecture or infrastructure."
+    },
+    {
+      "slug": "env-test-discipline",
+      "name": "env-test-discipline",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\env-test-discipline\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\env-test-discipline\\SKILL.md",
+      "description": "Canonical Windows-first guidance for dynamically resolving `.env` API credentials, using provider APIs safely during tasks, test-time overrides, connectivity probes, and long-run safe configuration in this repository."
+    },
+    {
+      "slug": "frontend-design",
+      "name": "frontend-design",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\frontend-design\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\frontend-design\\SKILL.md",
+      "description": "Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics."
+    },
+    {
+      "slug": "gsap-framer-scroll-animation",
+      "name": "gsap-framer-scroll-animation",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\gsap-framer-scroll-animation\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\gsap-framer-scroll-animation\\SKILL.md",
+      "description": "Use this skill whenever the user wants to build scroll animations, scroll effects, parallax, scroll-triggered reveals, pinned sections, horizontal scroll, text animations, or any motion tied to scroll position — in vanilla JS, React, or Next.js. Covers GSAP ScrollTrigger (pinning, scrubbing, snapping, timelines, horizontal scroll, ScrollSmoother, matchMedia) and Framer Motion / Motion v12 (useScroll, useTransform, useSpring, whileInView, variants). Use this skill even if the user just says \"animate on scroll\", \"fade in as I scroll\", \"make it scroll like Apple\", \"parallax effect\", \"sticky section\", \"scroll progress bar\", or \"entrance animation\". Also triggers for Copilot prompt patterns for GSAP or Framer Motion code generation. Pairs with the premium-frontend-ui skill for creative philosophy and design-level polish."
+    },
+    {
+      "slug": "memory-palace-lite",
+      "name": "memory-palace-lite",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\memory-palace-lite\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\memory-palace-lite\\SKILL.md",
+      "description": "Use when the user asks to retain long-term context, preserve decisions, build project memory, avoid repeating discoveries, summarize multi-session progress, create handoff summaries, or maintain decision trails. Trigger phrases include '长期记忆', '上下文沉淀', '别忘了', '延续上次结论', '会话续接', '交接摘要', 'project memory', 'decision log', 'handoff summary', and 'context snapshot'. Skip for one-shot tiny edits."
+    },
+    {
+      "slug": "polyglot-test-agent",
+      "name": "polyglot-test-agent",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\polyglot-test-agent\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\polyglot-test-agent\\SKILL.md",
+      "description": "Generates comprehensive, workable unit tests for any programming language using a multi-agent pipeline. Use when asked to generate tests, write unit tests, improve test coverage, add test coverage, create test files, or test a codebase. Supports C#, TypeScript, JavaScript, Python, Go, Rust, Java, and more. Orchestrates research, planning, and implementation phases to produce tests that compile, pass, and follow project conventions."
+    },
+    {
+      "slug": "premium-frontend-ui",
+      "name": "premium-frontend-ui",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\premium-frontend-ui\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\premium-frontend-ui\\SKILL.md",
+      "description": "A comprehensive guide for GitHub Copilot to craft immersive, high-performance web experiences with advanced motion, typography, and architectural craftsmanship."
+    },
+    {
+      "slug": "pytest-coverage",
+      "name": "pytest-coverage",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\pytest-coverage\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\pytest-coverage\\SKILL.md",
+      "description": "Use when asked to run tests with coverage, find untested code, improve test coverage, analyze coverage gaps, set coverage thresholds, or generate coverage reports for this Python project."
+    },
+    {
+      "slug": "quality-playbook",
+      "name": "quality-playbook",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\quality-playbook\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\quality-playbook\\SKILL.md",
+      "description": "Use when asked to run all quality checks, do a pre-commit quality pass, check code health, run the full linting and type-checking pipeline, verify code is ready to merge, or do a comprehensive code quality audit on this Python project."
+    },
+    {
+      "slug": "refactor",
+      "name": "refactor",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\refactor\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\refactor\\SKILL.md",
+      "description": "Surgical code refactoring to improve maintainability without changing behavior. Covers extracting functions, renaming variables, breaking down god functions, improving type safety, eliminating code smells, and applying design patterns. Less drastic than repo-rebuilder; use for gradual improvements."
+    },
+    {
+      "slug": "refactor-plan",
+      "name": "refactor-plan",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\refactor-plan\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\refactor-plan\\SKILL.md",
+      "description": "Plan a multi-file refactor with proper sequencing and rollback steps"
+    },
+    {
+      "slug": "ruff-recursive-fix",
+      "name": "ruff-recursive-fix",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\ruff-recursive-fix\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\ruff-recursive-fix\\SKILL.md",
+      "description": "Use when asked to fix lint errors recursively, auto-fix Python code style issues, run flake8 and auto-apply fixes, migrate from flake8 to ruff, clean up code quality warnings across all Python files, or bulk-fix formatting and import order issues."
+    },
+    {
+      "slug": "secret-scanning",
+      "name": "secret-scanning",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\secret-scanning\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\secret-scanning\\SKILL.md",
+      "description": "Guide for configuring and managing GitHub secret scanning, push protection, custom patterns, and secret alert remediation. For pre-commit secret scanning in AI coding agents via the GitHub MCP Server, this skill references the Advanced Security plugin (`advanced-security@copilot-plugins`). Use this skill when enabling secret scanning, setting up push protection, defining custom patterns, triaging alerts, resolving blocked pushes, or when an agent needs to scan code for secrets before committing."
+    },
+    {
+      "slug": "security-review",
+      "name": "security-review",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\security-review\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\security-review\\SKILL.md",
+      "description": "AI-powered codebase security scanner that reasons about code like a security researcher — tracing data flows, understanding component interactions, and catching vulnerabilities that pattern-matching tools miss. Use this skill when asked to scan code for security vulnerabilities, find bugs, check for SQL injection, XSS, command injection, exposed API keys, hardcoded secrets, insecure dependencies, access control issues, or any request like \"is my code secure?\", \"review for security issues\", \"audit this codebase\", or \"check for vulnerabilities\". Covers injection flaws, authentication and access control bugs, secrets exposure, weak cryptography, insecure dependencies, and business logic issues across JavaScript, TypeScript, Python, Java, PHP, Go, Ruby, and Rust."
+    },
+    {
+      "slug": "squad-cli-handoff",
+      "name": "squad-cli-handoff",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\squad-cli-handoff\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\squad-cli-handoff\\SKILL.md",
+      "description": "Prepare a safe Copilot CLI Sessions handoff packet for Squad long-running or detached work. Use when chat tools, context limits, or runtime duration make in-session execution unsafe, or when the user explicitly asks to continue in Copilot CLI."
+    },
+    {
+      "slug": "squad-startup-packet",
+      "name": "squad-startup-packet",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\squad-startup-packet\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\squad-startup-packet\\SKILL.md",
+      "description": "Load and summarize the Squad startup packet before routing, dispatch, long-run work, or governance repair. Use when a task invokes Squad mode, asks for autonomous project execution, resumes a long run, or modifies Squad governance/customization files."
+    },
+    {
+      "slug": "systematic-debugging",
+      "name": "systematic-debugging",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\systematic-debugging\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\systematic-debugging\\SKILL.md",
+      "description": "Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes"
+    },
+    {
+      "slug": "test-driven-development",
+      "name": "test-driven-development",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\test-driven-development\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\test-driven-development\\SKILL.md",
+      "description": "Use when implementing any feature or bugfix, before writing implementation code"
+    },
+    {
+      "slug": "third-party-llm-resilience",
+      "name": "third-party-llm-resilience",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\third-party-llm-resilience\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\third-party-llm-resilience\\SKILL.md",
+      "description": "Use when calling third-party Claude / OpenAI-compatible / Gemini proxies, debugging LLM stalls, 502/504/overloaded_error, mid-stream drops, \"task feels dumb / forgets context\" symptoms, or hardening any HTTP-based LLM client."
+    },
+    {
+      "slug": "ui-ux-pro-max",
+      "name": "ui-ux-pro-max",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\ui-ux-pro-max\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\ui-ux-pro-max\\SKILL.md",
+      "description": "UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types across 10 stacks (React, Next.js, Vue, Svelte, SwiftUI, React Native, Flutter, Tailwind, shadcn/ui, and HTML/CSS). Actions: plan, build, create, design, implement, review, fix, improve, optimize, enhance, refactor, and check UI/UX code. Projects: website, landing page, dashboard, admin panel, e-commerce, SaaS, portfolio, blog, and mobile app. Elements: button, modal, navbar, sidebar, card, table, form, and chart. Styles: glassmorphism, claymorphism, minimalism, brutalism, neumorphism, bento grid, dark mode, responsive, skeuomorphism, and flat design. Topics: color systems, accessibility, animation, layout, typography, font pairing, spacing, interaction states, shadow, and gradient. Integrations: shadcn/ui MCP for component search and examples."
+    },
+    {
+      "slug": "windows-shell-discipline",
+      "name": "windows-shell-discipline",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\windows-shell-discipline\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\windows-shell-discipline\\SKILL.md",
+      "description": "Use when running terminal commands on Windows in this repo, especially Python venv invocations, multi-command chains, Claude/Copilot CLI sessions, or any time `bash: command not found` / `&&` errors appear."
+    },
+    {
+      "slug": "writing-plans",
+      "name": "writing-plans",
+      "origin": "existing",
+      "source_locator": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.github\\skills\\writing-plans\\SKILL.md",
+      "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog\\writing-plans\\SKILL.md",
+      "description": "Use when you have a spec or requirements for a multi-step task, before touching code"
+    }
+  ]
+}

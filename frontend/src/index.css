@@ -1,0 +1,237 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── M3-Inspired Surface System ── */
+    --background: 210 33% 98%;       /* #F7F9FB — surface */
+    --foreground: 222 24% 22%;       /* #2A3245 — on-surface */
+
+    --card: 0 0% 100%;               /* surface-container-lowest */
+    --card-foreground: 222 24% 22%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 24% 22%;
+
+    /* ── Brand: Indigo-Purple ── */
+    --primary: 239 62% 55%;          /* #4648D4 — signature indigo-purple */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 222 24% 22%;        /* #2A3245 — deep blue-gray for text emphasis */
+    --secondary-foreground: 210 33% 98%;
+
+    --muted: 210 40% 96%;            /* surface-container-low */
+    --muted-foreground: 210 10% 47%;
+
+    --accent: 210 28% 93%;           /* surface-container */
+    --accent-foreground: 222 24% 22%;
+
+    --destructive: 0 64% 51%;        /* #D32F2F */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 10% 85%;           /* outline-variant */
+    --input: 210 10% 85%;
+    --ring: 239 62% 55%;
+
+    --radius: 0.75rem;              /* M3: visible but crisp corners */
+
+    /* ── M3 Surface Container Hierarchy ── */
+    --surface: 210 33% 98%;
+    --surface-lowest: 0 0% 100%;
+    --surface-low: 210 33% 97%;
+    --surface-default: 210 25% 94%;
+    --surface-high: 210 22% 91%;
+    --surface-highest: 210 20% 88%;
+    --outline: 210 10% 72%;
+    --outline-variant: 210 12% 82%;
+
+    /* ── Dark Sidebar ── */
+    --sidebar: 222 32% 12%;
+    --sidebar-foreground: 210 30% 92%;
+    --sidebar-accent: 239 80% 72%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 222 25% 18%;
+  }
+
+  .dark {
+    --background: 222 30% 10%;
+    --foreground: 210 30% 92%;
+
+    --card: 222 30% 12%;
+    --card-foreground: 210 30% 92%;
+
+    --popover: 222 30% 12%;
+    --popover-foreground: 210 30% 92%;
+
+    --primary: 239 70% 65%;
+    --primary-foreground: 222 30% 10%;
+
+    --secondary: 210 20% 70%;
+    --secondary-foreground: 222 30% 10%;
+
+    --muted: 222 20% 16%;
+    --muted-foreground: 210 15% 60%;
+
+    --accent: 222 20% 18%;
+    --accent-foreground: 210 30% 92%;
+
+    --destructive: 0 50% 40%;
+    --destructive-foreground: 210 30% 92%;
+
+    --border: 222 18% 20%;
+    --input: 222 18% 20%;
+    --ring: 239 70% 65%;
+
+    --surface: 222 30% 10%;
+    --surface-lowest: 222 30% 8%;
+    --surface-low: 222 25% 13%;
+    --surface-default: 222 22% 16%;
+    --surface-high: 222 20% 19%;
+    --surface-highest: 222 18% 22%;
+    --outline: 222 12% 30%;
+    --outline-variant: 222 15% 25%;
+
+    --sidebar: 222 30% 10%;
+    --sidebar-foreground: 210 30% 92%;
+    --sidebar-accent: 239 70% 65%;
+    --sidebar-accent-foreground: 222 30% 10%;
+    --sidebar-border: 222 20% 16%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-outline-variant;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  [role="button"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--primary) / 0.28);
+  }
+}
+
+@layer components {
+  .glass-card {
+    background: hsl(var(--surface-lowest));
+    border: 1px solid hsl(var(--outline-variant) / 0.6);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+    transition: box-shadow 0.2s, border-color 0.2s;
+  }
+
+  .glass-card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+  }
+
+  .glass-sidebar {
+    background: hsl(var(--sidebar));
+    color: hsl(var(--sidebar-foreground));
+    border-right: 1px solid hsl(var(--sidebar-border));
+  }
+
+  .writing-canvas {
+    @apply max-w-writing mx-auto px-8 py-12 min-h-screen relative;
+    background: hsl(var(--surface));
+  }
+
+  .writing-content {
+    @apply text-foreground leading-[1.7] text-lg font-doc;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .premium-shadow {
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 
+                0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  }
+
+  /* M3 Surface elevation layers */
+  .surface-lowest { background: hsl(var(--surface-lowest)); }
+  .surface-low    { background: hsl(var(--surface-low)); }
+  .surface-default{ background: hsl(var(--surface-default)); }
+  .surface-high   { background: hsl(var(--surface-high)); }
+  .surface-highest{ background: hsl(var(--surface-highest)); }
+
+  /* Academic document content */
+  .doc-content {
+    font-family: "Georgia", "STSong", "Songti SC", "SimSun", serif;
+    font-size: 1rem;
+    line-height: 1.8;
+    color: hsl(var(--foreground));
+  }
+
+  /* Segmented control (M3 style) */
+  .segmented-control {
+    display: inline-flex;
+    border: 1px solid hsl(var(--outline));
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .segmented-item {
+    @apply px-4 py-1.5 text-xs font-medium transition-colors;
+    color: hsl(var(--foreground));
+  }
+
+  .segmented-item.active {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.12);
+    border-radius: 999px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.28);
+  }
+
+  .empty-state {
+    @apply flex flex-col items-center justify-center p-12 text-center opacity-40 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-700;
+  }
+}
+
+/* Accessibility & Polish */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-delay: -1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    background-attachment: initial !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+  }
+}
+
+.selection-highlight {
+  @apply bg-primary/10 text-primary font-bold px-1 rounded;
+}
+
+/* Animations */
+.fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

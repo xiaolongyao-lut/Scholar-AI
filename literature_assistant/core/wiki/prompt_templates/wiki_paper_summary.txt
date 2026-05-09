@@ -1,0 +1,15 @@
+Generate a structured summary of the following paper.
+
+Output must be valid JSON with this schema:
+{
+  "title": "string",
+  "summary": "string (2-3 sentences)",
+  "key_findings": ["string", ...],
+  "concepts": ["string", ...],
+  "claims": ["string", ...]
+}
+
+Paper content:
+{source_text}
+
+Respond with JSON only, no additional text.

@@ -1,0 +1,708 @@
+
+============================================================
+PAPER: MAQ-retrieval
+============================================================
+Total pages: 13
+
+--- Page 1 ---
+JOURNAL OF IEEE TRANSACTIONS ON ARTIFICIAL INTELLIGENCE, VOL. 00, NO. 0, MONTH 2026
+1
+MAQ-Retrieval: Multi-Aspect Queries Retrieval
+for Large Language Models
+Zixuan Xu, Gaoyang Pang, Xinyu Chen, Ming Ding, Senior Member, IEEE,
+Branka Vucetic, Life Fellow, IEEE, Yonghui Li, Fellow, IEEE, Zihuai Lin, Senior Member, IEEE
+Abstract—Retrieval-Augmented Generation (RAG) typically
+relies on single-query retrieval. Various query optimization tech-
+niques have been proposed to enhance retrieval by decomposing
+the single query into multiple queries focusing on different
+aspects. This query optimization is to supplement the original
+query to increase the retrieval confidence from diverse aspects.
+Existing practices individually retrieve relevant texts based on the
+generated multi-aspect queries, aggregate these texts, and apply
+reranking methods to select the Top-K most relevant texts. Such
+existing individual retrieval and reranking mechanisms often
+overlook the connections between queries. Consequently, these
+methods fail to adequately capture the nuances introduced by
+distinct aspects in multiple queries, and may amplify retrieval-
+induced hallucinations when semantically fragmented evidence
+is presented to large models. To bridge this gap, we introduce a
+novel Multi-Aspect Queries Retrieval (MAQ-Retrieval) method.
+It follows query optimization for multi-aspect queries, integrates
+a query-weighting mechanism, and leverages the concept of
+convex hull to perform joint retrieval of multi-aspect queries. In
+particular, the convex region we constructed can include the set of
+candidate texts that may be overlooked in traditional approaches,
+ensuring comprehensive coverage of relevant texts while sup-
+pressing inconsistent or noisy fragments that may contribute to
+model hallucinations. Extensive experiments on both multiple-
+choice and summarization tasks in either English or Chinese
+demonstrate that MAQ-Retrieval consistently outperforms four
+baselines, achieving up to an increase
+
+--- Page 2 ---
+2
+JOURNAL OF IEEE TRANSACTIONS ON ARTIFICIAL INTELLIGENCE, VOL. 00, NO. 0, MONTH 2026
+thresholds. Selecting too few texts (small K values) risks
+excluding crucial contextual information, while selecting too
+many (large K values) introduces irrelevant texts, leading to
+increased noise and diminished response quality. Furthermore,
+existing methods typically apply identical retrieval thresholds
+to all queries, neglecting the inherent differences in importance
+among individual queries. More salient queries reasonably
+warrant a larger number of retrieved texts. Second, there is
+no unified standard for effectively re-ranking texts retrieved
+from multiple aspects. Ranking texts solely based on their
+relevance to the original query risks diminishing the specificity
+of individual aspects, whereas ranking them exclusively by
+individual aspects lacks a consistent comparative basis. Col-
+lectively, these limitations not only degrade response quality
+but also amplify the tendency of LLMs to hallucinate when
+confronted with noisy or imbalanced retrieval results..
+To address the above challenge, we propose a novel retrieval
+approach to adaptively score the importance of each query
+through a weighting mechanism for fairness and to capture
+the implicit texts related to all queries for completeness. This
+unified retrieval framework reduces semantic fragmentation
+and mitigates hallucination risks during evidence aggregation.
+1 The main contributions are summarized as follows:
+(1) We propose a novel approach called Multi-Aspect
+Queries Retrieval (MAQ-Retrieval), which, for the first time,
+introduces the concept of a Convex Hull to tackle the challenge
+of filtering relevant text information for multiple queries. Our
+method can capture texts that are implicitly relevant to all
+queries but may be overlooked in individual retrieval, thereby
+enhancing the LLM performance.
+(2) We introduce a Query Weighting mechanism that com-
+putes the Mahalanobis distance between each query vector and
+the 
+
+--- Page 3 ---
+ERROR: 'gbk' codec can't encode character '\u2022' in position 515: illegal multibyte sequence
+
+============================================================
+PAPER: Structure-Aware Chunking
+============================================================
+Total pages: 22
+
+--- Page 1 ---
+ 
+Available online at www.ijournalse.org 
+Emerging Science Journal 
+(ISSN: 2610-9182) 
+Vol. 10, No. 1, February, 2026 
+ 
+ 
+Page | 184 
+Structure-Aware Chunking for Complex Tables in Retrieval-
+Augmented Generation Systems 
+ 
+Xin-Kuang Koay 1, 2, Lee-Yeng Ong 1, 2* , Pey-Yun Goh 1, 2  
+1 Faculty of Information Science and Technology, Multimedia University, Malacca 75450, Malaysia. 
+2 Centre for Advanced Analytics, CoE for Artificial Intelligence, Faculty of Information Science and Technology, Multimedia University, 
+Melaka 75450, Malaysia. 
+ 
+ 
+Abstract 
+Retrieval-Augmented Generation (RAG) is a hybrid method that combines information retrieval 
+with large language models to generate context-aware, factually grounded responses. However, the 
+RAG system relies heavily on well-structured input data to generate accurate and contextually 
+relevant responses. Documents with complex table layouts pose significant challenges, as most 
+chunking strategies are text-centric and often overlook table-rich documents containing multi-
+column and multi-row structures. Hence, this study proposes a customized structure-aware chunking 
+framework specifically designed for university course documents containing multi-column, multi-
+row tables with nested headers. The framework employs Camelot for high-fidelity table extraction, 
+followed by customized logic that constructs semantically coherent chunks by preserving academic 
+term, subject name, credit hour, and category. This prevents semantic fragmentation during retrieval. 
+The proposed method is evaluated using the RAGAS framework and compared against several 
+baselines using standard parsing and chunking techniques. Results show that the proposed approach 
+achieves the highest answer accuracy of 0.73 and substantially improves retrieval relevance and 
+contextual precision. These findings demonstrate the framework’s effectiveness in handling 
+structure-dependent academic queries. This study highlights that ensuring both parsing quali
+
+--- Page 2 ---
+Emerging Science Journal | Vol. 10, No. 1 
+Page | 185 
+bypassing the parsing challenges in PDFs associated with real-world documents. In contrast, institutional datasets such 
+as university course structures are typically embedded in PDF files featuring irregular layouts, merged cells, and nested 
+headers. As shown in our proposed dataset (refer to Figure 5), these complex tables encode semantic relationships 
+through visual structure rather than linear text, making it difficult to extract meaningful units for retrieval. This presents 
+a unique challenge in preserving term-subject-category-credit hour relationships when performing parsing and chunking. 
+A key factor affecting the performance of RAG systems is the quality of the input document, particularly how it is 
+parsed and chunked [2, 12, 13]. Although some researchers have proposed advanced parsers such as LlamaParse for 
+complex tables [14], it still often struggles to accurately capture all relevant details in our proposed dataset, which 
+features highly intricate layouts even though it performs well in other studies [15, 16]. Other parsing strategies, such as 
+Tabula, perform well on simple tables but lack robustness when handling nested or merged structures. Tools like 
+pdfplumber and PyMuPDF are optimized for general text extraction rather than table parsing [17].  
+In addition, most existing chunking methods rely on fixed-token or recursive splitting techniques, which are designed 
+for linear, unstructured documents such as articles. These methods do not account for the spatial and semantic 
+relationships inherent in complex tables, often splitting logically connected rows, columns, or headers across separate 
+chunks [18]. Such fragmentation degrades retrieval accuracy and leads to hallucinations or incoherent responses in 
+downstream generation. To our knowledge, no prior work has proposed an end-to-end framework that begins with PDF-
+based table parsing and proceeds to customized chunking while explici
+
+--- Page 3 ---
+Emerging Science Journal | Vol. 10, No. 1 
+Page | 186 
+to identify the most relevant chunks in response to a user query, while the Generator synthesizes a definitive answer by 
+combining the query with the retrieved content. 
+Although the RAG system performs well with unstructured data, such as narrative text, it still encounters significant 
+limitations when processing documents with complex tabular structures. Traditional chunking strategies, such as the 
+fixed-token, recursive, and sliding window methods, are optimized for linear text and agnostic to spatial or tabular layout 
+[20-24]. When applied to complex tables with nested headers, multi-row, and multi-column layouts, these methods often 
+disrupt semantic coherence by splitting logically related rows, columns or merged cells across multiple chunks. 
+Recent research has attempted to address this issue by introducing advanced table parsers [2, 25] to enhance 
+preprocessing. However, these solutions often flatten the visual structure of tables during extraction, resulting in the loss 
+of critical contextual relationships, such as column pairings, category groupings, and hierarchical headers [26]. This 
+fragmentation significantly degrades the quality of retrieval and the accuracy of generated responses. Despite 
+advancements in table parsing, there is still a lack of structure-aware chunking methods designed specifically to preserve 
+the semantic integrity of complex tabular data within RAG pipelines. 
+ 
+Figure 1. General Pipeline of RAG 
+2-2- Data Parsing on Table and Chunking 
+Figure 2 illustrates an example of complex tabular layouts found in structured academic documents. This table 
+features nested headers (e.g., Trimester A and Trimester B, each with its own sub-headers like “Subject Code” and 
+“Subject Name”), as well as multi-row labels on the left (e.g., Category A and Category B), which significantly 
+complicate automated data extraction. The red text in the figure highlights multi-level column and ro
+
+--- Page 4 ---
+Emerging Science Journal | Vol. 10, No. 1 
+Page | 187 
+Although the complex table layout is easily understood by human readers, conventional PDF parsers such as 
+PyPDFLoader often struggle with positional inaccuracy during parsing [17]. While advanced parsers such as LlamaParse 
+[30, 31] can successfully extract tables, they still face challenges in accurately preserving structure when handling highly 
+complex features like nested headers and multi-row or multi-column formats. LlamaParse is considered a powerful table 
+parser when enabled in Markdown mode that specifically designed for complex table layouts. Despite being set to output 
+in Markdown mode, LlamaParse encounters difficulties in accurately parsing such tables [16]. This is because 
+LlamaParse often linearizes or flattens the information in tables, resulting in the loss of positional relationships between 
+headers and values. These structural complexities pose major challenges for parsing methods, which flatten tables during 
+extraction.  
+An example of such flawed output is shown in Figure 3, where LlamaParse processes the complex table from Figure 
+2. The output fails to preserve the nested header structure and maintain the correct positional alignment of cell values. 
+For example, Trimester A, Trimester B, and Category B disappear entirely, leaving disconnected subject codes and 
+names without context. Blank cells that are critical for implied groupings are either dropped or misaligned, leading to 
+incorrect subject associations. This demonstrates how even advanced parsers fail to preserve the nuanced structure of 
+complex academic tables, leading to data loss and misinterpretation in downstream analysis. 
+ 
+Figure 3. Sample extracted output using LlamaParse 
+Even when table parsing is successful, the effectiveness of a RAG system is fundamentally limited by how well 
+the parsed data is segmented into chunks [2, 13]. Existing chunking strategies such as fixed-token segmentation and 
+recursive chunking
+
+--- Page 22 ---
+Emerging Science Journal | Vol. 10, No. 1 
+Page | 205 
+42 
+In which trimester is ABC020 Subject T offered? 
+Trimester G 
+43 
+Which trimester has the most Category B subjects? 
+Trimester F 
+44 
+List of all subjects offered in Trimester I. 
+ABC023 Subject W; ABC024 Subject X; ABC025 Subject Y; ABC026 Subject Z; PRO002 Project 
+45 
+What is the subject name of ABC001? 
+ABC001 
+46 
+Which trimester offers the final project? 
+Trimester G and Trimester I 
+47 
+Which category includes FEE003 Subject C? 
+Category E 
+48 
+List all Category D subjects. 
+ABC022 Subject V 
+49 
+Which trimester includes the subject with code ABC028? Trimester I 
+50 
+Which trimester offers the subject ABC007? 
+Trimester C 
+ 
+
+
+============================================================
+PAPER: ChunkRAG
+============================================================
+Total pages: 10
+
+--- Page 1 ---
+ChunkRAG: A Novel LLM-Chunk Filtering Method for RAG Systems
+Ishneet Sukhvinder Singh
+Ritvik Aggarwal
+Ibrahim Allahverdiyev
+Muhammad Taha
+Aslihan Akalin
+Kevin Zhu
+Sean O’Brien
+Algoverse AI Research
+kevin@algoverse.us, seobrien@ucsd.edu
+Abstract
+Retrieval-Augmented
+Generation
+(RAG)
+frameworks leveraging large language models
+(LLMs) frequently retrieve extraneous or
+weakly
+relevant
+information,
+leading
+to
+factual inaccuracies and hallucinations in
+generated responses.
+Existing document-
+level retrieval approaches lack sufficient
+granularity to effectively filter non-essential
+content. This paper introduces ChunkRAG, a
+retrieval framework that refines information
+selection through semantic chunking and
+chunk-level evaluation. ChunkRAG applies
+a dynamic greedy aggregation strategy to
+segment documents into semantically coherent,
+variable-length sections based on cosine sim-
+ilarity. Empirical evaluations on the PopQA,
+PubHealth and Biography dataset indicate
+that ChunkRAG improves response accuracy
+over state-of-the-art RAG methods.
+The
+analysis further demonstrates that chunk-level
+filtering reduces redundant and weakly related
+information, enhancing the factual consistency
+of responses. By incorporating fine-grained
+retrieval mechanisms, ChunkRAG provides
+a scalable and domain-agnostic approach to
+mitigate hallucinations in knowledge-intensive
+tasks such as fact-checking and multi-hop
+reasoning.
+1
+Introduction
+LLMs combined with retrieval-augmented genera-
+tion (RAG) have improved AI systems’ ability to
+generate informed responses using external knowl-
+edge. While promising for knowledge-intensive
+tasks, RAG systems often struggle with retrieving
+irrelevant or weakly relevant content. Despite using
+techniques like re-ranking and query rewriting, this
+limitation leads to factual errors and hallucinations
+in the generated outputs.
+Current RAG systems often retrieve large doc-
+ument segments, assuming more content means
+better coverage. However, this overlooks the need
+F
+
+--- Page 2 ---
+LLM-driven chunk filtering. This framework oper-
+ates at a finer level of granularity than traditional
+systems by supporting chunk-level filtering of re-
+trieved information. Rather than determining the
+relevance of entire documents, our framework eval-
+uates both the user query and the individual chunks
+within the retrieved chunks. The large language
+model assesses the semantic relevance of each
+chunk in relation to the user’s query, thereby en-
+abling the system to filter out irrelevant or weakly
+related chunks before they reach the generation
+stage.This approach shows particular promise for
+knowledge-intensive tasks, such as multi-hop rea-
+soning (Liu et al., 2025) and fact-checking (Zhong
+et al., 2024; Zhang and Gao, 2024).
+2
+Related Works
+2.1
+Addressing Hallucinations in Large
+Language Models
+Large language models (LLMs) have made sub-
+stantial progress in instruction understanding and
+text generation (Bang et al., 2023; Qin et al., 2023;
+Zhong et al., 2023). Nevertheless, they continue
+to suffer from hallucinations—outputs that are in-
+correct. Research suggests that erroneous internal
+knowledge often triggers these hallucinations (Ton-
+moy et al., 2024; Zhang et al., 2023b; Shuster et al.,
+2018), aggravated by low-quality data distributions
+in training as well as a lack of built-in verification
+mechanisms. Consequently, improving access to
+high-quality external knowledge remains an impor-
+tant line of research.
+2.2
+Retrieval-Augmented Generation
+Techniques
+Retrieval-Augmented
+Generation
+(RAG)
+has
+gained traction as an effective strategy to mitigate
+hallucinations (Lewis et al., 2020; Guu et al., 2020).
+RAG systems enhance performance on knowledge-
+intensive tasks by injecting relevant retrieved doc-
+uments during generation. However, the quality
+of outputs depends heavily on retrieval accuracy,
+as poor document selection can increase factual
+errors. Recent work has explored ways to refine
+RAG pipelines to better filter irrelevant context
+(Kim et al., 2024; Wa
+
+--- Page 3 ---
+ERROR: 'gbk' codec can't encode character '\u2022' in position 274: illegal multibyte sequence
+
+============================================================
+PAPER: Financial Report Chunking
+============================================================
+Total pages: 15
+
+--- Page 1 ---
+ERROR: 'gbk' codec can't encode character '\ufb00' in position 73: illegal multibyte sequence
+
+============================================================
+PAPER: Evaluating Modern RAG
+============================================================
+Total pages: 10
+
+--- Page 1 ---
+0This is the pre-print version of the paper accepted to appear at the IR-RAG @ SIGIR 2025 workshop: Information Retrieval’s Role in RAG Systems, held on July 17, 2025, in Padova,
+Italy. The final version will be published in the CEUR-WS proceedings.
+
+
+--- Page 2 ---
+ERROR: 'gbk' codec can't encode character '\xd6' in position 179: illegal multibyte sequence
+
+============================================================
+PAPER: DMG-RAG
+============================================================
+Total pages: 8
+
+--- Page 1 ---
+DMG-RAG: Dynamic Multi-Grained
+Retrieval Augmented Generation for Multi-Hop QA
+Yu Pei1,2,3,4, Mieradilijiang Maimaiti1,2,3,4,*, Yi Chen1,2,3,4, Wu Le5, Zhuofei Xie5, Jiawei Chen5
+1School of Computer Science and Technology, Xinjiang University
+2Xinjiang Laboratory of Multi-Language Information Technology, Xinjiang University
+3Xinjiang Multilingual Information Technology Research Center
+4Joint International Research Laboratory of Silk Road Multilingual Cognitive Computing
+No. 777, Huarui Street, Shuimogou District, Urumqi 830017, Xinjiang, China
+5Integrated Laboratory for Space, Air, and Ground Systems
+Email: peiyu@stu.xju.edu.cn, miradeljan51@xju.edu.cn, 107552501327@stu.xju.edu.cn,
+alaia@richnetworks.hk, zhx34@pitt.edu, syscjw@zohomail.cn
+Abstract—Retrieval-Augmented Generation (RAG) enhances
+multi-hop question answering by grounding large language mod-
+els (LLMs) in retrieved evidence, yet its effectiveness is highly
+sensitive to chunk granularity and context construction under
+a fixed token budget. Sentence-level chunks can be precise but
+often fragment evidence chains, while paragraph- and document-
+level chunks provide broader coverage at the risk of introducing
+redundancy and irrelevant content. We propose DMG-RAG, a
+query-aware multi-grained RAG framework that coordinates
+chunking, retrieval, and budgeted context construction with two
+lightweight modules. We build aligned indices on the same
+corpus at three simple granularities (sentence, paragraph, and
+document). A query-conditioned Router dynamically allocates
+stage-1 retrieval quota set across granularities to shape an
+adaptive candidate pool for each query. Given the candidate pool,
+a Budgeter performs budget-constrained evidence selection by
+jointly considering relevance, chunk length, and redundancy, and
+assembles a compact evidence set via a deterministic greedy pack-
+ing procedure guided by a learned scoring function. Experiments
+on HotpotQA, 2WikiMultiHopQA, and MuSiQue demonstrate
+that DMG-RAG consis
+
+--- Page 2 ---
+ERROR: 'gbk' codec can't encode character '\u2022' in position 817: illegal multibyte sequence
+
+============================================================
+PAPER: Is Semantic Chunking Worth
+============================================================
+Total pages: 23
+
+--- Page 1 ---
+ERROR: 'gbk' codec can't encode character '\xa9' in position 112: illegal multibyte sequence
+
+============================================================
+PAPER: Dense X Retrieval
+============================================================
+Total pages: 19
+
+--- Page 1 ---
+ERROR: 'gbk' codec can't encode character '\u2663' in position 99: illegal multibyte sequence
+
+============================================================
+PAPER: Reconstructing Context
+============================================================
+Total pages: 15
+
+--- Page 1 ---
+ERROR: 'gbk' codec can't encode character '\u2212' in position 118: illegal multibyte sequence
+
+============================================================
+PAPER: Benchmarking Legal RAG
+============================================================
+Total pages: 25
+
+--- Page 1 ---
+Benchmarking Legal RAG: The Promise and Limits of AI
+Statutory Surveys
+Mohamed Afane
+afane@law.stanford.edu
+Stanford University
+Stanford, CA, USA
+Emaan Hariri
+ehariri@stanford.edu
+Stanford University
+Stanford, CA, USA
+Derek Ouyang
+douyang1@law.stanford.edu
+Stanford University
+Stanford, CA, USA
+Daniel E. Ho
+dho@law.stanford.edu
+Stanford University
+Stanford, CA, USA
+Abstract
+Retrieval-augmented generation (RAG) offers significant potential
+for legal AI, yet systematic benchmarks are sparse. Prior work intro-
+duced LaborBench to benchmark RAG models based on ostensible
+ground truth from an exhaustive, multi-month, manual enumera-
+tion of all U.S. state unemployment insurance requirements by U.S.
+Department of Labor (DOL) attorneys. That prior work found poor
+performance of standard RAG (70% accuracy on Boolean tasks).
+Here, we assess three emerging tools not previously evaluated on
+LaborBench: the Statutory Research Assistant (STARA), a custom
+statutory research tool, and two commercial tools by Westlaw and
+LexisNexis marketing AI statutory survey capabilities. We make five
+main contributions. First, we show that STARA achieves substantial
+performance gains, boosting accuracy to 83%. Second, we show that
+commercial platforms fare poorly, with accuracy of 58% (Westlaw
+AI) and 64% (Lexis+ AI), even worse than standard RAG. Third, we
+conduct a comprehensive error analysis, comparing our outputs to
+those compiled by DOL attorneys, and document both reasoning
+errors, such as confusion between related legal concepts and misin-
+terpretation of statutory exceptions, and retrieval failures, where
+relevant statutory provisions are not captured. Fourth, we discover
+that many apparent errors are actually significant omissions by
+DOL attorneys themselves, such that STARA’s actual accuracy is
+92%. Fifth, we chart the path forward for legal RAG through con-
+crete design principles, offering actionable guidance for building
+AI systems capable of accurate multi-jurisdictional legal res
+
+--- Page 2 ---
+CSLAW ’26, March 3–5, 2026, Berkeley, CA, USA
+Afane et al.
+benchmark for evaluating AI performance on state UI laws. Their
+evaluation of large language models (LLM) with retrieval-augmented
+generation (RAG) revealed poor performance on statutory ques-
+tions, with even the most advanced models achieving F1 scores
+below 70%. LaborBench’s foundation in real DOL compilations
+makes it particularly compelling, as it reflects actual questions that
+require extensive manual effort by federal agency experts to an-
+swer. These findings highlighted that generic LLMs, despite broad
+capabilities in legal reasoning tasks [11], struggle with the spe-
+cific demands of complex statutory analysis. Hariri and Ho [14],
+however, did not evaluate recent models.
+We present the first systematic evaluation of STARA, Westlaw
+AI, and Lexis+ AI on LaborBench, including several contributions:
+(1) System Performance: STARA achieves 83% accuracy and
+81% F1 score on the LaborBench benchmark, outperform-
+ing the best models evaluated in the original LaborBench
+paper by 14% in both accuracy and F1 score, demonstrat-
+ing substantial improvements over current state-of-the-art
+approaches to statutory analysis.
+(2) Commercial Platform Evaluation: We conduct the first
+systematic evaluation of Westlaw AI and Lexis+ AI on Labor-
+Bench, which achieve F1 scores of 64% and 41%. In com-
+parison, a baseline answering affirmatively for all questions
+achieves an F1 score of 73%. We analyze apparent limita-
+tions in these widely adopted commercial systems including
+severe input context restrictions and systematic reasoning
+errors.
+(3) Systematic Error Analysis: We characterize the frontier
+challenges of legal RAG through comprehensive error anal-
+ysis, identifying distinct failure modes in reasoning and re-
+trieval. We also document persistent challenges across all
+evaluated AI systems, including confusion between related
+legal concepts and misinterpretation of statutory exceptions.
+(4) DOL Compilation Gaps Discove
+
+--- Page 3 ---
+Benchmarking Legal RAG: The Promise and Limits of AI Statutory Surveys
+CSLAW ’26, March 3–5, 2026, Berkeley, CA, USA
+Benchmark Evaluation
+STARA
+Benchmark Development
+CSUIL Creation (6 month process, repeated annually)
+Researchers, Lawyers, etc. 
+(Department of Labor)
+LaborBench
+(3700 QAs)
+StatReg
+(4.0M §§, 8.7 GB)
+Federal Unemployment 
+Tax Act (FUTA)
+Scraping, 
+cleaning, 
+formatting 
+OCR; validation, 
+formatting,
+Legal Service Provider AI 
+Survey Tools
+Latest U.S. State Statutes 
+and Regulations
+LaborBench Results
+Predicted Table 1-1
+No.
+Question
+DOL
+STARA
+WL
+LN
+Actual
+1
+Does AL ...?
+ 
+ 
+ 
+ 
+ 
+2
+Does AK ...?
+ 
+ 
+ 
+ 
+ 
+3
+Does AR ...?
+ 
+ 
+ 
+ 
+ 
+4
+Does AZ ...?
+ 
+ 
+ 
+ 
+ 
+...
+Boolean Table 1-1
+State
+"Employer" defn. diff. from FUTA
+AL
+  (True)
+AK
+  
+AR
+  
+(False)
+AZ
+ 
+...
+Supplemental Boolean 
+Questions
+Comparison of State Unemployment 
+Insurance Laws (CSUIL)
+Tab 1-1: "Employer" def.  if diff. w/ FUTA 
+State
+Min. Period of Time Payroll
+AK
+Any time
+AR
+1 employee for 10 ...
+CA
+Only $100 a quarter
+...
+WL
+LN
+Lexis+ AI
+Westlaw AI
+Filtering: 
+Latest UI Law 
+User Input
+Preprocessing
+Inference
+20 _ _
+Figure 1: Summary of our benchmarking process. DOL = United States Department of Labor; UI = Unemployment insurance;
+OCR = Optical character recognition; QA = question/answer; STARA = Statutory Research Assistant.
+frameworks that address similar concepts through different provi-
+sions, definitions, and exceptions. The benchmark requires integra-
+tion of information across multiple statutory sections, interpreta-
+tion of defined terms in context, and reasoning about hierarchical
+relationships within legal codes. This type of statutory interpre-
+tation demands mastery of cross-references, scattered provisions,
+and amendments with complex effective dates. As Pahlka notes,
+such dense regulatory texts create immense barriers and difficulties
+for digital tools [20], which is evident in the benchmark’s results:
+Claude, ChatGPT, Gemini, and other leading models all achieved
+F1 scores below 
+
+--- Page 4 ---
+CSLAW ’26, March 3–5, 2026, Berkeley, CA, USA
+Afane et al.
+automatically identifying, comparing, and summarizing laws across
+all federal and state statutes and administrative codes on any topic,
+proclaiming “the implications for legal practice are substantial”
+[6]. Both platforms emphasize dramatic time savings and accuracy,
+asserting that their technology reduces the risk of missing rele-
+vant provisions and enables users to find everything on their topic.
+Despite these bold marketing claims, rigorous benchmarking is
+needed to verify whether these systems can deliver the promised
+accuracy and completeness.
+3
+Methodology
+3.1
+Experimental Setup
+Following the framework established in LaborBench [14], we focus
+on binary classification tasks to enable systematic validation of
+our approach. This evaluation includes 1,647 questions on complex
+statutory UI laws, covering employment-related program availabil-
+ity, benefits eligibility requirements, calculation methods for UI
+claims, and other intricate aspects of UI frameworks. These ques-
+tions ask whether specific states have particular laws or use certain
+legal provisions, requiring deep understanding of statutory text
+and cross-jurisdictional variations. The steps in our benchmarking
+pipeline are outlined in Figure 1. For our evaluation of STARA, we
+ran the system across full state UI codes to test large-scale statutory
+retrieval.
+An underlying challenge to applying generative AI to all state
+statutes are compute costs. STARA addresses this by allowing for
+optional regular expression filters (RegEx) to narrow the search
+to a subset of relevant provisions, a set still too large for manual
+review but well suited to STARA’s semantic reasoning. However,
+these filters can also inadvertently exclude valid provisions, trad-
+ing off computational speed and completeness. We applied RegEx
+filters to focus on UI law provisions across all 50 states. The bench-
+mark contains 40 different question types, divided into 8 batches
+of 5 q
+
+--- Page 25 ---
+Benchmarking Legal RAG: The Promise and Limits of AI Statutory Surveys
+CSLAW ’26, March 3–5, 2026, Berkeley, CA, USA
+The DOL compilation originally identified 28 states permitting rate reduction through voluntary contributions. STARA identified 24 of
+these states, missing Louisiana, New Mexico, New York, and Michigan. Westlaw AI also identified 24 of the original 28, missing Kansas, West
+Virginia, New York, and Michigan. Lexis+ AI had substantially lower recall, identifying only eight of the original 28 states, all of which were
+also identified by the other systems.
+Beyond the DOL’s 28 states, Lexis+ AI identified no additional states. STARA identified one additional state (Oregon), where the
+provision mentions voluntary contributions but establishes no connection to rate reduction—a false positive stemming from incomplete
+statutory language. Westlaw AI identified 16 states not included in the DOL report, all of which proved to be reasoning errors through
+comprehensive verification. These errors followed systematic patterns: conflating experience rating systems with voluntary contribution
+authorization, misinterpreting payment method elections (contribution versus reimbursement) as voluntary rate reduction mechanisms,
+treating successorship rate calculations as evidence of voluntary contributions, and fabricating specific procedural details without statutory
+support. Table 15 presents four representative reasoning errors from Westlaw AI, demonstrating how the system consistently mischaracterized
+standard unemployment insurance provisions as voluntary contribution mechanisms.
+Westlaw AI’s errors exhibited consistent patterns across all 16 false positives. In Alabama and Florida, Westlaw AI cited purely procedural
+regulations governing protests and appeals of rate determinations as evidence of voluntary contribution authority. In Hawaii, Illinois, and
+Maryland, the system pointed to general rate calculation provisions and experience rating definitions, speculating wit
+
+============================================================
+PAPER: SYNAPSE
+============================================================
+Total pages: 17
+
+--- Page 1 ---
+ERROR: 'gbk' codec can't encode character '\u2020' in position 240: illegal multibyte sequence
+
+============================================================
+PAPER: KET-RAG
+============================================================
+Total pages: 10
+
+--- Page 1 ---
+ERROR: 'gbk' codec can't encode character '\u2217' in position 170: illegal multibyte sequence

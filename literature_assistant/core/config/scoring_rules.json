@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "last_updated": "2024-04-11",
+  "description": "Academic paper evidence quality scoring configuration",
+  "weights": {
+    "direct_evidence": 0.85,
+    "methodological_evidence": 0.70,
+    "correlational_evidence": 0.60,
+    "theoretical_evidence": 0.50,
+    "anecdotal_evidence": 0.30,
+    "method_description": 0.15,
+    "result_articulation": 0.25,
+    "mechanism_explanation": 0.25,
+    "background_context": 0.10,
+    "hedge_factor": -0.10,
+    "literature_grounding": 0.10,
+    "current_work_emphasis": 0.15
+  },
+  "thresholds": {
+    "low_quality": 0.30,
+    "medium_quality": 0.60,
+    "high_quality": 0.85,
+    "high_confidence": 0.90,
+    "min_method_evidence": 0.20,
+    "min_result_evidence": 0.25,
+    "min_mechanism_evidence": 0.15
+  },
+  "multipliers": {
+    "full_paper_advantage": 1.2,
+    "abstract_only_penalty": 0.8,
+    "recent_publication_boost": 1.1,
+    "high_citation_boost": 1.15,
+    "methodology_rigorous_boost": 1.2
+  },
+  "goal_mapping": {
+    "工艺参数": [
+      "parameter", "parameters", "power", "speed", "frequency", "heat input", "composition", "ratio", "modulation", "welding direction"
+    ],
+    "熔池流动": [
+      "molten pool", "flow", "convection", "dynamics", "keyhole", "spatter"
+    ],
+    "组织": [
+      "microstructure", "grain", "phase", "precipitate", "texture", "dendrite", "equiaxed", "columnar"
+    ],
+    "应力": [
+      "stress", "residual stress", "tensile", "compressive"
+    ],
+    "性能": [
+      "hardness", "wear", "corrosion", "tensile", "mechanical", "friction", "performance", "accuracy"
+    ],
+    "裂纹": [
+      "crack", "cracks", "cracking", "recognition", "defect", "anomaly"
+    ]
+  }
+}

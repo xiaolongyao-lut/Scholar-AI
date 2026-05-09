@@ -1,0 +1,97 @@
+{
+  "repo_root": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script",
+  "output_dir": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\output",
+  "output_exists": true,
+  "cases": [
+    {
+      "query": "激光熔池流动行为影响，匙孔如何控制？",
+      "baseline_tokens": [
+        "激光熔池流动行为影响",
+        "匙孔如何控制"
+      ],
+      "baseline_chunks": 0,
+      "route_a_token_count": 14,
+      "route_a_tokens_sample": [
+        "激光",
+        "光熔",
+        "熔池",
+        "池流",
+        "流动",
+        "动行",
+        "行为",
+        "为影",
+        "影响",
+        "匙孔"
+      ],
+      "route_a_chunks": 13428,
+      "verdict": "route-a-improves"
+    },
+    {
+      "query": "这篇文献主要研究了什么？",
+      "baseline_tokens": [
+        "这篇文献主要研究了什么"
+      ],
+      "baseline_chunks": 0,
+      "route_a_token_count": 10,
+      "route_a_tokens_sample": [
+        "这篇",
+        "篇文",
+        "文献",
+        "献主",
+        "主要",
+        "要研",
+        "研究",
+        "究了",
+        "了什",
+        "什么"
+      ],
+      "route_a_chunks": 138952,
+      "verdict": "route-a-improves"
+    },
+    {
+      "query": "文献库里关于焊缝结晶的控制有哪些相关研究？",
+      "baseline_tokens": [
+        "文献库里关于焊缝结晶的控制有哪些相关研究"
+      ],
+      "baseline_chunks": 0,
+      "route_a_token_count": 19,
+      "route_a_tokens_sample": [
+        "文献",
+        "献库",
+        "库里",
+        "里关",
+        "关于",
+        "于焊",
+        "焊缝",
+        "缝结",
+        "结晶",
+        "晶的"
+      ],
+      "route_a_chunks": 139238,
+      "verdict": "route-a-improves"
+    },
+    {
+      "query": "某种焊接工艺相关研究有哪些，写综述的材料？",
+      "baseline_tokens": [
+        "某种焊接工艺相关研究有哪些",
+        "写综述的材料"
+      ],
+      "baseline_chunks": 0,
+      "route_a_token_count": 17,
+      "route_a_tokens_sample": [
+        "某种",
+        "种焊",
+        "焊接",
+        "接工",
+        "工艺",
+        "艺相",
+        "相关",
+        "关研",
+        "研究",
+        "究有"
+      ],
+      "route_a_chunks": 11456,
+      "verdict": "route-a-improves"
+    }
+  ]
+}

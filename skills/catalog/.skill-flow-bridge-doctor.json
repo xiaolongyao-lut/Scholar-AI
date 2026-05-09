@@ -1,0 +1,462 @@
+{
+  "protocolVersion": "1.0",
+  "command": "doctor",
+  "ok": true,
+  "data": {
+    "status": "PARTIAL",
+    "issues": [
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:chatgpt-apps",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "chatgpt-apps",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\chatgpt-apps."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:cli-creator",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "cli-creator",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\cli-creator."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:cloudflare-deploy",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "cloudflare-deploy",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\cloudflare-deploy."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:figma",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "figma",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\figma."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:figma-create-design-system-rules",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "figma-create-design-system-rules",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\figma-create-design-system-rules."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:figma-generate-design",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "figma-generate-design",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\figma-generate-design."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:figma-implement-design",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "figma-implement-design",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\figma-implement-design."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:figma-use",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "figma-use",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\figma-use."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:frontend-quality",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "frontend-quality",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\frontend-quality."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:gh-address-comments",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "gh-address-comments",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\gh-address-comments."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:gh-fix-ci",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "gh-fix-ci",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\gh-fix-ci."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:implementation-planner",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "implementation-planner",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\implementation-planner."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:jupyter-notebook",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "jupyter-notebook",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\jupyter-notebook."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:linear",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "linear",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\linear."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:longrun-autopilot",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "longrun-autopilot",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\longrun-autopilot."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:migrate-to-codex",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "migrate-to-codex",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\migrate-to-codex."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:netlify-deploy",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "netlify-deploy",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\netlify-deploy."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:notion-knowledge-capture",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "notion-knowledge-capture",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\notion-knowledge-capture."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:notion-research-documentation",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "notion-research-documentation",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\notion-research-documentation."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:notion-spec-to-implementation",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "notion-spec-to-implementation",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\notion-spec-to-implementation."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:pdf",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "pdf",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\pdf."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:playwright",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "playwright",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\playwright."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:release-readiness",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "release-readiness",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\release-readiness."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:render-deploy",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "render-deploy",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\render-deploy."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:repo-onboarding",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "repo-onboarding",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\repo-onboarding."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:screenshot",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "screenshot",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\screenshot."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:security-best-practices",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "security-best-practices",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\security-best-practices."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:security-ownership-map",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "security-ownership-map",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\security-ownership-map."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:security-threat-model",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "security-threat-model",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\security-threat-model."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:sentry",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "sentry",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\sentry."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:squad",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "squad",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\squad."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:test-hardening",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "test-hardening",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\test-hardening."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:vercel-deploy",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "vercel-deploy",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\vercel-deploy."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:codex:yeet",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "codex",
+        "leafLabel": "yeet",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.codex\\skills\\yeet."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:brainstorming",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "brainstorming",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\brainstorming."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:dispatching-parallel-agents",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "dispatching-parallel-agents",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\dispatching-parallel-agents."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:executing-plans",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "executing-plans",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\executing-plans."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:finishing-a-development-branch",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "finishing-a-development-branch",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\finishing-a-development-branch."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:receiving-code-review",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "receiving-code-review",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\receiving-code-review."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:requesting-code-review",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "requesting-code-review",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\requesting-code-review."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:subagent-driven-development",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "subagent-driven-development",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\subagent-driven-development."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:systematic-debugging",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "systematic-debugging",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\systematic-debugging."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:test-driven-development",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "test-driven-development",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\test-driven-development."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:using-git-worktrees",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "using-git-worktrees",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\using-git-worktrees."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:using-superpowers",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "using-superpowers",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\using-superpowers."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:verification-before-completion",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "verification-before-completion",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\verification-before-completion."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:writing-plans",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "writing-plans",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\writing-plans."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:github-copilot:writing-skills",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "github-copilot",
+        "leafLabel": "writing-skills",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.copilot\\skills\\writing-skills."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:gemini-cli:squad",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "gemini-cli",
+        "leafLabel": "squad",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.gemini\\skills\\squad."
+      },
+      {
+        "severity": "warning",
+        "sourceId": "unmanaged:opencode:squad",
+        "sourceLabel": "Unmanaged external skill",
+        "target": "opencode",
+        "leafLabel": "squad",
+        "code": "UNMANAGED_EXTERNAL_TARGET_SKILL",
+        "message": "Unmanaged skill discovered at C:\\Users\\xiao\\.config\\opencode\\skills\\squad."
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": []
+}

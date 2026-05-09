@@ -1,0 +1,73 @@
+test_creates_planner_with_fact_store (test_memory_aware_planner.TestCreateDefaultPlanner.test_creates_planner_with_fact_store)
+Factory creates planner with fact store. ... ok
+test_creates_planner_with_policy_engine (test_memory_aware_planner.TestCreateDefaultPlanner.test_creates_planner_with_policy_engine)
+Factory can attach policy engine. ... ok
+test_plan_confidence_levels (test_memory_aware_planner.TestExecutionPlan.test_plan_confidence_levels)
+Can interpret confidence levels. ... C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_aware_planner.py:121: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+ok
+test_plan_creation_immutable (test_memory_aware_planner.TestExecutionPlan.test_plan_creation_immutable)
+ExecutionPlan is frozen. ... C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_aware_planner.py:85: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+ok
+test_plan_has_all_tracking_fields (test_memory_aware_planner.TestExecutionPlan.test_plan_has_all_tracking_fields)
+Plan includes full traceability. ... C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_aware_planner.py:103: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+ok
+test_adaptive_medium_load (test_memory_aware_planner.TestExecutionStrategyRule.test_adaptive_medium_load)
+Selects adaptive strategy under medium load. ... ok
+test_parallel_under_low_load (test_memory_aware_planner.TestExecutionStrategyRule.test_parallel_under_low_load)
+Selects parallel strategy when few jobs running. ... ok
+test_sequential_under_high_load (test_memory_aware_planner.TestExecutionStrategyRule.test_sequential_under_high_load)
+Selects sequential strategy when many jobs running. ... ok
+test_generate_basic_plan (test_memory_aware_planner.TestMemoryAwarePlannerCore.test_generate_basic_plan)
+Can generate a basic execution plan. ... C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\memory_aware_planner.py:331: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  "plan_id": f"plan_{context.session_id}_{int(datetime.utcnow().timestamp())}",
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\memory_aware_planner.py:334: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  "created_at": datetime.utcnow(),
+ok
+test_plan_has_default_skills (test_memory_aware_planner.TestMemoryAwarePlannerCore.test_plan_has_default_skills)
+Plan includes default skills for job kind. ... ok
+test_plan_with_custom_skills (test_memory_aware_planner.TestMemoryAwarePlannerCore.test_plan_with_custom_skills)
+Can provide custom skill sequence. ... ok
+test_planner_initializes_with_default_rules (test_memory_aware_planner.TestMemoryAwarePlannerCore.test_planner_initializes_with_default_rules)
+Planner initializes with all default rules. ... ok
+test_register_custom_rule (test_memory_aware_planner.TestMemoryAwarePlannerCore.test_register_custom_rule)
+Can register custom planning rules. ... ok
+test_plan_applies_all_rules_in_order (test_memory_aware_planner.TestMemoryAwarePlannerIntegration.test_plan_applies_all_rules_in_order)
+Plan applies all planning rules sequentially. ... ok
+test_plan_confidence_combines_factors (test_memory_aware_planner.TestMemoryAwarePlannerIntegration.test_plan_confidence_combines_factors)
+Confidence scores combine multiple factors. ... ok
+test_plan_under_high_system_load (test_memory_aware_planner.TestMemoryAwarePlannerIntegration.test_plan_under_high_system_load)
+Plan adjusts strategy under high system load. ... ok
+test_injects_memory_facts (test_memory_aware_planner.TestMemoryContextRule.test_injects_memory_facts)
+Injects matching memory facts into plan. ... ok
+test_skips_without_namespace (test_memory_aware_planner.TestMemoryContextRule.test_skips_without_namespace)
+Doesn't inject if no memory_namespace. ... ok
+test_context_creation_minimal (test_memory_aware_planner.TestPlanningContext.test_context_creation_minimal)
+Can create context with minimal fields. ... ok
+test_context_creation_with_memory_namespace (test_memory_aware_planner.TestPlanningContext.test_context_creation_with_memory_namespace)
+Can specify memory namespace for consultation. ... ok
+test_context_with_historical_context (test_memory_aware_planner.TestPlanningContext.test_context_with_historical_context)
+Can attach historical context from previous jobs. ... ok
+test_marks_unavailable_resources (test_memory_aware_planner.TestResourceConstraintRule.test_marks_unavailable_resources)
+Marks unavailable resources in plan. ... ok
+test_rule_applies_with_constraints (test_memory_aware_planner.TestResourceConstraintRule.test_rule_applies_with_constraints)
+Rule applies when constraints are present. ... ok
+test_rule_skips_without_constraints (test_memory_aware_planner.TestResourceConstraintRule.test_rule_skips_without_constraints)
+Rule doesn't apply without constraints. ... ok
+test_filters_disabled_skills (test_memory_aware_planner.TestSkillAvailabilityRule.test_filters_disabled_skills)
+Filters plan to only enabled skills. ... ok
+test_reduces_confidence_no_skills (test_memory_aware_planner.TestSkillAvailabilityRule.test_reduces_confidence_no_skills)
+Reduces confidence if no skills available. ... ok
+test_rule_applies_to_skill_jobs (test_memory_aware_planner.TestSkillAvailabilityRule.test_rule_applies_to_skill_jobs)
+Rule applies to job kinds that use skills. ... ok
+test_all_failures (test_memory_aware_planner.TestSuccessPatternRule.test_all_failures)
+Significantly reduces confidence if all failures. ... ok
+test_high_success_rate (test_memory_aware_planner.TestSuccessPatternRule.test_high_success_rate)
+Increases confidence with high success rate. ... ok
+
+----------------------------------------------------------------------
+Ran 29 tests in 0.043s
+
+OK

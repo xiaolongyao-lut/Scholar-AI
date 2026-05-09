@@ -1,0 +1,163 @@
+...............C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\harness_canonical_events.py:161: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  self._timestamp = datetime.utcnow().isoformat() + "Z"
+..........................C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\canonical_event_store.py:461: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  'exported_at': datetime.utcnow().isoformat() + "Z",
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\canonical_event_store.py:417: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  'exported_at': datetime.utcnow().isoformat() + "Z",
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\canonical_event_store.py:438: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  'exported_at': datetime.utcnow().isoformat() + "Z",
+......................C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_policy.py:107: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  self.now = datetime.utcnow()
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_policy.py:485: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_{aggregate_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_policy.py:487: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+.....................C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:187: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:227: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_cap_req_{agg_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:229: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:220: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:281: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_exec_done_{agg_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:283: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:240: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:311: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_exec_fail_{agg_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:313: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:204: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:254: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_exec_start_{agg_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:256: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+..C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:99: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_job_start_{job_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:101: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\canonical_event_store.py:122: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+  cursor.execute("""
+..C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:363: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_res_mod_{res_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:365: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+...C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:441: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+..C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:74: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_session_{session_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:76: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:124: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_job_done_{job_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:126: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+...C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:321: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:423: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_res_del_{res_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:425: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:286: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:304: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:393: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_res_pub_{res_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:395: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:335: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:449: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_res_restore_{res_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:451: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:129: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:174: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_job_cancel_{job_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:176: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:92: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:111: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:149: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  event_id=f'evt_job_fail_{job_id}_{int(datetime.utcnow().timestamp())}',
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\event_integration_layer.py:151: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=data.get('timestamp', datetime.utcnow()),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:72: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+..C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_event_integration_layer.py:54: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+..C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:319: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:134: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\memory_fact_store.py:113: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+...C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:225: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:405: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:420: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:447: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  valid_from=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:450: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:467: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  valid_from=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:470: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:520: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:534: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:548: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:494: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:383: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:361: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  valid_from=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:364: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+...C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:286: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\memory_fact_store.py:187: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:253: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\memory_fact_store.py:147: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:48: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:114: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:119: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  self.assertTrue(current_fact.was_valid_at(datetime.utcnow()))
+..C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:70: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_fact_store.py:87: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+...C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_aware_planner.py:121: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_aware_planner.py:85: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_aware_planner.py:103: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+....C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\memory_aware_planner.py:331: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  "plan_id": f"plan_{context.session_id}_{int(datetime.utcnow().timestamp())}",
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\memory_aware_planner.py:334: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  "created_at": datetime.utcnow(),
+.....................
+----------------------------------------------------------------------
+Ran 162 tests in 2.391s
+
+OK

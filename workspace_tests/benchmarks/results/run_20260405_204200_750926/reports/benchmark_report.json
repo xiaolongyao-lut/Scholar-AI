@@ -1,0 +1,136 @@
+{
+  "run_metadata": {
+    "run_id": "run_20260405_204200_750926",
+    "timestamp": "2026-04-05T20:42:00.754590",
+    "manifest": "benchmarks\\golden_cases\\manifest.json",
+    "pipeline_script": "integrated_pipeline.py",
+    "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+    "cwd": "C:\\Users\\xiao\\source\\repos\\xiaolongyao-lut\\Modular-Pipeline-Script",
+    "selected_case_count": 2,
+    "regen_candidate": false,
+    "accept_golden": false,
+    "updated_cases": [],
+    "baseline_report": ""
+  },
+  "aggregate": {
+    "total_cases": 2,
+    "passed_cases": 0,
+    "warning_cases": 0,
+    "failed_cases": 2,
+    "status_counts": {
+      "passed": 0,
+      "warning": 0,
+      "failed": 2
+    },
+    "severity_counts": {
+      "CRITICAL": 2,
+      "WARNING": 0
+    },
+    "check_failure_counts": {
+      "02_writing_material_pack.json::actual_exists": 1,
+      "run_master_项目看版.json::actual_exists": 1
+    },
+    "blocking_failures": 2,
+    "slowest_cases": [
+      {
+        "case_id": "replay_materials_19_01104",
+        "duration_seconds": 0.0,
+        "status": "failed"
+      },
+      {
+        "case_id": "replay_project_view_materials_19_01104",
+        "duration_seconds": 0.0,
+        "status": "failed"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "replay_materials_19_01104",
+      "split": "smoke",
+      "tags": [
+        "smoke",
+        "real_replay",
+        "material_pack"
+      ],
+      "started_at": "2026-04-05T20:42:00.753227",
+      "duration_seconds": 0.0,
+      "pipeline_ok": true,
+      "pipeline_error": "",
+      "status": "failed",
+      "critical_failures": 1,
+      "warning_failures": 0,
+      "artifact_results": [
+        {
+          "case_id": "replay_materials_19_01104",
+          "artifact": "02_writing_material_pack.json",
+          "expected_path": "benchmarks\\golden_cases\\replay_materials_19_01104\\expected\\02_writing_material_pack.json",
+          "actual_path": "benchmarks\\results\\run_20260405_204200_750926\\candidate\\replay_materials_19_01104\\02_writing_material_pack.json",
+          "status": "failed",
+          "critical_failures": 1,
+          "warning_failures": 0,
+          "rule_results": [
+            {
+              "path": "",
+              "type": "actual_exists",
+              "severity": "CRITICAL",
+              "ok": false,
+              "message": "candidate artifact missing",
+              "expected": "<EXISTS>",
+              "actual": "<MISSING>"
+            }
+          ],
+          "diff_path": ""
+        }
+      ],
+      "candidate_root": "benchmarks\\results\\run_20260405_204200_750926\\candidate\\replay_materials_19_01104",
+      "expected_root": "benchmarks\\golden_cases\\replay_materials_19_01104\\expected"
+    },
+    {
+      "case_id": "replay_project_view_materials_19_01104",
+      "split": "smoke",
+      "tags": [
+        "smoke",
+        "real_replay",
+        "project_view"
+      ],
+      "started_at": "2026-04-05T20:42:00.753811",
+      "duration_seconds": 0.0,
+      "pipeline_ok": true,
+      "pipeline_error": "",
+      "status": "failed",
+      "critical_failures": 1,
+      "warning_failures": 0,
+      "artifact_results": [
+        {
+          "case_id": "replay_project_view_materials_19_01104",
+          "artifact": "run_master_项目看版.json",
+          "expected_path": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\expected\\run_master_项目看版.json",
+          "actual_path": "benchmarks\\results\\run_20260405_204200_750926\\candidate\\replay_project_view_materials_19_01104\\run_master_项目看版.json",
+          "status": "failed",
+          "critical_failures": 1,
+          "warning_failures": 0,
+          "rule_results": [
+            {
+              "path": "",
+              "type": "actual_exists",
+              "severity": "CRITICAL",
+              "ok": false,
+              "message": "candidate artifact missing",
+              "expected": "<EXISTS>",
+              "actual": "<MISSING>"
+            }
+          ],
+          "diff_path": ""
+        }
+      ],
+      "candidate_root": "benchmarks\\results\\run_20260405_204200_750926\\candidate\\replay_project_view_materials_19_01104",
+      "expected_root": "benchmarks\\golden_cases\\replay_project_view_materials_19_01104\\expected"
+    }
+  ],
+  "baseline_delta": {},
+  "report_paths": {
+    "json": "benchmarks\\results\\run_20260405_204200_750926\\reports\\benchmark_report.json",
+    "markdown": "benchmarks\\results\\run_20260405_204200_750926\\reports\\benchmark_report.md"
+  }
+}

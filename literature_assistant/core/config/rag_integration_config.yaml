@@ -1,0 +1,63 @@
+# ============================================================================
+# RAG Integration Configuration
+# 文件: config/rag_integration_config.yaml
+# 用途: 统一管理 RAGFlow / GraphRAG / AutoRAG / Workflow 的运行时参数
+# ============================================================================
+# 注意: API Key 等敏感信息应通过环境变量注入, 不要写入此文件
+#   RAGFLOW_API_KEY, ARK_API_KEY, SILICONFLOW_API_KEY 等
+
+# ─── RAGFlow 检索适配器 ───────────────────────────────────────────
+ragflow:
+  enabled: false                               # 暂未部署 RAGFlow 实例，关闭
+  base_url: "https://localhost:9380"           # RAGFlow 服务地址 (待部署后更新)
+  dataset_ids: []                              # 检索目标数据集 ID 列表 (待配置)
+  verify_ssl: true
+  connect_timeout: 5
+  read_timeout: 25
+  max_retries: 3
+
+# ─── GraphRAG 社区图谱 ──────────────────────────────────────────
+graphrag:
+  enabled: false                               # 需先运行 graphrag index 生成 parquet
+  index_path: "C:/Users/xiao/Desktop/wenxianku" # 文献库路径 (待生成 parquet 后启用)
+  default_community_level: 1
+
+# ─── AutoRAG 评测 ───────────────────────────────────────────────
+autorag:
+  enabled: true
+  data_path: "C:/Users/xiao/Desktop/wenxianku" # 文献库路径
+  output_dir: "./autorag_out"
+  config_path: "./config/autorag_eval.yaml"
+
+# ─── Embedding / Semantic Router ─────────────────────────────────
+embedding:
+  provider: "siliconflow"
+  api_key_env: "SILICONFLOW_API_KEY"
+  base_url: "https://api.siliconflow.cn/v1"
+  model: "BAAI/bge-m3"
+  timeout: 60.0
+  batch_size: 50
+  lazy_vectorize: true
+
+# ─── RAG 工作流 ─────────────────────────────────────────────────
+workflow:
+  use_local_fallback: true
+  top_k_points: 3
+  top_k_evidence: 5
+  llm_api_key_env: "ARK_API_KEY"
+  llm_base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  llm_model: "ep-your-ark-endpoint"
+  enable_requests_fallback: true
+
+# ─── MemPalace 长期记忆层 ───────────────────────────────────────────────
+mempalace:
+  enabled: true
+  vendor_repo_path: "./github/mempalace-3.0.0"
+  palace_path: "./output/mempalace/palace"
+  collection_name: "mempalace_drawers"
+  default_wing: "wing_modular_pipeline"
+  default_room: "runtime-jobs"
+  search_limit: 3
+  max_content_chars: 4000
+  auto_sync_runtime_jobs: true
+  identity_path: "./output/mempalace/identity.txt"

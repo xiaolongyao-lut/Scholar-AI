@@ -1,0 +1,74 @@
+# Academic Paper Evidence Quality Scoring Configuration
+# Extracted from 07_analysis_scoring_improved_v9.py for external configuration
+
+version: "1.0"
+last_updated: "2024-04-11"
+
+# Regular Expression Patterns for Text Matching (as strings - will be compiled at runtime)
+evidence_patterns:
+  method_cues_pattern: "method|methods|experimental|procedure|performed|used|employed"
+  result_cues_pattern: "increase|decrease|reduce|improve|enhance|achieve|yield|accuracy|hardness"
+  mech_cues_pattern: "because|due to|result in|promote|suppress|mechanism|attribute|therefore"
+  background_cues_pattern: "challenge|however|traditionally|previous|recent|introduction"
+  hedge_cues_pattern: "may|might|could|suggest|likely|appears|potentially|indicates"
+
+stopwords:
+  english:
+    - the
+    - and
+    - for
+    - with
+    - that
+    - this
+    - from
+    - were
+    - was
+    - are
+    - into
+    - under
+    - than
+    - when
+    - where
+    - while
+    - been
+    - their
+    - which
+
+# Goal/Domain Mapping
+goal_mapping:
+  "工艺参数":
+    - parameter
+    - parameters
+    - power
+    - speed
+    - frequency
+  "熔池流动":
+    - molten
+    - flow
+    - convection
+    - dynamics
+    - keyhole
+
+# Scoring Weights
+weights:
+  direct_evidence: 0.85
+  methodological_evidence: 0.70
+  correlational_evidence: 0.60
+  theoretical_evidence: 0.50
+  anecdotal_evidence: 0.30
+  method_description: 0.15
+  result_articulation: 0.25
+
+# Quality Thresholds
+thresholds:
+  low_quality: 0.30
+  medium_quality: 0.60
+  high_quality: 0.85
+  high_confidence: 0.90
+  min_method_evidence: 0.20
+
+# Scoring Multipliers
+multipliers:
+  full_paper_advantage: 1.2
+  abstract_only_penalty: 0.8
+  recent_publication_boost: 1.1

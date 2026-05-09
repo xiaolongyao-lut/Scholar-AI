@@ -1,0 +1,1663 @@
+{
+  "goal": "提取激光氮化工艺参数与硬度耐磨性关系",
+  "goal_profile": {
+    "method_focus": false,
+    "image_focus": false,
+    "process_focus": false,
+    "performance_focus": false,
+    "mechanism_focus": false
+  },
+  "metadata": {
+    "detected_domain": "experimental",
+    "domain_scores": {
+      "experimental": 1.0,
+      "simulation": 0.0,
+      "review": 0.0
+    },
+    "domain_confidence": 1.0
+  },
+  "status": "ok",
+  "pipeline_stage": "S3_target_material_packaging",
+  "pack_summary": {
+    "selected_writing_points": 12,
+    "selected_figures": 3,
+    "selected_tables": 0,
+    "selected_references": 0,
+    "selected_parameters": 0,
+    "selected_results": 0,
+    "evidence_bundles": 12,
+    "semantic_themes": 6,
+    "consistency_issues": 17
+  },
+  "quality_gates": {
+    "has_writing_points": true,
+    "has_figure_level_evidence": true,
+    "has_original_reference_markers": false,
+    "has_boundary_notes": false,
+    "has_semantic_themes": true,
+    "has_consistency_report": true,
+    "writing_points_have_supporting_evidence": false,
+    "themes_have_linked_writing_points": true,
+    "consistency_pass": false
+  },
+  "consistency_report": {
+    "summary": {
+      "writing_point_count": 12,
+      "theme_count": 6,
+      "issue_count": 17,
+      "error_count": 10,
+      "warning_count": 7,
+      "support_status_counts": {
+        "supported": 7,
+        "partial": 3,
+        "unsupported": 2
+      },
+      "overall_pass": false
+    },
+    "issues": [
+      {
+        "severity": "error",
+        "scope": "writing_point",
+        "id": "wp041",
+        "message": "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+      },
+      {
+        "severity": "warning",
+        "scope": "writing_point",
+        "id": "wp045",
+        "message": "写作点仅获得部分语义支撑，建议补充更直接的图表、参数或结果证据。"
+      },
+      {
+        "severity": "error",
+        "scope": "writing_point",
+        "id": "wp075",
+        "message": "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+      },
+      {
+        "severity": "error",
+        "scope": "writing_point",
+        "id": "wp019",
+        "message": "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+      },
+      {
+        "severity": "warning",
+        "scope": "writing_point",
+        "id": "wp046",
+        "message": "写作点仅获得部分语义支撑，建议补充更直接的图表、参数或结果证据。"
+      },
+      {
+        "severity": "error",
+        "scope": "writing_point",
+        "id": "wp062",
+        "message": "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+      },
+      {
+        "severity": "error",
+        "scope": "writing_point",
+        "id": "wp066",
+        "message": "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+      },
+      {
+        "severity": "warning",
+        "scope": "writing_point",
+        "id": "wp055",
+        "message": "写作点仅获得部分语义支撑，建议补充更直接的图表、参数或结果证据。"
+      },
+      {
+        "severity": "error",
+        "scope": "writing_point",
+        "id": "wp001",
+        "message": "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+      },
+      {
+        "severity": "error",
+        "scope": "writing_point",
+        "id": "wp001",
+        "message": "写作点存在结构证据，但语义层面未能支撑 claim（主题/参数/现象不匹配或存在冲突）。"
+      },
+      {
+        "severity": "error",
+        "scope": "writing_point",
+        "id": "wp002",
+        "message": "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+      },
+      {
+        "severity": "error",
+        "scope": "writing_point",
+        "id": "wp002",
+        "message": "写作点存在结构证据，但语义层面未能支撑 claim（主题/参数/现象不匹配或存在冲突）。"
+      },
+      {
+        "severity": "warning",
+        "scope": "theme",
+        "id": "theme_005",
+        "message": "主题仅获得部分语义支撑，建议补充与主张直接匹配的证据文本。"
+      },
+      {
+        "severity": "warning",
+        "scope": "theme",
+        "id": "theme_001",
+        "message": "主题仅获得部分语义支撑，建议补充与主张直接匹配的证据文本。"
+      },
+      {
+        "severity": "warning",
+        "scope": "theme",
+        "id": "theme_006",
+        "message": "主题仅获得部分语义支撑，建议补充与主张直接匹配的证据文本。"
+      },
+      {
+        "severity": "warning",
+        "scope": "theme",
+        "id": "theme_003",
+        "message": "主题下写作点缺少显式图表/参数/结果/引用链接，主文支撑较弱。"
+      },
+      {
+        "severity": "error",
+        "scope": "theme",
+        "id": "theme_003",
+        "message": "主题下写作点整体语义支撑不足，无法保证主题主张可信。"
+      }
+    ],
+    "writing_point_checks": [
+      {
+        "writing_point_id": "wp041",
+        "claim_present": true,
+        "linked_evidence_count": 0,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": false,
+        "support_status": "supported",
+        "supporting_evidence_ids": [
+          "source::wp041"
+        ],
+        "missing_evidence_types": [],
+        "severity": "error",
+        "issues": [
+          "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+        ]
+      },
+      {
+        "writing_point_id": "wp045",
+        "claim_present": true,
+        "linked_evidence_count": 2,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": true,
+        "support_status": "partial",
+        "supporting_evidence_ids": [
+          "f1"
+        ],
+        "missing_evidence_types": [
+          "source_chunk"
+        ],
+        "severity": "warning",
+        "issues": [
+          "写作点仅获得部分语义支撑，建议补充更直接的图表、参数或结果证据。"
+        ]
+      },
+      {
+        "writing_point_id": "wp049",
+        "claim_present": true,
+        "linked_evidence_count": 2,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": true,
+        "support_status": "supported",
+        "supporting_evidence_ids": [
+          "source::wp049",
+          "f1",
+          "f2"
+        ],
+        "missing_evidence_types": [],
+        "severity": "ok",
+        "issues": []
+      },
+      {
+        "writing_point_id": "wp075",
+        "claim_present": true,
+        "linked_evidence_count": 0,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": false,
+        "support_status": "supported",
+        "supporting_evidence_ids": [
+          "source::wp075"
+        ],
+        "missing_evidence_types": [],
+        "severity": "error",
+        "issues": [
+          "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+        ]
+      },
+      {
+        "writing_point_id": "wp019",
+        "claim_present": true,
+        "linked_evidence_count": 0,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": false,
+        "support_status": "supported",
+        "supporting_evidence_ids": [
+          "source::wp019"
+        ],
+        "missing_evidence_types": [],
+        "severity": "error",
+        "issues": [
+          "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+        ]
+      },
+      {
+        "writing_point_id": "wp046",
+        "claim_present": true,
+        "linked_evidence_count": 1,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": true,
+        "support_status": "partial",
+        "supporting_evidence_ids": [
+          "source::wp046"
+        ],
+        "missing_evidence_types": [
+          "figure"
+        ],
+        "severity": "warning",
+        "issues": [
+          "写作点仅获得部分语义支撑，建议补充更直接的图表、参数或结果证据。"
+        ]
+      },
+      {
+        "writing_point_id": "wp062",
+        "claim_present": true,
+        "linked_evidence_count": 0,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": false,
+        "support_status": "supported",
+        "supporting_evidence_ids": [
+          "source::wp062"
+        ],
+        "missing_evidence_types": [],
+        "severity": "error",
+        "issues": [
+          "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+        ]
+      },
+      {
+        "writing_point_id": "wp066",
+        "claim_present": true,
+        "linked_evidence_count": 0,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": false,
+        "support_status": "supported",
+        "supporting_evidence_ids": [
+          "source::wp066"
+        ],
+        "missing_evidence_types": [],
+        "severity": "error",
+        "issues": [
+          "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。"
+        ]
+      },
+      {
+        "writing_point_id": "wp053",
+        "claim_present": true,
+        "linked_evidence_count": 2,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": true,
+        "support_status": "supported",
+        "supporting_evidence_ids": [
+          "source::wp053",
+          "f1"
+        ],
+        "missing_evidence_types": [],
+        "severity": "ok",
+        "issues": []
+      },
+      {
+        "writing_point_id": "wp055",
+        "claim_present": true,
+        "linked_evidence_count": 4,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": true,
+        "support_status": "partial",
+        "supporting_evidence_ids": [
+          "source::wp055"
+        ],
+        "missing_evidence_types": [
+          "figure"
+        ],
+        "severity": "warning",
+        "issues": [
+          "写作点仅获得部分语义支撑，建议补充更直接的图表、参数或结果证据。"
+        ]
+      },
+      {
+        "writing_point_id": "wp001",
+        "claim_present": true,
+        "linked_evidence_count": 0,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": false,
+        "support_status": "unsupported",
+        "supporting_evidence_ids": [],
+        "missing_evidence_types": [
+          "source_chunk"
+        ],
+        "severity": "error",
+        "issues": [
+          "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。",
+          "写作点存在结构证据，但语义层面未能支撑 claim（主题/参数/现象不匹配或存在冲突）。"
+        ]
+      },
+      {
+        "writing_point_id": "wp002",
+        "claim_present": true,
+        "linked_evidence_count": 0,
+        "source_chunk_count": 0,
+        "reference_marker_count": 0,
+        "has_supporting_evidence": false,
+        "support_status": "unsupported",
+        "supporting_evidence_ids": [],
+        "missing_evidence_types": [
+          "source_chunk"
+        ],
+        "severity": "error",
+        "issues": [
+          "写作点没有任何图、表、参数、结果、引用或 source_chunk 支撑。",
+          "写作点存在结构证据，但语义层面未能支撑 claim（主题/参数/现象不匹配或存在冲突）。"
+        ]
+      }
+    ],
+    "theme_checks": [
+      {
+        "theme_id": "theme_005",
+        "theme_title": "result",
+        "linked_writing_point_count": 3,
+        "missing_writing_point_ids": [],
+        "aggregated_evidence_count": 1,
+        "has_supporting_evidence": true,
+        "support_status": "partial",
+        "severity": "warning",
+        "issues": [
+          "主题仅获得部分语义支撑，建议补充与主张直接匹配的证据文本。"
+        ]
+      },
+      {
+        "theme_id": "theme_001",
+        "theme_title": "result",
+        "linked_writing_point_count": 1,
+        "missing_writing_point_ids": [],
+        "aggregated_evidence_count": 4,
+        "has_supporting_evidence": true,
+        "support_status": "partial",
+        "severity": "warning",
+        "issues": [
+          "主题仅获得部分语义支撑，建议补充与主张直接匹配的证据文本。"
+        ]
+      },
+      {
+        "theme_id": "theme_006",
+        "theme_title": "mechanism与result",
+        "linked_writing_point_count": 2,
+        "missing_writing_point_ids": [],
+        "aggregated_evidence_count": 2,
+        "has_supporting_evidence": true,
+        "support_status": "partial",
+        "severity": "warning",
+        "issues": [
+          "主题仅获得部分语义支撑，建议补充与主张直接匹配的证据文本。"
+        ]
+      },
+      {
+        "theme_id": "theme_002",
+        "theme_title": "discussion",
+        "linked_writing_point_count": 2,
+        "missing_writing_point_ids": [],
+        "aggregated_evidence_count": 2,
+        "has_supporting_evidence": true,
+        "support_status": "supported",
+        "severity": "ok",
+        "issues": []
+      },
+      {
+        "theme_id": "theme_004",
+        "theme_title": "discussion与discussion",
+        "linked_writing_point_count": 2,
+        "missing_writing_point_ids": [],
+        "aggregated_evidence_count": 2,
+        "has_supporting_evidence": true,
+        "support_status": "supported",
+        "severity": "ok",
+        "issues": []
+      },
+      {
+        "theme_id": "theme_003",
+        "theme_title": "discussion",
+        "linked_writing_point_count": 2,
+        "missing_writing_point_ids": [],
+        "aggregated_evidence_count": 0,
+        "has_supporting_evidence": false,
+        "support_status": "unsupported",
+        "severity": "error",
+        "issues": [
+          "主题下写作点缺少显式图表/参数/结果/引用链接，主文支撑较弱。",
+          "主题下写作点整体语义支撑不足，无法保证主题主张可信。"
+        ]
+      }
+    ]
+  },
+  "semantic_themes": [
+    {
+      "theme_id": "theme_005",
+      "theme_title": "result",
+      "logic_axis": "parameter",
+      "order_score": 2.005,
+      "earliest_page": 2,
+      "linked_writing_point_ids": [
+        "wp046",
+        "wp062",
+        "wp066"
+      ],
+      "linked_figure_ids": [
+        "f1"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "summary": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+      "narrative_blocks": [
+        {
+          "label": "导读",
+          "text": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test."
+        },
+        {
+          "label": "研究内容",
+          "text": "本主题重点呈现参数影响与结果变化相关内容。"
+        },
+        {
+          "label": "关键发现",
+          "text": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed…。；carefully selecting the laser processing parameters, nitriding without surface melting was achieved."
+        },
+        {
+          "label": "图示对应",
+          "text": "以下图像仅保留与上述正文段落直接对应的 figure 证据，用于辅助理解研究内容。"
+        }
+      ]
+    },
+    {
+      "theme_id": "theme_001",
+      "theme_title": "result",
+      "logic_axis": "parameter",
+      "order_score": 0.475,
+      "earliest_page": 3,
+      "linked_writing_point_ids": [
+        "wp055"
+      ],
+      "linked_figure_ids": [
+        "f2",
+        "f3"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "summary": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+      "narrative_blocks": [
+        {
+          "label": "导读",
+          "text": "2, it could be observed that the width and color of the tracks depend on the scanning speed."
+        },
+        {
+          "label": "研究内容",
+          "text": "本主题重点呈现参数影响与结果变化相关内容。"
+        },
+        {
+          "label": "图示对应",
+          "text": "以下图像仅保留与上述正文段落直接对应的 figure 证据，用于辅助理解研究内容。"
+        }
+      ]
+    },
+    {
+      "theme_id": "theme_006",
+      "theme_title": "mechanism与result",
+      "logic_axis": "mechanism",
+      "order_score": 1.614,
+      "earliest_page": 2,
+      "linked_writing_point_ids": [
+        "wp041",
+        "wp045"
+      ],
+      "linked_figure_ids": [
+        "f1"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "summary": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+      "narrative_blocks": [
+        {
+          "label": "导读",
+          "text": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s."
+        },
+        {
+          "label": "研究内容",
+          "text": "本主题重点呈现机理解释与因果分析相关内容。"
+        },
+        {
+          "label": "关键发现",
+          "text": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed wa…。；该写作点概括了扫描速度、激光功率对核心结果的主效应、交互作用或变化规律。"
+        },
+        {
+          "label": "图示对应",
+          "text": "以下图像仅保留与上述正文段落直接对应的 figure 证据，用于辅助理解研究内容。"
+        }
+      ]
+    },
+    {
+      "theme_id": "theme_002",
+      "theme_title": "discussion",
+      "logic_axis": "mechanism",
+      "order_score": 1.38,
+      "earliest_page": 3,
+      "linked_writing_point_ids": [
+        "wp049",
+        "wp075"
+      ],
+      "linked_figure_ids": [
+        "f1",
+        "f2"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "summary": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "narrative_blocks": [
+        {
+          "label": "导读",
+          "text": "Laser power 250 W Scanning speed 1 mm/s Diameter。"
+        },
+        {
+          "label": "研究内容",
+          "text": "本主题重点呈现机理解释与因果分析相关内容。"
+        },
+        {
+          "label": "图示对应",
+          "text": "以下图像仅保留与上述正文段落直接对应的 figure 证据，用于辅助理解研究内容。"
+        }
+      ]
+    },
+    {
+      "theme_id": "theme_004",
+      "theme_title": "discussion与discussion",
+      "logic_axis": "mechanism",
+      "order_score": 1.143,
+      "earliest_page": 1,
+      "linked_writing_point_ids": [
+        "wp019",
+        "wp053"
+      ],
+      "linked_figure_ids": [
+        "f2",
+        "f1"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "summary": "selecting the laser processing parameters.",
+      "narrative_blocks": [
+        {
+          "label": "导读",
+          "text": "selecting the laser processing parameters."
+        },
+        {
+          "label": "研究内容",
+          "text": "本主题重点呈现机理解释与因果分析相关内容。"
+        },
+        {
+          "label": "图示对应",
+          "text": "以下图像仅保留与上述正文段落直接对应的 figure 证据，用于辅助理解研究内容。"
+        }
+      ]
+    },
+    {
+      "theme_id": "theme_003",
+      "theme_title": "discussion",
+      "logic_axis": "mechanism",
+      "order_score": 0.538,
+      "earliest_page": 1,
+      "linked_writing_point_ids": [
+        "wp001",
+        "wp002"
+      ],
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "summary": "Applied Surface Science 258 (2011) 436– 441",
+      "narrative_blocks": [
+        {
+          "label": "导读",
+          "text": "Applied Surface Science 258 (2011) 436– 441。"
+        },
+        {
+          "label": "研究内容",
+          "text": "本主题重点呈现机理解释与因果分析相关内容。"
+        }
+      ]
+    }
+  ],
+  "writing_point_cards": [
+    {
+      "writing_point_id": "wp041",
+      "claim": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+      "representative_claim": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+      "claim_preview": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+      "point_type": "mechanism",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 2,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Ti–6Al–4V (Ti alloy with 6 wt.% Al and 4 wt.% V) samples of dimensions 60 mm × 30 mm × 5 mm were spark cut from plates. The samples were ground and polished successively with SiC papers of ﬁneness up to 800 grits. The plates were ﬁnally polished with 1 \u0002m diamond paste, degreased, rinsed in deionized water, and dried in cold air stream. Laser surface treatment of the samples was performed using a CW Nd:YAG laser system (Lumonics MW2000). Gas nitriding of the samples was carried out in a chamber which was continuously purged with nitrogen at a rate of 40 L/min to maintain a nitrogen atmosphere. As a balanced selection between energy density and processing efﬁciency, the laser spot diameter was set at 3 mm at the sample surface. To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s. After selecting the laser processing parameters that would result in nitriding without melting, repeated laser passes on the same track were performed with an aim of increasing the thickness of the nitrided layer.",
+      "source_text_preview": "Ti–6Al–4V (Ti alloy with 6 wt.% Al and 4 wt.% V) samples of dimensions 60 mm × 30 mm × 5 mm were spark cut from plates. The samples were ground and polished successively with SiC papers of ﬁneness up to 800 grits. The plates were ﬁnally polished with 1 \u0002m dia…",
+      "causal_roles": [],
+      "goal_hits": [
+        "parameter",
+        "parameters",
+        "power",
+        "speed"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.9241,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "机理解释与因果分析",
+      "content_summary": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed wa…。",
+      "usage_direction": "适合用作主题导读或段落收束，帮助读者快速把握研究内容。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+      "mini_summary": "该写作点主要服务于“机理解释与因果分析”这一叙述方向，可作为适合用作主题导读或段落收束，帮助读者快速把握研究内容的概括性材料。",
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp045",
+      "claim": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively).",
+      "representative_claim": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively).",
+      "claim_preview": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively).",
+      "point_type": "result",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 2,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "When a substrate is irradiated with a laser beam, part of the laser energy is absorbed and the surface layer is heated up. The temperature reached by the surface layer depends on a multitude of factors which may be grouped into materials properties and laser processing parameters. The former group includes the reﬂectivity of the surface at the laser wavelength and thermal properties of the substrate while the latter include the laser power P, spot diameter d and scanning speed v in the case of a CW laser. For a given substrate, the temperature reached by the surface layer depends on P, d and v in a complex manner [19]. In the present study, the laser spot diameter d was ﬁxed while P and v were varied with an aim of achieving efﬁcient nitriding without melting. Melted and nonmelted tracks were ﬁrst screened by the appearance of the laser tracks. The values of laser scanning speed that did not lead to melting for different laser powers are shown in Table 1. For laser power at 400 W, surface melting occurred even at the highest scanning speed (25 mm/s), and thus a laser power of 400 W was discarded in the selection. Examples of some melted tracks processed with a laser power of 400 W are shown in the optical images in Fig. 1. It could be observed that the width of the melt track is smaller than the laser beam diameter. This results from the Gaussian distribution of laser energy in the beam cross section, with about one-third of the beam having energy density high enough to melt the surface. For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively). At lower laser powers of 250 W and 200 W, the surface did not melt even at the lowest scanning speed of 1 mm/s. Examples of non-melted tracks processed with a laser power of 250 W are",
+      "source_text_preview": "When a substrate is irradiated with a laser beam, part of the laser energy is absorbed and the surface layer is heated up. The temperature reached by the surface layer depends on a multitude of factors which may be grouped into materials properties and laser…",
+      "causal_roles": [],
+      "goal_hits": [
+        "power",
+        "speed"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.69,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "参数影响与结果变化",
+      "content_summary": "该写作点概括了扫描速度、激光功率对核心结果的主效应、交互作用或变化规律。",
+      "usage_direction": "适合用于结果分析或参数对比段，先总括规律，再衔接具体图表或数据。",
+      "claim_render_mode": "abstract",
+      "claim_display_text": "该写作点概括了扫描速度、激光功率对核心结果的主效应、交互作用或变化规律。",
+      "mini_summary": "该写作点主要服务于“参数影响与结果变化”这一叙述方向，可作为适合用于结果分析或参数对比段，先总括规律，再衔接具体图表或数据的概括性材料。",
+      "linked_figure_ids": [
+        "f1",
+        "f1"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [
+          "f1",
+          "f1"
+        ],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "2 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [
+        {
+          "figure_id": "f1",
+          "page": 2,
+          "caption": "Fig. 1. Examples of melted tracks processed with laser power 400 W at scanning speed of 1 mm/s (left), 4 mm/s (middle) and 8 mm/s (right).",
+          "relevance_score": 0.5
+        },
+        {
+          "figure_id": "f1",
+          "page": 2,
+          "caption": "Fig. 1. Examples of melted tracks processed with laser power 400 W at scanning speed of 1 mm/s (left), 4 mm/s (middle) and 8 mm/s (right).",
+          "relevance_score": 0.5
+        }
+      ],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp049",
+      "claim": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "representative_claim": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "claim_preview": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 3,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "source_text_preview": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "causal_roles": [],
+      "goal_hits": [
+        "power",
+        "speed"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.69,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "机理解释与因果分析",
+      "content_summary": "Laser power 250 W Scanning speed 1 mm/s Diameter。",
+      "usage_direction": "适合放在正文论述中，用于承接图表证据并解释现象变化。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "Laser power 250 W Scanning speed 1 mm/s Diameter。",
+      "mini_summary": "该写作点主要服务于“机理解释与因果分析”这一叙述方向，可作为适合放在正文论述中，用于承接图表证据并解释现象变化的概括性材料。",
+      "linked_figure_ids": [
+        "f1",
+        "f2"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [
+          "f1",
+          "f2"
+        ],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "2 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [
+        {
+          "figure_id": "f1",
+          "page": 2,
+          "caption": "Fig. 1. Examples of melted tracks processed with laser power 400 W at scanning speed of 1 mm/s (left), 4 mm/s (middle) and 8 mm/s (right).",
+          "relevance_score": 0.5
+        },
+        {
+          "figure_id": "f2",
+          "page": 3,
+          "caption": "Fig. 2. Examples of non-melted tracks processed with laser power 250 W at scanning",
+          "relevance_score": 0.5
+        }
+      ],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp075",
+      "claim": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "representative_claim": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "claim_preview": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 6,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "source_text_preview": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "causal_roles": [],
+      "goal_hits": [
+        "power",
+        "speed"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.69,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "机理解释与因果分析",
+      "content_summary": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁc…。",
+      "usage_direction": "适合用作主题导读或段落收束，帮助读者快速把握研究内容。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "mini_summary": "该写作点主要服务于“机理解释与因果分析”这一叙述方向，可作为适合用作主题导读或段落收束，帮助读者快速把握研究内容的概括性材料。",
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp019",
+      "claim": "selecting the laser processing parameters.",
+      "representative_claim": "selecting the laser processing parameters.",
+      "claim_preview": "selecting the laser processing parameters.",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "selecting the laser processing parameters. The nitrided surface was characterized by X-ray diffractometry (XRD), optical microscopy (OM), scanning-electron microscopy (SEM), and proﬁlometry. The",
+      "source_text_preview": "selecting the laser processing parameters. The nitrided surface was characterized by X-ray diffractometry (XRD), optical microscopy (OM), scanning-electron microscopy (SEM), and proﬁlometry. The",
+      "causal_roles": [],
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.6682,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "机理解释与因果分析",
+      "content_summary": "selecting the laser processing parameters.",
+      "usage_direction": "适合用作主题导读或段落收束，帮助读者快速把握研究内容。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "selecting the laser processing parameters.",
+      "mini_summary": "该写作点主要服务于“机理解释与因果分析”这一叙述方向，可作为适合用作主题导读或段落收束，帮助读者快速把握研究内容的概括性材料。",
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp046",
+      "claim": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+      "representative_claim": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+      "claim_preview": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+      "point_type": "result",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 2,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "As the nitride layer formed by diffusion nitriding is usually rather thin (around 1 \u0002m), its mechanical properties are best studied using nanoindentation. In the present paper a commercial nanoindenter system (Hysitron High-Load Indenter) with a Berkovich indenter was employed for acquiring the load–displacement curves upon loading and unloading for both the untreated sample and the nitrided sample. The nanoindentation hardness HN and the Young’s modulus E were derived from the curves using the built-in software. As the accuracy of indentation measurement depends on the smoothness of the surface, the samples were ﬁnally polished with 0.25 \u0002m diamond paste before nanoindentation experiment. Wear resistance was studied using a linearly reciprocating ball-on-slab sliding wear tester (TE99 Universal Wear Machine, Phoenix Tribology). A Ti–6Al–4V ball of diameter 6 mm was used in the test, with a load of 4.8 N, the stroke length being 10 mm and the reciprocating frequency, 0.5 Hz. The test duration was 240 s. This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test. After the wear test, the transverse cross-sectional area of the wear track was obtained using an optical proﬁler (Alicona IFM G4 3D-Optical Measuring System) at three",
+      "source_text_preview": "As the nitride layer formed by diffusion nitriding is usually rather thin (around 1 \u0002m), its mechanical properties are best studied using nanoindentation. In the present paper a commercial nanoindenter system (Hysitron High-Load Indenter) with a Berkovich ind…",
+      "causal_roles": [],
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.6682,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "参数影响与结果变化",
+      "content_summary": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed…。",
+      "usage_direction": "适合放在正文论述中，用于承接图表证据并解释现象变化。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+      "mini_summary": "该写作点主要服务于“参数影响与结果变化”这一叙述方向，可作为适合放在正文论述中，用于承接图表证据并解释现象变化的概括性材料。",
+      "linked_figure_ids": [
+        "f1"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [
+          "f1"
+        ],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "1 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [
+        {
+          "figure_id": "f1",
+          "page": 2,
+          "caption": "Fig. 1. Examples of melted tracks processed with laser power 400 W at scanning speed of 1 mm/s (left), 4 mm/s (middle) and 8 mm/s (right).",
+          "relevance_score": 0.5
+        }
+      ],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp062",
+      "claim": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+      "representative_claim": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+      "claim_preview": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+      "point_type": "result",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 5,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved. The surface roughness",
+      "source_text_preview": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved. The surface roughness",
+      "causal_roles": [],
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.6682,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "参数影响与结果变化",
+      "content_summary": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+      "usage_direction": "适合用作主题导读或段落收束，帮助读者快速把握研究内容。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+      "mini_summary": "该写作点主要服务于“参数影响与结果变化”这一叙述方向，可作为适合用作主题导读或段落收束，帮助读者快速把握研究内容的概括性材料。",
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp066",
+      "claim": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+      "representative_claim": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+      "claim_preview": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+      "point_type": "result",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 6,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "The thickness of the nitrided layer could be increased by repeated pass on the laser track, but with diminishing effectiveness as the number of repetition increases, the optimal number of repeated pass being 5, with the thickness of nitrided layer reaching about 1.62 \u0002m. (3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate. (4) The wear resistance of the nitrided sample was about 8 times that of the untreated Ti–6Al–4V sample, the improvement being attributable to increase in hardness. The increase in hardness and wear resistance are comparable to those achieved by conventional laser nitriding involving melting.",
+      "source_text_preview": "The thickness of the nitrided layer could be increased by repeated pass on the laser track, but with diminishing effectiveness as the number of repetition increases, the optimal number of repeated pass being 5, with the thickness of nitrided layer reaching ab…",
+      "causal_roles": [],
+      "goal_hits": [
+        "parameter",
+        "parameters"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.6682,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "参数影响与结果变化",
+      "content_summary": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+      "usage_direction": "适合用作主题导读或段落收束，帮助读者快速把握研究内容。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+      "mini_summary": "该写作点主要服务于“参数影响与结果变化”这一叙述方向，可作为适合用作主题导读或段落收束，帮助读者快速把握研究内容的概括性材料。",
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp053",
+      "claim": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "representative_claim": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "claim_preview": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 3,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "source_text_preview": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "causal_roles": [],
+      "goal_hits": [
+        "speed"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.475,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "机理解释与因果分析",
+      "content_summary": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "usage_direction": "适合放在正文论述中，用于承接图表证据并解释现象变化。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "mini_summary": "该写作点主要服务于“机理解释与因果分析”这一叙述方向，可作为适合放在正文论述中，用于承接图表证据并解释现象变化的概括性材料。",
+      "linked_figure_ids": [
+        "f2",
+        "f1"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [
+          "f2",
+          "f1"
+        ],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "2 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [
+        {
+          "figure_id": "f2",
+          "page": 3,
+          "caption": "Fig. 2. Examples of non-melted tracks processed with laser power 250 W at scanning",
+          "relevance_score": 0.5
+        },
+        {
+          "figure_id": "f1",
+          "page": 2,
+          "caption": "Fig. 1. Examples of melted tracks processed with laser power 400 W at scanning speed of 1 mm/s (left), 4 mm/s (middle) and 8 mm/s (right).",
+          "relevance_score": 0.5
+        }
+      ],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp055",
+      "claim": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+      "representative_claim": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+      "claim_preview": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+      "point_type": "result",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 3,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "shown in the optical images in Fig. 2. The transverse cross-sections of a melted track and a non-melted track are shown in the SEM micrographs in Fig. 3. For the non-melted tracks in Fig. 2, it could be observed that the width and color of the tracks depend on the scanning speed. At higher scanning speed (10 mm/s), the energy deposited was small and the amount of nitride formed was small, resulting in a narrower and faint track. On the other hand, at a scanning speed of 1 mm/s, the track was wider and brightly golden in color, indicating the formation of a larger amount of nitride due to a longer laser interaction time. To form thicker nitride, repetition (or multi-pass) of laser",
+      "source_text_preview": "shown in the optical images in Fig. 2. The transverse cross-sections of a melted track and a non-melted track are shown in the SEM micrographs in Fig. 3. For the non-melted tracks in Fig. 2, it could be observed that the width and color of the tracks depend o…",
+      "causal_roles": [],
+      "goal_hits": [
+        "speed"
+      ],
+      "goal_alignment_note": "",
+      "relevance_score": 0.475,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "参数影响与结果变化",
+      "content_summary": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+      "usage_direction": "适合放在正文论述中，用于承接图表证据并解释现象变化。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+      "mini_summary": "该写作点主要服务于“参数影响与结果变化”这一叙述方向，可作为适合放在正文论述中，用于承接图表证据并解释现象变化的概括性材料。",
+      "linked_figure_ids": [
+        "f2",
+        "f3",
+        "f2",
+        "f3"
+      ],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [
+          "f2",
+          "f3",
+          "f2",
+          "f3"
+        ],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "4 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [
+        {
+          "figure_id": "f2",
+          "page": 3,
+          "caption": "Fig. 2. Examples of non-melted tracks processed with laser power 250 W at scanning",
+          "relevance_score": 0.5
+        },
+        {
+          "figure_id": "f3",
+          "page": 3,
+          "caption": "Fig. 3. Transverse cross-sectional view of: (a) melted track (P = 300 W, v = 1 mm/s), and (b) non-melted track (P = 250 W, v = 1 mm/s).",
+          "relevance_score": 0.5
+        },
+        {
+          "figure_id": "f2",
+          "page": 3,
+          "caption": "Fig. 2. Examples of non-melted tracks processed with laser power 250 W at scanning",
+          "relevance_score": 0.5
+        },
+        {
+          "figure_id": "f3",
+          "page": 3,
+          "caption": "Fig. 3. Transverse cross-sectional view of: (a) melted track (P = 300 W, v = 1 mm/s), and (b) non-melted track (P = 250 W, v = 1 mm/s).",
+          "relevance_score": 0.5
+        }
+      ],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp001",
+      "claim": "Applied Surface Science 258 (2011) 436– 441",
+      "representative_claim": "Applied Surface Science 258 (2011) 436– 441",
+      "claim_preview": "Applied Surface Science 258 (2011) 436– 441",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Applied Surface Science 258 (2011) 436– 441",
+      "source_text_preview": "Applied Surface Science 258 (2011) 436– 441",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "机理解释与因果分析",
+      "content_summary": "Applied Surface Science 258 (2011) 436– 441。",
+      "usage_direction": "适合用作主题导读或段落收束，帮助读者快速把握研究内容。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "Applied Surface Science 258 (2011) 436– 441。",
+      "mini_summary": "该写作点主要服务于“机理解释与因果分析”这一叙述方向，可作为适合用作主题导读或段落收束，帮助读者快速把握研究内容的概括性材料。",
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    },
+    {
+      "writing_point_id": "wp002",
+      "claim": "Contents lists available at SciVerse ScienceDirect",
+      "representative_claim": "Contents lists available at SciVerse ScienceDirect",
+      "claim_preview": "Contents lists available at SciVerse ScienceDirect",
+      "point_type": "discussion",
+      "boundary_type": "",
+      "boundary_note": "",
+      "citation_role": "",
+      "original_reference_markers": [],
+      "pages": [],
+      "page": 1,
+      "section_title": "",
+      "source_chunk_ids": [],
+      "source_text": "Contents lists available at SciVerse ScienceDirect",
+      "source_text_preview": "Contents lists available at SciVerse ScienceDirect",
+      "causal_roles": [],
+      "goal_hits": [],
+      "goal_alignment_note": "",
+      "relevance_score": 0.2689,
+      "evidence_strength": 0.0,
+      "analysis_confidence": 0.0,
+      "selection_reason": "",
+      "support_count": 0,
+      "direction_label": "机理解释与因果分析",
+      "content_summary": "Contents lists available at SciVerse ScienceDirect。",
+      "usage_direction": "适合用作主题导读或段落收束，帮助读者快速把握研究内容。",
+      "claim_render_mode": "raw",
+      "claim_display_text": "Contents lists available at SciVerse ScienceDirect。",
+      "mini_summary": "该写作点主要服务于“机理解释与因果分析”这一叙述方向，可作为适合用作主题导读或段落收束，帮助读者快速把握研究内容的概括性材料。",
+      "linked_figure_ids": [],
+      "linked_table_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "evidence_bundle_ids": [],
+      "evidence_bundle": {
+        "figure_ids": [],
+        "table_ids": [],
+        "parameter_ids": [],
+        "result_ids": [],
+        "reference_ids": []
+      },
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用",
+      "figure_card_refs": [],
+      "table_card_refs": [],
+      "parameter_card_refs": [],
+      "result_card_refs": [],
+      "reference_card_refs": []
+    }
+  ],
+  "single_figure_cards": [
+    {
+      "figure_id": "f1",
+      "figure_number": null,
+      "page": 2,
+      "caption": "Fig. 1. Examples of melted tracks processed with laser power 400 W at scanning speed of 1 mm/s (left), 4 mm/s (middle) and 8 mm/s (right).",
+      "caption_prefix": "",
+      "relevance_score": 0.5,
+      "goal_hits": [],
+      "selection_reason": "",
+      "supporting_writing_point_ids": [],
+      "supporting_claims": [],
+      "support_chunk_ids": [],
+      "linked_chunk_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "bbox": null,
+      "candidate_image_xrefs_on_page": [],
+      "page_image_candidates": [],
+      "nearby_chunk_ids": [],
+      "evidence_note": "图证据页码 2；当前写作点支撑数 0。"
+    },
+    {
+      "figure_id": "f2",
+      "figure_number": null,
+      "page": 3,
+      "caption": "Fig. 2. Examples of non-melted tracks processed with laser power 250 W at scanning",
+      "caption_prefix": "",
+      "relevance_score": 0.5,
+      "goal_hits": [],
+      "selection_reason": "",
+      "supporting_writing_point_ids": [],
+      "supporting_claims": [],
+      "support_chunk_ids": [],
+      "linked_chunk_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "bbox": null,
+      "candidate_image_xrefs_on_page": [],
+      "page_image_candidates": [],
+      "nearby_chunk_ids": [],
+      "evidence_note": "图证据页码 3；当前写作点支撑数 0。"
+    },
+    {
+      "figure_id": "f3",
+      "figure_number": null,
+      "page": 3,
+      "caption": "Fig. 3. Transverse cross-sectional view of: (a) melted track (P = 300 W, v = 1 mm/s), and (b) non-melted track (P = 250 W, v = 1 mm/s).",
+      "caption_prefix": "",
+      "relevance_score": 0.5,
+      "goal_hits": [],
+      "selection_reason": "",
+      "supporting_writing_point_ids": [],
+      "supporting_claims": [],
+      "support_chunk_ids": [],
+      "linked_chunk_ids": [],
+      "linked_parameter_ids": [],
+      "linked_result_ids": [],
+      "linked_reference_ids": [],
+      "bbox": null,
+      "candidate_image_xrefs_on_page": [],
+      "page_image_candidates": [],
+      "nearby_chunk_ids": [],
+      "evidence_note": "图证据页码 3；当前写作点支撑数 0。"
+    }
+  ],
+  "single_table_cards": [],
+  "selected_parameter_cards": [],
+  "selected_result_cards": [],
+  "reference_directory_with_original_markers": [],
+  "evidence_bundles": [
+    {
+      "bundle_id": "bundle::wp041",
+      "writing_point_id": "wp041",
+      "claim": "To determine the processing parameters that would result in efﬁcient nitriding without melting, the laser power was varied between 200 W and 400 W, and the laser scanning speed was varied from 1 mm/s to 25 mm/s.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp045",
+      "writing_point_id": "wp045",
+      "claim": "For laser power at 350 W and 300 W, melting did not occur at higher values of the scanning speed (≥16 and ≥12 mm/s, respectively).",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [
+        "f1",
+        "f1"
+      ],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "2 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp049",
+      "writing_point_id": "wp049",
+      "claim": "Laser power 250 W Scanning speed 1 mm/s Diameter",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [
+        "f1",
+        "f2"
+      ],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "2 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp075",
+      "writing_point_id": "wp075",
+      "claim": "(1) With the laser spot diameter and nitrogen ﬂow rate ﬁxed at 3 mm and 40 L/min, the optimal laser power and scanning speed are 250 W and 1 mm/s, respectively, for achieving efﬁcient solid-state diffusion nitriding.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp019",
+      "writing_point_id": "wp019",
+      "claim": "selecting the laser processing parameters.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp046",
+      "writing_point_id": "wp046",
+      "claim": "This set of wear test parameters were selected after a number of trial runs to ensure that a small but measurable wear volume of the TiN layer, but not the substrate, was removed in the wear test.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [
+        "f1"
+      ],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "1 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp062",
+      "writing_point_id": "wp062",
+      "claim": "carefully selecting the laser processing parameters, nitriding without surface melting was achieved.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp066",
+      "writing_point_id": "wp066",
+      "claim": "(3) With this optimal set of laser processing parameters the nanoindentation hardness of the diffusion nitrided sample was about 2.3 times that of the substrate.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp053",
+      "writing_point_id": "wp053",
+      "claim": "speed of 10 mm/s (left), 4 mm/s (middle) and 1 mm/s (right).",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [
+        "f2",
+        "f1"
+      ],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "2 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp055",
+      "writing_point_id": "wp055",
+      "claim": "2, it could be observed that the width and color of the tracks depend on the scanning speed.",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [
+        "f2",
+        "f3",
+        "f2",
+        "f3"
+      ],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "4 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp001",
+      "writing_point_id": "wp001",
+      "claim": "Applied Surface Science 258 (2011) 436– 441",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    },
+    {
+      "bundle_id": "bundle::wp002",
+      "writing_point_id": "wp002",
+      "claim": "Contents lists available at SciVerse ScienceDirect",
+      "boundary_type": "",
+      "boundary_note": "",
+      "original_reference_markers": [],
+      "figure_ids": [],
+      "table_ids": [],
+      "parameter_ids": [],
+      "result_ids": [],
+      "reference_ids": [],
+      "evidence_summary": "0 图 / 0 表 / 0 参数 / 0 结果 / 0 引用"
+    }
+  ],
+  "boundary_summary": {},
+  "stats_analysis": {
+    "writing_point_count": 49,
+    "selected_writing_point_count": 12,
+    "selected_figure_count": 3,
+    "selected_table_count": 0
+  },
+  "source_analysis_status": "analysis_complete",
+  "source_pdf": "",
+  "study_overview_paragraphs": [
+    "这篇研究围绕《提取激光氮化工艺参数与硬度耐磨性关系》展开，正文主要按“result、result、mechanism与result”等主题组织。",
+    "整篇材料现已按 6 个主题重组，并保留 3 张与正文直接对应的图像证据。"
+  ]
+}

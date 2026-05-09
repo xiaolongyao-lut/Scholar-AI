@@ -24,7 +24,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: "pip"
           cache-dependency-path: "requirements-ci.txt"
 
@@ -52,7 +52,7 @@ jobs:
           SILICONFLOW_EMBEDDING_BASE_URL: ${{ vars.SILICONFLOW_EMBEDDING_BASE_URL }}
           SILICONFLOW_EMBEDDING_MODEL: ${{ vars.SILICONFLOW_EMBEDDING_MODEL }}
         run: |
-          python -X utf8 rag_integration_entry.py ask --query "${{ inputs.query }}" | tee online-smoke-output.txt
+            python -X utf8 literature_assistant/core/rag_integration_entry.py ask --query "${{ inputs.query }}" | tee online-smoke-output.txt
 
       - name: Validate Smoke Output
         run: |

@@ -1,0 +1,156 @@
+{
+  "output_dir": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\output",
+  "files_scanned": 109,
+  "cases": [
+    {
+      "query": "激光熔池流动行为影响，匙孔如何控制？",
+      "baseline_tokens": [
+        "激光熔池流动行为影响",
+        "匙孔如何控制"
+      ],
+      "baseline_hits": {
+        "hits": 0,
+        "sample": []
+      },
+      "route_a_tokens": [
+        "激光",
+        "光熔",
+        "熔池",
+        "池流",
+        "流动",
+        "动行",
+        "行为",
+        "为影",
+        "影响",
+        "匙孔",
+        "孔如",
+        "如何",
+        "何控",
+        "控制"
+      ],
+      "route_a_hits": {
+        "hits": 10,
+        "sample": [
+          "batch_process_109papers_results.json",
+          "doc_summaries.json",
+          "eval_query_audit_v21.json",
+          "eval_query_audit_v21_u1a.json",
+          "eval_query_audit_v21_u1a_250.json"
+        ]
+      }
+    },
+    {
+      "query": "这篇文献主要研究了什么？",
+      "baseline_tokens": [
+        "这篇文献主要研究了什么"
+      ],
+      "baseline_hits": {
+        "hits": 0,
+        "sample": []
+      },
+      "route_a_tokens": [
+        "这篇",
+        "篇文",
+        "文献",
+        "献主",
+        "主要",
+        "要研",
+        "研究",
+        "究了",
+        "了什",
+        "什么"
+      ],
+      "route_a_hits": {
+        "hits": 9,
+        "sample": [
+          "batch_process_109papers_results.json",
+          "doc_summaries.json",
+          "eval_query_audit_v21.json",
+          "eval_query_audit_v21_u1a.json",
+          "eval_query_audit_v21_u1a_250.json"
+        ]
+      }
+    },
+    {
+      "query": "文献库里关于焊缝结晶的控制有哪些相关研究？",
+      "baseline_tokens": [
+        "文献库里关于焊缝结晶的控制有哪些相关研究"
+      ],
+      "baseline_hits": {
+        "hits": 0,
+        "sample": []
+      },
+      "route_a_tokens": [
+        "文献",
+        "献库",
+        "库里",
+        "里关",
+        "关于",
+        "于焊",
+        "焊缝",
+        "缝结",
+        "结晶",
+        "晶的",
+        "的控",
+        "控制",
+        "制有",
+        "有哪",
+        "哪些",
+        "些相",
+        "相关",
+        "关研",
+        "研究"
+      ],
+      "route_a_hits": {
+        "hits": 9,
+        "sample": [
+          "batch_process_109papers_results.json",
+          "doc_summaries.json",
+          "eval_query_audit_v21.json",
+          "eval_query_audit_v21_u1a.json",
+          "eval_query_audit_v21_u1a_250.json"
+        ]
+      }
+    },
+    {
+      "query": "某种焊接工艺相关研究有哪些，写综述的材料？",
+      "baseline_tokens": [
+        "某种焊接工艺相关研究有哪些",
+        "写综述的材料"
+      ],
+      "baseline_hits": {
+        "hits": 0,
+        "sample": []
+      },
+      "route_a_tokens": [
+        "某种",
+        "种焊",
+        "焊接",
+        "接工",
+        "工艺",
+        "艺相",
+        "相关",
+        "关研",
+        "研究",
+        "究有",
+        "有哪",
+        "哪些",
+        "写综",
+        "综述",
+        "述的",
+        "的材",
+        "材料"
+      ],
+      "route_a_hits": {
+        "hits": 10,
+        "sample": [
+          "batch_process_109papers_results.json",
+          "doc_summaries.json",
+          "eval_query_audit_v21.json",
+          "eval_query_audit_v21_u1a.json",
+          "eval_query_audit_v21_u1a_250.json"
+        ]
+      }
+    }
+  ]
+}

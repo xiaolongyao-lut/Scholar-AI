@@ -1,0 +1,6 @@
+{"timestamp": "2026-05-05 02:02:50", "done": 5, "total": 30, "percent": 16.67, "last_query_id": "q_0005"}
+{"timestamp": "2026-05-05 02:02:54", "done": 10, "total": 30, "percent": 33.33, "last_query_id": "q_0010"}
+{"timestamp": "2026-05-05 02:02:57", "done": 15, "total": 30, "percent": 50.0, "last_query_id": "q_0015"}
+{"timestamp": "2026-05-05 02:03:01", "done": 20, "total": 30, "percent": 66.67, "last_query_id": "q_0020"}
+{"timestamp": "2026-05-05 02:03:05", "done": 25, "total": 30, "percent": 83.33, "last_query_id": "q_0025"}
+{"timestamp": "2026-05-05 02:03:09", "done": 30, "total": 30, "percent": 100.0, "last_query_id": "q_0030"}

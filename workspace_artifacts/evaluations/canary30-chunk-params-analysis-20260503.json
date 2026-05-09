@@ -1,0 +1,226 @@
+{
+  "evaluation_date": "2026-05-03",
+  "title": "Canary30 Re-evaluation: Chunk Parameter Impact Analysis",
+  "chunk_parameter_changes": {
+    "CHUNK_OVERLAP": {
+      "previous": 150,
+      "current": 200,
+      "change_percent": 33.3,
+      "description": "Increased from 150 to 200 tokens (25% overlap rate)"
+    },
+    "MAX_CHUNKS_PER_MATERIAL": {
+      "previous": 5,
+      "current": 8,
+      "change_percent": 60.0,
+      "description": "Increased from 5 to 8 chunks per document"
+    }
+  },
+  "current_run": {
+    "timestamp": "2026-05-03 21:57:24",
+    "total_queries": 30,
+    "config": {
+      "top_k": 5,
+      "use_rerank": false,
+      "use_expansion": false,
+      "use_contextual": false
+    },
+    "metrics": {
+      "recall_at_1": 0.1667,
+      "recall_at_3": 0.4333,
+      "recall_at_5": 0.5,
+      "recall_at_10": 0.6333,
+      "mrr": 0.3181,
+      "avg_latency_ms": 1070.03,
+      "p95_latency_ms": 1177.32
+    },
+    "per_difficulty": {
+      "hard": {
+        "count": 2,
+        "recall_at_5": 0.0,
+        "mrr": 0.1429
+      },
+      "medium": {
+        "count": 10,
+        "recall_at_5": 0.8,
+        "mrr": 0.5644
+      },
+      "simple": {
+        "count": 18,
+        "recall_at_5": 0.3889,
+        "mrr": 0.2007
+      }
+    }
+  },
+  "baseline_comparison": {
+    "baseline_date": "2026-04-18",
+    "baseline_metrics": {
+      "recall_at_1": 0.0,
+      "recall_at_3": 0.0333,
+      "recall_at_5": 0.0667,
+      "recall_at_10": 0.1667,
+      "mrr": 0.0403,
+      "avg_latency_ms": 33975.96,
+      "p95_latency_ms": 63441.18
+    },
+    "delta": {
+      "recall_at_1": {
+        "absolute": 0.1667,
+        "percent": 999.0,
+        "direction": "improvement"
+      },
+      "recall_at_3": {
+        "absolute": 0.4,
+        "percent": 1100.0,
+        "direction": "improvement"
+      },
+      "recall_at_5": {
+        "absolute": 0.4333,
+        "percent": 649.0,
+        "direction": "improvement"
+      },
+      "recall_at_10": {
+        "absolute": 0.4666,
+        "percent": 280.0,
+        "direction": "improvement"
+      },
+      "mrr": {
+        "absolute": 0.2778,
+        "percent": 689.0,
+        "direction": "improvement"
+      },
+      "avg_latency_ms": {
+        "absolute": -32905.93,
+        "percent": -96.8,
+        "direction": "improvement"
+      },
+      "p95_latency_ms": {
+        "absolute": -62264.0,
+        "percent": -98.1,
+        "direction": "improvement"
+      }
+    }
+  },
+  "aligned_baseline_comparison": {
+    "baseline_date": "2026-04-27",
+    "baseline_config": "no_rerank, aligned queries",
+    "baseline_metrics": {
+      "recall_at_1": 0.6667,
+      "recall_at_3": 0.6667,
+      "recall_at_5": 0.6667,
+      "recall_at_10": 0.6667,
+      "mrr": 0.6667,
+      "avg_latency_ms": 781.61,
+      "p95_latency_ms": 844.1
+    },
+    "delta": {
+      "recall_at_1": {
+        "absolute": -0.5,
+        "percent": -75.0,
+        "direction": "regression"
+      },
+      "recall_at_3": {
+        "absolute": -0.2334,
+        "percent": -35.0,
+        "direction": "regression"
+      },
+      "recall_at_5": {
+        "absolute": -0.1667,
+        "percent": -25.0,
+        "direction": "regression"
+      },
+      "recall_at_10": {
+        "absolute": -0.0334,
+        "percent": -5.0,
+        "direction": "regression"
+      },
+      "mrr": {
+        "absolute": -0.3486,
+        "percent": -52.3,
+        "direction": "regression"
+      },
+      "avg_latency_ms": {
+        "absolute": 288.42,
+        "percent": 36.9,
+        "direction": "regression"
+      },
+      "p95_latency_ms": {
+        "absolute": 333.22,
+        "percent": 39.5,
+        "direction": "regression"
+      }
+    }
+  },
+  "findings": {
+    "corpus_impact": {
+      "observation": "Chunk count increased from 11449 to 11457 (+8 chunks, +0.07%)",
+      "reason": "Increased CHUNK_OVERLAP and MAX_CHUNKS_PER_MATERIAL parameters",
+      "embedding_cache_invalidation": "Required cache rebuild due to corpus size change"
+    },
+    "performance_regression": {
+      "severity": "MODERATE",
+      "recall_at_5_regression": -25.0,
+      "mrr_regression": -52.3,
+      "latency_increase": 36.9,
+      "analysis": "Current run shows significant regression vs aligned baseline (2026-04-27). This suggests the chunk parameter changes may have negatively impacted retrieval quality despite increased overlap and per-material limits."
+    },
+    "difficulty_breakdown": {
+      "hard_queries": {
+        "recall_at_5": 0.0,
+        "mrr": 0.1429,
+        "status": "POOR - No hard queries retrieved in top-5"
+      },
+      "medium_queries": {
+        "recall_at_5": 0.8,
+        "mrr": 0.5644,
+        "status": "GOOD - Strong performance on medium difficulty"
+      },
+      "simple_queries": {
+        "recall_at_5": 0.3889,
+        "mrr": 0.2007,
+        "status": "WEAK - Surprisingly poor on simple queries"
+      }
+    },
+    "latency_profile": {
+      "avg_latency_ms": 1070.03,
+      "p95_latency_ms": 1177.32,
+      "vs_aligned_baseline": "+36.9% avg, +39.5% p95",
+      "analysis": "Latency increased despite no reranking, suggesting embedding computation overhead from larger corpus"
+    }
+  },
+  "root_cause_hypothesis": {
+    "hypothesis": "Increased chunk overlap and per-material limits may have introduced noise or diluted relevance signals",
+    "evidence": [
+      "Recall@5 dropped 25% vs aligned baseline",
+      "MRR dropped 52.3% vs aligned baseline",
+      "Hard queries (0% recall@5) suggest retrieval is missing complex queries entirely",
+      "Simple queries also underperform (38.89% vs expected higher), indicating systematic issue"
+    ],
+    "potential_causes": [
+      "Overlapping chunks may create redundancy that confuses embedding similarity scoring",
+      "Increased MAX_CHUNKS_PER_MATERIAL (5→8) may dilute top-k results with lower-relevance chunks",
+      "Embedding model may not be optimized for the new corpus size/distribution",
+      "Query expansion or contextual chunking disabled - may need re-enabling for new parameters"
+    ]
+  },
+  "recommendations": {
+    "immediate_actions": [
+      "REVERT chunk parameter changes and re-run evaluation to confirm causality",
+      "If revert improves metrics, investigate parameter tuning more carefully",
+      "Consider A/B testing: gradually increase CHUNK_OVERLAP (150→175→200) to find optimal point"
+    ],
+    "investigation_steps": [
+      "Run evaluation with CHUNK_OVERLAP=175 (midpoint) to isolate parameter impact",
+      "Run evaluation with MAX_CHUNKS_PER_MATERIAL=6 or 7 to find sweet spot",
+      "Enable query expansion and contextual chunking to see if they compensate for parameter changes",
+      "Analyze per-query results to identify which query types regressed most"
+    ],
+    "longer_term": [
+      "Implement token-aware chunking instead of character-based (current approach)",
+      "Consider dynamic chunk sizing based on document type (academic papers vs web content)",
+      "Profile embedding cache hit rates to optimize for new corpus size",
+      "Run full 109-paper evaluation to confirm canary30 findings generalize"
+    ]
+  },
+  "status": "BLOCKER - Regression detected",
+  "next_action": "Revert chunk parameters and re-run to confirm causality before proceeding with parameter tuning"
+}

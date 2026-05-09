@@ -1,0 +1,37 @@
+{
+  "queries_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\workspace_tests\\evaluation_data\\eval_queries_v2.1_canary30_ALIGNED.jsonl",
+  "output_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\workspace_artifacts\\evaluations\\canary30-post-cache-laser109-no-rerank-20260505.metrics.json",
+  "query_slice": {
+    "offset": 0,
+    "limit": null
+  },
+  "retrieval_config": {
+    "top_k": 5,
+    "recall_top_n": 100,
+    "use_rerank": false,
+    "rerank_model": null,
+    "rerank_top_n": 40,
+    "rerank_pre_top_n": 30,
+    "rerank_pre_top_n_hard_cap": 60,
+    "cost_profile": "balanced",
+    "use_prefilter": false,
+    "prefilter_threshold": 0.3,
+    "use_dynamic_topk": false,
+    "dynamic_low_rerank_top_n": 20,
+    "dynamic_high_rerank_top_n": 60,
+    "dynamic_score_gap_threshold": 0.15,
+    "use_expansion": false,
+    "use_contextual": false,
+    "query_concurrency": 1,
+    "strict_cache_guard": true,
+    "chunk_store_dir": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\workspace_artifacts\\generated\\output\\chunk_store\\laser_welding_109",
+    "embedding_cache_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\workspace_artifacts\\generated\\output\\embedding_cache\\corpus_embeddings_laser_welding_109.npy",
+    "template_flags_path": null
+  },
+  "append_targets": {
+    "progress_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\workspace_artifacts\\evaluations\\canary30-post-cache-laser109-no-rerank-20260505.progress.jsonl",
+    "progress_every": 5,
+    "per_query_output": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\workspace_artifacts\\evaluations\\canary30-post-cache-laser109-no-rerank-20260505.per_query.jsonl",
+    "rerank_trace_output": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\workspace_artifacts\\evaluations\\canary30-post-cache-laser109-no-rerank-20260505.rerank_trace.jsonl"
+  }
+}

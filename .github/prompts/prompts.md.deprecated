@@ -1,0 +1,16 @@
+# Deprecated pseudo prompt file
+
+This file was renamed from `.github/prompts/prompts.md` on 2026-05-01 as part of the Squad T5 prompts/skills split.
+
+Reason:
+
+- VS Code workspace prompt files must use the `.prompt.md` extension.
+- Always-on project conventions belong in `.github/copilot-instructions.md`.
+- Reusable Squad workflows now live in focused prompt/skill entries:
+  - `.github/prompts/squad-plan.prompt.md`
+  - `.github/prompts/squad-doctor.prompt.md`
+  - `.github/prompts/squad-round.prompt.md`
+  - `.github/skills/squad-startup-packet/SKILL.md`
+  - `.github/skills/squad-cli-handoff/SKILL.md`
+
+Do not add new instructions here. Use the canonical locations above.

@@ -1,0 +1,255 @@
+# Squad Decisions Archive
+
+Archived decisions and inbox merges. Kept for historical reference.
+
+## 2026-04-23 Inbox Merge — Cost & Defaults Final Slices
+
+**Session:** Gateway Cleanup & Reslice Completion  
+**Merged from:** `.squad/decisions/inbox/`  
+**Timestamp:** 2026-04-23T00:30:00Z
+
+### Archived Inbox Items (Resolved)
+
+#### 1. trinity-chunk-guard-first-slice.md
+
+- **Scope:** §3.5 rerank oversize guard + eval manifest-first loading
+- **Status**: ✅ **RESOLVED** — Slice 1 landed (2026-04-22)
+- **Summary:** Rerank hard-stop on oversize candidates + eval manifest-first consumption aligned with v2 chunk-store
+- **Evidence:** `eval_retrieval_runtime.py` manifest-first, `reranker_client.py` oversize skip, test coverage in place
+- **Outstanding:** Slice 2 (embedding guard) + Slice 3 (historical reslice) — both landing in later session
+- **Archive reason:** Decision scope satisfied; moved to historical for context preservation
+
+#### 2. trinity-directed-reslice.md
+
+- **Scope:** §3.5.5 targeted historical chunk cleanup via production reslice path
+- **Status**: ✅ **RESOLVED** — Reslice completed (2026-04-22)
+- **Summary:** `scripts/reslice_oversize_materials.py` used to reslice only report-identified materials through production chunking entry
+- **Evidence:** `output/oversize_materials_report.json` post-reslice shows `oversize_count=0`; manifest records `resliced_at` field
+- **Fallback logic:** Handled missing source records by reconstructing from stored chunk content
+- **Blocker resolved:** Pre-reslice acceptance (canary30 Recall@5 baseline captured; post-reslice comparison pending embedding credential fix)
+- **Archive reason:** Decision scope satisfied; historical decision captured for audit trail
+
+#### 3. oracle-phase6-eval.md
+
+- **Scope:** §3.3 Phase 6 contextual chunks quality evaluation decision hold
+- **Status:** 🔄 **HOLD** — Blocking on embedding API credentials (HTTP 401)
+- **Summary:** Cannot proceed with E1-E4 comparative evaluation until non-contextual embedding cache is rebuilt with valid credentials
+- **Evidence:** `chunk_vector_store.build()` fails with `EmbeddingAPIError 401`; contextual cache exists but cross-use violates experiment isolation contract
+- **Next unblock:** Valid embedding credential restoration or recovery of trusted non-contextual cache
+- **Archive reason:** Awaiting external unblock; moved to archive but remains re-executable once credential restored
+
+---
+
+## Archived (Pre-2026-03-23)
+
+*No entries meet archive criteria at this date.*
+
+---
+
+**Archive created:** 2026-04-22T07:19:47Z  
+**Retention policy:** Decisions older than 30 days moved to archive; active decisions remain in `decisions.md`.
+
+---
+
+## 2026-04-22 Inbox Merge Archive
+
+**Session:** Provenance Arbitration Batch  
+**Merged into:** `.squad/decisions.md#2026-04-22: Phase A Execution Unblocked via Provenance Lock`  
+**Timestamp:** 2026-04-22T21:30:00Z
+
+### Original Inbox Notes
+
+#### 1. scribe-2026-04-22-phase-a-trusted-eval-inputs-blocker.md
+
+- **Framing:** Evaluation pipeline is healthy. Trusted inputs are missing.
+- **Blocker:** Phase A blocked by missing canonical artifacts at `artifacts/eval_audit/{gateb_goldset.jsonl, gateb_qrels.tsv}`
+- **Root cause:** Synthetic scaffolding (`gateb_goldset.jsonl`) must remain excluded from trusted evaluation
+- **Action:** Clarify canonical source; create role-specific task tickets for goldset/qrels production; block Phase A until both artifacts exist and pass review
+
+#### 2. morpheus-2026-04-22-phase-a-first-executable-slice-refresh.md
+
+- **Decision:** First safe executable Phase A slice is reviewer-gate preparation via provenance lock, NOT data-build and NOT runtime execution
+- **Rationale:** Blocker is missing trusted evaluation inputs, not pipeline health
+- **Scope (in):** Confirm canonical paths; record exclusion; define acceptance gate; route next task toward trusted-input production
+- **Scope (out):** Generating labels, editing qrels, building pools, schema repair, eval runs, runtime debugging, model comparisons
+- **Owner:** Oracle/data-build preparation with reviewer-gate contract; Tank review once artifacts exist; Morpheus owns architectural gate
+- **Team message:** "Evaluation pipeline is healthy; trusted inputs are missing."
+- **Next unlock:** Start data-build only after provenance lock accepted; Phase A execution starts only after both canonical artifacts exist at locked paths
+
+#### 3. morpheus-2026-04-22-phase-a-gateb-arbitration.md
+
+- **Decision:** Root `gateb_goldset.jsonl` stays excluded from canonical/trusted Gate B evaluation
+- **Reuse policy:** Non-canonical synthetic fixture only (schema/debug/testing), NOT Phase A input, NOT pre-annotation skeleton
+- **Rationale:** Gate B plan assigns 40-query first slice to `artifacts/eval_audit/gateb_initial_candidates.jsonl`; canonical outputs belong at `artifacts/eval_audit/{gateb_goldset.jsonl, gateb_qrels.tsv}`; root file generated by `scratch_generate.py` with fabricated data; fails validator on `no_gold` invariants
+- **Conflict resolved:** Oracle's "40 sampled records" observation is true at file-count level but does NOT overturn provenance lock because repo already contains proper 40-record pre-annotation artifact
+- **Single legal next slice:** Reviewer-gated trusted-input production under locked canonical paths, seeded from `artifacts/eval_audit/gateb_initial_candidates.jsonl`
+- **Evidence:** Plan lines 238-239, 264-279, 301-312, 329-336; validator output; `scratch_generate.py` lines 52-138
+
+#### 4. tank-gateb-root-goldset-provenance.md
+
+- **QA finding:** Root `gateb_goldset.jsonl` is confirmed synthetic scaffolding (generator script + schema validator proof)
+- **Evidence:** Validator errors on `no_gold` invariants (records 16/24/32/40 fail)
+- **Implication:** Validates provenance-lock decision; no contamination risk
+- **Routing:** Confirms Oracle must build under locked canonical paths only
+
+---
+
+## 2026-04-22 Final Gate Batch Archive
+
+**Session:** Gate B Canonical-Pair Final Gate Completion  
+**Merged into:** `.squad/decisions.md#2026-04-22: Gate B Phase A Canonical-Pair Final Gate PASS`  
+**Timestamp:** 2026-04-22T22:15:00Z
+
+### Merged Inbox Notes
+
+#### 1. oracle-gateb-phase-a-scaffold.md
+
+- **Status:** Complete (reviewer-ready scaffold)
+- **Production output:** Built 36-record schema-valid `gateb_goldset.jsonl` + header-only `gateb_qrels.tsv`
+- **Input source:** `artifacts/eval_audit/gateb_initial_candidates.jsonl` (40 entries, trusted)
+- **Exclusion rule:** Excluded 4 S4 placeholders (query_text=null)
+- **Schema validation:** ✅ PASSED (zero errors)
+- **Strata distribution:** S1=16, S2=10, S3=10
+- **Artifact status:**
+  - `gateb_goldset.jsonl`: 36 records, all `no_gold=true`, empty qrels arrays
+  - `gateb_qrels.tsv`: TREC 4-column format, header only, 0 data rows, iteration=0
+- **Provenance fields:** source_stratum, source_template_id, original_query_id
+- **Constraints honored:** ✅ No fabricated data; canonical root excluded; no synthetic markers
+- **Evidence:** Script `scripts/build_gateb_phase_a_trusted.py` (reproducible)
+
+#### 2. tank-gateb-final-qa-gate.md
+
+- **Reviewer:** Tank (QA)
+- **Scope:** Gate B canonical pair contract compliance
+- **Verdict:** ✅ **PASS** (scaffold-pass for Phase A trusted-input contract)
+- **Meaning:** Structurally valid; trusted for reviewer gate; NOT annotation-complete
+- **Contract checklist results (all PASS):**
+  1. Schema validation: 0 errors
+  2. `gateb_qrels.tsv`: Strict 4-column TREC format, iteration=0
+  3. Cross-file alignment: query_id/doc_id/relevance multisets exactly match (both empty)
+  4. Relevance domain: Only {0,1,2}; no contradictions
+  5. `no_gold` invariants: PASS (no_gold=true with all qrels empty)
+  6. Synthetic root exclusion: PASS (canonical query_text subset of trusted lineage)
+  7. Provenance guard: PASS (no synthetic markers detected)
+- **Blockers remaining:** Pooling, annotation, κ validation (all Phase B scope)
+- **Next action:** Await Phase B tool development and annotation workflow
+
+#### 3. tank-gateb-pass-contract.md
+
+- **Purpose:** Lock final review criteria for Gate B canonical pair
+- **Scope:** `artifacts/eval_audit/{gateb_goldset.jsonl, gateb_qrels.tsv}`
+- **Hard constraints (7 items):**
+  1. Schema compliance: zero errors
+  2. Cross-file consistency: multiset equality
+  3. Synthetic root ledger excluded: never used as eval input
+  4. TREC format: strict 4-column, tab-separated, iteration=0
+  5. Relevance/no_gold contradictions: none allowed
+  6. Cross-file join check: all rows map correctly
+  7. Provenance guard: reject synthetic markers
+- **PASS conditions:** All 7 items must pass; no schema/format/logic errors
+- **NO-GO conditions:** Any one triggers rejection
+- **Final reviewer output expectation:** Binary explicit verdict (PASS or NO-GO with failed check ids)
+- **Use:** This contract template was instantiated by Tank QA and passed with 7/7 items PASS
+
+### Conflict Resolution
+
+All three notes were **100% consistent:**
+- Oracle's production results confirm planned constraints
+- Tank's verification confirms Oracle's outputs meet all requirements
+- Strata distribution (S1=16, S2=10, S3=10) reported identically by both
+- No fabrication, no synthetic contamination, no schema errors
+- Contract specification was used as the audit checklist; all items passed
+
+**Decision:** Unified into single canonical entry in active decisions.md
+
+- **Verdict:** Root `gateb_goldset.jsonl` is synthetic scaffolding/cold-start draft, NOT canonical trusted Gate B goldset
+- **Evidence:**
+  - Generator writes file with seeded randomness (seed 42) and synthetic stratum sampling: `scratch_generate.py:50-78, 136-138`
+  - Injects audit-test anomalies and forced pool_size=50: `scratch_generate.py:78-80, 99-109`
+  - Gate B plan defines 40 rows as initial candidates, expects final goldset after annotation + κ report: `2026-04-19-gateb-goldset-sampling.md:301-313, 329-337, 238`
+  - Schema validator fails on `no_gold` invariants (records 16/24/32/40)
+  - Commit note explicitly labels as "Wave 1 冷启动 40 条标注" with invariant violation flags
+- **Reuse policy:** Allowed only for non-canonical smoke usage (schema validator regression, parser/import dry-runs, draft export formatting). Disallowed for trusted Gate B metric comparison or blocker-unlock evidence.
+
+### Merger Result
+
+**Status:** ✅ CONSISTENT AND FULLY DEDUPLICABLE
+
+All four notes align on:
+- Root `gateb_goldset.jsonl` is synthetic scaffolding, not canonical
+- Canonical goldset/qrels must live at `artifacts/eval_audit/{gateb_goldset.jsonl, gateb_qrels.tsv}`
+- Phase A is blocked by missing trusted inputs, not pipeline failure
+- Next executable slice is provenance lock confirmation → data-build under locked paths
+
+**No conflicts detected between any pairs of notes.**
+
+---
+
+## 2026-04-22 Gate B C6 Re-Review Batch Archive
+
+**Session:** Gate B Phase B Pool Export C6 Re-Review  
+**Merged into:** `.squad/decisions.md#2026-04-22: Gate B Phase B Pool Export C6 Re-Review — PASS`  
+**Timestamp:** 2026-04-22T23:45:00Z
+
+### Original Inbox Notes
+
+#### 1. morpheus-gateb-phaseb-c6-audit.md
+
+- **Audit Result:** VALID FAILURE
+- **Scope:** Reviewed Tank's C6 rejection (non-deterministic export) against pool-export contract
+- **Evidence:** Same command + same inputs at commit `50f33d2ac6fcbbe1e88fede7c1fc8cca7880f8bf` produced different hashes
+- **Root Cause:** Exporter lacks reproducibility metadata and deterministic hardening
+- **Fix Scope (C6-only):** Add explicit repro metadata (command, inputs, commit SHA, deterministic knobs, output hashes) + harden determinism so identical inputs yield identical outputs
+- **Out of Scope:** Query scope changes, pool membership policy, source/evidence semantics, qrels work, dense-lane expansion
+- **Owner Decision:** Trinity locked out; Ralph assigned (narrowest revision after rejection)
+- **Status:** START NOW approved (narrow, legal, dependency-free, isolated)
+
+#### 2. ralph-gateb-c6-reproducibility-hardening.md
+
+- **Status:** IMPLEMENTATION COMPLETE
+- **Implementer:** Ralph (Work Monitor)
+- **Files Modified:** 2
+  1. `gateb_phase_b_pool_export.py` — Added reproducibility metadata support + determinism hardening
+  2. `test_gateb_c6_repro.py` — New reproducibility test harness (C6 proof)
+- **Determinism Hardening:** Explicit 3-part sort key (source label → best rank → doc ID) ensures identical candidate ordering
+- **Metadata Captured:** Command, inputs, commit SHA, deterministic knobs, output file hashes
+- **Contract Compliance:** C1–C5 unchanged (36-query scope, dedup, source-label, evidence, artifact separation); C6 (reproducibility) fixed
+- **Proof:** test_gateb_c6_repro.py runs export twice, compares hashes, confirms deterministic behavior
+- **Test Coverage:** Existing tests still pass (no breaking changes)
+- **Ready Status:** Ready for Tank Tier 2 Re-Review
+
+#### 3. tank-gateb-c6-rereview-verdict.md
+
+- **Verdict:** ✅ **PASS**
+- **Evidence Executed:**
+  1. Helper function validation: ✅ `py -3 validate_c6_changes.py` PASS
+  2. Contract regression: ✅ `pytest tests/test_gateb_phase_b_pool_export.py -v` — 3/3 pass (C1–C5 stable)
+  3. Reproducibility proof: ✅ `python test_gateb_c6_repro.py` — stable hashes on rerun
+     - pools: `254f2df1fd85a6a945f3a2664b48f5244d31599457be579c6bdacb8339d5213a`
+     - annotation_input: `bc2bebfca7f5cd1084248b44da8acc4eee50042958fdeffb589071696ea6dba4`
+  4. Schema spot-check: ✅ source_doc_ids retained in pools, annotation schema preserved
+- **Query Count:** 36 (both runs)
+- **Scope Drift:** Zero
+- **QA Conclusion:** C6 is closed; deterministic rerun behavior reproducible with stable hashes
+- **Next Steps:** 
+  1. Freeze artifact pair + hash pair as annotation baseline
+  2. Assign annotators/reviewer and begin scoring
+  3. Produce downstream outputs (gateb_qrels.tsv + κ consistency report)
+
+### Merger Result
+
+**Status:** ✅ CONSISTENT AND FULLY DEDUPLICABLE
+
+All three notes align on:
+- C6 failure diagnosis: valid (non-deterministic export with unstable hashes)
+- Fix scope: narrowest (C6-only reproducibility hardening, no policy/data changes)
+- Implementation path: Ralph lockout-compliant assignment → complete determinism hardening + test proof
+- Verification: Tank confirms stable-hash rerun evidence; C1–C5 contracts stable; C6 fixed
+
+**Verdict consensus:** PASS ✅
+
+**No conflicts detected between any pairs of notes.**
+
+---
+
+

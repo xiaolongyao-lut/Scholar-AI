@@ -1,0 +1,68 @@
+# Switch History
+
+## Project Context
+
+- Project: my-project
+- Owner: xiao
+- Preferred role: frontend design aligned with real functionality and backend algorithms
+
+## Learnings
+
+- Frontend work should be driven by actual user needs, not generic dashboards or decorative UI.
+- This project needs a frontend that clearly expresses retrieval, relevance filtering, smart dialogue, and writing-assistant workflows.
+
+### 2026-04-20: Chat UI Design for Intelligent Chat Phase 5
+
+- **Tier selector**: Use segmented control (pill group) instead of dropdown. Speed/quality tradeoffs should be visible at a glance, not hidden behind a click. This aligns with product goal of making backend intelligence legible.
+
+- **Context chunk disclosure**: Progressive disclosure is the right pattern. Most users want answers; researchers need provenance. Collapsible accordion solves both needs without visual clutter.
+
+- **State machine alignment**: Frontend states must map to backend reality (unavailable → ready → responding → grounded/insufficient). The `frontend-state-spec.md` provides the canonical state list.
+
+- **API response shape**: Frontend expects `context_metadata.chunks[]` for progressive disclosure. Coordinated with intelligent-chat-plan.md Phase 4 contract (`ChatResponse` model).
+
+- **Open questions surfaced**: Insight Message UX, session history browsing, mobile layout — all flagged for Morpheus. These are product decisions, not UI decorations.
+
+- **Artifacts produced**: `chat-ui-contract.md` (spec for Trinity), `switch-chat-ui-design.md` (decision note).
+
+### 2026-04-20: Chat UI Contract & Design Delivery
+
+- Created `.squad/identity/chat-ui-contract.md`: Spec for Trinity chat endpoint API response shape and frontend integration (tier selector, context chunks, state mapping)
+- Created `.squad/agents/switch/switch-chat-ui-design.md`: Design rationale for tier selection (segmented pill group) and progressive context disclosure (accordion)
+- **Design Insight:** Segmented control (not dropdown) makes speed/quality tradeoffs visible; aligns with product goal of legible backend intelligence
+- **Design Insight:** Progressive disclosure via accordion lets most users ignore provenance while researchers can drill into sources
+- **Open Questions Escalated:** Insight Message UX, session history loading, mobile responsiveness (awaiting Morpheus decision)
+- **Status:** ✅ Ready for Morpheus Phase 1 design review (2026-04-25)
+
+### 2026-04-22: Task 2.1.3 Frontend Implementation Rejection
+
+**Status:** 🔴 REJECTED by Tank (first submission)  
+**Cycle:** Cost Defaults & Frontend UI (2.1.3)
+
+**First Submission:** UI implementation  
+**Rejection Reason:** Quality gate failure; blank-field behavior and constraint issues
+
+**Lock-out:** Morpheus reassigned Trinity as UI revision owner; Switch locked out for revision cycle
+
+**Outcome:** Trinity's revision approved by Tank; deployment ready without further Switch engagement for 2.1.3
+
+**Checkpoint:** `.squad/orchestration-log/2026-04-22T06-55-33Z-Switch.md`
+
+### 2026-04-24: Gemini-First, Copilot-Fallback UX Design — Complete
+
+**Scope:** Per-request fallback behavior and UI patterns for chat LLM routing  
+**Status:** ✅ COMPLETE — Design spec ready for Dozer implementation
+
+**Key Design Decisions:**
+1. **Fallback Scope: Per-Request (not sticky)** — Users retain control; each message is independent
+2. **Visibility Rules: Smart Default** — Silent for transient errors, visible for config mismatches
+3. **Provider Label Behavior** — Before/during/after states clearly show primary and actual provider
+4. **UX Traps Avoided** — No UI churn, no sticky fallback, no API detail exposure, no dual-provider confusion
+
+**Design Spec Delivered:**
+- Full UX behavior specification
+- Implementation checklist for Dozer
+- Success criteria for QA (Tank)
+
+**Evidence:** `.squad/decisions/inbox/switch-gemini-fallback-ux.md` (consolidated to decisions.md)  
+**Orchestration Log:** `.squad/orchestration-log/2026-04-24T10-21-09Z-switch.md`

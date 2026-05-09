@@ -1,0 +1,7 @@
+{
+  "probed_at": "2026-04-25T06:08:13.3720663+08:00",
+  "uri": "http://127.0.0.1:8765/api/budget/status",
+  "status": null,
+  "body": null,
+  "error": "The request was canceled due to the configured HttpClient.Timeout of 10 seconds elapsing."
+}

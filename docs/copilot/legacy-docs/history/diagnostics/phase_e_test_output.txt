@@ -1,0 +1,15 @@
+..C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_aware_planner.py:121: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_aware_planner.py:85: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+.C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\test_memory_aware_planner.py:103: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at=datetime.utcnow(),
+....C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\memory_aware_planner.py:331: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  "plan_id": f"plan_{context.session_id}_{int(datetime.utcnow().timestamp())}",
+C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\memory_aware_planner.py:334: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  "created_at": datetime.utcnow(),
+.....................
+----------------------------------------------------------------------
+Ran 29 tests in 0.017s
+
+OK

@@ -1,0 +1,231 @@
+﻿powershell : skill-flow bridge returned non-JSON output: {"protocolVersion":"1.0","command":"list","ok":true,"data":{"s
+ummaries":[{"
+所在位置 行:1 字符: 1
++ powershell -ExecutionPolicy Bypass -File .\skill_sync_bridge.ps1 > sy ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (skill-flow brid..."summaries":[{":String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+source":{"id":"catalog","locator":"C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog","kind":"l
+ocal","displayName":"catalog","addedAt":"2026-04-09T05:04:29.732Z","selectionMode":"all"},"lock":{"id":"catalog","locat
+or":"C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\catalog","kind":"local","displayName":"catalog",
+"checkoutPath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog","updatedAt":"2026-04-09T05:24:53.916Z","leafIds":[
+"catalog:pipeline-00","catalog:pipeline-01","catalog:pipeline-02","catalog:pipeline-03","catalog:pipeline-04","catalog:
+pipeline-05","catalog:pipeline-06","catalog:pipeline-07","catalog:pipeline-08","catalog:pipeline-09","catalog:pipeline-
+10","catalog:pipeline-11","catalog:pipeline-12","catalog:test-analyzer","catalog:ui_ux_pro_max"],"invalidLeafs":[],"con
+tentHash":"8a3c49fd2f4db51aac589f11cd2aa0c87dfb1f2bc7660f1882325a9cfbc19b2b"},"leafs":[{"id":"catalog:pipeline-00","sou
+rceId":"catalog","name":"pipeline-00","linkName":"pipeline-00","title":"[00] Integrated Pipeline ","description":"
+'Core pipeline component: Integrated_Pipeline_. Executes transformation","relativePath":"pipeline-00","absolutePat
+h":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-00","skillFilePath":"C:\\Users\\xiao\\.skillflow\\sou
+rce\\local\\catalog\\pipeline-00\\SKILL.md","contentHash":"91ab3ba014ba560ae204ad795c830c528d05f572f8ec1690c919b4f68496
+12be","metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-01","sourceId":"catalog","name":"pipeline-01","linkNa
+me":"pipeline-01","title":"[01] 瀹屾暣鎻愬彇鑴氭湰","description":"'Core pipeline component: 瀹屾暣鎻愬彇鑴氭湰. Execut
+es transformation or logic phase","relativePath":"pipeline-01","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\loc
+al\\catalog\\pipeline-01","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-01\\SKILL.md",
+"contentHash":"fced98ba054beb3827142df7f9c3a0701d600fa4650b55807b5448ca8267e9b9","metadataWarnings":[],"valid":true},{"
+id":"catalog:pipeline-02","sourceId":"catalog","name":"pipeline-02","linkName":"pipeline-02","title":"[02] 鍥炬枃缁戝畾
+鑴氭湰","description":"'Core pipeline component: 鍥炬枃缁戝畾鑴氭湰. Executes transformation or logic phase","relativeP
+ath":"pipeline-02","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-02","skillFilePath":"C
+:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-02\\SKILL.md","contentHash":"3eed56f939acacc27356c6f4e4e7a
+75fd7b077962081d8aa6723ee5f37dffa0d","metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-03","sourceId":"catalo
+g","name":"pipeline-03","linkName":"pipeline-03","title":"[03] 鐩爣瀵煎悜鏉愭枡鍖呰剼鏈?,"description":"'Core pipeline
+ component: 鐩爣瀵煎悜鏉愭枡鍖呰剼鏈? Executes transformation or logic","relativePath":"pipeline-03","absolutePath":"C
+:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-03","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\
+local\\catalog\\pipeline-03\\SKILL.md","contentHash":"af95c8db9aa5b28cbd6593cbc4f05cbfc294d523d465361afbf305d55d8ab06e"
+,"metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-04","sourceId":"catalog","name":"pipeline-04","linkName":"
+pipeline-04","title":"[04] 鍗曞浘瑁佸垏鑴氭湰","description":"'Core pipeline component: 鍗曞浘瑁佸垏鑴氭湰. Executes tr
+ansformation or logic phase","relativePath":"pipeline-04","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\c
+atalog\\pipeline-04","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-04\\SKILL.md","cont
+entHash":"708187d2ebcea83267f2a84cbbc9700b87b029ab367789e678872995ff3757f8","metadataWarnings":[],"valid":true},{"id":"
+catalog:pipeline-05","sourceId":"catalog","name":"pipeline-05","linkName":"pipeline-05","title":"[05] 鎬绘枃浠舵瀯寤鸿
+剼鏈?,"description":"'Core pipeline component: 鎬绘枃浠舵瀯寤鸿剼鏈? Executes transformation or logic phase","relativeP
+ath":"pipeline-05","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-05","skillFilePath":"C
+:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-05\\SKILL.md","contentHash":"1913a5e9ebe99827546696d1ec598
+dcb75e2ec362f0dce5e4a58cbfdb7d8bf7e","metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-06","sourceId":"catalo
+g","name":"pipeline-06","linkName":"pipeline-06","title":"[06] 鎬讳氦浠樺寘鎵撳寘鑴氭湰","description":"'Core pipeline 
+component: 鎬讳氦浠樺寘鎵撳寘鑴氭湰. Executes transformation or logic","relativePath":"pipeline-06","absolutePath":"C:\
+\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-06","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\lo
+cal\\catalog\\pipeline-06\\SKILL.md","contentHash":"11538ecabf6b980af960fd8cfd7176a56fd25057fec1fde354519f0a8c5a8a18","
+metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-07","sourceId":"catalog","name":"pipeline-07","linkName":"pi
+peline-07","title":"[07] analysis scoring improved v9","description":"'Core pipeline component: analysis_scoring_improv
+ed_v9. Executes transformation","relativePath":"pipeline-07","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local
+\\catalog\\pipeline-07","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-07\\SKILL.md","c
+ontentHash":"b925cfdd673326301471af5b4450a9e398b55ea0713ee16977d9fb0f63050f18","metadataWarnings":[],"valid":true},{"id
+":"catalog:pipeline-08","sourceId":"catalog","name":"pipeline-08","linkName":"pipeline-08","title":"[08] Word鏂囨。鐢熸
+垚鑴氭湰","description":"'Core pipeline component: Word鏂囨。鐢熸垚鑴氭湰. Executes transformation or logic","relativePa
+th":"pipeline-08","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-08","skillFilePath":"C:
+\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-08\\SKILL.md","contentHash":"10b06999ad827a7173d8502d9ba33b
+6dfe9356bd4e8f62e0059c9e50173cbc63","metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-09","sourceId":"catalog
+","name":"pipeline-09","linkName":"pipeline-09","title":"[09] 娣峰悎妫€绱㈣剼鏈?,"description":"'Core pipeline component
+: 娣峰悎妫€绱㈣剼鏈? Executes transformation or logic phase","relativePath":"pipeline-09","absolutePath":"C:\\Users\\xia
+o\\.skillflow\\source\\local\\catalog\\pipeline-09","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalo
+g\\pipeline-09\\SKILL.md","contentHash":"efb65759e37d20a066ef489c11c3604c35b4afb260ff669cb7250ac8496c9313","metadataWar
+nings":[],"valid":true},{"id":"catalog:pipeline-10","sourceId":"catalog","name":"pipeline-10","linkName":"pipeline-10",
+"title":"[10] Agent璋冨害鑴氭湰","description":"'Core pipeline component: Agent璋冨害鑴氭湰. Executes transformation or
+ logic","relativePath":"pipeline-10","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-10",
+"skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-10\\SKILL.md","contentHash":"3c5be3ec77a
+10f5818bcc16c74acdb97e23d5d412a518fd64f59765dce29918e","metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-11",
+"sourceId":"catalog","name":"pipeline-11","linkName":"pipeline-11","title":"[11] 鍗风骇鍚堝嵎鑴氭湰","description":"'Co
+re pipeline component: 鍗风骇鍚堝嵎鑴氭湰. Executes transformation or logic phase","relativePath":"pipeline-11","absolu
+tePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-11","skillFilePath":"C:\\Users\\xiao\\.skillflow
+\\source\\local\\catalog\\pipeline-11\\SKILL.md","contentHash":"1a5fe0967115e9bd0e83ef6f1b43a0e455acd64fb637cb231a658f0
+cc39da0fc","metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-12","sourceId":"catalog","name":"pipeline-12","l
+inkName":"pipeline-12","title":"[12] 鍗风骇娣卞害鍒嗘瀽涓庣储寮曡剼鏈?,"description":"'Core pipeline component: 鍗风骇
+娣卞害鍒嗘瀽涓庣储寮曡剼鏈? Executes transformation or logic","relativePath":"pipeline-12","absolutePath":"C:\\Users\\x
+iao\\.skillflow\\source\\local\\catalog\\pipeline-12","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\cata
+log\\pipeline-12\\SKILL.md","contentHash":"d3040bc5ee7fa361590a4678459bb22edbc1b7ca14612bef8c71395065307575","metadataW
+arnings":[],"valid":true},{"id":"catalog:test-analyzer","sourceId":"catalog","name":"test-analyzer","linkName":"test-an
+alyzer","title":"Test Analyzer","description":"A mock skill to test skill-flow integration.","relativePath":"test-analy
+zer","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\test-analyzer","skillFilePath":"C:\\Users\\xi
+ao\\.skillflow\\source\\local\\catalog\\test-analyzer\\SKILL.md","contentHash":"d15a50b96a2ddb1e9ae0f03b1fd5efc681508e2
+7db116197f0ac31e158f92d76","metadataWarnings":[],"valid":true},{"id":"catalog:ui_ux_pro_max","sourceId":"catalog","name
+":"ui-ux-pro-max","linkName":"ui_ux_pro_max","title":"UI/UX Pro Max","description":"AI-powered design intelligence libr
+ary with 67 UI styles.","relativePath":"ui_ux_pro_max","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\cata
+log\\ui_ux_pro_max","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\ui_ux_pro_max\\SKILL.md","con
+tentHash":"bce765009e26b5081a849e4968dfb75c7164a59d586dec3377d22c24386ac0fb","metadataWarnings":["name should match par
+ent directory name 'ui_ux_pro_max'"],"valid":true}],"bindings":{"selectedLeafIds":["catalog:test-analyzer"],"targets":{
+}},"activeTargetCount":0,"health":"PARTIAL","issueCounts":{"warning":0,"error":0}},{"source":{"id":"knowledge","locator
+":"C:\\Users\\xiao\\.gemini\\antigravity\\knowledge","kind":"local","displayName":"knowledge","addedAt":"2026-04-09T05:
+16:43.749Z","selectionMode":"all"},"lock":{"id":"knowledge","locator":"C:\\Users\\xiao\\.gemini\\antigravity\\knowledge
+","kind":"local","displayName":"knowledge","checkoutPath":"C:\\Users\\xiao\\.skillflow\\source\\local\\knowledge","upda
+tedAt":"2026-04-09T05:24:54.173Z","leafIds":["knowledge:skill-flow","knowledge:ui-ux-pro-max"],"invalidLeafs":[],"conte
+ntHash":"cd997ed17692d4f0c2a85f41b3171fdf82d2a0fa6ebc103a3afbc5045e225483"},"leafs":[{"id":"knowledge:skill-flow","sour
+ceId":"knowledge","name":"skill-flow-protocol","linkName":"skill-flow","title":"Skill-Flow Protocol","description":"Cor
+e bridge protocol for managing and visualizing skills.","relativePath":"skill-flow","absolutePath":"C:\\Users\\xiao\\.s
+killflow\\source\\local\\knowledge\\skill-flow","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\knowledge\
+\skill-flow\\SKILL.md","contentHash":"0061cdc7722f84a1a71ac59d551b214db43a070d10fbcde3f4d979664582c6eb","metadataWarnin
+gs":["name should match parent directory name 'skill-flow'"],"valid":true},{"id":"knowledge:ui-ux-pro-max","sourceId":"
+knowledge","name":"ui-ux-pro-max","linkName":"ui-ux-pro-max","title":"UI/UX Pro Max (Assistant Core)","description":"An
+tigravity Assistant Builtin UI/UX Intelligence with 67 UI styles and 161 color palettes.","relativePath":"ui-ux-pro-max
+","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\knowledge\\ui-ux-pro-max","skillFilePath":"C:\\Users\\xia
+o\\.skillflow\\source\\local\\knowledge\\ui-ux-pro-max\\SKILL.md","contentHash":"2e855aacb4c31cce8aea45eb612f5f763d168b
+b57b0e99dfcf3578bd4455db11","metadataWarnings":[],"valid":true}],"bindings":{"selectedLeafIds":[],"targets":{}},"active
+TargetCount":0,"health":"PARTIAL","issueCounts":{"warning":0,"error":0}}],"pinnedSourceIds":[],"recentProjects":[{"proj
+ectId":"xiaolongyao-lut/Modular-Pipeline-Script","title":"Modular-Pipeline-Script","lastActivityAt":"2026-04-04T13:25:1
+4.759Z","projectPath":"C:\\Users\\xiao\\source\\repos\\xiaolongyao-lut\\Modular-Pipeline-Script","tools":["codex"]},{"p
+rojectId":"C:\\Users\\xiao\\Desktop\\tools\\v30.4_bundle_fresh_20260326_1","title":"v30.4_bundle_fresh_20260326_1","las
+tActivityAt":"2026-03-31T13:59:39.085Z","projectPath":"C:\\Users\\xiao\\Desktop\\tools\\v30.4_bundle_fresh_20260326_1",
+"tools":["codex"]}],"selectedProjectScope":{"kind":"global"},"customTargets":[{"id":"modular-pipeline-script","name":"M
+odular Pipeline Skills","globalPath":"C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\imported\\skill
+-flow","projectPathTemplate":"skills/imported/skill-flow","strategy":"copy","createdAt":"2026-04-09T05:04:27.4925929Z",
+"updatedAt":"2026-04-09T05:04:27.4925929Z"}],"agentDisplayOrder":["claude-code","codex","cursor","github-copilot","gemi
+ni-cli","opencode","openclaw","pi","trae","windsurf","roo-code","cline","amp","kiro","modular-pipeline-script"],"groupC
+ardEnrichmentBySourceId":{"catalog":{"groupPath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog"},"knowledge":{"g
+roupPath":"C:\\Users\\xiao\\.skillflow\\source\\local\\knowledge"}}},"warnings":[],"errors":[]}
+所在位置 C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\skill_sync_bridge.ps1:160 字符: 9
++         throw "skill-flow bridge returned non-JSON output: $responseP ...
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (skill-flow brid...[],"errors":[]}:String) [], RuntimeException
+    + FullyQualifiedErrorId : skill-flow bridge returned non-JSON output: {"protocolVersion":"1.0","command":"list","o 
+   k":true,"data":{"summaries":[{"source":{"id":"catalog","locator":"C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipelin  
+  e-Script\\skills\\catalog","kind":"local","displayName":"catalog","addedAt":"2026-04-09T05:04:29.732Z","selectionM   
+ ode":"all"},"lock":{"id":"catalog","locator":"C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\ca    
+talog","kind":"local","displayName":"catalog","checkoutPath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog"    ,
+"updatedAt":"2026-04-09T05:24:53.916Z","leafIds":["catalog:pipeline-00","catalog:pipeline-01","catalog:pipeline-0    2"
+,"catalog:pipeline-03","catalog:pipeline-04","catalog:pipeline-05","catalog:pipeline-06","catalog:pipeline-07","    cat
+alog:pipeline-08","catalog:pipeline-09","catalog:pipeline-10","catalog:pipeline-11","catalog:pipeline-12","cata    log:
+test-analyzer","catalog:ui_ux_pro_max"],"invalidLeafs":[],"contentHash":"8a3c49fd2f4db51aac589f11cd2aa0c87dfb1    f2bc7
+660f1882325a9cfbc19b2b"},"leafs":[{"id":"catalog:pipeline-00","sourceId":"catalog","name":"pipeline-00","link    Name":
+"pipeline-00","title":"[00] Integrated Pipeline ","description":"'Core pipeline component: Integrated_P    ipeline
+_. Executes transformation","relativePath":"pipeline-00","absolutePath":"C:\\Users\\xiao\\.skillflow\\    source\\
+local\\catalog\\pipeline-00","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipelin    e-00\\SKI
+LL.md","contentHash":"91ab3ba014ba560ae204ad795c830c528d05f572f8ec1690c919b4f6849612be","metadataWarnings    ":[],"vali
+d":true},{"id":"catalog:pipeline-01","sourceId":"catalog","name":"pipeline-01","linkName":"pipeline-01",    "title":"[0
+1] 瀹屾暣鎻愬彇鑴氭湰","description":"'Core pipeline component: 瀹屾暣鎻愬彇鑴氭湰. Executes transformation or logic ph
+as    e","relativePath":"pipeline-01","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-01"
+,    "skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-01\\SKILL.md","contentHash":"fced98
+    ba054beb3827142df7f9c3a0701d600fa4650b55807b5448ca8267e9b9","metadataWarnings":[],"valid":true},{"id":"catalog:pip 
+   eline-02","sourceId":"catalog","name":"pipeline-02","linkName":"pipeline-02","title":"[02] 鍥炬枃缁戝畾鑴氭湰","desc
+ription    ":"'Core pipeline component: 鍥炬枃缁戝畾鑴氭湰. Executes transformation or logic phase","relativePath":"pip
+eline-02","abso    lutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-02","skillFilePath":"C:\\Us
+ers\\xiao\\.sk    illflow\\source\\local\\catalog\\pipeline-02\\SKILL.md","contentHash":"3eed56f939acacc27356c6f4e4e7a7
+5fd7b07796208    1d8aa6723ee5f37dffa0d","metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-03","sourceId":"cat
+alog","name"    :"pipeline-03","linkName":"pipeline-03","title":"[03] 鐩爣瀵煎悜鏉愭枡鍖呰剼鏈?,"description":"'Core p
+ipeline component: 鐩爣瀵    煎悜鏉愭枡鍖呰剼鏈? Executes transformation or logic","relativePath":"pipeline-03","absol
+utePath":"C:\\Users\\xiao\\.skillf    low\\source\\local\\catalog\\pipeline-03","skillFilePath":"C:\\Users\\xiao\\.skil
+lflow\\source\\local\\catalog\\pi    peline-03\\SKILL.md","contentHash":"af95c8db9aa5b28cbd6593cbc4f05cbfc294d523d46536
+1afbf305d55d8ab06e","metadataWar    nings":[],"valid":true},{"id":"catalog:pipeline-04","sourceId":"catalog","name":"pi
+peline-04","linkName":"pipeline    -04","title":"[04] 鍗曞浘瑁佸垏鑴氭湰","description":"'Core pipeline component: 鍗曞
+浘瑁佸垏鑴氭湰. Executes transformation or logic     phase","relativePath":"pipeline-04","absolutePath":"C:\\Users\\xia
+o\\.skillflow\\source\\local\\catalog\\pipeline    -04","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\ca
+talog\\pipeline-04\\SKILL.md","contentHash":"7    08187d2ebcea83267f2a84cbbc9700b87b029ab367789e678872995ff3757f8","met
+adataWarnings":[],"valid":true},{"id":"catalo    g:pipeline-05","sourceId":"catalog","name":"pipeline-05","linkName":"p
+ipeline-05","title":"[05] 鎬绘枃浠舵瀯寤鸿剼鏈?,"descr    iption":"'Core pipeline component: 鎬绘枃浠舵瀯寤鸿剼鏈? Exec
+utes transformation or logic phase","relativePath":"pipeline-05    ","absolutePath":"C:\\Users\\xiao\\.skillflow\\sourc
+e\\local\\catalog\\pipeline-05","skillFilePath":"C:\\Users\\xi    ao\\.skillflow\\source\\local\\catalog\\pipeline-05\\
+SKILL.md","contentHash":"1913a5e9ebe99827546696d1ec598dcb75e2    ec362f0dce5e4a58cbfdb7d8bf7e","metadataWarnings":[],"v
+alid":true},{"id":"catalog:pipeline-06","sourceId":"catalog"    ,"name":"pipeline-06","linkName":"pipeline-06","title":
+"[06] 鎬讳氦浠樺寘鎵撳寘鑴氭湰","description":"'Core pipeline component    : 鎬讳氦浠樺寘鎵撳寘鑴氭湰. Executes transfo
+rmation or logic","relativePath":"pipeline-06","absolutePath":"C:\\Users\\xiao\\.s    killflow\\source\\local\\catalog\
+\pipeline-06","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalo    g\\pipeline-06\\SKILL.md","content
+Hash":"11538ecabf6b980af960fd8cfd7176a56fd25057fec1fde354519f0a8c5a8a18","metada    taWarnings":[],"valid":true},{"id":
+"catalog:pipeline-07","sourceId":"catalog","name":"pipeline-07","linkName":"pip    eline-07","title":"[07] analysis sco
+ring improved v9","description":"'Core pipeline component: analysis_scoring_im    proved_v9. Executes transformation","
+relativePath":"pipeline-07","absolutePath":"C:\\Users\\xiao\\.skillflow\\sour    ce\\local\\catalog\\pipeline-07","skil
+lFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-07    \\SKILL.md","contentHash":"b925cfdd6733
+26301471af5b4450a9e398b55ea0713ee16977d9fb0f63050f18","metadataWarnings":[]    ,"valid":true},{"id":"catalog:pipeline-0
+8","sourceId":"catalog","name":"pipeline-08","linkName":"pipeline-08","tit    le":"[08] Word鏂囨。鐢熸垚鑴氭湰","descrip
+tion":"'Core pipeline component: Word鏂囨。鐢熸垚鑴氭湰. Executes transformation or logic"    ,"relativePath":"pipeline-
+08","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-08","s    killFilePath":"C:\\Users\\x
+iao\\.skillflow\\source\\local\\catalog\\pipeline-08\\SKILL.md","contentHash":"10b06999    ad827a7173d8502d9ba33b6dfe93
+56bd4e8f62e0059c9e50173cbc63","metadataWarnings":[],"valid":true},{"id":"catalog:pipel    ine-09","sourceId":"catalog",
+"name":"pipeline-09","linkName":"pipeline-09","title":"[09] 娣峰悎妫€绱㈣剼鏈?,"description":    "'Core pipeline compone
+nt: 娣峰悎妫€绱㈣剼鏈? Executes transformation or logic phase","relativePath":"pipeline-09","absolu    tePath":"C:\\User
+s\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-09","skillFilePath":"C:\\Users\\xiao\\.skil    lflow\\source\\loc
+al\\catalog\\pipeline-09\\SKILL.md","contentHash":"efb65759e37d20a066ef489c11c3604c35b4afb260ff6    69cb7250ac8496c9313
+","metadataWarnings":[],"valid":true},{"id":"catalog:pipeline-10","sourceId":"catalog","name":"    pipeline-10","linkNa
+me":"pipeline-10","title":"[10] Agent璋冨害鑴氭湰","description":"'Core pipeline component: Agent璋冨害    鑴氭湰. Exec
+utes transformation or logic","relativePath":"pipeline-10","absolutePath":"C:\\Users\\xiao\\.skillflow\\s    ource\\loc
+al\\catalog\\pipeline-10","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline    -10\\SKILL.
+md","contentHash":"3c5be3ec77a10f5818bcc16c74acdb97e23d5d412a518fd64f59765dce29918e","metadataWarnings"    :[],"valid":
+true},{"id":"catalog:pipeline-11","sourceId":"catalog","name":"pipeline-11","linkName":"pipeline-11","    title":"[11] 
+鍗风骇鍚堝嵎鑴氭湰","description":"'Core pipeline component: 鍗风骇鍚堝嵎鑴氭湰. Executes transformation or logic phase
+    ","relativePath":"pipeline-11","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-11"," 
+   skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-11\\SKILL.md","contentHash":"1a5fe09  
+  67115e9bd0e83ef6f1b43a0e455acd64fb637cb231a658f0cc39da0fc","metadataWarnings":[],"valid":true},{"id":"catalog:pipe   
+ line-12","sourceId":"catalog","name":"pipeline-12","linkName":"pipeline-12","title":"[12] 鍗风骇娣卞害鍒嗘瀽涓庣储寮曡
+剼鏈?,"descr    iption":"'Core pipeline component: 鍗风骇娣卞害鍒嗘瀽涓庣储寮曡剼鏈? Executes transformation or logic",
+"relativePath":"pipeline-12    ","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\pipeline-12","ski
+llFilePath":"C:\\Users\\xi    ao\\.skillflow\\source\\local\\catalog\\pipeline-12\\SKILL.md","contentHash":"d3040bc5ee7
+fa361590a4678459bb22edbc1    b7ca14612bef8c71395065307575","metadataWarnings":[],"valid":true},{"id":"catalog:test-anal
+yzer","sourceId":"catalo    g","name":"test-analyzer","linkName":"test-analyzer","title":"Test Analyzer","description":
+"A mock skill to test s    kill-flow integration.","relativePath":"test-analyzer","absolutePath":"C:\\Users\\xiao\\.ski
+llflow\\source\\local\    \catalog\\test-analyzer","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog
+\\test-analyzer\\SKIL    L.md","contentHash":"d15a50b96a2ddb1e9ae0f03b1fd5efc681508e27db116197f0ac31e158f92d76","metada
+taWarnings":[],"vali    d":true},{"id":"catalog:ui_ux_pro_max","sourceId":"catalog","name":"ui-ux-pro-max","linkName":"
+ui_ux_pro_max","tit    le":"UI/UX Pro Max","description":"AI-powered design intelligence library with 67 UI styles.","r
+elativePath":"ui_u    x_pro_max","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog\\ui_ux_pro_max","s
+killFilePath":"C:    \\Users\\xiao\\.skillflow\\source\\local\\catalog\\ui_ux_pro_max\\SKILL.md","contentHash":"bce7650
+09e26b5081a849e4    968dfb75c7164a59d586dec3377d22c24386ac0fb","metadataWarnings":["name should match parent directory 
+name 'ui_ux_pro    _max'"],"valid":true}],"bindings":{"selectedLeafIds":["catalog:test-analyzer"],"targets":{}},"active
+TargetCount":0    ,"health":"PARTIAL","issueCounts":{"warning":0,"error":0}},{"source":{"id":"knowledge","locator":"C:\
+\Users\\xiao\    \.gemini\\antigravity\\knowledge","kind":"local","displayName":"knowledge","addedAt":"2026-04-09T05:16
+:43.749Z","s    electionMode":"all"},"lock":{"id":"knowledge","locator":"C:\\Users\\xiao\\.gemini\\antigravity\\knowled
+ge","kind":    "local","displayName":"knowledge","checkoutPath":"C:\\Users\\xiao\\.skillflow\\source\\local\\knowledge"
+,"updatedA    t":"2026-04-09T05:24:54.173Z","leafIds":["knowledge:skill-flow","knowledge:ui-ux-pro-max"],"invalidLeafs"
+:[],"cont    entHash":"cd997ed17692d4f0c2a85f41b3171fdf82d2a0fa6ebc103a3afbc5045e225483"},"leafs":[{"id":"knowledge:ski
+ll-flow"    ,"sourceId":"knowledge","name":"skill-flow-protocol","linkName":"skill-flow","title":"Skill-Flow Protocol",
+"descri    ption":"Core bridge protocol for managing and visualizing skills.","relativePath":"skill-flow","absolutePath
+":"C:\    \Users\\xiao\\.skillflow\\source\\local\\knowledge\\skill-flow","skillFilePath":"C:\\Users\\xiao\\.skillflow\
+\sour    ce\\local\\knowledge\\skill-flow\\SKILL.md","contentHash":"0061cdc7722f84a1a71ac59d551b214db43a070d10fbcde3f4d
+9796    64582c6eb","metadataWarnings":["name should match parent directory name 'skill-flow'"],"valid":true},{"id":"kno
+wle    dge:ui-ux-pro-max","sourceId":"knowledge","name":"ui-ux-pro-max","linkName":"ui-ux-pro-max","title":"UI/UX Pro M
+ax     (Assistant Core)","description":"Antigravity Assistant Builtin UI/UX Intelligence with 67 UI styles and 161 colo
+r     palettes.","relativePath":"ui-ux-pro-max","absolutePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\knowledge\\
+    ui-ux-pro-max","skillFilePath":"C:\\Users\\xiao\\.skillflow\\source\\local\\knowledge\\ui-ux-pro-max\\SKILL.md","c 
+   ontentHash":"2e855aacb4c31cce8aea45eb612f5f763d168bb57b0e99dfcf3578bd4455db11","metadataWarnings":[],"valid":true}  
+  ],"bindings":{"selectedLeafIds":[],"targets":{}},"activeTargetCount":0,"health":"PARTIAL","issueCounts":{"warning"   
+ :0,"error":0}}],"pinnedSourceIds":[],"recentProjects":[{"projectId":"xiaolongyao-lut/Modular-Pipeline-Script","tit    
+le":"Modular-Pipeline-Script","lastActivityAt":"2026-04-04T13:25:14.759Z","projectPath":"C:\\Users\\xiao\\source\\    r
+epos\\xiaolongyao-lut\\Modular-Pipeline-Script","tools":["codex"]},{"projectId":"C:\\Users\\xiao\\Desktop\\tools\    \v
+30.4_bundle_fresh_20260326_1","title":"v30.4_bundle_fresh_20260326_1","lastActivityAt":"2026-03-31T13:59:39.085Z    ","
+projectPath":"C:\\Users\\xiao\\Desktop\\tools\\v30.4_bundle_fresh_20260326_1","tools":["codex"]}],"selectedProj    ectS
+cope":{"kind":"global"},"customTargets":[{"id":"modular-pipeline-script","name":"Modular Pipeline Skills","glo    balPa
+th":"C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\skills\\imported\\skill-flow","projectPathTemp    late":
+"skills/imported/skill-flow","strategy":"copy","createdAt":"2026-04-09T05:04:27.4925929Z","updatedAt":"2026-    04-09T0
+5:04:27.4925929Z"}],"agentDisplayOrder":["claude-code","codex","cursor","github-copilot","gemini-cli","open    code","o
+penclaw","pi","trae","windsurf","roo-code","cline","amp","kiro","modular-pipeline-script"],"groupCardEnric    hmentBySo
+urceId":{"catalog":{"groupPath":"C:\\Users\\xiao\\.skillflow\\source\\local\\catalog"},"knowledge":{"grou    pPath":"C:
+\\Users\\xiao\\.skillflow\\source\\local\\knowledge"}}},"warnings":[],"errors":[]}
+ 
+

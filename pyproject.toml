@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "academic-paper-scoring"
+version = "1.0.0"
+description = "Production-grade academic paper evidence quality scoring system"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+
+dependencies = [
+    "pydantic>=1.9.0",
+    "python-dateutil>=2.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",
+    "mypy>=0.990",
+    "black>=23.0",
+    "isort>=5.11",
+    "flake8>=5.0",
+]
+
+dev-advanced = [
+    "plotly>=5.0",
+    "scipy>=1.8",
+    "scikit-learn>=1.0",
+    "sentence-transformers>=2.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --strict-markers --tb=short --cov=modules --cov-report=html --cov-report=term-missing"
+markers = [
+    "unit: Unit tests for individual components",
+    "integration: Integration tests for the full pipeline",
+    "slow: Tests that take >1 second",
+    "performance: Performance and benchmarking tests",
+    "edge_case: Edge case and boundary tests",
+]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+ignore_missing_imports = true
+files = ["modules"]
+exclude = [
+    "tests/",
+    ".venv",
+    "__pycache__",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "plotly.*",
+    "scipy.*",
+    "sklearn.*",
+    "sentence_transformers.*",
+]
+ignore_missing_imports = true
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310"]
+exclude = [
+    ".venv",
+    "__pycache__",
+    ".git",
+]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+known_first_party = ["modules"]
+
+[tool.coverage.run]
+source = ["modules"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "^\\s*pass\\s*$",
+]

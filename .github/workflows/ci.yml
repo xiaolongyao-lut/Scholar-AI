@@ -14,6 +14,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PYTHONPATH: literature_assistant/core
 
     steps:
       - name: Checkout
@@ -22,7 +24,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: "pip"
           cache-dependency-path: "requirements-ci.txt"
 
@@ -34,22 +36,22 @@ jobs:
       - name: Compile Critical Modules
         run: |
           python -X utf8 -m py_compile \
-            "03_目标导向材料包脚本.py" \
-            "08_Word文档生成脚本.py" \
-            rag_integration_entry.py \
-            main_rag_workflow.py \
-            layers/e_ragflow_retrieval_adapter.py \
-            layers/g_synthesis_graphrag_bridge.py \
-            layers/p_layer_presentation_word.py \
-            layers/v_eval_autorag_runner.py \
+              literature_assistant/core/material_bundler.py \
+              literature_assistant/core/word_generator.py \
+              literature_assistant/core/rag_integration_entry.py \
+              literature_assistant/core/main_rag_workflow.py \
+              literature_assistant/core/layers/e_ragflow_retrieval_adapter.py \
+              literature_assistant/core/layers/g_synthesis_graphrag_bridge.py \
+              literature_assistant/core/layers/p_layer_presentation_word.py \
+              literature_assistant/core/layers/v_eval_autorag_runner.py \
             test_word_docx_smoke.py \
             tests_semantic_themes.py
 
       - name: Run Integration And Adapter Tests
         run: |
           python -X utf8 -m unittest \
-            test_ragflow_integration.py \
-            test_adapter_improvements.py -v
+            tests.legacy_root.test_ragflow_integration \
+            tests.legacy_root.test_adapter_improvements -v
 
       - name: Run Semantic Themes Regression Tests
         run: |
@@ -61,8 +63,31 @@ jobs:
 
       - name: Run Focus Registry Regression Tests
         run: |
-          python -X utf8 quick_focus_registry_test.py
-          python -X utf8 focus_registry_smoke_test.py
+          python -X utf8 tests/legacy_root/quick_focus_registry_test.py
+          python -X utf8 tests/legacy_root/focus_registry_smoke_test.py
+
+      - name: Run SQLite Maintenance Regression Tests
+        run: |
+          python -X utf8 -m pytest \
+            tests/test_sqlite_maintenance.py \
+            tests/test_writing_runtime_persistence.py \
+            tests/test_writing_resource_persistence.py -q
+
+      - name: Run Pipeline Core Regression Tests
+        run: |
+          python -X utf8 -m pytest \
+            tests/legacy_root/test_pipeline_core_contract_regression.py \
+            tests/test_pipeline_observability.py -q
+
+      - name: Run Batch Controller Smoke Test
+        run: |
+          python -X utf8 -m pytest \
+            tests/test_batch_controller_smoke.py -q --tb=short
+
+      - name: Verify Pinned Environment (P2 L8)
+        run: |
+          python -m pip install -r requirements-pin.txt
+          python -X utf8 -m pytest tests/test_rotate_output.py -q --tb=short
 
       - name: Run GraphRAG Acceptance
         run: |
@@ -74,4 +99,4 @@ jobs:
 
       - name: CLI Help Smoke Test
         run: |
-          python -X utf8 rag_integration_entry.py --help
+            python -X utf8 literature_assistant/core/rag_integration_entry.py --help

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "description": "Zero-cost wiki evaluation smoke fixture. No API keys, tokens, local absolute paths, qrels edits, or model calls.",
+  "metrics": ["hit_rate", "mrr", "precision", "recall"],
+  "cases": [
+    {
+      "case_id": "wiki-smoke-001",
+      "query": "What does Paper A support?",
+      "expected_source_ids": ["src-paper-a"],
+      "wiki_context_source_ids": ["src-paper-a", "src-paper-b"],
+      "raw_context_source_ids": ["src-paper-b", "src-paper-a"],
+      "answer_page_path": "pages/synthesis/paper-a.md",
+      "ground_truth": "Paper A supports the example mechanism."
+    },
+    {
+      "case_id": "wiki-smoke-002",
+      "query": "Which source contradicts the baseline?",
+      "expected_chunk_ids": ["abc123def4567890"],
+      "wiki_context_chunk_ids": ["abc123def4567890"],
+      "raw_context_chunk_ids": [],
+      "answer_page_path": "pages/synthesis/baseline-contrast.md",
+      "ground_truth": "The baseline contrast is linked to abc123def4567890."
+    }
+  ]
+}

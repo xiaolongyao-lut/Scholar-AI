@@ -1,0 +1,18 @@
+Extract key concepts from the following text.
+
+Output must be valid JSON with this schema:
+{
+  "concepts": [
+    {
+      "name": "string",
+      "aliases": ["string", ...],
+      "definition": "string",
+      "evidence_refs": ["string", ...]
+    }
+  ]
+}
+
+Text:
+{source_text}
+
+Respond with JSON only, no additional text.

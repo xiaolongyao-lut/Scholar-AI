@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat <<'CLAUDESQUAD_STARTUP'\n[Claude Squad SessionStart — 2026-04-27]\nSession activated. If /squad mode, read startup packet from .claude_squad/:\n  1. .claude_squad/identity/claude-now.md\n  2. .claude_squad/identity/claude-goal-drift.md\n  3. .claude_squad/identity/claude-requirement-pool.md\n  4. .claude_squad/memory/claude-DECISION_TRAIL.md\n  5. .claude_squad/memory/OPEN_THREADS.md\nWrite domain: .claude_squad/ only. Copilot Squad .squad/ is read-only reference.\nHR5: checkpoint UTC format. HR1-HR6 from CLAUDE.md §Long-run hard rules apply.\nCLAUDESQUAD_STARTUP"
+          }
+        ]
+      }
+    ]
+  }
+}

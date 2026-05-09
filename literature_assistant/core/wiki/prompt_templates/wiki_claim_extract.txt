@@ -1,0 +1,17 @@
+Extract factual claims from the following text. Each claim must be supported by evidence.
+
+Output must be valid JSON with this schema:
+{
+  "claims": [
+    {
+      "claim": "string (factual statement)",
+      "evidence_refs": ["string", ...],
+      "confidence": "high|medium|low"
+    }
+  ]
+}
+
+Text:
+{source_text}
+
+Respond with JSON only, no additional text.
