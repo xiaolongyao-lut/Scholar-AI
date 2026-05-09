@@ -7,6 +7,14 @@ from python_adapter_server import app
 from routers import intelligent_chat_router
 from routers import resources_router
 import writing_resources
+from tolf_text_selector import select_tolf_context_chunks as _original_select
+
+
+def _select_with_test_thresholds(query, chunks, *, top_k, max_candidates, **_kwargs):
+    return _original_select(
+        query, chunks, top_k=top_k, max_candidates=max_candidates,
+        activation_threshold=0.05, evidence_threshold=0.1,
+    )
 
 
 class _FakeChatAnswer:
@@ -124,6 +132,7 @@ def test_api_chat_can_use_default_off_tolf_context_selector(monkeypatch, tmp_pat
     monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
     monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "1")
     monkeypatch.setattr(intelligent_chat_router, "chat_ask", _fake_chat_ask)
+    monkeypatch.setattr(intelligent_chat_router, "select_tolf_context_chunks", _select_with_test_thresholds)
 
     client = TestClient(app)
     project_response = client.post("/resources/project", json={"title": "TOLF Chat Grounding"})
@@ -511,3 +520,51 @@ def test_api_budget_status_uses_defaults_for_invalid_env(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json()["call_cap"] == 200
     assert response.json()["budget_usd"] == 5.0
+
+
+def test_api_chat_text_response_when_chart_agent_disabled(monkeypatch, tmp_path) -> None:
+    """Default off: chart-intent query still returns response_type=text."""
+    source = tmp_path / "paper.txt"
+    source.write_text("Laser power values: 100W, 150W, 200W.\n", encoding="utf-8")
+    monkeypatch.setenv("LITERATURE_SOURCE_PATHS", str(tmp_path))
+    monkeypatch.setenv("CHAT_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
+    monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
+    monkeypatch.delenv("LITERATURE_ENABLE_CHART_AGENT", raising=False)
+    monkeypatch.setattr(intelligent_chat_router, "chat_ask", _fake_chat_ask)
+
+    chart_query = "draw 柱状图 for laser power"
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={"query": chart_query, "tier": "fast"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response_type"] == "text"
+    assert payload["chart_spec"] is None
+
+
+def test_api_chat_returns_chart_when_flag_enabled(monkeypatch, tmp_path) -> None:
+    """With LITERATURE_ENABLE_CHART_AGENT=1 + seed-word query → chart response."""
+    source = tmp_path / "paper.txt"
+    source.write_text("Laser power values: 100W, 150W, 200W.\n", encoding="utf-8")
+    monkeypatch.setenv("LITERATURE_SOURCE_PATHS", str(tmp_path))
+    monkeypatch.setenv("CHAT_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
+    monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
+    monkeypatch.setenv("LITERATURE_ENABLE_CHART_AGENT", "1")
+    monkeypatch.setattr(intelligent_chat_router, "chat_ask", _fake_chat_ask)
+
+    chart_query = "draw 柱状图 for laser power"
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={"query": chart_query, "tier": "fast"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response_type"] == "chart"
+    spec = payload["chart_spec"]
+    assert spec is not None
+    assert spec["series"][0]["type"] in {"bar", "line", "pie", "scatter", "radar", "candlestick"}

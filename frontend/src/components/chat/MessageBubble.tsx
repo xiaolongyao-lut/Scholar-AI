@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
-import { ContextMetadata, ContextTier, EvidenceReference } from '@/services/intelligentChatApi';
+import { ContextMetadata, ContextTier, EvidenceReference, ConfidenceLabel, ResponseType } from '@/services/intelligentChatApi';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { ConfidenceBadge } from '@/components/chat/ConfidenceBadge';
 import { getEvidenceReferenceWikiUrl } from '@/lib/evidenceReferences';
 import { clsx } from 'clsx';
+
+const ChartRenderer = lazy(() =>
+  import('@/components/chat/ChartRenderer').then((m) => ({ default: m.ChartRenderer })),
+);
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
@@ -13,6 +18,10 @@ interface MessageBubbleProps {
   evidenceRefs?: EvidenceReference[];
   timestamp?: Date;
   insufficientContext?: boolean;
+  confidenceScore?: number | null;
+  confidenceLabel?: ConfidenceLabel | null;
+  responseType?: ResponseType;
+  chartSpec?: Record<string, unknown> | null;
   actualSamplingParams?: {
     temperature: number;
     top_p: number;
@@ -30,6 +39,10 @@ export function MessageBubble({
   timestamp,
   insufficientContext,
   actualSamplingParams,
+  confidenceScore,
+  confidenceLabel,
+  responseType,
+  chartSpec,
 }: MessageBubbleProps) {
   const [contextExpanded, setContextExpanded] = useState(false);
 
@@ -81,9 +94,28 @@ export function MessageBubble({
           </div>
         )}
 
+        {!isUser && confidenceLabel && (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <ConfidenceBadge score={confidenceScore} label={confidenceLabel} />
+            {confidenceLabel === 'very_low' && (
+              <span className="text-xs text-red-700">
+                答案可信度低，建议查证或补充来源
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="whitespace-pre-wrap break-words">
           {renderContentWithCitations(content)}
         </div>
+
+        {!isUser && responseType === 'chart' && chartSpec && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <Suspense fallback={<div className="text-xs text-gray-500">Loading chart…</div>}>
+              <ChartRenderer spec={chartSpec} fallbackText={content} />
+            </Suspense>
+          </div>
+        )}
 
         {!isUser && contextMetadata && contextMetadata.chunks.length > 0 && (
           <div className="mt-3 pt-3 border-t border-gray-200">

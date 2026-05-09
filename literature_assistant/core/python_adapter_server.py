@@ -439,6 +439,7 @@ from routers.inspiration_router import router as inspiration_router
 from routers.agent_router import router as agent_router
 from routers.chat_router import router as chat_router
 from routers.intelligent_chat_router import router as intelligent_chat_router
+from routers.chat_debug_router import router as chat_debug_router
 from routers.llm_cost_router import router as llm_cost_router
 from routers.sampling_router import router as sampling_router
 from routers.volume_router import router as volume_router
@@ -461,6 +462,7 @@ app.include_router(inspiration_router)
 app.include_router(agent_router)
 app.include_router(chat_router)
 app.include_router(intelligent_chat_router)
+app.include_router(chat_debug_router)
 app.include_router(llm_cost_router)
 app.include_router(sampling_router)
 app.include_router(volume_router)

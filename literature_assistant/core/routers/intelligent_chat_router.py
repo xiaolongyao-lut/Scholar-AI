@@ -28,10 +28,15 @@ from routers.llm_cost_router import _read_cost_aggregate
 from routers.resources_router import load_project_chunks_for_rag, search_project_chunks_for_query
 from tolf_text_selector import select_tolf_context_chunks
 from writing_resources import get_writing_resource_store
+from agents.chart_agent import generate_chart_spec
+from agents.intent_detector import detect_chart_intent
+from dev_flags import is_chart_agent_enabled
 
 
 ContextTier = Literal["fast", "balanced", "thorough"]
 MessageRole = Literal["user", "assistant"]
+ConfidenceLabel = Literal["high", "medium", "low", "very_low"]
+ResponseType = Literal["text", "chart"]
 
 router = APIRouter(prefix="/api", tags=["Chat"])
 
@@ -135,6 +140,10 @@ class IntelligentChatResponse(BaseModel):
     context_metadata: ContextMetadataPayload | None = None
     actual_sampling_params: SamplingParamsPayload | None = None
     evidence_refs: list[EvidenceReferencePayload] = Field(default_factory=list)
+    confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_label: ConfidenceLabel | None = None
+    response_type: ResponseType = "text"
+    chart_spec: dict[str, Any] | None = None
 
 
 class ChatSessionSummaryPayload(BaseModel):
@@ -172,6 +181,10 @@ class ChatResumeMessagePayload(BaseModel):
     context_metadata: ContextMetadataPayload | None = None
     tokens_used: TokenUsagePayload | None = None
     evidence_refs: list[EvidenceReferencePayload] = Field(default_factory=list)
+    confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_label: ConfidenceLabel | None = None
+    response_type: ResponseType = "text"
+    chart_spec: dict[str, Any] | None = None
 
 
 class ChatResumeResponse(BaseModel):
@@ -534,6 +547,34 @@ def _build_evidence_refs(chunks: list[ContextChunkPayload]) -> list[EvidenceRefe
     return refs
 
 
+def _compute_confidence(
+    refs: list[EvidenceReferencePayload],
+) -> tuple[float | None, ConfidenceLabel | None]:
+    """Compute evidence-strength confidence from retrieval scores.
+
+    Why:
+        P2 borrowed pattern from RAG-Pro ConfidenceBadge (0.6*max + 0.4*avg).
+        Backend produces label so frontend never re-interprets raw scores.
+        This signals retrieval evidence strength, not answer truth.
+    """
+    scores = [r.score for r in refs if isinstance(r.score, int | float) and r.score >= 0.0]
+    if not scores:
+        return None, None
+    score_max = max(scores)
+    score_avg = sum(scores) / len(scores)
+    confidence = round(0.6 * score_max + 0.4 * score_avg, 4)
+    confidence = max(0.0, min(1.0, confidence))
+    if confidence >= 0.8:
+        label: ConfidenceLabel = "high"
+    elif confidence >= 0.5:
+        label = "medium"
+    elif confidence >= 0.3:
+        label = "low"
+    else:
+        label = "very_low"
+    return confidence, label
+
+
 def _coerce_evidence_refs(raw_refs: Any) -> list[EvidenceReferencePayload]:
     refs: list[EvidenceReferencePayload] = []
     if not isinstance(raw_refs, list):
@@ -863,6 +904,10 @@ def _persist_turns(
                 ),
                 "tokens_used": response.tokens_used.model_dump(),
                 "evidence_refs": [ref.model_dump() for ref in response.evidence_refs],
+                "confidence_score": response.confidence_score,
+                "confidence_label": response.confidence_label,
+                "response_type": response.response_type,
+                "chart_spec": response.chart_spec,
             }
         )
         session["updated_at"] = now
@@ -943,6 +988,18 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
         sampling = ragworkflow_sampling
     else:
         answer, usage, sampling = await _call_llm_answer(req.query, _build_context_strings(chunks))
+
+    response_type: ResponseType = "text"
+    chart_spec: dict[str, Any] | None = None
+    if is_chart_agent_enabled() and detect_chart_intent(req.query) == "chart":
+        candidate_spec = generate_chart_spec(
+            req.query,
+            [chunk.model_dump() for chunk in chunks],
+        )
+        if candidate_spec is not None:
+            response_type = "chart"
+            chart_spec = candidate_spec
+
     response = IntelligentChatResponse(
         response=answer,
         session_id=session_id,
@@ -952,7 +1009,14 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
         context_metadata=context_metadata,
         actual_sampling_params=sampling,
         evidence_refs=evidence_refs,
+        confidence_score=None,
+        confidence_label=None,
+        response_type=response_type,
+        chart_spec=chart_spec,
     )
+    confidence_score, confidence_label = _compute_confidence(evidence_refs)
+    response.confidence_score = confidence_score
+    response.confidence_label = confidence_label
     _persist_turns(session_id=session_id, query=req.query, response=response)
 
     # Update research profile after conversation turn

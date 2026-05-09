@@ -2,6 +2,8 @@ import axios from 'axios';
 import { getApiBaseUrl } from './apiBaseUrl';
 
 export type ContextTier = 'fast' | 'balanced' | 'thorough';
+export type ConfidenceLabel = 'high' | 'medium' | 'low' | 'very_low';
+export type ResponseType = 'text' | 'chart';
 
 export interface ContextChunk {
   index: number;
@@ -64,6 +66,10 @@ export interface IntelligentChatResponse {
     top_k: number;
     max_tokens: number;
   };
+  confidence_score?: number | null;
+  confidence_label?: ConfidenceLabel | null;
+  response_type?: ResponseType;
+  chart_spec?: Record<string, unknown> | null;
 }
 
 export interface BudgetStatus {
@@ -102,6 +108,10 @@ export interface ChatResumeMessage {
   context_metadata?: ContextMetadata | null;
   tokens_used?: TokenUsage | null;
   evidence_refs?: EvidenceReference[];
+  confidence_score?: number | null;
+  confidence_label?: ConfidenceLabel | null;
+  response_type?: ResponseType | null;
+  chart_spec?: Record<string, unknown> | null;
 }
 
 export interface ChatResumeResponse {

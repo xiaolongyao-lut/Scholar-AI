@@ -1,17 +1,23 @@
 import axios from 'axios';
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, RefreshCw, Send, AlertCircle, History, X } from 'lucide-react';
+import { MessageCircle, RefreshCw, Send, AlertCircle, History, X, Bug } from 'lucide-react';
 import { TierSelector } from '@/components/chat/TierSelector';
 import { MessageBubble } from '@/components/chat/MessageBubble';
+import { RetrievalTrace } from '@/components/debug/RetrievalTrace';
+import { PromptViewer } from '@/components/debug/PromptViewer';
+import { MetricsPanel } from '@/components/debug/MetricsPanel';
 import {
   sendIntelligentChatMessage,
   listChatSessions,
   resumeChatSession,
   ContextTier,
+  ConfidenceLabel,
+  ResponseType,
   IntelligentChatResponse,
   ChatSessionSummary,
   ChatResumeMessage,
 } from '@/services/intelligentChatApi';
+import { sendChatDebug, ChatDebugResponse } from '@/services/chatDebugApi';
 import { useWriting } from '@/contexts/WritingContext';
 
 interface ChatMessage {
@@ -24,6 +30,10 @@ interface ChatMessage {
   actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
   timestamp: Date;
   insufficientContext?: boolean;
+  confidenceScore?: number | null;
+  confidenceLabel?: ConfidenceLabel | null;
+  responseType?: ResponseType;
+  chartSpec?: Record<string, unknown> | null;
 }
 
 type ChatState = 'ready' | 'responding' | 'error' | 'unavailable';
@@ -84,6 +94,10 @@ function toChatMessage(message: ChatResumeMessage): ChatMessage {
     evidenceRefs: message.evidence_refs ?? undefined,
     timestamp: parseChatTimestamp(message.timestamp),
     insufficientContext: message.role === 'assistant' && !message.context_metadata,
+    confidenceScore: message.confidence_score ?? undefined,
+    confidenceLabel: message.confidence_label ?? undefined,
+    responseType: message.response_type ?? undefined,
+    chartSpec: message.chart_spec ?? undefined,
   };
 }
 
@@ -99,6 +113,10 @@ export function IntelligentChat() {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isUnavailable, setIsUnavailable] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
+  const [includeFullPrompt, setIncludeFullPrompt] = useState(false);
+  const [debugTrace, setDebugTrace] = useState<ChatDebugResponse | null>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -158,7 +176,32 @@ export function IntelligentChat() {
 
   const handleSendMessage = async () => {
     const query = inputValue.trim();
-    if (!query || chatState === 'responding') {
+    if (!query || chatState === 'responding' || debugLoading) {
+      return;
+    }
+
+    if (debugMode) {
+      setDebugLoading(true);
+      setErrorMessage(null);
+      setDebugTrace(null);
+      try {
+        const trace = await sendChatDebug({
+          query,
+          project_id: activeProjectId || undefined,
+          tier: selectedTier,
+          include_full_prompt: includeFullPrompt,
+        });
+        setDebugTrace(trace);
+        setIsUnavailable(false);
+      } catch (error) {
+        if (isUnavailableError(error)) {
+          setIsUnavailable(true);
+        } else {
+          setErrorMessage(getChatErrorMessage(error));
+        }
+      } finally {
+        setDebugLoading(false);
+      }
       return;
     }
 
@@ -199,6 +242,10 @@ export function IntelligentChat() {
         actualSamplingParams: response.actual_sampling_params,
         timestamp: new Date(),
         insufficientContext: hasInsufficientContext,
+        confidenceScore: response.confidence_score ?? undefined,
+        confidenceLabel: response.confidence_label ?? undefined,
+        responseType: response.response_type ?? undefined,
+        chartSpec: response.chart_spec ?? undefined,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -225,7 +272,7 @@ export function IntelligentChat() {
     }
   };
 
-  const isInputDisabled = chatState === 'responding';
+  const isInputDisabled = chatState === 'responding' || debugLoading;
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -244,6 +291,19 @@ export function IntelligentChat() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setDebugMode((prev) => !prev)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border rounded-lg transition-colors ${
+              debugMode
+                ? 'text-amber-800 bg-amber-50 border-amber-300 hover:bg-amber-100'
+                : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-50'
+            }`}
+            title="Debug Mode: send queries to /api/chat/debug for retrieval trace"
+          >
+            <Bug className="w-4 h-4" />
+            {debugMode ? 'Debug On' : 'Debug'}
+          </button>
           <button
             type="button"
             onClick={handleOpenHistory}
@@ -373,6 +433,10 @@ export function IntelligentChat() {
               actualSamplingParams={message.actualSamplingParams}
               timestamp={message.timestamp}
               insufficientContext={message.insufficientContext}
+              confidenceScore={message.confidenceScore}
+              confidenceLabel={message.confidenceLabel}
+              responseType={message.responseType}
+              chartSpec={message.chartSpec}
             />
           ))
         )}
@@ -394,6 +458,51 @@ export function IntelligentChat() {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {debugMode && (
+        <div className="border-t border-amber-200 bg-amber-50/40 px-6 py-4 max-h-[55%] overflow-y-auto">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-amber-900 flex items-center gap-2">
+              <Bug className="w-4 h-4" /> Debug Trace
+            </h3>
+            <label className="flex items-center gap-2 text-xs text-amber-900">
+              <input
+                type="checkbox"
+                checked={includeFullPrompt}
+                onChange={(e) => setIncludeFullPrompt(e.target.checked)}
+              />
+              Include full prompt (requires LITERATURE_DEV_MODE)
+            </label>
+          </div>
+          {debugLoading && <p className="text-sm text-amber-800">Running trace…</p>}
+          {!debugLoading && !debugTrace && (
+            <p className="text-xs text-amber-800 italic">
+              Send a query above. The /api/chat/debug endpoint will return retrieval candidates,
+              prompt preview, and per-stage metrics. No LLM generation, no session persistence.
+            </p>
+          )}
+          {debugTrace && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2 space-y-3">
+                <RetrievalTrace
+                  rewrittenQuery={debugTrace.rewritten_query}
+                  candidates={debugTrace.retrieval_results}
+                  selected={debugTrace.selected_chunks}
+                  rejected={debugTrace.rejected_chunks}
+                />
+                <PromptViewer
+                  preview={debugTrace.prompt_preview}
+                  fullPrompt={debugTrace.prompt_template}
+                  fullPromptRequested={includeFullPrompt}
+                />
+              </div>
+              <div>
+                <MetricsPanel metrics={debugTrace.metrics} traceId={debugTrace.trace_id} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Error Banner */}
       {errorMessage && (
@@ -427,7 +536,7 @@ export function IntelligentChat() {
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isInputDisabled}
-            placeholder="Ask a question about your literature..."
+            placeholder={debugMode ? 'Debug query — only retrieval trace will be returned…' : 'Ask a question about your literature...'}
             className="flex-1 px-4 py-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
             rows={3}
           />
