@@ -306,14 +306,22 @@ P1 + P2 + P3 spike 已落地并跑出绿灯，作为 P3.1 的回滚基线。
 **P3 spike 与 P3.1 的边界**：
 - ✅ 已完成：seed-word intent detector（RAG-Pro 词表 + 英文 seeds 含 word-boundary 防误触）、ECharts spec sanitizer、feature flag、前端 lazy `ChartRenderer`、session persist + resume 携带 `response_type/chart_spec`
 - ✅ **P3.1a 完成**（2026-05-09 同日）：真实 LLM 生成 ECharts JSON。`generate_chart_spec` 改为 async，注入 `chat_caller` 走本仓 `chat_ask`（同 provider/cost/retry 链路，不绕过 `model_call_gateway`）。失败语义：LLM 异常 / 非法 JSON / sanitizer 拒绝 → 返回 `None`，路由层降级为 text，不抛错给用户。
-- ❌ 未完成（属于 P3.1b/c）：seed regex 漏掉时的 LLM intent fallback、误触率 / 失败率度量（jsonl atomic write 到 `workspace_artifacts/runtime_state/`）
+- ✅ **P3.1b 完成**（2026-05-09 同日）：seed regex 漏掉时的 LLM intent fallback。`detect_chart_intent_via_llm` 用极简二分类 prompt（"reply chart or text"），`_normalize_llm_intent` 严格只接受第一个 token == `chart`。Behind `LITERATURE_ENABLE_CHART_AGENT_LLM_INTENT`（默认关）。任何 LLM 异常或模糊回复都降级为 `text`。
+- ✅ **P3.1c 完成**（2026-05-09 同日）：误触率 / 失败率度量。`agents/chart_metrics.py` JSONL atomic append 到 `workspace_artifacts/runtime_state/chart_intent_metrics.jsonl`，8 种事件覆盖整个 chart-agent 生命周期。Query 经 12-char SHA-256 哈希后持久化，原文不落盘。所有 `record_event` 调用 try/except 包裹——指标写失败永不影响聊天主路径。
 
 **Smoke 基线修复（2026-05-09 同日）**：
 - `_compute_confidence` 引入 `s/(s+5)` 饱和归一化：BM25 6.5–9.5 不再全 high，区分度恢复
 - `_truncate_preview` 修截断 +301 字符 bug（导致 `/api/chat/debug` 500）
 - 英文 seed 加入：`chart/plot/graph/histogram/...`（word-boundary 不会误匹配 `discharge`/`uncharted`）
 
-如果 P3.1b/c 引入回归，回滚到本 spike 的 HEAD 即可恢复全绿状态。
+**P3.1 全部完成的回滚契约**：
+- 默认环境（无 chart 相关 flag）行为与本 PR 第一个 commit 完全一致
+- `LITERATURE_ENABLE_CHART_AGENT=1` 单独开启 → seed 触发的 chart 路径被激活
+- `LITERATURE_ENABLE_CHART_AGENT=1 + LITERATURE_ENABLE_CHART_AGENT_LLM_INTENT=1` → 加上 LLM 召回扩展（额外 1 次 LLM 调用每次 seed 漏判）
+- 任何 chart 路径失败 → 降级为正常 text 答复，不抛错给用户
+- 度量随时可关闭：删除 `chart_intent_metrics.jsonl` 或忽略；不影响功能
+
+如果未来引入回归，回滚到本 spike 的 HEAD 即可恢复全绿状态（63 后端测试 + frontend tsc + build）。
 
 ### 第一步（已锁定决策 6A）
 
