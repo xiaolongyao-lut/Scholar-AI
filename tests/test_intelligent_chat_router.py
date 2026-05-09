@@ -568,3 +568,59 @@ def test_api_chat_returns_chart_when_flag_enabled(monkeypatch, tmp_path) -> None
     spec = payload["chart_spec"]
     assert spec is not None
     assert spec["series"][0]["type"] in {"bar", "line", "pie", "scatter", "radar", "candlestick"}
+
+
+def _conf_ref(score: float):
+    """Build a minimal EvidenceReferencePayload-like object for confidence tests."""
+    from routers.intelligent_chat_router import EvidenceReferencePayload
+    return EvidenceReferencePayload(
+        chunk_id=f"chunk-{score}",
+        material_id=None,
+        source="test.txt",
+        text="x",
+        quote="x",
+        label="local_context",
+        score=score,
+    )
+
+
+def test_compute_confidence_handles_unbounded_bm25_scores() -> None:
+    """Live smoke regression: BM25 scores 6.5–9.5 must not all clamp to high.
+
+    Why:
+        evidence_refs[].score is the raw retriever output (no normalization).
+        Pre-fix the formula 0.6·max + 0.4·avg always rounded to 1.0 for any
+        successful project-mode match. Saturation s/(s+5) keeps the spread.
+    """
+    from routers.intelligent_chat_router import _compute_confidence
+
+    score, label = _compute_confidence([_conf_ref(9.5), _conf_ref(6.83)])
+    assert score is not None and 0.0 < score < 1.0
+    # 9.5/(9.5+5)=0.655, 6.83/(6.83+5)=0.577 → 0.6*0.655+0.4*0.616=0.639 → medium
+    assert label == "medium", f"expected medium for raw 9.5/6.83, got {label} ({score})"
+
+
+def test_compute_confidence_separates_strong_from_weak() -> None:
+    from routers.intelligent_chat_router import _compute_confidence
+
+    strong_score, strong_label = _compute_confidence([_conf_ref(40.0), _conf_ref(35.0)])
+    weak_score, weak_label = _compute_confidence([_conf_ref(0.5), _conf_ref(0.3)])
+    assert strong_score is not None and weak_score is not None
+    assert strong_score > weak_score
+    assert strong_label == "high"
+    assert weak_label == "very_low"
+
+
+def test_compute_confidence_returns_none_when_no_scores() -> None:
+    from routers.intelligent_chat_router import _compute_confidence
+
+    score, label = _compute_confidence([])
+    assert score is None and label is None
+
+
+def test_compute_confidence_filters_negative_scores() -> None:
+    from routers.intelligent_chat_router import _compute_confidence
+
+    score, label = _compute_confidence([_conf_ref(-0.1), _conf_ref(8.0)])
+    assert score is not None
+    assert 0.0 < score < 1.0

@@ -547,6 +547,27 @@ def _build_evidence_refs(chunks: list[ContextChunkPayload]) -> list[EvidenceRefe
     return refs
 
 
+_CONFIDENCE_SATURATION_K = 5.0
+
+
+def _normalize_evidence_score(raw: float) -> float:
+    """Map an unbounded retrieval score into [0, 1) via saturation.
+
+    Why:
+        ``evidence_refs[].score`` reflects whichever retriever produced the
+        chunk — TOLF / hybrid BM25 / source-paths token overlap — none of
+        which are normalized. Live smoke (2026-05-09) showed BM25 scores
+        of 6.5–9.5 always clamping the raw 0.6·max + 0.4·avg blend to 1.0
+        and tagging every successful match "high". The saturation curve
+        ``s / (s + k)`` keeps zero at zero, smoothly approaches 1, and
+        still ranks chunks by raw quality. ``k=5`` gives 0.55 at s=6 and
+        0.66 at s=10 — useful spread for the high/medium/low thresholds.
+    """
+    if raw <= 0.0:
+        return 0.0
+    return raw / (raw + _CONFIDENCE_SATURATION_K)
+
+
 def _compute_confidence(
     refs: list[EvidenceReferencePayload],
 ) -> tuple[float | None, ConfidenceLabel | None]:
@@ -557,11 +578,14 @@ def _compute_confidence(
         Backend produces label so frontend never re-interprets raw scores.
         This signals retrieval evidence strength, not answer truth.
     """
-    scores = [r.score for r in refs if isinstance(r.score, int | float) and r.score >= 0.0]
-    if not scores:
+    raw_scores = [
+        float(r.score) for r in refs if isinstance(r.score, int | float) and r.score >= 0.0
+    ]
+    if not raw_scores:
         return None, None
-    score_max = max(scores)
-    score_avg = sum(scores) / len(scores)
+    normalized = [_normalize_evidence_score(s) for s in raw_scores]
+    score_max = max(normalized)
+    score_avg = sum(normalized) / len(normalized)
     confidence = round(0.6 * score_max + 0.4 * score_avg, 4)
     confidence = max(0.0, min(1.0, confidence))
     if confidence >= 0.8:
