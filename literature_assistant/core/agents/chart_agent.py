@@ -201,19 +201,34 @@ async def generate_chart_spec(
         JSON extraction, or sanitizer rejected the candidate. Callers
         should fall back to a plain text response on ``None``.
     """
+    from agents import chart_metrics  # local import keeps module decoupled
+
     context_strings = _build_context_strings(chunks)
     prompt = _build_chart_prompt(query, context_strings)
     try:
         raw_answer = await chat_caller(prompt, context_strings)
     except Exception as exc:  # noqa: BLE001 — chart never breaks chat
         _logger.warning("chart_agent: chat_caller raised: %s", exc)
+        chart_metrics.record_event(
+            "spec_llm_error", query, extra={"error": exc.__class__.__name__}
+        )
         return None
     parsed = parse_llm_chart_json(raw_answer or "")
     if parsed is None:
         _logger.info("chart_agent: LLM did not return valid JSON")
+        chart_metrics.record_event(
+            "spec_invalid_json", query, extra={"answer_len": len(raw_answer or "")}
+        )
         return None
     sanitized = sanitize_echarts_option(parsed)
     if sanitized is None:
         _logger.info("chart_agent: sanitizer rejected LLM spec")
+        chart_metrics.record_event(
+            "spec_sanitizer_reject", query, extra={"top_keys": list(parsed.keys())[:8]}
+        )
         return None
+    series_types = [str(s.get("type")) for s in sanitized.get("series", [])]
+    chart_metrics.record_event(
+        "spec_success", query, extra={"series_types": series_types}
+    )
     return sanitized

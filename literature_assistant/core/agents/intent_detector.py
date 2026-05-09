@@ -72,10 +72,20 @@ def detect_chart_intent(query: str) -> ChartIntent:
     if not query:
         return "text"
     text = query.lower()
+    matched_seed: str | None = None
     for word in _CHART_SEED_WORDS_CN:
         if word in text:
-            return "chart"
-    if _EN_PATTERN.search(text):
+            matched_seed = word
+            break
+    if matched_seed is None:
+        match = _EN_PATTERN.search(text)
+        if match is not None:
+            matched_seed = match.group(0)
+    if matched_seed is not None:
+        from agents import chart_metrics  # local import to avoid cycles
+        chart_metrics.record_event(
+            "intent_seed_match", query, extra={"seed": matched_seed}
+        )
         return "chart"
     return "text"
 
@@ -140,10 +150,21 @@ async def detect_chart_intent_via_llm(
     """
     if not query:
         return "text"
+    from agents import chart_metrics  # local import to avoid cycles
+
     prompt = _LLM_INTENT_PROMPT.format(query=query)
     try:
         reply = await chat_caller(prompt, [])
     except Exception as exc:  # noqa: BLE001 — intent fallback never breaks chat
         _logger.warning("intent_detector: LLM call raised: %s", exc)
+        chart_metrics.record_event(
+            "intent_llm_error", query, extra={"error": exc.__class__.__name__}
+        )
         return "text"
-    return _normalize_llm_intent(reply or "")
+    decision = _normalize_llm_intent(reply or "")
+    chart_metrics.record_event(
+        "intent_llm_match" if decision == "chart" else "intent_llm_no",
+        query,
+        extra={"reply_preview": (reply or "")[:60]},
+    )
+    return decision
