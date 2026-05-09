@@ -432,7 +432,6 @@ from routers.pipeline_router import router as pipeline_router
 from routers.skills_router import router as skills_router
 from routers.resources_router import router as resources_router
 from routers.memory_router import router as memory_router
-from routers.semantic_causal_router import router as semantic_causal_router
 from routers.runtime_router import router as runtime_router
 from routers.recovery_router import router as recovery_router
 from recovery_autopilot_router import router as autopilot_router
@@ -456,7 +455,6 @@ app.include_router(skills_router)
 app.include_router(runtime_router)
 app.include_router(resources_router)
 app.include_router(memory_router)
-app.include_router(semantic_causal_router)
 app.include_router(recovery_router)
 app.include_router(autopilot_router)
 app.include_router(inspiration_router)
