@@ -161,3 +161,26 @@ def test_chat_debug_preview_truncation(client: TestClient, tmp_path: Path) -> No
     assert status == 200, data
     for chunk in data["retrieval_results"]:
         assert len(chunk["content_preview"]) <= 300
+
+
+def test_chat_debug_truncate_helper_respects_limit() -> None:
+    """Direct unit check: ellipsis suffix must not push string past the cap.
+
+    Why:
+        A chunk just over 300 chars caused Pydantic max_length=300 to reject
+        the response (smoke regression 2026-05-09). Slicing to limit then
+        appending '…' produced 301 chars.
+    """
+    import sys
+    from pathlib import Path as _Path
+    core = _Path(__file__).resolve().parents[1] / "literature_assistant" / "core"
+    if str(core) not in sys.path:
+        sys.path.insert(0, str(core))
+    from routers.chat_debug_router import _truncate_preview
+
+    long_text = "x" * 500
+    truncated = _truncate_preview(long_text, limit=300)
+    assert len(truncated) <= 300
+    assert truncated.endswith("…")
+    short_text = "short"
+    assert _truncate_preview(short_text, limit=300) == "short"

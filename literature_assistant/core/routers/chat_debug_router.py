@@ -117,7 +117,7 @@ class ChatDebugResponse(BaseModel):
 def _truncate_preview(text: str, limit: int = _PREVIEW_CHAR_LIMIT) -> str:
     if len(text) <= limit:
         return text
-    return text[:limit].rstrip() + "…"
+    return text[: max(limit - 1, 0)].rstrip() + "…"
 
 
 def _to_debug_chunks(chunks: list[ContextChunkPayload]) -> list[DebugChunk]:
