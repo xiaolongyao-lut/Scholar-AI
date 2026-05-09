@@ -30,6 +30,22 @@ def test_intent_detector_defaults_to_text() -> None:
     assert detect_chart_intent("") == "text"
 
 
+def test_intent_detector_picks_up_english_seeds() -> None:
+    """Live smoke regression: English-only KB queries must trigger chart too."""
+    assert detect_chart_intent("draw a bar chart of laser power") == "chart"
+    assert detect_chart_intent("Show me the histogram") == "chart"
+    assert detect_chart_intent("plot the distribution") == "chart"
+    assert detect_chart_intent("Visualize this data") == "chart"
+
+
+def test_intent_detector_english_word_boundary_safety() -> None:
+    """English seeds must use word boundaries — 'chart' must not match 'discharge'."""
+    assert detect_chart_intent("discharge the capacitor") == "text"
+    assert detect_chart_intent("uncharted territory") == "text"
+    assert detect_chart_intent("photograph the sample") == "text"
+    assert detect_chart_intent("paragraph two summarizes") == "text"
+
+
 def test_sanitizer_drops_function_strings() -> None:
     raw = {
         "title": {"text": "demo"},
