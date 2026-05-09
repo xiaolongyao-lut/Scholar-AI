@@ -61,7 +61,7 @@ def test_material_pack_generated_for_each_pdf(smoke_test_pdfs, batch_output_dir)
     controller = BatchProcessController(str(smoke_test_pdfs), str(batch_output_dir), "Test Goal")
     controller.process_batch()
     
-    batch_dirs = list(batch_output_dir.glob("batch_*"))
+    batch_dirs = list(batch_output_dir.glob("batch_[0-9]*"))
     assert batch_dirs, "Batch output directory not created"
     
     batch_dir = batch_dirs[0]
