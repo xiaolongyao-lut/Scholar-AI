@@ -34,14 +34,14 @@ jobs:
       - name: Compile Critical Modules
         run: |
           python -X utf8 -m py_compile \
-            material_bundler.py \
-            word_generator.py \
-            rag_integration_entry.py \
-            main_rag_workflow.py \
-            layers/e_ragflow_retrieval_adapter.py \
-            layers/g_synthesis_graphrag_bridge.py \
-            layers/p_layer_presentation_word.py \
-            layers/v_eval_autorag_runner.py \
+              literature_assistant/core/material_bundler.py \
+              literature_assistant/core/word_generator.py \
+              literature_assistant/core/rag_integration_entry.py \
+              literature_assistant/core/main_rag_workflow.py \
+              literature_assistant/core/layers/e_ragflow_retrieval_adapter.py \
+              literature_assistant/core/layers/g_synthesis_graphrag_bridge.py \
+              literature_assistant/core/layers/p_layer_presentation_word.py \
+              literature_assistant/core/layers/v_eval_autorag_runner.py \
             test_word_docx_smoke.py \
             tests_semantic_themes.py
 
@@ -97,4 +97,4 @@ jobs:
 
       - name: CLI Help Smoke Test
         run: |
-          python -X utf8 rag_integration_entry.py --help
+            python -X utf8 literature_assistant/core/rag_integration_entry.py --help
