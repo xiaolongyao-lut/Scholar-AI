@@ -80,11 +80,109 @@ def test_sanitizer_rejects_html_strings() -> None:
     assert "text" not in title or not str(title.get("text", "")).startswith("<")
 
 
-def test_generate_chart_spec_returns_safe_option() -> None:
-    chunks = [{"source": "paper-1.pdf"}, {"source": "paper-2.pdf"}]
-    spec = generate_chart_spec("画一个柱状图比较两篇论文", chunks)
+async def _make_caller(answer: str):
+    async def _call(_prompt: str, _context: list[str]) -> str:
+        return answer
+    return _call
+
+
+def test_generate_chart_spec_returns_sanitized_llm_output() -> None:
+    """LLM returns valid JSON → sanitized spec returned."""
+    import asyncio
+
+    llm_answer = (
+        '```json\n'
+        '{"title": {"text": "demo"},'
+        ' "xAxis": {"type": "category", "data": ["a", "b"]},'
+        ' "yAxis": {"type": "value"},'
+        ' "series": [{"type": "bar", "data": [1, 2]}]}\n'
+        '```'
+    )
+
+    async def _run():
+        caller = await _make_caller(llm_answer)
+        return await generate_chart_spec(
+            "draw a bar chart",
+            [{"source": "paper-1.pdf", "content": "data"}],
+            chat_caller=caller,
+        )
+
+    spec = asyncio.run(_run())
     assert spec is not None
     assert spec["series"][0]["type"] == "bar"
+    assert spec["title"]["text"] == "demo"
+
+
+def test_generate_chart_spec_returns_none_on_invalid_json() -> None:
+    """LLM returns garbage → returns None so caller falls back to text."""
+    import asyncio
+
+    async def _run():
+        caller = await _make_caller("Sorry, I cannot draw charts.")
+        return await generate_chart_spec(
+            "draw a bar chart",
+            [{"source": "paper-1.pdf"}],
+            chat_caller=caller,
+        )
+
+    assert asyncio.run(_run()) is None
+
+
+def test_generate_chart_spec_returns_none_when_sanitizer_rejects() -> None:
+    """LLM returns JSON missing required series → sanitizer rejects → None."""
+    import asyncio
+
+    bad_spec = '{"title": {"text": "no series"}}'
+
+    async def _run():
+        caller = await _make_caller(bad_spec)
+        return await generate_chart_spec(
+            "chart",
+            [{"source": "x"}],
+            chat_caller=caller,
+        )
+
+    assert asyncio.run(_run()) is None
+
+
+def test_generate_chart_spec_drops_dangerous_fields() -> None:
+    """LLM emits formatter / function — sanitizer strips them, spec still valid."""
+    import asyncio
+
+    poisoned = (
+        '{"title": {"text": "demo"},'
+        ' "tooltip": {"formatter": "function(p){return p.value}"},'
+        ' "series": [{"type": "bar", "data": [1, 2]}]}'
+    )
+
+    async def _run():
+        caller = await _make_caller(poisoned)
+        return await generate_chart_spec(
+            "chart",
+            [{"source": "x"}],
+            chat_caller=caller,
+        )
+
+    spec = asyncio.run(_run())
+    assert spec is not None
+    assert "formatter" not in (spec.get("tooltip") or {})
+
+
+def test_generate_chart_spec_returns_none_when_llm_raises() -> None:
+    """LLM call raises → returns None (chart never breaks chat)."""
+    import asyncio
+
+    async def _failing_caller(_prompt: str, _context: list[str]) -> str:
+        raise RuntimeError("network down")
+
+    async def _run():
+        return await generate_chart_spec(
+            "chart",
+            [{"source": "x"}],
+            chat_caller=_failing_caller,
+        )
+
+    assert asyncio.run(_run()) is None
 
 
 def test_parse_llm_chart_json_handles_fenced_text() -> None:

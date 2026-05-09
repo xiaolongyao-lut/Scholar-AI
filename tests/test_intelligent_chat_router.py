@@ -22,7 +22,27 @@ class _FakeChatAnswer:
     usage = {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}
 
 
+class _FakeChatAnswerChartJson:
+    """Returned by the chart-aware fake when the prompt is the chart prompt."""
+
+    answer = (
+        '{"title":{"text":"Laser Power vs Hardness"},'
+        ' "xAxis":{"type":"category","data":["2000W","3000W"]},'
+        ' "yAxis":{"type":"value"},'
+        ' "series":[{"type":"bar","name":"hardness HV","data":[285,320]}]}'
+    )
+    usage = {"prompt_tokens": 50, "completion_tokens": 40, "total_tokens": 90}
+
+
 async def _fake_chat_ask(_request):
+    return _FakeChatAnswer()
+
+
+async def _fake_chat_ask_chart_aware(request):
+    """Test fake that recognizes the chart prompt and returns valid JSON."""
+    query = getattr(request, "query", "") or ""
+    if "ECharts option" in query or "JSON object" in query:
+        return _FakeChatAnswerChartJson()
     return _FakeChatAnswer()
 
 
@@ -554,7 +574,7 @@ def test_api_chat_returns_chart_when_flag_enabled(monkeypatch, tmp_path) -> None
     monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
     monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
     monkeypatch.setenv("LITERATURE_ENABLE_CHART_AGENT", "1")
-    monkeypatch.setattr(intelligent_chat_router, "chat_ask", _fake_chat_ask)
+    monkeypatch.setattr(intelligent_chat_router, "chat_ask", _fake_chat_ask_chart_aware)
 
     chart_query = "draw 柱状图 for laser power"
     client = TestClient(app)
@@ -624,3 +644,38 @@ def test_compute_confidence_filters_negative_scores() -> None:
     score, label = _compute_confidence([_conf_ref(-0.1), _conf_ref(8.0)])
     assert score is not None
     assert 0.0 < score < 1.0
+
+
+def test_api_chat_falls_back_to_text_when_llm_returns_garbage_for_chart(
+    monkeypatch, tmp_path
+) -> None:
+    """P3.1a regression: chart agent gets garbage from LLM → text fallback.
+
+    Why:
+        With chart flag on, the chart agent calls the LLM for an ECharts
+        JSON spec. If the LLM returns prose instead of JSON (or rejected
+        JSON), the chat handler must still return a valid text answer
+        rather than crashing or showing an empty chart.
+    """
+    source = tmp_path / "paper.txt"
+    source.write_text("Laser power values: 100W, 150W, 200W.\n", encoding="utf-8")
+    monkeypatch.setenv("LITERATURE_SOURCE_PATHS", str(tmp_path))
+    monkeypatch.setenv("CHAT_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
+    monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
+    monkeypatch.setenv("LITERATURE_ENABLE_CHART_AGENT", "1")
+    # _fake_chat_ask returns prose for every prompt — simulates LLM failure
+    # to produce JSON for the chart agent path.
+    monkeypatch.setattr(intelligent_chat_router, "chat_ask", _fake_chat_ask)
+
+    chart_query = "draw 柱状图 for laser power"
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={"query": chart_query, "tier": "fast"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response_type"] == "text"
+    assert payload["chart_spec"] is None
+    assert payload["response"] == _FakeChatAnswer.answer

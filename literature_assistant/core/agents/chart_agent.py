@@ -1,24 +1,28 @@
 # -*- coding: utf-8 -*-
-"""ChartAgent — produce a sanitized ECharts spec from context chunks.
+"""ChartAgent — produce a sanitized ECharts spec via LLM call.
 
-Pattern adapted from RAG-Pro ``backend/app/agents/chart_agent.py``: extract
-JSON from LLM output, then strictly allowlist option fields. Anything not
-on the allowlist (functions, HTML strings, event handlers, raw JS) is
-discarded so the frontend can safely pass the spec into ``ReactECharts``.
+Pattern adapted from RAG-Pro ``backend/app/agents/chart_agent.py``: prompt
+the LLM for a JSON ECharts option, extract the JSON, then strictly
+allowlist option fields. Anything not on the allowlist (functions, HTML
+strings, event handlers, raw JS) is discarded so the frontend can safely
+pass the spec into ``ReactECharts``.
 
-P3 spike status:
-- LLM call deferred — this spike returns a deterministic placeholder spec
-  built from chunk titles, so the wiring + sanitizer + fallback path can
-  be tested without burning API budget.
-- Production P3.1 will replace ``_build_placeholder_spec`` with a real
-  ``model_call_gateway`` call + ``json.loads`` extraction + sanitizer.
+P3.1a (2026-05-09): replaced the placeholder spec with a real LLM call.
+The caller injects ``chat_caller`` so this module stays decoupled from
+the Intelligent Chat router and tests can drop in a fake.
+
+Failure semantics: every error path returns ``None`` so the caller falls
+back to a plain text response — never crash the chat handler over a chart.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+import logging
+from typing import Any, Awaitable, Callable, Mapping
 
+
+_logger = logging.getLogger("ChartAgent")
 
 _ALLOWED_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
     {
@@ -40,6 +44,11 @@ _ALLOWED_SERIES_TYPES: frozenset[str] = frozenset(
     {"line", "bar", "pie", "scatter", "radar", "candlestick"}
 )
 _FORBIDDEN_KEY_SUBSTRINGS: tuple[str, ...] = ("formatter", "renderer", "rich", "html")
+
+_CONTEXT_PREVIEW_CHARS = 600
+_MAX_CONTEXT_CHUNKS = 8
+
+ChatCaller = Callable[[str, list[str]], Awaitable[str]]
 
 
 def _scrub_value(value: Any) -> Any:
@@ -111,42 +120,8 @@ def sanitize_echarts_option(option: Any) -> dict[str, Any] | None:
     return safe
 
 
-def _build_placeholder_spec(query: str, chunks: list[dict[str, Any]]) -> dict[str, Any]:
-    """Stub spec used until LLM generation is wired in P3.1."""
-    sources = [str(chunk.get("source") or f"chunk-{i}")[:40] for i, chunk in enumerate(chunks[:8])]
-    counts = [1] * len(sources) if sources else [1]
-    if not sources:
-        sources = ["(no context)"]
-    return {
-        "title": {"text": query[:60] or "Chart"},
-        "tooltip": {"trigger": "axis"},
-        "xAxis": {"type": "category", "data": sources},
-        "yAxis": {"type": "value"},
-        "series": [
-            {
-                "type": "bar",
-                "name": "context coverage",
-                "data": counts,
-            }
-        ],
-    }
-
-
-def generate_chart_spec(
-    query: str,
-    chunks: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    """P3.0 spike: build a placeholder spec, sanitize, return safe option.
-
-    Returns ``None`` if sanitization rejects the spec (caller falls back to
-    plain text). Future P3.1 will swap the placeholder for a real LLM call.
-    """
-    candidate = _build_placeholder_spec(query, chunks)
-    return sanitize_echarts_option(candidate)
-
-
 def parse_llm_chart_json(text: str) -> dict[str, Any] | None:
-    """Extract a JSON object from raw LLM text — used by future P3.1.
+    """Extract a JSON object from raw LLM text.
 
     Tolerant to surrounding prose / fenced code blocks / leading-text noise.
     Returns ``None`` if no valid JSON object is found.
@@ -161,3 +136,84 @@ def parse_llm_chart_json(text: str) -> dict[str, Any] | None:
         return json.loads(text[start : end + 1])
     except json.JSONDecodeError:
         return None
+
+
+def _build_context_strings(chunks: list[dict[str, Any]]) -> list[str]:
+    """Compress chunks into short prompt-friendly strings."""
+    lines: list[str] = []
+    for idx, chunk in enumerate(chunks[:_MAX_CONTEXT_CHUNKS]):
+        source = str(chunk.get("source") or f"chunk-{idx}")
+        content = str(chunk.get("content") or "")
+        if len(content) > _CONTEXT_PREVIEW_CHARS:
+            content = content[: _CONTEXT_PREVIEW_CHARS - 1].rstrip() + "…"
+        lines.append(f"[{idx + 1}] source={source}\n{content}")
+    return lines
+
+
+def _build_chart_prompt(query: str, context_strings: list[str]) -> str:
+    """Compose a prompt that asks the LLM for a JSON-only ECharts option.
+
+    The prompt names the allowlist explicitly so the model is less likely to
+    emit fields the sanitizer would discard. Reply must be JSON only — no
+    fences, no prose — but ``parse_llm_chart_json`` tolerates leading text
+    just in case.
+    """
+    allowed_top = ", ".join(sorted(_ALLOWED_TOP_LEVEL_KEYS))
+    allowed_series = ", ".join(sorted(_ALLOWED_SERIES_TYPES))
+    context_block = "\n\n".join(context_strings) if context_strings else "(no context)"
+    return (
+        "You generate ECharts option objects as JSON. Given the question and the "
+        "literature context, output a single valid JSON object describing one chart.\n"
+        "\n"
+        "Hard requirements (your output is post-validated; non-conforming fields will be dropped):\n"
+        f"- Top-level keys must be from: {allowed_top}.\n"
+        f"- Each item in `series` must have `type` from {{{allowed_series}}} and a `data` array.\n"
+        "- Do NOT include `formatter`, `renderer`, `rich`, or `html` keys.\n"
+        "- Do NOT include function strings or HTML.\n"
+        "- Reply with ONLY the JSON object — no markdown fences, no commentary.\n"
+        "\n"
+        f"Question: {query}\n"
+        "\n"
+        "Context:\n"
+        f"{context_block}\n"
+        "\n"
+        "JSON:\n"
+    )
+
+
+async def generate_chart_spec(
+    query: str,
+    chunks: list[dict[str, Any]],
+    chat_caller: ChatCaller,
+) -> dict[str, Any] | None:
+    """Generate a sanitized ECharts spec via LLM.
+
+    Args:
+        query: The user's natural-language chart request.
+        chunks: Context chunks with ``source`` and ``content`` fields
+            (typically ``ContextChunkPayload.model_dump()``).
+        chat_caller: Awaitable ``(prompt, context) -> answer_text``.
+            Caller injects so this module never reaches into the chat
+            router for the LLM config or test monkeypatches.
+
+    Returns:
+        A sanitized ECharts option dict, or ``None`` if the LLM call,
+        JSON extraction, or sanitizer rejected the candidate. Callers
+        should fall back to a plain text response on ``None``.
+    """
+    context_strings = _build_context_strings(chunks)
+    prompt = _build_chart_prompt(query, context_strings)
+    try:
+        raw_answer = await chat_caller(prompt, context_strings)
+    except Exception as exc:  # noqa: BLE001 — chart never breaks chat
+        _logger.warning("chart_agent: chat_caller raised: %s", exc)
+        return None
+    parsed = parse_llm_chart_json(raw_answer or "")
+    if parsed is None:
+        _logger.info("chart_agent: LLM did not return valid JSON")
+        return None
+    sanitized = sanitize_echarts_option(parsed)
+    if sanitized is None:
+        _logger.info("chart_agent: sanitizer rejected LLM spec")
+        return None
+    return sanitized

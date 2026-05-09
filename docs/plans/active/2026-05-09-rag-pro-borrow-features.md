@@ -304,10 +304,16 @@ P1 + P2 + P3 spike 已落地并跑出绿灯，作为 P3.1 的回滚基线。
 **额外固化的 main-branch hotfix**：spike 的第一个 commit（`fix(adapter): drop dangling semantic_causal_router reference`）是必要的 unblock：origin/main 自带 broken import（PR #3 squash 漏带 `semantic_causal_router.py`，`git log --all --diff-filter=A` 返回空）。spike 仅删除 dangling 引用以恢复 app import，不带未跟踪的 router 文件进入 spike scope；semantic causal 功能需要后续单独 hotfix 把缺失的 router + store 文件正式 commit。
 
 **P3 spike 与 P3.1 的边界**：
-- ✅ 已完成：seed-word intent detector（RAG-Pro 词表）、ECharts spec sanitizer、placeholder spec 生成、feature flag、前端 lazy `ChartRenderer`、session persist + resume 携带 `response_type/chart_spec`
-- ❌ 未完成（属于 P3.1）：真实 LLM 生成 ECharts JSON（当前是 placeholder bar chart）、LLM intent fallback、误触率 / 失败率度量
+- ✅ 已完成：seed-word intent detector（RAG-Pro 词表 + 英文 seeds 含 word-boundary 防误触）、ECharts spec sanitizer、feature flag、前端 lazy `ChartRenderer`、session persist + resume 携带 `response_type/chart_spec`
+- ✅ **P3.1a 完成**（2026-05-09 同日）：真实 LLM 生成 ECharts JSON。`generate_chart_spec` 改为 async，注入 `chat_caller` 走本仓 `chat_ask`（同 provider/cost/retry 链路，不绕过 `model_call_gateway`）。失败语义：LLM 异常 / 非法 JSON / sanitizer 拒绝 → 返回 `None`，路由层降级为 text，不抛错给用户。
+- ❌ 未完成（属于 P3.1b/c）：seed regex 漏掉时的 LLM intent fallback、误触率 / 失败率度量（jsonl atomic write 到 `workspace_artifacts/runtime_state/`）
 
-如果 P3.1 引入回归，回滚到本 spike 的 HEAD 即可恢复全绿状态。
+**Smoke 基线修复（2026-05-09 同日）**：
+- `_compute_confidence` 引入 `s/(s+5)` 饱和归一化：BM25 6.5–9.5 不再全 high，区分度恢复
+- `_truncate_preview` 修截断 +301 字符 bug（导致 `/api/chat/debug` 500）
+- 英文 seed 加入：`chart/plot/graph/histogram/...`（word-boundary 不会误匹配 `discharge`/`uncharted`）
+
+如果 P3.1b/c 引入回归，回滚到本 spike 的 HEAD 即可恢复全绿状态。
 
 ### 第一步（已锁定决策 6A）
 

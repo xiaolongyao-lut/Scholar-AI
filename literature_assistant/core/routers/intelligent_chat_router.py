@@ -795,6 +795,27 @@ async def _call_llm_answer(query: str, context: list[str]) -> tuple[str, TokenUs
     )
 
 
+async def _chart_chat_caller(prompt: str, context: list[str]) -> str:
+    """Adapter passed to chart_agent so it reuses this module's chat_ask.
+
+    Why:
+        chart_agent must hit the same provider / cost / retry chain as
+        ``_call_llm_answer``. Routing through this module's ``chat_ask``
+        symbol also lets test fixtures monkeypatch ``chat_ask`` once and
+        intercept both the main LLM call and the chart-spec call.
+    """
+    llm = _load_default_llm_config()
+    response = await chat_ask(
+        ChatRequest(
+            query=prompt,
+            context=context,
+            history=[],
+            llm=llm,
+        )
+    )
+    return getattr(response, "answer", "") or ""
+
+
 async def _call_project_ragworkflow_answer(
     *,
     query: str,
@@ -1016,9 +1037,10 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
     response_type: ResponseType = "text"
     chart_spec: dict[str, Any] | None = None
     if is_chart_agent_enabled() and detect_chart_intent(req.query) == "chart":
-        candidate_spec = generate_chart_spec(
+        candidate_spec = await generate_chart_spec(
             req.query,
             [chunk.model_dump() for chunk in chunks],
+            chat_caller=_chart_chat_caller,
         )
         if candidate_spec is not None:
             response_type = "chart"
