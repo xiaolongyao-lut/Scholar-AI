@@ -17,7 +17,7 @@ from agents.chart_agent import (
     parse_llm_chart_json,
     sanitize_echarts_option,
 )
-from agents.intent_detector import detect_chart_intent
+from agents.intent_detector import detect_chart_intent, detect_chart_intent_via_llm
 
 
 def test_intent_detector_picks_up_seed_words() -> None:
@@ -195,3 +195,73 @@ def test_parse_llm_chart_json_handles_fenced_text() -> None:
 def test_parse_llm_chart_json_returns_none_on_garbage() -> None:
     assert parse_llm_chart_json("no json here") is None
     assert parse_llm_chart_json("{not valid json}") is None
+
+
+# --- P3.1b: LLM intent fallback ---
+
+
+def test_llm_intent_fallback_returns_chart_when_llm_says_chart() -> None:
+    import asyncio
+
+    async def _caller(_prompt: str, _ctx: list[str]) -> str:
+        return "chart"
+
+    assert asyncio.run(detect_chart_intent_via_llm("show me the values", _caller)) == "chart"
+
+
+def test_llm_intent_fallback_normalizes_noisy_replies() -> None:
+    """LLM may add punctuation / extra words despite the instruction."""
+    import asyncio
+
+    async def _chart_with_extra(_p: str, _c: list[str]) -> str:
+        return "  chart.\nThis is a chart request."
+
+    async def _text_with_extra(_p: str, _c: list[str]) -> str:
+        return "TEXT! No visualization needed."
+
+    assert asyncio.run(detect_chart_intent_via_llm("q", _chart_with_extra)) == "chart"
+    assert asyncio.run(detect_chart_intent_via_llm("q", _text_with_extra)) == "text"
+
+
+def test_llm_intent_fallback_returns_text_when_llm_says_text() -> None:
+    import asyncio
+
+    async def _caller(_p: str, _c: list[str]) -> str:
+        return "text"
+
+    assert asyncio.run(detect_chart_intent_via_llm("summarize this", _caller)) == "text"
+
+
+def test_llm_intent_fallback_returns_text_when_llm_raises() -> None:
+    """LLM call failure must not propagate — safe default is text."""
+    import asyncio
+
+    async def _failing(_p: str, _c: list[str]) -> str:
+        raise RuntimeError("provider down")
+
+    assert asyncio.run(detect_chart_intent_via_llm("q", _failing)) == "text"
+
+
+def test_llm_intent_fallback_returns_text_for_ambiguous_reply() -> None:
+    """Anything not unambiguously 'chart' coalesces to text — false-positive guard."""
+    import asyncio
+
+    async def _maybe(_p: str, _c: list[str]) -> str:
+        return "maybe a chart, maybe not"
+
+    # First token is "maybe", not "chart" → text
+    assert asyncio.run(detect_chart_intent_via_llm("q", _maybe)) == "text"
+
+
+def test_llm_intent_fallback_returns_text_on_empty_query() -> None:
+    """Empty query short-circuits without an LLM call."""
+    import asyncio
+
+    call_count = {"n": 0}
+
+    async def _caller(_p: str, _c: list[str]) -> str:
+        call_count["n"] += 1
+        return "chart"
+
+    assert asyncio.run(detect_chart_intent_via_llm("", _caller)) == "text"
+    assert call_count["n"] == 0

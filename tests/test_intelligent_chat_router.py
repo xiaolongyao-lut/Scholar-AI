@@ -679,3 +679,77 @@ def test_api_chat_falls_back_to_text_when_llm_returns_garbage_for_chart(
     assert payload["response_type"] == "text"
     assert payload["chart_spec"] is None
     assert payload["response"] == _FakeChatAnswer.answer
+
+
+def test_api_chat_llm_intent_fallback_promotes_to_chart(monkeypatch, tmp_path) -> None:
+    """P3.1b: seed regex misses, LLM intent says 'chart' → chart response.
+
+    Why:
+        Tests the cost-bearing intent fallback path. Regex on a generic
+        "show the data points" query returns text; with the LLM-intent
+        flag on, the router asks the LLM, gets 'chart', and proceeds to
+        chart_agent.
+    """
+    source = tmp_path / "paper.txt"
+    source.write_text(
+        "Annual data points: 2020 had 100 units, 2021 had 150 units, 2022 had 180 units.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LITERATURE_SOURCE_PATHS", str(tmp_path))
+    monkeypatch.setenv("CHAT_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
+    monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
+    monkeypatch.setenv("LITERATURE_ENABLE_CHART_AGENT", "1")
+    monkeypatch.setenv("LITERATURE_ENABLE_CHART_AGENT_LLM_INTENT", "1")
+
+    async def _intent_then_json(request):
+        query = getattr(request, "query", "") or ""
+        if "binary intent classifier" in query:
+            class _IntentAns:
+                answer = "chart"
+                usage = {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}
+            return _IntentAns()
+        if "ECharts option" in query or "JSON object" in query:
+            return _FakeChatAnswerChartJson()
+        return _FakeChatAnswer()
+
+    monkeypatch.setattr(intelligent_chat_router, "chat_ask", _intent_then_json)
+
+    # Query has no Chinese seeds and no English seeds (chart/plot/graph/etc.)
+    # so deterministic detection returns 'text' → LLM fallback kicks in.
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={"query": "show me the annual data points by year", "tier": "fast"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["context_chunks_used"] >= 1, payload
+    assert payload["response_type"] == "chart"
+    assert payload["chart_spec"] is not None
+
+
+def test_api_chat_llm_intent_fallback_off_keeps_text(monkeypatch, tmp_path) -> None:
+    """P3.1b: when LLM-intent flag is off, regex misses → text (no extra LLM call)."""
+    source = tmp_path / "paper.txt"
+    source.write_text(
+        "Annual data points: 2020 had 100 units, 2021 had 150 units, 2022 had 180 units.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LITERATURE_SOURCE_PATHS", str(tmp_path))
+    monkeypatch.setenv("CHAT_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("CHAT_MODEL", "test-chat-model")
+    monkeypatch.setenv("OPENAI_API_KEY_CHAT", "test-key")
+    monkeypatch.setenv("LITERATURE_ENABLE_CHART_AGENT", "1")
+    monkeypatch.delenv("LITERATURE_ENABLE_CHART_AGENT_LLM_INTENT", raising=False)
+    monkeypatch.setattr(intelligent_chat_router, "chat_ask", _fake_chat_ask)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={"query": "show me the annual data points by year", "tier": "fast"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response_type"] == "text"
+    assert payload["chart_spec"] is None

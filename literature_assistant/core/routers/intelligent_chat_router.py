@@ -29,8 +29,8 @@ from routers.resources_router import load_project_chunks_for_rag, search_project
 from tolf_text_selector import select_tolf_context_chunks
 from writing_resources import get_writing_resource_store
 from agents.chart_agent import generate_chart_spec
-from agents.intent_detector import detect_chart_intent
-from dev_flags import is_chart_agent_enabled
+from agents.intent_detector import detect_chart_intent, detect_chart_intent_via_llm
+from dev_flags import is_chart_agent_enabled, is_chart_agent_llm_intent_enabled
 
 
 ContextTier = Literal["fast", "balanced", "thorough"]
@@ -1036,15 +1036,19 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
 
     response_type: ResponseType = "text"
     chart_spec: dict[str, Any] | None = None
-    if is_chart_agent_enabled() and detect_chart_intent(req.query) == "chart":
-        candidate_spec = await generate_chart_spec(
-            req.query,
-            [chunk.model_dump() for chunk in chunks],
-            chat_caller=_chart_chat_caller,
-        )
-        if candidate_spec is not None:
-            response_type = "chart"
-            chart_spec = candidate_spec
+    if is_chart_agent_enabled():
+        intent: str = detect_chart_intent(req.query)
+        if intent != "chart" and is_chart_agent_llm_intent_enabled():
+            intent = await detect_chart_intent_via_llm(req.query, _chart_chat_caller)
+        if intent == "chart":
+            candidate_spec = await generate_chart_spec(
+                req.query,
+                [chunk.model_dump() for chunk in chunks],
+                chat_caller=_chart_chat_caller,
+            )
+            if candidate_spec is not None:
+                response_type = "chart"
+                chart_spec = candidate_spec
 
     response = IntelligentChatResponse(
         response=answer,
