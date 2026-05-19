@@ -460,6 +460,7 @@ from routers.discussion_router import router as discussion_router
 from routers.credentials_router import router as credentials_router
 from routers.discussion_advanced_router import router as discussion_advanced_router
 from routers.mcp_router import router as mcp_router
+from routers.mcp_installer_router import router as mcp_installer_router
 from routers.graph_router import router as graph_router
 from routers.evolution_router import router as evolution_router
 
@@ -488,6 +489,7 @@ app.include_router(discussion_router)
 app.include_router(credentials_router)
 app.include_router(discussion_advanced_router)
 app.include_router(mcp_router)
+app.include_router(mcp_installer_router)
 app.include_router(graph_router)
 app.include_router(evolution_router)
 
