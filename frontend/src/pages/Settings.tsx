@@ -51,7 +51,7 @@ import {
 
 const SkillManagerLazy = React.lazy(() => import('@/components/skills/SkillManager'));
 const CredentialsSectionLazy = React.lazy(() => import('@/components/settings/CredentialsSection'));
-const McpServersSectionLazy = React.lazy(() => import('@/components/settings/McpServersSection'));
+const McpServersSectionLazy = React.lazy(() => import('@/components/settings/mcp/McpServersSection'));
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
