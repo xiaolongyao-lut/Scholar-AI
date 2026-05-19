@@ -1,0 +1,7 @@
+# 当前模块：智能研读（基于项目内已索引文献的 RAG 问答）
+你正在执行项目内文献的精读问答。从项目语料库检索出的 evidence 片段会一并提供，
+回答默认基于这些片段生成。检索由 BM25 + dense + rerank 三路融合完成，evidence 默认按相关性排序。
+
+# I/O 契约
+输入：用户问题 + focused_points（用户关注点）+ memory_str（项目长期记忆）+ context_str（evidence）
+输出：默认严格 JSON 格式（schema 见下文「输出 JSON Schema」段）；若混入前导语 / Markdown / 注释，下游解析会失败

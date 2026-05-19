@@ -1,0 +1,66 @@
+# Normalize text files in the repository. Developers may use Windows or Unix,
+# but committed text should be LF unless a file type below says otherwise.
+* text=auto eol=lf
+
+# Windows command files require CRLF when executed by cmd.exe.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell and shell scripts stay LF for stable diffs.
+*.ps1 text eol=lf
+*.sh text eol=lf
+
+# Source and configuration text.
+*.py text eol=lf
+*.pyi text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
+*.ttl text eol=lf
+*.env text eol=lf
+*.example text eol=lf
+
+# Binary assets and local state. These should never get text normalization.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.7z binary
+*.rar binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.pkl binary
+*.npy binary
+*.npz binary
+
+# Append-only agent ledgers can safely keep both sides during branch merges.
+# New runtime files should remain ignored by `.gitignore`; these rules only
+# protect historical or intentionally tracked ledgers.
+.squad/decisions.md merge=union
+.squad/decisions-archive.md merge=union
+.squad/agents/*/history.md merge=union
+.squad/agents/history-*.md merge=union
+.squad/log/** merge=union
+.squad/orchestration-log/** merge=union

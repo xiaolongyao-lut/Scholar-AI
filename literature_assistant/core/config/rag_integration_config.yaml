@@ -1,0 +1,102 @@
+# ============================================================================
+# RAG Integration Configuration
+# 文件: config/rag_integration_config.yaml
+# 用途: 统一管理 RAGFlow / GraphRAG / AutoRAG / Workflow 的运行时参数
+# ============================================================================
+# 注意: API Key 等敏感信息应通过环境变量注入, 不要写入此文件
+#   RAGFLOW_API_KEY, ARK_API_KEY, SILICONFLOW_API_KEY 等
+
+# ─── RAGFlow 检索适配器 ───────────────────────────────────────────
+ragflow:
+  enabled: false                               # 暂未部署 RAGFlow 实例，关闭
+  base_url: "https://localhost:9380"           # RAGFlow 服务地址 (待部署后更新)
+  dataset_ids: []                              # 检索目标数据集 ID 列表 (待配置)
+  verify_ssl: true
+  connect_timeout: 5
+  read_timeout: 25
+  max_retries: 3
+
+# ─── GraphRAG 社区图谱 ──────────────────────────────────────────
+graphrag:
+  enabled: false                               # 需先运行 graphrag index 生成 parquet
+  index_path: "C:/Users/xiao/Desktop/wenxianku" # 文献库路径 (待生成 parquet 后启用)
+  default_community_level: 1
+
+# ─── AutoRAG 评测 ───────────────────────────────────────────────
+autorag:
+  enabled: true
+  data_path: "C:/Users/xiao/Desktop/wenxianku" # 文献库路径
+  output_dir: "./autorag_out"
+  config_path: "./config/autorag_eval.yaml"
+
+# ─── Embedding / Semantic Router ─────────────────────────────────
+embedding:
+  provider: "siliconflow"
+  api_key_env: "SILICONFLOW_API_KEY"
+  base_url: "https://api.siliconflow.cn/v1"
+  model: "BAAI/bge-m3"
+  timeout: 60.0
+  batch_size: 50
+  lazy_vectorize: true
+
+# ─── RAG 工作流 ─────────────────────────────────────────────────
+workflow:
+  use_local_fallback: true
+  top_k_points: 3
+  top_k_evidence: 5
+  llm_api_key_env: "ARK_API_KEY"
+  llm_base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  llm_model: "ep-your-ark-endpoint"
+  enable_requests_fallback: true
+
+# ─── MemPalace 长期记忆层 ───────────────────────────────────────────────
+mempalace:
+  enabled: true
+  vendor_repo_path: "./github/mempalace-3.0.0"
+  palace_path: "./output/mempalace/palace"
+  collection_name: "mempalace_drawers"
+  default_wing: "wing_modular_pipeline"
+  default_room: "runtime-jobs"
+  search_limit: 3
+  max_content_chars: 4000
+  auto_sync_runtime_jobs: true
+  identity_path: "./output/mempalace/identity.txt"
+
+# ─── Literature Evolution Layer (D-EVO-P0-4 kill switch) ──────────────
+# Independent guard for new recall influence; orthogonal to the
+# MempalaceMemoryAdapter import repair shipped in Evolution S1.
+# Set to true once Slice 1 lands and dogfood is confirmed safe.
+evolution:
+  recall_enabled: false
+  # S5 review UI (Slice 5) — when true, /evolution renders the inbox UI.
+  # Default false; an admin can flip it on once S5 dogfood has been
+  # validated for their workspace. The feature was dogfood-validated by
+  # Claude on 2026-05-18 (runbook: docs/plans/runbooks/evolution-s5-dogfood-20260518.md).
+  review_ui_enabled: false
+  # Slice 3+ — when true, /inspiration/generate captures candidates from
+  # evidence-backed and memory-association sparks. Capture failures never
+  # affect the spark response (background, best-effort). Set false to fully
+  # disable the new background write path.
+  candidate_capture_enabled: true
+  # Slice 6 — when true, /evolution/candidates/{id}/promote turns ACCEPTED
+  # candidates into MemPalace drawers (memory candidates) or skill-draft
+  # proposals (memory_type=SKILL_DRAFT). Rollback is always available via
+  # /evolution/candidates/{id}/rollback (tombstone-first).
+  # Default false; admin can flip true once the accept-flow surface is
+  # familiar to operators. Validated end-to-end by S5 dogfood 2026-05-18.
+  promotion_enabled: false
+  # Slice 7 — when true, /evolution/curate/run may transition PENDING
+  # candidates: stale rows past stale_threshold_seconds become EXPIRED;
+  # low-confidence rows below low_confidence_threshold become SNOOZED
+  # (recoverable via mark_pending). Conflict + dedupe groups are
+  # report-only — curator never auto-resolves them. Default false.
+  curator_enabled: false
+  # Opt §5 — when true AND curator_enabled is true, the conflict sweep
+  # additionally calls an LLM judge on each structural-polarity bucket
+  # (≥2 claims sharing workspace/project/memory_type with both positive
+  # and negative decisions). Judge output is appended to the conflict
+  # report as report-only (`llm_judge`); curator still never auto-
+  # resolves. Failures degrade silently to structural-only output.
+  # Default false; flip true only after evolution credentials are
+  # configured and a low-volume dogfood run is acceptable.
+  curator_llm_judge_enabled: false

@@ -1,0 +1,25 @@
+你是一名科研概念提取助手。请从提供的论文源文本中提取核心概念及其关系。
+
+论文源文本：
+{source_text}
+
+已有概念列表（去重参考）：
+{existing_concepts}
+
+硬性约束：
+1) 严格外部知识隔离：仅使用提供的源文本。
+2) 每个概念必须绑定至少一个 [chunk_id] 作为出处。
+3) 仅输出 JSON；返回一个 JSON 对象，禁止输出任何前导语、解释或 Markdown 代码块。
+
+输出 JSON Schema：
+{{
+  "concepts": [
+    {{
+      "name": "string，概念名称",
+      "aliases": ["string，别名/缩写"],
+      "definition": "string，简明定义",
+      "evidence_refs": ["string，绑定 SOURCE_ID"],
+      "related_concepts": ["string，关联概念名称"]
+    }}
+  ]
+}}

@@ -1,0 +1,148 @@
+# Environment files and local secrets.
+# Git patterns without "/" match a basename at any directory depth.
+.env
+.env.*
+.envrc
+
+# Root-only local instruction and agent configuration files.
+# Leading "/" keeps these rules from hiding product/vendored subdirectories.
+/AGENTS.md
+/AI_WORKSPACE_GUIDE.md
+/CLAUDE.md
+/DEVELOPER_GUIDE.md
+/GEMINI.md
+/MEMORY.md
+/OPEN_THREADS.md
+/skill_sync_bridge.ps1
+
+# Root-only local agent/editor state.
+/.claude/
+/.claude_squad/
+/.continue/
+/.copilot/
+/.copilot-tracking/
+/.oracle_phase6_eval/
+/.cursor/
+/.kilo/
+/.squad/
+/.squad-workstream
+/.vite/
+/.vscode/
+/.vs/
+/.idea/
+/.config/
+/.mcp.json
+/.opencode/
+
+# Root-only GitHub agent scaffolding; keep normal workflow files trackable.
+/.github/
+/.github/agents/
+/.github/chatmodes/
+/.github/copilot-instructions.md
+/.github/hooks/
+/.github/instructions/
+/.github/prompts/
+/.github/skills/
+/.github/workflows/squad-*.yml
+/.github/workflows/sync-squad-labels.yml
+
+# Internal planning, review, and agent process documents.
+# Public repository surface keeps root README/CHANGELOG/CONTRIBUTING/SECURITY only.
+/docs/
+
+# Python caches and test outputs.
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# JavaScript/frontend outputs.
+/package-lock.json
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+/frontend/out/
+/frontend/tests/
+/frontend/src/test/
+/frontend/**/*.test.ts
+/frontend/**/*.test.tsx
+/frontend/**/*.test.mjs
+/frontend/playwright.config.ts
+/frontend/vite.config.e2e.ts
+/frontend/.axe-linter.yml
+/frontend/test-results/
+/frontend/.rollback_snapshots/
+/frontend/output/
+/frontend/test_output.txt
+
+# Local runtime roots and deprecated repo residue.
+/output/
+/.modular/
+/legacy_archive/
+/github/
+/my-project/
+/packaging/
+/scripts/
+/skills/
+/tools/
+/literature_assistant/core/skills/importers/ui-ux-pro-max/
+
+# Workspace runtime/generated artifacts.
+# Keep these local by default; public commits should use explicit product paths.
+/workspace_ai/
+/workspace_ai/local_state/
+/workspace_artifacts/
+/workspace_references/
+/workspace_tests/
+
+# Workspace scratch areas.
+/tests/
+/workspace_tests/benchmarks/results/
+/workspace_tests/diagnostics/
+/workspace_tests/evaluation_data/BASELINE_METRICS.json
+/workspace_tests/provider_proxy/
+/workspace_tests/scratch/
+
+# Local databases, logs, and generated state.
+*.log
+*.tmp
+*.db
+*.db-shm
+*.db-wal
+*_facts.db
+*_state.db
+*_events.db
+*_output.json
+/sync_output.json
+/global_state.json
+/calibration_results.json
+/optimization_test_report.json
+/BASELINE_METRICS.json
+/jian.md
+/test_output.txt
+/final_test_result.txt
+/pytest.ini
+/.axe-linter.yml
+/eval_retrieval_runtime.py
+/gateb_phase_b_pool_export.py
+/integrated_pipeline.py
+/local_rerank_server.py
+/recovery_cli.py
+/recovery_workflows.py
+/test_word_docx_smoke.py
+/tests_semantic_themes.py
+
+# Local browser/app profiles and backups.
+/.app-profile/
+/.rollback_snapshots/
+/.backup_before_script_rename_*/
+/.cache/
+/_backups/
+/scratch/
+/scoring_reports/
+/locks/
+
+# Stray root build chunks.
+/main-*.js

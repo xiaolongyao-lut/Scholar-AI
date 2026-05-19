@@ -1,0 +1,57 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "焊接领域专业术语同义词库",
+    "last_updated": "2026-04-11"
+  },
+  "synonym_groups": [
+    {
+      "canonical": "INCREASE",
+      "terms": ["增加", "提高", "升高", "增强", "提升", "加快", "上调"]
+    },
+    {
+      "canonical": "DECREASE",
+      "terms": ["减少", "降低", "减弱", "下降", "缩小", "减慢", "抑制"]
+    },
+    {
+      "canonical": "LASER_POWER",
+      "terms": ["激光功率", "激光能量密度", "能量输入", "Power input", "Laser intensity"]
+    },
+    {
+      "canonical": "WELDING_SPEED",
+      "terms": ["焊接速度", "进给速度", "扫描速度", "Traveling speed", "Scan rate"]
+    },
+    {
+      "canonical": "PENETRATION_DEPTH",
+      "terms": ["熔深", "焊缝深度", "穿透深度", "Fusion depth", "Penetration"]
+    },
+    {
+      "canonical": "BEAD_WIDTH",
+      "terms": ["熔宽", "焊缝宽度", "熔池宽度", "Bead width", "Melt width"]
+    },
+    {
+      "canonical": "TITANIUM_ALLOY_TC4",
+      "terms": ["TC4", "Ti-6Al-4V", "Ti6Al4V", "钛合金 TC4", "ASTM Grade 5"]
+    },
+    {
+      "canonical": "STAINLESS_STEEL_304",
+      "terms": ["304 不锈钢", "SUS304", "18-8 不锈钢", "06Cr19Ni10"]
+    },
+    {
+      "canonical": "HOT_CRACKING",
+      "terms": ["热裂纹", "热裂", "高温裂纹", "结晶裂纹", "Solidification cracking"]
+    },
+    {
+      "canonical": "COLD_CRACKING",
+      "terms": ["冷裂纹", "冷裂", "延迟裂纹", "低温脆裂", "Hydrogen induced cracking"]
+    },
+    {
+      "canonical": "HARDNESS",
+      "terms": ["硬度", "维氏硬度", "显微硬度", "Hardness", "HV"]
+    },
+    {
+      "canonical": "TENSILE_STRENGTH",
+      "terms": ["抗拉强度", "屈服强度", "强度", "Tensile strength", "UTS"]
+    }
+  ]
+}

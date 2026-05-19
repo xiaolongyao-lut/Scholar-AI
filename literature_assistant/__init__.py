@@ -1,0 +1,1 @@
+"""Literature assistant workspace package."""

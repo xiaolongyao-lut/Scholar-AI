@@ -1,0 +1,23 @@
+---
+name: {{frontmatter_name}}
+description: {{frontmatter_description}}
+version: {{frontmatter_version}}
+kind: {{frontmatter_kind}}
+source: {{frontmatter_source}}
+entry_mode: {{frontmatter_entry_mode}}
+ui_visibility: {{frontmatter_ui_visibility}}
+display_group: {{frontmatter_display_group}}
+tags: {{frontmatter_tags}}
+supported_scopes: {{frontmatter_supported_scopes}}
+requires_assets: {{frontmatter_requires_assets}}
+safe_to_execute: {{frontmatter_safe_to_execute}}
+experimental: {{frontmatter_experimental}}
+trust_level: {{frontmatter_trust_level}}
+---
+
+# {{title}}
+
+{{summary_block}}{{description}}
+
+## Metadata
+{{metadata_block}}
