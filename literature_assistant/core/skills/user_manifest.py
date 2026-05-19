@@ -52,9 +52,51 @@ MAX_PACKAGE_BYTES = 20 * 1024 * 1024  # 20 MB
 HIGH_RISK_PERMISSIONS = frozenset({"script.execute", "network", "files.write"})
 
 
+# Skill credential / config-field allowlists (S5 / plan 2026-05-20 §C1 +
+# reinforcement B). Mirror the v1 allowlists used by McpInstallConfigField /
+# McpRequiredCredential so MCP and Skill share the same install-time UX.
+SKILL_CREDENTIAL_KINDS = frozenset({"api_key"})
+SKILL_CONFIG_FIELD_TYPES = frozenset({"text", "select"})
+
+
 # ---------------------------------------------------------------------------
 # Manifest dataclass
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class SkillRequiredCredential:
+    """A credential reference slot the SkillManager binds via CredentialPicker.
+
+    After import, the binding is recorded in ``CredentialBindingIndex``
+    (owner_kind="skill") so the credentials center can show "used by" and
+    the skill runtime can resolve env at execution time.
+    """
+
+    id: str
+    label: str
+    env: str
+    kind: str = "api_key"
+    provider_hints: list[str] = field(default_factory=list)
+    required: bool = True
+    description: str = ""
+
+
+@dataclass
+class SkillConfigField:
+    """A non-secret config field the install wizard prompts for and the skill
+    runtime injects into the execution env as a plain string.
+    """
+
+    id: str
+    label: str
+    env: str
+    type: str = "text"
+    default: str | None = None
+    required: bool = False
+    description: str = ""
+    options: list[dict[str, str]] | None = None  # for type=select
+
 
 @dataclass
 class UserSkillManifest:
@@ -85,6 +127,12 @@ class UserSkillManifest:
     tags: list[str] = field(default_factory=list)
     display_group: str = "user"
     experimental: bool = False
+
+    # S5 extension: required credential refs + non-secret config fields
+    # (plan 2026-05-20 §C1 + reinforcement B). Empty lists by default so
+    # existing manifests parse without changes.
+    required_credentials: list[SkillRequiredCredential] = field(default_factory=list)
+    config_fields: list[SkillConfigField] = field(default_factory=list)
 
     # Computed at validation time
     high_risk_flags: list[str] = field(default_factory=list)
@@ -205,6 +253,14 @@ def validate_manifest(data: dict[str, Any]) -> UserSkillManifest:
                 if root not in ("skill_root", "project_root"):
                     errors.append(f"Invalid root '{root}' in root_policy.allowed_roots")
 
+    # --- S5: required_credentials + config_fields ---
+    required_credentials = _parse_required_credentials(
+        data.get("required_credentials", []), errors
+    )
+    config_fields = _parse_config_fields(
+        data.get("config_fields", []), errors
+    )
+
     if errors:
         raise ManifestValidationError(errors)
 
@@ -228,6 +284,8 @@ def validate_manifest(data: dict[str, Any]) -> UserSkillManifest:
         tags=data.get("tags", []) if isinstance(data.get("tags"), list) else [],
         display_group=data.get("display_group", "user"),
         experimental=bool(data.get("experimental", False)),
+        required_credentials=required_credentials,
+        config_fields=config_fields,
         high_risk_flags=high_risk_flags,
     )
 
@@ -252,6 +310,183 @@ def _validate_relative_path(path_str: str, field_name: str, errors: list[str]) -
                 resolved.append(part)
     except Exception:
         errors.append(f"{field_name} invalid path: '{path_str}'")
+
+
+def _parse_required_credentials(
+    raw: Any, errors: list[str]
+) -> list[SkillRequiredCredential]:
+    """Validate the manifest's ``required_credentials`` block (S5 §C1).
+
+    Each entry must declare ``id``/``label``/``env`` and the optional ``kind``
+    falls in the v1 allowlist. Malformed entries append errors and are
+    skipped so the rest of the manifest can still load; the overall
+    ``validate_manifest`` decision (raise vs return) is unchanged.
+    """
+    out: list[SkillRequiredCredential] = []
+    if raw is None or raw == []:
+        return out
+    if not isinstance(raw, list):
+        errors.append(
+            f"required_credentials must be a list, got {type(raw).__name__}"
+        )
+        return out
+    seen_ids: set[str] = set()
+    seen_envs: set[str] = set()
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            errors.append(
+                f"required_credentials[{i}] must be an object, got {type(entry).__name__}"
+            )
+            continue
+        cid = str(entry.get("id", "")).strip()
+        label = str(entry.get("label", "")).strip()
+        env = str(entry.get("env", "")).strip()
+        kind = str(entry.get("kind", "api_key")).strip() or "api_key"
+        required = bool(entry.get("required", True))
+        description = str(entry.get("description", "") or "")
+
+        local: list[str] = []
+        if not cid:
+            local.append(f"required_credentials[{i}].id is required")
+        elif cid in seen_ids:
+            local.append(f"required_credentials[{i}].id={cid!r} is duplicate")
+        if not label:
+            local.append(f"required_credentials[{i}].label is required")
+        if not env:
+            local.append(f"required_credentials[{i}].env is required")
+        elif env in seen_envs:
+            local.append(
+                f"required_credentials[{i}].env={env!r} is duplicate within manifest"
+            )
+        if kind not in SKILL_CREDENTIAL_KINDS:
+            local.append(
+                f"required_credentials[{i}].kind={kind!r} not in v1 allowlist "
+                f"{sorted(SKILL_CREDENTIAL_KINDS)}"
+            )
+        raw_hints = entry.get("provider_hints", [])
+        provider_hints: list[str] = []
+        if raw_hints is None:
+            pass
+        elif not isinstance(raw_hints, list):
+            local.append(
+                f"required_credentials[{i}].provider_hints must be a list"
+            )
+        else:
+            for hint in raw_hints:
+                if isinstance(hint, str) and hint.strip():
+                    provider_hints.append(hint.strip())
+
+        if local:
+            errors.extend(local)
+            continue
+
+        seen_ids.add(cid)
+        seen_envs.add(env)
+        out.append(
+            SkillRequiredCredential(
+                id=cid,
+                label=label,
+                env=env,
+                kind=kind,
+                provider_hints=provider_hints,
+                required=required,
+                description=description,
+            )
+        )
+    return out
+
+
+def _parse_config_fields(raw: Any, errors: list[str]) -> list[SkillConfigField]:
+    """Validate the manifest's ``config_fields`` block (S5 §C1)."""
+    out: list[SkillConfigField] = []
+    if raw is None or raw == []:
+        return out
+    if not isinstance(raw, list):
+        errors.append(f"config_fields must be a list, got {type(raw).__name__}")
+        return out
+    seen_ids: set[str] = set()
+    seen_envs: set[str] = set()
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            errors.append(
+                f"config_fields[{i}] must be an object, got {type(entry).__name__}"
+            )
+            continue
+        fid = str(entry.get("id", "")).strip()
+        label = str(entry.get("label", "")).strip()
+        env = str(entry.get("env", "")).strip()
+        ftype = str(entry.get("type", "text")).strip() or "text"
+        required = bool(entry.get("required", False))
+        description = str(entry.get("description", "") or "")
+        default_raw = entry.get("default")
+        default = str(default_raw) if default_raw is not None else None
+        options_raw = entry.get("options")
+
+        local: list[str] = []
+        if not fid:
+            local.append(f"config_fields[{i}].id is required")
+        elif fid in seen_ids:
+            local.append(f"config_fields[{i}].id={fid!r} is duplicate")
+        if not label:
+            local.append(f"config_fields[{i}].label is required")
+        if not env:
+            local.append(f"config_fields[{i}].env is required")
+        elif env in seen_envs:
+            local.append(
+                f"config_fields[{i}].env={env!r} is duplicate within manifest"
+            )
+        if ftype not in SKILL_CONFIG_FIELD_TYPES:
+            local.append(
+                f"config_fields[{i}].type={ftype!r} not in v1 allowlist "
+                f"{sorted(SKILL_CONFIG_FIELD_TYPES)}"
+            )
+
+        options: list[dict[str, str]] | None = None
+        if options_raw is not None:
+            if not isinstance(options_raw, list):
+                local.append(f"config_fields[{i}].options must be a list")
+            else:
+                clean_options: list[dict[str, str]] = []
+                for j, opt in enumerate(options_raw):
+                    if not isinstance(opt, dict):
+                        local.append(
+                            f"config_fields[{i}].options[{j}] must be an object"
+                        )
+                        continue
+                    v = str(opt.get("value", "")).strip()
+                    lbl = str(opt.get("label", "")).strip()
+                    if not v or not lbl:
+                        local.append(
+                            f"config_fields[{i}].options[{j}] requires value and label"
+                        )
+                        continue
+                    clean_options.append({"value": v, "label": lbl})
+                options = clean_options or None
+
+        if ftype == "select" and not options:
+            local.append(
+                f"config_fields[{i}].type=select requires non-empty options"
+            )
+
+        if local:
+            errors.extend(local)
+            continue
+
+        seen_ids.add(fid)
+        seen_envs.add(env)
+        out.append(
+            SkillConfigField(
+                id=fid,
+                label=label,
+                env=env,
+                type=ftype,
+                default=default,
+                required=required,
+                description=description,
+                options=options,
+            )
+        )
+    return out
 
 
 def parse_skill_md_frontmatter(content: str) -> dict[str, Any]:

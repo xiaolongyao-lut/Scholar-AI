@@ -765,6 +765,36 @@ class WritingSkillService:
                 "root_policy": manifest.root_policy,
                 "content_hash": content_hash,
                 "installed_path": str(installed_path),
+                # S5 / plan 2026-05-20 §C1: surface manifest extension fields
+                # to the frontend through the existing descriptor channel,
+                # so the SkillManager can render the credential-binding
+                # wizard without adding a separate endpoint or modifying
+                # SkillDescriptor's frozen schema.
+                "required_credentials": [
+                    {
+                        "id": rc.id,
+                        "label": rc.label,
+                        "env": rc.env,
+                        "kind": rc.kind,
+                        "provider_hints": list(rc.provider_hints),
+                        "required": rc.required,
+                        "description": rc.description,
+                    }
+                    for rc in manifest.required_credentials
+                ],
+                "config_fields": [
+                    {
+                        "id": cf.id,
+                        "label": cf.label,
+                        "env": cf.env,
+                        "type": cf.type,
+                        "default": cf.default,
+                        "required": cf.required,
+                        "description": cf.description,
+                        "options": cf.options,
+                    }
+                    for cf in manifest.config_fields
+                ],
             },
             import_origin=origin,
             summary_hint=manifest.privacy_notes,
