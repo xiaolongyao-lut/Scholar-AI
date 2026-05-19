@@ -1,17 +1,10 @@
 /**
- * Recommended MCP capability cards (S4a stub / plan 2026-05-20 §A4).
- *
- * Each card represents an officially supported MCP server the user can
- * install locally. Cards are NOT remote downloaders — they prompt the
- * user for the local path to a package they have already obtained and
- * route the path through the standard scanner → wizard pipeline (S4b).
- *
- * v1 catalog is hard-coded in this component to keep the slice
- * boundary clear; later iterations may move it to
- * `mcp_runtime/recommended_catalog.py`.
+ * Recommended MCP capability cards (S4b · wired to install wizard).
  */
+import React, { useState } from 'react';
 import { Image as ImageIcon, Paintbrush, Search, FolderInput } from 'lucide-react';
-import React from 'react';
+import McpInstallWizard from './McpInstallWizard';
+import { loadWizardState } from './wizardState';
 
 interface RecommendedCapability {
   id: string;
@@ -19,7 +12,6 @@ interface RecommendedCapability {
   description: string;
   icon: React.ElementType;
   package_id: string;
-  /** Suggested local directory name; user must point to their own copy. */
   hint_path: string;
 }
 
@@ -50,13 +42,44 @@ const RECOMMENDED: RecommendedCapability[] = [
   },
 ];
 
+interface WizardOpenState {
+  open: boolean;
+  initialPath: string;
+  templateHint?: string;
+  presetSlug?: string;
+  presetDisplayName?: string;
+}
+
 export function McpRecommendedView(): JSX.Element {
+  const [wizard, setWizard] = useState<WizardOpenState>(() => {
+    const restored = loadWizardState();
+    if (restored) {
+      return {
+        open: true,
+        initialPath: restored.source_path,
+        templateHint: restored.template_hint,
+        presetSlug: restored.server_slug,
+        presetDisplayName: restored.display_name,
+      };
+    }
+    return { open: false, initialPath: '' };
+  });
+
+  const openWizard = (cap: RecommendedCapability) => {
+    setWizard({
+      open: true,
+      initialPath: cap.hint_path,
+      templateHint: cap.id,
+      presetSlug: cap.id.replace(/-/g, '_'),
+      presetDisplayName: cap.display_name,
+    });
+  };
+
   return (
     <div className="space-y-3">
       <p className="font-label text-[11px] text-foreground/55">
-        以下是文献助手官方推荐的本地可装能力。
-        请先自行下载或克隆对应仓库到本地，再用一键安装将其注册到当前主机。
-        安装过程**不会**联网下载，也不会执行任何包代码（除非你勾选探测）。
+        以下是文献助手官方推荐的本地可装能力。请先自行下载或克隆对应仓库到本地,
+        再用一键安装将其注册到当前主机。安装过程**不会**联网下载,也不会执行任何包代码(除非你勾选探测)。
       </p>
 
       <ul className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -79,17 +102,14 @@ export function McpRecommendedView(): JSX.Element {
                     {cap.package_id}
                   </span>
                 </div>
-                <p className="mt-1 font-label text-[11px] text-foreground/55">
-                  {cap.description}
-                </p>
+                <p className="mt-1 font-label text-[11px] text-foreground/55">{cap.description}</p>
                 <p className="mt-2 font-mono text-[10px] text-foreground/40 break-all">
                   建议路径: {cap.hint_path}
                 </p>
                 <button
                   type="button"
-                  disabled
-                  title="S4b 接入扫描向导后启用"
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 font-label text-xs font-medium text-primary opacity-50 cursor-not-allowed"
+                  onClick={() => openWizard(cap)}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 font-label text-xs font-medium text-primary hover:bg-primary/15"
                 >
                   <FolderInput size={12} /> 选择本地包并安装
                 </button>
@@ -98,6 +118,15 @@ export function McpRecommendedView(): JSX.Element {
           );
         })}
       </ul>
+
+      <McpInstallWizard
+        open={wizard.open}
+        initialPath={wizard.initialPath}
+        templateHint={wizard.templateHint}
+        presetSlug={wizard.presetSlug}
+        presetDisplayName={wizard.presetDisplayName}
+        onClose={() => setWizard({ ...wizard, open: false })}
+      />
     </div>
   );
 }
