@@ -22,7 +22,7 @@ const RECOMMENDED: RecommendedCapability[] = [
     description: '让纯文本聊天模型能处理图片输入。',
     icon: ImageIcon,
     package_id: 'lit-mcp-vision-auxiliary',
-    hint_path: 'workspace_references/vision_auxiliary/lit_mcp_vision_auxiliary_pkg',
+    hint_path: 'extension_packages/mcp/lit_mcp_vision_auxiliary',
   },
   {
     id: 'image-gen',

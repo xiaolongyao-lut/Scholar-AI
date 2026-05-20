@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "package_id": "lit-mcp-vision-auxiliary",
+  "display_name": "视觉辅助",
+  "description": "让纯文本聊天模型能处理图片输入。该 MCP 包接收主程序传入的 base64 图片 + 用户问题，通过你配置的视觉模型生成结构化中文笔记，再以 <vision-context> 块的形式注入回主对话。",
+  "transport": "stdio",
+  "launch": {
+    "command": "python",
+    "args": ["-m", "lit_mcp_vision_auxiliary.server"],
+    "cwd": "."
+  },
+  "config_fields": [
+    {
+      "id": "vision_provider",
+      "label": "视觉模型提供方",
+      "env": "VISION_PROVIDER",
+      "type": "select",
+      "required": true,
+      "default": "siliconflow",
+      "description": "选择负责看图的服务方。所选提供方必须与下面绑定的 API Key 一致。",
+      "options": [
+        { "value": "siliconflow", "label": "硅基流动" },
+        { "value": "openai", "label": "OpenAI" },
+        { "value": "anthropic", "label": "Anthropic" },
+        { "value": "gemini", "label": "Google Gemini" }
+      ]
+    },
+    {
+      "id": "vision_model",
+      "label": "视觉模型",
+      "env": "VISION_MODEL",
+      "type": "text",
+      "required": true,
+      "default": "Qwen2-VL-7B-Instruct",
+      "description": "具体使用的视觉模型 ID。请确保所选模型在所选提供方下支持图片输入。"
+    },
+    {
+      "id": "max_note_chars",
+      "label": "笔记长度上限",
+      "env": "MAX_NOTE_CHARS",
+      "type": "text",
+      "required": false,
+      "default": "3200",
+      "description": "单张图片注入主对话的笔记最大字符数。过大会增加主模型上下文消耗。"
+    }
+  ],
+  "required_credentials": [
+    {
+      "id": "vision_api_key",
+      "label": "视觉模型 API Key",
+      "env": "VISION_API_KEY",
+      "kind": "api_key",
+      "provider_hints": ["siliconflow", "openai", "anthropic", "gemini"],
+      "required": true,
+      "description": "用于调用视觉模型的 API Key。从凭证管理选择一项已配置的同提供方凭证。"
+    }
+  ],
+  "expected_tools": [
+    "vision.describe_image",
+    "vision.extract_text"
+  ],
+  "capabilities": ["read"],
+  "homepage": "https://github.com/anthropics/literature-assistant/tree/main/workspace_references/vision_auxiliary",
+  "version": "0.1.0"
+}
