@@ -18,11 +18,12 @@ Scholar AI 是本地优先的学术研究智能体工作台，面向论文阅读
 
 ## 下载和安装
 
-普通用户请打开 GitHub 右侧或顶部的 **Releases** 页面，下载 Windows 安装包：
+普通用户请从 **Releases** 下载 Windows 安装包：
 
-```text
-LiteratureAssistant-Setup-<version>-windows-x64.exe
-```
+- [查看全部 Releases](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases)
+- [当前版本 0.1.6-alpha 发布页](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/tag/v0.1.6-alpha)
+- [下载 0.1.6-alpha Windows 安装包](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/download/v0.1.6-alpha/LiteratureAssistant-Setup-0.1.6-alpha-windows-x64.exe)
+- [查看 0.1.6-alpha SHA256 校验文件](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/download/v0.1.6-alpha/SHA256SUMS.txt)
 
 GitHub 每个 tag 页面都会自动显示：
 
@@ -113,7 +114,7 @@ Scholar AI 默认本地优先。根据自己的机器创建本地环境文件，
 
 ## 发布状态
 
-当前公开安装包基线：`0.1.6-alpha`。
+当前公开安装包基线：[0.1.6-alpha](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/tag/v0.1.6-alpha)。
 
 `Source code (zip)` 和 `Source code (tar.gz)` 是 GitHub 自动生成的源码包，不是安装包。真正的 Windows 安装包以 `LiteratureAssistant-Setup-...exe` 这类名称作为 Release asset 发布。
 
@@ -124,3 +125,8 @@ Scholar AI 默认本地优先。根据自己的机器创建本地环境文件，
 商业使用、转售、再授权或付费托管服务，都必须先取得作者书面许可。比赛/竞赛中如果使用了本项目、修改版本或实质性代码，必须在提交材料里明确说明使用了 Scholar AI；参赛规则、成绩、资格、奖项等风险由参赛者自行承担。
 
 详见 [LICENSE](LICENSE)。
+
+## 反馈
+
+- [报告安全问题](SECURITY.md)
+- [查看贡献说明](CONTRIBUTING.md)
