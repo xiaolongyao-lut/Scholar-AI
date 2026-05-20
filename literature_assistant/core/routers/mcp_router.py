@@ -164,7 +164,18 @@ async def delete_server(server_id: str) -> dict[str, Any]:
         )
     # Per-operation sessions in Phase 1B → no live session to tear down.
     catalog.invalidate(server_id)
-    return {"server_id": server_id, "deleted": True}
+    install_record_deleted = False
+    try:
+        from mcp_runtime.template_installer import get_template_installer
+
+        install_record_deleted = get_template_installer().cleanup_install_dir(server_id)
+    except RuntimeError:
+        install_record_deleted = False
+    return {
+        "server_id": server_id,
+        "deleted": True,
+        "install_record_deleted": install_record_deleted,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +275,218 @@ async def list_audit(limit: int = 200) -> dict[str, Any]:
     from mcp_runtime import audit as mcp_audit
     records = mcp_audit.read_recent(limit=limit)
     return {"count": len(records), "records": records}
+
+
+# ---------------------------------------------------------------------------
+# Legacy raw-env detection + migration (S6 / plan 2026-05-20 §6)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/servers/{server_id}/legacy-env")
+async def list_legacy_env(server_id: str) -> dict[str, Any]:
+    """Detect raw-secret-shaped env / header entries on a server.
+
+    Returns masked values only — the raw plaintext never crosses this
+    boundary. Caller (frontend installed-view banner) uses the result to
+    show a migration prompt; the actual move happens via the POST
+    ``/migrate-env-to-refs`` endpoint below.
+    """
+    from mcp_runtime.legacy_env_migrator import detect_legacy_secrets
+
+    store = get_mcp_server_store()
+    try:
+        config = store.get_internal(server_id)
+    except McpServerNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"mcp server not found: {server_id}"
+        ) from exc
+    stdio_env = dict(config.stdio.env) if config.stdio else None
+    stdio_env_refs = dict(config.stdio.env_refs) if config.stdio else None
+    http_headers = dict(config.http.headers) if config.http else None
+    http_header_refs = dict(config.http.header_refs) if config.http else None
+    detected = detect_legacy_secrets(
+        stdio_env=stdio_env,
+        stdio_env_refs=stdio_env_refs,
+        http_headers=http_headers,
+        http_header_refs=http_header_refs,
+    )
+    return {
+        "server_id": server_id,
+        "count": len(detected),
+        "entries": [
+            {
+                "target_env": d.target_env,
+                "value_masked": d.value_masked,
+                "transport_field": d.transport_field,
+            }
+            for d in detected
+        ],
+    }
+
+
+@router.post("/servers/{server_id}/migrate-env-to-refs")
+async def migrate_env_to_refs(
+    server_id: str, body: dict[str, Any]
+) -> dict[str, Any]:
+    """Move raw env / header values into env_refs / header_refs.
+
+    Body schema:
+        {
+          "mapping": {"<env_key>": "<credential_id>", ...},
+          "confirm_remove_raw": true
+        }
+
+    Validation:
+    - Every credential_id in ``mapping`` must exist + be enabled.
+    - Every ``env_key`` in ``mapping`` must currently exist in either
+      ``stdio.env`` or ``http.headers`` of the target server.
+    - ``confirm_remove_raw`` must be exactly ``true`` (plan §6: "never
+      auto-migrate"). The frontend's migration modal flips this only on
+      the user's explicit click.
+
+    Effects:
+    - Adds ``mapping[env_key] -> credential_id`` to ``env_refs`` (stdio)
+      or ``header_refs`` (http).
+    - Removes the corresponding ``env_key`` from ``env`` / ``headers``.
+    - Increments fingerprint via the standard update path (v2 includes
+      env_refs / header_refs keys, M4).
+    - Triggers reverse-index rebuild on the binding index.
+    """
+    from routers.credentials_router import get_credential_store
+    from credential_bindings import get_credential_binding_index
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="body must be a JSON object")
+    mapping = body.get("mapping") or {}
+    if not isinstance(mapping, dict) or not mapping:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "mapping_required", "message": "non-empty mapping is required"},
+        )
+    if body.get("confirm_remove_raw") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "confirm_required",
+                "message": "confirm_remove_raw must be true; raw values are never auto-migrated",
+            },
+        )
+
+    store = get_mcp_server_store()
+    try:
+        config = store.get_internal(server_id)
+    except McpServerNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"mcp server not found: {server_id}"
+        ) from exc
+
+    # Validate credentials exist + enabled.
+    cred_store = get_credential_store()
+    from credential_store import CredentialNotFoundError
+    for env_key, cred_id in mapping.items():
+        if not isinstance(env_key, str) or not env_key.strip():
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "mapping_key_invalid", "message": f"invalid env key: {env_key!r}"},
+            )
+        if not isinstance(cred_id, str) or not cred_id.strip():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "mapping_value_invalid",
+                    "message": f"invalid credential_id for {env_key!r}",
+                },
+            )
+        try:
+            cred = cred_store.get_internal(cred_id)
+        except CredentialNotFoundError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "credential_not_found",
+                    "message": f"credential {cred_id!r} bound to {env_key!r} not found",
+                },
+            ) from exc
+        if not cred.enabled:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "credential_disabled",
+                    "message": f"credential {cred_id!r} bound to {env_key!r} is disabled",
+                },
+            )
+
+    # Apply migration to stdio.env or http.headers. We rebuild both blocks
+    # and feed them through the standard update path so the approval state
+    # machine + fingerprint v2 logic both fire normally.
+    new_stdio: dict[str, Any] | None = None
+    new_http: dict[str, Any] | None = None
+    migrated_stdio: list[str] = []
+    migrated_http: list[str] = []
+
+    if config.stdio is not None:
+        env = dict(config.stdio.env)
+        env_refs = dict(config.stdio.env_refs)
+        for env_key, cred_id in mapping.items():
+            if env_key in env:
+                env_refs[env_key] = cred_id
+                del env[env_key]
+                migrated_stdio.append(env_key)
+        new_stdio = {
+            "command": config.stdio.command,
+            "args": list(config.stdio.args),
+            "env": env,
+            "env_refs": env_refs,
+            "cwd_relative": config.stdio.cwd_relative,
+        }
+        # Preserve the optional absolute cwd field if present in the schema.
+        if hasattr(config.stdio, "cwd") and getattr(config.stdio, "cwd", None) is not None:
+            new_stdio["cwd"] = config.stdio.cwd
+    if config.http is not None:
+        headers = dict(config.http.headers)
+        header_refs = dict(config.http.header_refs)
+        for env_key, cred_id in mapping.items():
+            if env_key in headers:
+                header_refs[env_key] = cred_id
+                del headers[env_key]
+                migrated_http.append(env_key)
+        new_http = {
+            "url": config.http.url,
+            "headers": headers,
+            "header_refs": header_refs,
+            "timeout_seconds": config.http.timeout_seconds,
+        }
+
+    if not migrated_stdio and not migrated_http:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "no_matching_env_keys",
+                "message": "none of the supplied keys exist in this server's raw env / headers",
+            },
+        )
+
+    public = store.update(
+        server_id,
+        McpServerConfigUpdate(stdio=new_stdio, http=new_http),
+    )
+
+    # Refresh derived state: catalog fingerprint changed → invalidate;
+    # binding index needs rebuilt for the new env_refs. We rebuild via the
+    # binding_index singleton (not installer._bindings) so tests that
+    # inject a fresh index via set_credential_binding_index() see the
+    # updated state.
+    catalog = get_mcp_tool_catalog()
+    catalog.invalidate(server_id)
+    idx = get_credential_binding_index()
+    idx.rebuild_from_mcp_store(store.list_internal())
+
+    return {
+        "server_id": server_id,
+        "migrated_stdio_env_keys": migrated_stdio,
+        "migrated_http_header_keys": migrated_http,
+        "server": public.model_dump(mode="json"),
+    }
 
 
 # ---------------------------------------------------------------------------

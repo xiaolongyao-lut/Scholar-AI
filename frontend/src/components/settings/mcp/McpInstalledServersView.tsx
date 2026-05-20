@@ -1,16 +1,18 @@
 /**
- * Installed MCP servers view (S4c · live list from /api/mcp/servers).
+ * Installed MCP servers view (S4c + S6 · live list + legacy env migration).
  *
  * Lightweight read-mostly view; full CRUD (manual edit / approval state
  * machine / tool catalog drill-down) stays in the legacy
  * McpServersSection embedded under the [高级] tab. Here we show the
  * essentials a normal user cares about after running the wizard:
- *   - name / slug / transport / approval state
+ *   - name / slug / transport / approval state + bound env_refs
  *   - delete (which also triggers backend cleanup_install_dir)
  *   - refresh
+ *   - per-server legacy raw-env detection + "迁移到凭证引用" launcher (S6)
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  KeyRound,
   Loader2,
   RefreshCw,
   ShieldAlert,
@@ -24,6 +26,8 @@ import {
   type McpApprovalState,
   type McpServerConfigPublic,
 } from '@/services/mcpApi';
+import { fetchLegacyEnv } from '@/services/mcpLegacyEnvApi';
+import McpLegacyEnvMigrationModal from './McpLegacyEnvMigrationModal';
 
 const APPROVAL_LABEL: Record<McpApprovalState, string> = {
   registered: '已登记',
@@ -48,6 +52,8 @@ export function McpInstalledServersView(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [legacyCount, setLegacyCount] = useState<Record<string, number>>({});
+  const [migrationTarget, setMigrationTarget] = useState<McpServerConfigPublic | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -55,6 +61,19 @@ export function McpInstalledServersView(): JSX.Element {
     try {
       const list = await listMcpServers();
       setServers(list);
+      // Probe each server's legacy env count in parallel; ignore individual failures.
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        list.map(async (s) => {
+          try {
+            const r = await fetchLegacyEnv(s.server_id);
+            counts[s.server_id] = r.count;
+          } catch {
+            counts[s.server_id] = 0;
+          }
+        }),
+      );
+      setLegacyCount(counts);
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc));
     } finally {
@@ -127,6 +146,7 @@ export function McpInstalledServersView(): JSX.Element {
             const Icon = APPROVAL_ICON[s.approval_state];
             const tone = APPROVAL_TONE[s.approval_state];
             const isBusy = busyId === s.server_id;
+            const legacy = legacyCount[s.server_id] ?? 0;
             return (
               <li
                 key={s.server_id}
@@ -165,6 +185,27 @@ export function McpInstalledServersView(): JSX.Element {
                       绑定凭证 env: {Object.keys(s.stdio.env_refs).join(', ')}
                     </p>
                   )}
+
+                  {legacy > 0 && (
+                    <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-300/40 bg-amber-50/40 dark:border-amber-700/40 dark:bg-amber-500/10 p-2">
+                      <KeyRound
+                        size={12}
+                        className="text-amber-600 dark:text-amber-300 mt-0.5 flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-label text-[11px] text-amber-700 dark:text-amber-200">
+                          检测到 {legacy} 项 legacy 明文密钥仍存在于该服务器配置。建议迁移到凭证引用。
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMigrationTarget(s)}
+                        className="flex-shrink-0 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-1 font-label text-[11px] text-amber-700 dark:text-amber-200 hover:bg-amber-500/25"
+                      >
+                        迁移到凭证引用
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -184,6 +225,19 @@ export function McpInstalledServersView(): JSX.Element {
             );
           })}
         </ul>
+      )}
+
+      {migrationTarget && (
+        <McpLegacyEnvMigrationModal
+          serverId={migrationTarget.server_id}
+          serverName={migrationTarget.name}
+          open={true}
+          onClose={() => setMigrationTarget(null)}
+          onMigrated={() => {
+            setMigrationTarget(null);
+            void refresh();
+          }}
+        />
       )}
     </div>
   );
