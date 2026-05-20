@@ -9,6 +9,7 @@ import sys
 import time
 import re
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from literature_assistant.bootstrap import configure_runtime_paths
@@ -134,12 +135,40 @@ OPENAPI_TAGS = [
     {"name": "Statistics", "description": "项目统计与分析数据"},
 ]
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Audit fix 2026-05-19 (S4): three routers share the /api/discussion prefix
+    # (discussion_router, discussion_advanced_router, model_config_router's
+    # inner discussion_router). Today their paths don't overlap, but FastAPI
+    # silently lets a later registration shadow an earlier one — making future
+    # conflicts hard to debug. This startup dump prints every registered route
+    # once at boot so a duplicate (path, method) pair is visible in logs.
+    if os.environ.get("LITASSIST_DISABLE_ROUTE_DUMP") != "1":
+        seen: dict[tuple[str, str], int] = {}
+        for route in app.routes:
+            path = getattr(route, "path", None)
+            methods = getattr(route, "methods", None)
+            if not path or not methods:
+                continue
+            for method in sorted(methods):
+                key = (method, path)
+                seen[key] = seen.get(key, 0) + 1
+        duplicates = [(m, p, n) for (m, p), n in seen.items() if n > 1]
+        if duplicates:
+            for method, path, count in duplicates:
+                print(f"[route-audit] DUPLICATE ({count}x) {method} {path}")
+        else:
+            print(f"[route-audit] {len(seen)} unique (method, path) routes; no duplicates")
+    yield
+
+
 app = FastAPI(
     title="Scholar AI API",
     description="学术研究智能体 — 论文分析、知识管理与智能写作辅助平台",
     version="1.3.0",
     generate_unique_id_function=_stable_operation_id,
     openapi_tags=OPENAPI_TAGS,
+    lifespan=_lifespan,
 )
 _allowed_origins = _get_allowed_origins()
 app.add_middleware(
@@ -526,34 +555,6 @@ app.include_router(mcp_router)
 app.include_router(mcp_installer_router)
 app.include_router(graph_router)
 app.include_router(evolution_router)
-
-
-# Audit fix 2026-05-19 (S4): three routers share the /api/discussion prefix
-# (discussion_router, discussion_advanced_router, model_config_router's
-# inner discussion_router). Today their paths don't overlap, but FastAPI
-# silently lets a later registration shadow an earlier one — making future
-# conflicts hard to debug. This startup dump prints every registered route
-# once at boot so a duplicate (path, method) pair is visible in logs.
-@app.on_event("startup")
-async def _audit_dump_routes() -> None:
-    import os
-    if os.environ.get("LITASSIST_DISABLE_ROUTE_DUMP") == "1":
-        return
-    seen: dict[tuple[str, str], int] = {}
-    for route in app.routes:
-        path = getattr(route, "path", None)
-        methods = getattr(route, "methods", None)
-        if not path or not methods:
-            continue
-        for method in sorted(methods):
-            key = (method, path)
-            seen[key] = seen.get(key, 0) + 1
-    duplicates = [(m, p, n) for (m, p), n in seen.items() if n > 1]
-    if duplicates:
-        for method, path, count in duplicates:
-            print(f"[route-audit] DUPLICATE ({count}x) {method} {path}")
-    else:
-        print(f"[route-audit] {len(seen)} unique (method, path) routes; no duplicates")
 
 
 if FRONTEND_ASSETS_DIR.is_dir():

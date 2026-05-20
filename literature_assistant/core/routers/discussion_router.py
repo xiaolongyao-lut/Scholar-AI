@@ -27,7 +27,7 @@ _bus = ConversationBus()
 
 class CreateDiscussionRequest(BaseModel):
     topic: str = Field(..., min_length=1, max_length=500)
-    roles: list[AgentRole] = Field(..., min_items=2, max_items=4)
+    roles: list[AgentRole] = Field(..., min_length=2, max_length=4)
     max_turns: int = Field(default=5, ge=1, le=20)
     llm: LLMConfig | None = None
 
