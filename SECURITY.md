@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Report suspected vulnerabilities privately through GitHub Security Advisories or by contacting the repository owner directly.
+Report suspected vulnerabilities privately through GitHub Security Advisories or by contacting the project maintainer directly.
 
 Please do not open a public issue for:
 

@@ -1,8 +1,7 @@
 Scholar AI Workbench Source-Available Non-Commercial License
 Version 1.0
 
-Copyright (c) 2026 xiaolongyao-lut. All rights reserved except as expressly
-granted in this license.
+Copyright (c) 2026 xiaolongyao-lut.
 
 1. Permission
 
@@ -21,14 +20,16 @@ substantial portions of this software for:
 - commercial services, paid products, paid consulting, paid SaaS, hosted
   services, internal business operations, or other revenue-generating activity;
 - sale, resale, sublicensing, renting, leasing, or paid distribution;
-- competition, contest, hackathon, benchmark leaderboard, academic competition,
-  product challenge, grant challenge, award submission, or similar competitive
-  submission;
-- claiming, implying, or registering ownership of the original project, product
-  concept, repository identity, name, branding, or authorship;
-- removing or obscuring copyright, license, attribution, or ownership notices;
-- using the project in a way that interferes with the original author's
-  ownership, distribution, publication, or commercialization rights.
+- submitting this software, modified versions of this software, or substantial
+  portions of this software to a competition, contest, hackathon, benchmark
+  leaderboard, academic competition, product challenge, grant challenge, award
+  submission, or similar competitive submission without clear disclosure that
+  Scholar AI was used;
+- submitting copied, near-copied, or highly similar versions of this project as
+  original competition work;
+- presenting yourself as the original author of this project;
+- removing or obscuring copyright, license, or attribution notices;
+- presenting a modified copy as the official upstream release.
 
 3. Distribution
 
@@ -38,24 +39,35 @@ you include this license and preserve all copyright and attribution notices.
 You may share modified copies only for non-commercial purposes, and only if you
 clearly mark that the copy is modified and preserve this license.
 
-4. Ownership
+4. Notices
 
-The original author retains all ownership, copyright, title, interest,
-trademark rights, product rights, and commercialization rights in the software
-and project. No ownership rights are transferred to you.
+When you share copies, keep the copyright, license, and attribution notices.
+This license grants only the permissions stated above and does not grant
+trademark, sublicensing, or commercial-use permissions.
 
-5. Commercial Permission
+5. Competition Use
 
-Commercial use, competition use, sublicensing, or any use outside this license
-requires prior written permission from the copyright holder.
+You may study ideas and implementation patterns from this project for
+competition work. If a competition submission uses this project, modified
+versions of this project, or substantial portions of this project, you must
+clearly state that Scholar AI was used.
 
-6. No Warranty
+You are responsible for checking and following the rules of the competition or
+event. The copyright holder is not responsible for disqualification, score
+changes, award loss, rule violations, or any other competition-related loss.
+
+6. Commercial Permission
+
+Commercial use, sublicensing, or any use outside this license requires prior
+written permission from the copyright holder.
+
+7. No Warranty
 
 This software is provided "as is", without warranty of any kind, express or
 implied, including but not limited to warranties of merchantability, fitness for
 a particular purpose, and non-infringement.
 
-7. Limitation of Liability
+8. Limitation of Liability
 
 To the maximum extent permitted by law, the copyright holder is not liable for
 any claim, damage, loss, or other liability arising from or related to this
