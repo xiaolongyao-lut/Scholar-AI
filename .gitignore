@@ -50,6 +50,50 @@
 # Public repository surface keeps root README/CHANGELOG/CONTRIBUTING/SECURITY only.
 /docs/
 
+# Public installable Literature Assistant extension packages.
+# Commit only packages that the app can scan/install directly:
+#   - extension_packages/skills/<package>/SKILL.md
+#   - extension_packages/mcp/<package>/literature-mcp.json or lit-mcp.json
+# Never commit user-filled configs, local credentials, installed runtime state,
+# generic agent package directories, plugin bundles, unrelated tool ecosystems,
+# or package-local caches. MCP package manifests may declare credential slots
+# but must not include filled API keys/tokens or machine-local credential ids.
+/extension_packages/**/.env
+/extension_packages/**/.env.*
+/extension_packages/**/.envrc
+/extension_packages/**/secrets.*
+/extension_packages/**/credentials.*
+/extension_packages/**/runtime_mcp_servers.json
+/extension_packages/**/runtime_credentials.json
+/extension_packages/**/install_record.json
+/extension_packages/**/*credential*.json
+/extension_packages/**/*token*.json
+/extension_packages/**/*secret*.json
+/extension_packages/**/*api_key*.json
+/extension_packages/**/*.key
+/extension_packages/**/*.pem
+/extension_packages/**/*.p12
+/extension_packages/**/*.pfx
+/extension_packages/**/*.sqlite
+/extension_packages/**/*.sqlite3
+/extension_packages/**/*.db
+/extension_packages/**/*.db-shm
+/extension_packages/**/*.db-wal
+/extension_packages/**/__pycache__/
+/extension_packages/**/*.py[cod]
+/extension_packages/**/node_modules/
+/extension_packages/**/dist/
+/extension_packages/**/build/
+/extension_packages/**/.vite/
+/extension_packages/**/.cache/
+/extension_packages/**/.turbo/
+/extension_packages/**/.pytest_cache/
+/extension_packages/**/.claude/
+/extension_packages/**/.claude-plugin/
+/extension_packages/**/.codex/
+/extension_packages/**/.agents/
+/extension_packages/**/.github/
+
 # Python caches and test outputs.
 __pycache__/
 *.py[cod]
@@ -87,6 +131,8 @@ htmlcov/
 /scripts/
 /skills/
 /tools/
+# Third-party package copies must live under /extension_packages only when they
+# are Literature Assistant installable packages; do not embed them in runtime code.
 /literature_assistant/core/skills/importers/ui-ux-pro-max/
 
 # Workspace runtime/generated artifacts.

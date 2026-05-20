@@ -29,13 +29,16 @@ export type McpToolCapability =
 export interface McpStdioConfigPublic {
   command: string;
   args: string[];
+  cwd?: string | null;
   env: Record<string, string>; // values masked
+  env_refs?: Record<string, string>;
   cwd_relative: string | null;
 }
 
 export interface McpStreamableHttpConfigPublic {
   url: string;
   headers: Record<string, string>; // values masked
+  header_refs?: Record<string, string>;
   timeout_seconds: number;
 }
 
@@ -59,13 +62,16 @@ export interface McpServerConfigPublic {
 export interface McpStdioConfigCreate {
   command: string;
   args?: string[];
+  cwd?: string | null;
   env?: Record<string, string>; // raw secrets; backend stores; UI never re-displays
+  env_refs?: Record<string, string>;
   cwd_relative?: string | null;
 }
 
 export interface McpStreamableHttpConfigCreate {
   url: string;
   headers?: Record<string, string>;
+  header_refs?: Record<string, string>;
   timeout_seconds?: number;
 }
 

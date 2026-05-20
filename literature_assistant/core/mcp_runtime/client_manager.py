@@ -20,6 +20,7 @@ import asyncio
 import logging
 import os
 from contextlib import AsyncExitStack, asynccontextmanager
+from pathlib import Path
 from typing import Any, AsyncIterator
 
 from models.mcp import McpServerConfig, McpToolDescriptor, McpTransport
@@ -157,7 +158,7 @@ class McpClientManager:
                 f"server {config.server_id}: stdio block is None"
             )
         validate_stdio_command(config.stdio)
-        cwd = prepare_isolated_cwd(config.server_id)
+        cwd = self._resolve_stdio_cwd(config)
         # Resolve env_refs -> raw api_key values BEFORE prepare_subprocess_env
         # so the sanitizer can apply its full policy to the merged dict.
         try:
@@ -199,6 +200,32 @@ class McpClientManager:
                     f"{type(exc).__name__}: {exc}"
                 ) from exc
             yield session
+
+    @staticmethod
+    def _resolve_stdio_cwd(config: McpServerConfig) -> str:
+        """Return the stdio process cwd for a server.
+
+        User-installed local packages may need to launch from their package
+        root. Manual configs without a cwd keep the isolated runtime workdir.
+        """
+        if config.stdio is None:
+            raise McpServerLaunchError(
+                f"server {config.server_id}: stdio block is None"
+            )
+        raw_cwd = (config.stdio.cwd or "").strip()
+        if not raw_cwd:
+            return str(prepare_isolated_cwd(config.server_id))
+        try:
+            resolved = Path(raw_cwd).expanduser().resolve(strict=True)
+        except OSError as exc:
+            raise McpServerLaunchError(
+                f"server {config.server_id}: cwd is not accessible: {raw_cwd!r}"
+            ) from exc
+        if not resolved.is_dir():
+            raise McpServerLaunchError(
+                f"server {config.server_id}: cwd is not a directory: {raw_cwd!r}"
+            )
+        return str(resolved)
 
     @asynccontextmanager
     async def _open_streamable_http_session(

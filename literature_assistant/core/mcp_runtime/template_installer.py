@@ -234,16 +234,29 @@ class McpTemplateInstaller:
                 "supply the directory path"
             )
 
-        absolute_cwd = source_path.resolve()
+        absolute_cwd = (source_path / candidate.cwd).resolve()
+        try:
+            absolute_cwd.relative_to(source_path.resolve())
+        except ValueError as exc:
+            install_dir.rmdir()
+            raise InstallTransportUnsupportedError(
+                f"launch cwd escapes package root: {candidate.cwd!r}"
+            ) from exc
+        if not absolute_cwd.is_dir():
+            install_dir.rmdir()
+            raise InstallTransportUnsupportedError(
+                f"launch cwd does not exist or is not a directory: {candidate.cwd!r}"
+            )
 
         # Build the server config. env carries non-secret values; env_refs
         # carries credential_id references (single source of truth, M3).
         stdio = McpStdioConfig(
             command=candidate.command,
             args=list(candidate.args),
+            cwd=str(absolute_cwd),
             env=dict(config_values),
             env_refs=dict(credential_bindings),
-            cwd_relative=None,  # cwd is captured in install_record sidecar
+            cwd_relative=None,
         )
         body = McpServerConfigCreate(
             name=display_name,

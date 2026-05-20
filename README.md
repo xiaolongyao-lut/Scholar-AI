@@ -36,12 +36,24 @@ Source code (tar.gz)
 |---|---|
 | `literature_assistant/` | Python 后端、RAG 运行时、路由、持久化、MCP、Skills、Evolution、Wiki 和写作服务。 |
 | `frontend/` | React/Vite 前端工作台。 |
+| `extension_packages/skills/` | 可选的文献助手 Skill 安装包。只放文献助手能读取 `SKILL.md` 并一键安装的包。 |
+| `extension_packages/mcp/` | 可选的文献助手 MCP 安装包。只放文献助手能扫描 `literature-mcp.json` 或 `lit-mcp.json` 的包。 |
 | `start.py` / `start_desktop.py` / `start.bat` | 本地启动入口。 |
 | `run_literature_assistant.py` | 工作区路径诊断入口。 |
 | `sitecustomize.py` | 本地源码运行兼容钩子。 |
 | `requirements-ci.txt` / `requirements-pin.txt` | 当前 alpha 源码树使用的 Python 依赖快照。 |
 
-内部计划、测试、构建脚本、打包脚本、CI、发布证据、运行时输出、缓存、外部参考仓库、agent 配置和本地状态不进入公开源码树。
+内部计划、测试、构建脚本、打包脚本、CI、发布证据、运行时输出、缓存、外部参考仓库、agent 配置、插件包、本机 MCP 配置、API key、credential store 和本地状态不进入公开源码树。
+
+## 可安装扩展包
+
+文献助手相关的第三方 Skill/MCP 资源包可以放在 `extension_packages/`，供用户下载后在应用内选择本地地址并一键安装。这个目录只承载可安装包本身和安装器需要的公开元数据：
+
+- Skill 包必须是文献助手 Skill 规范，包根目录包含 `SKILL.md`。
+- MCP 包必须包含 `literature-mcp.json` 或 `lit-mcp.json`，由后端扫描后生成安装向导。
+- API key、token、用户已安装的 MCP server 配置、运行时数据库、工具登录态和本机 `.env` 不属于资源包，不能提交。
+
+普通用户的流程是：下载资源包，打开文献助手的安装入口，选择本地包地址，按向导绑定凭证和配置项，然后启用。凭证只在本机凭证中心或运行时配置中保存，不随 Git 仓库公开。
 
 ## 从源码运行
 

@@ -100,6 +100,13 @@ class McpStdioConfig(BaseModel):
 
     command: str = Field(min_length=1, max_length=512)
     args: list[str] = Field(default_factory=list, max_length=64)
+    cwd: str | None = Field(default=None, max_length=1024)
+    """Absolute local cwd for user-confirmed package installs.
+
+    This is runtime-local configuration, not package metadata. Do not commit
+    persisted MCP server configs; they may reveal local paths even though they
+    must not contain raw secrets.
+    """
     env: dict[str, str] = Field(default_factory=dict)
     """Server-specific env vars (e.g. SERPAPI_KEY). Public dumps mask values.
 
@@ -130,6 +137,16 @@ class McpStdioConfig(BaseModel):
                 f"command must not contain shell metacharacters: {sorted(ch for ch in v if ch in forbidden)}"
             )
         return v
+
+    @field_validator("cwd")
+    @classmethod
+    def _no_cwd_newlines(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if "\n" in v or "\r" in v:
+            raise ValueError("cwd must not contain newline characters")
+        stripped = v.strip()
+        return stripped or None
 
 
 class McpStreamableHttpConfig(BaseModel):
@@ -361,6 +378,7 @@ def _mask_stdio(stdio: McpStdioConfig) -> McpStdioConfig:
     return McpStdioConfig(
         command=stdio.command,
         args=list(stdio.args),
+        cwd=stdio.cwd,
         env={k: mask_env_value(v) for k, v in stdio.env.items()},
         env_refs=dict(stdio.env_refs),
         cwd_relative=stdio.cwd_relative,
@@ -398,6 +416,12 @@ def _compute_server_fingerprint(body: _McpServerBaseFields) -> str:
         parts.append("stdio")
         parts.append(body.stdio.command)
         parts.extend(body.stdio.args)
+        if body.stdio.cwd:
+            parts.append("cwd")
+            parts.append(body.stdio.cwd)
+        if body.stdio.cwd_relative:
+            parts.append("cwd_relative")
+            parts.append(body.stdio.cwd_relative)
         # env keys participate in identity (rotating a value alone shouldn't
         # change identity), env values do not — matches credential rotation
         # semantics.

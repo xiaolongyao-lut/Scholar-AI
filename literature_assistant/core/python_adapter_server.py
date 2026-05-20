@@ -464,6 +464,40 @@ from routers.mcp_installer_router import router as mcp_installer_router
 from routers.graph_router import router as graph_router
 from routers.evolution_router import router as evolution_router
 
+
+def _initialize_mcp_installer_runtime() -> None:
+    """Wire local MCP package installation to shared runtime stores.
+
+    User-filled MCP configs, API keys, and installed-state records remain in
+    ignored runtime storage. The installer persists credential references, not
+    raw secret values.
+    """
+    from credential_bindings import get_credential_binding_index
+    from mcp_runtime.scan_registry import get_scan_registry
+    from mcp_runtime.template_installer import (
+        McpTemplateInstaller,
+        set_template_installer,
+    )
+    from project_paths import runtime_state_path
+    from routers.credentials_router import get_credential_store
+    from routers.mcp_router import get_mcp_server_store, get_mcp_tool_catalog
+
+    install_root = runtime_state_path("mcp_installs")
+    install_root.mkdir(parents=True, exist_ok=True)
+    set_template_installer(
+        McpTemplateInstaller(
+            server_store=get_mcp_server_store(),
+            scan_registry=get_scan_registry(),
+            credential_store=get_credential_store(),
+            tool_catalog=get_mcp_tool_catalog(),
+            binding_index=get_credential_binding_index(),
+            install_root=install_root,
+        )
+    )
+
+
+_initialize_mcp_installer_runtime()
+
 app.include_router(pipeline_router)
 app.include_router(skills_router)
 app.include_router(runtime_router)
