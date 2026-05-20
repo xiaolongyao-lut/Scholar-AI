@@ -17,6 +17,7 @@ chromadb>=0.4.0
 numpy
 pandas
 pyarrow
+networkx==3.6.1
 
 # Document and configuration
 pyyaml
