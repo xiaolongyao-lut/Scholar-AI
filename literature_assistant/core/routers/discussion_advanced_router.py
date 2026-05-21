@@ -124,6 +124,12 @@ async def _default_invoke_agent(candidate: DispatchCandidate, prompt: str) -> st
     so that per-agent credentials route correctly. The api_key is sourced
     from the DispatchCandidate.metadata['api_key'] which is set by the
     invoke factory below.
+
+    FD-13 B4 (2026-05-21): when the orchestrator attaches
+    ``context_items`` to ``candidate.metadata``, lift them into
+    ``ChatRequest.context`` so the evidence rides the transport's
+    document-context slot instead of being inlined in ``query``. The
+    discussion-scope budget was already validated upstream.
     """
     api_key = candidate.metadata.get("api_key", "")
     if not api_key:
@@ -142,7 +148,8 @@ async def _default_invoke_agent(candidate: DispatchCandidate, prompt: str) -> st
         temperature=float(candidate.metadata.get("temperature", 0.7)),
         max_tokens=int(candidate.metadata.get("max_tokens", 2048)),
     )
-    req = ChatRequest(query=prompt, context=[], history=[], llm=llm)
+    context_items = list(candidate.metadata.get("context_items") or [])
+    req = ChatRequest(query=prompt, context=context_items, history=[], llm=llm)
     response = await chat_ask(req)
     return getattr(response, "answer", "") or ""
 
@@ -258,9 +265,10 @@ def make_mcp_enabled_invoke_factory(
                 temperature=float(candidate.metadata.get("temperature", 0.7)),
                 max_tokens=int(candidate.metadata.get("max_tokens", 2048)),
             )
+            context_items = list(candidate.metadata.get("context_items") or [])
             req = ChatRequest(
                 query=prompt,
-                context=[],
+                context=context_items,
                 history=[],
                 llm=llm,
                 mcp_server_ids=list(overrides.server_ids),

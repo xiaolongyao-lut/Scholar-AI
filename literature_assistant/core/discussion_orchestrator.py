@@ -314,31 +314,40 @@ def _format_evidence(evidence: EvidencePack | None, manual: list[str]) -> str:
 def _format_evidence_with_ids(
     evidence: EvidencePack | None,
     manual: list[str],
-) -> tuple[str, list[str]]:
-    """Render the evidence block with G2 citation ids and return both.
+) -> tuple[str, list[str], list[str]]:
+    """Render the evidence block with G2 citation ids and return query / context split.
 
-    When `evidence` is non-empty, snippets are tagged `[E1]`, `[E2]`, ...
-    so the per-agent prompt can teach the agent which id to cite. The
-    returned `evidence_ids` mirrors `build_evidence_ids(len(snippets))`
-    and feeds both the citation contract suffix and the trace payload.
+    Returns ``(legacy_evidence_text_for_prompt, context_items, evidence_ids)``.
 
-    Manual / empty paths fall back to `_format_evidence` and return an
-    empty `evidence_ids` (no citation contract is appended in those
-    cases — agents have nothing to cite by id).
+    Per FD-13 B2 (2026-05-21), the B-path refactor moves real evidence-pack
+    snippets out of the assembled prompt body and into the ``ChatRequest.context``
+    transport slot:
+
+    - **Evidence pack present (non-empty snippets)**:
+      Each snippet becomes one ``context_items[i]`` entry with its
+      ``[E<n>] source (chunk=… score=…)`` header followed by the snippet
+      content. The first tuple element is empty (``""``) so the caller knows
+      the prompt's ``# Evidence`` section should render a placeholder like
+      ``"(provided in context channel)"`` instead of inlining the evidence.
+      ``evidence_ids`` mirrors ``build_evidence_ids(len(snippets))`` and is
+      still used for the citation contract suffix + parser whitelist.
+
+    - **Manual or empty evidence**:
+      Returns ``(legacy_text, [], [])`` — the pre-B-path string-only shape is
+      preserved so caller behavior is identical when the discussion has no
+      per-snippet ids to thread through ``context[]``.
     """
     if evidence is not None and evidence.snippets:
         ids = build_evidence_ids(len(evidence.snippets))
-        lines: list[str] = []
+        context_items: list[str] = []
         for eid, snippet in zip(ids, evidence.snippets):
             header = (
                 f"[{eid}] {snippet.source} "
                 f"(chunk={snippet.chunk_id} score={snippet.score:.3f})"
             )
-            lines.append(header)
-            lines.append(snippet.content)
-            lines.append("")
-        return "\n".join(lines).rstrip(), ids
-    return _format_evidence(evidence, manual), []
+            context_items.append(f"{header}\n{snippet.content}")
+        return "", context_items, ids
+    return _format_evidence(evidence, manual), [], []
 
 
 def _chat_query_envelope_limit() -> int:
@@ -571,11 +580,30 @@ async def run_discussion(
             raise DiscussionOrchestratorError(
                 f"evidence pack build failed: {exc}"
             ) from exc
-    evidence_text, evidence_ids = _format_evidence_with_ids(
+    evidence_text, context_items, evidence_ids = _format_evidence_with_ids(
         evidence_pack,
         list(config.evidence_inline),
     )
     cite_evidence = bool(evidence_ids)
+
+    # FD-13 B3 (2026-05-21): when evidence pack snippets are present, they
+    # ride in ``ChatRequest.context[]`` instead of being inlined into the
+    # prompt body. ``evidence_text`` from the formatter is empty in that
+    # case; substitute a short placeholder so the prompt's ``# Evidence``
+    # section still signals to the agent where the snippets came from.
+    if context_items:
+        # Local import avoids a circular dep (router imports orchestrator
+        # at module load; orchestrator only needs the validator at runtime).
+        from routers.discussion_advanced_router import (
+            validate_discussion_context_items,
+        )
+        validate_discussion_context_items(context_items)
+        prompt_evidence_text = (
+            "(evidence provided via API context channel; "
+            "cite by [E:E<n>])"
+        )
+    else:
+        prompt_evidence_text = evidence_text
 
     # ---------- Agent slot prep --------------------------------------------
     endpoints: dict[str, dict[str, Any]] = {}
@@ -619,11 +647,21 @@ async def run_discussion(
         for agent in debate_agents:
             ep = endpoints[agent.agent_id]
             cand = _build_candidate(agent, ep)
+            # FD-13 B4 (2026-05-21): attach evidence-as-context items to the
+            # candidate's metadata so downstream invoke wrappers can lift them
+            # into ``ChatRequest.context[]`` without changing the InvokeAgentFn
+            # 2-arg signature (avoids breaking ~20 test mocks).
+            if context_items:
+                from dataclasses import replace as _dc_replace
+                cand = _dc_replace(
+                    cand,
+                    metadata={**cand.metadata, "context_items": list(context_items)},
+                )
             slots.append(cand)
             prompt_for[agent.agent_id] = _build_agent_prompt(
                 agent,
                 query=config.query,
-                evidence_text=evidence_text,
+                evidence_text=prompt_evidence_text,
                 history=history,
                 turn_index=turn_index,
                 cite_evidence=cite_evidence,
@@ -779,9 +817,17 @@ async def run_discussion(
     # ---------- Synthesis -------------------------------------------------
     synth_endpoint = endpoints[synth_id]
     synth_cand = _build_candidate(synth_agent, synth_endpoint)
+    # FD-13 B4: same context-items injection as the debate path so the
+    # synthesizer also receives evidence via ChatRequest.context[].
+    if context_items:
+        from dataclasses import replace as _dc_replace
+        synth_cand = _dc_replace(
+            synth_cand,
+            metadata={**synth_cand.metadata, "context_items": list(context_items)},
+        )
     synth_prompt = _build_synthesis_prompt(
         query=config.query,
-        evidence_text=evidence_text,
+        evidence_text=prompt_evidence_text,
         history=history,
         strategy=config.synthesis_strategy.value,
     )
