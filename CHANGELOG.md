@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.1.6-alpha - 2026-05-22
+## 0.1.7-alpha - 2026-05-22
 
 Discussion robustness + frontend initial-load split + API contract housekeeping.
+
+Note: this release supersedes the earlier 0.1.6-alpha (created 2026-05-20 with installer base commit `89078ef6`) by adding the Inspiration P3 prep scaffold, the OpenAPI schema rebaseline, and the Workbench / ResearchWorkbench lazy-load split. 0.1.6-alpha's release page is preserved as historical record.
 
 Highlights:
 
