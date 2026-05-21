@@ -148,7 +148,7 @@ async def _default_invoke_agent(candidate: DispatchCandidate, prompt: str) -> st
         temperature=float(candidate.metadata.get("temperature", 0.7)),
         max_tokens=int(candidate.metadata.get("max_tokens", 2048)),
     )
-    context_items = list(candidate.metadata.get("context_items") or [])
+    context_items = list(candidate.metadata.get("_context_items") or [])
     req = ChatRequest(query=prompt, context=context_items, history=[], llm=llm)
     response = await chat_ask(req)
     return getattr(response, "answer", "") or ""
@@ -265,7 +265,7 @@ def make_mcp_enabled_invoke_factory(
                 temperature=float(candidate.metadata.get("temperature", 0.7)),
                 max_tokens=int(candidate.metadata.get("max_tokens", 2048)),
             )
-            context_items = list(candidate.metadata.get("context_items") or [])
+            context_items = list(candidate.metadata.get("_context_items") or [])
             req = ChatRequest(
                 query=prompt,
                 context=context_items,

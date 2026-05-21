@@ -409,6 +409,37 @@ def _build_system_text(system_prompt: str, context: list[str]) -> str:
     return "\n\n".join(part for part in system_parts if part)
 
 
+def resolve_effective_system_prompt(llm: LLMConfig | None = None) -> str:
+    """Mirror the env-fallback logic ``_resolve_chat_llm`` applies to system_prompt.
+
+    Exposed so external callers (e.g. ``discussion_orchestrator``) can compute
+    the exact system_prompt the provider will receive when only ``query`` /
+    ``context`` are populated and ``llm.system_prompt`` is empty. The discussion
+    path never sets ``LLMConfig.system_prompt`` explicitly — it always inherits
+    ``CHAT_SYSTEM_PROMPT`` from env via this resolution.
+
+    Keep this function in lockstep with ``_resolve_chat_llm`` line 178:
+    ``system_prompt = (llm.system_prompt if llm else "") or env_value("CHAT_SYSTEM_PROMPT", default="") or ""``.
+    """
+    if llm is not None and llm.system_prompt:
+        return llm.system_prompt
+    return env_value("CHAT_SYSTEM_PROMPT", default="") or ""
+
+
+def compose_provider_system_text(
+    llm: LLMConfig | None,
+    context: list[str],
+) -> str:
+    """Return the exact system_text the provider will receive given llm + context.
+
+    Combines ``resolve_effective_system_prompt`` (env-fallback) with
+    ``_build_system_text`` (prelude + context join). Use this from any
+    pre-flight budgeter that needs to know the real system-message size,
+    not just the size derived from an unresolved LLMConfig.
+    """
+    return _build_system_text(resolve_effective_system_prompt(llm), context)
+
+
 def _resolve_model_name(provider: str, model: str, base_url: str = "") -> str:
     """Resolve model names and guard against invalid placeholder values.
 

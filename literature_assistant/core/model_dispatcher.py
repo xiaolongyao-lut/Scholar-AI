@@ -129,8 +129,14 @@ class DispatchMode(str, Enum):
 class DispatchCandidate:
     """Identity + routing info for one candidate.
 
-    Secrets are NOT stored here — the caller closes over them inside its
-    ``invoke(candidate)`` function. Anything in this dataclass is safe to log.
+    Secrets are NOT stored as top-level fields here — the caller closes over
+    them inside its ``invoke(candidate)`` function. Top-level fields are safe
+    to log. ``metadata`` follows a naming convention: keys starting with an
+    underscore (e.g. ``_resolved_api_key``, ``_context_items``) are private
+    transport-only payloads that **must NOT** be logged or serialized by
+    consumers — they may carry credentials, evidence text, or other sensitive
+    content. Use the helper :func:`dump_metadata_safe_to_log` (or apply the
+    ``_``-prefix filter yourself) before any log/trace dump.
     """
 
     candidate_id: str
@@ -142,6 +148,18 @@ class DispatchCandidate:
     metadata: dict[str, Any] = field(default_factory=dict)
     agent_id: str | None = None
     role: str | None = None
+
+
+def dump_metadata_safe_to_log(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Strip private (``_``-prefixed) keys from ``DispatchCandidate.metadata``
+    so the result is safe to log / serialize per the docstring contract.
+
+    Private keys carry transport-only payloads such as resolved API keys
+    (``_resolved_api_key``) and inlined evidence text (``_context_items``).
+    Logging them would leak secrets and large opaque blobs into operator
+    surfaces. Use this helper at every dump site.
+    """
+    return {k: v for k, v in metadata.items() if not k.startswith("_")}
 
 
 @dataclass(frozen=True)

@@ -359,20 +359,21 @@ def _chat_query_envelope_limit() -> int:
 
 
 def _chat_router_system_text_chars(context_items: list[str]) -> int:
-    # FD-13.1 (2026-05-21): compute the **exact** size of the system_text
-    # block that ``chat_router._build_system_text`` will compose downstream
-    # from these context items, so the orchestrator's envelope guard can
-    # account for what the provider actually receives — not just the
-    # ``ChatRequest.query`` string.
+    # FD-13.1 + FD-13.2 (2026-05-21): compute the **exact** size of the
+    # system_text block that ``chat_router._build_system_text`` will compose
+    # downstream from the env-resolved system_prompt + these context items,
+    # so the orchestrator's envelope guard accounts for what the provider
+    # actually receives — including any ``CHAT_SYSTEM_PROMPT`` env fallback
+    # (codex 6th-pass High).
     #
-    # The discussion path always invokes chat_ask with ``llm.system_prompt = ""``
-    # (orchestrator never populates it), so we mirror the empty-system_prompt
-    # branch of ``_build_system_text``. Using the real function (not a string
-    # mirror) keeps this guard in sync with any future prelude change.
-    if not context_items:
-        return 0
-    from routers.chat_router import _build_system_text
-    return len(_build_system_text("", context_items))
+    # The discussion path never sets ``LLMConfig.system_prompt`` (see
+    # ``discussion_advanced_router._default_invoke_agent``), so we pass
+    # ``llm=None`` to ``compose_provider_system_text`` — equivalent to the
+    # env-fallback branch the chat_ask handler takes. Returning 0 for an
+    # empty payload still requires running the resolver, because env may
+    # contribute system_text even with empty context_items.
+    from routers.chat_router import compose_provider_system_text
+    return len(compose_provider_system_text(None, context_items))
 
 
 def _ensure_payload_within_chat_envelope(
@@ -699,11 +700,15 @@ async def run_discussion(
             # candidate's metadata so downstream invoke wrappers can lift them
             # into ``ChatRequest.context[]`` without changing the InvokeAgentFn
             # 2-arg signature (avoids breaking ~20 test mocks).
+            # FD-13.2 (codex 6th-pass Low, 2026-05-21): underscore-prefix marks
+            # this as a private transport payload — model_dispatcher's
+            # ``dump_metadata_safe_to_log`` helper strips it before any log /
+            # trace dump so evidence text never leaks into operator surfaces.
             if context_items:
                 from dataclasses import replace as _dc_replace
                 cand = _dc_replace(
                     cand,
-                    metadata={**cand.metadata, "context_items": list(context_items)},
+                    metadata={**cand.metadata, "_context_items": list(context_items)},
                 )
             slots.append(cand)
             prompt_for[agent.agent_id] = _build_agent_prompt(
@@ -868,11 +873,12 @@ async def run_discussion(
     synth_cand = _build_candidate(synth_agent, synth_endpoint)
     # FD-13 B4: same context-items injection as the debate path so the
     # synthesizer also receives evidence via ChatRequest.context[].
+    # FD-13.2: same underscore-prefix redaction marker as debate path.
     if context_items:
         from dataclasses import replace as _dc_replace
         synth_cand = _dc_replace(
             synth_cand,
-            metadata={**synth_cand.metadata, "context_items": list(context_items)},
+            metadata={**synth_cand.metadata, "_context_items": list(context_items)},
         )
     synth_prompt = _build_synthesis_prompt(
         query=config.query,
