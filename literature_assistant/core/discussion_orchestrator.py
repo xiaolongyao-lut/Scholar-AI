@@ -74,6 +74,30 @@ logger = logging.getLogger("DiscussionOrchestrator")
 
 
 # ---------------------------------------------------------------------------
+# History / answer budget (FD-14, 2026-05-21)
+# ---------------------------------------------------------------------------
+# The per-agent prompt that this orchestrator builds is passed downstream via
+# ``ChatRequest.query``, whose hard cap is
+# ``literature_assistant.core.routers.chat_router.MAX_CHAT_QUERY_LENGTH = 80_000``.
+# That cap covers the **first-turn evidence envelope** only; ``_format_history``
+# accumulates prior agent answers across every turn and would otherwise grow
+# unbounded (``DISCUSSION_MAX_TURNS_LIMIT = 20`` × 8 agents × ~1 KB answers
+# ≈ 160 KB worst case). The two constants below bound the history block so
+# multi-turn Discussion never re-triggers the TG-1 ``string_too_long`` failure
+# mid-run.
+#
+# ``MAX_HISTORY_LENGTH`` is a rolling-newest-turns window, not a coverage of
+# the theoretical worst case. ``MAX_AGENT_ANSWER_LENGTH`` is enforced
+# **write-only** in ``_result_to_trace`` so that legacy stored traces with
+# longer answers still load (D-HC-5 backward compatibility); the schema
+# ``DiscussionAgentTrace.answer`` field intentionally has no ``max_length``.
+MAX_HISTORY_LENGTH = 8_000
+MAX_AGENT_ANSWER_LENGTH = 4_000
+_TRUNCATION_SUFFIX = "… [truncated]"
+_HISTORY_TRUNCATED_NOTICE_TEMPLATE = "[history truncated: {n} earlier turns omitted]"
+
+
+# ---------------------------------------------------------------------------
 # Errors
 # ---------------------------------------------------------------------------
 
@@ -217,16 +241,48 @@ def _build_candidate(
 
 
 def _format_history(history: list[dict[str, Any]]) -> str:
+    # FD-14 (2026-05-21): newest-turns rolling window sized by MAX_HISTORY_LENGTH.
+    # The empty-history return is preserved verbatim — downstream prompt framing
+    # depends on the "(no prior turns)" sentinel for no-history runs.
     if not history:
         return "(no prior turns)"
-    lines: list[str] = []
+
+    separator = "\n\n"
+    # Format each turn into a complete text block so windowing cuts at turn
+    # boundaries (D-HC-1: keep newest complete turns, never mid-turn).
+    turn_blocks: list[str] = []
     for turn in history:
+        lines: list[str] = []
         for msg in turn.get("messages", []):
             lines.append(
                 f"[turn {turn['turn_index']} | {msg['role']} {msg['agent_id']}] "
                 f"{msg['content']}"
             )
-    return "\n\n".join(lines)
+        turn_blocks.append(separator.join(lines))
+
+    # Accumulate from newest backward until the next turn would exceed budget.
+    kept: list[str] = []
+    used = 0
+    for block in reversed(turn_blocks):
+        added = len(block) + (len(separator) if kept else 0)
+        if used + added > MAX_HISTORY_LENGTH:
+            break
+        kept.append(block)
+        used += added
+    kept.reverse()  # chronological order restored
+
+    dropped = len(turn_blocks) - len(kept)
+    if dropped == 0:
+        # Non-truncated path is byte-identical to the pre-FD-14 output.
+        return separator.join(turn_blocks)
+
+    notice = _HISTORY_TRUNCATED_NOTICE_TEMPLATE.format(n=dropped)
+    if kept:
+        return notice + separator + separator.join(kept)
+    # Every turn body was over budget; keep only the notice so the prompt
+    # still signals that history existed (rare; only happens if a single
+    # turn body alone exceeds MAX_HISTORY_LENGTH).
+    return notice
 
 
 def _format_evidence(evidence: EvidencePack | None, manual: list[str]) -> str:
@@ -355,6 +411,18 @@ def _check_strategy(strategy: DiscussionSynthesisStrategy) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _truncate_answer_for_write(text: str) -> str:
+    # FD-14 (2026-05-21): write-only cap for DiscussionAgentTrace.answer.
+    # Enforced here (orchestrator) instead of as Pydantic Field(max_length=...)
+    # on DiscussionAgentTrace.answer, so that legacy artifacts with answers
+    # longer than MAX_AGENT_ANSWER_LENGTH still validate on load (D-HC-5).
+    if len(text) <= MAX_AGENT_ANSWER_LENGTH:
+        return text
+    # Truncate to budget minus suffix so the final string is exactly the cap.
+    head_len = MAX_AGENT_ANSWER_LENGTH - len(_TRUNCATION_SUFFIX)
+    return text[:head_len] + _TRUNCATION_SUFFIX
+
+
 def _result_to_trace(
     result: DispatchResult,
     agent: DiscussionAgentConfig,
@@ -362,7 +430,7 @@ def _result_to_trace(
     answer = ""
     error: dict[str, Any] | None = None
     if result.success:
-        answer = str(result.output or "")
+        answer = _truncate_answer_for_write(str(result.output or ""))
     elif result.error is not None:
         error = result.error.as_dict()
     return DiscussionAgentTrace(
