@@ -93,6 +93,10 @@ logger = logging.getLogger("DiscussionOrchestrator")
 # ``DiscussionAgentTrace.answer`` field intentionally has no ``max_length``.
 MAX_HISTORY_LENGTH = 8_000
 MAX_AGENT_ANSWER_LENGTH = 4_000
+# FD-14.1 (2026-05-21): cushion subtracted from the dynamic remaining budget
+# before passing to _format_history, to absorb separator drift between the
+# pre-build length estimate and the final "\n".join output.
+_HISTORY_BUDGET_SAFETY_BUFFER = 500
 _TRUNCATION_SUFFIX = "… [truncated]"
 _HISTORY_TRUNCATED_NOTICE_TEMPLATE = "[history truncated: {n} earlier turns omitted]"
 
@@ -240,12 +244,22 @@ def _build_candidate(
 # ---------------------------------------------------------------------------
 
 
-def _format_history(history: list[dict[str, Any]]) -> str:
-    # FD-14 (2026-05-21): newest-turns rolling window sized by MAX_HISTORY_LENGTH.
+def _format_history(
+    history: list[dict[str, Any]],
+    max_length: int = MAX_HISTORY_LENGTH,
+) -> str:
+    # FD-14 (2026-05-21): newest-turns rolling window sized by max_length
+    # (defaults to MAX_HISTORY_LENGTH; FD-14.1 allows the caller to pass a
+    # tighter dynamic budget when the rest of the prompt is large).
     # The empty-history return is preserved verbatim — downstream prompt framing
     # depends on the "(no prior turns)" sentinel for no-history runs.
     if not history:
         return "(no prior turns)"
+
+    # Floor the budget at 0; negative values (caller starved by a giant
+    # non-history prompt) collapse to "truncate everything, keep notice only".
+    if max_length < 0:
+        max_length = 0
 
     separator = "\n\n"
     # Format each turn into a complete text block so windowing cuts at turn
@@ -265,7 +279,7 @@ def _format_history(history: list[dict[str, Any]]) -> str:
     used = 0
     for block in reversed(turn_blocks):
         added = len(block) + (len(separator) if kept else 0)
-        if used + added > MAX_HISTORY_LENGTH:
+        if used + added > max_length:
             break
         kept.append(block)
         used += added
@@ -281,7 +295,8 @@ def _format_history(history: list[dict[str, Any]]) -> str:
         return notice + separator + separator.join(kept)
     # Every turn body was over budget; keep only the notice so the prompt
     # still signals that history existed (rare; only happens if a single
-    # turn body alone exceeds MAX_HISTORY_LENGTH).
+    # turn body alone exceeds the budget — or the dynamic remaining budget
+    # collapsed to ~0 because the non-history prompt is unusually large).
     return notice
 
 
@@ -341,10 +356,17 @@ def _build_agent_prompt(
         "discussion",
         context={"turn_index": turn_index},
     )
-    sections: list[str] = []
+    # FD-14.1 (2026-05-21): compute the dynamic remaining budget for the
+    # history block so that a long agent.system_prompt + full evidence pack
+    # cannot push the assembled prompt past chat_router.MAX_CHAT_QUERY_LENGTH.
+    # Build the non-history sections first (with a placeholder marker for the
+    # history slot), measure their length, and pass the remainder to
+    # _format_history as max_length. The cap is also bounded above by
+    # MAX_HISTORY_LENGTH so short non-history prompts do not balloon history.
+    pre_sections: list[str] = []
     if identity_header:
-        sections.extend([identity_header, ""])
-    sections.extend([
+        pre_sections.extend([identity_header, ""])
+    pre_sections.extend([
         f"# Role: {role_label}",
         base_system,
         "",
@@ -355,11 +377,23 @@ def _build_agent_prompt(
         evidence_text,
         "",
         "# Discussion history",
-        _format_history(history),
+    ])
+    post_sections = [
         "",
         f"# Your turn ({turn_index + 1}) — respond as {role_label}.",
         "Be concise and ground claims in the evidence above when possible.",
-    ])
+    ]
+    non_history_len = len("\n".join(pre_sections + post_sections))
+    # Local import keeps the chat layer the single source of truth for the
+    # envelope without forcing chat_router to import this module (no circular
+    # dep — chat_router does not import discussion_orchestrator).
+    from routers.chat_router import MAX_CHAT_QUERY_LENGTH
+    remaining_for_history = (
+        MAX_CHAT_QUERY_LENGTH - non_history_len - _HISTORY_BUDGET_SAFETY_BUFFER
+    )
+    history_budget = max(0, min(MAX_HISTORY_LENGTH, remaining_for_history))
+    history_block = _format_history(history, max_length=history_budget)
+    sections = pre_sections + [history_block] + post_sections
     return "\n".join(sections)
 
 
@@ -370,7 +404,11 @@ def _build_synthesis_prompt(
     history: list[dict[str, Any]],
     strategy: str,
 ) -> str:
-    return "\n".join([
+    # FD-14.1 (2026-05-21): same dynamic-remaining-budget pattern as
+    # _build_agent_prompt — synthesis is fed the entire discussion history,
+    # which is the largest non-evidence contributor and most likely to push
+    # the assembled prompt past the chat envelope.
+    pre_sections = [
         "# Role: Synthesizer",
         f"Strategy: {strategy}",
         "",
@@ -381,13 +419,22 @@ def _build_synthesis_prompt(
         evidence_text,
         "",
         "# Discussion to synthesize",
-        _format_history(history),
+    ]
+    post_sections = [
         "",
         "# Your task",
         "Synthesize the discussion into a single grounded answer. Highlight "
         "where agents agreed, where they disagreed, and what the evidence "
         "supports. Do not invent facts not in evidence or history.",
-    ])
+    ]
+    non_history_len = len("\n".join(pre_sections + post_sections))
+    from routers.chat_router import MAX_CHAT_QUERY_LENGTH
+    remaining_for_history = (
+        MAX_CHAT_QUERY_LENGTH - non_history_len - _HISTORY_BUDGET_SAFETY_BUFFER
+    )
+    history_budget = max(0, min(MAX_HISTORY_LENGTH, remaining_for_history))
+    history_block = _format_history(history, max_length=history_budget)
+    return "\n".join(pre_sections + [history_block] + post_sections)
 
 
 # ---------------------------------------------------------------------------
