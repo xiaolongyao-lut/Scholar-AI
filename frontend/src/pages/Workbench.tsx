@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { BookOpen, Search, MessageSquare, Loader2, Send, Sparkles, FileText, ChevronRight, Trash2, History, PenLine, Download, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -13,8 +13,19 @@ import { askChatWithConfig, type ChatHistoryMessage } from '@/services/chatApi';
 import axios from 'axios';
 import { SessionDrawer } from '@/components/writing/SessionDrawer';
 import type { ResumeSessionResult } from '@/types/runtime';
-import { TipTapEditor } from '@/components/TipTapEditor/TipTapEditor';
 import { exportToDocx, downloadBlob } from '@/services/exportApi';
+
+const TipTapEditor = lazy(() =>
+  import('@/components/TipTapEditor/TipTapEditor').then((m) => ({
+    default: m.TipTapEditor,
+  })),
+);
+
+const TipTapEditorFallback = () => (
+  <div className="flex h-full w-full items-center justify-center text-foreground/40">
+    <Loader2 className="h-6 w-6 animate-spin" aria-label="Loading editor" />
+  </div>
+);
 
 interface TokenUsage {
   prompt_tokens?: number;
@@ -733,11 +744,13 @@ export function Workbench() {
             </div>
             {/* TipTap editor */}
             <div className="flex-1 overflow-y-auto">
-              <TipTapEditor
-                content={editorContent}
-                onChange={(html, json) => { setEditorContent(html); setEditorJson(json); }}
-                placeholder="在这里撰写论文笔记..."
-              />
+              <Suspense fallback={<TipTapEditorFallback />}>
+                <TipTapEditor
+                  content={editorContent}
+                  onChange={(html, json) => { setEditorContent(html); setEditorJson(json); }}
+                  placeholder="在这里撰写论文笔记..."
+                />
+              </Suspense>
             </div>
           </motion.div>
         )}
