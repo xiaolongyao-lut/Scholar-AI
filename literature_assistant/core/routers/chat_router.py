@@ -60,7 +60,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=5000)
+    query: str = Field(..., min_length=1, max_length=50000)
     context: list[str] = Field(default_factory=list, description="Document text chunks as context")
     history: list[ChatMessage] = Field(default_factory=list, description="Previous conversation turns")
     llm: LLMConfig | None = Field(default=None, description="LLM config from client (optional; backend resolves from runtime override + env if absent)")
@@ -845,7 +845,7 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
 class ChatStreamRequest(BaseModel):
     """Request body for streaming chat — same fields as ChatRequest."""
 
-    query: str = Field(..., min_length=1, max_length=5000)
+    query: str = Field(..., min_length=1, max_length=50000)
     context: list[str] = Field(default_factory=list, description="文档上下文片段")
     history: list[ChatMessage] = Field(default_factory=list, description="历史对话记录")
     llm: LLMConfig | None = Field(default=None, description="LLM config (optional; backend resolves if absent)")
