@@ -633,6 +633,211 @@
         "title": "BuildAssociationRequest",
         "type": "object"
       },
+      "CandidateDecisionPayload": {
+        "description": "Response shape for transition POSTs.",
+        "properties": {
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "decided_at": {
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decision_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Reason"
+          },
+          "new_status": {
+            "$ref": "#/components/schemas/CandidateStatus"
+          },
+          "previous_status": {
+            "$ref": "#/components/schemas/CandidateStatus"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "previous_status",
+          "new_status",
+          "decided_at"
+        ],
+        "title": "CandidateDecisionPayload",
+        "type": "object"
+      },
+      "CandidateDecisionRequest": {
+        "additionalProperties": false,
+        "description": "Body for accept/reject/snooze/rollback transition POSTs.",
+        "properties": {
+          "decision_reason": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Reason"
+          },
+          "rollback_ref": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollback Ref"
+          }
+        },
+        "title": "CandidateDecisionRequest",
+        "type": "object"
+      },
+      "CandidateListPayload": {
+        "description": "List response for `/evolution/candidates`.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExperienceCandidate"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "CandidateListPayload",
+        "type": "object"
+      },
+      "CandidateMemoryType": {
+        "enum": [
+          "user_preference",
+          "project_fact",
+          "literature_procedure",
+          "domain_knowledge",
+          "evidence_rule",
+          "agent_role_lesson",
+          "tool_reliability",
+          "skill_draft"
+        ],
+        "title": "CandidateMemoryType",
+        "type": "string"
+      },
+      "CandidatePromotionPayload": {
+        "description": "Response shape for `/evolution/candidates/{id}/promote`.",
+        "properties": {
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "new_status": {
+            "$ref": "#/components/schemas/CandidateStatus"
+          },
+          "previous_status": {
+            "$ref": "#/components/schemas/CandidateStatus"
+          },
+          "promoted": {
+            "title": "Promoted",
+            "type": "boolean"
+          },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "rollback_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollback Ref"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "previous_status",
+          "new_status",
+          "promoted",
+          "target",
+          "reason"
+        ],
+        "title": "CandidatePromotionPayload",
+        "type": "object"
+      },
+      "CandidateRiskLevel": {
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "CandidateRiskLevel",
+        "type": "string"
+      },
+      "CandidateSourceType": {
+        "enum": [
+          "inspiration",
+          "discussion",
+          "rag_answer",
+          "runtime_job",
+          "skill_run",
+          "pdf_annotation",
+          "mcp_tool_use",
+          "manual",
+          "curator"
+        ],
+        "title": "CandidateSourceType",
+        "type": "string"
+      },
+      "CandidateStatus": {
+        "enum": [
+          "captured",
+          "pending",
+          "accepted",
+          "rejected",
+          "snoozed",
+          "expired",
+          "promoted_to_memory",
+          "promoted_to_skill_draft",
+          "rolled_back",
+          "blocked"
+        ],
+        "title": "CandidateStatus",
+        "type": "string"
+      },
       "CapabilityPayload": {
         "description": "Capability payload advertised to the frontend.",
         "properties": {
@@ -751,7 +956,7 @@
             "title": "Mcp Server Ids"
           },
           "query": {
-            "maxLength": 5000,
+            "maxLength": 80000,
             "minLength": 1,
             "title": "Query",
             "type": "string"
@@ -1122,7 +1327,7 @@
             "description": "LLM config (optional; backend resolves if absent)"
           },
           "query": {
-            "maxLength": 5000,
+            "maxLength": 80000,
             "minLength": 1,
             "title": "Query",
             "type": "string"
@@ -1974,6 +2179,84 @@
         "title": "CredentialTrustSource",
         "type": "string"
       },
+      "CuratorRunPayload": {
+        "description": "Response shape for `/evolution/curate/run` (Slice 7).",
+        "properties": {
+          "conflicts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "dedupe_groups": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Dedupe Groups",
+            "type": "array"
+          },
+          "demoted": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Demoted",
+            "type": "array"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expired": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Expired",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "scanned": {
+            "default": 0,
+            "title": "Scanned",
+            "type": "integer"
+          },
+          "skipped": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Skipped",
+            "type": "object"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "CuratorRunPayload",
+        "type": "object"
+      },
       "DiscoverRequest": {
         "description": "POST body for model discovery (api_key in body, not URL).",
         "properties": {
@@ -2358,6 +2641,8 @@
           "convergence_threshold": {
             "anyOf": [
               {
+                "maximum": 1.0,
+                "minimum": 0.0,
                 "type": "number"
               },
               {
@@ -2369,6 +2654,8 @@
           "min_turns": {
             "anyOf": [
               {
+                "maximum": 20.0,
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -2635,7 +2922,7 @@
           },
           "max_turns": {
             "default": 1,
-            "maximum": 5.0,
+            "maximum": 20.0,
             "minimum": 1.0,
             "title": "Max Turns",
             "type": "integer"
@@ -2653,7 +2940,7 @@
           },
           "min_turns": {
             "default": 2,
-            "maximum": 5.0,
+            "maximum": 20.0,
             "minimum": 1.0,
             "title": "Min Turns",
             "type": "integer"
@@ -3330,6 +3617,323 @@
         "title": "EvidenceReferencePayload",
         "type": "object"
       },
+      "EvolutionAuditPayload": {
+        "description": "Operator-facing audit roll-up for `/evolution/audit` (Opt §6).\n\nAll fields are derived from COUNT(*) / GROUP BY queries plus a small\nbounded list of recent decision_reason strings; no raw candidate\nclaim / title / future_use / source_summary text is ever surfaced\nthrough this endpoint.",
+        "properties": {
+          "by_memory_type": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Memory Type",
+            "type": "object"
+          },
+          "by_source_type": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Source Type",
+            "type": "object"
+          },
+          "by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Status",
+            "type": "object"
+          },
+          "promotion_outcomes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Promotion Outcomes",
+            "type": "object"
+          },
+          "recent_decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Recent Decisions",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "title": "EvolutionAuditPayload",
+        "type": "object"
+      },
+      "EvolutionStatusPayload": {
+        "description": "Health and configuration snapshot for `/evolution/status`.",
+        "properties": {
+          "candidate_capture_enabled": {
+            "title": "Candidate Capture Enabled",
+            "type": "boolean"
+          },
+          "candidate_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Candidate Counts",
+            "type": "object"
+          },
+          "curator_enabled": {
+            "title": "Curator Enabled",
+            "type": "boolean"
+          },
+          "db_path": {
+            "title": "Db Path",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "promotion_enabled": {
+            "title": "Promotion Enabled",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "recall_enabled": {
+            "title": "Recall Enabled",
+            "type": "boolean"
+          },
+          "review_ui_enabled": {
+            "title": "Review Ui Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "recall_enabled",
+          "candidate_capture_enabled",
+          "review_ui_enabled",
+          "promotion_enabled",
+          "curator_enabled",
+          "db_path"
+        ],
+        "title": "EvolutionStatusPayload",
+        "type": "object"
+      },
+      "ExperienceCandidate": {
+        "additionalProperties": false,
+        "description": "A single experience candidate produced by the evolution capture layer.\n\nMirrors plan §Experience Candidate Contract. All fields are validated at\nwrite time; status transitions are enforced by\nliterature_assistant.core.evolution.state_machine.",
+        "properties": {
+          "candidate_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "claim": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Claim",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "maxLength": 64,
+            "minLength": 10,
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decision_reason": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Reason"
+          },
+          "dedupe_hash": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Dedupe Hash",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 64,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "future_use": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Future Use",
+            "type": "string"
+          },
+          "memory_type": {
+            "$ref": "#/components/schemas/CandidateMemoryType"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
+          "risk_level": {
+            "$ref": "#/components/schemas/CandidateRiskLevel",
+            "default": "low"
+          },
+          "rollback_ref": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollback Ref"
+          },
+          "source_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_route": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Route"
+          },
+          "source_summary": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Source Summary",
+            "type": "string"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/CandidateSourceType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CandidateStatus",
+            "default": "captured"
+          },
+          "title": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "maxLength": 64,
+            "minLength": 10,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "workspace_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "workspace_id",
+          "source_type",
+          "source_id",
+          "source_summary",
+          "memory_type",
+          "title",
+          "claim",
+          "future_use",
+          "confidence",
+          "dedupe_hash",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ExperienceCandidate",
+        "type": "object"
+      },
       "ExportDocxRequest": {
         "properties": {
           "html": {
@@ -3843,6 +4447,48 @@
         "title": "Highlight",
         "type": "object"
       },
+      "ImageAttachmentPayload": {
+        "description": "Browser-provided image attachment accepted by `/api/chat`.\n\nThe endpoint stores no path and performs no vision analysis by default.\nSlice 0 only exposes a typed, bounded payload to pre-LLM hooks.",
+        "properties": {
+          "data_b64": {
+            "maxLength": 6291456,
+            "minLength": 1,
+            "title": "Data B64",
+            "type": "string"
+          },
+          "mime": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Mime",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "size": {
+            "maximum": 4194304.0,
+            "minimum": 1.0,
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mime",
+          "data_b64",
+          "size"
+        ],
+        "title": "ImageAttachmentPayload",
+        "type": "object"
+      },
       "ImportUserSkillManifestPayload": {
         "description": "Minimal manifest summary returned after importing a user skill.",
         "properties": {
@@ -4017,6 +4663,143 @@
         "title": "InspirationContextPayload",
         "type": "object"
       },
+      "InstallationInstallRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "config_values": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Config Values",
+            "type": "object"
+          },
+          "credential_bindings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Credential Bindings",
+            "type": "object"
+          },
+          "display_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "enable_for_session": {
+            "default": false,
+            "title": "Enable For Session",
+            "type": "boolean"
+          },
+          "launch_candidate_sha": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Launch Candidate Sha",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "maxLength": 1024,
+            "title": "Notes",
+            "type": "string"
+          },
+          "scan_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "server_slug": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Server Slug",
+            "type": "string"
+          },
+          "trust_to_probe": {
+            "default": false,
+            "title": "Trust To Probe",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scan_id",
+          "launch_candidate_sha",
+          "server_slug",
+          "display_name"
+        ],
+        "title": "InstallationInstallRequest",
+        "type": "object"
+      },
+      "InstallationInstallResponse": {
+        "additionalProperties": false,
+        "description": "Public-facing shape; no raw secrets.",
+        "properties": {
+          "absolute_cwd": {
+            "title": "Absolute Cwd",
+            "type": "string"
+          },
+          "approval_state": {
+            "title": "Approval State",
+            "type": "string"
+          },
+          "install_dir": {
+            "title": "Install Dir",
+            "type": "string"
+          },
+          "install_id": {
+            "title": "Install Id",
+            "type": "string"
+          },
+          "probe": {
+            "additionalProperties": true,
+            "title": "Probe",
+            "type": "object"
+          },
+          "server": {
+            "additionalProperties": true,
+            "title": "Server",
+            "type": "object"
+          },
+          "server_id": {
+            "title": "Server Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "install_id",
+          "server_id",
+          "server",
+          "install_dir",
+          "absolute_cwd",
+          "approval_state",
+          "probe"
+        ],
+        "title": "InstallationInstallResponse",
+        "type": "object"
+      },
+      "InstallationPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "launch_candidate_sha": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Launch Candidate Sha",
+            "type": "string"
+          },
+          "scan_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Scan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "launch_candidate_sha"
+        ],
+        "title": "InstallationPreviewRequest",
+        "type": "object"
+      },
       "IntelligentChatRequest": {
         "description": "Request payload for the frontend Intelligent Chat endpoint.",
         "properties": {
@@ -4024,6 +4807,14 @@
             "default": false,
             "title": "Direct Mode",
             "type": "boolean"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageAttachmentPayload"
+            },
+            "maxItems": 6,
+            "title": "Images",
+            "type": "array"
           },
           "inspiration_context": {
             "anyOf": [
@@ -4458,6 +5249,136 @@
         "title": "LastPageRequest",
         "type": "object"
       },
+      "ManualCaptureRequest": {
+        "additionalProperties": false,
+        "description": "Body for POST /evolution/capture/manual.",
+        "properties": {
+          "claim": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Claim",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "future_use": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Future Use",
+            "type": "string"
+          },
+          "memory_type": {
+            "$ref": "#/components/schemas/CandidateMemoryType"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "risk_level": {
+            "$ref": "#/components/schemas/CandidateRiskLevel",
+            "default": "low"
+          },
+          "source_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_route": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Route"
+          },
+          "source_summary": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Source Summary",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "workspace_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "source_id",
+          "source_summary",
+          "memory_type",
+          "title",
+          "claim",
+          "future_use",
+          "confidence"
+        ],
+        "title": "ManualCaptureRequest",
+        "type": "object"
+      },
+      "ManualCaptureResponse": {
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/ExperienceCandidate"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "merged": {
+            "title": "Merged",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate",
+          "created",
+          "merged",
+          "reason"
+        ],
+        "title": "ManualCaptureResponse",
+        "type": "object"
+      },
       "MaterialPayload": {
         "description": "Project-scoped material response used by the reference drawer.",
         "properties": {
@@ -4536,6 +5457,270 @@
         "title": "McpApprovalState",
         "type": "string"
       },
+      "McpInstallConfigField": {
+        "additionalProperties": false,
+        "description": "Non-secret config field generated for the install wizard.\n\nExamples: ``VISION_PROVIDER`` (select with options), ``DEFAULT_TIMEOUT``\n(text). For secrets use ``McpRequiredCredential`` instead — those get\nbound through the CredentialPicker and stored as env_refs.",
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 512,
+            "title": "Description",
+            "type": "string"
+          },
+          "env": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Env",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "env",
+          "type"
+        ],
+        "title": "McpInstallConfigField",
+        "type": "object"
+      },
+      "McpLaunchCandidate": {
+        "additionalProperties": false,
+        "description": "One detected stdio launch invocation.",
+        "properties": {
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Args",
+            "type": "array"
+          },
+          "command": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Command",
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/McpScanConfidence"
+          },
+          "cwd": {
+            "default": ".",
+            "maxLength": 256,
+            "title": "Cwd",
+            "type": "string"
+          },
+          "sha": {
+            "maxLength": 64,
+            "minLength": 16,
+            "title": "Sha",
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "confidence",
+          "source",
+          "sha"
+        ],
+        "title": "McpLaunchCandidate",
+        "type": "object"
+      },
+      "McpPackageScanRequest": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /api/mcp/installations/scan``.",
+        "properties": {
+          "source_path": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "template_hint": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Hint"
+          }
+        },
+        "required": [
+          "source_path"
+        ],
+        "title": "McpPackageScanRequest",
+        "type": "object"
+      },
+      "McpPackageScanResult": {
+        "additionalProperties": false,
+        "description": "Response of ``POST /api/mcp/installations/scan``.\n\nEither yields a viable install plan (``confidence != NONE``,\n``launch_candidates`` non-empty) OR signals ``needs_manual_launch`` so\nthe wizard routes the user to the Advanced manual form.",
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/McpScanConfidence"
+          },
+          "config_fields": {
+            "items": {
+              "$ref": "#/components/schemas/McpInstallConfigField"
+            },
+            "title": "Config Fields",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 1024,
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expected_tools": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Expected Tools",
+            "type": "array"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "launch_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/McpLaunchCandidate"
+            },
+            "title": "Launch Candidates",
+            "type": "array"
+          },
+          "needs_manual_launch": {
+            "default": false,
+            "title": "Needs Manual Launch",
+            "type": "boolean"
+          },
+          "package_id": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "required_credentials": {
+            "items": {
+              "$ref": "#/components/schemas/McpRequiredCredential"
+            },
+            "title": "Required Credentials",
+            "type": "array"
+          },
+          "scan_id": {
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "source_path": {
+            "title": "Source Path",
+            "type": "string"
+          },
+          "transport": {
+            "default": "stdio",
+            "maxLength": 32,
+            "title": "Transport",
+            "type": "string"
+          },
+          "version": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Version",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/McpScanWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scan_id",
+          "source_path",
+          "confidence",
+          "expires_at"
+        ],
+        "title": "McpPackageScanResult",
+        "type": "object"
+      },
       "McpProvenance": {
         "description": "Where the server config originated. Mirrors credentials.CredentialTrustSource\nvocabulary so audit / UI patterns stay aligned across the two registries.",
         "enum": [
@@ -4544,6 +5729,122 @@
           "runtime_untrusted_custom"
         ],
         "title": "McpProvenance",
+        "type": "string"
+      },
+      "McpRequiredCredential": {
+        "additionalProperties": false,
+        "description": "A credential reference slot that the install wizard binds via the\nCredentialPicker. After install, the installer writes\n``McpStdioConfig.env_refs[env] = credential_id``.",
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 512,
+            "title": "Description",
+            "type": "string"
+          },
+          "env": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Env",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "api_key",
+            "maxLength": 32,
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "provider_hints": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Provider Hints",
+            "type": "array"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "env"
+        ],
+        "title": "McpRequiredCredential",
+        "type": "object"
+      },
+      "McpScanConfidence": {
+        "description": "How sure the scanner is that its launch_candidate will actually work.",
+        "enum": [
+          "high",
+          "medium",
+          "low",
+          "none"
+        ],
+        "title": "McpScanConfidence",
+        "type": "string"
+      },
+      "McpScanWarning": {
+        "additionalProperties": false,
+        "description": "One observation produced by the scanner.\n\nCodes are stable identifiers so the frontend / tests can switch on them.",
+        "properties": {
+          "code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "level": {
+            "$ref": "#/components/schemas/McpScanWarningLevel"
+          },
+          "message": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "code",
+          "message"
+        ],
+        "title": "McpScanWarning",
+        "type": "object"
+      },
+      "McpScanWarningLevel": {
+        "enum": [
+          "info",
+          "warn",
+          "block"
+        ],
+        "title": "McpScanWarningLevel",
         "type": "string"
       },
       "McpServerConfigCreate": {
@@ -4806,6 +6107,18 @@
             "title": "Command",
             "type": "string"
           },
+          "cwd": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cwd"
+          },
           "cwd_relative": {
             "anyOf": [
               {
@@ -4824,6 +6137,13 @@
             },
             "title": "Env",
             "type": "object"
+          },
+          "env_refs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Env Refs",
+            "type": "object"
           }
         },
         "required": [
@@ -4836,6 +6156,13 @@
         "additionalProperties": false,
         "description": "HTTP transport config. Persisted from day 1; execution is feature-flagged\noff until later slice (plan v0.3 §4.4).",
         "properties": {
+          "header_refs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Header Refs",
+            "type": "object"
+          },
           "headers": {
             "additionalProperties": {
               "type": "string"
@@ -10866,6 +12193,209 @@
         ]
       }
     },
+    "/api/mcp/installations/install": {
+      "post": {
+        "description": "Create server from scan + bindings; probe + advance approval if trusted.",
+        "operationId": "post_api_mcp_installations_install",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallationInstallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationInstallResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Install Package",
+        "tags": [
+          "MCP-Installer"
+        ]
+      }
+    },
+    "/api/mcp/installations/preview": {
+      "post": {
+        "description": "Confirm scan_id + candidate sha are still valid; return the candidate.",
+        "operationId": "post_api_mcp_installations_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Mcp Installations Preview",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Install",
+        "tags": [
+          "MCP-Installer"
+        ]
+      }
+    },
+    "/api/mcp/installations/scan": {
+      "post": {
+        "description": "Run the scanner against a local path. Caches result by scan_id with TTL.",
+        "operationId": "post_api_mcp_installations_scan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpPackageScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpPackageScanResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scan Local Package",
+        "tags": [
+          "MCP-Installer"
+        ]
+      }
+    },
+    "/api/mcp/pending-calls": {
+      "get": {
+        "description": "Return all currently-pending MCP tool calls awaiting operator\napproval. Empty list when no pending — cheap poll target per the\ntransport ADR.",
+        "operationId": "get_api_mcp_pending_calls",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Api Mcp Pending Calls",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Pending Calls",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/mcp/pending-calls/{call_id}/decide": {
+      "post": {
+        "description": "Record an operator decision for a pending MCP tool call.\n\nBody: ``{\"decision\": \"approve\" | \"reject\", \"remember_for_run\": bool}``.\nReturns 204 on success; 404 if the id is unknown / already decided /\ntimed out; 400 on invalid body.",
+        "operationId": "post_api_mcp_pending_calls_call_id_decide",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "call_id",
+            "required": true,
+            "schema": {
+              "title": "Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Pending Call",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
     "/api/mcp/servers": {
       "get": {
         "description": "List MCP servers with masked env / headers. Optional filter by\napproval state.",
@@ -11088,6 +12618,108 @@
           }
         },
         "summary": "Update Server",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/mcp/servers/{server_id}/legacy-env": {
+      "get": {
+        "description": "Detect raw-secret-shaped env / header entries on a server.\n\nReturns masked values only — the raw plaintext never crosses this\nboundary. Caller (frontend installed-view banner) uses the result to\nshow a migration prompt; the actual move happens via the POST\n``/migrate-env-to-refs`` endpoint below.",
+        "operationId": "get_api_mcp_servers_server_id_legacy_env",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Api Mcp Servers Server Id Legacy Env",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Legacy Env",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/mcp/servers/{server_id}/migrate-env-to-refs": {
+      "post": {
+        "description": "Move raw env / header values into env_refs / header_refs.\n\nBody schema:\n    {\n      \"mapping\": {\"<env_key>\": \"<credential_id>\", ...},\n      \"confirm_remove_raw\": true\n    }\n\nValidation:\n- Every credential_id in ``mapping`` must exist + be enabled.\n- Every ``env_key`` in ``mapping`` must currently exist in either\n  ``stdio.env`` or ``http.headers`` of the target server.\n- ``confirm_remove_raw`` must be exactly ``true`` (plan §6: \"never\n  auto-migrate\"). The frontend's migration modal flips this only on\n  the user's explicit click.\n\nEffects:\n- Adds ``mapping[env_key] -> credential_id`` to ``env_refs`` (stdio)\n  or ``header_refs`` (http).\n- Removes the corresponding ``env_key`` from ``env`` / ``headers``.\n- Increments fingerprint via the standard update path (v2 includes\n  env_refs / header_refs keys, M4).\n- Triggers reverse-index rebuild on the binding index.",
+        "operationId": "post_api_mcp_servers_server_id_migrate_env_to_refs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Mcp Servers Server Id Migrate Env To Refs",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Migrate Env To Refs",
         "tags": [
           "MCP"
         ]
@@ -12018,6 +13650,554 @@
         ]
       }
     },
+    "/evolution/audit": {
+      "get": {
+        "description": "Opt §6: aggregate roll-up of the candidate store.\n\nAll values are derived from COUNT / GROUP BY queries; no raw\ncandidate text (claim / title / future_use / source_summary) is\nsurfaced. `recent_decisions` carries up to `recent_decision_limit`\nmost-recent non-empty `decision_reason` strings (truncated to\n240 chars each), which are only ever written by service / curator\n/ promoter code — never by user input — so they are safe to expose\nto an operator audit panel.",
+        "operationId": "get_evolution_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "recent_decision_limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 0,
+              "title": "Recent Decision Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionAuditPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evolution Audit",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
+    "/evolution/candidates": {
+      "get": {
+        "description": "List candidates with optional scoping filters.\n\n`total` is the pagination-independent filter cardinality (S8.1 fix);\npreviously it was len(items) which mislead frontend pagination when\n`limit < matching_rows`.",
+        "operationId": "get_evolution_candidates",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CandidateStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "memory_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CandidateMemoryType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memory Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateListPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Candidates",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
+    "/evolution/candidates/{candidate_id}/accept": {
+      "post": {
+        "operationId": "post_evolution_candidates_candidate_id_accept",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateDecisionRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDecisionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Candidate",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
+    "/evolution/candidates/{candidate_id}/promote": {
+      "post": {
+        "description": "Promote an ACCEPTED candidate to MemPalace or skill draft proposal.\n\nReturns 404 if the candidate doesn't exist. Returns 409 when the\ncandidate isn't in a promotable state, the kill switch is off, or the\nunderlying MemPalace adapter rejects the write — the candidate row\nstays at its current status in that case (no partial promotion).",
+        "operationId": "post_evolution_candidates_candidate_id_promote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidatePromotionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote Candidate",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
+    "/evolution/candidates/{candidate_id}/reject": {
+      "post": {
+        "operationId": "post_evolution_candidates_candidate_id_reject",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateDecisionRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDecisionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Candidate",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
+    "/evolution/candidates/{candidate_id}/rollback": {
+      "post": {
+        "operationId": "post_evolution_candidates_candidate_id_rollback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateDecisionRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDecisionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Candidate",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
+    "/evolution/candidates/{candidate_id}/snooze": {
+      "post": {
+        "operationId": "post_evolution_candidates_candidate_id_snooze",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateDecisionRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDecisionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Snooze Candidate",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
+    "/evolution/capture/manual": {
+      "post": {
+        "description": "Capture a candidate from a manual source (test / backfill).\n\nInspiration / discussion / runtime-job capture endpoints belong to Slice 3-4\nand are not yet registered.",
+        "operationId": "post_evolution_capture_manual",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualCaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Capture Manual",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
+    "/evolution/curate/run": {
+      "post": {
+        "description": "Run one curator pass (Slice 7).\n\nNo-op (returns enabled=false) when `evolution.curator_enabled` is off.\nOtherwise sweeps PENDING candidates for stale + low-confidence\ntransitions and surfaces conflict + dedupe groups as report-only data.\nReviewers act on conflicts through the regular accept/reject/snooze\nendpoints — the curator never auto-resolves.",
+        "operationId": "post_evolution_curate_run",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CuratorRunPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Curator",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
+    "/evolution/status": {
+      "get": {
+        "description": "Return evolution-layer configuration + candidate counts snapshot.",
+        "operationId": "get_evolution_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionStatusPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Evolution Status",
+        "tags": [
+          "Evolution"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "description": "Return adapter server system health state.",
@@ -12250,6 +14430,38 @@
             "schema": {
               "title": "Session Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wing",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wing"
+            }
+          },
+          {
+            "in": "query",
+            "name": "room",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Room"
             }
           }
         ],

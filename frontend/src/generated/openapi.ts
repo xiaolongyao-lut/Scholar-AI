@@ -628,6 +628,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp/installations/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Package
+         * @description Create server from scan + bindings; probe + advance approval if trusted.
+         */
+        post: operations["post_api_mcp_installations_install"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/installations/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Install
+         * @description Confirm scan_id + candidate sha are still valid; return the candidate.
+         */
+        post: operations["post_api_mcp_installations_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/installations/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Local Package
+         * @description Run the scanner against a local path. Caches result by scan_id with TTL.
+         */
+        post: operations["post_api_mcp_installations_scan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/pending-calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pending Calls
+         * @description Return all currently-pending MCP tool calls awaiting operator
+         *     approval. Empty list when no pending — cheap poll target per the
+         *     transport ADR.
+         */
+        get: operations["get_api_mcp_pending_calls"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/pending-calls/{call_id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Pending Call
+         * @description Record an operator decision for a pending MCP tool call.
+         *
+         *     Body: ``{"decision": "approve" | "reject", "remember_for_run": bool}``.
+         *     Returns 204 on success; 404 if the id is unknown / already decided /
+         *     timed out; 400 on invalid body.
+         */
+        post: operations["post_api_mcp_pending_calls_call_id_decide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/mcp/servers": {
         parameters: {
             query?: never;
@@ -664,6 +770,73 @@ export interface paths {
         post?: never;
         /** Delete Server */
         delete: operations["delete_api_mcp_servers_server_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/servers/{server_id}/legacy-env": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Legacy Env
+         * @description Detect raw-secret-shaped env / header entries on a server.
+         *
+         *     Returns masked values only — the raw plaintext never crosses this
+         *     boundary. Caller (frontend installed-view banner) uses the result to
+         *     show a migration prompt; the actual move happens via the POST
+         *     ``/migrate-env-to-refs`` endpoint below.
+         */
+        get: operations["get_api_mcp_servers_server_id_legacy_env"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/servers/{server_id}/migrate-env-to-refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Migrate Env To Refs
+         * @description Move raw env / header values into env_refs / header_refs.
+         *
+         *     Body schema:
+         *         {
+         *           "mapping": {"<env_key>": "<credential_id>", ...},
+         *           "confirm_remove_raw": true
+         *         }
+         *
+         *     Validation:
+         *     - Every credential_id in ``mapping`` must exist + be enabled.
+         *     - Every ``env_key`` in ``mapping`` must currently exist in either
+         *       ``stdio.env`` or ``http.headers`` of the target server.
+         *     - ``confirm_remove_raw`` must be exactly ``true`` (plan §6: "never
+         *       auto-migrate"). The frontend's migration modal flips this only on
+         *       the user's explicit click.
+         *
+         *     Effects:
+         *     - Adds ``mapping[env_key] -> credential_id`` to ``env_refs`` (stdio)
+         *       or ``header_refs`` (http).
+         *     - Removes the corresponding ``env_key`` from ``env`` / ``headers``.
+         *     - Increments fingerprint via the standard update path (v2 includes
+         *       env_refs / header_refs keys, M4).
+         *     - Triggers reverse-index rebuild on the binding index.
+         */
+        post: operations["post_api_mcp_servers_server_id_migrate_env_to_refs"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1084,6 +1257,220 @@ export interface paths {
          *       data: {"event":"error","error":"..."}
          */
         post: operations["post_chat_stream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evolution Audit
+         * @description Opt §6: aggregate roll-up of the candidate store.
+         *
+         *     All values are derived from COUNT / GROUP BY queries; no raw
+         *     candidate text (claim / title / future_use / source_summary) is
+         *     surfaced. `recent_decisions` carries up to `recent_decision_limit`
+         *     most-recent non-empty `decision_reason` strings (truncated to
+         *     240 chars each), which are only ever written by service / curator
+         *     / promoter code — never by user input — so they are safe to expose
+         *     to an operator audit panel.
+         */
+        get: operations["get_evolution_audit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Candidates
+         * @description List candidates with optional scoping filters.
+         *
+         *     `total` is the pagination-independent filter cardinality (S8.1 fix);
+         *     previously it was len(items) which mislead frontend pagination when
+         *     `limit < matching_rows`.
+         */
+        get: operations["get_evolution_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/candidates/{candidate_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Candidate */
+        post: operations["post_evolution_candidates_candidate_id_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/candidates/{candidate_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Candidate
+         * @description Promote an ACCEPTED candidate to MemPalace or skill draft proposal.
+         *
+         *     Returns 404 if the candidate doesn't exist. Returns 409 when the
+         *     candidate isn't in a promotable state, the kill switch is off, or the
+         *     underlying MemPalace adapter rejects the write — the candidate row
+         *     stays at its current status in that case (no partial promotion).
+         */
+        post: operations["post_evolution_candidates_candidate_id_promote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/candidates/{candidate_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Candidate */
+        post: operations["post_evolution_candidates_candidate_id_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/candidates/{candidate_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Candidate */
+        post: operations["post_evolution_candidates_candidate_id_rollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/candidates/{candidate_id}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Snooze Candidate */
+        post: operations["post_evolution_candidates_candidate_id_snooze"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/capture/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Capture Manual
+         * @description Capture a candidate from a manual source (test / backfill).
+         *
+         *     Inspiration / discussion / runtime-job capture endpoints belong to Slice 3-4
+         *     and are not yet registered.
+         */
+        post: operations["post_evolution_capture_manual"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/curate/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Curator
+         * @description Run one curator pass (Slice 7).
+         *
+         *     No-op (returns enabled=false) when `evolution.curator_enabled` is off.
+         *     Otherwise sweeps PENDING candidates for stale + low-confidence
+         *     transitions and surfaces conflict + dedupe groups as report-only data.
+         *     Reviewers act on conflicts through the regular accept/reject/snooze
+         *     endpoints — the curator never auto-resolves.
+         */
+        post: operations["post_evolution_curate_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evolution/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evolution Status
+         * @description Return evolution-layer configuration + candidate counts snapshot.
+         */
+        get: operations["get_evolution_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3434,6 +3821,80 @@ export interface components {
             wing?: string | null;
         };
         /**
+         * CandidateDecisionPayload
+         * @description Response shape for transition POSTs.
+         */
+        CandidateDecisionPayload: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Decided At */
+            decided_at: string;
+            /** Decision Reason */
+            decision_reason?: string | null;
+            new_status: components["schemas"]["CandidateStatus"];
+            previous_status: components["schemas"]["CandidateStatus"];
+        };
+        /**
+         * CandidateDecisionRequest
+         * @description Body for accept/reject/snooze/rollback transition POSTs.
+         */
+        CandidateDecisionRequest: {
+            /** Decision Reason */
+            decision_reason?: string | null;
+            /** Rollback Ref */
+            rollback_ref?: string | null;
+        };
+        /**
+         * CandidateListPayload
+         * @description List response for `/evolution/candidates`.
+         */
+        CandidateListPayload: {
+            /** Items */
+            items?: components["schemas"]["ExperienceCandidate"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * CandidateMemoryType
+         * @enum {string}
+         */
+        CandidateMemoryType: "user_preference" | "project_fact" | "literature_procedure" | "domain_knowledge" | "evidence_rule" | "agent_role_lesson" | "tool_reliability" | "skill_draft";
+        /**
+         * CandidatePromotionPayload
+         * @description Response shape for `/evolution/candidates/{id}/promote`.
+         */
+        CandidatePromotionPayload: {
+            /** Candidate Id */
+            candidate_id: string;
+            new_status: components["schemas"]["CandidateStatus"];
+            previous_status: components["schemas"]["CandidateStatus"];
+            /** Promoted */
+            promoted: boolean;
+            /** Promoted At */
+            promoted_at?: string | null;
+            /** Reason */
+            reason: string;
+            /** Rollback Ref */
+            rollback_ref?: string | null;
+            /** Target */
+            target: string;
+        };
+        /**
+         * CandidateRiskLevel
+         * @enum {string}
+         */
+        CandidateRiskLevel: "low" | "medium" | "high";
+        /**
+         * CandidateSourceType
+         * @enum {string}
+         */
+        CandidateSourceType: "inspiration" | "discussion" | "rag_answer" | "runtime_job" | "skill_run" | "pdf_annotation" | "mcp_tool_use" | "manual" | "curator";
+        /**
+         * CandidateStatus
+         * @enum {string}
+         */
+        CandidateStatus: "captured" | "pending" | "accepted" | "rejected" | "snoozed" | "expired" | "promoted_to_memory" | "promoted_to_skill_draft" | "rolled_back" | "blocked";
+        /**
          * CapabilityPayload
          * @description Capability payload advertised to the frontend.
          */
@@ -4036,6 +4497,39 @@ export interface components {
          */
         CredentialTrustSource: "official_provider" | "env_configured_gateway" | "runtime_user_confirmed" | "runtime_untrusted_custom";
         /**
+         * CuratorRunPayload
+         * @description Response shape for `/evolution/curate/run` (Slice 7).
+         */
+        CuratorRunPayload: {
+            /** Conflicts */
+            conflicts?: {
+                [key: string]: unknown;
+            }[];
+            /** Dedupe Groups */
+            dedupe_groups?: {
+                [key: string]: unknown;
+            }[];
+            /** Demoted */
+            demoted?: string[];
+            /** Enabled */
+            enabled: boolean;
+            /** Expired */
+            expired?: string[];
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Scanned
+             * @default 0
+             */
+            scanned: number;
+            /** Skipped */
+            skipped?: {
+                [key: string]: number;
+            };
+            /** Workspace Id */
+            workspace_id?: string | null;
+        };
+        /**
          * DiscoverRequest
          * @description POST body for model discovery (api_key in body, not URL).
          */
@@ -4602,6 +5096,126 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * EvolutionAuditPayload
+         * @description Operator-facing audit roll-up for `/evolution/audit` (Opt §6).
+         *
+         *     All fields are derived from COUNT(*) / GROUP BY queries plus a small
+         *     bounded list of recent decision_reason strings; no raw candidate
+         *     claim / title / future_use / source_summary text is ever surfaced
+         *     through this endpoint.
+         */
+        EvolutionAuditPayload: {
+            /** By Memory Type */
+            by_memory_type?: {
+                [key: string]: number;
+            };
+            /** By Source Type */
+            by_source_type?: {
+                [key: string]: number;
+            };
+            /** By Status */
+            by_status?: {
+                [key: string]: number;
+            };
+            /** Promotion Outcomes */
+            promotion_outcomes?: {
+                [key: string]: number;
+            };
+            /** Recent Decisions */
+            recent_decisions?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /** Workspace Id */
+            workspace_id?: string | null;
+        };
+        /**
+         * EvolutionStatusPayload
+         * @description Health and configuration snapshot for `/evolution/status`.
+         */
+        EvolutionStatusPayload: {
+            /** Candidate Capture Enabled */
+            candidate_capture_enabled: boolean;
+            /** Candidate Counts */
+            candidate_counts?: {
+                [key: string]: number;
+            };
+            /** Curator Enabled */
+            curator_enabled: boolean;
+            /** Db Path */
+            db_path: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Promotion Enabled */
+            promotion_enabled: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Recall Enabled */
+            recall_enabled: boolean;
+            /** Review Ui Enabled */
+            review_ui_enabled: boolean;
+        };
+        /**
+         * ExperienceCandidate
+         * @description A single experience candidate produced by the evolution capture layer.
+         *
+         *     Mirrors plan §Experience Candidate Contract. All fields are validated at
+         *     write time; status transitions are enforced by
+         *     literature_assistant.core.evolution.state_machine.
+         */
+        ExperienceCandidate: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Claim */
+            claim: string;
+            /** Confidence */
+            confidence: number;
+            /** Created At */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decision Reason */
+            decision_reason?: string | null;
+            /** Dedupe Hash */
+            dedupe_hash: string;
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Future Use */
+            future_use: string;
+            memory_type: components["schemas"]["CandidateMemoryType"];
+            /** Project Id */
+            project_id?: string | null;
+            /** Promoted At */
+            promoted_at?: string | null;
+            /** @default low */
+            risk_level: components["schemas"]["CandidateRiskLevel"];
+            /** Rollback Ref */
+            rollback_ref?: string | null;
+            /** Source Id */
+            source_id: string;
+            /** Source Route */
+            source_route?: string | null;
+            /** Source Summary */
+            source_summary: string;
+            source_type: components["schemas"]["CandidateSourceType"];
+            /** @default captured */
+            status: components["schemas"]["CandidateStatus"];
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** User Id */
+            user_id?: string | null;
+            /** Workspace Id */
+            workspace_id: string;
+        };
         /** ExportDocxRequest */
         ExportDocxRequest: {
             /** Html */
@@ -4782,6 +5396,23 @@ export interface components {
             text: string;
         };
         /**
+         * ImageAttachmentPayload
+         * @description Browser-provided image attachment accepted by `/api/chat`.
+         *
+         *     The endpoint stores no path and performs no vision analysis by default.
+         *     Slice 0 only exposes a typed, bounded payload to pre-LLM hooks.
+         */
+        ImageAttachmentPayload: {
+            /** Data B64 */
+            data_b64: string;
+            /** Mime */
+            mime: string;
+            /** Name */
+            name?: string | null;
+            /** Size */
+            size: number;
+        };
+        /**
          * ImportUserSkillManifestPayload
          * @description Minimal manifest summary returned after importing a user skill.
          */
@@ -4875,6 +5506,71 @@ export interface components {
             /** Suggested Angles */
             suggested_angles?: string[];
         };
+        /** InstallationInstallRequest */
+        InstallationInstallRequest: {
+            /** Config Values */
+            config_values?: {
+                [key: string]: string;
+            };
+            /** Credential Bindings */
+            credential_bindings?: {
+                [key: string]: string;
+            };
+            /** Display Name */
+            display_name: string;
+            /**
+             * Enable For Session
+             * @default false
+             */
+            enable_for_session: boolean;
+            /** Launch Candidate Sha */
+            launch_candidate_sha: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Scan Id */
+            scan_id: string;
+            /** Server Slug */
+            server_slug: string;
+            /**
+             * Trust To Probe
+             * @default false
+             */
+            trust_to_probe: boolean;
+        };
+        /**
+         * InstallationInstallResponse
+         * @description Public-facing shape; no raw secrets.
+         */
+        InstallationInstallResponse: {
+            /** Absolute Cwd */
+            absolute_cwd: string;
+            /** Approval State */
+            approval_state: string;
+            /** Install Dir */
+            install_dir: string;
+            /** Install Id */
+            install_id: string;
+            /** Probe */
+            probe: {
+                [key: string]: unknown;
+            };
+            /** Server */
+            server: {
+                [key: string]: unknown;
+            };
+            /** Server Id */
+            server_id: string;
+        };
+        /** InstallationPreviewRequest */
+        InstallationPreviewRequest: {
+            /** Launch Candidate Sha */
+            launch_candidate_sha: string;
+            /** Scan Id */
+            scan_id: string;
+        };
         /**
          * IntelligentChatRequest
          * @description Request payload for the frontend Intelligent Chat endpoint.
@@ -4885,6 +5581,8 @@ export interface components {
              * @default false
              */
             direct_mode: boolean;
+            /** Images */
+            images?: components["schemas"]["ImageAttachmentPayload"][];
             inspiration_context?: components["schemas"]["InspirationContextPayload"] | null;
             mode?: components["schemas"]["ChatMode"] | null;
             /** Project Id */
@@ -5062,6 +5760,45 @@ export interface components {
             page?: number | null;
         };
         /**
+         * ManualCaptureRequest
+         * @description Body for POST /evolution/capture/manual.
+         */
+        ManualCaptureRequest: {
+            /** Claim */
+            claim: string;
+            /** Confidence */
+            confidence: number;
+            /** Future Use */
+            future_use: string;
+            memory_type: components["schemas"]["CandidateMemoryType"];
+            /** Project Id */
+            project_id?: string | null;
+            /** @default low */
+            risk_level: components["schemas"]["CandidateRiskLevel"];
+            /** Source Id */
+            source_id: string;
+            /** Source Route */
+            source_route?: string | null;
+            /** Source Summary */
+            source_summary: string;
+            /** Title */
+            title: string;
+            /** User Id */
+            user_id?: string | null;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** ManualCaptureResponse */
+        ManualCaptureResponse: {
+            candidate: components["schemas"]["ExperienceCandidate"];
+            /** Created */
+            created: boolean;
+            /** Merged */
+            merged: boolean;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * MaterialPayload
          * @description Project-scoped material response used by the reference drawer.
          */
@@ -5109,12 +5846,192 @@ export interface components {
          */
         McpApprovalState: "registered" | "catalog_reviewed" | "enabled_for_session";
         /**
+         * McpInstallConfigField
+         * @description Non-secret config field generated for the install wizard.
+         *
+         *     Examples: ``VISION_PROVIDER`` (select with options), ``DEFAULT_TIMEOUT``
+         *     (text). For secrets use ``McpRequiredCredential`` instead — those get
+         *     bound through the CredentialPicker and stored as env_refs.
+         */
+        McpInstallConfigField: {
+            /** Default */
+            default?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Env */
+            env: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Options */
+            options?: {
+                [key: string]: string;
+            }[] | null;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Type */
+            type: string;
+        };
+        /**
+         * McpLaunchCandidate
+         * @description One detected stdio launch invocation.
+         */
+        McpLaunchCandidate: {
+            /** Args */
+            args?: string[];
+            /** Command */
+            command: string;
+            confidence: components["schemas"]["McpScanConfidence"];
+            /**
+             * Cwd
+             * @default .
+             */
+            cwd: string;
+            /** Sha */
+            sha: string;
+            /** Source */
+            source: string;
+        };
+        /**
+         * McpPackageScanRequest
+         * @description Body of ``POST /api/mcp/installations/scan``.
+         */
+        McpPackageScanRequest: {
+            /** Source Path */
+            source_path: string;
+            /** Template Hint */
+            template_hint?: string | null;
+        };
+        /**
+         * McpPackageScanResult
+         * @description Response of ``POST /api/mcp/installations/scan``.
+         *
+         *     Either yields a viable install plan (``confidence != NONE``,
+         *     ``launch_candidates`` non-empty) OR signals ``needs_manual_launch`` so
+         *     the wizard routes the user to the Advanced manual form.
+         */
+        McpPackageScanResult: {
+            /** Capabilities */
+            capabilities?: string[];
+            confidence: components["schemas"]["McpScanConfidence"];
+            /** Config Fields */
+            config_fields?: components["schemas"]["McpInstallConfigField"][];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name: string;
+            /** Expected Tools */
+            expected_tools?: string[];
+            /** Expires At */
+            expires_at: string;
+            /** Launch Candidates */
+            launch_candidates?: components["schemas"]["McpLaunchCandidate"][];
+            /**
+             * Needs Manual Launch
+             * @default false
+             */
+            needs_manual_launch: boolean;
+            /**
+             * Package Id
+             * @default
+             */
+            package_id: string;
+            /** Required Credentials */
+            required_credentials?: components["schemas"]["McpRequiredCredential"][];
+            /** Scan Id */
+            scan_id: string;
+            /** Source Path */
+            source_path: string;
+            /**
+             * Transport
+             * @default stdio
+             */
+            transport: string;
+            /**
+             * Version
+             * @default
+             */
+            version: string;
+            /** Warnings */
+            warnings?: components["schemas"]["McpScanWarning"][];
+        };
+        /**
          * McpProvenance
          * @description Where the server config originated. Mirrors credentials.CredentialTrustSource
          *     vocabulary so audit / UI patterns stay aligned across the two registries.
          * @enum {string}
          */
         McpProvenance: "official_provider" | "runtime_user_confirmed" | "runtime_untrusted_custom";
+        /**
+         * McpRequiredCredential
+         * @description A credential reference slot that the install wizard binds via the
+         *     CredentialPicker. After install, the installer writes
+         *     ``McpStdioConfig.env_refs[env] = credential_id``.
+         */
+        McpRequiredCredential: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Env */
+            env: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @default api_key
+             */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Provider Hints */
+            provider_hints?: string[];
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+        };
+        /**
+         * McpScanConfidence
+         * @description How sure the scanner is that its launch_candidate will actually work.
+         * @enum {string}
+         */
+        McpScanConfidence: "high" | "medium" | "low" | "none";
+        /**
+         * McpScanWarning
+         * @description One observation produced by the scanner.
+         *
+         *     Codes are stable identifiers so the frontend / tests can switch on them.
+         */
+        McpScanWarning: {
+            /** Code */
+            code: string;
+            /** Field */
+            field?: string | null;
+            level: components["schemas"]["McpScanWarningLevel"];
+            /** Message */
+            message: string;
+        };
+        /**
+         * McpScanWarningLevel
+         * @enum {string}
+         */
+        McpScanWarningLevel: "info" | "warn" | "block";
         /**
          * McpServerConfigCreate
          * @description Body of POST /api/mcp/servers. New servers always start at
@@ -5195,10 +6112,16 @@ export interface components {
             args?: string[];
             /** Command */
             command: string;
+            /** Cwd */
+            cwd?: string | null;
             /** Cwd Relative */
             cwd_relative?: string | null;
             /** Env */
             env?: {
+                [key: string]: string;
+            };
+            /** Env Refs */
+            env_refs?: {
                 [key: string]: string;
             };
         };
@@ -5208,6 +6131,10 @@ export interface components {
          *     off until later slice (plan v0.3 §4.4).
          */
         McpStreamableHttpConfig: {
+            /** Header Refs */
+            header_refs?: {
+                [key: string]: string;
+            };
             /** Headers */
             headers?: {
                 [key: string]: string;
@@ -8331,6 +9258,164 @@ export interface operations {
             };
         };
     };
+    post_api_mcp_installations_install: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallationInstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationInstallResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_mcp_installations_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallationPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_mcp_installations_scan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpPackageScanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpPackageScanResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_mcp_pending_calls: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    post_api_mcp_pending_calls_call_id_decide: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                call_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_mcp_servers: {
         parameters: {
             query?: {
@@ -8471,6 +9556,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_mcp_servers_server_id_legacy_env: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_mcp_servers_server_id_migrate_env_to_refs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -9163,6 +10320,329 @@ export interface operations {
             };
         };
     };
+    get_evolution_audit: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+                recent_decision_limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionAuditPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evolution_candidates: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+                project_id?: string | null;
+                status?: components["schemas"]["CandidateStatus"] | null;
+                memory_type?: components["schemas"]["CandidateMemoryType"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateListPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_evolution_candidates_candidate_id_accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CandidateDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateDecisionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_evolution_candidates_candidate_id_promote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidatePromotionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_evolution_candidates_candidate_id_reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CandidateDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateDecisionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_evolution_candidates_candidate_id_rollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CandidateDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateDecisionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_evolution_candidates_candidate_id_snooze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CandidateDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateDecisionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_evolution_capture_manual: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualCaptureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualCaptureResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_evolution_curate_run: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorRunPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evolution_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStatusPayload"];
+                };
+            };
+        };
+    };
     get_health: {
         parameters: {
             query?: never;
@@ -9331,6 +10811,8 @@ export interface operations {
         parameters: {
             query: {
                 session_id: string;
+                wing?: string | null;
+                room?: string | null;
             };
             header?: never;
             path: {
