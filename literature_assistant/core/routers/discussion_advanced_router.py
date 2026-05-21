@@ -308,6 +308,13 @@ async def post_discussion_run(config: DiscussionRunConfig) -> DiscussionRunResul
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except DiscussionCredentialMissingError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DiscussionContextBudgetError as exc:
+        # FD-13.1 (2026-05-21): per-request budget violation is a 422
+        # (Unprocessable Entity) — the client supplied a discussion context
+        # that exceeds MAX_DISCUSSION_CONTEXT_ITEMS / MAX_DISCUSSION_CONTEXT_ITEM_LENGTH.
+        # Must be caught BEFORE the generic DiscussionOrchestratorError handler
+        # below (DiscussionContextBudgetError inherits from it).
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except DiscussionOrchestratorError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     _schedule_discussion_capture(result)

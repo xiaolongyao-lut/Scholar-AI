@@ -358,14 +358,46 @@ def _chat_query_envelope_limit() -> int:
     return MAX_CHAT_QUERY_LENGTH
 
 
-def _ensure_prompt_within_chat_envelope(prompt: str, *, prompt_kind: str) -> None:
+def _chat_router_system_text_chars(context_items: list[str]) -> int:
+    # FD-13.1 (2026-05-21): compute the **exact** size of the system_text
+    # block that ``chat_router._build_system_text`` will compose downstream
+    # from these context items, so the orchestrator's envelope guard can
+    # account for what the provider actually receives — not just the
+    # ``ChatRequest.query`` string.
+    #
+    # The discussion path always invokes chat_ask with ``llm.system_prompt = ""``
+    # (orchestrator never populates it), so we mirror the empty-system_prompt
+    # branch of ``_build_system_text``. Using the real function (not a string
+    # mirror) keeps this guard in sync with any future prelude change.
+    if not context_items:
+        return 0
+    from routers.chat_router import _build_system_text
+    return len(_build_system_text("", context_items))
+
+
+def _ensure_payload_within_chat_envelope(
+    prompt: str,
+    context_items: list[str],
+    *,
+    prompt_kind: str,
+) -> None:
+    # FD-14.2 + FD-13.1: the chat envelope must cover **prompt + system_text**
+    # because chat_router pushes ``context_items`` through
+    # ``_build_system_text`` into the provider's system message. Guarding only
+    # ``len(prompt)`` lets B-path payloads sneak past the cap (codex audit
+    # 2026-05-21). Total budget is shared between the prompt body and the
+    # rendered system_text; if either side is oversized, fail fast here
+    # instead of leaking to ChatRequest validation or the provider.
     limit = _chat_query_envelope_limit()
-    if len(prompt) <= limit:
+    system_chars = _chat_router_system_text_chars(context_items)
+    total = len(prompt) + system_chars
+    if total <= limit:
         return
     raise DiscussionOrchestratorError(
-        f"{prompt_kind} prompt exceeds ChatRequest.query envelope: "
-        f"{len(prompt)} chars > {limit}. Reduce evidence, system prompt, "
-        "query, or history before invoking the chat router."
+        f"{prompt_kind} provider payload exceeds chat envelope: "
+        f"prompt={len(prompt)} chars + system_text(context_items)={system_chars} "
+        f"chars = {total} > {limit}. Reduce evidence, system prompt, query, "
+        "or history before invoking the chat router."
     )
 
 
@@ -377,6 +409,7 @@ def _build_agent_prompt(
     history: list[dict[str, Any]],
     turn_index: int,
     cite_evidence: bool = False,
+    context_items: list[str] | None = None,
 ) -> str:
     role_label = agent.role_label or agent.role.value
     base_system = agent.system_prompt.strip() or "(no extra system prompt)"
@@ -386,9 +419,11 @@ def _build_agent_prompt(
         "discussion",
         context={"turn_index": turn_index},
     )
-    # FD-14.1 (2026-05-21): compute the dynamic remaining budget for the
-    # history block so that a long agent.system_prompt + full evidence pack
-    # cannot push the assembled prompt past chat_router.MAX_CHAT_QUERY_LENGTH.
+    # FD-14.1 + FD-13.1 (2026-05-21): compute the dynamic remaining budget
+    # for the history block. The cap covers prompt **plus** the system_text
+    # that chat_router will compose from context_items downstream; otherwise
+    # B-path evidence (delivered via ChatRequest.context[]) silently bypasses
+    # the FD-14.2 envelope guard.
     # Build the non-history sections first (with a placeholder marker for the
     # history slot), measure their length, and pass the remainder to
     # _format_history as max_length. The cap is also bounded above by
@@ -413,17 +448,22 @@ def _build_agent_prompt(
         f"# Your turn ({turn_index + 1}) — respond as {role_label}.",
         "Be concise and ground claims in the evidence above when possible.",
     ]
+    items = context_items or []
+    system_text_chars = _chat_router_system_text_chars(items)
     non_history_len = len("\n".join(pre_sections + post_sections))
     remaining_for_history = (
         _chat_query_envelope_limit()
         - non_history_len
+        - system_text_chars
         - _HISTORY_BUDGET_SAFETY_BUFFER
     )
     history_budget = max(0, min(MAX_HISTORY_LENGTH, remaining_for_history))
     history_block = _format_history(history, max_length=history_budget)
     sections = pre_sections + [history_block] + post_sections
     prompt = "\n".join(sections)
-    _ensure_prompt_within_chat_envelope(prompt, prompt_kind="discussion agent")
+    _ensure_payload_within_chat_envelope(
+        prompt, items, prompt_kind="discussion agent"
+    )
     return prompt
 
 
@@ -433,11 +473,14 @@ def _build_synthesis_prompt(
     evidence_text: str,
     history: list[dict[str, Any]],
     strategy: str,
+    context_items: list[str] | None = None,
 ) -> str:
-    # FD-14.1 (2026-05-21): same dynamic-remaining-budget pattern as
+    # FD-14.1 + FD-13.1 (2026-05-21): same dynamic-remaining-budget pattern as
     # _build_agent_prompt — synthesis is fed the entire discussion history,
     # which is the largest non-evidence contributor and most likely to push
-    # the assembled prompt past the chat envelope.
+    # the assembled prompt past the chat envelope. Cap also subtracts the
+    # system_text size that chat_router will compose from context_items so
+    # the B-path evidence stays inside the envelope.
     pre_sections = [
         "# Role: Synthesizer",
         f"Strategy: {strategy}",
@@ -457,16 +500,21 @@ def _build_synthesis_prompt(
         "where agents agreed, where they disagreed, and what the evidence "
         "supports. Do not invent facts not in evidence or history.",
     ]
+    items = context_items or []
+    system_text_chars = _chat_router_system_text_chars(items)
     non_history_len = len("\n".join(pre_sections + post_sections))
     remaining_for_history = (
         _chat_query_envelope_limit()
         - non_history_len
+        - system_text_chars
         - _HISTORY_BUDGET_SAFETY_BUFFER
     )
     history_budget = max(0, min(MAX_HISTORY_LENGTH, remaining_for_history))
     history_block = _format_history(history, max_length=history_budget)
     prompt = "\n".join(pre_sections + [history_block] + post_sections)
-    _ensure_prompt_within_chat_envelope(prompt, prompt_kind="discussion synthesis")
+    _ensure_payload_within_chat_envelope(
+        prompt, items, prompt_kind="discussion synthesis"
+    )
     return prompt
 
 
@@ -665,6 +713,7 @@ async def run_discussion(
                 history=history,
                 turn_index=turn_index,
                 cite_evidence=cite_evidence,
+                context_items=context_items,
             )
 
         async def _wrapped(c: DispatchCandidate) -> str:
@@ -830,6 +879,7 @@ async def run_discussion(
         evidence_text=prompt_evidence_text,
         history=history,
         strategy=config.synthesis_strategy.value,
+        context_items=context_items,
     )
     try:
         synth_text = await asyncio.wait_for(
