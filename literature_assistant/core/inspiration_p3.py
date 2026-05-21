@@ -38,7 +38,7 @@ import hashlib
 import os
 from typing import Iterable, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -126,12 +126,35 @@ class InspirationP3GoldsetEntry(BaseModel):
 
     Synthetic fixtures may set ``query`` to a short marker string so the
     deterministic eval harness can run without any real spark generation.
+
+    Cross-field invariant: every ``ExpectedEdge.source`` / ``.target`` must
+    refer to an existing ``ExpectedNode.id`` within the same entry. The
+    eval harness's ``_resolve`` step would otherwise silently degrade an
+    unknown id into a literal string, masking authoring bugs in goldset
+    JSONL — which violates the project-wide "拒绝静默失败" rule.
     """
 
     model_config = ConfigDict(extra="forbid")
     query: str = Field(..., min_length=1)
     expected_nodes: list[ExpectedNode] = Field(default_factory=list)
     expected_edges: list[ExpectedEdge] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _edges_reference_known_nodes(self) -> "InspirationP3GoldsetEntry":
+        node_ids = {n.id for n in self.expected_nodes}
+        dangling: list[str] = []
+        for idx, edge in enumerate(self.expected_edges):
+            if edge.source not in node_ids:
+                dangling.append(f"edges[{idx}].source={edge.source!r}")
+            if edge.target not in node_ids:
+                dangling.append(f"edges[{idx}].target={edge.target!r}")
+        if dangling:
+            raise ValueError(
+                "ExpectedEdge references unknown node id(s): "
+                + ", ".join(dangling)
+                + f" (known ids: {sorted(node_ids)})"
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------
