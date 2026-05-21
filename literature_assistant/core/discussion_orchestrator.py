@@ -95,7 +95,9 @@ MAX_HISTORY_LENGTH = 8_000
 MAX_AGENT_ANSWER_LENGTH = 4_000
 # FD-14.1 (2026-05-21): cushion subtracted from the dynamic remaining budget
 # before passing to _format_history, to absorb separator drift between the
-# pre-build length estimate and the final "\n".join output.
+# pre-build length estimate and the final "\n".join output. FD-14.2 adds a
+# final assembled-prompt guard so oversized non-history sections fail here
+# instead of leaking into ChatRequest validation.
 _HISTORY_BUDGET_SAFETY_BUFFER = 500
 _TRUNCATION_SUFFIX = "… [truncated]"
 _HISTORY_TRUNCATED_NOTICE_TEMPLATE = "[history truncated: {n} earlier turns omitted]"
@@ -339,6 +341,25 @@ def _format_evidence_with_ids(
     return _format_evidence(evidence, manual), []
 
 
+def _chat_query_envelope_limit() -> int:
+    # Local import keeps chat_router as the single source of truth without
+    # creating a module-load dependency from orchestrator -> router.
+    from routers.chat_router import MAX_CHAT_QUERY_LENGTH
+
+    return MAX_CHAT_QUERY_LENGTH
+
+
+def _ensure_prompt_within_chat_envelope(prompt: str, *, prompt_kind: str) -> None:
+    limit = _chat_query_envelope_limit()
+    if len(prompt) <= limit:
+        return
+    raise DiscussionOrchestratorError(
+        f"{prompt_kind} prompt exceeds ChatRequest.query envelope: "
+        f"{len(prompt)} chars > {limit}. Reduce evidence, system prompt, "
+        "query, or history before invoking the chat router."
+    )
+
+
 def _build_agent_prompt(
     agent: DiscussionAgentConfig,
     *,
@@ -384,17 +405,17 @@ def _build_agent_prompt(
         "Be concise and ground claims in the evidence above when possible.",
     ]
     non_history_len = len("\n".join(pre_sections + post_sections))
-    # Local import keeps the chat layer the single source of truth for the
-    # envelope without forcing chat_router to import this module (no circular
-    # dep — chat_router does not import discussion_orchestrator).
-    from routers.chat_router import MAX_CHAT_QUERY_LENGTH
     remaining_for_history = (
-        MAX_CHAT_QUERY_LENGTH - non_history_len - _HISTORY_BUDGET_SAFETY_BUFFER
+        _chat_query_envelope_limit()
+        - non_history_len
+        - _HISTORY_BUDGET_SAFETY_BUFFER
     )
     history_budget = max(0, min(MAX_HISTORY_LENGTH, remaining_for_history))
     history_block = _format_history(history, max_length=history_budget)
     sections = pre_sections + [history_block] + post_sections
-    return "\n".join(sections)
+    prompt = "\n".join(sections)
+    _ensure_prompt_within_chat_envelope(prompt, prompt_kind="discussion agent")
+    return prompt
 
 
 def _build_synthesis_prompt(
@@ -428,13 +449,16 @@ def _build_synthesis_prompt(
         "supports. Do not invent facts not in evidence or history.",
     ]
     non_history_len = len("\n".join(pre_sections + post_sections))
-    from routers.chat_router import MAX_CHAT_QUERY_LENGTH
     remaining_for_history = (
-        MAX_CHAT_QUERY_LENGTH - non_history_len - _HISTORY_BUDGET_SAFETY_BUFFER
+        _chat_query_envelope_limit()
+        - non_history_len
+        - _HISTORY_BUDGET_SAFETY_BUFFER
     )
     history_budget = max(0, min(MAX_HISTORY_LENGTH, remaining_for_history))
     history_block = _format_history(history, max_length=history_budget)
-    return "\n".join(pre_sections + [history_block] + post_sections)
+    prompt = "\n".join(pre_sections + [history_block] + post_sections)
+    _ensure_prompt_within_chat_envelope(prompt, prompt_kind="discussion synthesis")
+    return prompt
 
 
 # ---------------------------------------------------------------------------

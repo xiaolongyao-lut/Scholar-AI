@@ -83,17 +83,21 @@ class ChatMessage(BaseModel):
 # cap history bytes (or summarize older turns, or migrate evidence/history
 # off ``query``), not to keep widening this constant indefinitely.
 #
-# FD-14 was implemented 2026-05-21 in
+# FD-14 / FD-14.1 / FD-14.2 were implemented 2026-05-21 in
 # ``literature_assistant.core.discussion_orchestrator``:
 #   * ``MAX_HISTORY_LENGTH = 8_000`` — rolling-newest-turns window in
-#     ``_format_history``; oldest turns dropped with a single
-#     ``[history truncated: N earlier turns omitted]`` notice.
+#     ``_format_history``; callers pass a tighter dynamic max_length when
+#     non-history prompt sections consume most of this envelope. Oldest turns
+#     are dropped with a single ``[history truncated: N earlier turns omitted]``
+#     notice.
 #   * ``MAX_AGENT_ANSWER_LENGTH = 4_000`` — write-only cap on
 #     ``DiscussionAgentTrace.answer`` applied in ``_result_to_trace``;
 #     schema field has no ``max_length`` so legacy artifacts still load
 #     (D-HC-5 backward compatibility).
-# Together they keep the Discussion contribution to ``query`` within the
-# 80_000 envelope; future cap raises should still update the math above.
+#   * the final assembled Discussion prompt is checked before it is passed to
+#     ``ChatRequest``; oversized non-history sections fail fast in the
+#     orchestrator instead of surfacing as a generic request validation error.
+# Future cap raises should still update the math above.
 MAX_CHAT_QUERY_LENGTH = 80_000
 
 
