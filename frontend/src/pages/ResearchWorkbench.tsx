@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, CheckCircle2, Hash } from 'lucide-react';
+import { ArrowLeft, BookOpen, CheckCircle2, Hash, Loader2 } from 'lucide-react';
 import { WorkbenchShell } from '@/components/workbench/WorkbenchShell';
 import {
   ResearchWorkbenchInspector,
   ResearchWorkbenchEvidenceDrawer,
 } from '@/components/workbench/ResearchWorkbenchInspector';
-import { PdfReaderShell } from '@/components/PdfViewer/PdfReaderShell';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { useWriting } from '@/contexts/WritingContext';
@@ -19,6 +18,18 @@ import { getWritingBackendService } from '@/services/writingBackend';
 import type { WritingMaterialResource } from '@/types/resources';
 import type { ChatMessageData } from '@/components/chat/Message';
 import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
+
+const PdfReaderShell = lazy(() =>
+  import('@/components/PdfViewer/PdfReaderShell').then((m) => ({
+    default: m.PdfReaderShell,
+  })),
+);
+
+const PdfReaderFallback = () => (
+  <div className="flex h-full w-full items-center justify-center text-slate-400">
+    <Loader2 className="h-6 w-6 animate-spin" aria-label="Loading PDF reader" />
+  </div>
+);
 
 /**
  * Phase 2 / Slice 3 — ResearchWorkbench surface (Paper object only).
@@ -220,18 +231,20 @@ function ResearchWorkbenchInner() {
       }
       canvas={
         <ErrorBoundary fallbackTitle="PDF 阅读器暂时无法显示">
-          <PdfReaderShell
-            url={pdfUrl}
-            materialId={materialId}
-            initialPage={initialPage}
-            highlights={annotation?.highlights ?? []}
-            notes={annotation?.notes ?? []}
-            lastPage={annotation?.last_page ?? null}
-            onAnalyzeText={handleAnalyzeText}
-            onAddHighlight={(h) => void handleAddHighlight(h)}
-            onDeleteHighlight={(i) => void handleDeleteHighlight(i)}
-            onAnnotationUpdate={setAnnotation}
-          />
+          <Suspense fallback={<PdfReaderFallback />}>
+            <PdfReaderShell
+              url={pdfUrl}
+              materialId={materialId}
+              initialPage={initialPage}
+              highlights={annotation?.highlights ?? []}
+              notes={annotation?.notes ?? []}
+              lastPage={annotation?.last_page ?? null}
+              onAnalyzeText={handleAnalyzeText}
+              onAddHighlight={(h) => void handleAddHighlight(h)}
+              onDeleteHighlight={(i) => void handleDeleteHighlight(i)}
+              onAnnotationUpdate={setAnnotation}
+            />
+          </Suspense>
         </ErrorBoundary>
       }
       inspector={
