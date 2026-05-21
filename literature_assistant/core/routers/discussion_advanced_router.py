@@ -58,6 +58,61 @@ def set_invoke_agent_factory(factory: InvokeAgentFactory | None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Discussion-scope evidence-as-context budget (FD-13 B1, 2026-05-21)
+# ---------------------------------------------------------------------------
+# The B-path refactor moves evidence snippets out of ``ChatRequest.query`` and
+# into ``ChatRequest.context: list[str]``. We deliberately enforce the budget
+# **here** (discussion call site) instead of on ``ChatRequest.context`` itself
+# so that generic ``/chat/ask`` callers (Workbench inline chat, future skills)
+# continue to accept arbitrary user-supplied document chunks per D-BP-4.
+#
+# Math (sized to mirror the FD-14 evidence-pack contract):
+#   - MAX_DISCUSSION_CONTEXT_ITEMS = 50        -- matches DiscussionRunConfig.evidence_top_k ceiling.
+#   - MAX_DISCUSSION_CONTEXT_ITEM_LENGTH = 1_400
+#     -- evidence_pack.DEFAULT_MAX_SNIPPET_CHARS = 1_200 content
+#     -- + ``[E1] source (chunk=… score=…)`` header ~100 chars
+#     -- + ~100 chars buffer for framing
+#
+# Raising these requires a separate decision (and possibly a chat envelope
+# raise) — they should stay aligned with ``evidence_pack`` upstream caps.
+MAX_DISCUSSION_CONTEXT_ITEMS = 50
+MAX_DISCUSSION_CONTEXT_ITEM_LENGTH = 1_400
+
+
+class DiscussionContextBudgetError(DiscussionOrchestratorError):
+    """Raised when a discussion-path ``context[]`` exceeds the local budget.
+
+    Surfaced as 422 by the FastAPI handler (same shape as other
+    DiscussionOrchestratorError subclasses); fail-fast here keeps oversized
+    payloads from leaking into ``ChatRequest`` provider dispatch.
+    """
+
+
+def validate_discussion_context_items(items: list[str]) -> list[str]:
+    """Enforce per-item char budget + max item count on a discussion context list.
+
+    Returns the input list unchanged on success so callers can chain:
+        ChatRequest(query=q, context=validate_discussion_context_items(ctx), ...)
+
+    Raises ``DiscussionContextBudgetError`` on violation; the caller (orchestrator
+    or invoke wrapper) is responsible for catching + downgrading to a trace error
+    so the dispatcher records a clean failure instead of crashing the run.
+    """
+    if len(items) > MAX_DISCUSSION_CONTEXT_ITEMS:
+        raise DiscussionContextBudgetError(
+            f"discussion context has {len(items)} items, exceeds "
+            f"MAX_DISCUSSION_CONTEXT_ITEMS={MAX_DISCUSSION_CONTEXT_ITEMS}"
+        )
+    for idx, item in enumerate(items):
+        if len(item) > MAX_DISCUSSION_CONTEXT_ITEM_LENGTH:
+            raise DiscussionContextBudgetError(
+                f"discussion context item {idx} has {len(item)} chars, exceeds "
+                f"MAX_DISCUSSION_CONTEXT_ITEM_LENGTH={MAX_DISCUSSION_CONTEXT_ITEM_LENGTH}"
+            )
+    return items
+
+
+# ---------------------------------------------------------------------------
 # Default invoke_agent: hits chat_ask
 # ---------------------------------------------------------------------------
 
