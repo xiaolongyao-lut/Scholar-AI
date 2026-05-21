@@ -62,7 +62,8 @@ class ChatMessage(BaseModel):
 # Envelope for the assembled prompt that callers pass via ``ChatRequest.query``
 # / ``ChatStreamRequest.query``. Discussion + Inspiration paths assemble the
 # full per-agent prompt (system suffix + user question + evidence + history)
-# and pass it here, so the cap must accommodate the documented worst case:
+# and pass it here, so the cap must accommodate the documented **first-turn
+# evidence envelope**:
 #
 #   evidence:        50 snippets × 1200 chars  = 60_000  (DiscussionRunConfig.evidence_top_k ≤ 50,
 #                                                          evidence_pack.DEFAULT_MAX_SNIPPET_CHARS = 1200)
@@ -73,9 +74,14 @@ class ChatMessage(BaseModel):
 #   ─────────────────────────────────────────────────────────────────────
 #   total                                                         ≈ 80_000
 #
-# History growth across multi-turn / multi-agent runs is not hard-capped at
-# the schema layer (see FD-14 in the bug-fix plan); raise this constant if a
-# future Discussion path documents a larger ceiling.
+# This is **not** a Discussion full-run worst case: ``_format_history`` in
+# ``discussion_orchestrator.py`` accumulates prior agent answers across turns
+# without a schema-layer hard cap, and ``DiscussionAgentTrace.answer`` itself
+# has no ``max_length``. A run with many turns / many agents / verbose
+# answers can therefore exceed this envelope. Tracked as FD-14 in
+# ``docs/plans/active/2026-05-21-bug-fix-plan.md`` §7.3; the right fix is to
+# cap history bytes (or summarize older turns, or migrate evidence/history
+# off ``query``), not to keep widening this constant indefinitely.
 MAX_CHAT_QUERY_LENGTH = 80_000
 
 
