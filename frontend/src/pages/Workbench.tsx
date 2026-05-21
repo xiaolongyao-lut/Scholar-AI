@@ -14,6 +14,7 @@ import axios from 'axios';
 import { SessionDrawer } from '@/components/writing/SessionDrawer';
 import type { ResumeSessionResult } from '@/types/runtime';
 import { exportToDocx, downloadBlob } from '@/services/exportApi';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 
 const TipTapEditor = lazy(() =>
   import('@/components/TipTapEditor/TipTapEditor').then((m) => ({
@@ -744,13 +745,15 @@ export function Workbench() {
             </div>
             {/* TipTap editor */}
             <div className="flex-1 overflow-y-auto">
-              <Suspense fallback={<TipTapEditorFallback />}>
-                <TipTapEditor
-                  content={editorContent}
-                  onChange={(html, json) => { setEditorContent(html); setEditorJson(json); }}
-                  placeholder="在这里撰写论文笔记..."
-                />
-              </Suspense>
+              <ErrorBoundary fallbackTitle="编辑器暂时无法显示">
+                <Suspense fallback={<TipTapEditorFallback />}>
+                  <TipTapEditor
+                    content={editorContent}
+                    onChange={(html, json) => { setEditorContent(html); setEditorJson(json); }}
+                    placeholder="在这里撰写论文笔记..."
+                  />
+                </Suspense>
+              </ErrorBoundary>
             </div>
           </motion.div>
         )}

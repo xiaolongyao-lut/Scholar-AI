@@ -26,7 +26,7 @@ const PdfReaderShell = lazy(() =>
 );
 
 const PdfReaderFallback = () => (
-  <div className="flex h-full w-full items-center justify-center text-slate-400">
+  <div className="flex h-full w-full items-center justify-center text-foreground/40">
     <Loader2 className="h-6 w-6 animate-spin" aria-label="Loading PDF reader" />
   </div>
 );
