@@ -1,3 +1,6 @@
+# Public source boundary: see SOURCE_RELEASE_POLICY.md before changing what
+# belongs in GitHub release source archives.
+
 # Environment files and local secrets.
 # Git patterns without "/" match a basename at any directory depth.
 .env
@@ -34,7 +37,9 @@
 /.mcp.json
 /.opencode/
 
-# Root-only GitHub agent scaffolding; keep normal workflow files trackable.
+# Root-only GitHub files are ignored by default because this workspace contains
+# private agent scaffolding. Public CI workflows may be promoted explicitly under
+# SOURCE_RELEASE_POLICY.md.
 /.github/
 /.github/agents/
 /.github/chatmodes/
@@ -46,8 +51,8 @@
 /.github/workflows/squad-*.yml
 /.github/workflows/sync-squad-labels.yml
 
-# Internal planning, review, and agent process documents.
-# Public repository surface keeps root README/CHANGELOG/CONTRIBUTING/SECURITY only.
+# Internal planning, review, and agent process documents. Public docs may be
+# promoted explicitly only after plan/runbook/private evidence review.
 /docs/
 
 # Public installable Literature Assistant extension packages.
@@ -143,7 +148,9 @@ htmlcov/
 /workspace_references/
 /workspace_tests/
 
-# Workspace scratch areas.
+# Workspace scratch areas. Public tests and release scripts may be promoted
+# explicitly under SOURCE_RELEASE_POLICY.md; generated evaluation data stays
+# local.
 /tests/
 /workspace_tests/benchmarks/results/
 /workspace_tests/diagnostics/

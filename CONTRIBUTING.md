@@ -35,9 +35,22 @@ npm run build
 
 - Keep changes scoped to one product surface or one maintenance goal.
 - Do not commit credentials, `.env`, generated output, local runtime state, browser profiles, or agent cache files.
+- Follow `SOURCE_RELEASE_POLICY.md` when changing what belongs in public Git or a release source archive.
 - Include tests or a clear verification note for behavioral changes.
 - Add rollback notes for nontrivial path, storage, release, or API changes.
 - Prefer existing project helpers and current paths under `literature_assistant/core/`.
+
+## Public Source Boundary
+
+GitHub release `Source code` archives are generated from the tagged Git tree.
+The public tree should include product source, dependency metadata, public docs,
+safe tests, and release rebuild scripts. It must not include credentials,
+runtime state, local agent instructions, private planning notes, generated
+release outputs, or external reference repositories.
+
+Use `SOURCE_RELEASE_POLICY.md` as the source allowlist and denylist. Stage public
+boundary changes with explicit paths and run the listed pre-push checks before
+publishing.
 
 ## Generated Files
 
