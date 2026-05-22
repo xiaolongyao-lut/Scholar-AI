@@ -101,10 +101,6 @@ npm run dev
 
 Scholar AI 默认本地优先。研究资料、运行配置和第三方服务凭证由用户在本机管理。
 
-## 发布状态
-
-当前公开安装包基线：[0.1.8-alpha](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/tag/v0.1.8-alpha)。
-
 ## 许可
 
 本项目是 source-available 非商业许可。你可以在非商业目的下下载、阅读、运行、学习和修改本软件。
