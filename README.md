@@ -3,7 +3,7 @@
 Scholar AI 是面向文献综述、课题调研和论文写作的本地优先研究工作台。它适合“读几十到上百篇文献、围绕同一问题反复追问、每个观点都要能追溯到具体页码”的场景：把 PDF 阅读、证据检索、多智能体讨论、引用校验、写作和知识沉淀放在同一个桌面应用里。
 
 最新版本 [v0.1.8-alpha](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8-alpha)（2026-05-23）·
-[Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/LiteratureAssistant-Setup-0.1.8-alpha-windows-x64.exe) ·
+[Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/Scholar-AI-Setup-0.1.8-alpha-windows-x64.exe) ·
 [SHA256](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/SHA256SUMS.txt)
 
 当前是 alpha / dogfood 阶段，Windows 安装包未做代码签名，首次安装可能触发 SmartScreen 警告。
@@ -24,32 +24,12 @@ Scholar AI 是面向文献综述、课题调研和论文写作的本地优先研
 普通用户建议直接下载 Windows 安装包：
 
 - [v0.1.8-alpha 发布页](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8-alpha)
-- [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/LiteratureAssistant-Setup-0.1.8-alpha-windows-x64.exe)
+- [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/Scholar-AI-Setup-0.1.8-alpha-windows-x64.exe)
 - [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/SHA256SUMS.txt)
 
 ## 界面预览
 
-智能研读工作台：
-
-<img width="1440" alt="智能研读工作台" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-workbench.png" />
-
-Wiki 工作台：
-
-<img width="1440" alt="Wiki 工作台" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-wiki.png" />
-
-多智能体讨论：
-
-<img width="1440" alt="多智能体讨论" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-discussion.png" />
-
-MCP 设置：
-
-<img width="1440" alt="MCP 设置" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-mcp-settings.png" />
-
-浅色模式：
-
-<img width="1440" alt="智能研读工作台（浅色）" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-workbench-light.png" />
-
-<img width="1440" alt="多智能体讨论（浅色）" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-discussion-light.png" />
+截图会随界面调整更新，当前版本先以安装包和功能说明为准。
 
 ## 为什么不直接用 NotebookLM、Obsidian 或 GPT 网页版
 

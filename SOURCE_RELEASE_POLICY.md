@@ -81,6 +81,26 @@ Never commit these paths or file classes:
 - Generated archives and installers unless they are uploaded as release assets,
   not committed to Git.
 
+## Project Page Images
+
+GitHub README images must resolve from a reachable URL. Do not upload UI
+screenshots as release assets just to render the project page; release assets
+should stay limited to the installer, checksum file, and approved release
+evidence.
+
+Preferred options:
+
+1. Put stable, intentionally public screenshots under a Git-tracked docs path
+   and reference them with relative Markdown paths.
+2. If screenshots should not live in Git, upload them manually to a GitHub
+   issue, discussion, or comment, then copy the generated
+   `user-images.githubusercontent.com` / `github.com/user-attachments/assets`
+   URL into the README.
+
+There is no way for a public GitHub project page to show an image that is not
+available from either the repository or another reachable hosted URL. If no
+image host is approved, keep the README text-only.
+
 ## Pre-Push Checklist
 
 Before pushing a source-boundary change:
