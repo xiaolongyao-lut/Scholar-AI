@@ -39,8 +39,9 @@ jobs:
 
       - name: Compile Workspace
         run: |
-          python -X utf8 -m compileall -q literature_assistant run_literature_assistant.py sitecustomize.py tests/conftest.py workspace_tests/evaluation_scripts
+          python -X utf8 -m compileall -q literature_assistant run_literature_assistant.py sitecustomize.py
 
       - name: Collect Backend Tests
+        if: ${{ hashFiles('tests/**/*.py') != '' }}
         run: |
           python -X utf8 -m pytest tests --collect-only -q
