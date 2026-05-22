@@ -56,6 +56,8 @@ Scholar AI 相关的第三方 Skill/MCP 资源包可以放在 `extension_package
 
 普通用户的扩展安装流程是：下载资源包，打开 Scholar AI 的安装入口，选择本地包地址，按向导绑定凭证和配置项，然后启用。凭证只在本机凭证中心或运行时配置中保存，不随 Git 仓库公开。
 
+API、MCP 和 Skill 的本地凭证配置方式见 [API_CONFIGURATION.md](API_CONFIGURATION.md)。
+
 ## 从源码运行
 
 源码运行面向开发者。普通用户建议使用 Releases 中的 Windows 安装包。

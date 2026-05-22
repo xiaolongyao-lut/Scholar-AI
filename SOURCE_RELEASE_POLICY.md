@@ -55,7 +55,7 @@ These paths are acceptable public Git candidates after normal review:
   `scripts/release_secret_scan.py`,
   `scripts/smoke_frozen_first_launch.py`, and
   `scripts/smoke_windows_release.ps1`.
-- Example environment files: `.env.example` and `.env.frontend.example` only
+- Example environment files: `.env.example` and `frontend.env.example` only
   when every value is a placeholder.
 
 ## Commit Denylist

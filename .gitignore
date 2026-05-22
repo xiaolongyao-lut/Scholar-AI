@@ -6,6 +6,8 @@
 .env
 .env.*
 .envrc
+!/.env.example
+!/frontend.env.example
 
 # Root-only local instruction and agent configuration files.
 # Leading "/" keeps these rules from hiding product/vendored subdirectories.
@@ -41,6 +43,12 @@
 # private agent scaffolding. Public CI workflows may be promoted explicitly under
 # SOURCE_RELEASE_POLICY.md.
 /.github/
+!/.github/
+/.github/*
+!/.github/workflows/
+/.github/workflows/*
+!/.github/workflows/ci.yml
+!/.github/workflows/online-smoke.yml
 /.github/agents/
 /.github/chatmodes/
 /.github/copilot-instructions.md
@@ -133,7 +141,28 @@ htmlcov/
 /github/
 /my-project/
 /packaging/
+!/packaging/
+/packaging/*
+!/packaging/assets/
+/packaging/assets/*
+!/packaging/assets/license.txt
+!/packaging/inno-setup/
+/packaging/inno-setup/*
+!/packaging/inno-setup/literature-assistant.iss
+!/packaging/pyinstaller/
+/packaging/pyinstaller/*
+!/packaging/pyinstaller/literature-assistant.spec
+!/packaging/pyinstaller/runtime_hook.py
 /scripts/
+!/scripts/
+/scripts/*
+!/scripts/build_windows_exe.ps1
+!/scripts/dump_pyinstaller_analysis.py
+!/scripts/export_openapi_schema.py
+!/scripts/release_forbidden_path_scan.py
+!/scripts/release_secret_scan.py
+!/scripts/smoke_frozen_first_launch.py
+!/scripts/smoke_windows_release.ps1
 /skills/
 /tools/
 # Third-party package copies must live under /extension_packages only when they

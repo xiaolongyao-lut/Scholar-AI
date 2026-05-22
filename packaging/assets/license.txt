@@ -1,0 +1,31 @@
+Literature Assistant — Personal Use License
+=============================================
+
+Copyright (c) 2026 Literature Assistant Project Authors
+
+This software is provided for personal academic use by the original author
+and authorized collaborators only. The application bundles open-source
+dependencies whose licenses (MIT, BSD-3, Apache-2.0, MPL-2.0, etc.) apply
+to their respective components.
+
+NO WARRANTY. The software is provided "AS IS", without warranty of any
+kind, express or implied, including but not limited to the warranties of
+merchantability, fitness for a particular purpose and non-infringement.
+
+THIRD-PARTY ATTRIBUTIONS
+------------------------
+
+This installer redistributes the following key third-party components:
+
+- FastAPI (MIT)
+- Uvicorn (BSD-3-Clause)
+- pywebview (BSD-3-Clause)
+- PyMuPDF (AGPL-3.0)
+- python-docx (MIT)
+- React, Vite (MIT)
+
+The full dependency manifest is available inside the installation directory
+under ``literature_assistant/`` (Python) and ``frontend/dist/`` (web assets).
+
+By installing this software you agree to use it only for non-commercial
+academic and personal-research purposes.
