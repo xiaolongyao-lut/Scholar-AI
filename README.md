@@ -57,7 +57,7 @@ LLM 在长文档问答中的幻觉引用问题是公开的——NotebookLM 有 s
 
 Obsidian 本体没有 AI 能力，要"会查文献、能讨论、能引用证据"得装第三方插件，每个插件单独配置 API key。
 
-而 Chatbox、Cherry Studio 这类通用聊天桌面客户端没有专门为研究流程做客户端工程。Scholar AI 就是为这条路上的几个真实摩擦点写的。
+Chatbox、Cherry Studio 这类通用聊天桌面客户端更适合日常对话和模型调试。Scholar AI 重点服务学术研究流程：从读文献、查证据、组织讨论，到整理结论和写作导出，尽量减少在多个工具之间来回复制、核对和整理。
 
 简短对比：
 
@@ -73,7 +73,7 @@ Obsidian 本体没有 AI 能力，要"会查文献、能讨论、能引用证据
 | 工具扩展 | 无 | Community plugins | MCP 标准接入，调用前人工审批 |
 | 数据导出 | 受限 | 完全自由 | Markdown / DOCX / JSONL |
 
-Scholar AI 不训练大模型，调的就是 OpenAI、Anthropic、Google、DeepSeek 等 API。底层 AI 完全一样。差异在客户端工程：
+Scholar AI 不训练大模型，调的就是 OpenAI、Anthropic、Google、DeepSeek 等 API。底层 AI 完全一样。区别在于 Scholar AI 把这些模型接进了一个完整的研究工作流：
 
 | 维度 | 网页版 GPT / Claude / Gemini | Scholar AI |
 |---|---|---|
@@ -114,14 +114,14 @@ Scholar AI 不训练大模型，调的就是 OpenAI、Anthropic、Google、DeepS
                                       + 调用人工审批
 ```
 
-几个关键工程选择：
+为了让结果更容易复核，应用里做了几层约束：
 
-- 引用追溯走 `citation_auditor` 强制校验，引用没真出现在传给 LLM 的上下文里就拒绝写入，不是让 LLM 自觉。
-- envelope guard 在多 agent 历史 + 当前证据总长度超出预算时返回 422 告知超出位置，避免回答看起来完整但上下文已被截断。
-- 17 provider + key 池 + 自动 failover，随时切换厂商模型。
-- API key 永不出现在前端 localStorage / 控制台日志 / 网络响应；后端走 `env_refs` 引用模式，凭证不写进配置文件。
-- Release 流水线 9 步固定脚本：前端构建 → PyInstaller 分析 → forbidden-path 扫描 → onedir 构建 → secret 扫描 → Inno Setup 编译 → 首次启动冻结烟测，9 步全过才出安装包。
-- MCP 工具每次调用前弹窗审批（可记住"本会话内同意"），审计面板可查所有历史调用。
+- 回答里的引用必须来自本次传给模型的证据上下文；如果引用对不上原文，就不会写入结果。
+- 多智能体讨论会检查上下文长度；证据或历史记录太长时会直接提示超出位置，而不是悄悄截断后继续回答。
+- 内置多家模型服务商适配和 key 池，可以按需要切换模型，也能在单个服务不可用时自动换路。
+- API key 不放在浏览器存储、控制台日志或网络响应里；配置文件只保存凭证引用。
+- 发布安装包前会自动做构建、路径检查、敏感信息扫描和首次启动检查，通过后才生成安装包。
+- MCP 工具调用前需要用户确认，历史调用可以在审计面板里查看。
 
 ## 从源码运行
 
