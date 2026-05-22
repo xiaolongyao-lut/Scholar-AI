@@ -1,10 +1,10 @@
-; -*- inno-setup: Literature Assistant Windows installer ----------------
+; -*- inno-setup: Scholar AI Windows installer ----------------
 ; Reference: docs/plans/runbooks/windows-exe-release-standard.md
 ;
 ; Build:
 ;   ISCC.exe /DAppVersion=0.1.0 packaging\inno-setup\literature-assistant.iss
 ;
-; Output: workspace_artifacts\releases\<version>\LiteratureAssistant-Setup-<version>-windows-x64.exe
+; Output: workspace_artifacts\releases\<version>\Scholar-AI-Setup-<version>-windows-x64.exe
 
 #ifndef AppVersion
   #define AppVersion "0.1.0"
@@ -31,13 +31,13 @@
 ; after any user has installed the app — Inno uses it to find the existing
 ; install and upgrade in place.
 AppId={{058DF2F0-81F0-4942-8BAC-EE9A8630D4EF}
-AppName=LiteratureAssistant
+AppName=Scholar AI
 AppVersion={#AppVersion}
-AppPublisher=Literature Assistant Project
+AppPublisher=Scholar AI Project
 AppPublisherURL=https://example.invalid/
-DefaultDirName={autopf}\LiteratureAssistant
-DefaultGroupName=LiteratureAssistant
-OutputBaseFilename=LiteratureAssistant-Setup-{#AppVersion}-windows-x64
+DefaultDirName={autopf}\Scholar AI
+DefaultGroupName=Scholar AI
+OutputBaseFilename=Scholar-AI-Setup-{#AppVersion}-windows-x64
 OutputDir={#ReleaseRoot}
 Compression=lzma2
 SolidCompression=yes
@@ -52,7 +52,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 DisableDirPage=no
-UninstallDisplayName=Literature Assistant {#AppVersion}
+UninstallDisplayName=Scholar AI {#AppVersion}
 SetupIconFile=..\assets\icon.ico
 
 [Languages]
@@ -78,12 +78,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#ReleaseRoot}\onedir\LiteratureAssistant\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\LiteratureAssistant"; Filename: "{app}\LiteratureAssistant.exe"
-Name: "{group}\{cm:UninstallProgram,LiteratureAssistant}"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\LiteratureAssistant"; Filename: "{app}\LiteratureAssistant.exe"; Tasks: desktopicon
+Name: "{group}\Scholar AI"; Filename: "{app}\LiteratureAssistant.exe"
+Name: "{group}\{cm:UninstallProgram,Scholar AI}"; Filename: "{uninstallexe}"
+Name: "{commondesktop}\Scholar AI"; Filename: "{app}\LiteratureAssistant.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\LiteratureAssistant.exe"; Description: "{cm:LaunchProgram,LiteratureAssistant}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\LiteratureAssistant.exe"; Description: "{cm:LaunchProgram,Scholar AI}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"

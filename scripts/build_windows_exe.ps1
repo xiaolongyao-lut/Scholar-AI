@@ -1,4 +1,4 @@
-# -*- ps1: build Literature Assistant Windows onedir bundle ---------------
+# -*- ps1: build Scholar AI Windows onedir bundle ------------------------
 # Reference: docs/plans/runbooks/windows-exe-release-standard.md
 #
 # Slice A0 release-gate integration (plan v2 §15.4):
@@ -149,13 +149,14 @@ if (-not $SkipInno) {
         # via Resolve-Path on $Repo above.
         & $Iscc "/DAppVersion=$Version" "/DReleaseRoot=$ReleaseDir" $Iss
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (exit $LASTEXITCODE)" }
-        $InstallerPath = Join-Path $ReleaseDir "LiteratureAssistant-Setup-$Version-windows-x64.exe"
-        if (Test-Path $InstallerPath) {
-            $InstallerSha = (Get-FileHash $InstallerPath -Algorithm SHA256).Hash
-            "$InstallerSha *LiteratureAssistant-Setup-$Version-windows-x64.exe" | `
-                Add-Content $ShaFile -Encoding ASCII
-            Write-Host "[build] installer sha256: $InstallerSha"
+        $InstallerPath = Join-Path $ReleaseDir "Scholar-AI-Setup-$Version-windows-x64.exe"
+        if (-not (Test-Path $InstallerPath)) {
+            throw "Expected installer missing: $InstallerPath"
         }
+        $InstallerSha = (Get-FileHash $InstallerPath -Algorithm SHA256).Hash
+        "$InstallerSha *Scholar-AI-Setup-$Version-windows-x64.exe" | `
+            Add-Content $ShaFile -Encoding ASCII
+        Write-Host "[build] installer sha256: $InstallerSha"
     } else {
         Write-Host "[build:7-8] inno setup: SKIPPED (ISCC.exe or .iss missing)"
     }
