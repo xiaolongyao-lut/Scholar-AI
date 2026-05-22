@@ -1,20 +1,47 @@
 # Scholar AI
 
-本地优先的学术研究智能体工作台。多智能体协同讨论，回答带可追溯的页码级引用，所有数据默认留在本机。
+Scholar AI 是面向文献综述、课题调研和论文写作的本地优先研究工作台。它适合“读几十到上百篇文献、围绕同一问题反复追问、每个观点都要能追溯到具体页码”的场景：把 PDF 阅读、证据检索、多智能体讨论、引用校验、写作和知识沉淀放在同一个桌面应用里。
 
 最新版本 [v0.1.8-alpha](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8-alpha)（2026-05-23）·
 [Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/LiteratureAssistant-Setup-0.1.8-alpha-windows-x64.exe) ·
 [SHA256](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/SHA256SUMS.txt)
 
-本仓库公开的是产品源码，方便下载、自用、学习和非商业研究。未经作者书面许可，不允许商业使用、盈利服务、转售或再授权。比赛 / 竞赛使用必须明确披露使用了 Scholar AI，不能把本项目或高度雷同版本当作原创提交。当前是 alpha / dogfood 阶段，Windows 安装包未做代码签名，首次安装可能触发 SmartScreen 警告。
+当前是 alpha / dogfood 阶段，Windows 安装包未做代码签名，首次安装可能触发 SmartScreen 警告。
+
+## 它能做什么
+
+把研究里“读、问、讨论、写、沉淀”几个动作串成一个闭环：
+
+- **读文献**：内嵌 PDF 阅读器，支持高亮、便签、阅读位置保存。
+- **问问题**：从本地文献库检索证据，回答带页码级引用，点击引用能回到原文位置。
+- **多角色讨论**：方法学审查员、领域专家、数据分析师、质疑者等角色围绕同一问题按轮次讨论，互相质询、补证据、收敛结论。
+- **写作整理**：内嵌 TipTap 富文本编辑器，支持大纲、引用、图表和 DOCX 导出。
+- **知识沉淀**：Wiki + Evolution 经验沉淀，把临时发现审核后沉淀为长期知识。
+- **本地优先**：资料、对话、引用、Wiki 默认写入本机 SQLite；LLM 调用走用户自己配置的 API。
+
+## 下载
+
+普通用户建议直接下载 Windows 安装包：
+
+- [v0.1.8-alpha 发布页](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8-alpha)
+- [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/LiteratureAssistant-Setup-0.1.8-alpha-windows-x64.exe)
+- [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/SHA256SUMS.txt)
 
 ## 界面预览
 
+智能研读工作台：
+
 <img width="1440" alt="智能研读工作台" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-workbench.png" />
+
+Wiki 工作台：
 
 <img width="1440" alt="Wiki 工作台" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-wiki.png" />
 
+多智能体讨论：
+
 <img width="1440" alt="多智能体讨论" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-discussion.png" />
+
+MCP 设置：
 
 <img width="1440" alt="MCP 设置" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-mcp-settings.png" />
 
@@ -23,26 +50,6 @@
 <img width="1440" alt="智能研读工作台（浅色）" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-workbench-light.png" />
 
 <img width="1440" alt="多智能体讨论（浅色）" src="https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/scholar-ai-discussion-light.png" />
-
-## 下载和安装
-
-普通用户从 Releases 下载 Windows 安装包：
-
-- [v0.1.8-alpha 发布页](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8-alpha)
-- [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/LiteratureAssistant-Setup-0.1.8-alpha-windows-x64.exe)
-- [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/SHA256SUMS.txt)
-
-## 这个程序是做什么的
-
-Windows 桌面应用，双击安装包就能用。把研究里"读—问—讨论—写—沉淀"五个动作放在同一个界面：
-
-- **读**：内嵌 PDF 阅读器，高亮、便签、最后阅读页本地保存。
-- **问**：本地文献库做检索 + 重排 + 证据打包，回答里每段话都带 `[E:E<n>]` 引用标记，点击跳回 PDF 原文位置。
-- **讨论**：同时摆 3–5 个 AI 角色（方法学审查员、数据分析师、领域专家、质疑者等），各自独立模型与提示词，围绕同一问题按轮次发言、互相质询、补证据、收敛到带引用的回答。
-- **写**：内嵌 TipTap 富文本编辑器，大纲 + 引用 + 图表 + 一键导出 DOCX。
-- **沉淀**：Wiki 知识库 + Evolution 经验沉淀（候选 → 人工审核 → 提升为长期记忆，全流程审计可回滚）。
-
-底层不训练大模型，调用户自己绑定的 LLM API。出厂内置 17 个 provider 适配层，覆盖 DeepSeek、通义千问、火山方舟、智谱、OpenAI、Anthropic、Google 等。应用本体跑在本机，仅 LLM 调用走用户配置的目的地。
 
 ## 为什么不直接用 NotebookLM、Obsidian 或 GPT 网页版
 
@@ -81,7 +88,7 @@ Scholar AI 不训练大模型，调的就是 OpenAI、Anthropic、Google、DeepS
 | 写作工作台 | 复制到外部编辑器 | 内嵌 TipTap + DOCX 导出 |
 | 可定制与可审查 | 客户端实现不公开 | 公开仓库可审查 |
 
-通用聊天产品偏向广泛对话场景；Scholar AI 是专门为"读几十到上百篇文献做综述、每个观点要可追溯到具体页码、多角色围绕同一问题讨论"这类研究流程做了客户端工程。
+换句话说，Scholar AI 的重点不在“换一个模型聊天”，而在把研究过程里反复发生的证据整理、引用复核、多人视角讨论和写作交付做成一个连贯的本地工作流。
 
 ## 架构
 
@@ -180,8 +187,6 @@ API、MCP、Skill 的本地凭证配置见 [API_CONFIGURATION.md](API_CONFIGURAT
 ## 许可
 
 source-available 非商业许可。学生、个人研究者、非商业研究机构可免费下载、阅读、运行、修改。商业使用、转售、再授权、付费托管服务需作者书面授权。比赛 / 竞赛使用必须明确披露使用了 Scholar AI。详见 [LICENSE](LICENSE)。
-
-安装包提供 SHA256 校验，可证明用户下载的二进制确实从公开源码构建。研究资料默认 SQLite 单文件 + Markdown / JSON 导出，可随时备份迁移，不被任何厂商锁定。
 
 ## 反馈
 
