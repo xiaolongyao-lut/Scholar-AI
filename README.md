@@ -53,7 +53,7 @@ MCP 设置：
 
 ## 为什么不直接用 NotebookLM、Obsidian 或 GPT 网页版
 
-LLM 在长文档问答中的幻觉引用问题是公开的——NotebookLM 有 source citation 但没有工程层面强制 reject 写入未在原文出现的引用，ChatGPT / Claude / Gemini 网页版更是依赖模型自觉。学术写作里这种逐条复核成本很高。
+LLM 在长文档问答里容易生成看似可信、但无法回到原文核验的引用。NotebookLM 有 source citation，但不会在工程层面强制拦截未出现在原文中的引用；ChatGPT / Claude / Gemini 网页版也主要依赖模型自己保持准确。学术写作里，这类引用逐条复核成本很高。
 
 Obsidian 本体没有 AI 能力，要"会查文献、能讨论、能引用证据"得装第三方插件，每个插件单独配置 API key。
 
