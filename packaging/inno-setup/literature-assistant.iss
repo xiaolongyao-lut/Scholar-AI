@@ -53,6 +53,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 DisableDirPage=no
 UninstallDisplayName=Literature Assistant {#AppVersion}
+SetupIconFile=..\assets\icon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

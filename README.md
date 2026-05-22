@@ -20,9 +20,9 @@ Scholar AI 是本地优先的学术研究智能体工作台，面向论文阅读
 
 普通用户请从 **Releases** 下载 Windows 安装包：
 
-- [当前版本 0.1.7-alpha 发布页](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/tag/v0.1.7-alpha)
-- [下载 0.1.7-alpha Windows 安装包](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/download/v0.1.7-alpha/LiteratureAssistant-Setup-0.1.7-alpha-windows-x64.exe)
-- [查看 0.1.7-alpha SHA256 校验文件](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/download/v0.1.7-alpha/SHA256SUMS.txt)
+- [当前版本 0.1.8-alpha 发布页](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/tag/v0.1.8-alpha)
+- [下载 0.1.8-alpha Windows 安装包](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/download/v0.1.8-alpha/LiteratureAssistant-Setup-0.1.8-alpha-windows-x64.exe)
+- [查看 0.1.8-alpha SHA256 校验文件](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/download/v0.1.8-alpha/SHA256SUMS.txt)
 
 ## 核心能力
 
@@ -103,7 +103,7 @@ Scholar AI 默认本地优先。研究资料、运行配置和第三方服务凭
 
 ## 发布状态
 
-当前公开安装包基线：[0.1.7-alpha](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/tag/v0.1.7-alpha)。
+当前公开安装包基线：[0.1.8-alpha](https://github.com/xiaolongyao-lut/Modular-Pipeline-Script/releases/tag/v0.1.8-alpha)。
 
 ## 许可
 

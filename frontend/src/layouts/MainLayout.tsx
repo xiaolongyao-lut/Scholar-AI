@@ -445,20 +445,36 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
         className="glass-sidebar flex flex-col h-full z-30 flex-shrink-0"
       >
         {/* Brand */}
-        <div className={cn('flex items-center overflow-hidden', leftNavCollapsed ? 'px-3 py-5 justify-center' : 'px-6 py-5 justify-between')}>
+        <div className={cn('flex items-center overflow-hidden', leftNavCollapsed ? 'flex-col gap-2 px-3 py-4 justify-center' : 'px-6 py-5 justify-between')}>
           <AnimatePresence mode="wait">
             {!leftNavCollapsed && (
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="flex flex-col"
+                className="flex min-w-0 items-center gap-3"
               >
-                <h1 className="font-display text-xl font-semibold text-white">Scholar AI</h1>
-                <p className="font-label text-[10px] tracking-wider text-white/30 uppercase mt-0.5">{t('nav.system_health')}</p>
+                <img
+                  src="/app-icon.png"
+                  alt=""
+                  aria-hidden="true"
+                  className="h-10 w-10 shrink-0 rounded-xl object-contain shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
+                />
+                <div className="flex min-w-0 flex-col">
+                  <h1 className="truncate font-display text-xl font-semibold text-white">Scholar AI</h1>
+                  <p className="mt-0.5 truncate font-label text-[10px] uppercase tracking-wider text-white/30">{t('nav.system_health')}</p>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
+          {leftNavCollapsed && (
+            <img
+              src="/app-icon.png"
+              alt=""
+              aria-hidden="true"
+              className="h-10 w-10 shrink-0 rounded-xl object-contain shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
+            />
+          )}
           <button
             type="button"
             onClick={() => setLeftNavCollapsed(!leftNavCollapsed)}

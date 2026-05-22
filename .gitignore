@@ -146,6 +146,8 @@ htmlcov/
 !/packaging/assets/
 /packaging/assets/*
 !/packaging/assets/license.txt
+!/packaging/assets/icon.ico
+!/packaging/assets/icon.png
 !/packaging/inno-setup/
 /packaging/inno-setup/*
 !/packaging/inno-setup/literature-assistant.iss
