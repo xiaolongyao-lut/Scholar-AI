@@ -20,7 +20,8 @@ export type SectionId =
   | 'skills'
   | 'credentials'
   | 'mcp'
-  | 'discussion';
+  | 'discussion'
+  | 'experimental';
 
 export const SECTION_IDS: readonly SectionId[] = [
   'chat',
@@ -33,6 +34,7 @@ export const SECTION_IDS: readonly SectionId[] = [
   'credentials',
   'mcp',
   'discussion',
+  'experimental',
 ];
 
 export function isSectionId(value: string | null): value is SectionId {

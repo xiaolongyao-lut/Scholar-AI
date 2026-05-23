@@ -632,6 +632,7 @@ from routers.mcp_router import router as mcp_router
 from routers.mcp_installer_router import router as mcp_installer_router
 from routers.graph_router import router as graph_router
 from routers.evolution_router import router as evolution_router
+from routers.feature_flags_router import router as feature_flags_router
 
 
 def _initialize_mcp_installer_runtime() -> None:
@@ -695,6 +696,7 @@ app.include_router(mcp_router)
 app.include_router(mcp_installer_router)
 app.include_router(graph_router)
 app.include_router(evolution_router)
+app.include_router(feature_flags_router)
 
 
 if FRONTEND_ASSETS_DIR.is_dir():

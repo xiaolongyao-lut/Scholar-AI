@@ -329,10 +329,13 @@ def _ragworkflow_chat_enabled() -> bool:
 
 
 def _tolf_context_enabled() -> bool:
-    val = os.getenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED")
-    if val is None:
-        return False
-    return _truthy(val)
+    try:
+        from feature_flags import is_enabled
+    except ImportError:
+        # External-cwd / legacy snapshot path: feature_flags module unreachable.
+        val = os.getenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED")
+        return _truthy(val) if val else False
+    return is_enabled("tolf_context")
 
 
 def _split_source_paths(raw_value: str) -> list[str]:

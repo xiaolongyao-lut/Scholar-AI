@@ -3,7 +3,7 @@ import {
   Settings as SettingsIcon, Key, Cpu, Network, FolderOpen, Layers, Server,
   Activity, Check, ChevronRight, Info, Zap,
   Loader2, RefreshCw, AlertCircle, CheckCircle2, XCircle, Users,
-  Plus, Trash2,
+  Plus, Trash2, FlaskConical,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { discoverModels, type DiscoveredModel } from '@/services/chatApi';
 import { getSampling, putSampling, deleteSamplingTask, type SamplingParams, type TaskDefaults } from '@/services/samplingApi';
 import { buildSamplingSaveRequest, hasSamplingOverrides, updateSamplingOverrides } from '@/services/samplingPayload';
+import { listFeatureFlags, setFeatureFlag, type FeatureFlagEntry } from '@/services/featureFlagsApi';
 import { Tooltip as UiTooltip } from '@/components/ui/Tooltip';
 import { migrateLegacyCredentials } from '@/components/settings/subsystemMigration';
 import {
@@ -2080,6 +2081,123 @@ function formatDiscussionCredentialLabel(credential: RuntimeCredentialPublic): s
 
 
 /* ------------------------------------------------------------------ */
+/*  Experimental Features section                                      */
+/* ------------------------------------------------------------------ */
+function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string | number>) => string }) {
+  const [flags, setFlags] = useState<FeatureFlagEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [saveError, setSaveError] = useState<Record<string, string>>({});
+
+  const loadFlags = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await listFeatureFlags();
+      setFlags(data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadFlags(); }, [loadFlags]);
+
+  const handleToggle = async (name: string, next: boolean) => {
+    setSaving(prev => ({ ...prev, [name]: true }));
+    setSaveError(prev => ({ ...prev, [name]: '' }));
+    try {
+      const updated = await setFeatureFlag(name, next);
+      setFlags(prev => prev.map(f => f.name === name ? updated : f));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSaveError(prev => ({ ...prev, [name]: msg }));
+    } finally {
+      setSaving(prev => ({ ...prev, [name]: false }));
+    }
+  };
+
+  const sourceLabel = (source: FeatureFlagEntry['source']) => {
+    if (source === 'override') return t('settings.experimental_source_override');
+    if (source === 'env') return t('settings.experimental_source_env');
+    return t('settings.experimental_source_default');
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface-lowest border border-outline-variant rounded-lg p-4">
+        <p className="text-xs text-foreground/70 leading-relaxed">{t('settings.experimental_intro')}</p>
+      </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 text-xs text-foreground/60">
+          <Loader2 size={14} className="animate-spin" />
+          {t('settings.experimental_loading')}
+        </div>
+      )}
+
+      {loadError && (
+        <div className="flex items-center gap-2 text-xs text-error">
+          <AlertCircle size={14} />
+          {t('settings.experimental_load_failed', { error: loadError })}
+        </div>
+      )}
+
+      {!loading && !loadError && flags.length === 0 && (
+        <p className="text-xs text-foreground/50">{t('settings.experimental_empty')}</p>
+      )}
+
+      {!loading && flags.map(flag => (
+        <div key={flag.name} className="border border-outline-variant rounded-lg p-4 bg-surface">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-semibold text-sm text-foreground">{flag.label}</h3>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-lowest text-foreground/60 border border-outline-variant">
+                  {sourceLabel(flag.source)}
+                </span>
+              </div>
+              <p className="text-xs text-foreground/60 leading-relaxed whitespace-pre-line">{flag.description}</p>
+              {flag.env_var && (
+                <p className="text-[10px] text-foreground/40 mt-1.5 font-mono">env: {flag.env_var}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => handleToggle(flag.name, !flag.current)}
+              disabled={!!saving[flag.name]}
+              className={cn(
+                'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
+                flag.current ? 'bg-primary' : 'bg-surface-lowest border border-outline-variant',
+                saving[flag.name] && 'opacity-50 cursor-wait',
+              )}
+              aria-pressed={flag.current}
+              aria-label={flag.label}
+            >
+              <span
+                className={cn(
+                  'inline-block h-4 w-4 transform rounded-full bg-surface shadow transition-transform',
+                  flag.current ? 'translate-x-6' : 'translate-x-1',
+                )}
+              />
+            </button>
+          </div>
+          {saveError[flag.name] && (
+            <p className="text-xs text-error mt-2">
+              {t('settings.experimental_save_error', { error: saveError[flag.name] })}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+
+/* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 const TABS: { id: SectionId; icon: React.ElementType; labelKey: string }[] = [
@@ -2091,6 +2209,7 @@ const TABS: { id: SectionId; icon: React.ElementType; labelKey: string }[] = [
   { id: 'credentials', icon: Key, labelKey: 'settings.section_credentials' },
   { id: 'mcp', icon: Server, labelKey: 'settings.section_mcp' },
   { id: 'discussion', icon: Users, labelKey: 'settings.section_discussion' },
+  { id: 'experimental', icon: FlaskConical, labelKey: 'settings.section_experimental' },
 ];
 
 export function SettingsPage() {
@@ -2179,6 +2298,7 @@ export function SettingsPage() {
       </React.Suspense>
     ),
     discussion: <SectionDiscussion t={t} />,
+    experimental: <SectionExperimental t={t} />,
   };
 
   return (

@@ -619,5 +619,14 @@
   "settings.discussion_default_judge": "默认综合者",
   "settings.discussion_defaults_synced": "默认值已同步",
   "settings.discussion_fixed_turns": "固定轮次默认",
-  "settings.discussion_save_hint": "保存后会影响新打开的讨论面板。"
+  "settings.discussion_save_hint": "保存后会影响新打开的讨论面板。",
+  "settings.section_experimental": "实验性功能",
+  "settings.experimental_intro": "尚未默认开启的实验能力。开关写入 runtime_state/feature_flags_override.json，立即生效，无需重启。同一问题分别开关跑一次可直观对比效果。",
+  "settings.experimental_loading": "加载中…",
+  "settings.experimental_load_failed": "加载失败：{{error}}",
+  "settings.experimental_save_error": "保存失败：{{error}}",
+  "settings.experimental_source_override": "已覆盖",
+  "settings.experimental_source_env": "环境变量",
+  "settings.experimental_source_default": "默认",
+  "settings.experimental_empty": "暂无已注册的实验性开关。"
 }
