@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, BookOpen, CheckCircle2, Hash, Loader2 } from 'lucide-react';
+import axios from 'axios';
 import { WorkbenchShell } from '@/components/workbench/WorkbenchShell';
 import {
   ResearchWorkbenchInspector,
@@ -230,11 +231,50 @@ function ResearchWorkbenchInner() {
     [],
   );
 
-  const handleSend = useCallback((text: string) => {
-    setMessages((prev) => [
-      ...prev,
-      { id: `u-${Date.now()}`, role: 'user', content: text, timestamp: new Date().toISOString() },
-    ]);
+  const handleSend = useCallback(async (text: string) => {
+    const userMsg: ChatMessageData = {
+      id: `u-${Date.now()}`,
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => {
+      const next = [...prev, userMsg];
+      // Fire-and-forget the backend call; assistant reply is appended on resolve.
+      // History is the snapshot AT send time (excluding the just-added user msg
+      // since the backend already takes ``query`` separately).
+      const historyPayload = prev.map((m) => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content,
+      }));
+      axios
+        .post<{ answer?: string; evidence?: EvidenceRefLike[] }>(
+          `${getApiBaseUrl()}/chat/ask`,
+          { query: text, context: [], history: historyPayload },
+          { timeout: 180000 },
+        )
+        .then(({ data }) => {
+          const assistantMsg: ChatMessageData = {
+            id: `a-${Date.now()}`,
+            role: 'assistant',
+            content: data.answer ?? '',
+            timestamp: new Date().toISOString(),
+            evidence: data.evidence,
+          };
+          setMessages((cur) => [...cur, assistantMsg]);
+        })
+        .catch((err) => {
+          const detail = err instanceof Error ? err.message : String(err);
+          const errMsg: ChatMessageData = {
+            id: `e-${Date.now()}`,
+            role: 'assistant',
+            content: `回答失败：${detail}`,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages((cur) => [...cur, errMsg]);
+        });
+      return next;
+    });
   }, []);
 
   const drawerEvidence: EvidenceRefLike[] = useMemo(() => {
