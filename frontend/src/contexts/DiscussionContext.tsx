@@ -127,6 +127,13 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   const applyEvent = useCallback((event: DiscussionStreamEvent) => {
+    // Debug aid (2026-05-24 user reported transcript stayed empty after a
+    // successful backend run — open browser console to see whether the
+    // ``done`` event actually arrived):
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.debug('[DiscussionContext] event', event.event, event);
+    }
     setSession((prev) => {
       switch (event.event) {
         case 'agent_done':

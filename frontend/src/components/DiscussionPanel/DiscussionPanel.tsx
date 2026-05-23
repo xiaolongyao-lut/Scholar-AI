@@ -473,13 +473,38 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
             <h2 className="font-headline text-sm font-semibold text-foreground">讨论编排</h2>
             <p className="mt-0.5 text-xs text-foreground/45">选择角色、证据来源和结束条件</p>
           </div>
-          <span className={cn(
-            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-label',
-            canRun ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-surface-high text-foreground/45',
-          )}>
-            <span className={cn('h-1.5 w-1.5 rounded-full', canRun ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-foreground/25')} />
-            {canRun ? '可运行' : '待配置'}
-          </span>
+          <div className="flex items-center gap-2">
+            {/* Live session state pill — separate from "可运行" (which only
+                reflects setup-form validity). 2026-05-24: users couldn't tell
+                whether a discussion had ever started, completed, or errored. */}
+            {session.state !== 'idle' && (
+              <span className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-label',
+                session.state === 'running' && 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
+                session.state === 'completed' && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+                session.state === 'cancelled' && 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+                session.state === 'error' && 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+              )}>
+                <span className={cn('h-1.5 w-1.5 rounded-full',
+                  session.state === 'running' && 'bg-blue-500 dark:bg-blue-400 animate-pulse',
+                  session.state === 'completed' && 'bg-emerald-500 dark:bg-emerald-400',
+                  session.state === 'cancelled' && 'bg-amber-500 dark:bg-amber-400',
+                  session.state === 'error' && 'bg-rose-500 dark:bg-rose-400',
+                )} />
+                {session.state === 'running' && `运行中 · 已收到 ${session.liveTraces.length} 条`}
+                {session.state === 'completed' && `已完成 · ${session.finalResult?.turns?.length ?? 0} 轮`}
+                {session.state === 'cancelled' && '已取消'}
+                {session.state === 'error' && '出错'}
+              </span>
+            )}
+            <span className={cn(
+              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-label',
+              canRun ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-surface-high text-foreground/45',
+            )}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', canRun ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-foreground/25')} />
+              {canRun ? '可运行' : '待配置'}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-4">
