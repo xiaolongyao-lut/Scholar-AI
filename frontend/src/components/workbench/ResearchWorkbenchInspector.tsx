@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { BookOpen, FileText, MessageSquare, Users2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, BookOpen, FileText, MessageSquare, Users2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Message, type ChatMessageData } from '@/components/chat/Message';
 import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
@@ -56,6 +57,7 @@ export function ResearchWorkbenchInspector({
   contextChips,
   multiAgentContext,
 }: InspectorProps) {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<InspectorTab>('smart-read');
   const [draft, setDraft] = useState('');
 
@@ -65,6 +67,11 @@ export function ResearchWorkbenchInspector({
     onSend(text);
     setDraft('');
   }, [draft, onSend]);
+
+  const goToDiscussionPage = useCallback(() => {
+    const query = projectId ? `?project=${encodeURIComponent(projectId)}` : '';
+    navigate(`/discussion${query}`);
+  }, [navigate, projectId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -131,7 +138,20 @@ export function ResearchWorkbenchInspector({
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 text-sm">
           {multiAgentContext ?? (
             <div className="rounded-md border border-dashed border-outline-variant bg-surface-low p-4 text-xs text-foreground/55">
-              暂未启动多智能体讨论。可在选区工具条点击「多智能体」来携带当前阅读上下文开始一轮新的讨论。
+              <p className="mb-2 font-medium text-foreground/75">还没有多智能体讨论</p>
+              <p className="mb-3 leading-relaxed">这里会显示围绕当前 PDF 上下文的多智能体讨论。开始一轮新讨论的方式：</p>
+              <ul className="mb-3 ml-4 list-disc space-y-1 leading-relaxed">
+                <li>选中 PDF 文段后，在弹出的工具条上点「多智能体」（推荐，自动携带选区作为讨论上下文）</li>
+                <li>或前往多智能体讨论页，手动设置角色与证据</li>
+              </ul>
+              <button
+                type="button"
+                onClick={goToDiscussionPage}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                前往多智能体讨论页
+                <ArrowRight size={12} />
+              </button>
             </div>
           )}
         </div>
