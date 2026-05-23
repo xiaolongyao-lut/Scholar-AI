@@ -115,6 +115,27 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
             "关闭时不影响后端返回，只影响界面显示。"
         ),
     ),
+    "discussion_streaming": FeatureFlagSpec(
+        name="discussion_streaming",
+        default=False,
+        env_var="DISCUSSION_STREAMING_ENABLED",
+        label="多智能体讨论流式输出",
+        description=(
+            "讨论运行过程通过 SSE 实时推送每个 agent 完成事件，前端可看到逐 agent 出货。"
+            "关闭时仍走非流式 POST /api/discussion/runs（兼容旧客户端）。"
+            "配合「工作台 Inspector 嵌入完整功能」可在切换页面时不丢任务。"
+        ),
+    ),
+    "inspector_embed_unified": FeatureFlagSpec(
+        name="inspector_embed_unified",
+        default=False,
+        env_var="INSPECTOR_EMBED_UNIFIED_ENABLED",
+        label="工作台 Inspector 嵌入完整功能",
+        description=(
+            "在研究工作台右侧 Inspector 直接嵌入左栏「智能研读」和「多智能体讨论」的完整组件，"
+            "不再是占位文案或跳转入口。需要配合「多智能体讨论流式输出」一起开启，否则切换页面会丢任务。"
+        ),
+    ),
 }
 
 
