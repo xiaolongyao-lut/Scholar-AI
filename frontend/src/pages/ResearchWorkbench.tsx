@@ -10,6 +10,7 @@ import {
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { PdfTabStrip } from '@/components/PdfViewer/PdfTabStrip';
 import { usePdfTabs } from '@/contexts/PdfTabsContext';
+import { useSmartRead, SMART_READ_DEFAULT_SCOPE } from '@/contexts/SmartReadContext';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { useWriting } from '@/contexts/WritingContext';
 import {
@@ -71,33 +72,10 @@ function ResearchWorkbenchInner() {
   const [annotation, setAnnotation] = useState<AnnotationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Inspector smart-read messages persist per-paper to localStorage so
-  // navigating away (and back) does not lose chat history. Storage key
-  // is keyed by materialId so each paper has its own conversation.
-  const messagesStorageKey = useMemo(
-    () => (materialId ? `inspector-chat-messages-v1:${materialId}` : 'inspector-chat-messages-v1:_default'),
-    [materialId],
-  );
-  const [messages, setMessages] = useState<ChatMessageData[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const raw = window.localStorage.getItem(messagesStorageKey);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? (parsed as ChatMessageData[]) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(messagesStorageKey, JSON.stringify(messages));
-    } catch {
-      /* quota or disabled storage — drop silently */
-    }
-  }, [messages, messagesStorageKey]);
+  const { getConversation, sendMessage } = useSmartRead();
+  const scope = materialId || SMART_READ_DEFAULT_SCOPE;
+  const conversation = getConversation(scope);
+  const messages = conversation.messages;
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
   // Bump this when the active tab changes so PdfReaderShell sees a new
   // bytes prop reference and re-mounts cleanly between PDFs.
@@ -232,95 +210,27 @@ function ResearchWorkbenchInner() {
 
   const handleAnalyzeText = useCallback(
     (text: string, page: number) => {
-      // K1 → K2 bridge: selection text becomes a Smart Read user message.
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `u-${Date.now()}`,
-          role: 'user',
-          content: text,
-          timestamp: new Date().toISOString(),
-        },
-        {
-          id: `a-${Date.now()}-pending`,
-          role: 'assistant',
-          content: '正在结合本页内容生成回答…',
-          status: 'streaming',
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-      // For Slice 3 we do NOT call backend here — Smart Read backend
-      // wiring is preserved unchanged via the existing /dialog route.
-      // The bridge is a UX scaffold proving K1→K2→K3 flow.
+      // K1 → K2 bridge: PDF selection becomes a Smart Read message that
+      // routes through SmartReadContext so the assistant reply lands even
+      // if the user navigates away mid-flight.
+      void sendMessage(scope, text, {
+        projectId: activeProjectId || undefined,
+        materialId: materialId || undefined,
+      });
       void page;
     },
-    [],
+    [sendMessage, scope, activeProjectId, materialId],
   );
 
-  const handleSend = useCallback(async (text: string) => {
-    const userMsg: ChatMessageData = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: text,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => {
-      const next = [...prev, userMsg];
-      // Hit the literature-grounded intelligent chat endpoint with the
-      // current project context + an explicit literature_qa mode so the
-      // answer is anchored to the user's own corpus, not generic web
-      // search. activeProjectId is required server-side for RAG retrieval;
-      // when absent we still send the request so the user gets a clear
-      // "please select a project" error from the backend rather than
-      // silent web-search answers.
-      axios
-        .post<{ response?: string; evidence_refs?: EvidenceRefLike[] }>(
-          `${getApiBaseUrl()}/api/chat`,
-          {
-            query: text,
-            project_id: activeProjectId || undefined,
-            mode: 'literature_qa',
-            tier: 'thorough',
-          },
-          { timeout: 180000 },
-        )
-        .then(({ data }) => {
-          const assistantMsg: ChatMessageData = {
-            id: `a-${Date.now()}`,
-            role: 'assistant',
-            content: data.response ?? '',
-            timestamp: new Date().toISOString(),
-            evidence: data.evidence_refs,
-          };
-          setMessages((cur) => [...cur, assistantMsg]);
-        })
-        .catch((err) => {
-          // Prefer the backend's structured detail when present so users see
-          // ``评测库未配置`` instead of a bare ``Request failed with status code 502``.
-          let detail = err instanceof Error ? err.message : String(err);
-          if (axios.isAxiosError(err) && err.response?.data) {
-            const rawDetail = (err.response.data as { detail?: unknown }).detail;
-            if (typeof rawDetail === 'string' && rawDetail.trim()) {
-              detail = rawDetail;
-            } else if (rawDetail !== undefined) {
-              try {
-                detail = JSON.stringify(rawDetail);
-              } catch {
-                /* keep axios message */
-              }
-            }
-          }
-          const errMsg: ChatMessageData = {
-            id: `e-${Date.now()}`,
-            role: 'assistant',
-            content: `回答失败：${detail}`,
-            timestamp: new Date().toISOString(),
-          };
-          setMessages((cur) => [...cur, errMsg]);
-        });
-      return next;
+  const handleSend = useCallback((text: string) => {
+    // Delegate to SmartReadContext — Provider owns the axios call so the
+    // assistant reply still lands in localStorage if the user navigates
+    // away while the chat is in-flight.
+    void sendMessage(scope, text, {
+      projectId: activeProjectId || undefined,
+      materialId: materialId || undefined,
     });
-  }, [activeProjectId]);
+  }, [sendMessage, scope, activeProjectId, materialId]);
 
   const drawerEvidence: EvidenceRefLike[] = useMemo(() => {
     const fromMessages = messages.flatMap((m) => m.evidence ?? []);

@@ -5,6 +5,7 @@ import { WritingProvider } from './contexts/WritingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { PdfTabsProvider } from './contexts/PdfTabsContext';
 import { DiscussionProvider } from './contexts/DiscussionContext';
+import { SmartReadProvider } from './contexts/SmartReadContext';
 import { ToastProvider } from './components/ui/Toast';
 import { CommandPalette } from './components/ui/CommandPalette';
 import { McpPendingCallPoller } from './components/mcp/McpPendingCallPoller';
@@ -48,6 +49,7 @@ const App = () => {
         <WritingProvider>
           <PdfTabsProvider>
             <DiscussionProvider>
+              <SmartReadProvider>
               <ToastProvider>
               <Router>
                 <MainLayout>
@@ -93,6 +95,7 @@ const App = () => {
                 <McpPendingCallPoller />
               </Router>
             </ToastProvider>
+            </SmartReadProvider>
             </DiscussionProvider>
           </PdfTabsProvider>
         </WritingProvider>

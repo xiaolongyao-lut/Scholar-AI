@@ -174,6 +174,15 @@ class IntelligentChatRequest(BaseModel):
     session_id: str | None = None
     tier: ContextTier = "balanced"
     project_id: str | None = None
+    material_id: str | None = Field(
+        default=None,
+        description=(
+            "When the user is reading a specific paper in the Workbench, "
+            "anchor retrieval to that material's chunks first so the answer "
+            "stays grounded in 'the paper I'm looking at' rather than "
+            "project-wide RAG. Empty / null = project-wide retrieval as before."
+        ),
+    )
     source_paths: list[str] | None = None
     direct_mode: bool = False
     mode: ChatMode | None = None
@@ -515,9 +524,41 @@ def _build_context_chunks(query: str, source_paths: list[Path], tier: ContextTie
     return chunks, truncated
 
 
-def _build_project_context_chunks(query: str, project_id: str, tier: ContextTier, boost_keywords: list[str] | None = None) -> tuple[list[ContextChunkPayload], bool]:
+def _build_project_context_chunks(
+    query: str,
+    project_id: str,
+    tier: ContextTier,
+    boost_keywords: list[str] | None = None,
+    material_id: str | None = None,
+) -> tuple[list[ContextChunkPayload], bool]:
+    """Build context chunks for a chat query.
+
+    When ``material_id`` is provided (user is reading a specific PDF in the
+    Workbench), prefer chunks from that material so the assistant can answer
+    about "the paper I'm currently looking at" instead of project-wide RAG.
+    Falls back to project-wide retrieval if the material has no chunks.
+    """
     max_chunks, max_chars = _TIER_LIMITS[tier]
-    if _tolf_context_enabled():
+    cleaned_material_id = (material_id or "").strip() or None
+
+    if cleaned_material_id:
+        # Material-scoped path: load the project's chunks, keep only those
+        # belonging to the active paper, and feed the first max_chunks of
+        # them. This anchors the assistant to a single source without
+        # disabling broader RAG entirely (other material chunks can still
+        # be appended below if room remains).
+        all_chunks = load_project_chunks_for_rag(project_id)
+        material_chunks = [
+            c for c in (all_chunks or [])
+            if str(c.get("material_id") or "").strip() == cleaned_material_id
+        ]
+        if material_chunks:
+            results: list[dict[str, Any]] = material_chunks[:max_chunks]
+        else:
+            results = search_project_chunks_for_query(
+                project_id=project_id, query=query, top_k=max_chunks
+            )
+    elif _tolf_context_enabled():
         # TOLF needs full corpus — it has its own cosine prefilter internally.
         # Keyword-search top-k is too small for SA-RAG diffusion to work.
         all_chunks = load_project_chunks_for_rag(project_id)
@@ -532,7 +573,7 @@ def _build_project_context_chunks(query: str, project_id: str, tier: ContextTier
             except (RuntimeError, TypeError, ValueError):
                 tolfs = []
             if tolfs:
-                results: list[dict[str, Any]] = tolfs
+                results = tolfs
             else:
                 results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
         else:
@@ -1465,7 +1506,13 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
             tier=req.tier,
         )
     elif project_id is not None:
-        chunks, truncated = _build_project_context_chunks(req.query, project_id, req.tier, boost_keywords=boost_keywords)
+        chunks, truncated = _build_project_context_chunks(
+            req.query,
+            project_id,
+            req.tier,
+            boost_keywords=boost_keywords,
+            material_id=req.material_id,
+        )
         evidence_refs = _build_evidence_refs(chunks)
     else:
         source_paths = _resolve_source_paths(req.source_paths)
