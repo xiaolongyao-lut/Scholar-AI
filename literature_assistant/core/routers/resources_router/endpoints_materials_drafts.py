@@ -91,6 +91,25 @@ async def delete_material(material_id: str) -> dict[str, str]:
         raise HTTPException(status_code=404, detail=f"素材不存在: {material_id}")
 
     project_id = material.project_id
+
+    # 0.1.8.1 hotfix: also remove the persisted original file (when present)
+    # so the user's "delete this paper" intent actually cleans disk, not just
+    # the index entries. Best-effort — never blocks deletion.
+    doc_store_before = _rr._load_doc_store(project_id)
+    source_relative = (doc_store_before.get(material_id) or {}).get("source_relative_path", "")
+    if source_relative:
+        try:
+            from project_paths import project_data_path
+            from pathlib import Path
+            candidate = project_data_path(project_id, "source_files", source_relative)
+            if candidate.exists() and candidate.is_file():
+                candidate.unlink()
+        except OSError as exc:
+            _rr.logger.warning(
+                "delete_material: source_file_unlink_failed material_id=%s err=%s",
+                material_id, exc,
+            )
+
     store.delete_material(material_id)
 
     doc_store = _rr._load_doc_store(project_id)

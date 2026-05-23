@@ -605,6 +605,24 @@ async def _ingest_uploaded_document(
     """Read one uploaded file and persist it into the project knowledge base."""
     filename = upload.filename or "unnamed"
     raw = await upload.read()
+
+    # Content-hash dedup: a paper uploaded twice (whether under the same or a
+    # different filename) collapses into one material. Cheaper than re-running
+    # extraction + chunking, and prevents the symptom where a batch upload
+    # creates two rows for the same PDF.
+    import hashlib as _hashlib
+    content_fingerprint = f"sha256:{_hashlib.sha256(raw).hexdigest()}"
+    existing_doc_store = _load_doc_store(project_id)
+    for existing_mid, existing_doc in existing_doc_store.items():
+        if str(existing_doc.get("source_fingerprint") or "") == content_fingerprint:
+            return {
+                "material_id": existing_mid,
+                "title": str(existing_doc.get("title") or filename),
+                "content_length": len(str(existing_doc.get("content") or "")),
+                "chunks": 0,
+                "status": "duplicate",
+            }
+
     content = _truncate_document_content(_extract_document_content(filename, raw))
 
     normalized = str(content or "").strip()
@@ -620,7 +638,34 @@ async def _ingest_uploaded_document(
             f"文件“{filename}”未提取到可检索文本。可能是扫描版 PDF、加密文件或解析依赖缺失（建议安装 pymupdf / PyPDF2 / python-docx）"
         )
 
-    return _persist_uploaded_document(project_id, filename, content, store=store)
+    # 0.1.8.1 hotfix: before this, the upload path discarded the original bytes
+    # after text extraction, so the in-app PDF reader could never serve the
+    # source file — only files reached through a configured source_folder scan
+    # could be opened. Now we always persist the original under
+    # <user_root>/projects/{id}/source_files/ so serve_document_file has a
+    # canonical location to fall back to when the project has no source_folder.
+    try:
+        source_files_dir = project_data_path(project_id, "source_files")
+        source_files_dir.mkdir(parents=True, exist_ok=True)
+        target = source_files_dir / filename
+        target.write_bytes(raw)
+    except OSError as exc:
+        # Don't block ingestion if disk persistence fails — text/chunks still
+        # land in the store and degraded-but-useful behaviour is preferable to
+        # a hard error. The user just won't be able to open the PDF in-app.
+        logger.warning(
+            "upload_source_persist_failed: project_id=%s filename=%s err=%s",
+            project_id, filename, exc,
+        )
+
+    return _persist_uploaded_document(
+        project_id,
+        filename,
+        content,
+        store=store,
+        source_fingerprint=content_fingerprint,
+        source_size=len(raw),
+    )
 
 
 def get_memory_adapter():

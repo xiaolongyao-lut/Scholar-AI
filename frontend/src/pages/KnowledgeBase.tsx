@@ -19,6 +19,7 @@ import {
   X,
   Check,
   BookOpen,
+  Trash2,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -54,7 +55,7 @@ interface UploadBatchItem {
   title: string;
   content_length?: number;
   chunks?: number;
-  status: 'ok' | 'error';
+  status: 'ok' | 'error' | 'duplicate';
   error?: string;
 }
 
@@ -62,6 +63,7 @@ interface UploadBatchResult {
   project_id: string;
   total_files: number;
   successful_files: number;
+  duplicate_files?: number;
   failed_files: number;
   total_chunks: number;
   results: UploadBatchItem[];
@@ -133,6 +135,7 @@ export function KnowledgeBase() {
   } | null>(null);
   const [showFailedDetails, setShowFailedDetails] = useState(false);
   const [projectSourceFolder, setProjectSourceFolder] = useState('');
+  const [projectTitle, setProjectTitle] = useState('');
   const [collectionFilter, setCollectionFilter] = useState<DocumentCollectionFilter>('all');
   const [editingFolder, setEditingFolder] = useState(false);
   const [folderDraft, setFolderDraft] = useState('');
@@ -141,13 +144,17 @@ export function KnowledgeBase() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const { activeProjectId } = useWriting();
 
-  // Fetch project's source_folder when activeProjectId changes
+  // Fetch project's source_folder + title when activeProjectId changes
   useEffect(() => {
-    if (!activeProjectId) { setProjectSourceFolder(''); return; }
+    if (!activeProjectId) { setProjectSourceFolder(''); setProjectTitle(''); return; }
     const baseUrl = getApiBaseUrl();
     axios.get(`${baseUrl}/resources/project/${activeProjectId}`, { timeout: 8000 })
-      .then(res => setProjectSourceFolder((res.data as { source_folder?: string }).source_folder ?? ''))
-      .catch(() => setProjectSourceFolder(''));
+      .then(res => {
+        const data = res.data as { source_folder?: string; title?: string };
+        setProjectSourceFolder(data.source_folder ?? '');
+        setProjectTitle(data.title ?? '');
+      })
+      .catch(() => { setProjectSourceFolder(''); setProjectTitle(''); });
   }, [activeProjectId]);
 
   const loadMaterials = useCallback(async () => {
@@ -193,6 +200,21 @@ export function KnowledgeBase() {
     const pageQuery = page && page > 0 ? `?page=${encodeURIComponent(String(page))}` : '';
     navigate(`/workbench/paper/${encodeURIComponent(materialId)}${pageQuery}`);
   }, [navigate]);
+
+  const handleDeleteDocument = useCallback(async (materialId: string, materialName: string) => {
+    if (!window.confirm(`确定要删除「${materialName}」吗？该文献的切块和原始文件都会被移除，且无法恢复。`)) {
+      return;
+    }
+    try {
+      const baseUrl = getApiBaseUrl();
+      await axios.delete(`${baseUrl}/resources/material/${encodeURIComponent(materialId)}`, { timeout: 15000 });
+      if (expandedDocId === materialId) setExpandedDocId(null);
+      await loadMaterials();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '未知错误';
+      window.alert(`删除失败：${msg}`);
+    }
+  }, [expandedDocId, loadMaterials]);
 
   useEffect(() => {
     void loadMaterials();
@@ -487,7 +509,7 @@ export function KnowledgeBase() {
       <main className="flex min-w-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col overflow-auto px-6 py-5">
           <PageHeader
-            title={t('kb.title')}
+            title={projectTitle ? t('kb.title_with_project', { name: projectTitle }) : t('kb.title')}
             subtitle={t('kb.subtitle')}
             actions={
               <>
@@ -609,6 +631,11 @@ export function KnowledgeBase() {
                       {t('kb.upload_summary_failed', { count: uploadSummary.failed_files })}
                     </StatusPill>
                   )}
+                  {(uploadSummary.duplicate_files ?? 0) > 0 && (
+                    <StatusPill tone="primary">
+                      {t('kb.upload_summary_duplicate', { count: uploadSummary.duplicate_files ?? 0 })}
+                    </StatusPill>
+                  )}
                 </div>
               )}
 
@@ -722,19 +749,33 @@ export function KnowledgeBase() {
                               )}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {doc.type === 'pdf' && (
+                              <div className="inline-flex items-center gap-1.5">
+                                {doc.type === 'pdf' && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openPdfInWorkbench(doc.id);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2 py-1 font-medium text-foreground/75 hover:border-primary/60 hover:text-primary"
+                                    title="在工作台中阅读"
+                                  >
+                                    <BookOpen size={11} /> 阅读
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    openPdfInWorkbench(doc.id);
+                                    void handleDeleteDocument(doc.id, doc.name);
                                   }}
-                                  className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2 py-1 font-medium text-foreground/75 hover:border-primary/60 hover:text-primary"
-                                  title="在工作台中阅读"
+                                  className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2 py-1 font-medium text-foreground/65 hover:border-red-500/60 hover:text-red-600"
+                                  title="删除该文献"
+                                  aria-label={`删除 ${doc.name}`}
                                 >
-                                  <BookOpen size={11} /> 阅读
+                                  <Trash2 size={11} /> 删除
                                 </button>
-                              )}
+                              </div>
                             </td>
                           </tr>
                         );

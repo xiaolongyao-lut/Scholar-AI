@@ -45,13 +45,17 @@ async def upload_documents_batch(
     total_chunks = 0
     successful_files = 0
     failed_files = 0
+    duplicate_files = 0
 
     for upload in files:
         filename = upload.filename or "unnamed"
         try:
             result = await _rr._ingest_uploaded_document(project_id, upload, store=store)
-            total_chunks += int(result.get("chunks") or 0)
-            successful_files += 1
+            if result.get("status") == "duplicate":
+                duplicate_files += 1
+            else:
+                total_chunks += int(result.get("chunks") or 0)
+                successful_files += 1
             results.append(result)
         except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
             failed_files += 1
@@ -65,6 +69,7 @@ async def upload_documents_batch(
         "project_id": project_id,
         "total_files": len(files),
         "successful_files": successful_files,
+        "duplicate_files": duplicate_files,
         "failed_files": failed_files,
         "total_chunks": total_chunks,
         "results": results,
@@ -290,8 +295,15 @@ async def search_chunks(
 # =========================================================================
 
 @_rr.router.get("/document/{material_id}/file", tags=["Resources"])
-async def serve_document_file(material_id: str):
-    """Serve the original file for a material (e.g. PDF for in-app viewing)."""
+async def serve_document_file(material_id: str, as_: str = Query("", alias="as")):
+    """Serve the original file for a material (e.g. PDF for in-app viewing).
+
+    ``?as=bin`` returns the bytes with media_type=application/octet-stream so
+    browser download-manager extensions (IDM, FlashGet, 迅雷, etc.) don't
+    recognise it as a PDF and divert the in-app reader's fetch into a save
+    dialog. Used by the in-app PDF viewer; everything else (default) keeps
+    the natural MIME so e.g. right-click "open in new tab" still works.
+    """
     store = _rr.get_writing_resource_store()
     material = store.get_material(material_id)
     if not material:
@@ -313,21 +325,27 @@ async def serve_document_file(material_id: str):
         raise HTTPException(status_code=404, detail="无原始文件路径记录")
 
     source_folder = _rr._get_project_source_folder(project_id)
+    # 0.1.8.1 hotfix: try the user-root source_files/ fallback first when the
+    # project doesn't have a configured source_folder, so files coming from the
+    # upload button (which now persist there) resolve correctly. Falls through
+    # to the legacy behaviour for projects that do have source_folder set.
+    from project_paths import project_data_path
+    candidates: list[Path] = []
     if source_folder:
-        candidate = Path(source_folder).expanduser().resolve() / source_relative
+        candidates.append(Path(source_folder).expanduser().resolve() / source_relative)
+        candidates.append(project_data_path(project_id, "source_files", source_relative))
     else:
-        candidate = Path(source_relative).expanduser().resolve()
+        candidates.append(project_data_path(project_id, "source_files", source_relative))
+        candidates.append(Path(source_relative).expanduser().resolve())
 
-    try:
-        candidate.resolve().relative_to(candidate.resolve().parents[0] if source_folder else Path.cwd())
-    except ValueError:
-        pass
+    candidate = next((p for p in candidates if p.exists()), candidates[0])
 
     if not candidate.exists():
         _rr.logger.warning(
             "serve_document_file: file_missing material_id=%s project_id=%s "
-            "source_folder=%s source_relative=%s resolved=%s",
-            material_id, project_id, source_folder, source_relative, candidate,
+            "source_folder=%s source_relative=%s tried=%s",
+            material_id, project_id, source_folder, source_relative,
+            [str(p) for p in candidates],
         )
         raise HTTPException(status_code=404, detail=f"文件不存在: {candidate.name}")
 
@@ -340,8 +358,75 @@ async def serve_document_file(material_id: str):
         ".md": "text/markdown",
     }
     ext = candidate.suffix.lower()
-    return FileResponse(
-        path=str(candidate),
-        media_type=media_types.get(ext, "application/octet-stream"),
-        filename=candidate.name,
-    )
+    # 0.1.8.1: when the in-app reader requests ?as=bin we hand back the
+    # bytes as a generic binary stream so browser download-manager
+    # extensions don't recognise the response as a PDF and steal it from
+    # the JS fetch. Other callers (right-click open in new tab, direct
+    # link sharing) get the real MIME so the browser's native viewer
+    # still works.
+    if as_.strip().lower() == "bin":
+        media_type = "application/octet-stream"
+    else:
+        media_type = media_types.get(ext, "application/octet-stream")
+    response = FileResponse(path=str(candidate), media_type=media_type)
+    safe_name = candidate.name.encode("utf-8").decode("latin-1", errors="ignore")
+    response.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+    return response
+
+
+@_rr.router.get("/document/{material_id}/file_b64", tags=["Resources"])
+async def serve_document_file_base64(material_id: str) -> dict[str, Any]:
+    """Return the original file as base64 inside a JSON envelope.
+
+    0.1.8.1 hotfix: system-level download managers (FlashGet / 网际快车,
+    IDM, 迅雷, JDownloader) hook the browser network layer and replace
+    any binary response that looks like a file with status 204, hijacking
+    the body for their own download queue. The in-app PDF reader can't
+    receive bytes through that channel. Wrapping the bytes in a JSON
+    envelope makes the response look like an API call, which those tools
+    leave alone. The frontend atob-decodes and feeds pdf.js.
+    """
+    store = _rr.get_writing_resource_store()
+    material = store.get_material(material_id)
+    if not material:
+        _rr.logger.warning(
+            "serve_document_file_base64: material_not_found material_id=%s", material_id,
+        )
+        raise HTTPException(status_code=404, detail=f"素材不存在: {material_id}")
+
+    project_id = material.project_id
+    doc_store = _rr._load_doc_store(project_id)
+    doc_entry = doc_store.get(material_id, {})
+    source_relative = doc_entry.get("source_relative_path", "")
+    if not source_relative:
+        raise HTTPException(status_code=404, detail="无原始文件路径记录")
+
+    source_folder = _rr._get_project_source_folder(project_id)
+    from project_paths import project_data_path
+    cand_list: list[Path] = []
+    if source_folder:
+        cand_list.append(Path(source_folder).expanduser().resolve() / source_relative)
+        cand_list.append(project_data_path(project_id, "source_files", source_relative))
+    else:
+        cand_list.append(project_data_path(project_id, "source_files", source_relative))
+        cand_list.append(Path(source_relative).expanduser().resolve())
+
+    target = next((p for p in cand_list if p.exists()), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"文件不存在: {Path(source_relative).name}")
+
+    import base64
+    raw = target.read_bytes()
+    ext_l = target.suffix.lower()
+    mime = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".txt": "text/plain",
+        ".md": "text/markdown",
+    }.get(ext_l, "application/octet-stream")
+    return {
+        "data": base64.b64encode(raw).decode("ascii"),
+        "size": len(raw),
+        "mime": mime,
+        "name": target.name,
+    }
