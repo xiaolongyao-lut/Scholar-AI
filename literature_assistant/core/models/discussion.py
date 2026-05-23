@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from models.analysis_chain import AnalysisChainPayload
+
 DISCUSSION_MAX_TURNS_LIMIT = 20
 
 
@@ -228,6 +230,14 @@ class DiscussionAgentTrace(BaseModel):
     answer: str = ""
     error: dict[str, Any] | None = None
     cited_evidence_ids: list[str] = Field(default_factory=list)
+    analysis_chain: AnalysisChainPayload | None = Field(
+        default=None,
+        description=(
+            "Optional 6-field reasoning chain attached to this agent's "
+            "answer when feature flag ``analysis_chain_discussion`` is on. "
+            "ACR-030 ~ ACR-034."
+        ),
+    )
 
 
 class DiscussionTurnTrace(BaseModel):

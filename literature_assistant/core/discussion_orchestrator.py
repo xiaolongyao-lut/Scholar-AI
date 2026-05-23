@@ -784,6 +784,15 @@ async def run_discussion(
                     )
                 except Exception:  # noqa: BLE001 — parser is best-effort; never block trace emission on a regex failure.
                     trace.cited_evidence_ids = []
+            # ACR-030 ~ ACR-034: optionally attach a 6-field reasoning chain
+            # per agent. Default off via feature flag — when off, attribute
+            # stays None and the trace is byte-identical to today.
+            if trace.success:
+                trace.analysis_chain = _maybe_build_agent_chain(
+                    query=config.query,
+                    answer=trace.answer,
+                    evidence_text=evidence_text,
+                )
             agent_traces.append(trace)
             if trace.success:
                 turn_messages.append({
@@ -990,3 +999,34 @@ __all__ = [
     "RetrieverFn",
     "run_discussion",
 ]
+
+
+def _maybe_build_agent_chain(
+    *, query: str, answer: str, evidence_text: str
+) -> "AnalysisChainPayload | None":
+    """ACR-030 ~ ACR-034: optionally attach a reasoning chain per agent trace.
+
+    Returns None when ``analysis_chain_discussion`` feature flag is off so
+    callers see byte-identical behavior. Uses the deterministic RAG builder
+    (same module that powers ACR Slice 1) — role-aware bias is a TODO for
+    the next slice.
+    """
+
+    try:
+        from feature_flags import is_enabled
+    except ImportError:
+        return None
+    if not is_enabled("analysis_chain_discussion"):
+        return None
+    try:
+        from analysis_chain_rag_builder import build_deterministic
+    except ImportError:
+        return None
+    snippets = [evidence_text] if evidence_text else []
+    try:
+        return build_deterministic(
+            query=query, answer=answer, evidence_snippets=snippets
+        )
+    except Exception:  # noqa: BLE001 — chain builder must never block trace emission
+        logger.exception("analysis_chain_discussion deterministic builder failed")
+        return None
