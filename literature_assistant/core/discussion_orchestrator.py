@@ -703,6 +703,11 @@ async def run_discussion(
     # ---------- Turns ------------------------------------------------------
     turns: list[DiscussionTurnTrace] = []
     history: list[dict[str, Any]] = []
+    # ACR-040 ~ ACR-044: accumulator for prior agents' reasoning chains, used
+    # to inject a carry-over block into the next agent's prompt when feature
+    # flag ``analysis_chain_carryover`` is enabled.
+    prior_chain_dicts: list[dict[str, Any]] = []
+    carryover_block = ""
 
     for turn_index in range(config.max_turns):
         slots: list[DispatchCandidate] = []
@@ -725,7 +730,7 @@ async def run_discussion(
                     metadata={**cand.metadata, "_context_items": list(context_items)},
                 )
             slots.append(cand)
-            prompt_for[agent.agent_id] = _build_agent_prompt(
+            base_prompt = _build_agent_prompt(
                 agent,
                 query=config.query,
                 evidence_text=prompt_evidence_text,
@@ -734,6 +739,13 @@ async def run_discussion(
                 cite_evidence=cite_evidence,
                 context_items=context_items,
             )
+            if carryover_block:
+                # Prepend carry-over reference; budget guard is applied inside
+                # the helper (max 3 chains × 600 chars). Heading separator
+                # keeps the prior block visually distinct from the live prompt.
+                prompt_for[agent.agent_id] = f"{carryover_block}\n\n{base_prompt}"
+            else:
+                prompt_for[agent.agent_id] = base_prompt
 
         async def _wrapped(c: DispatchCandidate) -> str:
             return await invoke_agent(c, prompt_for[c.agent_id])
@@ -805,6 +817,15 @@ async def run_discussion(
             agent_traces=agent_traces,
         ))
         history.append({"turn_index": turn_index, "messages": turn_messages})
+
+        # ACR-040 ~ ACR-044: refresh the carry-over block for the next turn.
+        # We collect any analysis_chain values produced this turn and let the
+        # helper render a compact block; gating is per-flag so default-off
+        # callers see an empty string and the prompt path is byte-identical.
+        for trace in agent_traces:
+            if trace.success and trace.analysis_chain is not None:
+                prior_chain_dicts.append(trace.analysis_chain.model_dump())
+        carryover_block = _maybe_render_carryover(prior_chain_dicts)
 
         # DSE-022: emit per-agent events + turn boundary so SSE clients can render progressively.
         for trace in agent_traces:
@@ -999,6 +1020,34 @@ __all__ = [
     "RetrieverFn",
     "run_discussion",
 ]
+
+
+def _maybe_render_carryover(prior_chains: list[dict[str, Any]]) -> str:
+    """ACR-040 ~ ACR-044: render carry-over block when flag on, else empty.
+
+    Returns an empty string in three cases (all treated as "no carry-over"):
+    - feature flag ``analysis_chain_carryover`` is off
+    - helper module is unavailable
+    - prior_chains list is empty
+    """
+
+    if not prior_chains:
+        return ""
+    try:
+        from feature_flags import is_enabled
+    except ImportError:
+        return ""
+    if not is_enabled("analysis_chain_carryover"):
+        return ""
+    try:
+        from prompts.analysis_chain_helpers import render_carryover_block
+    except ImportError:
+        return ""
+    try:
+        return render_carryover_block(prior_chains)
+    except Exception:  # noqa: BLE001 — carry-over rendering must never block orchestrator
+        logger.exception("analysis_chain_carryover render failed")
+        return ""
 
 
 def _maybe_build_agent_chain(
