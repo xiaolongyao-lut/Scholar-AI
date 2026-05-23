@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -70,6 +71,35 @@ const IDLE_SESSION: DiscussionSession = {
   error: null,
 };
 
+const SESSION_STORAGE_KEY = 'discussion-context-session-v1';
+
+function loadPersistedSession(): DiscussionSession | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<DiscussionSession>;
+    // Only restore terminal states so a half-completed in-flight run never
+    // resurrects as a phantom "running" session after a page refresh.
+    if (parsed && (parsed.state === 'completed' || parsed.state === 'cancelled' || parsed.state === 'error')) {
+      return { ...IDLE_SESSION, ...parsed } as DiscussionSession;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSessionIfTerminal(session: DiscussionSession): void {
+  if (typeof window === 'undefined') return;
+  if (session.state === 'idle' || session.state === 'running') return;
+  try {
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    /* quota / disabled storage — drop silently */
+  }
+}
+
 interface DiscussionContextValue {
   session: DiscussionSession;
   startSession(config: DiscussionRunConfig): Promise<void>;
@@ -80,8 +110,21 @@ interface DiscussionContextValue {
 const DiscussionContext = createContext<DiscussionContextValue | null>(null);
 
 export function DiscussionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<DiscussionSession>(IDLE_SESSION);
+  // Restore the last terminal session from localStorage on mount so a page
+  // refresh / new tab does not erase a completed discussion's transcript.
+  // Running sessions are NOT restored (state machine cannot reconnect to
+  // the in-flight backend run after a reload).
+  const [session, setSession] = useState<DiscussionSession>(
+    () => loadPersistedSession() ?? IDLE_SESSION,
+  );
   const abortRef = useRef<AbortController | null>(null);
+
+  // Persist completed / cancelled / error sessions so the next mount can
+  // restore them. The full payload includes liveTraces + synthesis +
+  // finalResult so the DiscussionPanel transcript rehydrates verbatim.
+  useEffect(() => {
+    persistSessionIfTerminal(session);
+  }, [session]);
 
   const applyEvent = useCallback((event: DiscussionStreamEvent) => {
     setSession((prev) => {
