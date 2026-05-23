@@ -1,9 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, BookOpen, FileText, MessageSquare, Users2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Message, type ChatMessageData } from '@/components/chat/Message';
 import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
+import { DiscussionPanel } from '@/components/DiscussionPanel';
+import { listFeatureFlags } from '@/services/featureFlagsApi';
 
 export interface SmartReadStarter {
   id: string;
@@ -60,6 +62,26 @@ export function ResearchWorkbenchInspector({
   const navigate = useNavigate();
   const [tab, setTab] = useState<InspectorTab>('smart-read');
   const [draft, setDraft] = useState('');
+  // DSE Slice 3: when inspector_embed_unified flag is on, the multi-agent
+  // tab embeds the full DiscussionPanel instead of the Bug-A placeholder.
+  // Best-effort fetch on mount; flag-fetch failure falls back to placeholder.
+  const [embedUnified, setEmbedUnified] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    listFeatureFlags()
+      .then((flags) => {
+        if (cancelled) return;
+        const entry = flags.find((f) => f.name === 'inspector_embed_unified');
+        setEmbedUnified(Boolean(entry?.current));
+      })
+      .catch(() => {
+        // Network or backend unavailable — keep placeholder. Logging would be
+        // noise on every Inspector mount, so we silently degrade.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSend = useCallback(() => {
     const text = draft.trim();
@@ -136,13 +158,18 @@ export function ResearchWorkbenchInspector({
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 text-sm">
-          {multiAgentContext ?? (
+          {multiAgentContext ? (
+            multiAgentContext
+          ) : embedUnified ? (
+            <DiscussionPanel />
+          ) : (
             <div className="rounded-md border border-dashed border-outline-variant bg-surface-low p-4 text-xs text-foreground/55">
               <p className="mb-2 font-medium text-foreground/75">还没有多智能体讨论</p>
               <p className="mb-3 leading-relaxed">这里会显示围绕当前 PDF 上下文的多智能体讨论。开始一轮新讨论的方式：</p>
               <ul className="mb-3 ml-4 list-disc space-y-1 leading-relaxed">
                 <li>选中 PDF 文段后，在弹出的工具条上点「多智能体」（推荐，自动携带选区作为讨论上下文）</li>
                 <li>或前往多智能体讨论页，手动设置角色与证据</li>
+                <li>或在设置 → 实验性功能里打开「工作台 Inspector 嵌入完整功能」，在此就地启动讨论</li>
               </ul>
               <button
                 type="button"
