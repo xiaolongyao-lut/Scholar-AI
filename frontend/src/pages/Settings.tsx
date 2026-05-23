@@ -1017,9 +1017,9 @@ function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | num
     setError(null);
     try {
       const data = await getSampling();
-      setTaskDefaults(data.task_defaults);
-      setModelMaxTokens(data.model_max_tokens);
-      setUserOverrides(data.tasks || {});
+      setTaskDefaults(data?.task_defaults ?? {});
+      setModelMaxTokens(data?.model_max_tokens ?? 32768);
+      setUserOverrides(data?.tasks ?? {});
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -1141,11 +1141,16 @@ function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | num
       <div className="space-y-2">
         {tasks.map(task => {
           const isExpanded = expandedTask === task.id;
-          const defaults = taskDefaults[task.id];
-          const overrides = userOverrides[task.id];
+          // Defensive optional chaining: if the backend response missed a
+          // key or the user's runtime override store is partially populated,
+          // accessing taskDefaults[task.id] / userOverrides[task.id] on an
+          // undefined dict throws "Cannot read properties of undefined".
+          // The early-return below already handles missing defaults gracefully.
+          const defaults = taskDefaults?.[task.id];
+          const overrides = userOverrides?.[task.id];
           const hasOverrides = hasSamplingOverrides(overrides);
-          const status = saveStatus[task.id] || 'idle';
-          const errMsg = saveError[task.id];
+          const status = saveStatus?.[task.id] || 'idle';
+          const errMsg = saveError?.[task.id];
 
           if (!defaults) return null;
 
