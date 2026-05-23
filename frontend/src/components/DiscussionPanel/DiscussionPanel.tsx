@@ -3,6 +3,7 @@ import { Send, Copy, Clock, CheckCircle2, XCircle, Plus, Trash2, Zap, Square, La
 import { useNavigate } from 'react-router-dom';
 import { discussionApi, type DiscussionRunConfig, type DiscussionRunResult, type DiscussionAgentConfig, type DiscussionAgentTrace, type DiscussionEvidenceMode } from '../../services/discussionApi';
 import { useWriting } from '@/contexts/WritingContext';
+import { useDiscussion } from '@/contexts/DiscussionContext';
 import { cn } from '@/lib/utils';
 import { discussionToGraphPayload } from '@/components/graph/discussionToGraphPayload';
 import { GraphPayloadViewer } from '@/components/graph/GraphPayloadViewer';
@@ -170,6 +171,30 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
   const startedAtRef = useRef<number>(0);
   const nextAgentIndexRef = useRef(3);
 
+  // DSE Slice 2: cross-route persistent discussion session.
+  const { session, startSession, cancelSession } = useDiscussion();
+
+  // Sync Context session state into local state so existing rendering logic
+  // (which references `running` / `result` / `error`) keeps working unchanged.
+  // The Context is the source of truth for running state across navigations;
+  // local state mirrors it for component-internal derived rendering.
+  useEffect(() => {
+    setRunning(session.state === 'running');
+    if (session.finalResult !== null) {
+      setResult(session.finalResult);
+    }
+    if (session.state === 'cancelled') {
+      setError('已停止等待，当前模型调用可能仍在收尾。');
+    } else if (session.error !== null) {
+      setError(session.error);
+    } else if (session.state === 'running' || session.state === 'idle') {
+      setError(null);
+    }
+    if (session.state === 'running' && session.startedAt) {
+      startedAtRef.current = session.startedAt;
+    }
+  }, [session.state, session.finalResult, session.error, session.startedAt]);
+
   const updateAgent = useCallback((id: string, patch: Partial<AgentSlot>) => {
     setAgents((current) => current.map((agent) => (
       agent.id === id ? { ...agent, ...patch } : agent
@@ -292,14 +317,9 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
     if (!query.trim()) return;
     if (agents.length < 2) return;
 
-    setRunning(true);
-    setError(null);
-    setResult(null);
-    const controller = new AbortController();
-    abortRef.current = controller;
-
+    let agentConfigs: DiscussionAgentConfig[];
     try {
-      const agentConfigs: DiscussionAgentConfig[] = agents.map((agent) => {
+      agentConfigs = agents.map((agent) => {
         const profile = profileForId(agent.profileId);
         if (!profile) {
           throw new Error('讨论角色配置缺失。');
@@ -310,50 +330,47 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
           systemPrompt: agent.systemPrompt,
         });
       });
-
-      const config: DiscussionRunConfig = {
-        query: query.trim(),
-        agent_configs: agentConfigs,
-        max_turns: maxTurns,
-        evidence_mode: evidenceMode,
-        synthesis_strategy: 'synthesize',
-        timeout_seconds: 120,
-      };
-      if (evidenceMode === 'from_project' && activeProjectId) {
-        config.project_id = activeProjectId;
-      }
-      if (evidenceMode === 'manual_chunk_ids') {
-        const ids = manualChunkIds.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
-        if (ids.length > 0) {
-          config.evidence_chunk_ids = ids;
-        }
-      }
-      if (autoStop) {
-        config.auto_stop = true;
-        config.min_turns = Math.min(minTurns, maxTurns);
-        if (judgeAgentId && agents.some((agent) => agent.id === judgeAgentId)) {
-          config.convergence_judge_agent_id = judgeAgentId;
-        }
-      }
-      if (mcpServerIds.length > 0) {
-        config.mcp_overrides = { server_ids: [...mcpServerIds] };
-      }
-      const res = await discussionApi.runDiscussion(config, { signal: controller.signal });
-      setResult(res);
-    } catch (err: unknown) {
-      if (controller.signal.aborted) {
-        setError('已停止等待，当前模型调用可能仍在收尾。');
-      } else {
-        setError(formatDiscussionRunError(err));
-      }
-    } finally {
-      setRunning(false);
-      abortRef.current = null;
+    } catch (err) {
+      setError(formatDiscussionRunError(err));
+      return;
     }
+
+    const config: DiscussionRunConfig = {
+      query: query.trim(),
+      agent_configs: agentConfigs,
+      max_turns: maxTurns,
+      evidence_mode: evidenceMode,
+      synthesis_strategy: 'synthesize',
+      timeout_seconds: 120,
+    };
+    if (evidenceMode === 'from_project' && activeProjectId) {
+      config.project_id = activeProjectId;
+    }
+    if (evidenceMode === 'manual_chunk_ids') {
+      const ids = manualChunkIds.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+      if (ids.length > 0) {
+        config.evidence_chunk_ids = ids;
+      }
+    }
+    if (autoStop) {
+      config.auto_stop = true;
+      config.min_turns = Math.min(minTurns, maxTurns);
+      if (judgeAgentId && agents.some((agent) => agent.id === judgeAgentId)) {
+        config.convergence_judge_agent_id = judgeAgentId;
+      }
+    }
+    if (mcpServerIds.length > 0) {
+      config.mcp_overrides = { server_ids: [...mcpServerIds] };
+    }
+
+    // DSE Slice 2: delegate run lifecycle to the cross-route Context.
+    // The Context owns the SSE stream + AbortController + fallback to
+    // non-streaming runDiscussion; local state mirrors via useEffect above.
+    await startSession(config);
   };
 
   const handleStop = () => {
-    abortRef.current?.abort();
+    cancelSession();
   };
 
   const handleInsertSynthesis = () => {
