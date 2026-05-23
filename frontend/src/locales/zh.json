@@ -628,5 +628,15 @@
   "settings.experimental_source_override": "已覆盖",
   "settings.experimental_source_env": "环境变量",
   "settings.experimental_source_default": "默认",
-  "settings.experimental_empty": "暂无已注册的实验性开关。"
+  "settings.experimental_empty": "暂无已注册的实验性开关。",
+  "analysis_chain.field_observation": "观察",
+  "analysis_chain.field_mechanism": "机制",
+  "analysis_chain.field_evidence": "证据",
+  "analysis_chain.field_boundary": "适用范围",
+  "analysis_chain.field_counter_evidence": "反证",
+  "analysis_chain.field_next_action": "下一步",
+  "analysis_chain.expand": "查看推理过程",
+  "analysis_chain.collapse": "收起推理过程",
+  "analysis_chain.empty": "暂无推理过程",
+  "analysis_chain.section_label": "AI 推理过程"
 }

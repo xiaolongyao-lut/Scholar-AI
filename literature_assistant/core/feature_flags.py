@@ -65,6 +65,56 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
             "适合综述、找数据、深度调研。同一问题分别开/关跑一次可直观对比。"
         ),
     ),
+    "analysis_chain_rag": FeatureFlagSpec(
+        name="analysis_chain_rag",
+        default=False,
+        env_var="ANALYSIS_CHAIN_RAG_ENABLED",
+        label="RAG 答问附推理过程",
+        description=(
+            "RAG 答问在返回答案的同时附带结构化推理过程（观察/机制/证据/边界/反证/下一步）。"
+            "默认走确定性生成；要让 LLM 写完整推理链，再打开「LLM 生成」开关。"
+        ),
+    ),
+    "analysis_chain_rag_llm": FeatureFlagSpec(
+        name="analysis_chain_rag_llm",
+        default=False,
+        env_var="ANALYSIS_CHAIN_RAG_LLM_ENABLED",
+        label="RAG 推理过程用 LLM 生成",
+        description=(
+            "在「RAG 答问附推理过程」基础上，用 LLM 生成完整推理链（每次答问多 1 次 LLM 调用）。"
+            "失败时自动回退到确定性生成，不会让答问失败。"
+        ),
+    ),
+    "analysis_chain_discussion": FeatureFlagSpec(
+        name="analysis_chain_discussion",
+        default=False,
+        env_var="ANALYSIS_CHAIN_DISCUSSION_ENABLED",
+        label="多 agent 讨论附推理过程",
+        description=(
+            "讨论中每个 agent 发言时携带自己的推理链；反对方偏重反证，审稿人偏重边界，主持人偏重下一步。"
+            "可在讨论面板逐个展开每个 agent 的思考路径。"
+        ),
+    ),
+    "analysis_chain_carryover": FeatureFlagSpec(
+        name="analysis_chain_carryover",
+        default=False,
+        env_var="ANALYSIS_CHAIN_CARRYOVER_ENABLED",
+        label="AI 接住上一步推理",
+        description=(
+            "下一个 agent / 下一轮对话能拿到上一步的推理链作为参考，AI 不从零想，可承接前一步结论。"
+            "当上下文预算紧张时会优先丢弃这部分参考，不影响主流程。"
+        ),
+    ),
+    "analysis_chain_ui": FeatureFlagSpec(
+        name="analysis_chain_ui",
+        default=False,
+        env_var="ANALYSIS_CHAIN_UI_ENABLED",
+        label="推理过程展开按钮",
+        description=(
+            "前端总开关：即使后端返回了推理链，UI 也默认收起，由本开关控制是否提供「展开」入口。"
+            "关闭时不影响后端返回，只影响界面显示。"
+        ),
+    ),
 }
 
 
