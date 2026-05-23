@@ -113,13 +113,13 @@ export function MessageBubble({
         className={clsx(
           'max-w-[80%] rounded-lg px-4 py-3',
           isUser
-            ? 'bg-blue-500 text-white'
-            : 'bg-gray-100 text-gray-900 border border-gray-200'
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-surface-low text-foreground border border-outline-variant'
         )}
       >
         {/* Insufficient Context Warning Badge */}
         {!isUser && insufficientContext && (
-          <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded text-yellow-800 text-xs">
+          <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-500/15 border border-yellow-200 dark:border-yellow-700/40 rounded text-yellow-800 dark:text-yellow-200 text-xs">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
             <span className="font-medium">
               Limited context: No relevant sources found for this query
@@ -127,7 +127,7 @@ export function MessageBubble({
           </div>
         )}
 
-        <div className={clsx(isUser ? 'whitespace-pre-wrap break-words' : 'prose prose-sm max-w-none prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-code:bg-white prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[12px] prose-code:before:content-none prose-code:after:content-none prose-pre:bg-white prose-strong:font-semibold prose-a:text-blue-700')}>
+        <div className={clsx(isUser ? 'whitespace-pre-wrap break-words' : 'prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-headings:my-3 prose-headings:text-foreground prose-p:text-foreground prose-li:text-foreground prose-strong:text-foreground prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-code:bg-surface-lowest prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[12px] prose-code:before:content-none prose-code:after:content-none prose-pre:bg-surface-lowest prose-strong:font-semibold prose-a:text-primary')}>
           {isUser ? content : renderAssistantContent(content)}
         </div>
 

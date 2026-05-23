@@ -50,6 +50,41 @@ const ROLE_COLOR_MAP: Record<string, string> = Object.fromEntries(
 
 const MAX_DISCUSSION_AGENTS = 8;
 
+const SETUP_STORAGE_KEY = 'discussion-panel-setup-v1';
+
+interface PersistedSetup {
+  query?: string;
+  agents?: AgentSlot[];
+  maxTurns?: number;
+  autoStop?: boolean;
+  minTurns?: number;
+  judgeAgentId?: string;
+  evidenceMode?: DiscussionEvidenceMode;
+  manualChunkIds?: string;
+  mcpServerIds?: string[];
+}
+
+function loadPersistedSetup(): PersistedSetup {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(SETUP_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? (parsed as PersistedSetup) : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistSetup(value: PersistedSetup): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SETUP_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    /* quota or disabled storage — drop silently */
+  }
+}
+
 function getRoleLabel(role: string): string {
   return ROLE_OPTIONS.find(r => r.value === role)?.label || role;
 }
@@ -151,18 +186,26 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
   const navigate = useNavigate();
   const { activeProjectId } = useWriting();
   const [profileStore, setProfileStore] = useState(loadDiscussionProfileStore);
-  const [query, setQuery] = useState('');
-  const [agents, setAgents] = useState<AgentSlot[]>(() => [
-    makeSlot(1, 'proposer', profileStore.profiles.find((profile) => profile.id === 'proposer')),
-    makeSlot(2, 'critic', profileStore.profiles.find((profile) => profile.id === 'critic')),
-  ]);
-  const [maxTurns, setMaxTurns] = useState(3);
-  const [autoStop, setAutoStop] = useState(defaults?.auto_stop ?? false);
-  const [minTurns, setMinTurns] = useState(defaults?.min_turns ?? 2);
-  const [judgeAgentId, setJudgeAgentId] = useState<string>('');
-  const [evidenceMode, setEvidenceMode] = useState<DiscussionEvidenceMode>('none');
-  const [manualChunkIds, setManualChunkIds] = useState<string>('');
-  const [mcpServerIds, setMcpServerIds] = useState<string[]>([]);
+  // User-visible inputs survive across route navigation via localStorage
+  // (2026-05-24 user report: switching pages should not wipe the form).
+  const [persistedSetup] = useState<PersistedSetup>(() => loadPersistedSetup());
+  const [query, setQuery] = useState<string>(persistedSetup.query ?? '');
+  const [agents, setAgents] = useState<AgentSlot[]>(() => {
+    if (persistedSetup.agents && persistedSetup.agents.length >= 2) {
+      return persistedSetup.agents;
+    }
+    return [
+      makeSlot(1, 'proposer', profileStore.profiles.find((profile) => profile.id === 'proposer')),
+      makeSlot(2, 'critic', profileStore.profiles.find((profile) => profile.id === 'critic')),
+    ];
+  });
+  const [maxTurns, setMaxTurns] = useState<number>(persistedSetup.maxTurns ?? 3);
+  const [autoStop, setAutoStop] = useState<boolean>(persistedSetup.autoStop ?? defaults?.auto_stop ?? false);
+  const [minTurns, setMinTurns] = useState<number>(persistedSetup.minTurns ?? defaults?.min_turns ?? 2);
+  const [judgeAgentId, setJudgeAgentId] = useState<string>(persistedSetup.judgeAgentId ?? '');
+  const [evidenceMode, setEvidenceMode] = useState<DiscussionEvidenceMode>(persistedSetup.evidenceMode ?? 'none');
+  const [manualChunkIds, setManualChunkIds] = useState<string>(persistedSetup.manualChunkIds ?? '');
+  const [mcpServerIds, setMcpServerIds] = useState<string[]>(persistedSetup.mcpServerIds ?? []);
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<DiscussionRunResult | null>(null);
@@ -171,6 +214,23 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
   const abortRef = useRef<AbortController | null>(null);
   const startedAtRef = useRef<number>(0);
   const nextAgentIndexRef = useRef(3);
+
+  // Persist every setup-form change so navigating away and back keeps the
+  // inputs intact. Run-time state (running/result/error) is owned by the
+  // DiscussionContext from Slice 2 and lives there.
+  useEffect(() => {
+    persistSetup({
+      query,
+      agents,
+      maxTurns,
+      autoStop,
+      minTurns,
+      judgeAgentId,
+      evidenceMode,
+      manualChunkIds,
+      mcpServerIds,
+    });
+  }, [query, agents, maxTurns, autoStop, minTurns, judgeAgentId, evidenceMode, manualChunkIds, mcpServerIds]);
 
   // DSE Slice 2: cross-route persistent discussion session.
   const { session, startSession, cancelSession } = useDiscussion();
