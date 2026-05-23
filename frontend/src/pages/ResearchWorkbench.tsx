@@ -71,7 +71,33 @@ function ResearchWorkbenchInner() {
   const [annotation, setAnnotation] = useState<AnnotationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessageData[]>([]);
+  // Inspector smart-read messages persist per-paper to localStorage so
+  // navigating away (and back) does not lose chat history. Storage key
+  // is keyed by materialId so each paper has its own conversation.
+  const messagesStorageKey = useMemo(
+    () => (materialId ? `inspector-chat-messages-v1:${materialId}` : 'inspector-chat-messages-v1:_default'),
+    [materialId],
+  );
+  const [messages, setMessages] = useState<ChatMessageData[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem(messagesStorageKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as ChatMessageData[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(messagesStorageKey, JSON.stringify(messages));
+    } catch {
+      /* quota or disabled storage — drop silently */
+    }
+  }, [messages, messagesStorageKey]);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
   // Bump this when the active tab changes so PdfReaderShell sees a new
   // bytes prop reference and re-mounts cleanly between PDFs.
@@ -269,7 +295,21 @@ function ResearchWorkbenchInner() {
           setMessages((cur) => [...cur, assistantMsg]);
         })
         .catch((err) => {
-          const detail = err instanceof Error ? err.message : String(err);
+          // Prefer the backend's structured detail when present so users see
+          // ``评测库未配置`` instead of a bare ``Request failed with status code 502``.
+          let detail = err instanceof Error ? err.message : String(err);
+          if (axios.isAxiosError(err) && err.response?.data) {
+            const rawDetail = (err.response.data as { detail?: unknown }).detail;
+            if (typeof rawDetail === 'string' && rawDetail.trim()) {
+              detail = rawDetail;
+            } else if (rawDetail !== undefined) {
+              try {
+                detail = JSON.stringify(rawDetail);
+              } catch {
+                /* keep axios message */
+              }
+            }
+          }
           const errMsg: ChatMessageData = {
             id: `e-${Date.now()}`,
             role: 'assistant',
