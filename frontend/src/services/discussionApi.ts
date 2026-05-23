@@ -226,4 +226,101 @@ export const discussionApi = {
     );
     return response.data;
   },
+
+  async runDiscussionStream(
+    req: DiscussionRunConfig,
+    opts: {
+      onEvent: (event: DiscussionStreamEvent) => void;
+      signal?: AbortSignal;
+    },
+  ): Promise<void> {
+    const url = `${getApiBaseUrl()}${API_BASE}/runs/stream`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      signal: opts.signal,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new DiscussionStreamError(
+        `stream request failed: ${response.status} ${text}`.trim(),
+        response.status,
+      );
+    }
+    if (!response.body) {
+      throw new DiscussionStreamError('stream response has no body', response.status);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE events are separated by a blank line ("\n\n"). Lines starting
+        // with "data:" carry our JSON payload.
+        while (true) {
+          const sep = buffer.indexOf('\n\n');
+          if (sep < 0) break;
+          const chunk = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          for (const line of chunk.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const payload = trimmed.slice(5).trim();
+            if (!payload) continue;
+            try {
+              const parsed = JSON.parse(payload) as DiscussionStreamEvent;
+              opts.onEvent(parsed);
+            } catch {
+              // Drop malformed lines; SSE channel is best-effort line-buffered.
+            }
+          }
+        }
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // releaseLock may throw if already released on abort; ignore.
+      }
+    }
+  },
 };
+
+export class DiscussionStreamError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'DiscussionStreamError';
+    this.status = status;
+  }
+}
+
+export type DiscussionStreamEvent =
+  | {
+      event: 'agent_done';
+      turn_index: number;
+      agent_id: string;
+      trace: DiscussionAgentTrace;
+    }
+  | {
+      event: 'turn_done';
+      turn_index: number;
+      agent_count: number;
+    }
+  | {
+      event: 'synthesis_done';
+      synthesis: DiscussionRunResult['synthesis'];
+    }
+  | {
+      event: 'done';
+      result: DiscussionRunResult;
+    }
+  | {
+      event: 'error';
+      status: number;
+      error: string;
+    };
