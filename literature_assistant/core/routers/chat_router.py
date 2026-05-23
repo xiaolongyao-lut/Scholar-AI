@@ -20,6 +20,8 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from models.analysis_chain import AnalysisChainPayload
+
 from ai_cost_profile import normalize_cost_profile, use_cost_profile
 from llm_defaults import resolve_llm_params
 from llm_cost_logger import log_llm_call
@@ -140,6 +142,15 @@ class ChatResponse(BaseModel):
             "Phase 2 MCP tool-loop transcript (rounds, stopped_reason, "
             "per-call records). Only populated when the request triggered "
             "the MCP runner."
+        ),
+    )
+    analysis_chain: AnalysisChainPayload | None = Field(
+        default=None,
+        description=(
+            "Structured 6-field reasoning chain (observation / mechanism / "
+            "evidence / boundary / counter_evidence / next_action). "
+            "Populated only when feature flag ``analysis_chain_rag`` is on. "
+            "ACR-020 ~ ACR-024."
         ),
     )
 
@@ -896,6 +907,9 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=502, detail=f"LLM 返回格式异常: {exc}") from exc
 
     _log_chat_telemetry(model=model_used or telemetry_model, task="chat", started_at=started_at, usage=usage, status="ok")
+
+    analysis_chain = _maybe_build_analysis_chain(req=req, answer=answer)
+
     return ChatResponse(
         answer=answer,
         model=model_used,
@@ -908,7 +922,42 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
         },
         tool_calls=tool_calls,
         mcp_run=mcp_run_dump,
+        analysis_chain=analysis_chain,
     )
+
+
+def _maybe_build_analysis_chain(
+    *, req: "ChatRequest", answer: str
+) -> AnalysisChainPayload | None:
+    """ACR-020 ~ ACR-024: optionally attach a structured 6-field reasoning chain.
+
+    Returns None when ``analysis_chain_rag`` feature flag is off, so default
+    callers see byte-identical behavior. When the flag is on, the deterministic
+    builder is used (no extra LLM call). The LLM-driven builder is gated by
+    ``analysis_chain_rag_llm`` but is currently a TODO — for now we fall back
+    to deterministic so the response field is populated without an extra
+    provider call. Full LLM wiring lands in the next ACR slice.
+    """
+
+    try:
+        from feature_flags import is_enabled
+    except ImportError:
+        return None
+    if not is_enabled("analysis_chain_rag"):
+        return None
+    try:
+        from analysis_chain_rag_builder import build_deterministic
+    except ImportError:
+        return None
+    try:
+        return build_deterministic(
+            query=req.query,
+            answer=answer,
+            evidence_snippets=list(req.context or []),
+        )
+    except Exception:  # noqa: BLE001 — chain builder must never block chat response
+        logger.exception("analysis_chain_rag deterministic builder failed")
+        return None
 
 
 # ---------------------------------------------------------------------------
