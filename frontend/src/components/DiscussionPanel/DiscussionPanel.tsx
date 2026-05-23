@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { discussionApi, type DiscussionRunConfig, type DiscussionRunResult, type DiscussionAgentConfig, type DiscussionAgentTrace, type DiscussionEvidenceMode } from '../../services/discussionApi';
 import { useWriting } from '@/contexts/WritingContext';
 import { useDiscussion } from '@/contexts/DiscussionContext';
+import { AnalysisChainPanel } from '@/components/analysis_chain/AnalysisChainPanel';
 import { cn } from '@/lib/utils';
 import { discussionToGraphPayload } from '@/components/graph/discussionToGraphPayload';
 import { GraphPayloadViewer } from '@/components/graph/GraphPayloadViewer';
@@ -770,6 +771,9 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
                     <p className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap">
                       {trace.answer}
                     </p>
+                  )}
+                  {trace.success && trace.analysis_chain && (
+                    <AnalysisChainPanel chain={trace.analysis_chain} className="mt-2" />
                   )}
                   {trace.success && trace.cited_evidence_ids && trace.cited_evidence_ids.length > 0 && (
                     <div

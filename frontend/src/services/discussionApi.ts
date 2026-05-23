@@ -123,6 +123,15 @@ export interface DiscussionEvidencePackPayload {
   evidence_ids?: string[];
 }
 
+export interface AnalysisChainPayload {
+  observation?: string;
+  mechanism?: string;
+  evidence?: string[];
+  boundary?: string;
+  counter_evidence?: string[];
+  next_action?: string;
+}
+
 export interface DiscussionAgentTrace {
   agent_id: string;
   role: string;
@@ -135,6 +144,7 @@ export interface DiscussionAgentTrace {
   answer: string;
   error: JsonObject | null;
   cited_evidence_ids?: string[];
+  analysis_chain?: AnalysisChainPayload | null;
 }
 
 export interface DiscussionTurnTrace {
