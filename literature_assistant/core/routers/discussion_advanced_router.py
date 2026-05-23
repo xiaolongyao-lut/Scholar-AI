@@ -17,10 +17,13 @@ unit-testable in isolation.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from typing import Any, Awaitable, Callable
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from discussion_orchestrator import (
     DiscussionCredentialMissingError,
@@ -319,6 +322,107 @@ async def post_discussion_run(config: DiscussionRunConfig) -> DiscussionRunResul
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     _schedule_discussion_capture(result)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Streaming endpoint (DSE-020 ~ DSE-026)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/runs/stream")
+async def post_discussion_run_stream(config: DiscussionRunConfig) -> StreamingResponse:
+    """Stream a RAG-aware multi-agent discussion via SSE.
+
+    Gated by feature flag ``discussion_streaming``. When the flag is off,
+    callers should fall back to the non-streaming ``POST /runs`` endpoint
+    (this endpoint returns 404).
+
+    SSE events (one JSON object per ``data:`` line):
+
+    - ``{"event": "agent_done", "turn_index": N, "agent_id": "...", "trace": {...}}``
+    - ``{"event": "turn_done", "turn_index": N, "agent_count": N}``
+    - ``{"event": "synthesis_done", "synthesis": {...}}``
+    - ``{"event": "done", "result": {...}}``  (full DiscussionRunResult)
+    - ``{"event": "error", "status": <http-like>, "error": "..."}``
+
+    Discussion capture (evolution candidates) still fires off-path on the
+    successful ``done`` event, identical to the non-streaming endpoint.
+    """
+
+    try:
+        from feature_flags import is_enabled
+    except ImportError:
+        raise HTTPException(status_code=404, detail="discussion streaming not enabled")
+    if not is_enabled("discussion_streaming"):
+        raise HTTPException(status_code=404, detail="discussion streaming not enabled")
+
+    factory = _get_invoke_factory()
+    invoke_agent = factory(config)
+
+    queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+    async def _on_event(event: dict[str, Any]) -> None:
+        await queue.put(event)
+
+    async def _run_task() -> None:
+        try:
+            result = await run_discussion(
+                config,
+                invoke_agent=invoke_agent,
+                on_event=_on_event,
+            )
+            _schedule_discussion_capture(result)
+            await queue.put({"event": "done", "result": result.model_dump()})
+        except DiscussionUnsupportedStrategyError as exc:
+            await queue.put({"event": "error", "status": 400, "error": str(exc)})
+        except DiscussionCredentialMissingError as exc:
+            await queue.put({"event": "error", "status": 404, "error": str(exc)})
+        except DiscussionContextBudgetError as exc:
+            await queue.put({"event": "error", "status": 422, "error": str(exc)})
+        except DiscussionOrchestratorError as exc:
+            await queue.put({"event": "error", "status": 500, "error": str(exc)})
+        except asyncio.CancelledError:
+            await queue.put({"event": "error", "status": 499, "error": "cancelled"})
+            raise
+        except Exception as exc:  # noqa: BLE001 — endpoint-level safety net
+            await queue.put(
+                {"event": "error", "status": 500, "error": f"{type(exc).__name__}: {exc}"}
+            )
+        finally:
+            await queue.put(None)
+
+    task = asyncio.create_task(_run_task())
+
+    async def event_generator():
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                if event.get("event") in ("done", "error"):
+                    # Drain remaining sentinel
+                    while True:
+                        tail = await queue.get()
+                        if tail is None:
+                            break
+                    break
+        except asyncio.CancelledError:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+            raise
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 def _schedule_discussion_capture(result: "DiscussionRunResult") -> None:

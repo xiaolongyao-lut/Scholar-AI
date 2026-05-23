@@ -603,17 +603,31 @@ async def run_discussion(
     credential_resolver: CredentialResolverFn | None = None,
     retriever: RetrieverFn | None = None,
     embed_fn: EmbedFn | None = None,
+    on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> DiscussionRunResult:
     """Execute a RAG-aware multi-agent discussion.
 
     ``invoke_agent`` is REQUIRED — production code passes a chat-router-backed
     callable; tests pass a stub. The orchestrator never reaches into the
     chat layer itself, so this module stays cheap to test in isolation.
+
+    ``on_event`` (DSE-021): optional async observer invoked at agent-done,
+    turn-done, and synthesis-done milestones. Default None preserves the
+    existing single-return contract. Observer exceptions are swallowed and
+    logged so a faulty SSE client cannot break the orchestrator.
     """
     _check_strategy(config.synthesis_strategy)
     started = time.perf_counter()
     run_id = f"disc_{uuid.uuid4().hex[:16]}"
     resolver = credential_resolver or _default_credential_resolver
+
+    async def _emit(event: dict[str, Any]) -> None:
+        if on_event is None:
+            return
+        try:
+            await on_event(event)
+        except Exception:  # noqa: BLE001 — observer must never crash orchestrator
+            logger.exception("on_event observer failed for %s", event.get("event"))
 
     # ---------- Evidence ----------------------------------------------------
     evidence_pack: EvidencePack | None = None
@@ -783,6 +797,20 @@ async def run_discussion(
         ))
         history.append({"turn_index": turn_index, "messages": turn_messages})
 
+        # DSE-022: emit per-agent events + turn boundary so SSE clients can render progressively.
+        for trace in agent_traces:
+            await _emit({
+                "event": "agent_done",
+                "turn_index": turn_index,
+                "agent_id": trace.agent_id,
+                "trace": trace.model_dump(),
+            })
+        await _emit({
+            "event": "turn_done",
+            "turn_index": turn_index,
+            "agent_count": len(agent_traces),
+        })
+
         # ----- Auto-stop check (Plan D3) -------------------------------------
         # Skip if disabled OR this is already the final turn (nothing to save).
         if not config.auto_stop or turn_index >= config.max_turns - 1:
@@ -917,6 +945,12 @@ async def run_discussion(
                 "retry_recommended": isinstance(exc, asyncio.TimeoutError),
             },
         )
+
+    # DSE-023: emit synthesis milestone (regardless of success/failure).
+    await _emit({
+        "event": "synthesis_done",
+        "synthesis": synthesis.model_dump(),
+    })
 
     elapsed_ms = (time.perf_counter() - started) * 1000.0
 
