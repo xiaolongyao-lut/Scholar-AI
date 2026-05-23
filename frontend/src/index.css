@@ -247,3 +247,28 @@
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ─── react-pdf text layer: 防选中重影 ───────────────────────────
+ * react-pdf 默认让 TextLayer 用 color: transparent，但某些字体在
+ * 选中时会因为 ::selection 的默认 forced-color 把文字描边显形，
+ * 看起来像"重影"。下面 3 条规则强制 textContent 的 span 完全
+ * 透明（含 selection 状态）、给选区一个明显的半透明蓝、并关掉
+ * Windows 高对比度模式对 PDF 阅读层的强制描边。
+ *
+ * Ref: pdf.js text-layer issue #15012 / react-pdf #1668
+ */
+.react-pdf__Page__textContent {
+  forced-color-adjust: none;
+}
+
+.react-pdf__Page__textContent span,
+.react-pdf__Page__textContent br {
+  color: transparent !important;
+  -webkit-text-stroke: 0 !important;
+}
+
+.react-pdf__Page__textContent ::selection,
+.react-pdf__Page__textContent span::selection {
+  background: rgba(33, 150, 243, 0.35);
+  color: transparent;
+}

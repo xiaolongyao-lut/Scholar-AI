@@ -7,6 +7,8 @@ import {
   ResearchWorkbenchEvidenceDrawer,
 } from '@/components/workbench/ResearchWorkbenchInspector';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
+import { PdfTabStrip } from '@/components/PdfViewer/PdfTabStrip';
+import { usePdfTabs } from '@/contexts/PdfTabsContext';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { useWriting } from '@/contexts/WritingContext';
 import {
@@ -53,6 +55,16 @@ function ResearchWorkbenchInner() {
   const initialPage = initialPageRaw ? Math.max(1, Number(initialPageRaw)) : undefined;
   const navigate = useNavigate();
   const { activeProjectId } = useWriting();
+  const {
+    openTab,
+    setActive,
+    activeId,
+    setTitle,
+    getView,
+    updateView,
+    getCachedBytes,
+    setCachedBytes,
+  } = usePdfTabs();
 
   const [material, setMaterial] = useState<WritingMaterialResource | null>(null);
   const [annotation, setAnnotation] = useState<AnnotationData | null>(null);
@@ -60,10 +72,55 @@ function ResearchWorkbenchInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
+  // Bump this when the active tab changes so PdfReaderShell sees a new
+  // bytes prop reference and re-mounts cleanly between PDFs.
+  const [bytesNonce, setBytesNonce] = useState(0);
   const pdfUrl = useMemo(
     () => (materialId ? `${getApiBaseUrl()}/resources/document/${materialId}/file` : ''),
     [materialId],
   );
+
+  // URL → tab store: any nav into /workbench/paper/:id opens (or
+  // re-activates) the tab. Same materialId is a no-op for the list,
+  // just flips activeId.
+  useEffect(() => {
+    if (!materialId) return;
+    openTab({ materialId, title: materialId }, { activate: true });
+  }, [materialId, openTab]);
+
+  // When the active tab changes underfoot (user clicked the strip),
+  // force a clean bytes read from cache by bumping the nonce.
+  useEffect(() => {
+    setBytesNonce(n => n + 1);
+  }, [activeId]);
+
+  const cachedBytes = useMemo(
+    () => (materialId ? getCachedBytes(materialId) : undefined),
+    // bytesNonce is the trigger; getCachedBytes itself is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [materialId, bytesNonce, getCachedBytes],
+  );
+
+  const handleBytesLoaded = useCallback((bytes: Uint8Array) => {
+    if (materialId) setCachedBytes(materialId, bytes);
+  }, [materialId, setCachedBytes]);
+
+  const persistedView = materialId ? getView(materialId) : undefined;
+  const handleScaleChange = useCallback((scale: number) => {
+    if (materialId) updateView(materialId, { scale });
+  }, [materialId, updateView]);
+  const handleTabPageChange = useCallback((page: number) => {
+    if (materialId) updateView(materialId, { page });
+  }, [materialId, updateView]);
+
+  const handleTabStripActivate = useCallback((nextId: string) => {
+    if (nextId === materialId) return;
+    navigate(`/workbench/paper/${encodeURIComponent(nextId)}`);
+  }, [navigate, materialId]);
+
+  const handleTabStripEmpty = useCallback(() => {
+    navigate('/knowledge');
+  }, [navigate]);
 
   // Load material + annotations. Failure mode: friendly Chinese error,
   // never raw API path or error.toString().
@@ -109,6 +166,13 @@ function ResearchWorkbenchInner() {
       cancelled = true;
     };
   }, [materialId, activeProjectId]);
+
+  // Replace the strip label with the real title once we know it.
+  useEffect(() => {
+    if (materialId && material?.title) {
+      setTitle(materialId, material.title);
+    }
+  }, [materialId, material?.title, setTitle]);
 
   const handleAddHighlight = useCallback(
     async (h: Highlight) => {
@@ -210,10 +274,10 @@ function ResearchWorkbenchInner() {
         <>
           <button
             type="button"
-            onClick={() => navigate('/library')}
+            onClick={() => navigate('/knowledge')}
             className="flex shrink-0 items-center gap-1 rounded p-1 text-foreground/60 hover:bg-surface-high hover:text-foreground"
-            title="返回文献库"
-            aria-label="返回文献库"
+            title="返回知识库"
+            aria-label="返回知识库"
           >
             <ArrowLeft size={14} />
           </button>
@@ -230,22 +294,33 @@ function ResearchWorkbenchInner() {
         </>
       }
       canvas={
-        <ErrorBoundary fallbackTitle="PDF 阅读器暂时无法显示">
-          <Suspense fallback={<PdfReaderFallback />}>
-            <PdfReaderShell
-              url={pdfUrl}
-              materialId={materialId}
-              initialPage={initialPage}
-              highlights={annotation?.highlights ?? []}
-              notes={annotation?.notes ?? []}
-              lastPage={annotation?.last_page ?? null}
-              onAnalyzeText={handleAnalyzeText}
-              onAddHighlight={(h) => void handleAddHighlight(h)}
-              onDeleteHighlight={(i) => void handleDeleteHighlight(i)}
-              onAnnotationUpdate={setAnnotation}
-            />
-          </Suspense>
-        </ErrorBoundary>
+        <div className="flex h-full min-h-0 flex-col">
+          <PdfTabStrip onActivate={handleTabStripActivate} onEmpty={handleTabStripEmpty} />
+          <div className="min-h-0 flex-1">
+            <ErrorBoundary fallbackTitle="PDF 阅读器暂时无法显示">
+              <Suspense fallback={<PdfReaderFallback />}>
+                <PdfReaderShell
+                  key={materialId}
+                  url={pdfUrl}
+                  materialId={materialId}
+                  initialPage={persistedView?.page ?? initialPage}
+                  bytes={cachedBytes}
+                  onBytesLoaded={handleBytesLoaded}
+                  scale={persistedView?.scale}
+                  onScaleChange={handleScaleChange}
+                  highlights={annotation?.highlights ?? []}
+                  notes={annotation?.notes ?? []}
+                  lastPage={annotation?.last_page ?? null}
+                  onAnalyzeText={handleAnalyzeText}
+                  onAddHighlight={(h) => void handleAddHighlight(h)}
+                  onDeleteHighlight={(i) => void handleDeleteHighlight(i)}
+                  onAnnotationUpdate={setAnnotation}
+                  onPageChange={handleTabPageChange}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          </div>
+        </div>
       }
       inspector={
         <ErrorBoundary fallbackTitle="检视面板暂时无法显示">

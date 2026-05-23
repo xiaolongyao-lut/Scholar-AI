@@ -3,10 +3,22 @@ import { getApiBaseUrl } from './apiBaseUrl';
 
 const API_BASE = getApiBaseUrl();
 
+export interface HighlightRect {
+  /** All four values are normalized to [0, 1] relative to the rendered
+   *  PDF page box, so the overlay survives the user changing zoom. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Highlight {
   page: number;
   text: string;
   color: string;
+  /** 0.1.8.1+: one rect per visual line of the selection. Optional so
+   *  highlights persisted before the visual overlay shipped still load. */
+  rects?: HighlightRect[];
 }
 
 export interface Note {

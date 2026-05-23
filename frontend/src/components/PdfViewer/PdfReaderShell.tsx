@@ -25,6 +25,13 @@ interface PdfReaderShellProps {
   url: string;
   materialId: string;
   initialPage?: number;
+  /** Multi-tab fast path: bytes from the parent's LRU cache. When set,
+   *  PdfViewer skips its own fetch. */
+  bytes?: Uint8Array;
+  onBytesLoaded?: (bytes: Uint8Array) => void;
+  /** Multi-tab: external zoom for per-tab persistence. */
+  scale?: number;
+  onScaleChange?: (scale: number) => void;
   highlights: Highlight[];
   notes?: Note[];
   lastPage?: number | null;
@@ -36,6 +43,9 @@ interface PdfReaderShellProps {
   onAddHighlight?: (highlight: Highlight) => void;
   onDeleteHighlight?: (index: number) => void;
   onAnnotationUpdate?: (annotation: AnnotationData) => void;
+  /** Multi-tab: notify parent of page changes so per-tab page can be
+   *  persisted in PdfTabsContext. Fires on every confirmed page change. */
+  onPageChange?: (page: number) => void;
   className?: string;
 }
 
@@ -98,6 +108,10 @@ export function PdfReaderShell({
   url,
   materialId,
   initialPage,
+  bytes,
+  onBytesLoaded,
+  scale,
+  onScaleChange,
   highlights,
   notes,
   lastPage,
@@ -106,6 +120,7 @@ export function PdfReaderShell({
   onAddHighlight,
   onDeleteHighlight,
   onAnnotationUpdate,
+  onPageChange: onPageChangeExternal,
   className,
 }: PdfReaderShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => loadSidebarOpen(materialId));
@@ -162,9 +177,10 @@ export function PdfReaderShell({
 
   const handlePageChange = useCallback((page: number) => {
     setCurrentPage(page);
+    if (onPageChangeExternal) onPageChangeExternal(page);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => flushLastPage(page), READ_PROGRESS_DEBOUNCE_MS);
-  }, [flushLastPage]);
+  }, [flushLastPage, onPageChangeExternal]);
 
   useEffect(() => {
     return () => {
@@ -292,6 +308,10 @@ export function PdfReaderShell({
           url={url}
           materialId={materialId}
           initialPage={pendingPage ?? initialPage}
+          bytes={bytes}
+          onBytesLoaded={onBytesLoaded}
+          scale={scale}
+          onScaleChange={onScaleChange}
           onAnalyzeText={onAnalyzeText}
           onAddHighlight={onAddHighlight}
           onDeleteHighlight={onDeleteHighlight}
@@ -308,7 +328,7 @@ export function PdfReaderShell({
         <button
           type="button"
           onClick={toggleSidebar}
-          className="p-1.5 rounded hover:bg-surface-high transition-colors"
+          className="p-1.5 rounded text-foreground/80 hover:bg-surface-high hover:text-foreground transition-colors"
           aria-label={sidebarOpen ? '收起阅读侧栏' : '展开阅读侧栏'}
           title={sidebarOpen ? '收起' : '展开侧栏'}
         >
@@ -318,7 +338,7 @@ export function PdfReaderShell({
           type="button"
           onClick={() => void handleExport()}
           disabled={savingExport}
-          className="p-1.5 rounded hover:bg-surface-high transition-colors disabled:opacity-40"
+          className="p-1.5 rounded text-foreground/80 hover:bg-surface-high hover:text-foreground transition-colors disabled:opacity-40"
           aria-label="导出笔记 Markdown"
           title="导出笔记 (Markdown)"
         >

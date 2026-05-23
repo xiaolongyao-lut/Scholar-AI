@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { MainLayout } from './layouts/MainLayout';
 import { WritingProvider } from './contexts/WritingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { PdfTabsProvider } from './contexts/PdfTabsContext';
 import { ToastProvider } from './components/ui/Toast';
 import { CommandPalette } from './components/ui/CommandPalette';
 import { McpPendingCallPoller } from './components/mcp/McpPendingCallPoller';
@@ -44,51 +45,53 @@ const App = () => {
     <ErrorBoundary fallbackTitle="应用发生异常，请刷新页面或返回首页">
       <ThemeProvider>
         <WritingProvider>
-          <ToastProvider>
-            <Router>
-              <MainLayout>
-                <Suspense fallback={<LazyFallback />}>
-                  <Routes>
-                    {/* Home */}
-                    <Route path="/" element={<Workbench />} />
+          <PdfTabsProvider>
+            <ToastProvider>
+              <Router>
+                <MainLayout>
+                  <Suspense fallback={<LazyFallback />}>
+                    <Routes>
+                      {/* Home */}
+                      <Route path="/" element={<Workbench />} />
 
-                    {/* Writing group */}
-                    <Route path="/writing" element={<WritingOverview />} />
-                    <Route path="/writing/draft" element={<DraftStudio />} />
-                    <Route path="/writing/outline" element={<OutlineManager />} />
-                    <Route path="/writing/sources" element={<SourcesCitations />} />
-                    <Route path="/writing/figures" element={<FiguresTables />} />
-                    <Route path="/writing/reviewer" element={<ReviewerSubmission />} />
+                      {/* Writing group */}
+                      <Route path="/writing" element={<WritingOverview />} />
+                      <Route path="/writing/draft" element={<DraftStudio />} />
+                      <Route path="/writing/outline" element={<OutlineManager />} />
+                      <Route path="/writing/sources" element={<SourcesCitations />} />
+                      <Route path="/writing/figures" element={<FiguresTables />} />
+                      <Route path="/writing/reviewer" element={<ReviewerSubmission />} />
 
-                    {/* Standalone pages */}
-                    <Route path="/knowledge" element={<KnowledgeBase />} />
-                    <Route path="/library" element={<Workbench />} />
-                    <Route path="/wiki" element={<WikiWorkbench />} />
-                    <Route path="/projects" element={<Projects />} />
-                    <Route path="/volume" element={<VolumeAnalysis />} />
-                    <Route path="/inspiration" element={<Navigate to="/dialog?mode=inspiration" replace />} />
-                    <Route path="/chat" element={<Navigate to="/dialog?mode=literature_qa" replace />} />
-                    <Route path="/dialog" element={<Dialog />} />
-                    <Route path="/discussion" element={<Discussion />} />
-                    {/* ResearchWorkbench — gated by VITE_FLAG_RESEARCH_WORKBENCH; otherwise
-                        the component itself redirects to /knowledge. */}
-                    <Route path="/workbench/paper/:materialId" element={<ResearchWorkbench />} />
-                    <Route path="/workbench/discussion" element={<WorkbenchDiscussion />} />
-                    <Route path="/workbench/wiki" element={<WorkbenchWiki />} />
-                    <Route path="/workbench/inspiration" element={<Navigate to="/dialog?mode=inspiration" replace />} />
-                    <Route path="/jobs" element={<Jobs />} />
-                    <Route path="/evolution" element={<EvolutionInbox />} />
-                    <Route path="/settings" element={<SettingsPage />} />
+                      {/* Standalone pages */}
+                      <Route path="/knowledge" element={<KnowledgeBase />} />
+                      <Route path="/library" element={<Workbench />} />
+                      <Route path="/wiki" element={<WikiWorkbench />} />
+                      <Route path="/projects" element={<Projects />} />
+                      <Route path="/volume" element={<VolumeAnalysis />} />
+                      <Route path="/inspiration" element={<Navigate to="/dialog?mode=inspiration" replace />} />
+                      <Route path="/chat" element={<Navigate to="/dialog?mode=literature_qa" replace />} />
+                      <Route path="/dialog" element={<Dialog />} />
+                      <Route path="/discussion" element={<Discussion />} />
+                      {/* ResearchWorkbench — gated by VITE_FLAG_RESEARCH_WORKBENCH; otherwise
+                          the component itself redirects to /knowledge. */}
+                      <Route path="/workbench/paper/:materialId" element={<ResearchWorkbench />} />
+                      <Route path="/workbench/discussion" element={<WorkbenchDiscussion />} />
+                      <Route path="/workbench/wiki" element={<WorkbenchWiki />} />
+                      <Route path="/workbench/inspiration" element={<Navigate to="/dialog?mode=inspiration" replace />} />
+                      <Route path="/jobs" element={<Jobs />} />
+                      <Route path="/evolution" element={<EvolutionInbox />} />
+                      <Route path="/settings" element={<SettingsPage />} />
 
-                    {/* Fallback */}
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </Suspense>
-              </MainLayout>
-              <CommandPalette />
-              <McpPendingCallPoller />
-            </Router>
-          </ToastProvider>
+                      {/* Fallback */}
+                      <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                  </Suspense>
+                </MainLayout>
+                <CommandPalette />
+                <McpPendingCallPoller />
+              </Router>
+            </ToastProvider>
+          </PdfTabsProvider>
         </WritingProvider>
       </ThemeProvider>
     </ErrorBoundary>

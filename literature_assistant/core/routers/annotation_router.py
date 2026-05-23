@@ -110,10 +110,28 @@ def _persist(material_id: str, data: dict[str, Any]) -> dict[str, Any]:
 # Schemas (L1 + L2)
 # ---------------------------------------------------------------------------
 
+class HighlightRect(BaseModel):
+    """Normalized highlight rectangle, relative to the PDF page box.
+
+    All four values are in [0, 1] so the overlay can be drawn correctly
+    regardless of the user's current zoom level. (x, y) is the top-left
+    of the rect; w/h are the width/height. A single highlight typically
+    has 1-N rects (one per visual line of selected text).
+    """
+    x: float = Field(..., ge=0, le=1)
+    y: float = Field(..., ge=0, le=1)
+    w: float = Field(..., gt=0, le=1)
+    h: float = Field(..., gt=0, le=1)
+
+
 class Highlight(BaseModel):
     page: int = Field(..., ge=1)
     text: str = Field(..., min_length=1)
     color: str = Field("#FFEB3B", max_length=7)
+    # Optional so highlights persisted before 0.1.8.1 (which had no
+    # visual overlay at all) still validate. Frontend falls back to a
+    # text-only list view when rects is null.
+    rects: list[HighlightRect] | None = None
 
 
 class Note(BaseModel):
