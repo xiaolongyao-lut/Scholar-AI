@@ -4,6 +4,7 @@ import { MainLayout } from './layouts/MainLayout';
 import { WritingProvider } from './contexts/WritingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { PdfTabsProvider } from './contexts/PdfTabsContext';
+import { DiscussionProvider } from './contexts/DiscussionContext';
 import { ToastProvider } from './components/ui/Toast';
 import { CommandPalette } from './components/ui/CommandPalette';
 import { McpPendingCallPoller } from './components/mcp/McpPendingCallPoller';
@@ -46,7 +47,8 @@ const App = () => {
       <ThemeProvider>
         <WritingProvider>
           <PdfTabsProvider>
-            <ToastProvider>
+            <DiscussionProvider>
+              <ToastProvider>
               <Router>
                 <MainLayout>
                   <Suspense fallback={<LazyFallback />}>
@@ -91,6 +93,7 @@ const App = () => {
                 <McpPendingCallPoller />
               </Router>
             </ToastProvider>
+            </DiscussionProvider>
           </PdfTabsProvider>
         </WritingProvider>
       </ThemeProvider>
