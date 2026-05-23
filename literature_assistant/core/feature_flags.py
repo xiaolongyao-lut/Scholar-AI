@@ -117,13 +117,13 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
     ),
     "discussion_streaming": FeatureFlagSpec(
         name="discussion_streaming",
-        default=False,
+        default=True,
         env_var="DISCUSSION_STREAMING_ENABLED",
         label="多智能体讨论流式输出",
         description=(
             "讨论运行过程通过 SSE 实时推送每个 agent 完成事件，前端可看到逐 agent 出货。"
             "关闭时仍走非流式 POST /api/discussion/runs（兼容旧客户端）。"
-            "配合「工作台 Inspector 嵌入完整功能」可在切换页面时不丢任务。"
+            "默认开启，让用户在长讨论中能看到进度。"
         ),
     ),
     "inspector_embed_unified": FeatureFlagSpec(

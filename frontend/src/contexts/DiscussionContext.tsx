@@ -194,7 +194,18 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
   const cancelSession = useCallback(() => {
     if (abortRef.current) {
       abortRef.current.abort();
+      abortRef.current = null;
     }
+    // Don't wait for the async catch/fallback paths to setSession; flip
+    // state synchronously so the UI's "停止等待 · {N}s" pill clears the
+    // instant the user clicks Stop. The backend orchestrator may still run
+    // to completion (we cannot remote-cancel), but the user-facing
+    // discussion is now considered cancelled.
+    setSession((prev) =>
+      prev.state === 'running'
+        ? { ...prev, state: 'cancelled', endedAt: Date.now() }
+        : prev,
+    );
   }, []);
 
   const resetSession = useCallback(() => {

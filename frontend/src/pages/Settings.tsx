@@ -1015,14 +1015,30 @@ function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | num
   const loadSamplingData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // Frontend fallback defaults — used when the backend response is missing
+    // task_defaults entirely or for any individual task the backend forgot.
+    // Keeps the panel usable on older backends + offline / partial responses.
+    const FALLBACK_TASK_DEFAULTS: Record<string, TaskDefaults> = {
+      chat: { temperature: 0.7, top_p: 0.9, top_k: 50, max_tokens: 2048 },
+      inspiration: { temperature: 0.85, top_p: 0.95, top_k: 80, max_tokens: 1024 },
+      extraction: { temperature: 0.1, top_p: 0.5, top_k: 20, max_tokens: 4096 },
+      summarization: { temperature: 0.3, top_p: 0.7, top_k: 30, max_tokens: 2048 },
+      rewrite: { temperature: 0.5, top_p: 0.8, top_k: 40, max_tokens: 2048 },
+    };
     try {
       const data = await getSampling();
-      setTaskDefaults(data?.task_defaults ?? {});
+      const backendDefaults = (data?.task_defaults && typeof data.task_defaults === 'object')
+        ? data.task_defaults
+        : {};
+      setTaskDefaults({ ...FALLBACK_TASK_DEFAULTS, ...backendDefaults });
       setModelMaxTokens(data?.model_max_tokens ?? 32768);
       setUserOverrides(data?.tasks ?? {});
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
+      // Even on backend failure, keep panel renderable with frontend defaults
+      // so users can at least see what the sampling shape looks like.
+      setTaskDefaults(FALLBACK_TASK_DEFAULTS);
     } finally {
       setLoading(false);
     }
