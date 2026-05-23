@@ -2,7 +2,7 @@
 
 Verifies that a freshly built onedir, when launched in a clean APPDATA
 sandbox, creates an EMPTY credentials directory under
-``%APPDATA%/LiteratureAssistant/workspace_artifacts/runtime_state/credentials/``
+``%APPDATA%/LiteratureAssistant/runtime_state/credentials/``
 on first launch.
 
 Failure modes:
@@ -180,9 +180,13 @@ def main() -> int:
                 proc.kill()
 
     expected_app_root = fake_appdata / "LiteratureAssistant"
+    # Post-0.1.8.1: project_paths anchors runtime_state directly under the
+    # user-data root (no intermediate workspace_artifacts/ in the installed
+    # layout). Keep this in sync with literature_assistant.core.project_paths
+    # so the smoke actually inspects the path the bundle writes to.
     expected_creds = (
         expected_app_root
-        / "workspace_artifacts" / "runtime_state" / "credentials"
+        / "runtime_state" / "credentials"
     )
 
     creds_files = _walk_collect(expected_creds)
