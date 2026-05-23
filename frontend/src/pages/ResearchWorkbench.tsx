@@ -240,26 +240,31 @@ function ResearchWorkbenchInner() {
     };
     setMessages((prev) => {
       const next = [...prev, userMsg];
-      // Fire-and-forget the backend call; assistant reply is appended on resolve.
-      // History is the snapshot AT send time (excluding the just-added user msg
-      // since the backend already takes ``query`` separately).
-      const historyPayload = prev.map((m) => ({
-        role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.content,
-      }));
+      // Hit the literature-grounded intelligent chat endpoint with the
+      // current project context + an explicit literature_qa mode so the
+      // answer is anchored to the user's own corpus, not generic web
+      // search. activeProjectId is required server-side for RAG retrieval;
+      // when absent we still send the request so the user gets a clear
+      // "please select a project" error from the backend rather than
+      // silent web-search answers.
       axios
-        .post<{ answer?: string; evidence?: EvidenceRefLike[] }>(
-          `${getApiBaseUrl()}/chat/ask`,
-          { query: text, context: [], history: historyPayload },
+        .post<{ response?: string; evidence_refs?: EvidenceRefLike[] }>(
+          `${getApiBaseUrl()}/api/chat`,
+          {
+            query: text,
+            project_id: activeProjectId || undefined,
+            mode: 'literature_qa',
+            tier: 'thorough',
+          },
           { timeout: 180000 },
         )
         .then(({ data }) => {
           const assistantMsg: ChatMessageData = {
             id: `a-${Date.now()}`,
             role: 'assistant',
-            content: data.answer ?? '',
+            content: data.response ?? '',
             timestamp: new Date().toISOString(),
-            evidence: data.evidence,
+            evidence: data.evidence_refs,
           };
           setMessages((cur) => [...cur, assistantMsg]);
         })
@@ -275,7 +280,7 @@ function ResearchWorkbenchInner() {
         });
       return next;
     });
-  }, []);
+  }, [activeProjectId]);
 
   const drawerEvidence: EvidenceRefLike[] = useMemo(() => {
     const fromMessages = messages.flatMap((m) => m.evidence ?? []);

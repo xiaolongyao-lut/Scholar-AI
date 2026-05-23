@@ -145,13 +145,14 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
           signal: controller.signal,
         });
       } catch (err) {
-        // 404 means feature flag off → fall back to non-streaming path so
-        // users on default-off backends still get a result.
-        if (
+        // 404 (flag off) / 405 (endpoint missing in old build) / 501 / any
+        // non-success that's not a user-initiated abort ⇒ degrade to the
+        // non-streaming endpoint so users on older backends still see a
+        // result. Caller-initiated abort is honored as cancellation.
+        const isStreamUnavailable =
           err instanceof DiscussionStreamError &&
-          err.status === 404 &&
-          !controller.signal.aborted
-        ) {
+          (err.status === 404 || err.status === 405 || err.status >= 500);
+        if (isStreamUnavailable && !controller.signal.aborted) {
           try {
             const result = await discussionApi.runDiscussion(config, {
               signal: controller.signal,
