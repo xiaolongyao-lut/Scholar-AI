@@ -197,6 +197,17 @@ def logs_path(*parts: str) -> Path:
     return WORKSPACE_RUNTIME_STATE_ROOT.joinpath("logs", *parts)
 
 
+def api_port_file_path() -> Path:
+    """Path to the JSON file that pins the running backend's port.
+
+    Written by the backend at startup and by start_desktop.py so the dev
+    frontend (vite proxy) and any other client can discover the real port
+    even when the user picked a non-default ``--port`` or the default 8000
+    was taken and start_desktop picked a free port automatically.
+    """
+    return WORKSPACE_RUNTIME_STATE_ROOT.joinpath("api-port.json")
+
+
 def ensure_project_directories() -> None:
     """Create stable workspace roots required by user-facing entry points."""
 

@@ -132,6 +132,15 @@ def main() -> None:
     # Start uvicorn in daemon thread (IN-PROCESS — single process)
     host = "127.0.0.1"
 
+    # 0.1.8.1 port-bridge: persist the chosen port so the dev frontend
+    # (vite proxy) and the installed shell window converge on the same
+    # value. Best-effort — never blocks startup.
+    try:
+        from literature_assistant.core.python_adapter_server import write_api_port_file
+        write_api_port_file(port)
+    except Exception as _port_exc:
+        print(f"[启动器] api-port.json 写入失败（忽略）: {_port_exc}")
+
     def _run_server():
         import uvicorn
         from literature_assistant.core.python_adapter_server import app

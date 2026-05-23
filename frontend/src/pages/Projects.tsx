@@ -192,7 +192,7 @@ export function Projects() {
       setNewFolder('');
       setActiveProjectId(created.project_id);
       await loadProjects();
-      navigate('/writing/draft');
+      navigate('/knowledge');
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -423,7 +423,7 @@ export function Projects() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.2, delay: i * 0.05 }}
-                onClick={() => { if (!batchMode) { setActiveProjectId(project.id); navigate('/writing/draft'); } else { toggleSelect(project.id, { stopPropagation: () => {} } as React.MouseEvent); } }}
+                onClick={() => { if (!batchMode) { setActiveProjectId(project.id); navigate('/knowledge'); } else { toggleSelect(project.id, { stopPropagation: () => {} } as React.MouseEvent); } }}
                 className={cn(
                   'glass-card p-5 rounded-lg group cursor-pointer transition-all relative',
                   selectedIds.has(project.id) ? 'border-primary/50 bg-primary/3 ring-1 ring-primary/20' : 'hover:border-primary/30'

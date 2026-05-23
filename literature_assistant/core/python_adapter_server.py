@@ -27,7 +27,7 @@ try:
 except ImportError:
     pass
 
-from project_paths import FRONTEND_ROOT, runtime_state_path, ensure_directory
+from project_paths import FRONTEND_ROOT, runtime_state_path, ensure_directory, api_port_file_path
 
 # Import configuration and models
 from datetime_utils import to_iso_z
@@ -187,7 +187,68 @@ async def _lifespan(app: FastAPI):
                 print(f"[route-audit] DUPLICATE ({count}x) {method} {path}")
         else:
             print(f"[route-audit] {len(seen)} unique (method, path) routes; no duplicates")
-    yield
+
+    # 0.1.8.1 port-bridge: write the live port to a well-known file so the
+    # dev frontend's vite proxy can target it even when the user passes
+    # --port <other> or start_desktop.py picked a free port. start_desktop
+    # writes the file before uvicorn.run; this hook covers the bare
+    # `uvicorn ... --port N` case by parsing sys.argv. Best-effort; never
+    # fails startup.
+    try:
+        _write_api_port_from_argv()
+    except Exception as _port_exc:
+        logger.warning("api_port_file write skipped: %s", _port_exc)
+
+    try:
+        yield
+    finally:
+        try:
+            _api_port_file = api_port_file_path()
+            if _api_port_file.exists():
+                _api_port_file.unlink()
+        except OSError:
+            pass
+
+
+def _write_api_port_from_argv() -> None:
+    """Detect --port from this process's argv and persist it for vite proxy."""
+    port = 8000  # uvicorn default
+    argv = sys.argv
+    for i, arg in enumerate(argv):
+        if arg == "--port" and i + 1 < len(argv):
+            try:
+                port = int(argv[i + 1])
+                break
+            except ValueError:
+                pass
+        elif arg.startswith("--port="):
+            try:
+                port = int(arg.split("=", 1)[1])
+                break
+            except ValueError:
+                pass
+    write_api_port_file(port)
+
+
+def write_api_port_file(port: int) -> None:
+    """Atomic write of the api port file (also imported by start_desktop)."""
+    import json
+    import tempfile
+    from datetime import datetime, timezone
+    target = api_port_file_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "port": int(port),
+        "pid": os.getpid(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=str(target.parent),
+        prefix=target.name + ".", suffix=".tmp", delete=False,
+    ) as fh:
+        json.dump(payload, fh)
+        tmp = Path(fh.name)
+    os.replace(tmp, target)
 
 
 app = FastAPI(

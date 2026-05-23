@@ -38,19 +38,32 @@ import { useToast } from '@/components/ui/Toast';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 /* ─── NavItem: Single sidebar link ─── */
-function NavItem({ to, icon, label, end, collapsed }: { to: string; icon: React.ReactNode; label: string; end?: boolean; collapsed?: boolean }) {
+function NavItem({ to, icon, label, end, collapsed, activePaths }: { to: string; icon: React.ReactNode; label: string; end?: boolean; collapsed?: boolean; activePaths?: string[] }) {
+  const location = useLocation();
+  // When `activePaths` is supplied, the item lights up on every path that
+  // starts with any of those prefixes — so the "知识库" tab stays
+  // highlighted while the user is inside the PDF reader at
+  // /workbench/paper/..., the "智能研读" tab stays highlighted inside
+  // /dialog, and so on. Falls back to NavLink's default isActive when no
+  // activePaths is given.
+  const customActive = activePaths
+    ? activePaths.some(prefix => prefix === '/'
+        ? location.pathname === '/'
+        : location.pathname === prefix || location.pathname.startsWith(prefix + '/'))
+    : null;
   return (
     <NavLink
       to={to}
       end={end}
-      className={({ isActive }) =>
-        cn(
+      className={({ isActive }) => {
+        const active = customActive ?? isActive;
+        return cn(
           'flex items-center gap-3 px-3 py-2.5 font-label text-sm transition-colors relative group',
-          isActive
+          active
             ? 'text-white bg-white/10 border-l-[3px] border-sidebar-accent font-medium'
             : 'text-white/55 hover:text-white hover:bg-white/5 border-l-[3px] border-transparent'
-        )
-      }
+        );
+      }}
     >
       {icon}
       {!collapsed && <span className="truncate">{label}</span>}
@@ -487,8 +500,21 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
 
         {/* Navigation */}
         <nav className="flex-1 px-2 flex flex-col gap-0.5 overflow-y-auto custom-scrollbar">
-          <NavItem to="/" icon={<BookOpen size={20} />} label={t('nav.workbench')} end collapsed={leftNavCollapsed} />
-          <NavItem to="/knowledge" icon={<Database size={20} />} label={t('nav.knowledge')} collapsed={leftNavCollapsed} />
+          <NavItem
+            to="/"
+            icon={<BookOpen size={20} />}
+            label={t('nav.workbench')}
+            end
+            collapsed={leftNavCollapsed}
+            activePaths={['/', '/dialog', '/chat', '/inspiration']}
+          />
+          <NavItem
+            to="/knowledge"
+            icon={<Database size={20} />}
+            label={t('nav.knowledge')}
+            collapsed={leftNavCollapsed}
+            activePaths={['/knowledge', '/library', '/workbench/paper']}
+          />
 
           <NavGroup
             icon={<PencilLine size={20} />}
@@ -505,8 +531,20 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
             ]}
           />
 
-          <NavItem to="/wiki" icon={<BookMarked size={20} />} label="Wiki" collapsed={leftNavCollapsed} />
-          <NavItem to="/discussion" icon={<Users size={20} />} label={t('nav.multi_agent_discussion')} collapsed={leftNavCollapsed} />
+          <NavItem
+            to="/wiki"
+            icon={<BookMarked size={20} />}
+            label="Wiki"
+            collapsed={leftNavCollapsed}
+            activePaths={['/wiki', '/workbench/wiki']}
+          />
+          <NavItem
+            to="/discussion"
+            icon={<Users size={20} />}
+            label={t('nav.multi_agent_discussion')}
+            collapsed={leftNavCollapsed}
+            activePaths={['/discussion', '/workbench/discussion']}
+          />
           <NavItem to="/projects" icon={<FolderKanban size={20} />} label={t('nav.projects')} collapsed={leftNavCollapsed} />
           <NavItem to="/volume" icon={<FileText size={20} />} label={t('nav.volume')} collapsed={leftNavCollapsed} />
           <NavItem to="/jobs" icon={<Activity size={20} />} label={t('nav.jobs')} collapsed={leftNavCollapsed} />
@@ -552,18 +590,25 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
             )}
             <ConfigPopover open={isConfigOpen} onClose={() => setIsConfigOpen(false)} />
 
-            {/* Project selector */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-high rounded-full border border-outline-variant/40 shadow-sm">
-              <Folder size={14} className="text-primary/60" />
+            {/* Project selector — visually emphasised so users notice that
+                切换项目 changes the knowledge base, dialog history, and
+                writing context, not just a label. Soft primary tint +
+                explicit "当前项目" prefix make the action discoverable. */}
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-full border border-primary/30 shadow-sm hover:bg-primary/10 transition-colors"
+              title="切换项目会同时切换文献库、对话历史和写作内容"
+            >
+              <Folder size={14} className="text-primary/70" />
+              <span className="text-[10px] font-label uppercase tracking-wide text-primary/70 select-none">当前项目</span>
               {projectLoading ? (
                 <span className="text-[11px] font-label font-medium text-foreground/40">项目加载中...</span>
               ) : headerProjects.length > 0 ? (
                 <select
                   value={selectedProjectId}
                   onChange={(e) => handleProjectSelectorChange(e.target.value)}
-                  title="当前项目"
-                  aria-label="当前项目"
-                  className="bg-transparent text-[11px] font-label font-medium text-foreground focus:outline-none cursor-pointer"
+                  title="切换项目会同时切换文献库、对话历史和写作内容"
+                  aria-label="切换当前项目"
+                  className="bg-transparent text-[12px] font-label font-semibold text-foreground focus:outline-none cursor-pointer"
                 >
                   {isProjectsRoute && <option value="">全部项目</option>}
                   {headerProjects.map(project => (
