@@ -16,7 +16,7 @@ from typing import Any, Mapping, Callable
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_chunk
 from chunk_models import EnrichedChunk
-from project_paths import output_path
+from project_paths import output_path, project_data_path
 from models import (
     ProjectPayload,
     SectionPayload,
@@ -84,16 +84,32 @@ def _get_project_source_folder(project_id: str) -> str:
 def _resolve_data_dir(project_id: str) -> tuple[Path, Path]:
     """Return (doc_store_dir, chunk_store_dir) for a project.
 
-    When a project has a source_folder, both stores are placed in
-    ``{source_folder}/.scholarai/`` so the index lives alongside
-    the literature files and can be moved/backed-up with them.
+    Default (post-0.1.8.1): one unified tree under
+    ``<user_root>/projects/{safe_id}/{doc_store,chunk_store}/`` so every
+    knowledge base lives in the same installed-app folder regardless of
+    where the user's PDFs sit on disk. The previous layout, which scattered
+    indexes into ``{source_folder}/.scholarai/`` alongside each library,
+    is preserved behind ``LITASSIST_USE_SOURCE_FOLDER_INDEX=1`` for users
+    who relied on that move-with-the-folder behaviour.
+
+    Upgrading from <=0.1.8-alpha: see CHANGELOG 0.1.8.1 for the one-time
+    manual move (``{source_folder}/.scholarai/*`` →
+    ``<user_root>/projects/{safe_id}/``). The app does not auto-migrate.
     """
-    source_folder = _get_project_source_folder(project_id)
-    if source_folder:
-        base = Path(source_folder).expanduser().resolve() / _SCHOLAR_SUBDIR
-        base.mkdir(parents=True, exist_ok=True)
-        return base, base
-    return _DOC_STORE_DIR, _CHUNK_STORE_DIR
+    use_legacy = os.environ.get("LITASSIST_USE_SOURCE_FOLDER_INDEX", "").strip() == "1"
+    if use_legacy:
+        source_folder = _get_project_source_folder(project_id)
+        if source_folder:
+            base = Path(source_folder).expanduser().resolve() / _SCHOLAR_SUBDIR
+            base.mkdir(parents=True, exist_ok=True)
+            return base, base
+        return _DOC_STORE_DIR, _CHUNK_STORE_DIR
+
+    doc_dir = project_data_path(project_id, "doc_store")
+    chunk_dir = project_data_path(project_id, "chunk_store")
+    doc_dir.mkdir(parents=True, exist_ok=True)
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    return doc_dir, chunk_dir
 
 
 # --- Phase 1 split (2026-05-07): pure helpers extracted to sub-modules ---

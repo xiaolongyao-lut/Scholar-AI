@@ -15,7 +15,38 @@ CORE_ROOT = Path(__file__).resolve().parent
 LITERATURE_ASSISTANT_ROOT = CORE_ROOT.parent
 REPO_ROOT = LITERATURE_ASSISTANT_ROOT.parent
 FRONTEND_ROOT = REPO_ROOT / "frontend"
-WORKSPACE_ARTIFACTS_ROOT = REPO_ROOT / "workspace_artifacts"
+
+
+def _resolve_user_data_root() -> Path:
+    """Return the writable root for installed-app data and logs.
+
+    Order: explicit env > runtime_hook env (set when frozen) > %APPDATA% when
+    running as a packaged binary > the dev repo workspace.
+
+    Why: PyInstaller's runtime_hook.py wires ``LITERATURE_ASSISTANT_USER_ROOT``
+    to ``%APPDATA%/LiteratureAssistant`` so the installed app does not try to
+    write under ``Program Files``. In dev, we keep using the repo-local
+    ``workspace_artifacts/`` tree.
+    """
+    explicit = os.environ.get("LITERATURE_ASSISTANT_USER_ROOT", "").strip()
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+
+    import sys
+    if getattr(sys, "frozen", False):
+        appdata = os.environ.get("APPDATA", "").strip()
+        if appdata:
+            return (Path(appdata) / "LiteratureAssistant").resolve()
+        return (Path(sys.executable).parent / "user-data").resolve()
+
+    return (REPO_ROOT / "workspace_artifacts").resolve()
+
+
+USER_DATA_ROOT = _resolve_user_data_root()
+# When frozen, workspace_artifacts moves to %APPDATA%/LiteratureAssistant/;
+# in dev it stays at the repo root. Either way, every other anchor below is
+# derived from this so logs + project data live in one place.
+WORKSPACE_ARTIFACTS_ROOT = USER_DATA_ROOT
 WORKSPACE_AI_ROOT = REPO_ROOT / "workspace_ai"
 WORKSPACE_TESTS_ROOT = REPO_ROOT / "workspace_tests"
 WORKSPACE_GENERATED_ROOT = WORKSPACE_ARTIFACTS_ROOT / "generated"
@@ -146,6 +177,24 @@ def wiki_page_path(kind: str, slug: str) -> Path:
     if not kind_text or not slug_text:
         raise ValueError("kind and slug are required")
     return wiki_generated_root(kind_text, f"{slug_text}.md")
+
+
+def project_data_path(project_id: str, *parts: str) -> Path:
+    """Return a path under the per-project data workspace.
+
+    Used by chunk store / doc store so that multiple knowledge bases write
+    into one ``<user_root>/projects/{safe_id}/`` tree instead of scattering
+    ``.scholarai/`` under each source folder.
+    """
+    safe_id = "".join(c for c in str(project_id) if c.isalnum() or c in "_-")
+    if not safe_id:
+        safe_id = "_default"
+    return WORKSPACE_ARTIFACTS_ROOT.joinpath("projects", safe_id, *parts)
+
+
+def logs_path(*parts: str) -> Path:
+    """Return a path under the unified application log folder."""
+    return WORKSPACE_RUNTIME_STATE_ROOT.joinpath("logs", *parts)
 
 
 def ensure_project_directories() -> None:

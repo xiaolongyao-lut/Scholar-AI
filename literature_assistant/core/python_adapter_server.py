@@ -27,7 +27,7 @@ try:
 except ImportError:
     pass
 
-from project_paths import FRONTEND_ROOT, runtime_state_path
+from project_paths import FRONTEND_ROOT, runtime_state_path, ensure_directory
 
 # Import configuration and models
 from datetime_utils import to_iso_z
@@ -73,10 +73,38 @@ from recovery_metrics_exporter import get_recovery_metrics_collector
 from recovery_telemetry import get_recovery_telemetry
 
 # Logger setup
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+# Stdout + rotating file. Disk log so 4xx/5xx survives after the terminal
+# closes; the env var lets packaging override the location, while the
+# default sits under workspace_artifacts/ (gitignored).
+_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+_LOG_LEVEL_NAME = os.environ.get("LITASSIST_LOG_LEVEL", "INFO").upper()
+_LOG_LEVEL = getattr(logging, _LOG_LEVEL_NAME, logging.INFO)
+logging.basicConfig(level=_LOG_LEVEL, format=_LOG_FORMAT)
+
+if os.environ.get("LITASSIST_DISABLE_FILE_LOG") != "1":
+    from logging.handlers import RotatingFileHandler
+    try:
+        _log_dir = ensure_directory(runtime_state_path("logs"))
+        _file_handler = RotatingFileHandler(
+            _log_dir / "backend.log",
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        _file_handler.setLevel(_LOG_LEVEL)
+        _file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+        _root_logger = logging.getLogger()
+        if not any(
+            isinstance(h, RotatingFileHandler)
+            and getattr(h, "baseFilename", "") == str(_file_handler.baseFilename)
+            for h in _root_logger.handlers
+        ):
+            _root_logger.addHandler(_file_handler)
+    except OSError as _log_exc:
+        logging.getLogger(__name__).warning(
+            "Disk log disabled — could not create log file: %s", _log_exc
+        )
+
 logger = logging.getLogger("PipelineAdapter")
 
 
@@ -206,6 +234,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """Return structured error for Pydantic validation failures."""
     first = exc.errors()[0] if exc.errors() else {}
     field = " -> ".join(str(l) for l in first.get("loc", [])) if first else None
+    trace_id = getattr(request.state, "trace_id", None)
+    logger.warning(
+        "422 validation_error trace=%s %s %s field=%s msg=%s",
+        trace_id, request.method, request.url.path, field, first.get("msg", ""),
+    )
     return JSONResponse(
         status_code=422,
         content=ErrorResponse(
@@ -213,7 +246,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 code=ErrorCode.VALIDATION_ERROR,
                 message=first.get("msg", "请求参数验证失败"),
                 field=field,
-                trace_id=getattr(request.state, "trace_id", None),
+                trace_id=trace_id,
             )
         ).model_dump(),
     )
@@ -229,13 +262,21 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         500: ErrorCode.INTERNAL_ERROR,
         502: ErrorCode.LLM_CONNECTION_ERROR,
     }
+    trace_id = getattr(request.state, "trace_id", None)
+    # 4xx logged at WARNING so operators can grep PDF-load / not-found
+    # failures from the on-disk log; 5xx escalated to ERROR.
+    log_method = logger.error if exc.status_code >= 500 else logger.warning
+    log_method(
+        "%d http_exception trace=%s %s %s detail=%s",
+        exc.status_code, trace_id, request.method, request.url.path, exc.detail,
+    )
     return JSONResponse(
         status_code=exc.status_code,
         content=ErrorResponse(
             error=ErrorDetail(
                 code=code_map.get(exc.status_code, ErrorCode.INTERNAL_ERROR),
                 message=str(exc.detail),
-                trace_id=getattr(request.state, "trace_id", None),
+                trace_id=trace_id,
             )
         ).model_dump(),
     )
@@ -255,6 +296,44 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             )
         ).model_dump(),
     )
+
+
+# ---------------------------------------------------------------------------
+# Client-side error sink — forwards uncaught frontend errors to backend.log
+# ---------------------------------------------------------------------------
+
+_client_error_logger = logging.getLogger("ClientError")
+
+
+@app.post("/api/client-error", tags=["System"])
+async def report_client_error(request: Request) -> dict[str, Any]:
+    """Sink for frontend ErrorBoundary + window.onerror + unhandledrejection.
+
+    Stays loose-typed so the browser can ship whatever it has; we cap field
+    sizes server-side so a runaway stack cannot bloat the log.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    def _clip(value: Any, limit: int) -> str:
+        text = "" if value is None else str(value)
+        return text if len(text) <= limit else text[:limit] + f"…(+{len(text) - limit} chars)"
+
+    component = _clip(payload.get("component"), 120)
+    kind = _clip(payload.get("kind"), 40) or "render"
+    message = _clip(payload.get("message"), 1000)
+    stack = _clip(payload.get("stack"), 4000)
+    url = _clip(payload.get("url"), 500)
+    ua = _clip(payload.get("userAgent"), 300)
+    trace_id = getattr(request.state, "trace_id", None)
+
+    _client_error_logger.warning(
+        "client_error trace=%s kind=%s component=%s url=%s message=%s stack=%s ua=%s",
+        trace_id, kind, component, url, message, stack, ua,
+    )
+    return {"ok": True, "trace_id": trace_id}
 
 @app.middleware("http")
 async def recovery_observability_middleware(request: Request, call_next):

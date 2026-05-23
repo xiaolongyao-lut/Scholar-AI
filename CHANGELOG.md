@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.8.1 - 2026-05-23
+
+PDF 阅读器报错更易读、数据和日志集中到一个地方。
+
+亮点：
+
+- **PDF 加载失败现在能看到原因**：以前不管什么原因都只显示一句"PDF 加载失败"，现在会显示具体出错原因（比如"文件不存在: foo.pdf"或"无原始文件路径记录"），下方有"重试"按钮。
+- **所有数据集中到一个文件夹**：安装版的所有日志、所有项目的切块和索引数据，现在都放在同一个根目录下 —— Windows 上是 `%APPDATA%\LiteratureAssistant\`。每个知识库放在 `projects\{项目ID}\` 子文件夹里，互不干扰。同一个项目下做多次卷次分析时，切块是共享的，相关性排序和回答 AI 都能看到全部切块。
+- **统一日志文件**：在 `%APPDATA%\LiteratureAssistant\runtime_state\logs\backend.log`。文件超过 10MB 自动切分，保留最近 5 份。后端任何报错、卷次分析的去重统计、前端崩溃都写在这里，遇到问题时直接打开看就行。
+
+### 升级提示（只有 0.1.8-alpha 或更早版本的老用户需要操作）
+
+旧版本会把每个项目的索引和切块文件放在 **文献库文件夹里的一个 `.scholarai` 隐藏子目录**中。新版改成 **统一放到 `%APPDATA%\LiteratureAssistant\projects\{项目ID}\` 下**。
+
+如果你想保留旧数据：
+
+1. 在文件资源管理器的地址栏粘贴 `%APPDATA%\LiteratureAssistant\projects\` 回车，确认这个目录存在
+2. 找到旧的文献库文件夹，打开里面的 `.scholarai` 子目录
+3. 把里面的 `{项目ID}.json` 文件剪切到 `%APPDATA%\LiteratureAssistant\projects\{项目ID}\doc_store\`
+4. 把剩下的（`{项目ID}_chunks.json` 或 `{项目ID}` 这个子文件夹）剪切到 `%APPDATA%\LiteratureAssistant\projects\{项目ID}\chunk_store\`
+5. 多个项目就重复一遍
+
+**不剪切也没关系**：下次在新版里打开项目，会重新读取一次文献并切块（耗时几分钟到几十分钟，看文献库大小）。新装的用户什么也不用做。
+
+仍想用旧的"索引放在文献库旁边"行为的：启动应用前设置环境变量 `LITASSIST_USE_SOURCE_FOLDER_INDEX=1`。
+
+
+
 ## 0.1.8-alpha - 2026-05-23
 
 Visual identity refresh on top of 0.1.7-alpha. Packaging-and-brand-only iteration — no backend/frontend behavior change, no OpenAPI contract change vs 0.1.7-alpha.

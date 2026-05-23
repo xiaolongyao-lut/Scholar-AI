@@ -2,9 +2,9 @@
 
 Scholar AI 是面向文献综述、课题调研和论文写作的本地优先研究工作台。它适合“读几十到上百篇文献、围绕同一问题反复追问、每个观点都要能追溯到具体页码”的场景：把 PDF 阅读、证据检索、多智能体讨论、引用校验、写作和知识沉淀放在同一个桌面应用里。
 
-最新版本 [v0.1.8-alpha](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8-alpha)（2026-05-23）·
-[Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/Scholar-AI-Setup-0.1.8-alpha-windows-x64.exe) ·
-[SHA256](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/SHA256SUMS.txt)
+最新版本 [v0.1.8.1](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.1)（2026-05-23）·
+[Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.1/Scholar-AI-Setup-0.1.8.1-windows-x64.exe) ·
+[SHA256](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.1/SHA256SUMS.txt)
 
 当前是 alpha / dogfood 阶段，Windows 安装包未做代码签名，首次安装可能触发 SmartScreen 警告。
 
@@ -23,9 +23,9 @@ Scholar AI 是面向文献综述、课题调研和论文写作的本地优先研
 
 普通用户建议直接下载 Windows 安装包：
 
-- [v0.1.8-alpha 发布页](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8-alpha)
-- [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/Scholar-AI-Setup-0.1.8-alpha-windows-x64.exe)
-- [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8-alpha/SHA256SUMS.txt)
+- [v0.1.8.1 发布页](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.1)
+- [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.1/Scholar-AI-Setup-0.1.8.1-windows-x64.exe)
+- [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.1/SHA256SUMS.txt)
 
 ## 界面预览
 
@@ -167,6 +167,18 @@ API、MCP、Skill 的本地凭证配置见 [API_CONFIGURATION.md](API_CONFIGURAT
 ## 隐私与凭证
 
 研究资料、运行配置、第三方服务凭证由用户在本机管理。API key 永不出现在前端 localStorage、控制台日志或网络响应；后端走 `env_refs` 引用，凭证不写进配置文件。MCP 工具调用前必须人工审批。
+
+## 数据和日志放在哪
+
+**安装版（Windows）**：所有数据集中在 `%APPDATA%\LiteratureAssistant\`，可直接在文件资源管理器地址栏粘贴这串地址回车打开。
+
+- 知识库切块和索引：`projects\{项目ID}\`（每个项目一个子文件夹）
+- 应用日志：`runtime_state\logs\backend.log`（自动轮转，保留最近 5 份）
+- 浏览器配置 / 临时状态：`runtime_state\app-profile\`
+
+遇到问题时，把 `backend.log` 拷一份发我或附在反馈里就行 —— 后端报错、PDF 加载失败原因、卷次分析的去重统计、前端崩溃都会写在这一个文件里。
+
+**从源码运行**：上面这些路径对应到仓库内的 `workspace_artifacts\`。
 
 ## 路线图
 

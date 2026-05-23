@@ -71,6 +71,8 @@ export function PdfViewer({
   const [showAIBtn, setShowAIBtn] = useState(false);
   const [btnPos, setBtnPos] = useState({ x: 0, y: 0 });
   const [showPanel, setShowPanel] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   // When the parent passes a new initialPage (e.g. evidence deep-link to
   // a different page in the same PDF), jump to it. Clamped after we know
@@ -88,6 +90,7 @@ export function PdfViewer({
   }, [pageNumber, onPageChange]);
 
   const onDocumentLoadSuccess = useCallback(async (pdf: PdfDocumentLike) => {
+    setLoadError(null);
     setNumPages(pdf.numPages);
     if (!onOutlineLoaded) return;
     if (typeof pdf.getOutline !== 'function') {
@@ -102,6 +105,43 @@ export function PdfViewer({
       onOutlineLoaded(null);
     }
   }, [onOutlineLoaded]);
+
+  // react-pdf swallows fetch failures into a generic "load failed" UI;
+  // we need the real status/message so users can act ("文件不存在" vs
+  // "无原始文件路径记录" vs network) and so devs can grep the browser
+  // console. We probe the URL ourselves so the on-disk backend log line
+  // and the surfaced text agree.
+  const handleLoadError = useCallback(async (err: Error) => {
+    let detail = err?.message || '未知错误';
+    let status: number | null = null;
+    try {
+      const probe = await fetch(url, { method: 'GET', cache: 'no-store' });
+      status = probe.status;
+      if (!probe.ok) {
+        try {
+          const body = await probe.json();
+          const msg = body?.error?.message || body?.detail;
+          if (typeof msg === 'string' && msg.length > 0) detail = msg;
+        } catch {
+          /* non-JSON body — keep err.message */
+        }
+      }
+    } catch {
+      /* probe itself failed — likely network/CORS; keep err.message */
+    }
+    if (typeof console !== 'undefined' && typeof console.error === 'function') {
+      console.error('[PdfViewer] document load failed', {
+        materialId, url, status, detail, errorName: err?.name, errorMessage: err?.message,
+      });
+    }
+    const prefix = status ? `PDF 加载失败（HTTP ${status}）` : 'PDF 加载失败';
+    setLoadError(`${prefix}：${detail}`);
+  }, [url, materialId]);
+
+  const handleRetry = useCallback(() => {
+    setLoadError(null);
+    setLoadAttempt((n) => n + 1);
+  }, []);
 
   const handleMouseUp = useCallback(() => {
     const sel = window.getSelection();
@@ -169,10 +209,26 @@ export function PdfViewer({
         {/* PDF pages */}
         <div className="flex-1 overflow-auto flex flex-col items-center py-4 gap-4" onMouseUp={handleMouseUp}>
           <Document
+            key={loadAttempt}
             file={url}
             onLoadSuccess={onDocumentLoadSuccess}
+            onLoadError={handleLoadError}
+            onSourceError={handleLoadError}
             loading={<div className="text-sm text-foreground/40 py-8">加载 PDF 中...</div>}
-            error={<div className="text-sm text-red-500 py-8">PDF 加载失败</div>}
+            error={
+              <div className="flex flex-col items-center gap-3 py-8 px-4 text-center">
+                <div className="text-sm text-red-600 max-w-md break-words">
+                  {loadError ?? 'PDF 加载失败'}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="rounded border border-outline-variant px-3 py-1 text-xs text-foreground/70 hover:bg-surface-high hover:text-foreground"
+                >
+                  重试
+                </button>
+              </div>
+            }
           >
             <Page pageNumber={pageNumber} scale={scale} />
           </Document>

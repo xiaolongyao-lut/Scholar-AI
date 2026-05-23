@@ -9,6 +9,7 @@ affecting the live endpoint behaviour.
 from pathlib import Path
 from time import perf_counter
 from typing import Any
+import os
 
 from fastapi import HTTPException, Query
 
@@ -46,7 +47,7 @@ async def create_project(request: CreateProjectRequest) -> ProjectPayload:
     )
     d = project.to_dict()
     d["source_folder"] = str(project.metadata.get("source_folder", ""))
-    if request.source_folder:
+    if request.source_folder and os.environ.get("LITASSIST_USE_SOURCE_FOLDER_INDEX", "").strip() == "1":
         try:
             (Path(request.source_folder).expanduser().resolve() / _rr._SCHOLAR_SUBDIR).mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -123,7 +124,7 @@ async def update_project_source_folder(
     updated = store.update_project(project_id, metadata=new_metadata)
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to update project metadata")
-    if source_folder.strip():
+    if source_folder.strip() and os.environ.get("LITASSIST_USE_SOURCE_FOLDER_INDEX", "").strip() == "1":
         try:
             (Path(source_folder.strip()).expanduser().resolve() / _rr._SCHOLAR_SUBDIR).mkdir(parents=True, exist_ok=True)
         except OSError as exc:

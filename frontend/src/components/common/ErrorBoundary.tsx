@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { reportClientError } from '@/services/clientErrorReporter';
 
 interface ErrorBoundaryProps {
   /** Friendly Chinese message shown to the user. Default works for any pane. */
@@ -41,6 +42,19 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     if (typeof console !== 'undefined' && typeof console.error === 'function') {
       console.error('[Workbench ErrorBoundary]', error, info);
     }
+    // Forward to backend.log so server-side grep covers render crashes
+    // too. componentStack is the first line of info — sufficient to
+    // locate the failing pane without leaking the whole tree.
+    const componentStack = (info.componentStack || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)[0];
+    reportClientError({
+      kind: 'render',
+      component: componentStack || this.props.fallbackTitle,
+      message: error?.message ?? String(error),
+      stack: error?.stack,
+    });
   }
 
   reset = (): void => {

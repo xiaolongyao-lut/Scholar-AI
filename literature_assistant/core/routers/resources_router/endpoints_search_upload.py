@@ -211,8 +211,10 @@ async def search_chunks(
             if folder_path.is_dir():
                 candidate_payload = _rr._collect_pending_scan_candidates(project_id, folder_path)
                 pending_candidates = list(candidate_payload["pending"])
+                pending_total = len(pending_candidates)
                 ingest_meta["skipped"] = len(candidate_payload["skipped_results"])
                 ingest_meta["failed"] = len(candidate_payload["failed_results"])
+                ingest_meta["already_indexed"] = len(candidate_payload.get("existing_fingerprints") or [])
 
                 zotero_title_map = _rr._load_zotero_title_map(folder_path)
                 if normalized_ingest_mode == "query":
@@ -224,6 +226,14 @@ async def search_chunks(
                     )
 
                 ingest_meta["queued"] = len(pending_candidates)
+                _rr.logger.info(
+                    "chunks_search_ingest: project_id=%s mode=%s query=%r "
+                    "pending_total=%d already_indexed=%d query_selected=%d "
+                    "skipped=%d failed=%d source_folder=%s",
+                    project_id, normalized_ingest_mode, query[:80],
+                    pending_total, ingest_meta["already_indexed"], len(pending_candidates),
+                    ingest_meta["skipped"], ingest_meta["failed"], folder_path,
+                )
                 if pending_candidates:
                     ingest_payload = _rr._ingest_pending_candidates(
                         project_id,
@@ -239,10 +249,21 @@ async def search_chunks(
                     ingest_meta["indexed"] = int(ingest_payload["indexed"])
                     ingest_meta["failed"] = int(ingest_meta["failed"]) + int(ingest_payload["failed"])
                     ingest_meta["workers"] = int(ingest_payload["workers"])
+                    _rr.logger.info(
+                        "chunks_search_ingest_done: project_id=%s indexed=%d failed=%d workers=%d",
+                        project_id, ingest_meta["indexed"], ingest_meta["failed"], ingest_meta["workers"],
+                    )
             else:
                 ingest_meta["error"] = f"source_folder 无法访问: {folder_path}"
+                _rr.logger.warning(
+                    "chunks_search_ingest_skip: project_id=%s reason=source_folder_unreachable path=%s",
+                    project_id, folder_path,
+                )
         else:
             ingest_meta["error"] = "项目未配置 source_folder，已跳过前置入库"
+            _rr.logger.warning(
+                "chunks_search_ingest_skip: project_id=%s reason=no_source_folder", project_id,
+            )
 
     chunk_store = _rr._ensure_project_chunks(project_id)
     all_chunks: list[dict[str, Any]] = []
@@ -274,6 +295,9 @@ async def serve_document_file(material_id: str):
     store = _rr.get_writing_resource_store()
     material = store.get_material(material_id)
     if not material:
+        _rr.logger.warning(
+            "serve_document_file: material_not_found material_id=%s", material_id
+        )
         raise HTTPException(status_code=404, detail=f"素材不存在: {material_id}")
 
     project_id = material.project_id
@@ -282,6 +306,10 @@ async def serve_document_file(material_id: str):
     source_relative = doc_entry.get("source_relative_path", "")
 
     if not source_relative:
+        _rr.logger.warning(
+            "serve_document_file: no_source_path material_id=%s project_id=%s",
+            material_id, project_id,
+        )
         raise HTTPException(status_code=404, detail="无原始文件路径记录")
 
     source_folder = _rr._get_project_source_folder(project_id)
@@ -296,6 +324,11 @@ async def serve_document_file(material_id: str):
         pass
 
     if not candidate.exists():
+        _rr.logger.warning(
+            "serve_document_file: file_missing material_id=%s project_id=%s "
+            "source_folder=%s source_relative=%s resolved=%s",
+            material_id, project_id, source_folder, source_relative, candidate,
+        )
         raise HTTPException(status_code=404, detail=f"文件不存在: {candidate.name}")
 
     from fastapi.responses import FileResponse
