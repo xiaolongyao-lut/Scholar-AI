@@ -1,4 +1,4 @@
-import { FileText } from 'lucide-react';
+import { FileText, Globe, Wrench } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { locateChunk, type ChunkLocator } from '@/services/resourcesApi';
 import { cn } from '@/lib/utils';
@@ -45,6 +45,12 @@ export interface EvidenceRefLike {
   source?: string | null;
   /** Optional opaque id for cross-pane selection bus (Slice 3). */
   evidence_id?: string | null;
+  /**
+   * B2 (0.1.8.2): provenance classification so the UI can visually
+   * distinguish local literature (📄) from web search (🌐) and MCP tool
+   * results (🔧). Default 'local' when absent (older payloads).
+   */
+  source_kind?: 'local' | 'web' | 'mcp' | null;
 }
 
 interface EvidencePillProps {
@@ -117,7 +123,13 @@ export function EvidencePill({
   };
 
   const label = friendlyLabel(evidence);
-  const tooltip = title ?? evidence.text ?? '在文献中打开此证据';
+  // B2 (0.1.8.2): kind-aware icon + tooltip suffix so users can tell local
+  // literature from external web/MCP sources at a glance.
+  const kind = evidence.source_kind ?? 'local';
+  const KindIcon = kind === 'web' ? Globe : kind === 'mcp' ? Wrench : FileText;
+  const kindHint =
+    kind === 'web' ? '（网络搜索）' : kind === 'mcp' ? '（MCP 工具）' : '';
+  const tooltip = (title ?? evidence.text ?? '在文献中打开此证据') + kindHint;
 
   return (
     <button
@@ -128,16 +140,21 @@ export function EvidencePill({
       title={tooltip}
       aria-pressed={selected ? true : undefined}
       data-evidence-id={evidence.evidence_id ?? evidence.chunk_id ?? undefined}
+      data-source-kind={kind}
       className={cn(
         'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         selected
           ? 'border-primary bg-primary/10 text-primary'
-          : 'border-outline-variant bg-surface-low text-foreground/75 hover:border-primary/60 hover:bg-primary/5 hover:text-foreground',
+          : kind === 'web'
+            ? 'border-sky-400/40 bg-sky-500/5 text-sky-700 hover:border-sky-500/60 hover:bg-sky-500/10 dark:border-sky-400/30 dark:text-sky-300'
+            : kind === 'mcp'
+              ? 'border-violet-400/40 bg-violet-500/5 text-violet-700 hover:border-violet-500/60 hover:bg-violet-500/10 dark:border-violet-400/30 dark:text-violet-300'
+              : 'border-outline-variant bg-surface-low text-foreground/75 hover:border-primary/60 hover:bg-primary/5 hover:text-foreground',
         className,
       )}
     >
-      <FileText size={11} className="flex-shrink-0 opacity-70" aria-hidden />
+      <KindIcon size={11} className="flex-shrink-0 opacity-70" aria-hidden />
       <span className="max-w-[180px] truncate">{label}</span>
     </button>
   );

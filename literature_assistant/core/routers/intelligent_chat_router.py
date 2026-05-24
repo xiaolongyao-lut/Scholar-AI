@@ -134,6 +134,12 @@ class EvidenceReferencePayload(BaseModel):
     source_hint: str | None = None
     rank: int | None = None
     query_overlap_tokens: list[str] = Field(default_factory=list)
+    # B2 (0.1.8.2): visually distinguish local literature evidence (RAG chunks)
+    # from external web search / MCP tool results so the user can tell at a
+    # glance where each citation came from. Default 'local' preserves
+    # backward compatibility for any persisted or coerced payloads that
+    # predate this field.
+    source_kind: Literal["local", "web", "mcp"] = "local"
 
 
 class SamplingParamsPayload(BaseModel):
@@ -656,6 +662,7 @@ def _build_evidence_refs(chunks: list[ContextChunkPayload]) -> list[EvidenceRefe
                 page=chunk.page,
                 source_hint=chunk.source_hint,
                 rank=idx,
+                source_kind="local",  # B2: RAG-retrieved local literature
             )
         )
     return refs
@@ -673,6 +680,15 @@ def _coerce_evidence_refs(raw_refs: Any) -> list[EvidenceReferencePayload]:
         chunk_id = str(raw_ref.get("chunk_id") or "").strip()
         if not chunk_id or not source or not text:
             continue
+        # B2: classify source. Heuristic: rag_workflow label or explicit
+        # source_kind in raw_ref → trust; otherwise default local.
+        raw_kind = raw_ref.get("source_kind")
+        if raw_kind in ("local", "web", "mcp"):
+            source_kind: Literal["local", "web", "mcp"] = raw_kind
+        else:
+            # rag_workflow output is still local literature; web/mcp must be
+            # explicitly set by upstream tool integrations.
+            source_kind = "local"
         refs.append(
             EvidenceReferencePayload(
                 chunk_id=chunk_id,
@@ -687,6 +703,7 @@ def _coerce_evidence_refs(raw_refs: Any) -> list[EvidenceReferencePayload]:
                 source_hint=_clean_optional_text(raw_ref.get("source_hint")),
                 rank=raw_ref.get("rank") if isinstance(raw_ref.get("rank"), int) else None,
                 query_overlap_tokens=[str(t) for t in raw_ref.get("query_overlap_tokens", []) if isinstance(t, str)],
+                source_kind=source_kind,
             )
         )
     return refs
