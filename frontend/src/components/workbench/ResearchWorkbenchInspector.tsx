@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, BookOpen, FileText, MessageSquare, Users2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Message, type ChatMessageData } from '@/components/chat/Message';
+import { type ChatMessageData } from '@/components/chat/Message';
+import { Conversation } from '@/components/chat/Conversation';
 import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import { DiscussionPanel } from '@/components/DiscussionPanel';
 import { listFeatureFlags } from '@/services/featureFlagsApi';
@@ -61,7 +62,6 @@ export function ResearchWorkbenchInspector({
 }: InspectorProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<InspectorTab>('smart-read');
-  const [draft, setDraft] = useState('');
   // DSE Slice 3: when inspector_embed_unified flag is on, the multi-agent
   // tab embeds the full DiscussionPanel instead of the Bug-A placeholder.
   // Best-effort fetch on mount; flag-fetch failure falls back to placeholder.
@@ -83,13 +83,6 @@ export function ResearchWorkbenchInspector({
     };
   }, []);
 
-  const handleSend = useCallback(() => {
-    const text = draft.trim();
-    if (!text) return;
-    onSend(text);
-    setDraft('');
-  }, [draft, onSend]);
-
   const goToDiscussionPage = useCallback(() => {
     const query = projectId ? `?project=${encodeURIComponent(projectId)}` : '';
     navigate(`/discussion${query}`);
@@ -108,54 +101,22 @@ export function ResearchWorkbenchInspector({
       </div>
 
       {tab === 'smart-read' ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {contextChips && (
-            <div className="shrink-0 border-b border-outline-variant/40 px-3 py-2">{contextChips}</div>
-          )}
-
-          <div className="min-h-0 flex-1 space-y-3 overflow-auto px-3 py-3">
-            {messages.length === 0 ? (
-              <SmartReadEmpty starters={starters ?? DEFAULT_STARTERS} onPick={(s) => onSend(s.prompt ?? s.label)} />
-            ) : (
-              messages.map((m) => (
-                <Message
-                  key={m.id}
-                  message={m}
-                  projectId={projectId}
-                  selectedEvidenceId={selectedEvidenceId}
-                  onSelectEvidence={onSelectEvidence}
-                />
-              ))
-            )}
-          </div>
-
-          <div className="shrink-0 border-t border-outline-variant/60 bg-surface-low p-2">
-            <div className="flex items-end gap-2">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                rows={2}
-                placeholder="提出关于本文的问题或高亮一段文字"
-                className="min-h-[44px] flex-1 resize-none rounded-md border border-outline-variant/60 bg-surface-lowest px-2 py-1.5 text-sm text-foreground placeholder:text-foreground/35 focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!draft.trim()}
-                className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                发送
-              </button>
-            </div>
-            <p className="mt-1 text-[10px] text-foreground/40">提示：按 Ctrl/Cmd + Enter 快速发送</p>
-          </div>
-        </div>
+        <Conversation
+          messages={messages}
+          onSubmit={({ text }) => onSend(text)}
+          projectId={projectId}
+          selectedEvidenceId={selectedEvidenceId}
+          onSelectEvidence={onSelectEvidence}
+          placeholder="提出关于本文的问题或高亮一段文字"
+          composerHint="提示：按 Ctrl/Cmd + Enter 快速发送"
+          contextChips={contextChips}
+          emptyState={
+            <SmartReadEmpty
+              starters={starters ?? DEFAULT_STARTERS}
+              onPick={(s) => onSend(s.prompt ?? s.label)}
+            />
+          }
+        />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 text-sm">
           {multiAgentContext ? (
