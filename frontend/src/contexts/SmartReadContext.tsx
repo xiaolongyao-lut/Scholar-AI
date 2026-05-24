@@ -136,6 +136,7 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
         const { data } = await axios.post<{
           response?: string;
           evidence_refs?: EvidenceRefLike[];
+          analysis_chain?: import('@/services/discussionApi').AnalysisChainPayload | null;
         }>(
           `${getApiBaseUrl()}/api/chat`,
           {
@@ -153,6 +154,10 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
           content: data.response ?? '',
           timestamp: new Date().toISOString(),
           evidence: data.evidence_refs,
+          // B6 (0.1.8.2): forward the structured reasoning chain so
+          // MessageBubble can render the AnalysisChainPanel below the body.
+          // Null/undefined when analysis_chain_rag flag is off → no panel.
+          analysis_chain: data.analysis_chain ?? null,
         };
         setStore((prev) => ({
           ...prev,

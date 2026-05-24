@@ -5,6 +5,7 @@ import { MessageCircle, RefreshCw, Send, AlertCircle, History, X, BookOpen, Spar
 import { cn } from '@/lib/utils';
 import { TierSelector } from '@/components/chat/TierSelector';
 import { MessageBubble } from '@/components/chat/MessageBubble';
+import { AnalysisChainPanel } from '@/components/analysis_chain/AnalysisChainPanel';
 import {
   sendIntelligentChatMessage,
   listChatSessions,
@@ -778,52 +779,13 @@ export function Dialog() {
               </div>
 
               {selectedSpark.analysis_chain ? (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
-                  {selectedSpark.analysis_chain.observation && (
-                    <div className="col-span-2">
-                      <span className="font-semibold text-amber-900">观察</span>
-                      <p className="text-gray-800 mt-0.5">{selectedSpark.analysis_chain.observation}</p>
-                    </div>
-                  )}
-                  {selectedSpark.analysis_chain.mechanism && (
-                    <div className="col-span-2">
-                      <span className="font-semibold text-amber-900">机制 / 规则</span>
-                      <p className="text-gray-800 mt-0.5">{selectedSpark.analysis_chain.mechanism}</p>
-                    </div>
-                  )}
-                  {selectedSpark.analysis_chain.evidence?.length > 0 && (
-                    <div className="col-span-2">
-                      <span className="font-semibold text-amber-900">证据</span>
-                      <ul className="text-gray-800 mt-0.5 space-y-0.5 list-disc list-inside">
-                        {selectedSpark.analysis_chain.evidence.map((e, i) => (
-                          <li key={i}>{e}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {selectedSpark.analysis_chain.boundary && (
-                    <div>
-                      <span className="font-semibold text-amber-900">边界</span>
-                      <p className="text-gray-800 mt-0.5">{selectedSpark.analysis_chain.boundary}</p>
-                    </div>
-                  )}
-                  {selectedSpark.analysis_chain.counter_evidence?.length > 0 && (
-                    <div>
-                      <span className="font-semibold text-amber-900">反例 / 冲突</span>
-                      <ul className="text-gray-800 mt-0.5 space-y-0.5 list-disc list-inside">
-                        {selectedSpark.analysis_chain.counter_evidence.map((e, i) => (
-                          <li key={i}>{e}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {selectedSpark.analysis_chain.next_action && (
-                    <div className="col-span-2">
-                      <span className="font-semibold text-amber-900">下一步</span>
-                      <p className="text-gray-800 mt-0.5">{selectedSpark.analysis_chain.next_action}</p>
-                    </div>
-                  )}
-                </div>
+                /* B6 (0.1.8.2): replaced inline 6-field render with the shared
+                   AnalysisChainPanel so Dialog / Discussion / MessageBubble
+                   all use identical field order + collapse style. */
+                <AnalysisChainPanel
+                  chain={selectedSpark.analysis_chain}
+                  defaultExpanded={true}
+                />
               ) : (
                 <p className="text-[11px] text-amber-800/70 italic">
                   此 spark 暂无分析链（旧数据或 LLM 未返回完整字段）。

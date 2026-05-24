@@ -1,6 +1,8 @@
 import { type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
+import { AnalysisChainPanel } from '@/components/analysis_chain/AnalysisChainPanel';
+import type { AnalysisChainPayload } from '@/services/discussionApi';
 
 export type ChatRole = 'user' | 'assistant' | 'system' | 'agent';
 
@@ -19,6 +21,10 @@ export interface ChatMessageData {
   timestamp?: string;
   /** Status hint; renders a small inline label. */
   status?: 'pending' | 'streaming' | 'done' | 'error';
+  /** B6 (0.1.8.2): optional 6-field structured reasoning chain returned by
+   *  the chat backend when analysis_chain_rag flag is on. Renders below the
+   *  message body via the shared AnalysisChainPanel. */
+  analysis_chain?: AnalysisChainPayload | null;
 }
 
 interface MessageProps {
@@ -101,6 +107,12 @@ export function Message({
                 onActivate={onSelectEvidence}
               />
             ))}
+          </div>
+        )}
+
+        {isAgent && message.analysis_chain && (
+          <div className="mt-2">
+            <AnalysisChainPanel chain={message.analysis_chain} />
           </div>
         )}
 
