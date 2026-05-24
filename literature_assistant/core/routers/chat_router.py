@@ -908,7 +908,7 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
 
     _log_chat_telemetry(model=model_used or telemetry_model, task="chat", started_at=started_at, usage=usage, status="ok")
 
-    analysis_chain = _maybe_build_analysis_chain(req=req, answer=answer)
+    analysis_chain = await _maybe_build_analysis_chain(req=req, answer=answer)
 
     return ChatResponse(
         answer=answer,
@@ -926,19 +926,19 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
     )
 
 
-def _maybe_build_analysis_chain(
+async def _maybe_build_analysis_chain(
     *, req: "ChatRequest", answer: str
 ) -> AnalysisChainPayload | None:
     """ACR-020 ~ ACR-024: optionally attach a structured 6-field reasoning chain.
 
     Returns None when ``analysis_chain_rag`` feature flag is off, so default
-    callers see byte-identical behavior. When the flag is on, the deterministic
-    builder is used (no extra LLM call). The LLM-driven builder is gated by
-    ``analysis_chain_rag_llm`` but is currently a TODO — for now we fall back
-    to deterministic so the response field is populated without an extra
-    provider call. Full LLM wiring lands in the next ACR slice.
+    callers see byte-identical behavior. When ``analysis_chain_rag`` is on,
+    the deterministic builder is used (no extra LLM call). When BOTH
+    ``analysis_chain_rag`` AND ``analysis_chain_rag_llm`` are on (B5,
+    0.1.8.2), an async LLM sub-call renders the full 6-field chain via the
+    IRAC / FinCoT prompt template; any failure transparently falls back to
+    the deterministic chain so the user's chat response is never blocked.
     """
-
     try:
         from feature_flags import is_enabled
     except ImportError:
@@ -946,17 +946,53 @@ def _maybe_build_analysis_chain(
     if not is_enabled("analysis_chain_rag"):
         return None
     try:
-        from analysis_chain_rag_builder import build_deterministic
+        from analysis_chain_rag_builder import (
+            build_deterministic,
+            build_with_llm_async,
+        )
     except ImportError:
         return None
+
+    evidence_snippets = list(req.context or [])
+
+    # Fast path: LLM augmentation disabled → deterministic only.
+    if not is_enabled("analysis_chain_rag_llm"):
+        try:
+            return build_deterministic(
+                query=req.query,
+                answer=answer,
+                evidence_snippets=evidence_snippets,
+            )
+        except Exception:  # noqa: BLE001 — never block chat response
+            logger.exception("analysis_chain_rag deterministic builder failed")
+            return None
+
+    # B5 LLM path: spin up a minimal sub-chat to render the structured chain.
+    # The callable closure deliberately strips MCP tools and history so the
+    # sub-call is a pure single-turn render and cannot recursively trigger
+    # tool use / further LLM calls. Failures inside build_with_llm_async are
+    # caught and silently degrade to the deterministic payload.
+    async def _chain_llm_invoke(prompt: str) -> str:
+        sub_req = ChatRequest(
+            query=prompt,
+            context=[],
+            history=[],
+            llm=req.llm,
+            sampling=req.sampling,
+        )
+        sub_resp = await chat_ask(sub_req)
+        return sub_resp.answer
+
     try:
-        return build_deterministic(
+        return await build_with_llm_async(
             query=req.query,
             answer=answer,
-            evidence_snippets=list(req.context or []),
+            evidence_snippets=evidence_snippets,
+            llm_invoke=_chain_llm_invoke,
+            frame="irac",
         )
-    except Exception:  # noqa: BLE001 — chain builder must never block chat response
-        logger.exception("analysis_chain_rag deterministic builder failed")
+    except Exception:  # noqa: BLE001 — final safety net
+        logger.exception("analysis_chain_rag LLM path crashed; returning None")
         return None
 
 

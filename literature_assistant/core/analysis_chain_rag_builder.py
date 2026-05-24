@@ -188,7 +188,58 @@ def build_with_llm(
     return _coerce_to_payload(parsed)
 
 
+async def build_with_llm_async(
+    *,
+    query: str,
+    answer: str,
+    evidence_snippets: list[str] | None = None,
+    llm_invoke: Any = None,
+    frame: str = "irac",
+) -> AnalysisChainPayload:
+    """Async variant of ``build_with_llm`` for callers in an async context.
+
+    ``llm_invoke`` is an **async** callable ``(prompt: str) -> Awaitable[str]``.
+    Same failure-tolerant contract as the sync version: missing callable,
+    raised exception, or unparseable output → silently returns the
+    deterministic chain so the caller's chat response is never blocked.
+    """
+
+    deterministic = build_deterministic(
+        query=query, answer=answer, evidence_snippets=evidence_snippets
+    )
+    if llm_invoke is None:
+        return deterministic
+
+    try:
+        from prompts.analysis_chain_helpers import render_analysis_chain_prompt_block
+    except ImportError:
+        logger.debug("analysis_chain_helpers unavailable; returning deterministic chain")
+        return deterministic
+
+    evidence_present = bool(evidence_snippets)
+    context_summary = (
+        f"用户问题：{_truncate(query, 160)}；最终答案前 200 字：{_truncate(answer, 200)}"
+    )
+    prompt_block = render_analysis_chain_prompt_block(
+        frame if frame in ("irac", "fincot") else "irac",
+        context_summary=context_summary,
+        evidence_present=evidence_present,
+    )
+    try:
+        raw = await llm_invoke(prompt_block)
+    except Exception:  # noqa: BLE001 — host LLM failure must not break the chat response
+        logger.exception("LLM invocation for analysis_chain_rag (async) failed; falling back")
+        return deterministic
+
+    parsed = _extract_json_object(str(raw or ""))
+    if parsed is None:
+        logger.warning("analysis_chain_rag (async) LLM output unparseable; falling back")
+        return deterministic
+    return _coerce_to_payload(parsed)
+
+
 __all__ = [
     "build_deterministic",
     "build_with_llm",
+    "build_with_llm_async",
 ]
