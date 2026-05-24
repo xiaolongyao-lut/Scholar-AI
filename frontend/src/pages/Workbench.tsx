@@ -190,18 +190,40 @@ export function Workbench() {
     }, 500);
   }, [t, toast]);
 
+  // Hydration guard — race fix (2026-05-24).
+  // The earlier two-useEffect pattern had a window where the write effect
+  // ran with stale `messages = []` immediately after `activeProjectId`
+  // landed but before the read effect's `setMessages(raw)` re-rendered,
+  // wiping the saved history. We now mark `hydratedRef` only AFTER the
+  // read settles so the write effect knows to skip until the restore is
+  // visible in state. The first real write after that flushes the
+  // rehydrated list back to localStorage; subsequent edits flow normally.
+  const hydratedRef = useRef(false);
+  const storageKey = activeProjectId
+    ? `${CHAT_HISTORY_KEY}_${activeProjectId}`
+    : null;
+
   // Load saved messages when project changes
   useEffect(() => {
-    if (!activeProjectId) { setMessages([]); return; }
+    hydratedRef.current = false;
+    if (!storageKey) {
+      setMessages([]);
+      hydratedRef.current = true;
+      return;
+    }
     try {
-      const raw = localStorage.getItem(`${CHAT_HISTORY_KEY}_${activeProjectId}`);
+      const raw = localStorage.getItem(storageKey);
       setMessages(raw ? (JSON.parse(raw) as Message[]) : []);
-    } catch { setMessages([]); }
-  }, [activeProjectId]);
+    } catch {
+      setMessages([]);
+    }
+    hydratedRef.current = true;
+  }, [storageKey]);
 
   // Persist messages to localStorage on every change
   useEffect(() => {
-    if (!activeProjectId) return;
+    if (!hydratedRef.current) return;
+    if (!storageKey) return;
     try {
       // 2026-05-24: keep error messages in history too. Filtering them
       // (prior behaviour: `.filter(m => !m.error)`) zeroed out the saved
@@ -211,12 +233,12 @@ export function Workbench() {
       // so refresh + reopen surface both user prompts and failed replies.
       const toSave = messages.slice(-50);
       if (toSave.length === 0) {
-        localStorage.removeItem(`${CHAT_HISTORY_KEY}_${activeProjectId}`);
+        localStorage.removeItem(storageKey);
       } else {
-        localStorage.setItem(`${CHAT_HISTORY_KEY}_${activeProjectId}`, JSON.stringify(toSave));
+        localStorage.setItem(storageKey, JSON.stringify(toSave));
       }
     } catch { /* storage quota */ }
-  }, [messages, activeProjectId]);
+  }, [messages, storageKey]);
 
   const retrieveDocContext = useCallback(async (currentQuery: string) => {
     if (!activeProjectId) {

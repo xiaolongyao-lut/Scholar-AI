@@ -502,30 +502,37 @@ function CredentialForm({
   }, [form.base_url, form.api_key, subsystem]);
 
   const handleTestConnection = useCallback(async () => {
-    if (!editingId) {
-      setTestMessage('请先保存后再测试连接');
+    if (!form.base_url.trim()) {
+      setTestMessage('请先填写服务地址');
       return;
     }
     setTesting(true);
     setTestMessage(null);
     try {
-      const result = await testCredential(editingId);
-      if (result.status === 'ok' && result.probe?.ok) {
-        const latency = result.probe.status_code ? ` (HTTP ${result.probe.status_code})` : '';
-        setTestMessage(`✓ 连接正常${latency}`);
-      } else if (result.status === 'ok') {
-        setTestMessage('✓ 凭证已通过策略校验(未实际探测上游)');
+      // 2026-05-24: parity with 「聊天与生成」 — probe directly from form
+      // data (base_url + api_key) without requiring a saved credential id.
+      // Reuses `/api/{subsystem}/models/discover` which already does an
+      // authenticated GET against the upstream and returns ok/error.
+      // Works in both create and edit modes; lets the user verify the
+      // endpoint *before* committing the form.
+      const result = await discoverModels(form.base_url, form.api_key, subsystem);
+      if (result.ok) {
+        const count = result.models.length;
+        const endpoint = result.endpoint ? ` · ${result.endpoint}` : '';
+        setTestMessage(
+          count > 0
+            ? `✓ 连接正常 · 上游返回 ${count} 个可用模型${endpoint}`
+            : `✓ 连接正常${endpoint}`,
+        );
       } else {
-        const probeErr = result.probe?.error;
-        const detail = probeErr || result.reason || result.decision.reason || '连接失败';
-        setTestMessage(`✗ ${result.status}: ${detail}`);
+        setTestMessage(`✗ ${result.error || '连接失败'}`);
       }
     } catch (err) {
       setTestMessage(`✗ ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setTesting(false);
     }
-  }, [editingId]);
+  }, [form.base_url, form.api_key, subsystem]);
 
   return (
     <div className="border border-outline-variant rounded-lg p-4 bg-surface-low space-y-3">
@@ -702,18 +709,16 @@ function CredentialForm({
           )}
         </div>
         <div className="flex shrink-0 gap-2">
-          {mode === 'edit' && editingId && (
-            <button
-              type="button"
-              onClick={handleTestConnection}
-              disabled={busy || testing}
-              title="对已保存的凭证发起一次连接探测"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-outline rounded hover:bg-surface-high disabled:opacity-60"
-            >
-              {testing ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-              测试连接
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleTestConnection}
+            disabled={busy || testing || !form.base_url.trim()}
+            title="用当前表单的服务地址与 API Key 实时探测上游(不需要先保存)"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-outline rounded hover:bg-surface-high disabled:opacity-60"
+          >
+            {testing ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+            测试连接
+          </button>
           <button
             type="button"
             onClick={onCancel}

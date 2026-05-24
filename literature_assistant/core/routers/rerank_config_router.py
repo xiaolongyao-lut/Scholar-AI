@@ -110,7 +110,7 @@ async def test_rerank_endpoint(payload: RerankConfigUpdate) -> RerankProbeResult
 
     start = _t.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             resp = await client.post(base_url, headers=headers, json=probe_body)
     except httpx.RequestError as exc:
         return RerankProbeResult(

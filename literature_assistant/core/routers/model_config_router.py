@@ -112,7 +112,7 @@ async def discover_models_from_endpoint(base_url: str, api_key: str) -> Discover
         headers["Authorization"] = f"Bearer {api_key}"
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
             data = resp.json()
@@ -212,7 +212,7 @@ async def test_chat_endpoint(payload: ConfigUpdate) -> ProbeResult:
 
     start = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             resp = await client.post(url, headers=headers, json=probe_body)
     except httpx.RequestError as exc:
         return ProbeResult(
@@ -280,7 +280,7 @@ async def test_embedding_endpoint(payload: ConfigUpdate) -> ProbeResult:
 
     start = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             resp = await client.post(url, headers=headers, json=body)
     except httpx.RequestError as exc:
         return ProbeResult(

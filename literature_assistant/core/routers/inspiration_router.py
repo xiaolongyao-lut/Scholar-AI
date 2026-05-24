@@ -630,7 +630,7 @@ async def _generate_llm_sparks(req: GenerateSparksRequest) -> list[SparkResponse
     telemetry_model = str(payload.get("model", llm.model))
     started_at = time.perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
             try:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()

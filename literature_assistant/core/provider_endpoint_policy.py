@@ -278,6 +278,21 @@ def validate_endpoint(
                      scheme=parsed.scheme.lower(), host=host, port=port,
                      path=parsed.path)
 
+    # 2026-05-24: user-confirmed endpoints bypass the SSRF/DNS check.
+    # Rationale: third-party OpenAI-compatible gateways behind Cloudflare,
+    # GFW-affected DNS, or behind reverse-proxies frequently resolve to
+    # IPs the local resolver classifies as `private` / `reserved`
+    # (`dns_resolved_to_unsafe_ip`). The user has already declared they
+    # trust this endpoint via UI; second-guessing them at the network
+    # layer blocks otherwise-functional NewAPI / sub2api / OneAPI setups.
+    # SSRF protection remains active for `official_provider` (where the
+    # user has not opted in) and `env_configured_gateway` (where the
+    # operator configured it via env, not a per-credential confirmation).
+    if ts == TrustSource.RUNTIME_USER_CONFIRMED.value:
+        return _allow("user_confirmed_skip_network", ts,
+                      scheme=parsed.scheme.lower(), host=host, port=port,
+                      path=parsed.path, skipped_network=True)
+
     # Official-provider trust requires host on allowlist.
     if ts == TrustSource.OFFICIAL_PROVIDER.value:
         if host not in all_official_hosts():
