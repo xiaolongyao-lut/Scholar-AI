@@ -73,7 +73,18 @@ function ResearchWorkbenchInner() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { getConversation, sendMessage } = useSmartRead();
-  const scope = materialId || SMART_READ_DEFAULT_SCOPE;
+  // B7+ (0.1.8.2 hotfix v2): user reported "只要离开智能研读就丢失" — the
+  // per-paper scope made switching to a different paper look like the
+  // conversation evaporated (it was actually preserved against the
+  // previous materialId, just not visible against the new one). Re-key
+  // by activeProjectId so one project shares one Smart-Read transcript
+  // regardless of which paper is open; the active material_id is still
+  // forwarded to the backend as anchor for RAG retrieval.
+  const scope = activeProjectId
+    ? `project-${activeProjectId}`
+    : materialId
+      ? `material-${materialId}`
+      : SMART_READ_DEFAULT_SCOPE;
   const conversation = getConversation(scope);
   const messages = conversation.messages;
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);

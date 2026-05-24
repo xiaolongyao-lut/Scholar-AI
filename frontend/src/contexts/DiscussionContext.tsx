@@ -226,6 +226,18 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
       if (session.state === 'running') {
         return;
       }
+      // B7+ (0.1.8.2 hotfix v2): user reported F12 console didn't show
+      // [DiscussionContext] event lines after clicking 开始讨论. Print a
+      // visible start-marker so we can tell whether startSession actually
+      // ran vs whether the click handler silently dropped.
+      if (typeof console !== 'undefined') {
+        // eslint-disable-next-line no-console
+        console.info(
+          '[DiscussionContext] startSession invoked; agents=%d, query=%s',
+          config.agent_configs?.length ?? 0,
+          (config.query || '').slice(0, 40),
+        );
+      }
       const controller = new AbortController();
       abortRef.current = controller;
       setSession({
@@ -241,6 +253,20 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
           signal: controller.signal,
         });
       } catch (err) {
+        // B7+: tell the user (via console) what happened. The catch path
+        // is reached for: stream endpoint 404/405, transport failure,
+        // user abort, backend exception. Each maps differently below;
+        // logging once here surfaces a single deterministic line so
+        // troubleshooting "no events showed up" doesn't require guessing.
+        if (typeof console !== 'undefined') {
+          // eslint-disable-next-line no-console
+          console.warn(
+            '[DiscussionContext] stream caught error: status=%s aborted=%s msg=%s',
+            err instanceof DiscussionStreamError ? err.status : 'n/a',
+            controller.signal.aborted,
+            err instanceof Error ? err.message : String(err),
+          );
+        }
         // 404 (flag off) / 405 (endpoint missing in old build) / 501 / any
         // non-success that's not a user-initiated abort ⇒ degrade to the
         // non-streaming endpoint so users on older backends still see a
