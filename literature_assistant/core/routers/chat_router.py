@@ -807,7 +807,7 @@ async def _post_chat_with_retry(
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
-            async with httpx.AsyncClient(timeout=timeout_s) as client:
+            async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=True) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
                 return resp.json()
@@ -1067,7 +1067,7 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
         model_used = telemetry_model
         status = "ok"
         try:
-            async with httpx.AsyncClient(timeout=stream_timeout_s) as client:
+            async with httpx.AsyncClient(timeout=stream_timeout_s, follow_redirects=True) as client:
                 async with client.stream("POST", url, json=payload, headers=headers) as resp:
                     if resp.status_code != 200:
                         status = "error"
@@ -1240,7 +1240,7 @@ async def discover_models(
         headers["Authorization"] = f"Bearer {api_key}"
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
             data = resp.json()

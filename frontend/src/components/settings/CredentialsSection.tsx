@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Check,
+  Download,
   Edit3,
   Eye,
   EyeOff,
@@ -12,6 +13,7 @@ import {
   Trash2,
   Upload,
   X,
+  Zap,
 } from 'lucide-react';
 import {
   type CredentialCategory,
@@ -27,6 +29,7 @@ import {
   testCredential,
   updateCredential,
 } from '@/services/credentialsApi';
+import { discoverModels, type DiscoveredModel } from '@/services/chatApi';
 
 // ---------------------------------------------------------------------------
 // Local UI state
@@ -53,7 +56,12 @@ const EMPTY_FORM: FormState = {
   base_url: '',
   protocol: 'openai_chat_completions',
   api_key: '',
-  trust_source: 'runtime_untrusted_custom',
+  // 2026-05-24: default to runtime_user_confirmed so a freshly-created
+  // credential pointing at a third-party / NewAPI / sub2api gateway is
+  // usable immediately — the prior `runtime_untrusted_custom` default
+  // showed a confusing "已拦截 official_provider_host_mismatch" badge in
+  // the list until the user manually re-saved with a different trust source.
+  trust_source: 'runtime_user_confirmed',
   enabled: true,
   notes: '',
 };
@@ -280,7 +288,6 @@ export function CredentialsSection(): JSX.Element {
     setForm({
       ...EMPTY_FORM,
       api_key: legacyKey,
-      trust_source: 'runtime_untrusted_custom',
       notes: '从浏览器旧设置导入',
     });
     setRevealKey(true);
@@ -387,6 +394,7 @@ export function CredentialsSection(): JSX.Element {
           onCancel={onCancel}
           onSubmit={onSubmit}
           busy={busyId === '__form__'}
+          editingId={mode === 'edit' ? editingId : null}
         />
       )}
 
@@ -437,6 +445,10 @@ interface CredentialFormProps {
   onCancel: () => void;
   onSubmit: () => void;
   busy: boolean;
+  /** When editing an existing credential, pass its id so the "测试连接"
+   *  button can call /test against the persisted record. Omitted in
+   *  create mode (test happens after save). */
+  editingId?: string | null;
 }
 
 function CredentialForm({
@@ -448,9 +460,73 @@ function CredentialForm({
   onCancel,
   onSubmit,
   busy,
+  editingId,
 }: CredentialFormProps) {
   const baseId = React.useId();
   const fieldId = (suffix: string) => `${baseId}-${suffix}`;
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [discovered, setDiscovered] = useState<DiscoveredModel[] | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+
+  // Subsystem mapping: a credential's category drives which /api/{x}/models/
+  // discover backend endpoint we call. Generation → chat;
+  // embedding/rerank pass through verbatim.
+  const subsystem: 'chat' | 'embedding' | 'rerank' =
+    form.category === 'generation' ? 'chat' : form.category;
+
+  const handleDiscover = useCallback(async () => {
+    if (!form.base_url.trim()) {
+      setDiscoverError('请先填写服务地址');
+      return;
+    }
+    setDiscovering(true);
+    setDiscoverError(null);
+    setDiscovered(null);
+    try {
+      const result = await discoverModels(form.base_url, form.api_key, subsystem);
+      if (!result.ok) {
+        setDiscoverError(result.error || '未能获取模型列表');
+        return;
+      }
+      setDiscovered(result.models);
+      if (result.models.length === 0) {
+        setDiscoverError('上游返回空列表 — 请确认 API Key 与协议是否匹配');
+      }
+    } catch (err) {
+      setDiscoverError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDiscovering(false);
+    }
+  }, [form.base_url, form.api_key, subsystem]);
+
+  const handleTestConnection = useCallback(async () => {
+    if (!editingId) {
+      setTestMessage('请先保存后再测试连接');
+      return;
+    }
+    setTesting(true);
+    setTestMessage(null);
+    try {
+      const result = await testCredential(editingId);
+      if (result.status === 'ok' && result.probe?.ok) {
+        const latency = result.probe.status_code ? ` (HTTP ${result.probe.status_code})` : '';
+        setTestMessage(`✓ 连接正常${latency}`);
+      } else if (result.status === 'ok') {
+        setTestMessage('✓ 凭证已通过策略校验(未实际探测上游)');
+      } else {
+        const probeErr = result.probe?.error;
+        const detail = probeErr || result.reason || result.decision.reason || '连接失败';
+        setTestMessage(`✗ ${result.status}: ${detail}`);
+      }
+    } catch (err) {
+      setTestMessage(`✗ ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTesting(false);
+    }
+  }, [editingId]);
+
   return (
     <div className="border border-outline-variant rounded-lg p-4 bg-surface-low space-y-3">
       <h4 className="font-headline text-sm font-semibold text-foreground">
@@ -480,14 +556,51 @@ function CredentialForm({
           />
         </FormField>
         <FormField label="模型" htmlFor={fieldId('model')}>
-          <input
-            id={fieldId('model')}
-            type="text"
-            value={form.model}
-            onChange={e => onForm({ ...form, model: e.target.value })}
-            placeholder="gpt-4o / claude-opus-4-7 / ..."
-            className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface"
-          />
+          <div className="flex gap-1.5">
+            <input
+              id={fieldId('model')}
+              type="text"
+              value={form.model}
+              onChange={e => onForm({ ...form, model: e.target.value })}
+              placeholder="gpt-4o / claude-opus-4-7 / ..."
+              className="flex-1 min-w-0 px-2 py-1.5 border border-outline rounded text-xs bg-surface"
+            />
+            <button
+              type="button"
+              onClick={handleDiscover}
+              disabled={discovering || !form.base_url.trim()}
+              title="向服务地址发送 GET /v1/models 自动获取可用模型(NewAPI/sub2api/OneAPI/Ollama/vLLM 等 OpenAI 兼容端点均支持)"
+              className="shrink-0 inline-flex items-center gap-1 px-2 py-1.5 border border-outline rounded text-[11px] font-medium text-foreground/75 hover:bg-surface-high hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {discovering ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+              获取模型
+            </button>
+          </div>
+          {discoverError && (
+            <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">⚠ {discoverError}</p>
+          )}
+          {discovered && discovered.length > 0 && (
+            <div className="mt-1 max-h-40 overflow-auto rounded border border-outline-variant bg-surface-lowest">
+              {discovered.map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    onForm({ ...form, model: m.id });
+                    setDiscovered(null);
+                    setDiscoverError(null);
+                  }}
+                  className="w-full text-left px-2 py-1 text-[11px] hover:bg-primary/10 font-mono text-foreground/85"
+                  title={m.description || m.name}
+                >
+                  {m.id}
+                  {m.name && m.name !== m.id && (
+                    <span className="ml-1.5 text-foreground/40">— {m.name}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </FormField>
         <FormField label="协议" htmlFor={fieldId('protocol')}>
           <select
@@ -507,9 +620,12 @@ function CredentialForm({
             type="url"
             value={form.base_url}
             onChange={e => onForm({ ...form, base_url: e.target.value })}
-            placeholder="https://api.openai.com/v1"
+            placeholder="https://api.openai.com/v1 · https://your-newapi.com/v1 · http://localhost:11434"
             className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface font-mono"
           />
+          <p className="mt-1 text-[10px] text-foreground/50">
+            填到 <code className="px-0.5 rounded bg-surface-high font-mono">/v1</code> 一级即可。任何 OpenAI 兼容端点(NewAPI、sub2api、OneAPI、Ollama、vLLM、LM Studio、OpenRouter、SiliconFlow 等)均可使用,无需匹配官方域名。
+          </p>
         </FormField>
         <FormField
           label={mode === 'edit' ? 'API Key（留空保留当前值）' : 'API Key'}
@@ -570,24 +686,52 @@ function CredentialForm({
           />
         </FormField>
       </div>
-      <div className="flex justify-end gap-2 pt-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="px-3 py-1.5 text-xs font-medium border border-outline rounded hover:bg-surface-high"
-        >
-          取消
-        </button>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={busy}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-60"
-        >
-          {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-          {mode === 'create' ? '创建' : '保存'}
-        </button>
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <div className="flex-1 min-w-0">
+          {testMessage && (
+            <p
+              className={`text-[11px] truncate ${
+                testMessage.startsWith('✓')
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : 'text-rose-700 dark:text-rose-300'
+              }`}
+              title={testMessage}
+            >
+              {testMessage}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          {mode === 'edit' && editingId && (
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={busy || testing}
+              title="对已保存的凭证发起一次连接探测"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-outline rounded hover:bg-surface-high disabled:opacity-60"
+            >
+              {testing ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+              测试连接
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="px-3 py-1.5 text-xs font-medium border border-outline rounded hover:bg-surface-high"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={busy}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-60"
+          >
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+            {mode === 'create' ? '创建' : '保存'}
+          </button>
+        </div>
       </div>
     </div>
   );
