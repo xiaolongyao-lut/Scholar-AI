@@ -111,10 +111,10 @@ export function MessageBubble({
     <div className={clsx('flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={clsx(
-          'max-w-[80%] rounded-lg px-4 py-3',
+          'message-bubble max-w-[80%] rounded-lg px-4 py-3',
           isUser
             ? 'bg-primary text-primary-foreground'
-            : 'bg-surface-low text-white dark:text-white border border-outline-variant'
+            : 'bg-surface-low text-foreground border border-outline-variant'
         )}
       >
         {/* Insufficient Context Warning Badge */}
@@ -127,7 +127,7 @@ export function MessageBubble({
           </div>
         )}
 
-        <div className={clsx(isUser ? 'whitespace-pre-wrap break-words' : 'prose prose-sm max-w-none prose-invert prose-p:my-2 prose-headings:my-3 prose-headings:text-white prose-p:text-white prose-li:text-white prose-strong:text-white prose-em:text-white prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-code:bg-black/30 prose-code:text-white prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[12px] prose-code:before:content-none prose-code:after:content-none prose-pre:bg-black/30 prose-pre:text-white prose-strong:font-semibold prose-a:text-blue-300 prose-blockquote:text-white prose-blockquote:border-white/30')}>
+        <div className={clsx(isUser ? 'whitespace-pre-wrap break-words' : 'prose prose-sm max-w-none prose-neutral dark:prose-invert prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-code:bg-foreground/10 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[12px] prose-code:before:content-none prose-code:after:content-none prose-pre:bg-foreground/10 prose-strong:font-semibold')}>
           {isUser ? content : renderAssistantContent(content)}
         </div>
 

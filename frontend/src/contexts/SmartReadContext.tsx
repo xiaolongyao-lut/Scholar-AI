@@ -133,6 +133,18 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
       setPending((prev) => ({ ...prev, [scope]: true }));
 
       try {
+        // B7+ (0.1.8.2 hotfix): when no material is anchored AND the query
+        // looks like a casual greeting / short ack (no question mark, no
+        // technical terms, ≤ 12 chars), skip RAG retrieval and use direct
+        // mode so users asking "hi" don't trigger expensive TOLF/embedding
+        // pipelines that take 60+ seconds for a 2-char input.
+        const trimmed = text.trim();
+        const looksCasual =
+          !opts.materialId &&
+          trimmed.length <= 12 &&
+          !/[?？]/.test(trimmed) &&
+          !/[a-zA-Z]{6,}|[一-鿿]{6,}/.test(trimmed);
+        const effectiveMode = looksCasual ? 'direct' : 'literature_qa';
         const { data } = await axios.post<{
           response?: string;
           evidence_refs?: EvidenceRefLike[];
@@ -143,7 +155,7 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
             query: text,
             project_id: opts.projectId || undefined,
             material_id: opts.materialId || undefined,
-            mode: 'literature_qa',
+            mode: effectiveMode,
             tier: 'thorough',
           },
           { timeout: 180000 },
@@ -167,17 +179,41 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
           },
         }));
       } catch (err) {
+        // B7+ (0.1.8.2 hotfix): the prior catch only surfaced
+        // err.message ("Request failed with status code 502") when the
+        // backend already classified the error and returned a Chinese
+        // detail body. Harden: always inspect axios.response shape and
+        // peel out detail / nested string / status info so the user sees
+        // the real reason ("Invalid URL / 上游 LLM 服务异常 (502)" etc).
         let detail = err instanceof Error ? err.message : String(err);
-        if (axios.isAxiosError(err) && err.response?.data) {
-          const rawDetail = (err.response.data as { detail?: unknown }).detail;
-          if (typeof rawDetail === 'string' && rawDetail.trim()) {
-            detail = rawDetail;
-          } else if (rawDetail !== undefined) {
-            try {
-              detail = JSON.stringify(rawDetail);
-            } catch {
-              /* keep axios message */
+        if (axios.isAxiosError(err) && err.response) {
+          const data = err.response.data;
+          const status = err.response.status;
+          const statusText = err.response.statusText || '';
+          // Common FastAPI shape: { detail: "..." } or { detail: {...} }
+          if (data && typeof data === 'object') {
+            const rawDetail = (data as { detail?: unknown }).detail;
+            if (typeof rawDetail === 'string' && rawDetail.trim()) {
+              detail = rawDetail;
+            } else if (rawDetail && typeof rawDetail === 'object') {
+              try {
+                detail = JSON.stringify(rawDetail);
+              } catch {
+                detail = `${status} ${statusText}`.trim();
+              }
+            } else {
+              // No detail field at all — surface status + first 200 chars of body.
+              try {
+                const body = JSON.stringify(data).slice(0, 200);
+                detail = `${status} ${statusText}: ${body}`.trim();
+              } catch {
+                detail = `${status} ${statusText}`.trim();
+              }
             }
+          } else if (typeof data === 'string' && data.trim()) {
+            detail = `${status} ${statusText}: ${data.slice(0, 200)}`.trim();
+          } else {
+            detail = `${status} ${statusText}`.trim() || detail;
           }
         }
         const errMsg: ChatMessageData = {

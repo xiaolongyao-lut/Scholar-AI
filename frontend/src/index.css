@@ -109,6 +109,33 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
+  /* B7+ (0.1.8.2 hotfix): chat / discussion bubble text-selection contrast.
+     The default browser selection color is the OS accent (usually blue),
+     which sits on top of our primary-tinted user-bubble (also bluish) and
+     makes the selected text unreadable. Force a yellow highlighter +
+     forced-dark text so selected content reads in any theme + any bubble
+     color. Targets only message surfaces so PDF / form selection keeps
+     OS defaults (familiarity for native UX). */
+  .message-bubble ::selection,
+  .message-bubble::selection,
+  .smart-read-message ::selection,
+  .smart-read-message::selection,
+  .discussion-trace ::selection,
+  .discussion-trace::selection {
+    background-color: rgba(253, 224, 71, 0.85); /* tailwind yellow-300 */
+    color: #111827; /* tailwind gray-900 — readable on yellow regardless of theme */
+    text-shadow: none;
+  }
+  .dark .message-bubble ::selection,
+  .dark .message-bubble::selection,
+  .dark .smart-read-message ::selection,
+  .dark .smart-read-message::selection,
+  .dark .discussion-trace ::selection,
+  .dark .discussion-trace::selection {
+    background-color: rgba(250, 204, 21, 0.9); /* tailwind yellow-400, denser in dark */
+    color: #0f172a; /* slate-900 */
+  }
+
   /* Zotero-style PDF dark-mode rule: only chrome darkens; PDF canvas keeps a
      light background so figures, equations, and academic text remain
      readable. Components targeting the PDF surface MUST carry `.pdf-canvas`. */

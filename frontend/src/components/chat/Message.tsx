@@ -72,7 +72,7 @@ export function Message({
     <div className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start', className)}>
       <div
         className={cn(
-          'max-w-[88%] rounded-lg px-3 py-2 text-sm leading-relaxed',
+          'message-bubble max-w-[88%] rounded-lg px-3 py-2 text-sm leading-relaxed',
           isUser
             ? 'bg-primary text-primary-foreground'
             : 'bg-surface-low text-foreground border border-outline-variant/60',
