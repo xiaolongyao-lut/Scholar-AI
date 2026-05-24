@@ -1260,6 +1260,26 @@ async def discover_models(
         discovered.sort(key=lambda m: m.id)
         return {"ok": True, "models": [m.model_dump() for m in discovered], "endpoint": url}
     except httpx.HTTPStatusError as exc:
-        return {"ok": False, "error": f"HTTP {exc.response.status_code}", "models": [], "endpoint": url}
+        # Surface upstream response body so the UI can show *why* the test
+        # failed (Invalid API key, model not found, quota exhausted, etc.).
+        body_snippet = ""
+        try:
+            body_snippet = exc.response.text[:400] if exc.response is not None else ""
+        except Exception:  # noqa: BLE001
+            body_snippet = ""
+        status_code = exc.response.status_code if exc.response is not None else 0
+        return {
+            "ok": False,
+            "error": f"HTTP {status_code}" + (f" · {body_snippet}" if body_snippet else ""),
+            "status_code": status_code,
+            "body": body_snippet,
+            "models": [],
+            "endpoint": url,
+        }
     except httpx.RequestError as exc:
-        return {"ok": False, "error": f"连接失败: {exc}", "models": [], "endpoint": url}
+        return {
+            "ok": False,
+            "error": f"连接失败: {exc.__class__.__name__}: {exc}",
+            "models": [],
+            "endpoint": url,
+        }

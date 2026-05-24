@@ -30,6 +30,7 @@ import {
   updateCredential,
 } from '@/services/credentialsApi';
 import { discoverModels, type DiscoveredModel } from '@/services/chatApi';
+import { loadSettings, saveSettings, type LLMConfig } from '@/services/settingsStore';
 
 // ---------------------------------------------------------------------------
 // Local UI state
@@ -470,6 +471,23 @@ function CredentialForm({
   const [testing, setTesting] = useState(false);
   const [testMessage, setTestMessage] = useState<string | null>(null);
 
+  // 2026-05-24 (Slice ν): per-credential form also surfaces the global
+  // LLMConfig (温度 / top_p / max_tokens / system_prompt) so the user
+  // doesn't have to bounce to 「聊天与生成」 just to set sampling. These
+  // values are global (shared by all generation credentials) — when the
+  // backend gains per-credential overrides, this block can store on
+  // `form` instead. For now: edit in-place, persist to settings.
+  const [llmCfg, setLlmCfg] = useState<LLMConfig>(() => loadSettings().llm);
+  const updateLlm = useCallback((patch: Partial<LLMConfig>) => {
+    setLlmCfg(prev => {
+      const next = { ...prev, ...patch };
+      const all = loadSettings();
+      all.llm = next;
+      saveSettings(all);
+      return next;
+    });
+  }, []);
+
   // Subsystem mapping: a credential's category drives which /api/{x}/models/
   // discover backend endpoint we call. Generation → chat;
   // embedding/rerank pass through verbatim.
@@ -693,6 +711,101 @@ function CredentialForm({
           />
         </FormField>
       </div>
+
+      {form.category === 'generation' && (
+        <div className="mt-2 rounded border border-outline-variant/60 bg-surface-lowest px-3 py-2.5 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-medium text-foreground/65">采样参数(全局)</p>
+            <p className="text-[10px] text-foreground/45">
+              所有「聊天与生成」类凭证共享,影响 Dialog / 智能研读 / 多智能体等接口
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label
+                htmlFor={fieldId('llm-temperature')}
+                className="font-label text-[10px] font-medium text-foreground/60 uppercase tracking-wide"
+              >
+                温度系数
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id={fieldId('llm-temperature')}
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  value={llmCfg.temperature}
+                  onChange={e => updateLlm({ temperature: Number(e.target.value) })}
+                  className="flex-1 accent-primary"
+                />
+                <span className="w-9 text-right text-[11px] font-mono text-foreground/75">{llmCfg.temperature.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label
+                htmlFor={fieldId('llm-topp')}
+                className="font-label text-[10px] font-medium text-foreground/60 uppercase tracking-wide"
+              >
+                核采样(top_p)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id={fieldId('llm-topp')}
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={llmCfg.topP}
+                  onChange={e => updateLlm({ topP: Number(e.target.value) })}
+                  className="flex-1 accent-primary"
+                />
+                <span className="w-9 text-right text-[11px] font-mono text-foreground/75">{llmCfg.topP.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label
+                htmlFor={fieldId('llm-maxtok')}
+                className="font-label text-[10px] font-medium text-foreground/60 uppercase tracking-wide"
+              >
+                最大生成长度
+              </label>
+              <input
+                id={fieldId('llm-maxtok')}
+                type="number"
+                min={64}
+                max={32768}
+                step={64}
+                value={llmCfg.maxTokens}
+                onChange={e => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n) && n > 0) updateLlm({ maxTokens: n });
+                }}
+                className="w-full px-2 py-1 border border-outline rounded text-xs bg-surface font-mono"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label
+              htmlFor={fieldId('llm-sysprompt')}
+              className="font-label text-[10px] font-medium text-foreground/60 uppercase tracking-wide"
+            >
+              系统提示词(可选)
+            </label>
+            <textarea
+              id={fieldId('llm-sysprompt')}
+              value={llmCfg.systemPrompt}
+              onChange={e => updateLlm({ systemPrompt: e.target.value })}
+              placeholder="在此输入系统提示词…"
+              rows={2}
+              className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface resize-none"
+            />
+          </div>
+          <p className="text-[10px] text-foreground/40">
+            修改后自动保存到本机设置;每个凭证的具体覆写参数待后端 schema 拓展后再支持。
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2 pt-2">
         <div className="flex-1 min-w-0">
           {testMessage && (

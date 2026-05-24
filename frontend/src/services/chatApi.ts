@@ -97,7 +97,32 @@ export async function discoverModels(baseUrl: string, apiKey: string, subsystem:
       error: resp.data?.error,
     };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+    // 2026-05-24: peel out backend `detail` / response body when the
+    // request itself failed (4xx/5xx from our backend, not from upstream).
+    // The user reported "连接失败" with no reason, which made debugging
+    // third-party gateways painful.
+    if (axios.isAxiosError(err) && err.response) {
+      const status = err.response.status;
+      const statusText = err.response.statusText || '';
+      const data = err.response.data;
+      let detail = '';
+      if (typeof data === 'string') {
+        detail = data;
+      } else if (data && typeof data === 'object') {
+        const rec = data as Record<string, unknown>;
+        const candidate = rec.error ?? rec.detail ?? rec.message;
+        if (typeof candidate === 'string') {
+          detail = candidate;
+        } else if (candidate && typeof candidate === 'object') {
+          try { detail = JSON.stringify(candidate); } catch { detail = String(candidate); }
+        } else {
+          try { detail = JSON.stringify(data).slice(0, 400); } catch { detail = ''; }
+        }
+      }
+      const compound = [`HTTP ${status}`, statusText, detail].filter(Boolean).join(' · ');
+      return { ok: false, models: [], error: compound };
+    }
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
     return { ok: false, models: [], error: msg };
   }
 }
