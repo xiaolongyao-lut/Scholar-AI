@@ -339,11 +339,19 @@ async def post_discussion_run_stream(config: DiscussionRunConfig) -> StreamingRe
 
     SSE events (one JSON object per ``data:`` line):
 
+    - ``{"event": "started", "run_id": "disc_...", "stage": "retrieval", ...}``  (B7/B1)
+    - ``{"event": "stage_progress", "stage": "agents_prep", ...}``               (B7)
     - ``{"event": "agent_done", "turn_index": N, "agent_id": "...", "trace": {...}}``
     - ``{"event": "turn_done", "turn_index": N, "agent_count": N}``
     - ``{"event": "synthesis_done", "synthesis": {...}}``
     - ``{"event": "done", "result": {...}}``  (full DiscussionRunResult)
     - ``{"event": "error", "status": <http-like>, "error": "..."}``
+
+    B1 (0.1.8.2): the endpoint pre-registers a ``run_id`` with the task store
+    before invoking the orchestrator. Every emitted event is mirrored to the
+    store so a subsequent ``GET /runs/{run_id}`` or
+    ``POST /runs/{run_id}/stream/resume`` can rehydrate the run state after a
+    page reload.
 
     Discussion capture (evolution candidates) still fires off-path on the
     successful ``done`` event, identical to the non-streaming endpoint.
@@ -356,12 +364,29 @@ async def post_discussion_run_stream(config: DiscussionRunConfig) -> StreamingRe
     if not is_enabled("discussion_streaming"):
         raise HTTPException(status_code=404, detail="discussion streaming not enabled")
 
+    # B1: pre-register run_id so events flow into the persistence store.
+    import uuid as _uuid
+    from discussion_task_store import (
+        get_discussion_task_store,
+        DiscussionTaskStoreFull,
+    )
+
+    run_id = f"disc_{_uuid.uuid4().hex[:16]}"
+    store = get_discussion_task_store()
+    try:
+        store.register(run_id, config=config.model_dump(mode="json"))
+    except DiscussionTaskStoreFull as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     factory = _get_invoke_factory()
     invoke_agent = factory(config)
 
     queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
     async def _on_event(event: dict[str, Any]) -> None:
+        # Mirror to store first so a concurrent GET sees the event even if
+        # the SSE consumer disconnects before draining the queue.
+        store.append_event(run_id, event)
         await queue.put(event)
 
     async def _run_task() -> None:
@@ -370,24 +395,42 @@ async def post_discussion_run_stream(config: DiscussionRunConfig) -> StreamingRe
                 config,
                 invoke_agent=invoke_agent,
                 on_event=_on_event,
+                run_id=run_id,
             )
             _schedule_discussion_capture(result)
-            await queue.put({"event": "done", "result": result.model_dump()})
+            done_event = {"event": "done", "result": result.model_dump()}
+            store.append_event(run_id, done_event)
+            await queue.put(done_event)
         except DiscussionUnsupportedStrategyError as exc:
-            await queue.put({"event": "error", "status": 400, "error": str(exc)})
+            err_event = {"event": "error", "status": 400, "error": str(exc)}
+            store.append_event(run_id, err_event)
+            await queue.put(err_event)
         except DiscussionCredentialMissingError as exc:
-            await queue.put({"event": "error", "status": 404, "error": str(exc)})
+            err_event = {"event": "error", "status": 404, "error": str(exc)}
+            store.append_event(run_id, err_event)
+            await queue.put(err_event)
         except DiscussionContextBudgetError as exc:
-            await queue.put({"event": "error", "status": 422, "error": str(exc)})
+            err_event = {"event": "error", "status": 422, "error": str(exc)}
+            store.append_event(run_id, err_event)
+            await queue.put(err_event)
         except DiscussionOrchestratorError as exc:
-            await queue.put({"event": "error", "status": 500, "error": str(exc)})
+            err_event = {"event": "error", "status": 500, "error": str(exc)}
+            store.append_event(run_id, err_event)
+            await queue.put(err_event)
         except asyncio.CancelledError:
-            await queue.put({"event": "error", "status": 499, "error": "cancelled"})
+            err_event = {"event": "error", "status": 499, "error": "cancelled"}
+            store.append_event(run_id, err_event)
+            store.mark_terminal(run_id, "cancelled")
+            await queue.put(err_event)
             raise
         except Exception as exc:  # noqa: BLE001 — endpoint-level safety net
-            await queue.put(
-                {"event": "error", "status": 500, "error": f"{type(exc).__name__}: {exc}"}
-            )
+            err_event = {
+                "event": "error",
+                "status": 500,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            store.append_event(run_id, err_event)
+            await queue.put(err_event)
         finally:
             await queue.put(None)
 
@@ -503,6 +546,99 @@ def _capture_discussion_candidates(result: "DiscussionRunResult") -> None:
             "discussion capture: wrote %d candidate(s) from %d eligible row(s)",
             captured, len(args_list),
         )
+
+
+# ---------------------------------------------------------------------------
+# Persistence endpoints (B1 / 0.1.8.2)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/runs/{run_id}")
+async def get_discussion_run(run_id: str) -> dict[str, Any]:
+    """Return the current state for a previously-registered discussion run.
+
+    Used by ``DiscussionContext`` on mount to decide whether to:
+    - state in ("pending", "running") → call ``/stream/resume`` to reconnect
+    - state in ("completed", "cancelled", "error") → restore from final state
+    - 404 → drop any stored ``run_id`` and reset to idle (B1 happy-path on
+      first launch / after server restart / after 24h TTL expiry)
+    """
+    from discussion_task_store import get_discussion_task_store
+
+    snapshot = get_discussion_task_store().get(run_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+    return snapshot
+
+
+@router.post("/runs/{run_id}/stream/resume")
+async def resume_discussion_run_stream(run_id: str) -> StreamingResponse:
+    """Reconnect to an existing discussion run's event stream.
+
+    Replays all events from the store's event_log (so the client catches up
+    on what was emitted while it was disconnected) and then either:
+    - if the run is still pending/running: tails the store via polling
+      (lightweight; events arrive ≤ ~250ms after they happen)
+    - if the run is terminal: closes after replaying
+
+    Replay-based design (vs. attaching to the original asyncio.Queue) keeps
+    things simple: a fresh consumer always gets the full event sequence and
+    multi-tab reconnect just works.
+
+    Gated by the same ``discussion_streaming`` feature flag as the original
+    POST /runs/stream endpoint.
+    """
+    try:
+        from feature_flags import is_enabled
+    except ImportError:
+        raise HTTPException(status_code=404, detail="discussion streaming not enabled")
+    if not is_enabled("discussion_streaming"):
+        raise HTTPException(status_code=404, detail="discussion streaming not enabled")
+
+    from discussion_task_store import get_discussion_task_store
+
+    store = get_discussion_task_store()
+    snapshot = store.get(run_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+
+    async def event_generator():
+        last_index = 0
+        # Backlog replay loop: drain store's event_log; then if still running,
+        # keep polling for new appends.
+        while True:
+            events = store.get_event_log(run_id, from_index=last_index)
+            for event in events:
+                last_index += 1
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                kind = event.get("event")
+                if kind in ("done", "error"):
+                    return
+            # Re-check run state; if terminal but no done/error emitted (edge
+            # case: marked terminal via mark_terminal without event log), bail.
+            current = store.get(run_id)
+            if current is None:
+                return
+            if current["state"] in ("completed", "cancelled", "error"):
+                # Synthesize a closing event if the event_log didn't end with one
+                tail = {
+                    "event": "error" if current["state"] == "error" else "done",
+                    "status": 200 if current["state"] != "error" else 500,
+                    "error": current.get("error") or "",
+                    "final_state": current["state"],
+                }
+                yield f"data: {json.dumps(tail, ensure_ascii=False)}\n\n"
+                return
+            await asyncio.sleep(0.25)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 __all__ = [

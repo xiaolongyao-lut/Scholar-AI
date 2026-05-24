@@ -604,6 +604,7 @@ async def run_discussion(
     retriever: RetrieverFn | None = None,
     embed_fn: EmbedFn | None = None,
     on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    run_id: str | None = None,
 ) -> DiscussionRunResult:
     """Execute a RAG-aware multi-agent discussion.
 
@@ -618,7 +619,11 @@ async def run_discussion(
     """
     _check_strategy(config.synthesis_strategy)
     started = time.perf_counter()
-    run_id = f"disc_{uuid.uuid4().hex[:16]}"
+    # B1 (0.1.8.2): caller (SSE endpoint) may pre-register a run_id with the
+    # persistence store so events flow into the same key. Fallback to the
+    # legacy self-generated id for non-streaming callers.
+    if run_id is None:
+        run_id = f"disc_{uuid.uuid4().hex[:16]}"
     resolver = credential_resolver or _default_credential_resolver
 
     async def _emit(event: dict[str, Any]) -> None:
