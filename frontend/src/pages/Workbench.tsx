@@ -203,7 +203,13 @@ export function Workbench() {
   useEffect(() => {
     if (!activeProjectId) return;
     try {
-      const toSave = messages.filter(m => !m.error).slice(-50);
+      // 2026-05-24: keep error messages in history too. Filtering them
+      // (prior behaviour: `.filter(m => !m.error)`) zeroed out the saved
+      // log whenever every reply failed (upstream 502/504), giving users
+      // the impression "对话没持久化" because they only saw their own
+      // messages stranded without context. Persist the full last-50 slice
+      // so refresh + reopen surface both user prompts and failed replies.
+      const toSave = messages.slice(-50);
       if (toSave.length === 0) {
         localStorage.removeItem(`${CHAT_HISTORY_KEY}_${activeProjectId}`);
       } else {
