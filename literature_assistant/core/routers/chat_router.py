@@ -367,6 +367,26 @@ def _build_chat_endpoint(base_url: str, provider: str) -> str:
         return f"{base}/chat/completions"
 
     if provider_key == "doubao":
+        # B7+ (0.1.8.2 hotfix v4): user reported persistent 502 with
+        # "Invalid URL (POST /v1/api/v3/chat/completions)" because their
+        # config carried provider=doubao but base_url pointed at a
+        # generic OpenAI-compatible proxy (e.g. chybenzun.top/v1). The
+        # doubao branch appended /api/v3 to the OpenAI-style URL → 404
+        # upstream. Detect this mismatch (URL doesn't look like a real
+        # Volcano/Ark endpoint) and fall back to the OpenAI-compatible
+        # path so the user's URL is honored verbatim.
+        looks_like_real_doubao = any(
+            marker in base.lower()
+            for marker in ("volces.com", "ark.cn-beijing", "ark.volcengineapi")
+        )
+        if not looks_like_real_doubao:
+            # Treat as OpenAI-compatible — fall through to the generic
+            # branch below.
+            if base.endswith("/chat/completions"):
+                return base
+            if not base.endswith("/v1") and "/v1/" not in base:
+                base = f"{base}/v1"
+            return f"{base}/chat/completions"
         if base.endswith("/chat/completions"):
             return base
         # Normalize to the /v3 anchor so any sub-path variant (/responses,

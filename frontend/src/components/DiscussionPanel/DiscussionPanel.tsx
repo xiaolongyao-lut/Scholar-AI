@@ -864,9 +864,16 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
               <h4 className="font-label text-[10px] font-medium text-foreground/40 uppercase tracking-wider">
                 第 {turn.turn_index + 1} 轮
               </h4>
-              {turn.agent_traces.map((trace: DiscussionAgentTrace) => (
+              {turn.agent_traces.map((trace: DiscussionAgentTrace, traceIdx: number) => (
                 <div
-                  key={trace.agent_id}
+                  // B7+ (0.1.8.2 hotfix v4): the v3 live-preview synthesis
+                  // lumps all liveTraces into a single "turn 0" group, so
+                  // when the same agent_id speaks across multiple turns
+                  // the bare `key={trace.agent_id}` collides — React warns
+                  // "Encountered two children with the same key". Suffix
+                  // with the array index so each rendered row is unique
+                  // regardless of which agent answered in which turn.
+                  key={`${turn.turn_index}-${trace.agent_id}-${traceIdx}`}
                   className={cn(
                     'rounded-lg border p-3 space-y-1.5 shadow-sm',
                     ROLE_COLOR_MAP[trace.role] || 'bg-gray-50 text-gray-700 border-gray-200',
