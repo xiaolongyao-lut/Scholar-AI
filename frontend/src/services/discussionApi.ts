@@ -245,60 +245,114 @@ export const discussionApi = {
     },
   ): Promise<void> {
     const url = `${getApiBaseUrl()}${API_BASE}/runs/stream`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
-      signal: opts.signal,
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new DiscussionStreamError(
-        `stream request failed: ${response.status} ${text}`.trim(),
-        response.status,
-      );
-    }
-    if (!response.body) {
-      throw new DiscussionStreamError('stream response has no body', response.status);
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+    await consumeDiscussionSseStream(url, 'POST', JSON.stringify(req), opts);
+  },
+
+  // B1 (0.1.8.2): persistence — query a registered run's snapshot.
+  // Returns null when the backend has no record (404); the caller should
+  // drop any stored run_id and fall back to idle.
+  async getDiscussionRun(runId: string): Promise<DiscussionRunSnapshot | null> {
     try {
+      const response = await client().get<DiscussionRunSnapshot>(
+        `${API_BASE}/runs/${encodeURIComponent(runId)}`,
+      );
+      return response.data;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) return null;
+      throw err;
+    }
+  },
+
+  // B1: reconnect SSE for an existing run. Replays the event log then tails
+  // live events until done/error. Same onEvent shape as runDiscussionStream.
+  async resumeDiscussionStream(
+    runId: string,
+    opts: {
+      onEvent: (event: DiscussionStreamEvent) => void;
+      signal?: AbortSignal;
+    },
+  ): Promise<void> {
+    const url = `${getApiBaseUrl()}${API_BASE}/runs/${encodeURIComponent(runId)}/stream/resume`;
+    await consumeDiscussionSseStream(url, 'POST', undefined, opts);
+  },
+};
+
+// Shared SSE consumer used by both runDiscussionStream and resumeDiscussionStream.
+async function consumeDiscussionSseStream(
+  url: string,
+  method: 'POST',
+  body: string | undefined,
+  opts: {
+    onEvent: (event: DiscussionStreamEvent) => void;
+    signal?: AbortSignal;
+  },
+): Promise<void> {
+  const response = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body,
+    signal: opts.signal,
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new DiscussionStreamError(
+      `stream request failed: ${response.status} ${text}`.trim(),
+      response.status,
+    );
+  }
+  if (!response.body) {
+    throw new DiscussionStreamError('stream response has no body', response.status);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        // SSE events are separated by a blank line ("\n\n"). Lines starting
-        // with "data:" carry our JSON payload.
-        while (true) {
-          const sep = buffer.indexOf('\n\n');
-          if (sep < 0) break;
-          const chunk = buffer.slice(0, sep);
-          buffer = buffer.slice(sep + 2);
-          for (const line of chunk.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data:')) continue;
-            const payload = trimmed.slice(5).trim();
-            if (!payload) continue;
-            try {
-              const parsed = JSON.parse(payload) as DiscussionStreamEvent;
-              opts.onEvent(parsed);
-            } catch {
-              // Drop malformed lines; SSE channel is best-effort line-buffered.
-            }
+        const sep = buffer.indexOf('\n\n');
+        if (sep < 0) break;
+        const chunk = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        for (const line of chunk.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload) continue;
+          try {
+            const parsed = JSON.parse(payload) as DiscussionStreamEvent;
+            opts.onEvent(parsed);
+          } catch {
+            /* malformed SSE line; skip */
           }
         }
       }
-    } finally {
-      try {
-        reader.releaseLock();
-      } catch {
-        // releaseLock may throw if already released on abort; ignore.
-      }
     }
-  },
-};
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* already released on abort */
+    }
+  }
+}
+
+export interface DiscussionRunSnapshot {
+  run_id: string;
+  state: 'pending' | 'running' | 'completed' | 'cancelled' | 'error';
+  created_at: number;
+  updated_at: number;
+  current_stage: string | null;
+  current_turn_index: number;
+  live_traces: DiscussionAgentTrace[];
+  synthesis: DiscussionRunResult['synthesis'] | null;
+  final_result: DiscussionRunResult | null;
+  error: string | null;
+  event_log_length: number;
+}
 
 export class DiscussionStreamError extends Error {
   readonly status: number;

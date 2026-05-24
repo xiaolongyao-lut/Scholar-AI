@@ -80,6 +80,29 @@ const IDLE_SESSION: DiscussionSession = {
 };
 
 const SESSION_STORAGE_KEY = 'discussion-context-session-v1';
+const RUN_ID_STORAGE_KEY = 'discussion-context-run-id-v1';
+
+function loadPersistedRunId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(RUN_ID_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistRunId(runId: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (runId) {
+      window.localStorage.setItem(RUN_ID_STORAGE_KEY, runId);
+    } else {
+      window.localStorage.removeItem(RUN_ID_STORAGE_KEY);
+    }
+  } catch {
+    /* quota / disabled storage — drop silently */
+  }
+}
 
 function loadPersistedSession(): DiscussionSession | null {
   if (typeof window === 'undefined') return null;
@@ -145,6 +168,10 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
     setSession((prev) => {
       switch (event.event) {
         case 'started':
+          // B1 (0.1.8.2): server-side run_id arrives in the first SSE event.
+          // Persist it so a page reload / new tab can reconnect via the
+          // /runs/{run_id}/stream/resume endpoint.
+          persistRunId(event.run_id);
           return {
             ...prev,
             runId: event.run_id,
@@ -265,6 +292,9 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
       abortRef.current.abort();
       abortRef.current = null;
     }
+    // B1: stop tracking this run so a future mount doesn't try to reconnect
+    // to a cancelled session.
+    persistRunId(null);
     // Don't wait for the async catch/fallback paths to setSession; flip
     // state synchronously so the UI's "停止等待 · {N}s" pill clears the
     // instant the user clicks Stop. The backend orchestrator may still run
@@ -272,7 +302,7 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
     // discussion is now considered cancelled.
     setSession((prev) =>
       prev.state === 'running'
-        ? { ...prev, state: 'cancelled', endedAt: Date.now() }
+        ? { ...prev, state: 'cancelled', endedAt: Date.now(), runId: null }
         : prev,
     );
   }, []);
@@ -281,8 +311,99 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
     if (abortRef.current) {
       abortRef.current.abort();
     }
+    persistRunId(null);
     setSession(IDLE_SESSION);
   }, []);
+
+  // B1 (0.1.8.2): on mount, attempt to reconnect to a previously-tracked run.
+  // - Terminal state → restore final transcript and clear run_id
+  // - Running state → start SSE resume stream and let applyEvent rehydrate
+  // - 404 (server restarted / TTL expired / unknown) → silently drop the
+  //   stored run_id; user starts fresh
+  // Only runs once on mount; runs while the page is alive don't need resume
+  // because the Context state is in-memory.
+  useEffect(() => {
+    let cancelled = false;
+    const storedRunId = loadPersistedRunId();
+    if (!storedRunId) return;
+
+    (async () => {
+      try {
+        const snapshot = await discussionApi.getDiscussionRun(storedRunId);
+        if (cancelled) return;
+        if (!snapshot) {
+          persistRunId(null);
+          return;
+        }
+        if (snapshot.state === 'running' || snapshot.state === 'pending') {
+          // Live reconnect: hydrate Context with whatever was already in the
+          // store, then tail new events via the resume SSE.
+          setSession((prev) => ({
+            ...prev,
+            state: 'running',
+            startedAt: snapshot.created_at * 1000,
+            runId: snapshot.run_id,
+            currentStage: snapshot.current_stage,
+            currentTurnIndex: snapshot.current_turn_index,
+            liveTraces: snapshot.live_traces,
+            synthesis: snapshot.synthesis,
+          }));
+          const controller = new AbortController();
+          abortRef.current = controller;
+          try {
+            await discussionApi.resumeDiscussionStream(snapshot.run_id, {
+              onEvent: applyEvent,
+              signal: controller.signal,
+            });
+          } catch (err) {
+            if (!cancelled && !controller.signal.aborted) {
+              applyEvent({
+                event: 'error',
+                status: err instanceof DiscussionStreamError ? err.status : 500,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          } finally {
+            if (abortRef.current === controller) abortRef.current = null;
+          }
+          return;
+        }
+        // Terminal state (completed / cancelled / error) — restore once then
+        // drop the run_id so future mounts don't re-fetch the same run.
+        // Normalize backend 'pending' (shouldn't reach here due to above
+        // branch, but guard anyway) to 'completed' for type safety.
+        const terminalState: DiscussionSessionState =
+          snapshot.state === 'completed' ||
+          snapshot.state === 'cancelled' ||
+          snapshot.state === 'error'
+            ? snapshot.state
+            : 'error';
+        setSession((prev) => ({
+          ...prev,
+          state: terminalState,
+          startedAt: snapshot.created_at * 1000,
+          endedAt: snapshot.updated_at * 1000,
+          runId: snapshot.run_id,
+          currentStage: snapshot.current_stage,
+          currentTurnIndex: snapshot.current_turn_index,
+          liveTraces: snapshot.live_traces,
+          synthesis: snapshot.synthesis,
+          finalResult: snapshot.final_result,
+          error: snapshot.error,
+        }));
+        persistRunId(null);
+      } catch {
+        // Network error / endpoint missing on older backend → silently
+        // ignore; user sees a fresh idle state.
+        persistRunId(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount-only
 
   const value = useMemo<DiscussionContextValue>(
     () => ({ session, startSession, cancelSession, resetSession }),
