@@ -8,6 +8,42 @@ import type { AnalysisChainPayload } from '@/services/discussionApi';
 
 export type ChatRole = 'user' | 'assistant' | 'system' | 'agent';
 
+/**
+ * Canonical diagnostics block carried alongside an assistant message.
+ *
+ * Per the user's §五 决策 5 (2026-05-24): tier / token / context / insufficient
+ * metadata is stored as a single optional `diagnostics` object rather than
+ * five separate top-level props. Fields are independently optional so the
+ * renderer only shows what the caller actually populates — Inspector and
+ * Discussion can leave it `undefined` for zero visual change; Dialog and
+ * Workbench surfaces opt in by adapting their legacy response shapes.
+ *
+ * Future extension (M-Slice 1b.d): sampling params + per-chunk drilldown
+ * + chunk-id deep-link buttons will land here.
+ */
+export interface ChatMessageDiagnostics {
+  /** Retrieval tier the backend served. */
+  tier?: 'fast' | 'balanced' | 'thorough';
+  /** LLM token accounting from the provider response. */
+  tokens?: {
+    prompt?: number;
+    completion?: number;
+    total?: number;
+  };
+  /** Context-window stats: how many chunks went in, and from how many
+   *  distinct sources. */
+  context?: {
+    chunkCount: number;
+    sourceCount: number;
+  };
+  /** True when the backend reported zero usable context chunks. */
+  insufficient?: boolean;
+}
+
+export interface ChatMessageMetadata {
+  diagnostics?: ChatMessageDiagnostics;
+}
+
 export interface ChatMessageData {
   id: string;
   role: ChatRole;
@@ -27,6 +63,10 @@ export interface ChatMessageData {
    *  the chat backend when analysis_chain_rag flag is on. Renders below the
    *  message body via the shared AnalysisChainPanel. */
   analysis_chain?: AnalysisChainPayload | null;
+  /** Canonical metadata bag for diagnostic / debugging info. See
+   *  `ChatMessageMetadata`. Fields default-hidden when absent so Inspector /
+   *  Discussion get zero visual change. */
+  metadata?: ChatMessageMetadata;
 }
 
 interface MessageRendererProps {
@@ -127,6 +167,10 @@ export function MessageRenderer({
           </div>
         )}
 
+        {isAgent && message.metadata?.diagnostics && (
+          <MessageDiagnosticsRow diagnostics={message.metadata.diagnostics} />
+        )}
+
         {footer && <div className="mt-2">{footer}</div>}
 
         <div
@@ -156,4 +200,59 @@ function formatTimestamp(iso: string): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * Renders the optional one-line diagnostics row beneath an assistant
+ * message — tier / tokens / context / insufficient-warning. Fields are
+ * shown only when populated so the row collapses gracefully when the
+ * caller (e.g. Inspector) only has partial data.
+ */
+function MessageDiagnosticsRow({ diagnostics }: { diagnostics: ChatMessageDiagnostics }) {
+  const items: ReactNode[] = [];
+  if (diagnostics.tier) {
+    items.push(
+      <span key="tier" title="检索深度">
+        {diagnostics.tier === 'fast' ? '快速' : diagnostics.tier === 'thorough' ? '深度' : '平衡'}
+      </span>,
+    );
+  }
+  if (diagnostics.tokens) {
+    const total = diagnostics.tokens.total;
+    if (typeof total === 'number' && total > 0) {
+      const prompt = diagnostics.tokens.prompt ?? 0;
+      const completion = diagnostics.tokens.completion ?? 0;
+      const tip = prompt && completion ? `prompt ${prompt} / completion ${completion}` : `总计 ${total}`;
+      items.push(
+        <span key="tokens" title={tip}>
+          {total.toLocaleString()} tokens
+        </span>,
+      );
+    }
+  }
+  if (diagnostics.context && diagnostics.context.chunkCount > 0) {
+    items.push(
+      <span key="context" title="参考的语料 chunk 数 / 来源文献数">
+        {diagnostics.context.chunkCount} chunks · {diagnostics.context.sourceCount} sources
+      </span>,
+    );
+  }
+  if (diagnostics.insufficient) {
+    items.push(
+      <span key="insufficient" className="text-amber-700 dark:text-amber-300" title="未检索到相关上下文">
+        ⚠ 上下文不足
+      </span>,
+    );
+  }
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-outline-variant/40 pt-1 text-[10px] text-foreground/45">
+      {items.map((item, idx) => (
+        <span key={idx} className="inline-flex items-center">
+          {idx > 0 && <span className="mr-2 opacity-60">·</span>}
+          {item}
+        </span>
+      ))}
+    </div>
+  );
 }

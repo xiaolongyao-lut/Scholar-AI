@@ -1,11 +1,10 @@
 import axios from 'axios';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MessageCircle, RefreshCw, Send, AlertCircle, History, X, BookOpen, Sparkles, Lightbulb, Clock, Paperclip, Loader2 } from 'lucide-react';
+import { MessageCircle, RefreshCw, Send, AlertCircle, History, X, BookOpen, Sparkles, Paperclip, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TierSelector } from '@/components/chat/TierSelector';
 import { MessageBubble } from '@/components/chat/MessageBubble';
-import { AnalysisChainPanel } from '@/components/analysis_chain/AnalysisChainPanel';
 import {
   sendIntelligentChatMessage,
   listChatSessions,
@@ -13,21 +12,19 @@ import {
   isSessionModeConflictError,
   ContextTier,
   ChatMode,
-  InspirationContext,
   IntelligentChatResponse,
   ChatSessionSummary,
   ChatResumeMessage,
   ImageAttachment,
 } from '@/services/intelligentChatApi';
-import { getInspirationService } from '@/services/inspirationService';
-import { SparkEvidencePills } from '@/components/inspiration/SparkEvidencePills';
-import type { InspirationSpark } from '@/types/writing';
 import { useWriting } from '@/contexts/WritingContext';
 
 // Dialog mode — see docs/plans/active/2026-05-13-dialog-merge-plan.md
-// A2 ships the UI; A3 wires the backend `mode` JSON body field;
-// A5 wires the inspiration spark drawer to /api/inspiration/generate.
-export type DialogMode = ChatMode;
+// A2 ships the UI; A3 wires the backend `mode` JSON body field.
+// 2026-05-24: inspiration mode removed from the Dialog UI; the backend
+// ChatMode enum still recognises `inspiration` for any other caller, but
+// Dialog itself only exposes direct + literature_qa.
+export type DialogMode = 'direct' | 'literature_qa';
 
 interface ChatMessage {
   id: string;
@@ -88,7 +85,9 @@ function toChatMessage(message: ChatResumeMessage): ChatMessage {
 function parseInitialMode(search: string): DialogMode {
   const params = new URLSearchParams(search);
   const m = params.get('mode');
-  if (m === 'direct' || m === 'literature_qa' || m === 'inspiration') return m;
+  if (m === 'direct' || m === 'literature_qa') return m;
+  // 2026-05-24: inspiration mode removed from Dialog UI; redirect callers
+  // to literature_qa so old bookmarks / nav links keep landing somewhere.
   return 'literature_qa';
 }
 
@@ -126,12 +125,6 @@ const MODE_META: Record<DialogMode, { label: string; placeholder: string; emptyH
     placeholder: '从你的文献库中提问…',
     emptyHint: '文献模式：AI 会从你的文献库中检索相关内容并基于证据回答。',
     icon: BookOpen,
-  },
-  inspiration: {
-    label: '灵感思维链',
-    placeholder: '主题词，AI 会先从文献里挖灵感再答…',
-    emptyHint: '灵感模式：先从文献库挖出研究空白 / 因果 / 冲突灵感，回答中可参考。',
-    icon: Lightbulb,
   },
 };
 
@@ -179,12 +172,6 @@ export function Dialog() {
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([]);
   const [imageReadingCount, setImageReadingCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  // Inspiration mode (A5): spark generation panel state.
-  const [sparkTopic, setSparkTopic] = useState<string>('');
-  const [sparks, setSparks] = useState<InspirationSpark[]>([]);
-  const [selectedSpark, setSelectedSpark] = useState<InspirationSpark | null>(null);
-  const [sparkLoading, setSparkLoading] = useState<boolean>(false);
-  const [sparkError, setSparkError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -349,21 +336,6 @@ export function Dialog() {
     // session_mode_conflict (D-DM-5), drop session_id and retry once
     // automatically — the user already saw the local message echo, no
     // need to re-type.
-    // A5: when an inspiration spark is selected, attach it as
-    // inspiration_context so the backend can prepend the spark block to
-    // the literature_qa retrieval context. The attachment fires once per
-    // selection — after sending we clear the selection to avoid
-    // accidentally reusing the spark on the next unrelated message.
-    const attachedSpark = mode === 'inspiration' ? selectedSpark : null;
-    const inspirationContext: InspirationContext | undefined = attachedSpark
-      ? {
-          spark_id: attachedSpark.id,
-          content: attachedSpark.content,
-          evidence_texts: [],
-          suggested_angles: [],
-        }
-      : undefined;
-
     const sendOnce = async (currentSessionId: string | undefined) =>
       sendIntelligentChatMessage({
         query,
@@ -371,7 +343,6 @@ export function Dialog() {
         tier: selectedTier,
         project_id: activeProjectId || undefined,
         mode,
-        inspiration_context: inspirationContext,
         images: attachedImages.length > 0 ? attachedImages : undefined,
       });
 
@@ -403,7 +374,6 @@ export function Dialog() {
       };
       setMessages((prev) => [...prev, assistantMessage]);
       setChatState('ready');
-      if (attachedSpark) setSelectedSpark(null);
       if (attachedImages.length > 0) setAttachedImages([]);
     } catch (error) {
       const errorMsg = getChatErrorMessage(error);
@@ -423,34 +393,6 @@ export function Dialog() {
       e.preventDefault();
       handleSendMessage();
     }
-  };
-
-  // A5: inspiration spark generation. Uses the existing
-  // /api/inspiration/generate endpoint (no schema change). Selected
-  // spark is attached to the next /api/chat call as inspiration_context
-  // and then cleared, so the spark doesn't silently affect later
-  // unrelated questions.
-  const handleGenerateSparks = async () => {
-    const topic = sparkTopic.trim();
-    if (!topic || sparkLoading) return;
-    setSparkLoading(true);
-    setSparkError(null);
-    try {
-      const service = getInspirationService();
-      const results = await service.generateSparks(topic, 12, activeProjectId ?? undefined);
-      setSparks(results);
-      if (results.length === 0) {
-        setSparkError('未生成任何灵感（可能是文献库为空或主题与已索引文献相关度低）');
-      }
-    } catch (err: unknown) {
-      setSparkError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSparkLoading(false);
-    }
-  };
-
-  const handleSparkClick = (spark: InspirationSpark) => {
-    setSelectedSpark((prev) => (prev?.id === spark.id ? null : spark));
   };
 
   const isInputDisabled = chatState === 'responding';
@@ -489,7 +431,7 @@ export function Dialog() {
 
       {/* Mode toggle bar (plan §12 D-DM-2: top horizontal button group) */}
       <div className="flex items-center gap-2 border-b border-outline-variant/60 bg-surface-lowest px-6 py-2.5">
-        {(['direct', 'literature_qa', 'inspiration'] as const).map((m) => {
+        {(['direct', 'literature_qa'] as const).map((m) => {
           const M = MODE_META[m];
           const Icon = M.icon;
           const active = m === mode;
@@ -554,7 +496,15 @@ export function Dialog() {
                 <div className="py-8 text-center text-sm text-foreground/55">暂无保存的会话</div>
               ) : (
                 sessions.map((item) => {
-                  const modeMeta = item.mode ? MODE_META[item.mode] : null;
+                  // Legacy sessions can carry the now-removed `inspiration` mode;
+                  // map those to literature_qa so the history pill stays useful.
+                  const sessionMode: DialogMode | null =
+                    item.mode === 'direct' || item.mode === 'literature_qa'
+                      ? item.mode
+                      : item.mode === 'inspiration'
+                        ? 'literature_qa'
+                        : null;
+                  const modeMeta = sessionMode ? MODE_META[sessionMode] : null;
                   // Friendly short label hides raw session_xxx ids per R5.
                   const shortLabel = `会话 #${item.session_id.slice(-6)}`;
                   return (
@@ -675,147 +625,14 @@ export function Dialog() {
         </div>
       )}
 
-      {/* Inspiration spark panel (A5).
-          mode=inspiration only. Topic input + horizontally-scrollable
-          spark list. Selecting a spark attaches it to the next chat
-          message as inspiration_context; the selection is cleared after
-          send so it doesn't bleed into later unrelated questions.
-          Backend retrieval path is unchanged — sparks layer on top of
-          literature_qa. */}
-      {mode === 'inspiration' && (
-        <div className="px-6 py-3 border-t border-amber-200 bg-amber-50/50">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <Lightbulb className="h-4 w-4 shrink-0 text-amber-700" />
-            <span className="whitespace-nowrap text-xs font-medium text-amber-900">灵感主题：</span>
-            <input
-              type="text"
-              value={sparkTopic}
-              onChange={(e) => setSparkTopic(e.target.value)}
-              aria-label="灵感主题"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); void handleGenerateSparks(); }
-              }}
-              placeholder="例：激光焊接熔池控制"
-              disabled={sparkLoading}
-              className="flex-1 min-w-[200px] px-2 py-1 text-xs border border-amber-300 rounded bg-white text-gray-900 focus:outline-none focus:border-amber-500 disabled:opacity-50"
-            />
-            <button
-              type="button"
-              onClick={() => void handleGenerateSparks()}
-              disabled={!sparkTopic.trim() || sparkLoading}
-              className="px-3 py-1 text-xs font-medium bg-amber-600 text-white rounded hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-            >
-              {sparkLoading ? '生成中…' : '生成灵感'}
-            </button>
-          </div>
-
-          {sparkError && (
-            <p className="text-xs text-red-700 mb-2">⚠ {sparkError}</p>
-          )}
-
-          {sparks.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {sparks.map((s) => {
-                const selected = selectedSpark?.id === s.id;
-                const temporal = typeof s.temporal_sensitivity === 'number' ? s.temporal_sensitivity : 0;
-                return (
-                  <div key={s.id} className="flex-shrink-0 w-64 flex flex-col gap-1">
-                    <button
-                      type="button"
-                      onClick={() => handleSparkClick(s)}
-                      className={`text-left p-2.5 rounded-lg border transition-colors relative ${
-                        selected
-                          ? 'bg-amber-100 border-amber-500 ring-2 ring-amber-500'
-                          : 'bg-white border-amber-200 hover:border-amber-400'
-                      }`}
-                    >
-                      {temporal >= 0.5 && (
-                        <span
-                          title={`时效敏感度 ${(temporal * 100).toFixed(0)}% — 结论可能因新文献过时`}
-                          className="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700"
-                        >
-                          <Clock className="w-2.5 h-2.5" />
-                          <span className="text-[9px] font-mono">{(temporal * 10).toFixed(0)}</span>
-                        </span>
-                      )}
-                      <p className="text-xs text-gray-900 line-clamp-3 leading-snug pr-6">{s.content}</p>
-                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-amber-800">
-                        <span>{s.spark_type}</span>
-                        <span>{Math.round(s.confidence * 100)}%</span>
-                      </div>
-                    </button>
-                    {/* Track B: clickable evidence anchors live outside the
-                        spark card button so the pills don't nest <button>
-                        inside <button> (invalid HTML). */}
-                    <SparkEvidencePills
-                      refs={s.evidence_refs}
-                      projectId={activeProjectId}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* B5: selected spark — six-segment analysis chain inline expand.
-              D-IR-5: confidence_reason lives in the drawer (this block),
-              not on the card. D-IR-4: evidence is text-only this phase. */}
-          {selectedSpark && (
-            <div className="mt-2 p-3 rounded-lg bg-amber-50 border border-amber-300 space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-amber-900 flex-1">
-                  📌 已选灵感：<span className="font-mono text-[11px]">{selectedSpark.id}</span>
-                  <br />
-                  <span className="text-[10px] text-amber-700">下一条消息会带上此灵感作为参考；发送后自动取消。</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedSpark(null)}
-                  className="text-amber-700 hover:text-amber-900 flex-shrink-0"
-                  title="取消选择"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {selectedSpark.analysis_chain ? (
-                /* B6 (0.1.8.2): replaced inline 6-field render with the shared
-                   AnalysisChainPanel so Dialog / Discussion / MessageBubble
-                   all use identical field order + collapse style. */
-                <AnalysisChainPanel
-                  chain={selectedSpark.analysis_chain}
-                  defaultExpanded={true}
-                />
-              ) : (
-                <p className="text-[11px] text-amber-800/70 italic">
-                  此 spark 暂无分析链（旧数据或 LLM 未返回完整字段）。
-                </p>
-              )}
-
-              {selectedSpark.confidence_reason && (
-                <div className="pt-1.5 border-t border-amber-300 text-[10px] text-amber-800">
-                  <span className="font-semibold">置信度说明：</span>{selectedSpark.confidence_reason}
-                </div>
-              )}
-            </div>
-          )}
-
-          {sparks.length === 0 && !sparkLoading && !sparkError && (
-            <p className="text-xs text-amber-800/70">
-              输入研究主题，按生成按钮挖出研究空白 / 因果 / 冲突灵感；选中一条后再在下方对话框提问，AI 会带着这条灵感回答。
-            </p>
-          )}
-        </div>
-      )}
-
       {/* Input area */}
       <div className="border-t border-outline-variant/60 bg-surface-low px-6 py-4">
         {mode !== 'direct' && (
-          <div className={`mb-3 ${mode === 'inspiration' ? 'opacity-40 pointer-events-none' : ''}`}>
+          <div className="mb-3">
             <TierSelector
               selectedTier={selectedTier}
               onTierChange={setSelectedTier}
-              disabled={isInputDisabled || mode === 'inspiration'}
+              disabled={isInputDisabled}
             />
           </div>
         )}

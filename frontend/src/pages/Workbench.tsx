@@ -122,7 +122,9 @@ export function Workbench() {
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [ingestMode, setIngestMode] = useState<'none' | 'query' | 'full'>('query');
+  const [ingestMode, setIngestMode] = useState<'none' | 'query' | 'full'>(
+    loadSettings().workspace.ingestMode ?? 'query',
+  );
   const [aiCostProfile, setAiCostProfile] = useState<'balanced' | 'aggressive' | 'quality'>(
     loadSettings().workspace.aiCostProfile ?? 'balanced'
   );
@@ -130,7 +132,9 @@ export function Workbench() {
   const [isRehydrating, setIsRehydrating] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorContent, setEditorContent] = useState('');
-  const [mcpServerIds, setMcpServerIds] = useState<string[]>([]);
+  const [mcpServerIds, setMcpServerIds] = useState<string[]>(
+    () => loadSettings().workspace.mcpServerIds ?? [],
+  );
   const [editorJson, setEditorJson] = useState<object>({});
   const [exporting, setExporting] = useState(false);
 
@@ -592,7 +596,12 @@ export function Workbench() {
             {(['none', 'query', 'full'] as const).map(mode => (
               <button
                 key={mode}
-                onClick={() => setIngestMode(mode)}
+                onClick={() => {
+                  setIngestMode(mode);
+                  const s = loadSettings();
+                  s.workspace.ingestMode = mode;
+                  saveSettings(s);
+                }}
                 disabled={!activeProjectId}
                 title={
                   mode === 'none' ? '仅检索已入库 chunk' :
@@ -652,7 +661,12 @@ export function Workbench() {
         <div className="max-w-2xl mx-auto mb-3">
           <McpScopePicker
             selected={mcpServerIds}
-            onChange={setMcpServerIds}
+            onChange={(next) => {
+              setMcpServerIds(next);
+              const s = loadSettings();
+              s.workspace.mcpServerIds = next;
+              saveSettings(s);
+            }}
             hideWhenEmpty
           />
         </div>

@@ -927,9 +927,24 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
                     </div>
                   )}
                   {!trace.success && trace.error && (
-                    <p className="text-xs text-red-600">
-                      此角色调用失败，请检查对应 API 设置。
-                    </p>
+                    <div className="rounded border border-rose-300/60 bg-rose-50 px-2 py-1.5 dark:bg-rose-500/15 dark:border-rose-700/40">
+                      <p className="text-[11px] font-medium text-rose-700 dark:text-rose-200">
+                        ⚠ 此角色调用失败
+                        {typeof trace.error.error_class === 'string' && (
+                          <span className="ml-1 font-mono text-[10px] opacity-75">
+                            ({trace.error.error_class})
+                          </span>
+                        )}
+                      </p>
+                      {typeof trace.error.message === 'string' && (
+                        <p className="mt-0.5 text-[10px] text-rose-700/85 dark:text-rose-200/85 line-clamp-3 break-all">
+                          {trace.error.message}
+                        </p>
+                      )}
+                      <p className="mt-0.5 text-[10px] text-rose-700/65 dark:text-rose-200/65">
+                        提示：若 detail 中含 "502 Bad Gateway" 等上游错误，多为该角色绑定的 LLM provider 异常。请到「系统设置 → 凭证」检查 base_url / api_key，或切换到其他 provider 后重试。
+                      </p>
+                    </div>
                   )}
                 </div>
               ))}

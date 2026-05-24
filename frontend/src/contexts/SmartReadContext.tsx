@@ -175,6 +175,10 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
           response?: string;
           evidence_refs?: EvidenceRefLike[];
           analysis_chain?: import('@/services/discussionApi').AnalysisChainPayload | null;
+          tier_used?: 'fast' | 'balanced' | 'thorough';
+          tokens_used?: { prompt?: number; completion?: number; total?: number };
+          context_metadata?: { chunks?: Array<{ source?: string }> };
+          context_chunks_used?: number;
         }>(
           `${getApiBaseUrl()}/api/chat`,
           {
@@ -186,6 +190,10 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
           },
           { timeout: 180000 },
         );
+        const chunks = data.context_metadata?.chunks ?? [];
+        const sourceCount = new Set(
+          chunks.map((c) => c.source).filter((s): s is string => typeof s === 'string'),
+        ).size;
         const assistantMsg: ChatMessageData = {
           id: `a-${Date.now()}`,
           role: 'assistant',
@@ -193,9 +201,31 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
           timestamp: new Date().toISOString(),
           evidence: data.evidence_refs,
           // B6 (0.1.8.2): forward the structured reasoning chain so
-          // MessageBubble can render the AnalysisChainPanel below the body.
+          // MessageRenderer can render the AnalysisChainPanel below the body.
           // Null/undefined when analysis_chain_rag flag is off → no panel.
           analysis_chain: data.analysis_chain ?? null,
+          // 2026-05-24 Slice γ: hoist canonical diagnostics so Inspector
+          // matches the Dialog MessageBubble UX (tier / token / context /
+          // insufficient warning) without forking the message shape.
+          // Fields are independently optional — when the backend has not
+          // populated something, the row collapses silently rather than
+          // showing a "—" placeholder.
+          metadata: {
+            diagnostics: {
+              tier: data.tier_used,
+              tokens: data.tokens_used
+                ? {
+                    prompt: data.tokens_used.prompt,
+                    completion: data.tokens_used.completion,
+                    total: data.tokens_used.total,
+                  }
+                : undefined,
+              context: chunks.length > 0
+                ? { chunkCount: chunks.length, sourceCount }
+                : undefined,
+              insufficient: (data.context_chunks_used ?? chunks.length) === 0,
+            },
+          },
         };
         setStore((prev) => ({
           ...prev,

@@ -30,6 +30,11 @@ export interface WorkspaceConfig {
   autoIndex: boolean;
   retrievalTopK: number;
   aiCostProfile?: 'balanced' | 'aggressive' | 'quality';
+  /** Workbench(知识库智能研读)入库模式 — none / query / full。
+   *  Persisted so reopening the page keeps the user's last choice. */
+  ingestMode?: 'none' | 'query' | 'full';
+  /** Workbench 选中的 MCP server ids,跨刷新保留(plan §五 设置持久化)。 */
+  mcpServerIds?: string[];
 }
 
 export interface AppSettings {
