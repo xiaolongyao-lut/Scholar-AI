@@ -1,4 +1,6 @@
 import { type ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import { AnalysisChainPanel } from '@/components/analysis_chain/AnalysisChainPanel';
@@ -89,9 +91,21 @@ export function Message({
           </div>
         )}
 
-        <div className={cn(isUser ? 'whitespace-pre-wrap break-words' : 'whitespace-pre-wrap break-words')}>
-          {message.content}
-        </div>
+        {/* B7+ (0.1.8.2 hotfix v5): Inspector smart-read used the canonical
+            Message component which previously did `whitespace-pre-wrap` for
+            both user and assistant — so the assistant's markdown (**bold**,
+            lists, headings) rendered as raw asterisks. User explicitly
+            asked for parity with left-sidebar Dialog (which uses
+            MessageBubble + ReactMarkdown). Apply markdown to assistant /
+            agent bodies; keep user input as plain text to preserve any
+            literal characters they typed. */}
+        {isUser ? (
+          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+        ) : (
+          <div className="prose prose-sm max-w-none prose-neutral dark:prose-invert prose-p:my-1.5 prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-code:bg-foreground/10 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[12px] prose-code:before:content-none prose-code:after:content-none prose-pre:bg-foreground/10 prose-strong:font-semibold">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          </div>
+        )}
 
         {isAgent && message.evidence && message.evidence.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -118,7 +132,18 @@ export function Message({
 
         {footer && <div className="mt-2">{footer}</div>}
 
-        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-foreground/45">
+        <div
+          className={cn(
+            'mt-1 flex items-center justify-between gap-2 text-[10px]',
+            // B7+ (0.1.8.2 hotfix v5): user reported the timestamp on the
+            // primary-tinted user bubble was illegible — text-foreground/45
+            // is a low-contrast gray on top of a saturated blue bubble.
+            // For user bubbles: use primary-foreground/70 so the text
+            // inherits the bubble's intended contrast color (white-ish).
+            // For agent bubbles: keep the muted foreground.
+            isUser ? 'text-primary-foreground/70' : 'text-foreground/45',
+          )}
+        >
           {message.status === 'streaming' && <span aria-live="polite">生成中…</span>}
           {message.status === 'error' && <span className="text-destructive">生成失败</span>}
           {message.timestamp && (

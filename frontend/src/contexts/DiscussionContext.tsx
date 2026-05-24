@@ -158,12 +158,14 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   const applyEvent = useCallback((event: DiscussionStreamEvent) => {
-    // Debug aid (2026-05-24 user reported transcript stayed empty after a
-    // successful backend run — open browser console to see whether the
-    // ``done`` event actually arrived):
+    // B7+ (0.1.8.2 hotfix v5): user F12 default level hid console.debug
+    // so the v1 "[DiscussionContext] event ..." traces were invisible
+    // and "看不到任何事件" reports were ambiguous (SSE not flowing vs.
+    // log filtered out). Promote to console.info so the default log
+    // level captures them; downgrade if it gets too chatty later.
     if (typeof console !== 'undefined') {
       // eslint-disable-next-line no-console
-      console.debug('[DiscussionContext] event', event.event, event);
+      console.info('[DiscussionContext] event', event.event, event);
     }
     setSession((prev) => {
       switch (event.event) {

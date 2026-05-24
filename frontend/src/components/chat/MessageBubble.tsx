@@ -237,7 +237,16 @@ export function MessageBubble({
         )}
 
         {timestamp && (
-          <div className="mt-1 text-xs opacity-60">
+          <div
+            className={clsx(
+              'mt-1 text-xs',
+              // B7+ (0.1.8.2 hotfix v5): on user bubble (bg-primary)
+              // opacity-60 of inherited text-white reads as faint blue
+              // on top of saturated blue — illegible. Use a high-contrast
+              // primary-foreground/70 instead so the time stays readable.
+              isUser ? 'text-primary-foreground/70' : 'opacity-60',
+            )}
+          >
             {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
