@@ -239,10 +239,43 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
   // (which references `running` / `result` / `error`) keeps working unchanged.
   // The Context is the source of truth for running state across navigations;
   // local state mirrors it for component-internal derived rendering.
+  //
+  // B7+ (0.1.8.2 hotfix v3): user reported "已完成 · 2 轮 / 已收到 2 条"
+  // but transcript area stays empty. Root cause: result was only filled
+  // from session.finalResult (set on done event), and the existing
+  // `{result && (<transcript>)}` guard hid the entire turns list during
+  // the running window even though liveTraces already had agent outputs.
+  // Fix: synthesize a partial result from liveTraces during running so the
+  // user sees agents stream in one-by-one; replace with the authoritative
+  // finalResult once the done event arrives.
   useEffect(() => {
     setRunning(session.state === 'running');
     if (session.finalResult !== null) {
       setResult(session.finalResult);
+    } else if (session.liveTraces.length > 0) {
+      // Synthesize a minimal DiscussionRunResult shape from liveTraces.
+      // liveTraces items lack their original turn_index (the SSE event
+      // carries turn_index alongside the trace; we don't fold it into the
+      // trace object). Lump all live traces into one "preview turn" so
+      // the user at least sees the agent answers stream in; the
+      // authoritative finalResult replaces this with the proper
+      // per-turn split when the done event arrives.
+      const partialTurns = [
+        {
+          turn_index: 0,
+          agent_traces: session.liveTraces,
+        },
+      ];
+      setResult({
+        run_id: session.runId ?? 'live',
+        turns: partialTurns,
+        synthesis: session.synthesis ?? null,
+        stopped_early: false,
+        convergence: null,
+        evidence_pack: null,
+      } as unknown as DiscussionRunResult);
+    } else if (session.state === 'idle') {
+      setResult(null);
     }
     if (session.state === 'cancelled') {
       setError('已停止等待，当前模型调用可能仍在收尾。');
@@ -254,7 +287,15 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({ onInsertToEdit
     if (session.state === 'running' && session.startedAt) {
       startedAtRef.current = session.startedAt;
     }
-  }, [session.state, session.finalResult, session.error, session.startedAt]);
+  }, [
+    session.state,
+    session.finalResult,
+    session.liveTraces,
+    session.synthesis,
+    session.runId,
+    session.error,
+    session.startedAt,
+  ]);
 
   const updateAgent = useCallback((id: string, patch: Partial<AgentSlot>) => {
     setAgents((current) => current.map((agent) => (

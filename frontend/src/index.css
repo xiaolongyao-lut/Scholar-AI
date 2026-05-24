@@ -120,22 +120,22 @@
      has its own rule below) so selection works regardless of which
      component renders the message. */
   ::selection {
-    background-color: rgba(253, 224, 71, 0.85); /* yellow-300 */
-    color: #111827; /* gray-900 */
-    text-shadow: none;
+    background-color: #fde047 !important; /* yellow-300 — !important so Tailwind preflight & layer ordering can't suppress */
+    color: #111827 !important; /* gray-900 */
+    text-shadow: none !important;
   }
   ::-moz-selection {
-    background-color: rgba(253, 224, 71, 0.85);
-    color: #111827;
-    text-shadow: none;
+    background-color: #fde047 !important;
+    color: #111827 !important;
+    text-shadow: none !important;
   }
   .dark ::selection {
-    background-color: rgba(250, 204, 21, 0.9); /* yellow-400 */
-    color: #0f172a; /* slate-900 */
+    background-color: #facc15 !important; /* yellow-400, denser in dark */
+    color: #0f172a !important; /* slate-900 */
   }
   .dark ::-moz-selection {
-    background-color: rgba(250, 204, 21, 0.9);
-    color: #0f172a;
+    background-color: #facc15 !important;
+    color: #0f172a !important;
   }
 
   /* Zotero-style PDF dark-mode rule: only chrome darkens; PDF canvas keeps a

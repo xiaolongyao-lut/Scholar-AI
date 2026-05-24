@@ -72,11 +72,32 @@ function loadPersisted(): Record<string, PersistedConversation> {
   if (typeof window === 'undefined') return {};
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
+    if (!raw) {
+      // B7+ (0.1.8.2 hotfix v3): visible trace so users debugging
+      // "持久化又丢了" can confirm whether localStorage simply had no
+      // entry (fresh install / cleared) vs. a parse / quota issue.
+      if (typeof console !== 'undefined') {
+        // eslint-disable-next-line no-console
+        console.info('[SmartReadContext] localStorage empty on mount; starting fresh.');
+      }
+      return {};
+    }
     const parsed = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return {};
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.info(
+        '[SmartReadContext] localStorage restored: %d scopes, keys=%o',
+        Object.keys(parsed).length,
+        Object.keys(parsed),
+      );
+    }
     return parsed as Record<string, PersistedConversation>;
-  } catch {
+  } catch (err) {
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.warn('[SmartReadContext] localStorage parse failed; resetting.', err);
+    }
     return {};
   }
 }
@@ -85,8 +106,13 @@ function persistSnapshot(store: Record<string, PersistedConversation>): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-  } catch {
-    /* quota / disabled storage — drop silently */
+  } catch (err) {
+    // B7+: surface quota / serialization failures so the user can see
+    // *why* persistence silently drops their conversation.
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.warn('[SmartReadContext] localStorage write failed:', err);
+    }
   }
 }
 
