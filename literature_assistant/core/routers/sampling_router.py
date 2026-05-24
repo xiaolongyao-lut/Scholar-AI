@@ -19,6 +19,25 @@ class SamplingPayload(BaseModel):
 
 @router.get("")
 async def get_sampling() -> dict[str, Any]:
+    """Return sampling defaults + user overrides for the Settings page.
+
+    Response shape (locked by tests/test_sampling_endpoint_contract.py,
+    B8 / 0.1.8.2):
+        - tasks: dict[str, dict] — user-saved overrides, {} when none
+        - defaults_version: str — bump when TASK_DEFAULTS schema changes
+        - task_defaults: dict[task_name, dict[field, value]] — ALWAYS
+          carries every registered task (chat, inspiration, extraction,
+          summarization, rewrite) with all four fields (temperature,
+          top_p, top_k, max_tokens). Frontend FALLBACK_TASK_DEFAULTS is
+          a defense-in-depth floor; this endpoint must not rely on it.
+        - model_max_tokens: positive int — upper bound for max_tokens
+          sliders in the UI.
+
+    Contract regression sentinel: if a future refactor removes a task
+    from TASK_DEFAULTS or drops one of the four sampling fields, the
+    Settings → 采样策略 panel would silently break (re-introducing the
+    2026-05-23 user crash). The contract test pins both invariants.
+    """
     return {
         "tasks": load_user_sampling(),
         "defaults_version": DEFAULTS_VERSION,
