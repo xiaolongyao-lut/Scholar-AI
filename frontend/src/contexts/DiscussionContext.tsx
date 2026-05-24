@@ -57,6 +57,12 @@ export interface DiscussionSession {
   finalResult: DiscussionRunResult | null;
   /** Set on stream error or run failure. */
   error: string | null;
+  /** B7 (0.1.8.2): current stage label from backend ``started`` /
+   *  ``stage_progress`` events (e.g. "retrieval" / "agents_prep").
+   *  Null when not yet running or stage unknown. */
+  currentStage: string | null;
+  /** B1/B7: server-generated run id, populated by ``started`` event. */
+  runId: string | null;
 }
 
 const IDLE_SESSION: DiscussionSession = {
@@ -69,6 +75,8 @@ const IDLE_SESSION: DiscussionSession = {
   synthesis: null,
   finalResult: null,
   error: null,
+  currentStage: null,
+  runId: null,
 };
 
 const SESSION_STORAGE_KEY = 'discussion-context-session-v1';
@@ -136,6 +144,17 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
     }
     setSession((prev) => {
       switch (event.event) {
+        case 'started':
+          return {
+            ...prev,
+            runId: event.run_id,
+            currentStage: event.stage,
+          };
+        case 'stage_progress':
+          return {
+            ...prev,
+            currentStage: event.stage,
+          };
         case 'agent_done':
           return {
             ...prev,

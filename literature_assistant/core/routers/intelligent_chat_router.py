@@ -1422,9 +1422,54 @@ def _session_summary(session: dict[str, Any]) -> ChatSessionSummaryPayload:
     )
 
 
+def _classify_chat_error(exc: BaseException) -> tuple[int, str]:
+    """Classify exceptions from the chat pipeline into user-facing (status, detail).
+
+    B7 (0.1.8.2): replaces opaque 502 propagation. Maps upstream/transport errors
+    to specific HTTP status with actionable Chinese detail.
+    """
+    import httpx
+
+    msg = str(exc) or exc.__class__.__name__
+
+    if isinstance(exc, asyncio.TimeoutError):
+        return 504, "上游 LLM 响应超时,请重试或在设置中调整 timeout"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code if exc.response is not None else 502
+        if status == 401:
+            return 401, "LLM API key 无效或未授权,请检查设置中的凭据配置"
+        if status == 429:
+            return 429, "LLM 上游限流,请稍后重试"
+        if status >= 500:
+            return 502, f"上游 LLM 服务异常 ({status}),请稍后重试"
+        return 502, f"上游 LLM 返回非预期状态 ({status}): {msg[:120]}"
+    if isinstance(exc, httpx.RequestError):
+        return 502, f"无法连接到上游 LLM ({exc.__class__.__name__}): {msg[:120]}"
+    if isinstance(exc, HTTPException):
+        # Re-raise already-classified HTTPExceptions (e.g. project not found)
+        raise exc
+    return 500, f"内部错误,请查看日志: {exc.__class__.__name__}"
+
+
 @router.post("/chat", response_model=IntelligentChatResponse)
 async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatResponse:
     """Answer a literature-grounded frontend chat request."""
+    try:
+        return await _intelligent_chat_impl(req)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — top-level boundary
+        status, detail = _classify_chat_error(exc)
+        # Log full traceback for backend diagnosis (B7 plan: surface real cause)
+        import logging
+        logging.getLogger(__name__).exception(
+            "intelligent_chat failed: %s → %d %s", exc.__class__.__name__, status, detail
+        )
+        raise HTTPException(status_code=status, detail=detail) from exc
+
+
+async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChatResponse:
+    """Internal implementation; outer wrapper classifies exceptions."""
     project_id = _validate_project_id(req.project_id)
     ragworkflow_answer: str | None = None
     ragworkflow_sampling: SamplingParamsPayload | None = None

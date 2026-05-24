@@ -311,6 +311,21 @@ export class DiscussionStreamError extends Error {
 
 export type DiscussionStreamEvent =
   | {
+      // B7 (0.1.8.2): early event so UI can flip from "可运行" to "正在检索"
+      // within ~100ms instead of black-screen for retrieval+first-LLM latency.
+      event: 'started';
+      run_id: string;
+      stage: string;
+      agent_count: number;
+      max_turns: number;
+    }
+  | {
+      // B7: stage transition (e.g. "agents_prep" after evidence built).
+      event: 'stage_progress';
+      stage: string;
+      evidence_chunk_count?: number;
+    }
+  | {
       event: 'agent_done';
       turn_index: number;
       agent_id: string;

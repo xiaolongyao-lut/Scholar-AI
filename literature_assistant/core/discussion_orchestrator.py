@@ -630,6 +630,18 @@ async def run_discussion(
             logger.exception("on_event observer failed for %s", event.get("event"))
 
     # ---------- Evidence ----------------------------------------------------
+    # B7 (0.1.8.2): emit early "started" event so the SSE client can render a
+    # progress indicator within ~100ms instead of staring at a blank screen for
+    # the full retrieval+first-LLM latency (~5–15s). This event carries run_id
+    # for the persistence layer (B1) and the current stage label for the UI.
+    await _emit({
+        "event": "started",
+        "run_id": run_id,
+        "stage": "retrieval",
+        "agent_count": len(config.agent_configs),
+        "max_turns": config.max_turns,
+    })
+
     evidence_pack: EvidencePack | None = None
     if config.evidence_mode == DiscussionEvidenceMode.FROM_PROJECT:
         try:
@@ -643,6 +655,14 @@ async def run_discussion(
             raise DiscussionOrchestratorError(
                 f"evidence pack build failed: {exc}"
             ) from exc
+
+    # B7: signal retrieval completion so UI flips from "正在检索证据" to
+    # "agent 准备中" before the first LLM call starts.
+    await _emit({
+        "event": "stage_progress",
+        "stage": "agents_prep",
+        "evidence_chunk_count": len(evidence_pack.snippets) if evidence_pack else 0,
+    })
     evidence_text, context_items, evidence_ids = _format_evidence_with_ids(
         evidence_pack,
         list(config.evidence_inline),
