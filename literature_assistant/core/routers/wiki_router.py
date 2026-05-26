@@ -414,6 +414,18 @@ def wiki_compile(request: WikiCompileRequest) -> WikiCompileResponse:
 
 @router.post("/query", response_model=WikiQueryResponse)
 def wiki_query(request: WikiQueryRequest) -> WikiQueryResponse:
+    """Wiki query endpoint (legacy name, use /search instead)."""
+    return _wiki_search_impl(request)
+
+
+@router.post("/search", response_model=WikiQueryResponse)
+def wiki_search(request: WikiQueryRequest) -> WikiQueryResponse:
+    """Wiki search endpoint (G5 2026-05-26, canonical name for /query)."""
+    return _wiki_search_impl(request)
+
+
+def _wiki_search_impl(request: WikiQueryRequest) -> WikiQueryResponse:
+    """Shared implementation for /query and /search endpoints."""
     if not wiki_enabled():
         return WikiQueryResponse(
             enabled=False,
