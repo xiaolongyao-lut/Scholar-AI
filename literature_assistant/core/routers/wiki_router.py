@@ -163,6 +163,14 @@ class WikiPageMutationResponse(BaseModel):
     message: str = ""
 
 
+class WikiExportResponse(BaseModel):
+    """Response for wiki export operation (G15 2026-05-26)."""
+    success: bool
+    page_count: int
+    output_path: str
+    errors: list[str] = Field(default_factory=list)
+
+
 def _page_store(*, create: bool = True) -> WikiPageStore:
     return WikiPageStore(wiki_generated_root(), create=create)
 
@@ -702,6 +710,37 @@ def wiki_doctor() -> WikiDoctorResponse:
     if not wiki_enabled():
         return WikiDoctorResponse(enabled=False, report={"warnings": _disabled_warning()})
     return WikiDoctorResponse(enabled=True, report=_doctor().run().to_dict())
+
+
+@router.post("/export", response_model=WikiExportResponse)
+def wiki_export(output_path: str | None = Query(default=None)) -> WikiExportResponse:
+    """Export all wiki pages as Markdown zip archive (G15 2026-05-26).
+
+    Args:
+        output_path: Optional output zip path. Defaults to workspace_artifacts/wiki_exports/wiki_export_{timestamp}.zip
+
+    Returns:
+        WikiExportResponse with success/page_count/output_path/errors
+    """
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+
+    from datetime import datetime, timezone
+    from wiki.export import export_wiki_markdown
+
+    if output_path is None:
+        from project_paths import WORKSPACE_ARTIFACTS_ROOT
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        export_dir = WORKSPACE_ARTIFACTS_ROOT / "wiki_exports"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        output_path = str(export_dir / f"wiki_export_{timestamp}.zip")
+
+    result = export_wiki_markdown(_page_store(create=False), Path(output_path))
+
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail={"errors": result["errors"]})
+
+    return WikiExportResponse(**result)
 
 
 @router.get("/graph", response_model=WikiGraphResponse)

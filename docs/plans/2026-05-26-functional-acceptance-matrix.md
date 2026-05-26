@@ -159,7 +159,7 @@
 | G12 | Wave 11 分类 | 页面分类/目录 | Wiki 页显示目录树 | `wiki_categories` 表 | llm-wiki Wave 11 | 是/P1 应做 | Claude(后端/接口) | ❓ 未定位：未找到目录树/API/table |
 | G13 | Wave 12 模板 | Wiki 页面模板 | Wiki 页显示模板选择器 | `wiki_templates` 表 | llm-wiki Wave 12 | 可延后/P2 | Claude(后端/接口) | ❓ 未定位 |
 | G14 | Wave 13 权限 | 页面访问控制 | Wiki 页显示权限设置 | `wiki_permissions` 表 | llm-wiki Wave 13 | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：`wiki/permissions.py` (WikiPageVisibility enum, WikiPagePermissions dataclass, can_read/can_write helpers)；`wiki/service.py` (WikiService.get_page/update_page_extra)；`GET/PUT /api/wiki/pages/{slug}/permissions` 端点；权限存储在 WikiPage.extra["permissions"] 避免 schema migration；15 个测试全通过 (tests/test_wiki_permissions.py) |
-| G15 | Wave 14 导出 | Wiki 导出 (Markdown/PDF) | Wiki 页显示导出按钮 | `/api/wiki/export` | llm-wiki Wave 14 | 是/P1 应做 | Claude(后端/接口) | ⚠️ 部分实现：`wiki/export.py` 存在；未定位 `/api/wiki/export` 和 UI 按钮 |
+| G15 | Wave 14 导出 | Wiki 导出 (Markdown/PDF) | Wiki 页显示导出按钮 | `/api/wiki/export` | llm-wiki Wave 14 | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：`POST /api/wiki/export` 端点；`export_wiki_markdown` 函数将所有 wiki 页面打包为 Markdown zip；默认输出到 `workspace_artifacts/wiki_exports/wiki_export_{timestamp}.zip`，支持自定义 output_path；`WikiExportResponse` 模型返回 success/page_count/output_path/errors；8 个测试全通过 (tests/test_wiki_export.py)；前端导出按钮待 Codex 实现；PDF 导出待后续实现 |
 | G16 | Wave 15 导入 | Wiki 导入 (Markdown/Notion) | Wiki 页显示导入按钮 | `/api/wiki/import` | llm-wiki Wave 15 | 可延后/P2 | Claude(后端/接口) | ⚠️ 部分实现：`wiki/migration.py` 支持 evidence refs/jsonl dry-run；未定位 `/api/wiki/import`/Notion UI |
 
 ---
