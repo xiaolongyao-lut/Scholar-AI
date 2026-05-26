@@ -45,26 +45,49 @@ class DiscussionLLMConfig(BaseModel):
     api_key: str = Field(min_length=1, max_length=512)
     protocol: str = Field(default="openai_chat_completions", max_length=64)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    top_p: float = Field(default=0.9, ge=0.0, le=1.0)
     max_tokens: int = Field(default=2048, ge=64, le=32_000)
 
 
+class McpScopeType(str, Enum):
+    """MCP authorization scope level (J8 decision 2026-05-26)."""
+    SURFACE = "surface"
+    AGENT = "agent"
+
+
 class DiscussionMcpOverrides(BaseModel):
-    """Run-level MCP scope for a discussion (Phase 4 / TASK-401).
+    """Run-level MCP scope for a discussion (Phase 4 / TASK-401 + J8).
 
     Per plan v0.3 §4.6 option (b): a sibling block on
     ``DiscussionRunConfig`` — the shipped ``DiscussionAgentConfig`` is
     intentionally not modified to keep Slice D's regression boundary.
 
-    Phase 4 only honors ``server_ids`` (applies to all agents in the run).
-    ``per_agent`` is accepted but ignored — a follow-up slice will add
-    per-agent enforcement once the UX is grilled.
+    J8 (2026-05-26): Added scope_type + per_agent + per_role enforcement.
+    When scope_type=agent, each agent gets isolated MCP server list from
+    per_agent[agent_id] or per_role[role]. When scope_type=surface,
+    server_ids applies to all agents (legacy behavior).
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    server_ids: list[str] = Field(default_factory=list, max_length=16)
+    scope_type: McpScopeType = Field(
+        default=McpScopeType.SURFACE,
+        description="Authorization scope: surface (all agents share server_ids) or agent (per-agent isolation)",
+    )
+    server_ids: list[str] = Field(
+        default_factory=list,
+        max_length=16,
+        description="Surface-level MCP servers (used when scope_type=surface or as fallback)",
+    )
     allow_high_risk_tools: bool = Field(default=False)
-    per_agent: dict[str, list[str]] = Field(default_factory=dict)
+    per_agent: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Agent-level MCP servers: {agent_id: [server_id, ...]}. Used when scope_type=agent.",
+    )
+    per_role: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Role-level MCP servers: {role: [server_id, ...]}. Fallback when agent_id not in per_agent.",
+    )
 
 
 class DiscussionAgentConfig(BaseModel):

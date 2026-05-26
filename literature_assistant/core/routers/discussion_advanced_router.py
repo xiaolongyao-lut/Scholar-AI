@@ -149,7 +149,9 @@ async def _default_invoke_agent(candidate: DispatchCandidate, prompt: str) -> st
         model=candidate.model,
         base_url=candidate.base_url,
         temperature=float(candidate.metadata.get("temperature", 0.7)),
+        top_p=float(candidate.metadata.get("top_p", 0.9)),
         max_tokens=int(candidate.metadata.get("max_tokens", 2048)),
+        system_prompt=str(candidate.metadata.get("system_prompt", "") or ""),
     )
     context_items = list(candidate.metadata.get("_context_items") or [])
     req = ChatRequest(query=prompt, context=context_items, history=[], llm=llm)
@@ -159,27 +161,27 @@ async def _default_invoke_agent(candidate: DispatchCandidate, prompt: str) -> st
 
 def _make_default_invoke_factory() -> InvokeAgentFactory:
     """Build a factory that augments DispatchCandidate metadata with the
-    resolved api_key + temperature/max_tokens before each agent runs.
+    resolved api_key + sampling defaults before each agent runs.
 
     The orchestrator builds candidates without secrets (DispatchCandidate is
     safe to log). For the chat_ask path we need the api_key plumbed through;
     we attach it via metadata which the wrapper reads.
     """
     def factory(config: DiscussionRunConfig) -> InvokeAgentFn:
-        # Build a per-agent endpoint map: agent_id -> {api_key, temperature, max_tokens}.
+        # Build a per-agent endpoint map with inline/default values. Pinned
+        # credential metadata already carries credential-local sampling.
         endpoint_extras: dict[str, dict[str, Any]] = {}
         for agent in config.agent_configs:
             if agent.llm is not None:
                 endpoint_extras[agent.agent_id] = {
                     "api_key": agent.llm.api_key,
                     "temperature": agent.llm.temperature,
+                    "top_p": agent.llm.top_p,
                     "max_tokens": agent.llm.max_tokens,
                 }
             elif agent.credential_id:
                 endpoint_extras[agent.agent_id] = {
                     "api_key": None,  # filled in by credential_resolver in orchestrator
-                    "temperature": 0.7,
-                    "max_tokens": 2048,
                 }
             else:
                 # No llm, no credential_id: use default chat config
@@ -188,17 +190,15 @@ def _make_default_invoke_factory() -> InvokeAgentFactory:
                 default_key = chat_store.get_resolved_field("api_key") or env_value("CHAT_API_KEY", "OPENAI_API_KEY_CHAT", "OPENAI_API_KEY", "ARK_API_KEY") or ""
                 endpoint_extras[agent.agent_id] = {
                     "api_key": default_key,
-                    "temperature": 0.7,
-                    "max_tokens": 2048,
                 }
 
         async def invoke(candidate: DispatchCandidate, prompt: str) -> str:
             extras = endpoint_extras.get(candidate.agent_id, {})
             # Merge extras into candidate.metadata for the inner call.
             # DispatchCandidate is frozen, so we reconstruct with merged metadata.
-            new_metadata = {**candidate.metadata, **{
+            new_metadata = {**{
                 k: v for k, v in extras.items() if v is not None
-            }}
+            }, **candidate.metadata}
             # If api_key still missing here (credential_id path), the
             # orchestrator's resolver should have populated metadata via the
             # candidate.api_key path. We surface a clear error.
@@ -240,15 +240,27 @@ def make_mcp_enabled_invoke_factory(
         if overrides is None or not chat_mcp_integration.is_mcp_tools_enabled():
             return base_invoke
 
-        if overrides.per_agent:
-            logger.warning(
-                "discussion mcp_overrides.per_agent supplied but ignored in "
-                "Phase 4 (server_ids applies to all agents): %s",
-                list(overrides.per_agent.keys()),
-            )
+        # J8: Build agent_id -> server_ids mapping based on scope_type
+        from models.discussion import McpScopeType
+        agent_mcp_map: dict[str, list[str]] = {}
 
-        if not overrides.server_ids:
-            # Empty list = audit-recorded zero-server run; same default behavior.
+        if overrides.scope_type == McpScopeType.AGENT:
+            # Per-agent isolation: resolve per_agent -> per_role -> server_ids fallback
+            for agent_cfg in config.agent_configs:
+                agent_id = agent_cfg.agent_id
+                if agent_id in overrides.per_agent:
+                    agent_mcp_map[agent_id] = list(overrides.per_agent[agent_id])
+                elif agent_cfg.role.value in overrides.per_role:
+                    agent_mcp_map[agent_id] = list(overrides.per_role[agent_cfg.role.value])
+                else:
+                    agent_mcp_map[agent_id] = list(overrides.server_ids)
+        else:
+            # Surface-level: all agents share server_ids
+            for agent_cfg in config.agent_configs:
+                agent_mcp_map[agent_cfg.agent_id] = list(overrides.server_ids)
+
+        # If all agents have empty server lists, return base_invoke (no MCP)
+        if not any(agent_mcp_map.values()):
             return base_invoke
 
         async def invoke(candidate: DispatchCandidate, prompt: str) -> str:
@@ -258,6 +270,9 @@ def make_mcp_enabled_invoke_factory(
                     f"agent {candidate.agent_id!r}: no api_key on candidate metadata"
                 )
 
+            # J8: Resolve agent-specific MCP server list
+            agent_server_ids = agent_mcp_map.get(candidate.agent_id, [])
+
             from routers.chat_router import ChatRequest, LLMConfig, chat_ask
 
             llm = LLMConfig(
@@ -266,7 +281,9 @@ def make_mcp_enabled_invoke_factory(
                 model=candidate.model,
                 base_url=candidate.base_url,
                 temperature=float(candidate.metadata.get("temperature", 0.7)),
+                top_p=float(candidate.metadata.get("top_p", 0.9)),
                 max_tokens=int(candidate.metadata.get("max_tokens", 2048)),
+                system_prompt=str(candidate.metadata.get("system_prompt", "") or ""),
             )
             context_items = list(candidate.metadata.get("_context_items") or [])
             req = ChatRequest(
@@ -274,7 +291,7 @@ def make_mcp_enabled_invoke_factory(
                 context=context_items,
                 history=[],
                 llm=llm,
-                mcp_server_ids=list(overrides.server_ids),
+                mcp_server_ids=agent_server_ids,
                 mcp_allow_high_risk_tools=overrides.allow_high_risk_tools,
             )
             response = await chat_ask(req)
