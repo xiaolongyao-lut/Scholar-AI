@@ -474,6 +474,84 @@ def wiki_pages(kind: str | None = Query(default=None), status: str | None = Quer
     return WikiPageListResponse(enabled=True, pages=pages)
 
 
+@router.get("/pages/{slug}/permissions")
+def get_wiki_page_permissions(slug: str, user_id: str | None = Query(default=None)) -> dict[str, Any]:
+    """Get permissions for a wiki page (G14 2026-05-26)."""
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+
+    from wiki.permissions import get_permissions, can_read
+    from wiki.service import get_wiki_service
+
+    service = get_wiki_service()
+    page = service.get_page(slug)
+    if page is None:
+        raise HTTPException(status_code=404, detail=f"Page not found: {slug}")
+
+    if not can_read(page.extra, user_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    perms = get_permissions(page.extra, default_owner="system")
+    return {
+        "owner": perms.owner,
+        "visibility": perms.visibility.value,
+        "shared_with": list(perms.shared_with),
+    }
+
+
+@router.put("/pages/{slug}/permissions")
+def update_wiki_page_permissions(
+    slug: str,
+    request: dict[str, Any],
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    """Update permissions for a wiki page (G14 2026-05-26)."""
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+
+    from wiki.permissions import (
+        WikiPagePermissions,
+        WikiPageVisibility,
+        get_permissions,
+        set_permissions,
+        can_write,
+    )
+    from wiki.service import get_wiki_service
+
+    service = get_wiki_service()
+    page = service.get_page(slug)
+    if page is None:
+        raise HTTPException(status_code=404, detail=f"Page not found: {slug}")
+
+    if not can_write(page.extra, user_id):
+        raise HTTPException(status_code=403, detail="Only owner can update permissions")
+
+    try:
+        visibility = WikiPageVisibility(request.get("visibility", "public"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid visibility: {request.get('visibility')}") from exc
+
+    shared_with = request.get("shared_with", [])
+    if not isinstance(shared_with, list):
+        raise HTTPException(status_code=400, detail="shared_with must be a list")
+
+    current_perms = get_permissions(page.extra, default_owner="system")
+    new_perms = WikiPagePermissions(
+        owner=current_perms.owner,
+        visibility=visibility,
+        shared_with=tuple(str(u) for u in shared_with),
+    )
+
+    new_extra = set_permissions(page.extra, new_perms)
+    service.update_page_extra(slug, new_extra)
+
+    return {
+        "owner": new_perms.owner,
+        "visibility": new_perms.visibility.value,
+        "shared_with": list(new_perms.shared_with),
+    }
+
+
 @router.get("/pages/{page_path:path}", response_model=WikiPageReadResponse)
 def wiki_page_read(page_path: str) -> WikiPageReadResponse:
     if not wiki_enabled():
@@ -562,3 +640,4 @@ def wiki_review_reject(item_id: str, request: WikiReviewDecisionRequest) -> Wiki
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return WikiReviewItemPayload(**item.to_dict())
+

@@ -158,7 +158,7 @@
 | G11 | Wave 10 标签系统 | 页面标签 | Wiki 页显示标签 | `wiki_tags` 表 | llm-wiki Wave 10 | 是/P1 应做 | Claude(后端/接口) | ⚠️ 部分实现：page frontmatter/status/kind 可展示；未定位 `wiki_tags` 表 |
 | G12 | Wave 11 分类 | 页面分类/目录 | Wiki 页显示目录树 | `wiki_categories` 表 | llm-wiki Wave 11 | 是/P1 应做 | Claude(后端/接口) | ❓ 未定位：未找到目录树/API/table |
 | G13 | Wave 12 模板 | Wiki 页面模板 | Wiki 页显示模板选择器 | `wiki_templates` 表 | llm-wiki Wave 12 | 可延后/P2 | Claude(后端/接口) | ❓ 未定位 |
-| G14 | Wave 13 权限 | 页面访问控制 | Wiki 页显示权限设置 | `wiki_permissions` 表 | llm-wiki Wave 13 | 是/P1 应做 | Claude(后端/接口) | ❓ 未定位 |
+| G14 | Wave 13 权限 | 页面访问控制 | Wiki 页显示权限设置 | `wiki_permissions` 表 | llm-wiki Wave 13 | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：`wiki/permissions.py` (WikiPageVisibility enum, WikiPagePermissions dataclass, can_read/can_write helpers)；`wiki/service.py` (WikiService.get_page/update_page_extra)；`GET/PUT /api/wiki/pages/{slug}/permissions` 端点；权限存储在 WikiPage.extra["permissions"] 避免 schema migration；15 个测试全通过 (tests/test_wiki_permissions.py) |
 | G15 | Wave 14 导出 | Wiki 导出 (Markdown/PDF) | Wiki 页显示导出按钮 | `/api/wiki/export` | llm-wiki Wave 14 | 是/P1 应做 | Claude(后端/接口) | ⚠️ 部分实现：`wiki/export.py` 存在；未定位 `/api/wiki/export` 和 UI 按钮 |
 | G16 | Wave 15 导入 | Wiki 导入 (Markdown/Notion) | Wiki 页显示导入按钮 | `/api/wiki/import` | llm-wiki Wave 15 | 可延后/P2 | Claude(后端/接口) | ⚠️ 部分实现：`wiki/migration.py` 支持 evidence refs/jsonl dry-run；未定位 `/api/wiki/import`/Notion UI |
 
