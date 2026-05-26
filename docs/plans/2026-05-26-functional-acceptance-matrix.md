@@ -208,7 +208,7 @@
 | J4 | MCP Tool-use UX | 工具使用体验优化 | 前端显示工具调用状态 | 后端返回工具调用详情 | mcp-tool-use-ux | 是/P1 应做 | Claude→Codex | ✅ 后端完成：`GET /api/mcp/pending-calls` + `POST /api/mcp/pending-calls/{id}/decide` + audit；前端 modal 需 Codex 浏览器验证 |
 | J5 | MCP 本地安装器 A | 扫描本地 MCP 包 | 无前端 UI | `mcp_scanner.py` | mcp-local-installer A | 是/P1 应做 | 维护 | ✅ 已实现（静态定位）：`POST /api/mcp/installations/scan` + package scanner |
 | J6 | MCP 本地安装器 B | 前端配置 UI | Settings → MCP 安装 | 前端 MCP 配置表单 | mcp-local-installer B | 是/P1 应做 | 维护 | ✅ 已实现（静态定位）：`McpInstallWizard` local install/config/credential binding |
-| J7 | MCP 本地安装器 C | 安装/探测/信任确认 | Settings → MCP 显示信任确认弹窗 | `/api/mcp/install` | mcp-local-installer C | 是/P1 应做 | Claude(后端/接口) | ⚠️ 部分实现/契约不一致：实际 `/api/mcp/installations/install`；v1 installer 仅 stdio |
+| J7 | MCP 本地安装器 C | 安装/探测/信任确认 | Settings → MCP 显示信任确认弹窗 | `/api/mcp/install` | mcp-local-installer C | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：实际端点 `POST /api/mcp/installations/install` (scan/preview/install 三阶段)；McpTemplateInstaller stdio 安装 + 信任确认 |
 | J8 | MCP Per-agent scope | 每个 Agent 独立 MCP 配置 | 无前端 UI | `mcp_config` 按 agent_id 隔离 | mcp-per-agent-scope | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：`McpScopeType` (surface/agent) + `DiscussionMcpOverrides.per_agent/per_role` + discussion_advanced_router agent_id 隔离逻辑；5 tests passed |
 | J9 | Skill 安全评估 | Skill 安装前安全检查 | Settings → Skill 显示安全评分 | `skill_security_assessor.py` | skill-security-assessment | 是/P1 应做 | 维护 | ✅ 已实现（静态定位）：`GET /skills/{skill_id}/security` + SkillManager/security policy |
 | J10 | Skill 沙箱 | Skill 运行沙箱隔离 | 无前端 UI | `skill_sandbox.py` | skill-sandbox | 是/P1 应做 | Claude(后端/接口) | ⚠️ 部分实现：安全策略会阻断/要求控制；未定位真正运行沙箱 |
