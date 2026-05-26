@@ -146,7 +146,7 @@
 | ID | 功能 | 期望效果 | 前端验收点 (界面是否齐) | 后端验收点 (链路是否通) | 来源 plan | 文献助手必要性/优先级 | 执行方 | 状态 |
 |----|------|----------|------------------------|------------------------|-----------|----------------------|--------|------|
 | G1 | Wave 0 基础架构 | Wiki 页面存储 | 无前端 UI | `wiki_pages` 表创建 | llm-wiki Wave 0 | 是/P0 必做 | Claude(后端/接口) | ⚠️ 部分实现/存储形态不同：`WikiPageStore` 文件页 + registry/source DB；未定位 `wiki_pages` 表 |
-| G2 | Wave 1 页面 CRUD | 创建/读取/更新/删除页面 | Wiki 页显示页面列表 | `/api/wiki/pages` CRUD | llm-wiki Wave 1 | 是/P0 必做 | Claude(后端/接口) | ⚠️ 部分实现：`GET /api/wiki/pages` 和 page read；无 create/update/delete router |
+| G2 | Wave 1 页面 CRUD | 创建/读取/更新/删除页面 | Wiki 页显示页面列表 | `/api/wiki/pages` CRUD | llm-wiki Wave 1 | 是/P0 必做 | Claude(后端/接口) | ✅ 已完成：`POST /api/wiki/pages` 创建页面；`PUT /api/wiki/pages/{slug}` 更新页面；`DELETE /api/wiki/pages/{slug}` 删除页面；`GET /api/wiki/pages` 列表和 `GET /api/wiki/pages/{page_path:path}` 读取已存在；`WikiService.create_page/update_page/delete_page` 方法；`WikiPageCreateRequest/WikiPageUpdateRequest/WikiPageMutationResponse` 模型；16 个测试全通过 (tests/test_wiki_crud.py)；create 自动生成 stable_slug，update 支持部分更新，delete 物理删除文件 |
 | G3 | Wave 2 Markdown 渲染 | 页面内容 Markdown 渲染 | Wiki 页渲染 Markdown | 前端 Markdown 库 | llm-wiki Wave 2 | 是/P0 必做 | Codex(UI) | ⚠️ 部分实现：`WikiPagePreviewPanel` 展示 frontmatter/body；未定位完整 Markdown 渲染库 |
 | G4 | Wave 3 页面链接 | Wiki 内部链接 `[[page]]` | Wiki 页显示可点击链接 | 前端解析 `[[]]` 语法 | llm-wiki Wave 3 | 是/P0 必做 | Codex(UI) | ⚠️ 部分实现：后端 graph 支持 wikilink；前端 page body 未定位 `[[...]]` 可点击解析 |
 | G5 | Wave 4 搜索 | Wiki 全文搜索 | Wiki 页显示搜索框 | `/api/wiki/search` | llm-wiki Wave 4 | 是/P0 必做 | Claude(后端/接口) | ⚠️ 部分实现/契约不一致：后端是 `POST /api/wiki/query`；页面列表是本地过滤 |

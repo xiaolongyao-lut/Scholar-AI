@@ -135,6 +135,34 @@ class WikiQueryResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class WikiPageCreateRequest(BaseModel):
+    """Request to create a new wiki page (G2 2026-05-26)."""
+    title: str
+    kind: str
+    body: str
+    status: str = "draft"
+    evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
+    source_hashes: list[str] = Field(default_factory=list)
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class WikiPageUpdateRequest(BaseModel):
+    """Request to update an existing wiki page (G2 2026-05-26)."""
+    title: str | None = None
+    body: str | None = None
+    status: str | None = None
+    evidence_refs: list[dict[str, Any]] | None = None
+    source_hashes: list[str] | None = None
+    extra: dict[str, Any] | None = None
+
+
+class WikiPageMutationResponse(BaseModel):
+    """Response for create/update/delete operations (G2 2026-05-26)."""
+    success: bool
+    slug: str
+    message: str = ""
+
+
 def _page_store(*, create: bool = True) -> WikiPageStore:
     return WikiPageStore(wiki_generated_root(), create=create)
 
@@ -566,6 +594,94 @@ def wiki_page_read(page_path: str) -> WikiPageReadResponse:
         path=relative_path.as_posix(),
         frontmatter=frontmatter,
         body=body,
+    )
+
+
+@router.post("/pages", response_model=WikiPageMutationResponse)
+def wiki_page_create(request: WikiPageCreateRequest) -> WikiPageMutationResponse:
+    """Create a new wiki page (G2 2026-05-26)."""
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+
+    from wiki.service import get_wiki_service
+
+    service = get_wiki_service()
+    try:
+        page = service.create_page(
+            title=request.title,
+            kind=request.kind,
+            body=request.body,
+            status=request.status,
+            evidence_refs=request.evidence_refs,
+            source_hashes=request.source_hashes,
+            extra=request.extra,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if "already exists" in detail:
+            raise HTTPException(status_code=409, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=detail) from exc
+
+    return WikiPageMutationResponse(
+        success=True,
+        slug=page.stable_slug,
+        message=f"Page created: {page.stable_slug}",
+    )
+
+
+@router.put("/pages/{slug}", response_model=WikiPageMutationResponse)
+def wiki_page_update(slug: str, request: WikiPageUpdateRequest) -> WikiPageMutationResponse:
+    """Update an existing wiki page (G2 2026-05-26)."""
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+
+    from wiki.service import get_wiki_service
+
+    service = get_wiki_service()
+    try:
+        page = service.update_page(
+            slug=slug,
+            title=request.title,
+            body=request.body,
+            status=request.status,
+            evidence_refs=request.evidence_refs,
+            source_hashes=request.source_hashes,
+            extra=request.extra,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if "not found" in detail.lower():
+            raise HTTPException(status_code=404, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=detail) from exc
+
+    return WikiPageMutationResponse(
+        success=True,
+        slug=page.stable_slug,
+        message=f"Page updated: {page.stable_slug}",
+    )
+
+
+@router.delete("/pages/{slug}", response_model=WikiPageMutationResponse)
+def wiki_page_delete(slug: str) -> WikiPageMutationResponse:
+    """Delete a wiki page (G2 2026-05-26)."""
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+
+    from wiki.service import get_wiki_service
+
+    service = get_wiki_service()
+    try:
+        service.delete_page(slug)
+    except ValueError as exc:
+        detail = str(exc)
+        if "not found" in detail.lower():
+            raise HTTPException(status_code=404, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=detail) from exc
+
+    return WikiPageMutationResponse(
+        success=True,
+        slug=slug,
+        message=f"Page deleted: {slug}",
     )
 
 

@@ -5,10 +5,11 @@ Provides high-level operations on WikiPage objects backed by WikiPageStore.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from wiki.models import WikiPage
+from wiki.models import WikiPage, WikiPageKind, WikiPageStatus, make_stable_slug
 from wiki.page_store import WikiPageStore
 
 
@@ -114,9 +115,140 @@ class WikiService:
         frontmatter = page.to_dict()
         frontmatter.pop("body")  # Body goes in body section, not frontmatter
 
+        # Add 'id' field for backward compatibility with render_frontmatter
+        frontmatter["id"] = frontmatter["stable_slug"]
+
         # Render and write
         rendered = render_page(relative_path, frontmatter, page.body)
         self.page_store.write_rendered(rendered, allow_overwrite=True)
+
+    def create_page(
+        self,
+        title: str,
+        kind: str,
+        body: str,
+        status: str = "draft",
+        evidence_refs: list[dict[str, Any]] | None = None,
+        source_hashes: list[str] | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> WikiPage:
+        """Create a new wiki page (G2 2026-05-26).
+
+        Args:
+            title: Page title
+            kind: Page kind (synthesis/concept/paper/etc)
+            body: Page body content
+            status: Page status (default: draft)
+            evidence_refs: Evidence references
+            source_hashes: Source hashes
+            extra: Extra metadata
+
+        Returns:
+            Created WikiPage instance
+
+        Raises:
+            ValueError: If page with same slug already exists
+        """
+        kind_enum = WikiPageKind(kind)
+        status_enum = WikiPageStatus(status)
+        slug = make_stable_slug(title, kind_enum)
+
+        # Check if page already exists
+        existing = self.get_page(slug)
+        if existing is not None:
+            raise ValueError(f"Page already exists: {slug}")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        page = WikiPage(
+            stable_slug=slug,
+            kind=kind_enum,
+            status=status_enum,
+            title=title,
+            body=body,
+            evidence_refs=tuple(evidence_refs or []),
+            source_hashes=tuple(source_hashes or []),
+            created_at_iso=now_iso,
+            updated_at_iso=now_iso,
+            schema_version=1,
+            extra=extra or {},
+        )
+
+        self._write_page(page)
+        return page
+
+    def update_page(
+        self,
+        slug: str,
+        title: str | None = None,
+        body: str | None = None,
+        status: str | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        source_hashes: list[str] | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> WikiPage:
+        """Update an existing wiki page (G2 2026-05-26).
+
+        Args:
+            slug: Page slug
+            title: New title (optional)
+            body: New body (optional)
+            status: New status (optional)
+            evidence_refs: New evidence refs (optional)
+            source_hashes: New source hashes (optional)
+            extra: New extra metadata (optional)
+
+        Returns:
+            Updated WikiPage instance
+
+        Raises:
+            ValueError: If page not found
+        """
+        page = self.get_page(slug)
+        if page is None:
+            raise ValueError(f"Page not found: {slug}")
+
+        updates: dict[str, Any] = {
+            "updated_at_iso": datetime.now(timezone.utc).isoformat()
+        }
+
+        if title is not None:
+            updates["title"] = title
+        if body is not None:
+            updates["body"] = body
+        if status is not None:
+            updates["status"] = WikiPageStatus(status)
+        if evidence_refs is not None:
+            updates["evidence_refs"] = tuple(evidence_refs)
+        if source_hashes is not None:
+            updates["source_hashes"] = tuple(source_hashes)
+        if extra is not None:
+            updates["extra"] = extra
+
+        updated_page = page.evolve(**updates)
+        self._write_page(updated_page)
+        return updated_page
+
+    def delete_page(self, slug: str) -> None:
+        """Delete a wiki page (G2 2026-05-26).
+
+        Args:
+            slug: Page slug
+
+        Raises:
+            ValueError: If page not found
+        """
+        page = self.get_page(slug)
+        if page is None:
+            raise ValueError(f"Page not found: {slug}")
+
+        # Determine file path
+        relative_path = Path(page.kind.value) / f"{page.stable_slug}.md"
+        full_path = self.page_store.resolve(relative_path)
+
+        # Delete file
+        if full_path.exists():
+            full_path.unlink()
 
 
 def get_wiki_service() -> WikiService:
