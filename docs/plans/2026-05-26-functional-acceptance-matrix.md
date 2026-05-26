@@ -211,7 +211,7 @@
 | J7 | MCP 本地安装器 C | 安装/探测/信任确认 | Settings → MCP 显示信任确认弹窗 | `/api/mcp/install` | mcp-local-installer C | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：实际端点 `POST /api/mcp/installations/install` (scan/preview/install 三阶段)；McpTemplateInstaller stdio 安装 + 信任确认 |
 | J8 | MCP Per-agent scope | 每个 Agent 独立 MCP 配置 | 无前端 UI | `mcp_config` 按 agent_id 隔离 | mcp-per-agent-scope | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：`McpScopeType` (surface/agent) + `DiscussionMcpOverrides.per_agent/per_role` + discussion_advanced_router agent_id 隔离逻辑；5 tests passed |
 | J9 | Skill 安全评估 | Skill 安装前安全检查 | Settings → Skill 显示安全评分 | `skill_security_assessor.py` | skill-security-assessment | 是/P1 应做 | 维护 | ✅ 已实现（静态定位）：`GET /skills/{skill_id}/security` + SkillManager/security policy |
-| J10 | Skill 沙箱 | Skill 运行沙箱隔离 | 无前端 UI | `skill_sandbox.py` | skill-sandbox | 是/P1 应做 | Claude(后端/接口) | ⚠️ 部分实现：安全策略会阻断/要求控制；未定位真正运行沙箱 |
+| J10 | Skill 沙箱 | Skill 运行沙箱隔离 | 无前端 UI | `skill_sandbox.py` | skill-sandbox | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：skill_executor.py `_execute_scripted` subprocess 隔离 + timeout + SKILL_SANDBOX=1 env + 输出截断；safe_to_execute 安全策略阻断 |
 | J11 | Skill 导入/导出 | Skill 包导入导出 | Settings → Skill 导入/导出按钮 | `/api/skill/import` `/api/skill/export` | skill-import-export | 是/P1 应做 | Claude(后端/接口) | ⚠️ 部分实现/契约不一致：`POST /skills/import` 存在；未定位 export |
 | J12 | Skill 审批流程 | Skill 安装需审批 | Settings → Skill 显示审批按钮 | `skill_approval_workflow.py` | skill-approval | 是/P1 应做 | 维护 | ✅ 已实现（静态定位）：`/skills/approvals/*` 申请/待审/决策链路 |
 
