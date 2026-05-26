@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 from credential_store import (
     CredentialNotFoundError,
@@ -33,10 +33,13 @@ from credential_store import (
     RuntimeCredentialStore,
 )
 from models.credentials import (
+    CredentialCategory,
     CredentialProtocol,
+    CredentialStrategyHint,
     RuntimeCredentialCreate,
     RuntimeCredentialPublic,
     RuntimeCredentialUpdate,
+    normalize_strategy_hint,
 )
 from provider_endpoint_policy import TrustSource, validate_endpoint
 
@@ -70,11 +73,11 @@ def set_credential_store(store: RuntimeCredentialStore | None) -> None:
 async def list_credentials(
     category: str | None = None,
     enabled_only: bool = False,
+    store: RuntimeCredentialStore = Depends(get_credential_store),
 ) -> list[RuntimeCredentialPublic]:
     """List credentials with masked api_key. Optionally filter by category /
     enabled.
     """
-    store = get_credential_store()
     try:
         return store.list_public(category=category, enabled_only=enabled_only)
     except CredentialSchemaError as exc:
@@ -82,17 +85,21 @@ async def list_credentials(
 
 
 @router.post("", response_model=RuntimeCredentialPublic)
-async def create_credential(body: RuntimeCredentialCreate) -> RuntimeCredentialPublic:
+async def create_credential(
+    body: RuntimeCredentialCreate,
+    store: RuntimeCredentialStore = Depends(get_credential_store),
+) -> RuntimeCredentialPublic:
     """Create a new runtime credential. Body carries the secret on input only;
     response is masked.
     """
-    store = get_credential_store()
     return store.create(body)
 
 
 @router.get("/{credential_id}", response_model=RuntimeCredentialPublic)
-async def get_credential(credential_id: str) -> RuntimeCredentialPublic:
-    store = get_credential_store()
+async def get_credential(
+    credential_id: str,
+    store: RuntimeCredentialStore = Depends(get_credential_store),
+) -> RuntimeCredentialPublic:
     try:
         return store.get_public(credential_id)
     except CredentialNotFoundError as exc:
@@ -101,9 +108,10 @@ async def get_credential(credential_id: str) -> RuntimeCredentialPublic:
 
 @router.put("/{credential_id}", response_model=RuntimeCredentialPublic)
 async def update_credential(
-    credential_id: str, body: RuntimeCredentialUpdate
+    credential_id: str,
+    body: RuntimeCredentialUpdate,
+    store: RuntimeCredentialStore = Depends(get_credential_store),
 ) -> RuntimeCredentialPublic:
-    store = get_credential_store()
     try:
         return store.update(credential_id, body)
     except CredentialNotFoundError as exc:
@@ -111,8 +119,10 @@ async def update_credential(
 
 
 @router.delete("/{credential_id}")
-async def delete_credential(credential_id: str) -> dict[str, Any]:
-    store = get_credential_store()
+async def delete_credential(
+    credential_id: str,
+    store: RuntimeCredentialStore = Depends(get_credential_store),
+) -> dict[str, Any]:
     deleted = store.delete(credential_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"credential not found: {credential_id}")
@@ -197,10 +207,64 @@ def _build_auth_header(api_key: str, protocol: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}"}
 
 
+# ---------------------------------------------------------------------------
+# Sampling (I5/D2: select credential by strategy_hint + category)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sample")
+async def sample_credential(
+    category: str | None = None,
+    strategy_hint: str | None = None,
+    store: RuntimeCredentialStore = Depends(get_credential_store),
+) -> RuntimeCredentialPublic:
+    """Sample a credential by category and strategy_hint.
+
+    I5/D2 decision 2026-05-26: Discussion/SmartRead runtime credential selection.
+
+    Query params:
+        category: "generation" | "embedding" | "rerank" (optional, defaults to "generation")
+        strategy_hint: cost/quality tier or surface hint (optional, defaults to "medium")
+
+    Selection logic:
+        1. Filter by category + enabled=True
+        2. Normalize strategy_hint to canonical tier (cheap→low, default→medium, etc.)
+        3. Match exact strategy_hint if possible
+        4. Fall back to highest priority credential in category
+        5. 404 if no enabled credentials in category
+
+    Returns: RuntimeCredentialPublic (masked api_key)
+    """
+
+    # Normalize inputs
+    target_category = CredentialCategory(category or "generation")
+    normalized_hint = normalize_strategy_hint(strategy_hint)
+
+    # Filter enabled credentials in category
+    candidates = store.list_internal(category=target_category.value, enabled_only=True)
+    if not candidates:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no enabled credentials found for category={target_category.value}",
+        )
+
+    # Try exact strategy_hint match first
+    exact_matches = [c for c in candidates if c.strategy_hint == normalized_hint]
+    if exact_matches:
+        # Sort by priority (lower number = higher priority), then by created_at (newer first)
+        exact_matches.sort(key=lambda c: (c.priority, c.created_at), reverse=False)
+        return exact_matches[0].to_public()
+
+    # Fall back to highest priority credential in category
+    candidates.sort(key=lambda c: (c.priority, c.created_at), reverse=False)
+    return candidates[0].to_public()
+
+
 @router.post("/{credential_id}/test")
 async def test_credential(
     credential_id: str,
     body: dict[str, Any] | None = Body(default=None),
+    store: RuntimeCredentialStore = Depends(get_credential_store),
 ) -> dict[str, Any]:
     """Validate endpoint trust and (if allowed) probe reachability.
 
@@ -209,7 +273,6 @@ async def test_credential(
     overrides with body={"trust_source_override": "runtime_user_confirmed"}.
     The override is intentionally NOT persisted — it is a one-shot test mode.
     """
-    store = get_credential_store()
     try:
         cred = store.get_internal(credential_id)
     except CredentialNotFoundError as exc:

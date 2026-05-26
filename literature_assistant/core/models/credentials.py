@@ -37,10 +37,31 @@ class CredentialProtocol(str, Enum):
 
 
 class CredentialStrategyHint(str, Enum):
+    """Cost/quality tier hints for credential selection.
+
+    Canonical product tiers (B5 decision 2026-05-26):
+        LOW, MEDIUM, HIGH, XHIGH, MAX
+
+    Legacy compatibility values (preserved for existing callers):
+        DEFAULT, CHEAP, FAST, QUALITY
+
+    Surface-specific hints (not cost tiers):
+        DISCUSSION, EMBEDDING, RERANK
+    """
+    # Canonical product tiers
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+    MAX = "max"
+
+    # Legacy compatibility (map to canonical via normalize_strategy_hint)
     DEFAULT = "default"
     CHEAP = "cheap"
     FAST = "fast"
     QUALITY = "quality"
+
+    # Surface-specific hints
     DISCUSSION = "discussion"
     EMBEDDING = "embedding"
     RERANK = "rerank"
@@ -53,6 +74,32 @@ class CredentialTrustSource(str, Enum):
     ENV_CONFIGURED_GATEWAY = "env_configured_gateway"
     RUNTIME_USER_CONFIRMED = "runtime_user_confirmed"
     RUNTIME_UNTRUSTED_CUSTOM = "runtime_untrusted_custom"
+
+
+class SamplingParams(BaseModel):
+    """Optional per-credential generation controls.
+
+    All fields are nullable so existing credentials can omit the block and
+    callers can override one sampling key without copying unrelated defaults.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=None, gt=0.0, le=1.0)
+    max_tokens: int | None = Field(default=None, ge=1, le=32_768)
+    system_prompt: str | None = Field(default=None, max_length=8192)
+
+    def to_sampling_dict(self) -> dict[str, float | int]:
+        """Return only numeric keys accepted by task sampling resolvers."""
+        out: dict[str, float | int] = {}
+        if self.temperature is not None:
+            out["temperature"] = self.temperature
+        if self.top_p is not None:
+            out["top_p"] = self.top_p
+        if self.max_tokens is not None:
+            out["max_tokens"] = self.max_tokens
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +170,52 @@ def mask_api_key(value: str) -> str:
     return f"{s[:4]}...{s[-4:]}"
 
 
+def normalize_strategy_hint(value: str | CredentialStrategyHint | None) -> CredentialStrategyHint:
+    """Normalize legacy/canonical strategy hints to canonical product tiers.
+
+    B5 decision 2026-05-26: Accept old values, return canonical five-tier.
+
+    Mapping:
+        cheap -> low
+        default -> medium
+        fast -> medium (preserves latency hint semantics)
+        quality -> high
+        xhigh -> xhigh
+        max -> max
+
+    Surface-specific hints (discussion/embedding/rerank) pass through unchanged.
+    Unknown values default to MEDIUM.
+    """
+    if value is None:
+        return CredentialStrategyHint.MEDIUM
+
+    if isinstance(value, CredentialStrategyHint):
+        raw = value.value
+    else:
+        raw = str(value).strip().lower()
+
+    # Canonical tiers
+    if raw in {"low", "medium", "high", "xhigh", "max"}:
+        return CredentialStrategyHint(raw)
+
+    # Legacy compatibility
+    if raw in {"cheap", "save", "aggressive", "cost-save", "cost_save"}:
+        return CredentialStrategyHint.LOW
+    if raw in {"default", "balanced"}:
+        return CredentialStrategyHint.MEDIUM
+    if raw == "fast":
+        return CredentialStrategyHint.MEDIUM
+    if raw in {"quality", "high-quality", "high_quality"}:
+        return CredentialStrategyHint.HIGH
+
+    # Surface-specific hints
+    if raw in {"discussion", "embedding", "rerank"}:
+        return CredentialStrategyHint(raw)
+
+    # Unknown -> default
+    return CredentialStrategyHint.MEDIUM
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -146,6 +239,7 @@ class _CredentialBaseFields(BaseModel):
     strategy_hint: CredentialStrategyHint = CredentialStrategyHint.DEFAULT
     trust_source: CredentialTrustSource = CredentialTrustSource.RUNTIME_UNTRUSTED_CUSTOM
     notes: str = Field(default="", max_length=1024)
+    sampling_override: SamplingParams | None = None
 
     @field_validator("base_url")
     @classmethod
@@ -178,6 +272,7 @@ class RuntimeCredentialUpdate(BaseModel):
     strategy_hint: CredentialStrategyHint | None = None
     trust_source: CredentialTrustSource | None = None
     notes: str | None = Field(default=None, max_length=1024)
+    sampling_override: SamplingParams | None = Field(default=None)
     api_key: str | None = Field(default=None, min_length=1, max_length=512)
 
     @field_validator("base_url")
@@ -225,7 +320,12 @@ class RuntimeCredential(_CredentialBaseFields):
         """Return an updated copy. Recomputes fingerprint if any identity
         field (provider/base_url/model/api_key) changed.
         """
-        update = body.model_dump(exclude_unset=True, exclude_none=True)
+        dumped_update = body.model_dump(exclude_unset=True)
+        update = {
+            key: value
+            for key, value in dumped_update.items()
+            if value is not None or key == "sampling_override"
+        }
         merged = self.model_dump()
         merged.update(update)
         identity_changed = any(
@@ -256,6 +356,7 @@ class RuntimeCredential(_CredentialBaseFields):
             strategy_hint=self.strategy_hint,
             trust_source=self.trust_source,
             notes=self.notes,
+            sampling_override=self.sampling_override,
             api_key_masked=mask_api_key(self.api_key),
             has_api_key=bool(self.api_key),
             fingerprint=self.fingerprint,
@@ -282,6 +383,7 @@ class RuntimeCredentialPublic(BaseModel):
     strategy_hint: CredentialStrategyHint
     trust_source: CredentialTrustSource
     notes: str
+    sampling_override: SamplingParams | None = None
     api_key_masked: str
     has_api_key: bool
     fingerprint: str
@@ -300,6 +402,7 @@ __all__ = [
     "RuntimeCredentialCreate",
     "RuntimeCredentialPublic",
     "RuntimeCredentialUpdate",
+    "SamplingParams",
     "compute_credential_fingerprint",
     "mask_api_key",
     "normalize_base_url",
