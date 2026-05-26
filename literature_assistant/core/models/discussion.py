@@ -15,6 +15,44 @@ from models.analysis_chain import AnalysisChainPayload
 DISCUSSION_MAX_TURNS_LIMIT = 20
 
 
+# =========================================================================
+# D10-D18: Discussion history models
+# =========================================================================
+
+class DiscussionSessionListPayload(BaseModel):
+    """Discussion session list item for history browsing."""
+    session_id: str
+    topic: str
+    status: str
+    created_at: str
+    updated_at: str
+    turn_count: int
+    message_count: int
+    roles: list[str] = Field(default_factory=list)
+
+
+class DiscussionExportPayload(BaseModel):
+    """Discussion export response."""
+    session_id: str
+    format: str  # json, markdown
+    content: str
+    filename: str
+
+
+class DiscussionSearchResultPayload(BaseModel):
+    """Discussion search result item."""
+    session_id: str
+    topic: str
+    excerpt: str
+    relevance_score: float
+    created_at: str
+    turn_count: int
+
+
+# =========================================================================
+# Original discussion models
+# =========================================================================
+
 class DiscussionAgentRole(str, Enum):
     PROPOSER = "proposer"
     CRITIC = "critic"

@@ -59,6 +59,38 @@ class MaterialPayload(BaseModel):
     updated_at: str
 
 
+class FigureTableCandidatePayload(BaseModel):
+    """Chunk-derived figure/table candidate for Manuscript Studio.
+
+    Args:
+        id: Stable candidate identifier within one project.
+        kind: Candidate type, currently ``figure`` or ``table``.
+        label: Display label such as ``图 1`` or ``表 2``.
+        caption: Short caption/description derived from the source chunk.
+        material_id: Material that owns the source chunk.
+        material_title: Human-readable material title.
+        page: One-based page number when the chunk store provides it.
+        chunk_id: Source chunk identifier for provenance lookup.
+        chunk_index: Source chunk ordinal when available.
+        bbox: Optional source layout box reserved for PDF layout extraction.
+        asset_path: Optional extracted asset path reserved for image/table crops.
+        source: Candidate extraction source. ``chunk_text`` means text-only.
+    """
+
+    id: str
+    kind: str = Field(pattern="^(figure|table)$")
+    label: str
+    caption: str
+    material_id: str
+    material_title: str
+    page: Optional[int] = None
+    chunk_id: str
+    chunk_index: Optional[int] = None
+    bbox: Optional[List[float]] = None
+    asset_path: Optional[str] = None
+    source: str = "chunk_text"
+
+
 class DraftPayload(BaseModel):
     """Writing draft response."""
 
@@ -252,6 +284,160 @@ class SaveDraftRequest(BaseModel):
     content: str
     edited_by: Optional[str] = None
     citation_anchors: List[CitationAnchorPayload] = Field(default_factory=list)
+
+
+class BuildAssociationRequest(BaseModel):
+    """Request to build writing associations."""
+
+    project_id: str
+    query: str
+    draft_id: Optional[str] = None
+    section_id: Optional[str] = None
+    mode: str = "default"
+    ai_enhanced: bool = True
+
+
+class OutlineItemPayload(BaseModel):
+    """Outline item (section/subsection) in hierarchical structure."""
+
+    item_id: str
+    project_id: str
+    parent_id: Optional[str] = None
+    title: str
+    level: int = Field(ge=1, le=6, description="Heading level (1-6)")
+    order: int = Field(ge=0, description="Display order within parent")
+    description: str = ""
+    section_id: Optional[str] = None  # Link to WritingSection if exists
+    created_at: str
+    updated_at: str
+
+
+class OutlinePayload(BaseModel):
+    """Complete outline structure for a project."""
+
+    project_id: str
+    items: List[OutlineItemPayload] = Field(default_factory=list)
+    updated_at: str
+
+
+class GenerateOutlineRequest(BaseModel):
+    """Request to generate outline via AI."""
+
+    project_id: str
+    topic: str
+    content_type: str = "academic"
+    target_length: Optional[int] = Field(None, description="Target word count")
+    focus_areas: List[str] = Field(default_factory=list)
+    existing_materials: List[str] = Field(default_factory=list, description="Material IDs to reference")
+
+
+class CitationSourcePayload(BaseModel):
+    """Citation source metadata (not Word-style bibliography).
+
+    Tracks source material metadata for citation anchors in drafts.
+    """
+
+    source_id: str
+    material_id: str
+    project_id: str
+    title: str
+    authors: List[str] = Field(default_factory=list)
+    year: Optional[int] = None
+    publication: Optional[str] = None
+    doi: Optional[str] = None
+    url: Optional[str] = None
+    citation_count: int = Field(0, description="Number of times cited in project")
+    created_at: str
+    updated_at: str
+
+
+class CitationSuggestionPayload(BaseModel):
+    """AI-suggested citation for a draft context."""
+
+    material_id: str
+    title: str
+    excerpt: str
+    relevance_score: float = Field(ge=0.0, le=1.0)
+    rationale: str
+    suggested_position: Optional[int] = Field(None, description="Suggested insertion offset")
+
+
+class SuggestCitationsRequest(BaseModel):
+    """Request to suggest citations via AI."""
+
+    project_id: str
+    draft_id: str
+    context: str = Field(description="Draft text context for suggestions")
+    max_suggestions: int = Field(5, ge=1, le=20)
+
+
+class FigureAssetPayload(BaseModel):
+    """Real figure/table asset (not text-derived candidate).
+
+    Represents actual extracted or uploaded figure/table with asset file.
+    Distinct from FigureTableCandidatePayload which is text-only.
+    """
+
+    asset_id: str
+    project_id: str
+    kind: str = Field(pattern="^(figure|table)$")
+    caption: str
+    numbering: str = Field(description="e.g., 'Figure 1', 'Table 2'")
+    material_id: Optional[str] = None
+    source_page: Optional[int] = None
+    bbox: Optional[List[float]] = None
+    asset_path: str = Field(description="Path to extracted image/table file")
+    width: Optional[int] = None
+    height: Optional[int] = None
+    format: Optional[str] = Field(None, description="png, jpg, svg, etc.")
+    created_at: str
+    updated_at: str
+
+
+class CreateFigureAssetRequest(BaseModel):
+    """Request to create a figure/table asset."""
+
+    project_id: str
+    kind: str = Field(pattern="^(figure|table)$")
+    caption: str
+    numbering: str
+    material_id: Optional[str] = None
+    source_page: Optional[int] = None
+    bbox: Optional[List[float]] = None
+    asset_path: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    format: Optional[str] = None
+
+
+class SubmitForReviewRequest(BaseModel):
+    """Request to submit project for review."""
+
+    project_id: str
+    reviewer_email: Optional[str] = None
+    message: str = ""
+    include_drafts: bool = True
+    include_materials: bool = True
+
+
+class SubmissionResponsePayload(BaseModel):
+    """Response for submission request."""
+
+    submission_id: str
+    project_id: str
+    status: str
+    submitted_at: str
+    reviewer_email: Optional[str] = None
+    package_path: Optional[str] = None
+
+
+class ExportProjectRequest(BaseModel):
+    """Request to export project."""
+
+    project_id: str
+    format: str = Field(pattern="^(json|markdown|word|latex|pdf)$")
+    include_evidence: bool = True
+    include_citations: bool = True
 
 
 class BuildAssociationRequest(BaseModel):

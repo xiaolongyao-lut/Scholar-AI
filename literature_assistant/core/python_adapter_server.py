@@ -123,6 +123,8 @@ def _get_allowed_origins() -> list[str]:
             "http://localhost:3000",
             "http://127.0.0.1:5173",
             "http://localhost:5173",
+            "http://127.0.0.1:5174",
+            "http://localhost:5174",
         ]
 
     if raw_origins == "*":
@@ -263,6 +265,7 @@ _allowed_origins = _get_allowed_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
+    allow_origin_regex=r"^http://(127\.0\.0\.1|localhost):(3000|5[0-9]{3})$",
     allow_credentials="*" not in _allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -633,6 +636,8 @@ from routers.mcp_installer_router import router as mcp_installer_router
 from routers.graph_router import router as graph_router
 from routers.evolution_router import router as evolution_router
 from routers.feature_flags_router import router as feature_flags_router
+from routers.writing_router import router as writing_router
+from routers.evidence_router import router as evidence_router
 
 
 def _initialize_mcp_installer_runtime() -> None:
@@ -697,6 +702,8 @@ app.include_router(mcp_installer_router)
 app.include_router(graph_router)
 app.include_router(evolution_router)
 app.include_router(feature_flags_router)
+app.include_router(writing_router)
+app.include_router(evidence_router)
 
 
 if FRONTEND_ASSETS_DIR.is_dir():

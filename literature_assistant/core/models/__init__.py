@@ -115,6 +115,18 @@ from .resources import (
     CreateDraftRequest,
     SaveDraftRequest,
     BuildAssociationRequest,
+    OutlineItemPayload,
+    OutlinePayload,
+    GenerateOutlineRequest,
+    CitationAnchorPayload,
+    CitationSourcePayload,
+    CitationSuggestionPayload,
+    SuggestCitationsRequest,
+    FigureAssetPayload,
+    CreateFigureAssetRequest,
+    SubmitForReviewRequest,
+    SubmissionResponsePayload,
+    ExportProjectRequest,
 )
 
 # Recovery models
@@ -131,6 +143,18 @@ from .recovery import (
     RecommendationEvidencePayload,
     RecoveryRecommendationPayload,
     RecommendationsResponsePayload,
+)
+
+# Evidence models
+from .evidence import (
+    SourceLabelPayload,
+    CreateSourceLabelRequest,
+    UpdateSourceLabelRequest,
+    EvidenceRefPayload,
+    EvidenceRefsResponse,
+    ChunkLocatorPayload,
+    DiscussionEvidencePackPayload,
+    CitationOverlapPayload,
 )
 
 __all__ = [
@@ -225,6 +249,18 @@ __all__ = [
     "CreateDraftRequest",
     "SaveDraftRequest",
     "BuildAssociationRequest",
+    "OutlineItemPayload",
+    "OutlinePayload",
+    "GenerateOutlineRequest",
+    "CitationAnchorPayload",
+    "CitationSourcePayload",
+    "CitationSuggestionPayload",
+    "SuggestCitationsRequest",
+    "FigureAssetPayload",
+    "CreateFigureAssetRequest",
+    "SubmitForReviewRequest",
+    "SubmissionResponsePayload",
+    "ExportProjectRequest",
     # Recovery
     "RecoveryEventPayload",
     "EventTimelinePayload",
@@ -238,4 +274,13 @@ __all__ = [
     "RecommendationEvidencePayload",
     "RecoveryRecommendationPayload",
     "RecommendationsResponsePayload",
+    # Evidence
+    "SourceLabelPayload",
+    "CreateSourceLabelRequest",
+    "UpdateSourceLabelRequest",
+    "EvidenceRefPayload",
+    "EvidenceRefsResponse",
+    "ChunkLocatorPayload",
+    "DiscussionEvidencePackPayload",
+    "CitationOverlapPayload",
 ]
