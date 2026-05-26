@@ -202,7 +202,7 @@
 
 | ID | 功能 | 期望效果 | 前端验收点 (界面是否齐) | 后端验收点 (链路是否通) | 来源 plan | 文献助手必要性/优先级 | 执行方 | 状态 |
 |----|------|----------|------------------------|------------------------|-----------|----------------------|--------|------|
-| J1 | MCP v0.3 支持 | 支持 MCP v0.3 协议 | 无前端 UI | `mcp_client.py` v0.3 | mcp-v0.3-support | 是/P1 应做 | Claude(后端/接口) | ⚠️ 部分实现：MCP server/tool/pending-call runtime 存在；未定位 `mcp_client.py` v0.3 证据 |
+| J1 | MCP v0.3 支持 | 支持 MCP v0.3 协议 | 无前端 UI | `mcp_client.py` v0.3 | mcp-v0.3-support | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：mcp SDK 1.27.0 (protocol 2025-11-25) > v0.3；ClientSession/StdioServerParameters/stdio_client 已集成 |
 | J2 | MCP v0.4 支持 | 支持 MCP v0.4 协议 | 无前端 UI | `mcp_client.py` v0.4 | mcp-v0.4-support | 是/P0 必做 | 维护 | ✅ 已实现（静态定位）：`STREAMABLE_HTTP`、pending tool approval、audit/routes 存在 |
 | J3 | MCP Vision 辅助 | Vision 模型辅助 MCP 工具 | 无前端 UI | `mcp_vision_aux.py` | mcp-vision-aux | 可延后/P2 | Claude(后端/接口) | ❓ 未定位 |
 | J4 | MCP Tool-use UX | 工具使用体验优化 | 前端显示工具调用状态 | 后端返回工具调用详情 | mcp-tool-use-ux | 是/P1 应做 | Claude→Codex | ⚠️ 部分实现：后端 pending-calls/decide/audit 存在；前端全局 modal/状态需浏览器核验 |
