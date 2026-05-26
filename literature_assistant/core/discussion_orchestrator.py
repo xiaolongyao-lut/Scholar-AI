@@ -142,6 +142,9 @@ RetrieverFn = Callable[[str, str, int], list[dict]]
 def _default_credential_resolver(credential_id: str) -> dict[str, Any]:
     """Resolve a credential_id via RuntimeCredentialStore (Slice A1).
 
+    D1 (2026-05-26): Added enabled check — disabled credentials raise
+    DiscussionCredentialMissingError with clear message.
+
     Returns a dict with provider/model/base_url/api_key/protocol fields.
     """
     from credential_store import (
@@ -155,6 +158,10 @@ def _default_credential_resolver(credential_id: str) -> dict[str, Any]:
         raise DiscussionCredentialMissingError(
             f"credential not found: {credential_id}"
         ) from exc
+    if not cred.enabled:
+        raise DiscussionCredentialMissingError(
+            f"credential {credential_id!r} is disabled"
+        )
     return {
         "provider": cred.provider,
         "model": cred.model,
@@ -173,7 +180,11 @@ def _resolve_agent_endpoint(
     agent: DiscussionAgentConfig,
     resolver: CredentialResolverFn,
 ) -> dict[str, Any]:
-    """Resolve provider / model / base_url / api_key for one agent."""
+    """Resolve provider / model / base_url / api_key for one agent.
+
+    D1 (2026-05-26): Added strategy_hint + category sampling path.
+    Priority: llm > credential_id > strategy_hint > default chat config.
+    """
     if agent.llm is not None:
         return {
             "provider": agent.llm.provider,
@@ -184,6 +195,45 @@ def _resolve_agent_endpoint(
         }
     if agent.credential_id:
         return resolver(agent.credential_id)
+    if agent.strategy_hint:
+        # D1: Dynamic credential sampling by strategy_hint + category
+        # Reuses same logic as /api/credentials/sample endpoint
+        from credential_store import RuntimeCredentialStore
+        from models.credentials import CredentialCategory, normalize_strategy_hint
+
+        store = RuntimeCredentialStore()
+        category = CredentialCategory(agent.category) if agent.category else CredentialCategory.GENERATION
+        normalized_hint = normalize_strategy_hint(agent.strategy_hint)
+
+        # Filter enabled credentials in category
+        candidates = store.list_internal(category=category.value, enabled_only=True)
+        if not candidates:
+            raise DiscussionCredentialMissingError(
+                f"agent {agent.agent_id!r}: no enabled credentials found for "
+                f"category={category.value}"
+            )
+
+        # Try exact strategy_hint match first (normalize both sides for legacy compatibility)
+        exact_matches = [
+            c for c in candidates
+            if normalize_strategy_hint(c.strategy_hint) == normalized_hint
+        ]
+        if exact_matches:
+            # Sort by priority (lower number = higher priority), then by created_at (newer first)
+            exact_matches.sort(key=lambda c: (c.priority, c.created_at), reverse=False)
+            sampled = exact_matches[0]
+        else:
+            # Fall back to highest priority credential in category
+            candidates.sort(key=lambda c: (c.priority, c.created_at), reverse=False)
+            sampled = candidates[0]
+
+        return {
+            "provider": sampled.provider,
+            "model": sampled.model,
+            "base_url": sampled.base_url,
+            "api_key": sampled.api_key,
+            "protocol": sampled.protocol.value,
+        }
     # Fallback: use default chat config from runtime override + env
     try:
         from model_config_store import chat_store
@@ -203,7 +253,7 @@ def _resolve_agent_endpoint(
     except ImportError:
         pass
     raise DiscussionOrchestratorError(
-        f"agent {agent.agent_id!r} has neither inline llm nor credential_id, "
+        f"agent {agent.agent_id!r} has neither inline llm nor credential_id nor strategy_hint, "
         f"and no default chat config is available"
     )
 
@@ -225,8 +275,12 @@ def _build_candidate(
         metadata["_resolved_api_key"] = str(endpoint["api_key"])
     if endpoint.get("temperature") is not None:
         metadata["temperature"] = endpoint["temperature"]
+    if endpoint.get("top_p") is not None:
+        metadata["top_p"] = endpoint["top_p"]
     if endpoint.get("max_tokens") is not None:
         metadata["max_tokens"] = endpoint["max_tokens"]
+    if endpoint.get("system_prompt") is not None:
+        metadata["system_prompt"] = endpoint["system_prompt"]
 
     return DispatchCandidate(
         candidate_id=f"agent_{agent.agent_id}",
@@ -1092,14 +1146,15 @@ def _maybe_build_agent_chain(
         return None
     if not is_enabled("analysis_chain_discussion"):
         return None
-    try:
-        from analysis_chain_rag_builder import build_deterministic
-    except ImportError:
-        return None
     snippets = [evidence_text] if evidence_text else []
     try:
-        return build_deterministic(
-            query=query, answer=answer, evidence_snippets=snippets
+        from analysis_chain_rag_builder import build_analysis_chain
+
+        return build_analysis_chain(
+            query=query,
+            answer=answer,
+            evidence_snippets=snippets,
+            mode="deterministic",
         )
     except Exception:  # noqa: BLE001 — chain builder must never block trace emission
         logger.exception("analysis_chain_discussion deterministic builder failed")

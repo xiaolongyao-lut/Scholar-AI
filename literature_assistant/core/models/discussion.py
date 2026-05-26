@@ -96,6 +96,9 @@ class DiscussionAgentConfig(BaseModel):
     Per DEC-003c: agents bind to capability/model policy by default;
     ``credential_id`` is an explicit pin override only.
 
+    D1 (2026-05-26): Added ``strategy_hint`` + ``category`` for dynamic
+    credential sampling. Mutually exclusive with ``credential_id`` and ``llm``.
+
     ``credential_id`` and ``llm`` are mutually exclusive but both optional —
     when neither is set the orchestrator falls back to the runtime default
     chat config (see ``_resolve_agent_endpoint``). This keeps the frontend
@@ -110,15 +113,35 @@ class DiscussionAgentConfig(BaseModel):
     system_prompt: str = Field(default="", max_length=8192)
     credential_id: str | None = Field(default=None, max_length=64)
     llm: DiscussionLLMConfig | None = None
+    strategy_hint: str | None = Field(
+        default=None,
+        max_length=32,
+        description="Dynamic credential selection by strategy_hint (low/medium/high/xhigh/max). Mutually exclusive with credential_id/llm.",
+    )
+    category: str | None = Field(
+        default=None,
+        max_length=32,
+        description="Credential category filter (generation/embedding/rerank). Used with strategy_hint.",
+    )
     strict_pin: bool = False
     priority: int = Field(default=100, ge=0, le=10_000)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_credential_xor_llm(self) -> "DiscussionAgentConfig":
-        if self.credential_id and self.llm:
+        exclusive_fields = [
+            ("credential_id", self.credential_id),
+            ("llm", self.llm),
+            ("strategy_hint", self.strategy_hint),
+        ]
+        set_fields = [name for name, val in exclusive_fields if val is not None]
+        if len(set_fields) > 1:
             raise ValueError(
-                "agent must specify at most one of credential_id or llm, not both"
+                f"agent must specify at most one of credential_id/llm/strategy_hint, got: {set_fields}"
+            )
+        if self.category and not self.strategy_hint:
+            raise ValueError(
+                "category requires strategy_hint to be set"
             )
         return self
 
