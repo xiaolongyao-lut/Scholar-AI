@@ -556,6 +556,78 @@ class WritingSkillService:
             "warnings": [],
         }
 
+    def export_user_skill(self, skill_id: str, output_path: str | Path | None = None) -> dict[str, Any]:
+        """Export a user skill to a zip archive.
+
+        J11 (2026-05-26): Export user skill package for backup/sharing.
+
+        Args:
+            skill_id: Skill ID to export.
+            output_path: Optional output zip path. Defaults to workspace_artifacts/skill_exports/{skill_id}.zip.
+
+        Returns:
+            Export result dict with success/export_path/errors.
+
+        Raises:
+            ValueError: If skill not found or is builtin.
+        """
+        import zipfile
+        from datetime_utils import utc_now_iso_z
+
+        skill = self._registry.get(skill_id)
+        if skill is None:
+            raise ValueError(f"Skill not found: {skill_id}")
+        if skill.source == SkillSource.BUILTIN:
+            raise ValueError(f"Cannot export builtin skill: {skill_id}")
+
+        # Get installed_path from default_parameters
+        installed_path = skill.default_parameters.get("installed_path")
+        if not isinstance(installed_path, str) or not installed_path:
+            raise ValueError(f"Skill {skill_id} has no installed_path in default_parameters")
+
+        skill_dir = Path(installed_path).resolve()
+        if not skill_dir.exists() or not skill_dir.is_dir():
+            raise ValueError(f"Skill directory not found: {skill_dir}")
+
+        # Resolve output path
+        if output_path is None:
+            export_root = Path("workspace_artifacts/skill_exports").resolve()
+            export_root.mkdir(parents=True, exist_ok=True)
+            output_path = export_root / f"{skill_id}.zip"
+        else:
+            output_path = Path(output_path).expanduser().resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create zip archive
+        try:
+            with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file_path in skill_dir.rglob("*"):
+                    if file_path.is_file():
+                        arcname = file_path.relative_to(skill_dir)
+                        zf.write(file_path, arcname)
+        except Exception as exc:
+            return {
+                "success": False,
+                "skill_id": skill_id,
+                "export_path": "",
+                "errors": [f"Export failed: {exc}"],
+            }
+
+        self._audit_log.log_event(
+            AuditEventType.CAPABILITY_RESOLVED.value,
+            capability_id=skill_id,
+            description=f"Skill exported: {skill.name}",
+            context={"export_path": str(output_path), "exported_at": utc_now_iso_z()},
+        )
+
+        return {
+            "success": True,
+            "skill_id": skill_id,
+            "export_path": str(output_path),
+            "errors": [],
+        }
+
+
     def list_audit_events(self, skill_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         """List recent skill audit events as API-safe dictionaries."""
         if limit < 1:

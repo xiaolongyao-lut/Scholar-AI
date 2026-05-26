@@ -249,3 +249,16 @@ class SkillRollbackResponse(BaseModel):
     restored_path: str
     backup_path: str
     warnings: List[str] = Field(default_factory=list)
+
+
+class SkillExportResponse(BaseModel):
+    """Response returned after exporting a user skill to zip archive.
+
+    J11 (2026-05-26): Skill export endpoint response.
+    """
+
+    success: bool
+    skill_id: str
+    export_path: str
+    errors: List[str] = Field(default_factory=list)
+

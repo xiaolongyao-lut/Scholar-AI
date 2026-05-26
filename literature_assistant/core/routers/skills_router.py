@@ -25,6 +25,7 @@ from models import (
     SkillUninstallResponse,
     SkillRollbackRequest,
     SkillRollbackResponse,
+    SkillExportResponse,
 )
 
 logger = logging.getLogger("SkillsRouter")
@@ -298,6 +299,46 @@ async def rollback_skill(
         status_code = 404 if "not found" in detail.lower() else 400
         raise HTTPException(status_code=status_code, detail=detail) from exc
     return SkillRollbackResponse(**result)
+
+
+@router.post("/skills/{skill_id}/export", response_model=SkillExportResponse)
+async def export_skill(
+    skill_id: str,
+    output_path: str | None = Query(default=None),
+) -> SkillExportResponse:
+    """Export a user skill to a zip archive.
+
+    J11 (2026-05-26): Export user skill package for backup/sharing.
+
+    Args:
+        skill_id: Skill ID to export.
+        output_path: Optional output zip path. Defaults to workspace_artifacts/skill_exports/{skill_id}.zip.
+
+    Returns:
+        SkillExportResponse with success/export_path/errors.
+
+    Raises:
+        404: Skill not found.
+        400: Cannot export builtin skill or skill directory not found.
+    """
+    service = get_skill_service()
+    try:
+        result = service.export_user_skill(skill_id, output_path=output_path)
+    except ValueError as exc:
+        detail = str(exc)
+        if "not found" in detail.lower():
+            status_code = 404
+        elif "builtin" in detail.lower():
+            status_code = 400
+        else:
+            status_code = 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail={"errors": result["errors"]})
+
+    return SkillExportResponse(**result)
+
 
 
 @router.post("/skills/{skill_id}/test-run", response_model=SkillTestRunResponse)

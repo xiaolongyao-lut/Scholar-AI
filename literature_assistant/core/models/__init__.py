@@ -60,6 +60,7 @@ from .skills import (
     SkillUninstallResponse,
     SkillRollbackRequest,
     SkillRollbackResponse,
+    SkillExportResponse,
 )
 
 # Runtime models
@@ -96,6 +97,7 @@ from .resources import (
     ProjectPayload,
     SectionPayload,
     MaterialPayload,
+    FigureTableCandidatePayload,
     DraftPayload,
     RevisionPayload,
     ProjectExportEvidenceProvenancePayload,
@@ -177,6 +179,7 @@ __all__ = [
     "SkillUninstallResponse",
     "SkillRollbackRequest",
     "SkillRollbackResponse",
+    "SkillExportResponse",
     # Runtime
     "TaskState",
     "CreateSessionRequest",
@@ -204,6 +207,7 @@ __all__ = [
     "ProjectPayload",
     "SectionPayload",
     "MaterialPayload",
+    "FigureTableCandidatePayload",
     "DraftPayload",
     "RevisionPayload",
     "ProjectExportEvidenceProvenancePayload",
