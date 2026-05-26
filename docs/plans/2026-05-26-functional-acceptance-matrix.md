@@ -205,7 +205,7 @@
 | J1 | MCP v0.3 支持 | 支持 MCP v0.3 协议 | 无前端 UI | `mcp_client.py` v0.3 | mcp-v0.3-support | 是/P1 应做 | Claude(后端/接口) | ✅ 已完成：mcp SDK 1.27.0 (protocol 2025-11-25) > v0.3；ClientSession/StdioServerParameters/stdio_client 已集成 |
 | J2 | MCP v0.4 支持 | 支持 MCP v0.4 协议 | 无前端 UI | `mcp_client.py` v0.4 | mcp-v0.4-support | 是/P0 必做 | 维护 | ✅ 已实现（静态定位）：`STREAMABLE_HTTP`、pending tool approval、audit/routes 存在 |
 | J3 | MCP Vision 辅助 | Vision 模型辅助 MCP 工具 | 无前端 UI | `mcp_vision_aux.py` | mcp-vision-aux | 可延后/P2 | Claude(后端/接口) | ❓ 未定位 |
-| J4 | MCP Tool-use UX | 工具使用体验优化 | 前端显示工具调用状态 | 后端返回工具调用详情 | mcp-tool-use-ux | 是/P1 应做 | Claude→Codex | ⚠️ 部分实现：后端 pending-calls/decide/audit 存在；前端全局 modal/状态需浏览器核验 |
+| J4 | MCP Tool-use UX | 工具使用体验优化 | 前端显示工具调用状态 | 后端返回工具调用详情 | mcp-tool-use-ux | 是/P1 应做 | Claude→Codex | ✅ 后端完成：`GET /api/mcp/pending-calls` + `POST /api/mcp/pending-calls/{id}/decide` + audit；前端 modal 需 Codex 浏览器验证 |
 | J5 | MCP 本地安装器 A | 扫描本地 MCP 包 | 无前端 UI | `mcp_scanner.py` | mcp-local-installer A | 是/P1 应做 | 维护 | ✅ 已实现（静态定位）：`POST /api/mcp/installations/scan` + package scanner |
 | J6 | MCP 本地安装器 B | 前端配置 UI | Settings → MCP 安装 | 前端 MCP 配置表单 | mcp-local-installer B | 是/P1 应做 | 维护 | ✅ 已实现（静态定位）：`McpInstallWizard` local install/config/credential binding |
 | J7 | MCP 本地安装器 C | 安装/探测/信任确认 | Settings → MCP 显示信任确认弹窗 | `/api/mcp/install` | mcp-local-installer C | 是/P1 应做 | Claude(后端/接口) | ⚠️ 部分实现/契约不一致：实际 `/api/mcp/installations/install`；v1 installer 仅 stdio |
