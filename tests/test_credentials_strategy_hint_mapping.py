@@ -82,3 +82,62 @@ class TestNormalizeStrategyHint:
         """Leading/trailing whitespace is stripped."""
         assert normalize_strategy_hint("  low  ") == CredentialStrategyHint.LOW
         assert normalize_strategy_hint("\tmedium\n") == CredentialStrategyHint.MEDIUM
+
+
+class TestCredentialPublicOutput:
+    """B5: Canonical output in RuntimeCredentialPublic."""
+
+    def test_to_public_normalizes_strategy_hint(self):
+        """to_public() returns canonical strategy_hint even if stored as legacy."""
+        from literature_assistant.core.models.credentials import (
+            RuntimeCredential,
+            RuntimeCredentialCreate,
+            CredentialCategory,
+            CredentialProtocol,
+            CredentialTrustSource,
+        )
+
+        # Create credential with legacy "cheap"
+        create = RuntimeCredentialCreate(
+            category=CredentialCategory.GENERATION,
+            provider="test",
+            model="test-model",
+            base_url="https://test.com",
+            protocol=CredentialProtocol.OPENAI_CHAT_COMPLETIONS,
+            api_key="sk-test",
+            strategy_hint=CredentialStrategyHint.CHEAP,
+            trust_source=CredentialTrustSource.ENV_CONFIGURED_GATEWAY,
+        )
+        cred = RuntimeCredential.from_create(create)
+
+        # Internal storage keeps original
+        assert cred.strategy_hint == CredentialStrategyHint.CHEAP
+
+        # Public output returns canonical
+        public = cred.to_public()
+        assert public.strategy_hint == CredentialStrategyHint.LOW
+
+    def test_to_public_default_becomes_medium(self):
+        """to_public() converts DEFAULT to MEDIUM."""
+        from literature_assistant.core.models.credentials import (
+            RuntimeCredential,
+            RuntimeCredentialCreate,
+            CredentialCategory,
+            CredentialProtocol,
+            CredentialTrustSource,
+        )
+
+        create = RuntimeCredentialCreate(
+            category=CredentialCategory.GENERATION,
+            provider="test",
+            model="test-model",
+            base_url="https://test.com",
+            protocol=CredentialProtocol.OPENAI_CHAT_COMPLETIONS,
+            api_key="sk-test",
+            strategy_hint=CredentialStrategyHint.DEFAULT,
+            trust_source=CredentialTrustSource.ENV_CONFIGURED_GATEWAY,
+        )
+        cred = RuntimeCredential.from_create(create)
+
+        public = cred.to_public()
+        assert public.strategy_hint == CredentialStrategyHint.MEDIUM

@@ -353,7 +353,7 @@ class RuntimeCredential(_CredentialBaseFields):
             enabled=self.enabled,
             priority=self.priority,
             tags=list(self.tags),
-            strategy_hint=self.strategy_hint,
+            strategy_hint=normalize_strategy_hint(self.strategy_hint),
             trust_source=self.trust_source,
             notes=self.notes,
             sampling_override=self.sampling_override,

@@ -248,8 +248,11 @@ async def sample_credential(
             detail=f"no enabled credentials found for category={target_category.value}",
         )
 
-    # Try exact strategy_hint match first
-    exact_matches = [c for c in candidates if c.strategy_hint == normalized_hint]
+    # Try exact strategy_hint match first (normalize both sides for legacy compatibility)
+    exact_matches = [
+        c for c in candidates
+        if normalize_strategy_hint(c.strategy_hint) == normalized_hint
+    ]
     if exact_matches:
         # Sort by priority (lower number = higher priority), then by created_at (newer first)
         exact_matches.sort(key=lambda c: (c.priority, c.created_at), reverse=False)

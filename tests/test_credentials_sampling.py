@@ -268,3 +268,72 @@ class TestCredentialSampling:
         assert masked.startswith("sk-t")
         assert masked.endswith("2345")
         assert "secret" not in masked
+
+    def test_sample_legacy_stored_credential_exact_match(self, tmp_store, client):
+        """Legacy stored credential (cheap/default/quality) can be matched by canonical query."""
+        # Create credential with legacy "cheap" stored in DB
+        tmp_store.create(
+            RuntimeCredentialCreate(
+                category=CredentialCategory.GENERATION,
+                provider="openai",
+                model="gpt-4-mini",
+                base_url="https://api.openai.com/v1",
+                protocol=CredentialProtocol.OPENAI_CHAT_COMPLETIONS,
+                api_key="sk-test-cheap-stored",
+                strategy_hint=CredentialStrategyHint.CHEAP,  # Legacy value stored
+                trust_source=CredentialTrustSource.ENV_CONFIGURED_GATEWAY,
+            )
+        )
+
+        # Query with canonical "low" should match stored "cheap"
+        resp = client.post("/api/credentials/sample?strategy_hint=low")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["model"] == "gpt-4-mini"
+        # Public output returns canonical
+        assert data["strategy_hint"] == "low"
+
+    def test_sample_legacy_query_matches_legacy_stored(self, tmp_store, client):
+        """Legacy query (cheap) matches legacy stored (cheap)."""
+        tmp_store.create(
+            RuntimeCredentialCreate(
+                category=CredentialCategory.GENERATION,
+                provider="openai",
+                model="gpt-4-mini",
+                base_url="https://api.openai.com/v1",
+                protocol=CredentialProtocol.OPENAI_CHAT_COMPLETIONS,
+                api_key="sk-test-cheap",
+                strategy_hint=CredentialStrategyHint.CHEAP,
+                trust_source=CredentialTrustSource.ENV_CONFIGURED_GATEWAY,
+            )
+        )
+
+        # Query with legacy "cheap" should match stored "cheap"
+        resp = client.post("/api/credentials/sample?strategy_hint=cheap")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["model"] == "gpt-4-mini"
+        assert data["strategy_hint"] == "low"  # Output is canonical
+
+    def test_list_returns_canonical_strategy_hint(self, tmp_store, client):
+        """List endpoint returns canonical strategy_hint for legacy stored values."""
+        # Create credential with legacy "default"
+        tmp_store.create(
+            RuntimeCredentialCreate(
+                category=CredentialCategory.GENERATION,
+                provider="openai",
+                model="gpt-4",
+                base_url="https://api.openai.com/v1",
+                protocol=CredentialProtocol.OPENAI_CHAT_COMPLETIONS,
+                api_key="sk-test-default",
+                strategy_hint=CredentialStrategyHint.DEFAULT,
+                trust_source=CredentialTrustSource.ENV_CONFIGURED_GATEWAY,
+            )
+        )
+
+        resp = client.get("/api/credentials")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        # Output is canonical
+        assert data[0]["strategy_hint"] == "medium"
