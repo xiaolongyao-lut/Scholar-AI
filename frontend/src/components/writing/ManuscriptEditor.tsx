@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extension-placeholder';
+import { Markdown, type MarkdownStorage } from 'tiptap-markdown';
+import {
+  Bold, Italic, Strikethrough, Heading1, Heading2, Heading3,
+  List, ListOrdered, Undo, Redo,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
 import type {
@@ -15,8 +20,7 @@ import {
   getCitationAnchorInstanceId,
   parseCitationMaterialId,
 } from '@/lib/citationAnchors';
-import { CitationNode } from './citationNode';
-import { CITATION_NODE_NAME, docToString, stringToDoc } from './manuscriptSerialization';
+import { CitationNode, CITATION_NODE_NAME } from './citationNode';
 
 interface ManuscriptEditorProps {
   content: string;
@@ -32,12 +36,42 @@ interface ManuscriptEditorProps {
   className?: string;
 }
 
+function getMarkdown(editor: Editor): string {
+  return (editor.storage as unknown as { markdown: MarkdownStorage }).markdown.getMarkdown();
+}
+
+function MenuBar({ editor }: { editor: Editor | null }) {
+  if (!editor) return null;
+  const btn = (active: boolean) =>
+    cn(
+      'p-1.5 rounded transition-colors',
+      active ? 'bg-primary/15 text-primary' : 'text-foreground/40 hover:bg-surface-container hover:text-foreground/70',
+    );
+  return (
+    <div className="sticky top-0 z-10 -mx-10 -mt-8 mb-6 flex flex-wrap items-center gap-0.5 border-b border-outline-variant bg-surface-low px-4 py-2">
+      <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={btn(editor.isActive('bold'))} title="Bold"><Bold size={15} /></button>
+      <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className={btn(editor.isActive('italic'))} title="Italic"><Italic size={15} /></button>
+      <button type="button" onClick={() => editor.chain().focus().toggleStrike().run()} className={btn(editor.isActive('strike'))} title="Strikethrough"><Strikethrough size={15} /></button>
+      <span className="mx-1 h-5 w-px bg-outline-variant/50" />
+      <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={btn(editor.isActive('heading', { level: 1 }))} title="H1"><Heading1 size={15} /></button>
+      <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btn(editor.isActive('heading', { level: 2 }))} title="H2"><Heading2 size={15} /></button>
+      <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} className={btn(editor.isActive('heading', { level: 3 }))} title="H3"><Heading3 size={15} /></button>
+      <span className="mx-1 h-5 w-px bg-outline-variant/50" />
+      <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btn(editor.isActive('bulletList'))} title="Bullet List"><List size={15} /></button>
+      <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btn(editor.isActive('orderedList'))} title="Ordered List"><ListOrdered size={15} /></button>
+      <span className="mx-1 h-5 w-px bg-outline-variant/50" />
+      <button type="button" onClick={() => editor.chain().focus().undo().run()} className={btn(false)} title="Undo"><Undo size={15} /></button>
+      <button type="button" onClick={() => editor.chain().focus().redo().run()} className={btn(false)} title="Redo"><Redo size={15} /></button>
+    </div>
+  );
+}
+
 /**
- * Rich (WYSIWYG) view over the canonical manuscript string. Citation tokens are
- * rendered as inline `[n]` superscript nodes; everything else is plain
- * paragraph text. The editor never owns the document model — it serializes back
- * to the same `draft.content` string on every edit, so save / export / anchor
- * parsing are unaffected.
+ * Rich (WYSIWYG) view over the canonical manuscript markdown string. Standard
+ * formatting (headings / bold / italic / lists) round-trips through
+ * tiptap-markdown; citation tokens `[^cite:mat:id]` render as inline `[n]`
+ * superscript nodes. The editor serializes back to the same markdown string on
+ * every edit, so save / export / anchor parsing keep operating on it unchanged.
  */
 export function ManuscriptEditor({
   content,
@@ -54,8 +88,8 @@ export function ManuscriptEditor({
 }: ManuscriptEditorProps) {
   const { t } = useI18n();
 
-  // Latest props kept in refs so the editor instance can be created once while
-  // its callbacks always see fresh data (no stale closures, no re-instantiation).
+  // Latest props in refs so the editor instance is created once while callbacks
+  // always read fresh data (no stale closures, no re-instantiation).
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const anchorsRef = useRef(citationAnchors);
@@ -78,24 +112,9 @@ export function ManuscriptEditor({
 
   const editor = useEditor({
     extensions: [
-      // Minimal schema: paragraphs + text + undo only. Marks/blocks that cannot
-      // round-trip to the plain manuscript string are disabled so the rich view
-      // can never silently drop formatting on serialize.
-      StarterKit.configure({
-        heading: false,
-        bold: false,
-        italic: false,
-        strike: false,
-        code: false,
-        codeBlock: false,
-        blockquote: false,
-        bulletList: false,
-        orderedList: false,
-        listItem: false,
-        horizontalRule: false,
-        hardBreak: false,
-      }),
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       Placeholder.configure({ placeholder: placeholder || '' }),
+      Markdown.configure({ html: false, transformPastedText: true, transformCopiedText: true }),
       CitationNode.configure({
         resolveLabel: (anchorId: string) => {
           const materialId = parseCitationMaterialId(anchorId);
@@ -110,18 +129,18 @@ export function ManuscriptEditor({
         },
       }),
     ],
-    content: stringToDoc(content),
+    content,
     editorProps: {
       attributes: {
         class: cn(
-          'font-doc text-base leading-loose focus:outline-none min-h-[72vh]',
+          'prose prose-sm sm:prose-base max-w-none font-doc leading-loose focus:outline-none min-h-[68vh]',
           'text-gray-800 dark:text-foreground',
         ),
       },
     },
     onUpdate: ({ editor: instance }) => {
       if (applyingExternalRef.current) return;
-      const text = docToString(instance.getJSON());
+      const text = getMarkdown(instance);
       if (text === lastSerializedRef.current) return;
       lastSerializedRef.current = text;
       onChangeRef.current(text);
@@ -129,13 +148,13 @@ export function ManuscriptEditor({
   });
 
   // Sync external content changes (section switch, apply-rewrite, spark insert)
-  // into the editor without clobbering the user's in-progress edits.
+  // into the editor without clobbering in-progress edits.
   useEffect(() => {
     if (!editor) return;
-    const current = docToString(editor.getJSON());
+    const current = getMarkdown(editor);
     if (content === current) return;
     applyingExternalRef.current = true;
-    editor.commands.setContent(stringToDoc(content));
+    editor.commands.setContent(content);
     applyingExternalRef.current = false;
     lastSerializedRef.current = content;
   }, [content, editor]);
@@ -149,7 +168,7 @@ export function ManuscriptEditor({
     const anchorId = createCitationAnchorId(request.materialId);
     editor.chain().focus().insertCitation(anchorId).run();
 
-    const nextContent = docToString(editor.getJSON());
+    const nextContent = getMarkdown(editor);
     const tokenOffset = nextContent.indexOf(`[^${anchorId}]`);
     const instanceId = getCitationAnchorInstanceId(anchorId, tokenOffset >= 0 ? tokenOffset : 0);
     onCitationInsertHandled(request.requestId, instanceId, request.materialId);
@@ -176,5 +195,10 @@ export function ManuscriptEditor({
     onCitationFocusHandled(request.requestId);
   }, [citationFocusRequest, editor, onCitationFocusHandled]);
 
-  return <EditorContent editor={editor} className={className} />;
+  return (
+    <div className={className}>
+      <MenuBar editor={editor} />
+      <EditorContent editor={editor} />
+    </div>
+  );
 }

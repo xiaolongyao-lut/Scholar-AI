@@ -1,14 +1,20 @@
 import { useEffect, useReducer } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
+import type { MarkdownNodeSpec } from 'tiptap-markdown';
 import { cn } from '@/lib/utils';
-import { CITATION_NODE_NAME } from './manuscriptSerialization';
+
+export const CITATION_NODE_NAME = 'citation';
 
 export interface CitationNodeOptions {
   /** Human-readable hover label for a citation anchor id (material title / unbound). */
   resolveLabel: (anchorId: string) => string;
   /** Invoked when the user clicks a citation marker (locate / open source). */
   onActivate: (anchorId: string) => void;
+}
+
+export interface CitationNodeStorage {
+  markdown: MarkdownNodeSpec;
 }
 
 declare module '@tiptap/core' {
@@ -85,10 +91,12 @@ function CitationNodeView({ node, editor, extension, selected }: NodeViewProps) 
 
 /**
  * Inline atom node representing a manuscript citation token `[^cite:mat:id]`.
- * Renders as a clickable `[n]` superscript; serialization back to the token is
- * handled by manuscriptSerialization (the node carries the full anchor id).
+ * Renders as a clickable `[n]` superscript. Markdown round-trips via the
+ * tiptap-markdown spec below: serialize writes the token verbatim, and a
+ * markdown-it inline rule re-emits the token as a `span[data-citation]` element
+ * that `parseHTML` reconstructs.
  */
-export const CitationNode = Node.create<CitationNodeOptions>({
+export const CitationNode = Node.create<CitationNodeOptions, CitationNodeStorage>({
   name: CITATION_NODE_NAME,
   group: 'inline',
   inline: true,
@@ -100,6 +108,39 @@ export const CitationNode = Node.create<CitationNodeOptions>({
     return {
       resolveLabel: () => '',
       onActivate: () => undefined,
+    };
+  },
+
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state, node) {
+          state.write(`[^${String(node.attrs.anchorId ?? '')}]`);
+        },
+        parse: {
+          setup(markdownit) {
+            markdownit.inline.ruler.before('link', CITATION_NODE_NAME, (state, silent) => {
+              const src = state.src.slice(state.pos, state.posMax);
+              if (src.charCodeAt(0) !== 0x5b /* [ */ || src.charCodeAt(1) !== 0x5e /* ^ */) {
+                return false;
+              }
+              const match = /^\[\^([^\]\s]+)\]/.exec(src);
+              if (!match) return false;
+              if (!silent) {
+                const token = state.push(CITATION_NODE_NAME, '', 0);
+                token.markup = match[0];
+                token.meta = { anchorId: match[1] };
+              }
+              state.pos += match[0].length;
+              return true;
+            });
+            markdownit.renderer.rules[CITATION_NODE_NAME] = (tokens, idx) => {
+              const anchorId = String(tokens[idx].meta?.anchorId ?? '');
+              return `<span data-citation data-anchor-id="${markdownit.utils.escapeHtml(anchorId)}"></span>`;
+            };
+          },
+        },
+      },
     };
   },
 

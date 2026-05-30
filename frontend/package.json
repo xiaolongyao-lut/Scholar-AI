@@ -31,6 +31,7 @@
     "@tiptap/starter-kit": "^3.22.5",
     "@xyflow/react": "^12.10.2",
     "axios": "^1.6.7",
+    "citeproc": "^2.4.63",
     "clsx": "^2.1.0",
     "docx": "^9.6.1",
     "file-saver": "^2.0.5",
@@ -43,7 +44,8 @@
     "react-pdf": "^10.4.1",
     "react-router-dom": "^6.22.2",
     "remark-gfm": "^4.0.1",
-    "tailwind-merge": "^2.2.1"
+    "tailwind-merge": "^2.2.1",
+    "tiptap-markdown": "^0.9.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
