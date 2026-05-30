@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Database,
@@ -16,9 +16,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   Pencil,
+  Square,
   X,
   Check,
   BookOpen,
+  MessageCircle,
   Trash2,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -32,6 +34,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { StatusPill } from '@/components/common/StatusPill';
 import { SectionCard } from '@/components/common/SectionCard';
 import { EmptyState } from '@/components/common/EmptyState';
+import { ReasoningBiasBar } from '@/components/knowledge/ReasoningBiasBar';
 
 type KBDocumentType = 'pdf' | 'docx' | 'bib' | 'txt' | 'other';
 type KBDocumentStatus = 'indexed' | 'no_text';
@@ -82,6 +85,14 @@ const folderPickerProps = {
   directory: '',
 } as unknown as React.InputHTMLAttributes<HTMLInputElement>;
 
+const KNOWLEDGE_INTERNAL_TEXT_PATTERN = /(?:\/api\/|\/resources\/|\/runtime\/|\/pipeline\/|\/memory\/|\/skills\/|\/capabilities\/|https?:\/\/|[A-Za-z]:[\\/]|api[_\s-]?key|base[_\s-]?url|authorization|bearer|token|secret|password|credential|env=|env_refs|capability_[a-z0-9_]*|server_id|tool_call_id|credential_id|workspace_root|source_folder|material_id|job_id|session_id|[{}[\]"`])/i;
+const KNOWLEDGE_IDENTIFIER_TEXT_PATTERN = /\b(?:[A-Z][A-Z0-9]+_[A-Z0-9_]+|(?:env|credential|capability|server|tool|workspace|source|material|job|session)_[a-z0-9_]+)\b/;
+const KNOWLEDGE_ERROR_TEXT_LIMIT = 120;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function inferDocumentType(name: string): KBDocumentType {
   const match = name.match(/\.([^.]+)$/i)?.[1]?.toLowerCase();
   if (match === 'pdf' || match === 'docx' || match === 'bib' || match === 'txt') {
@@ -90,21 +101,51 @@ function inferDocumentType(name: string): KBDocumentType {
   return 'other';
 }
 
-function formatAxiosError(err: unknown): string {
+export function sanitizeKnowledgeVisibleError(message: string, fallback: string): string {
+  const normalized = message.trim();
+  if (!normalized) return fallback;
+  if (KNOWLEDGE_INTERNAL_TEXT_PATTERN.test(normalized) || KNOWLEDGE_IDENTIFIER_TEXT_PATTERN.test(normalized)) {
+    return fallback;
+  }
+  return normalized.length > KNOWLEDGE_ERROR_TEXT_LIMIT
+    ? `${normalized.slice(0, KNOWLEDGE_ERROR_TEXT_LIMIT)}…`
+    : normalized;
+}
+
+function readKnowledgeErrorMessage(payload: unknown): string | null {
+  if (typeof payload === 'string') return payload;
+  if (!isRecord(payload)) return null;
+
+  const detail = payload.detail;
+  if (typeof detail === 'string') return detail;
+  if (isRecord(detail) && typeof detail.message === 'string') return detail.message;
+
+  const error = payload.error;
+  if (typeof error === 'string') return error;
+  if (isRecord(error) && typeof error.message === 'string') return error.message;
+
+  const message = payload.message;
+  return typeof message === 'string' ? message : null;
+}
+
+export function formatKnowledgeActionError(err: unknown): string {
+  const fallback = '操作失败，请稍后重试。';
   if (axios.isAxiosError(err) && err.response) {
-    const detail = err.response.data?.detail;
-    if (typeof detail === 'string') {
-      return detail;
-    }
-    if (detail && typeof detail === 'object') {
-      return JSON.stringify(detail);
-    }
-    return `请求失败 (${err.response.status})`;
+    const message = readKnowledgeErrorMessage(err.response.data);
+    return message ? sanitizeKnowledgeVisibleError(message, fallback) : fallback;
   }
   if (err instanceof Error) {
-    return err.message;
+    return sanitizeKnowledgeVisibleError(err.message, fallback);
   }
-  return '未知错误';
+  return fallback;
+}
+
+function isAbortLikeError(err: unknown): boolean {
+  if (axios.isCancel(err)) return true;
+  if (err instanceof DOMException && err.name === 'AbortError') return true;
+  if (typeof err !== 'object' || err === null) return false;
+  const value = err as { name?: unknown; code?: unknown };
+  return value.name === 'AbortError' || value.code === 'ERR_CANCELED';
 }
 
 interface ScanResultItem {
@@ -123,6 +164,7 @@ export function KnowledgeBase() {
   const [uploading, setUploading] = useState(false);
   const [docs, setDocs] = useState<KBDocument[]>([]);
   const [uploadSummary, setUploadSummary] = useState<UploadBatchResult | null>(null);
+  const [uploadNotice, setUploadNotice] = useState('');
   const [uploadSelection, setUploadSelection] = useState<string[]>([]);
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -133,6 +175,7 @@ export function KnowledgeBase() {
     folder: string;
     results?: ScanResultItem[];
   } | null>(null);
+  const [scanNotice, setScanNotice] = useState('');
   const [showFailedDetails, setShowFailedDetails] = useState(false);
   const [projectSourceFolder, setProjectSourceFolder] = useState('');
   const [projectTitle, setProjectTitle] = useState('');
@@ -142,7 +185,30 @@ export function KnowledgeBase() {
   const [savingFolder, setSavingFolder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const { activeProjectId } = useWriting();
+  const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  const scanAbortControllerRef = useRef<AbortController | null>(null);
+  const uploadStopRequestedRef = useRef(false);
+  const scanStopRequestedRef = useRef(false);
+  const routeProjectAppliedRef = useRef<string | null>(null);
+  const { activeProjectId, setActiveProjectId } = useWriting();
+  const queryProjectId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return (params.get('project_id') ?? params.get('project') ?? '').trim();
+  }, [location.search]);
+
+  useEffect(() => () => {
+    uploadAbortControllerRef.current?.abort();
+    scanAbortControllerRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!queryProjectId || activeProjectId === queryProjectId || routeProjectAppliedRef.current === queryProjectId) {
+      return;
+    }
+
+    routeProjectAppliedRef.current = queryProjectId;
+    setActiveProjectId(queryProjectId);
+  }, [activeProjectId, queryProjectId, setActiveProjectId]);
 
   // Fetch project's source_folder + title when activeProjectId changes
   useEffect(() => {
@@ -201,6 +267,17 @@ export function KnowledgeBase() {
     navigate(`/workbench/paper/${encodeURIComponent(materialId)}${pageQuery}`);
   }, [navigate]);
 
+  const openMaterialInSmartRead = useCallback((doc: KBDocument) => {
+    const materialId = doc.id.trim();
+    if (!materialId) return;
+    const params = new URLSearchParams();
+    params.set('scope', 'paper');
+    params.set('material_id', materialId);
+    if (activeProjectId) params.set('project_id', activeProjectId);
+    if (doc.name.trim()) params.set('material_title', doc.name.trim());
+    navigate(`/dialog?${params.toString()}`);
+  }, [activeProjectId, navigate]);
+
   const handleDeleteDocument = useCallback(async (materialId: string, materialName: string) => {
     if (!window.confirm(`确定要删除「${materialName}」吗？该文献的切块和原始文件都会被移除，且无法恢复。`)) {
       return;
@@ -211,8 +288,7 @@ export function KnowledgeBase() {
       if (expandedDocId === materialId) setExpandedDocId(null);
       await loadMaterials();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '未知错误';
-      window.alert(`删除失败：${msg}`);
+      window.alert(`删除失败：${formatKnowledgeActionError(err)}`);
     }
   }, [expandedDocId, loadMaterials]);
 
@@ -250,7 +326,7 @@ export function KnowledgeBase() {
       setEditingFolder(false);
     } catch (err: unknown) {
       // keep editing mode open on error so user can retry
-      console.error('更新文献文件夹失败:', formatAxiosError(err));
+      console.error('更新文献文件夹失败:', formatKnowledgeActionError(err));
     } finally {
       setSavingFolder(false);
     }
@@ -258,12 +334,20 @@ export function KnowledgeBase() {
 
   const handleScanFolder = useCallback(async () => {
     if (!activeProjectId || scanning) return;
+    const abortController = new AbortController();
+    scanAbortControllerRef.current?.abort();
+    scanAbortControllerRef.current = abortController;
+    scanStopRequestedRef.current = false;
     setScanning(true);
     setScanResult(null);
+    setScanNotice('');
     setShowFailedDetails(false);
     try {
       const baseUrl = getApiBaseUrl();
-      const { data } = await axios.post(`${baseUrl}/resources/project/${activeProjectId}/scan-folder`, {}, { timeout: 300000 });
+      const { data } = await axios.post(`${baseUrl}/resources/project/${activeProjectId}/scan-folder`, {}, {
+        timeout: 300000,
+        signal: abortController.signal,
+      });
       setScanResult({ 
         indexed: data.indexed, 
         skipped: data.skipped, 
@@ -273,12 +357,29 @@ export function KnowledgeBase() {
       });
       await loadMaterials();
     } catch (err: unknown) {
-      const msg = formatAxiosError(err);
+      if (scanStopRequestedRef.current || isAbortLikeError(err)) {
+        setScanNotice('已停止扫描。已进入后台的处理可能会在稍后出现在列表中。');
+        return;
+      }
+      const msg = formatKnowledgeActionError(err);
       setScanResult({ indexed: 0, skipped: 0, failed: 0, folder: msg });
     } finally {
+      if (scanAbortControllerRef.current === abortController) {
+        scanAbortControllerRef.current = null;
+      }
+      scanStopRequestedRef.current = false;
       setScanning(false);
     }
   }, [activeProjectId, scanning, loadMaterials]);
+
+  const handleStopScanFolder = useCallback(() => {
+    const controller = scanAbortControllerRef.current;
+    if (!controller) return;
+    scanStopRequestedRef.current = true;
+    controller.abort();
+    setScanning(false);
+    setScanNotice('已停止扫描。已进入后台的处理可能会在稍后出现在列表中。');
+  }, []);
 
   const handleUploadFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0 || !activeProjectId) {
@@ -286,24 +387,36 @@ export function KnowledgeBase() {
     }
 
     const pickedFiles = Array.from(files);
+    const projectId = activeProjectId;
+    const abortController = new AbortController();
+    uploadAbortControllerRef.current?.abort();
+    uploadAbortControllerRef.current = abortController;
+    uploadStopRequestedRef.current = false;
     const baseUrl = getApiBaseUrl();
     const formData = new FormData();
-    formData.append('project_id', activeProjectId);
+    formData.append('project_id', projectId);
     pickedFiles.forEach(file => formData.append('files', file));
 
     setUploading(true);
     setUploadSummary(null);
+    setUploadNotice('');
     setUploadSelection(pickedFiles.map(file => file.name));
 
     try {
       const { data } = await axios.post<UploadBatchResult>(`${baseUrl}/resources/upload/batch`, formData, {
         timeout: Math.max(120000, pickedFiles.length * 45000),
+        signal: abortController.signal,
       });
       setUploadSummary(data);
     } catch (err: unknown) {
-      const errorMessage = formatAxiosError(err);
+      if (uploadStopRequestedRef.current || isAbortLikeError(err)) {
+        setUploadNotice('已停止导入。已进入后台的处理可能会在稍后出现在列表中。');
+        setUploadSummary(null);
+        return;
+      }
+      const errorMessage = formatKnowledgeActionError(err);
       setUploadSummary({
-        project_id: activeProjectId,
+        project_id: projectId,
         total_files: pickedFiles.length,
         successful_files: 0,
         failed_files: pickedFiles.length,
@@ -316,6 +429,10 @@ export function KnowledgeBase() {
       });
     } finally {
       await loadMaterials();
+      if (uploadAbortControllerRef.current === abortController) {
+        uploadAbortControllerRef.current = null;
+      }
+      uploadStopRequestedRef.current = false;
       setUploading(false);
       setUploadSelection([]);
       if (fileInputRef.current) {
@@ -326,6 +443,22 @@ export function KnowledgeBase() {
       }
     }
   }, [activeProjectId, loadMaterials]);
+
+  const handleStopUploadFiles = useCallback(() => {
+    const controller = uploadAbortControllerRef.current;
+    if (!controller) return;
+    uploadStopRequestedRef.current = true;
+    controller.abort();
+    setUploading(false);
+    setUploadSelection([]);
+    setUploadNotice('已停止导入。已进入后台的处理可能会在稍后出现在列表中。');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    if (folderInputRef.current) {
+      folderInputRef.current.value = '';
+    }
+  }, []);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -343,7 +476,7 @@ export function KnowledgeBase() {
   const recentSucceeded = (uploadSummary?.results ?? []).filter(item => item.status === 'ok').slice(0, 4);
   const recentFailed = (uploadSummary?.results ?? []).filter(item => item.status === 'error').slice(0, 4);
 
-  // Library index view (Long-Run v2 Slice D) — per
+  // Library index view based on
   // workspace_artifacts/generated/output/scholar_ai_workbench_visual_baseline/06_left_rail_destinations/12_library_index_screen.png
   // Three regions:
   //   - left: Collections / Tags / Recent sidebar (~280px, lg+ only)
@@ -359,7 +492,7 @@ export function KnowledgeBase() {
   ];
 
   return (
-    <div className="flex h-full min-h-0 bg-background">
+    <div className="flex h-full min-h-0 min-w-0 overflow-hidden bg-background">
       <input
         ref={fileInputRef}
         type="file"
@@ -470,12 +603,12 @@ export function KnowledgeBase() {
               {projectSourceFolder && (
                 <button
                   type="button"
-                  onClick={() => void handleScanFolder()}
-                  disabled={scanning || uploading}
+                  onClick={() => scanning ? handleStopScanFolder() : void handleScanFolder()}
+                  disabled={uploading}
                   className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-emerald-400/60 bg-emerald-50/70 px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
                 >
-                  {scanning ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                  {scanning ? '扫描中…' : '扫描文献夹'}
+                  {scanning ? <Square size={10} /> : <RefreshCw size={10} />}
+                  {scanning ? '停止扫描' : '扫描文献夹'}
                 </button>
               )}
             </div>
@@ -506,8 +639,8 @@ export function KnowledgeBase() {
       </aside>
 
       {/* Center — Library index */}
-      <main className="flex min-w-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col overflow-auto px-6 py-5">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-6 py-5">
           <PageHeader
             title={projectTitle ? t('kb.title_with_project', { name: projectTitle }) : t('kb.title')}
             subtitle={t('kb.subtitle')}
@@ -549,13 +682,15 @@ export function KnowledgeBase() {
             />
           ) : (
             <>
+              <ReasoningBiasBar projectId={activeProjectId} />
+
               {/* Filter chip row */}
               <div className="mb-3 flex flex-wrap items-center gap-1.5">
                 {([
                   { id: 'all', label: '全部', count: docs.length },
                   { id: 'indexed', label: '已索引', count: indexedCount },
                   { id: 'no_text', label: '未提取文本', count: noTextCount },
-                  { id: 'chunks', label: `共 ${totalChunks} 切片`, disabled: true },
+                  { id: 'chunks', label: `共 ${totalChunks} 检索片段`, disabled: true },
                 ] satisfies DocumentCollectionChip[]).map((c) => (
                   <button
                     type="button"
@@ -611,7 +746,26 @@ export function KnowledgeBase() {
                 <span className="hidden text-[10px] text-foreground/40 sm:inline">
                   {uploading ? t('kb.uploading_detail') : t('kb.upload_batch_hint')}
                 </span>
+                {uploading && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleStopUploadFiles();
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-lowest px-2 py-1 text-[10px] font-medium text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
+                  >
+                    <Square size={10} />
+                    停止导入
+                  </button>
+                )}
               </div>
+
+              {uploadNotice && (
+                <div className="mb-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-800/50 dark:bg-amber-500/10 dark:text-amber-200">
+                  {uploadNotice}
+                </div>
+              )}
 
               {/* Upload summary (compact strip) */}
               {uploadSummary && (
@@ -682,6 +836,12 @@ export function KnowledgeBase() {
                 </div>
               )}
 
+              {scanNotice && (
+                <div className="mb-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-800/50 dark:bg-amber-500/10 dark:text-amber-200">
+                  {scanNotice}
+                </div>
+              )}
+
               {/* Search row above table */}
               <div className="mb-3 flex items-center gap-2 rounded-md border border-outline-variant/60 bg-surface-low px-2 py-1.5">
                 <Search size={13} className="text-foreground/35" />
@@ -702,14 +862,14 @@ export function KnowledgeBase() {
                   icon={<Database size={28} />}
                 />
               ) : (
-                <div className="overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest">
+                <div className="min-h-0 flex-1 overflow-auto rounded-md border border-outline-variant/60 bg-surface-lowest">
                   <table className="w-full text-xs">
-                    <thead className="bg-surface-low text-[10px] uppercase tracking-wider text-foreground/45">
+                    <thead className="sticky top-0 z-10 bg-surface-low text-[10px] uppercase tracking-wider text-foreground/45">
                       <tr>
                         <th className="px-3 py-2 text-left font-medium">标题</th>
                         <th className="px-3 py-2 text-left font-medium">类型</th>
                         <th className="px-3 py-2 text-left font-medium">添加时间</th>
-                        <th className="px-3 py-2 text-left font-medium">切片</th>
+                        <th className="px-3 py-2 text-left font-medium">检索片段</th>
                         <th className="px-3 py-2 text-left font-medium">状态</th>
                         <th className="px-3 py-2 text-right font-medium">操作</th>
                       </tr>
@@ -767,6 +927,17 @@ export function KnowledgeBase() {
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    openMaterialInSmartRead(doc);
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2 py-1 font-medium text-foreground/75 hover:border-primary/60 hover:text-primary"
+                                  title="在智能研读中围绕本文献提问"
+                                >
+                                  <MessageCircle size={11} /> 研读
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     void handleDeleteDocument(doc.id, doc.name);
                                   }}
                                   className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2 py-1 font-medium text-foreground/65 hover:border-red-500/60 hover:text-red-600"
@@ -790,7 +961,7 @@ export function KnowledgeBase() {
 
         {/* Right — paper detail drawer */}
         {selectedDoc && (
-          <aside className="hidden w-[340px] shrink-0 flex-col border-l border-outline-variant/60 bg-surface-lowest xl:flex">
+          <aside className="hidden min-h-0 w-[340px] shrink-0 flex-col overflow-y-auto border-l border-outline-variant/60 bg-surface-lowest xl:flex">
             <div className="flex items-start justify-between gap-2 border-b border-outline-variant/40 px-4 py-3">
               <div className="min-w-0">
                 <h2 className="truncate font-headline text-sm font-semibold text-foreground" title={selectedDoc.name}>
@@ -819,7 +990,7 @@ export function KnowledgeBase() {
               <SectionCard title="摘要" className="mb-3">
                 <p className="text-foreground/65">
                   {selectedDoc.status === 'indexed'
-                    ? `共有 ${selectedDoc.chunks} 个内容切片可供检索。可点击下方按钮在工作台中继续阅读。`
+                    ? `共有 ${selectedDoc.chunks} 个检索片段可供使用。可点击下方按钮在工作台中继续阅读。`
                     : '该文档暂未提取到可索引文本，可重新上传或检查源文件。'}
                 </p>
               </SectionCard>
@@ -833,6 +1004,13 @@ export function KnowledgeBase() {
                     >
                       <BookOpen size={12} /> 在工作台中打开
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => openMaterialInSmartRead(selectedDoc)}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-low px-3 py-2 text-xs font-medium text-foreground/75 transition-colors hover:border-primary/60 hover:text-primary"
+                    >
+                      <MessageCircle size={12} /> 用智能研读提问
+                    </button>
                   </>
                 )}
               </SectionCard>
@@ -842,14 +1020,14 @@ export function KnowledgeBase() {
                   <dd className="uppercase text-foreground/75">{selectedDoc.type}</dd>
                   <dt className="text-foreground/45">添加</dt>
                   <dd className="text-foreground/75">{selectedDoc.addedAt || '—'}</dd>
-                  <dt className="text-foreground/45">切片数</dt>
+                  <dt className="text-foreground/45">检索片段</dt>
                   <dd className="text-foreground/75">{selectedDoc.chunks}</dd>
                 </dl>
               </SectionCard>
             </div>
           </aside>
         )}
-      </main>
+      </div>
     </div>
   );
 }
