@@ -910,19 +910,6 @@ export function KnowledgeBase() {
                             </td>
                             <td className="px-3 py-2 text-right">
                               <div className="inline-flex items-center gap-1.5">
-                                {doc.type === 'pdf' && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openPdfInWorkbench(doc.id);
-                                    }}
-                                    className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2 py-1 font-medium text-foreground/75 hover:border-primary/60 hover:text-primary"
-                                    title="在工作台中阅读"
-                                  >
-                                    <BookOpen size={11} /> 阅读
-                                  </button>
-                                )}
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -930,7 +917,7 @@ export function KnowledgeBase() {
                                     openMaterialInSmartRead(doc);
                                   }}
                                   className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2 py-1 font-medium text-foreground/75 hover:border-primary/60 hover:text-primary"
-                                  title="在智能研读中围绕本文献提问"
+                                  title="在智能研读中阅读并围绕本文献提问"
                                 >
                                   <MessageCircle size={11} /> 研读
                                 </button>

@@ -11,7 +11,7 @@ import { CommandPalette } from './components/ui/CommandPalette';
 import { McpPendingCallPoller } from './components/mcp/McpPendingCallPoller';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
-// Route-level lazy imports for code splitting (TASK-181)
+// Route-level lazy imports keep the initial shell small.
 const Workbench = React.lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
 const Projects = React.lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
 const KnowledgeBase = React.lazy(() => import('./pages/KnowledgeBase').then(m => ({ default: m.KnowledgeBase })));
@@ -19,12 +19,9 @@ const WikiWorkbench = React.lazy(() => import('./pages/WikiWorkbench').then(m =>
 const SettingsPage = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.SettingsPage })));
 const VolumeAnalysis = React.lazy(() => import('./pages/VolumeAnalysis').then(m => ({ default: m.VolumeAnalysis })));
 const Jobs = React.lazy(() => import('./pages/Jobs').then(m => ({ default: m.Jobs })));
-  // Standalone /inspiration is folded into Dialog inspiration mode.
 const DraftStudio = React.lazy(() => import('./components/DraftStudio').then(m => ({ default: m.DraftStudio })));
 const Dialog = React.lazy(() => import('./pages/Dialog').then(m => ({ default: m.Dialog })));
-const Discussion = React.lazy(() => import('./pages/Discussion').then(m => ({ default: m.Discussion })));
 const ResearchWorkbench = React.lazy(() => import('./pages/ResearchWorkbench').then(m => ({ default: m.ResearchWorkbench })));
-const WorkbenchDiscussion = React.lazy(() => import('./pages/WorkbenchDiscussion').then(m => ({ default: m.WorkbenchDiscussion })));
 const WorkbenchWiki = React.lazy(() => import('./pages/WorkbenchObjectAdapters').then(m => ({ default: m.WorkbenchWiki })));
 const WritingOverview = React.lazy(() => import('./pages/writing/WritingOverview').then(m => ({ default: m.WritingOverview })));
 const OutlineManager = React.lazy(() => import('./pages/writing/OutlineManager').then(m => ({ default: m.OutlineManager })));
@@ -56,7 +53,7 @@ const App = () => {
                   <Suspense fallback={<LazyFallback />}>
                     <Routes>
                       {/* Home */}
-                      <Route path="/" element={<Workbench />} />
+                      <Route path="/" element={<Navigate to="/dialog" replace />} />
 
                       {/* Writing group */}
                       <Route path="/writing" element={<WritingOverview />} />
@@ -72,22 +69,23 @@ const App = () => {
                       <Route path="/wiki" element={<WikiWorkbench />} />
                       <Route path="/projects" element={<Projects />} />
                       <Route path="/volume" element={<VolumeAnalysis />} />
-                      <Route path="/inspiration" element={<Navigate to="/dialog?mode=inspiration" replace />} />
-                      <Route path="/chat" element={<Navigate to="/dialog?mode=literature_qa" replace />} />
+                      <Route path="/inspiration" element={<Navigate to="/dialog" replace />} />
+                      <Route path="/chat" element={<Navigate to="/dialog" replace />} />
+                      <Route path="/intelligent-chat" element={<Navigate to="/dialog" replace />} />
                       <Route path="/dialog" element={<Dialog />} />
-                      <Route path="/discussion" element={<Discussion />} />
+                      <Route path="/discussion" element={<Navigate to="/dialog?mode=discussion" replace />} />
                       {/* ResearchWorkbench — gated by VITE_FLAG_RESEARCH_WORKBENCH; otherwise
                           the component itself redirects to /knowledge. */}
                       <Route path="/workbench/paper/:materialId" element={<ResearchWorkbench />} />
-                      <Route path="/workbench/discussion" element={<WorkbenchDiscussion />} />
+                      <Route path="/workbench/discussion" element={<Navigate to="/dialog?mode=discussion" replace />} />
                       <Route path="/workbench/wiki" element={<WorkbenchWiki />} />
-                      <Route path="/workbench/inspiration" element={<Navigate to="/dialog?mode=inspiration" replace />} />
+                      <Route path="/workbench/inspiration" element={<Navigate to="/dialog" replace />} />
                       <Route path="/jobs" element={<Jobs />} />
                       <Route path="/evolution" element={<EvolutionInbox />} />
                       <Route path="/settings" element={<SettingsPage />} />
 
                       {/* Fallback */}
-                      <Route path="*" element={<Navigate to="/" replace />} />
+                      <Route path="*" element={<Navigate to="/dialog" replace />} />
                     </Routes>
                   </Suspense>
                 </MainLayout>

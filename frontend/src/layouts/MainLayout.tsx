@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, NavLink } from 'react-router-dom';
 import { 
   BarChart3,
@@ -26,7 +26,6 @@ import {
   ShieldCheck,
   Activity,
   Trash2,
-  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -334,7 +333,10 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
 
   const isWritingRoute = location.pathname.startsWith('/writing');
   const isProjectsRoute = location.pathname.startsWith('/projects');
-  const dialogMode = new URLSearchParams(location.search).get('mode');
+  const routeProjectId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return (params.get('project_id') ?? params.get('project') ?? '').trim();
+  }, [location.search]);
 
   const getHeaderTitle = () => {
     if (isWritingRoute) return t('writing.workbench_title');
@@ -350,7 +352,7 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
     if (location.pathname.startsWith('/jobs')) return t('jobs.title');
     if (location.pathname.startsWith('/evolution')) return '学到的经验';
     if (location.pathname.startsWith('/volume')) return t('volume.title');
-    if (location.pathname.startsWith('/dialog')) return dialogMode === 'inspiration' ? '灵感思维链' : '对话';
+    if (location.pathname.startsWith('/dialog')) return t('nav.workbench');
     if (location.pathname.startsWith('/discussion')) return t('nav.multi_agent_discussion');
     return t('workbench.title');
   };
@@ -388,6 +390,13 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
+      if (routeProjectId && normalized.some((project) => project.id === routeProjectId)) {
+        if (activeProjectId !== routeProjectId) {
+          setActiveProjectId(routeProjectId);
+        }
+        return;
+      }
+
       if (!activeProjectId || !normalized.some((project) => project.id === activeProjectId)) {
         if (isProjectsRoute) {
           if (activeProjectId) {
@@ -402,7 +411,7 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
     } finally {
       setProjectLoading(false);
     }
-  }, [activeProjectId, isProjectsRoute, setActiveProjectId]);
+  }, [activeProjectId, isProjectsRoute, routeProjectId, setActiveProjectId]);
 
   useEffect(() => {
     void loadHeaderProjects();
@@ -424,7 +433,9 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
 
   const selectedProjectId = activeProjectId && headerProjects.some(project => project.id === activeProjectId)
     ? activeProjectId
-    : (isProjectsRoute ? '' : (headerProjects[0]?.id ?? ''));
+    : routeProjectId && headerProjects.some(project => project.id === routeProjectId)
+      ? routeProjectId
+      : (isProjectsRoute ? '' : (headerProjects[0]?.id ?? ''));
 
   const handleProjectSelectorChange = useCallback((projectId: string) => {
     setActiveProjectId(projectId);
@@ -501,12 +512,11 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
         {/* Navigation */}
         <nav className="flex-1 px-2 flex flex-col gap-0.5 overflow-y-auto custom-scrollbar">
           <NavItem
-            to="/"
+            to="/dialog"
             icon={<BookOpen size={20} />}
             label={t('nav.workbench')}
-            end
             collapsed={leftNavCollapsed}
-            activePaths={['/', '/dialog', '/chat', '/inspiration']}
+            activePaths={['/dialog', '/chat', '/intelligent-chat', '/inspiration']}
           />
           <NavItem
             to="/knowledge"
@@ -537,13 +547,6 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
             label="Wiki"
             collapsed={leftNavCollapsed}
             activePaths={['/wiki', '/workbench/wiki']}
-          />
-          <NavItem
-            to="/discussion"
-            icon={<Users size={20} />}
-            label={t('nav.multi_agent_discussion')}
-            collapsed={leftNavCollapsed}
-            activePaths={['/discussion', '/workbench/discussion']}
           />
           <NavItem to="/projects" icon={<FolderKanban size={20} />} label={t('nav.projects')} collapsed={leftNavCollapsed} />
           <NavItem to="/volume" icon={<FileText size={20} />} label={t('nav.volume')} collapsed={leftNavCollapsed} />

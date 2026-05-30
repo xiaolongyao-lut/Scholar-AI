@@ -2831,15 +2831,21 @@ export function Dialog() {
         <div className="flex min-w-0 items-center gap-3">
           {dialogMode === 'discussion' ? (
             <Users2 className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+          ) : readerInCenter ? (
+            <BookOpen className="h-5 w-5 shrink-0 text-primary" aria-hidden />
           ) : (
             <MessageCircle className="h-5 w-5 shrink-0 text-primary" aria-hidden />
           )}
           <div className="min-w-0">
-            <h1 className="truncate font-display text-lg font-semibold text-foreground">智能研读</h1>
+            <h1 className="truncate font-display text-lg font-semibold text-foreground">
+              {readerInCenter ? activeMaterialLabel : '智能研读'}
+            </h1>
             <p className="truncate font-label text-xs text-foreground/55">
               {dialogMode === 'discussion'
                 ? '在同一研究工作台内运行多智能体讨论'
-                : '围绕当前项目材料进行证据增强对话'}
+                : readerInCenter
+                  ? '智能研读 · 阅读本文献并提问、讨论、看图谱'
+                  : '围绕当前项目材料进行证据增强对话'}
             </p>
           </div>
         </div>

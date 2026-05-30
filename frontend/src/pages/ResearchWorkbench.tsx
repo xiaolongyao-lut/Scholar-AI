@@ -1,27 +1,21 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, CheckCircle2, Hash, Loader2 } from 'lucide-react';
-import axios from 'axios';
+import { ArrowLeft, BookOpen, CheckCircle2, Hash, Loader2, MessageCircle } from 'lucide-react';
 import { WorkbenchShell } from '@/components/workbench/WorkbenchShell';
-import {
-  ResearchWorkbenchInspector,
-  ResearchWorkbenchEvidenceDrawer,
-} from '@/components/workbench/ResearchWorkbenchInspector';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { PdfTabStrip } from '@/components/PdfViewer/PdfTabStrip';
 import { usePdfTabs } from '@/contexts/PdfTabsContext';
-import { useSmartRead, SMART_READ_DEFAULT_SCOPE } from '@/contexts/SmartReadContext';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { useWriting } from '@/contexts/WritingContext';
 import {
+  addHighlight,
   getAnnotations,
+  replaceHighlights,
   type AnnotationData,
   type Highlight,
 } from '@/services/annotationApi';
 import { getWritingBackendService } from '@/services/writingBackend';
 import type { WritingMaterialResource } from '@/types/resources';
-import type { ChatMessageData } from '@/components/chat/Message';
-import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
 
 const PdfReaderShell = lazy(() =>
   import('@/components/PdfViewer/PdfReaderShell').then((m) => ({
@@ -35,16 +29,35 @@ const PdfReaderFallback = () => (
   </div>
 );
 
+function parseBboxSearchParam(value: string | null): number[] | null {
+  if (!value) return null;
+  const parts = value.split(',').map((part) => Number(part.trim()));
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) return null;
+  return parts;
+}
+
+function bboxToHighlightRect(bbox: number[] | null): { x: number; y: number; w: number; h: number } | null {
+  if (!bbox || bbox.length !== 4) return null;
+  const [a, b, c, d] = bbox;
+  if (![a, b, c, d].every((value) => Number.isFinite(value))) return null;
+
+  if (a >= 0 && b >= 0 && c > 0 && d > 0 && a <= 1 && b <= 1 && a + c <= 1.0001 && b + d <= 1.0001) {
+    return { x: a, y: b, w: c, h: d };
+  }
+  if (a >= 0 && b >= 0 && c > a && d > b && c <= 1 && d <= 1) {
+    return { x: a, y: b, w: c - a, h: d - b };
+  }
+  return null;
+}
+
 /**
- * Phase 2 / Slice 3 — ResearchWorkbench surface (Paper object only).
+ * ResearchWorkbench — full-screen PDF reader fallback for a single paper.
  *
  * Route: `/workbench/paper/:materialId`
- * v1 invariants (R7 / R5 / L9 / L10):
- *   - exactly one active object canvas, no tab strip
- *   - object header carries title + status chip only, no second row
- *   - PDF canvas keeps a light background (Zotero rule, index.css)
- *   - inherited_context is packaged on the client but not sent to a
- *     backend that does not accept the field yet (Q1=a strict)
+ * This surface only embeds the reader (highlights, deep-link page/chunk/bbox,
+ * annotations). Question answering, multi-agent discussion, and the evidence
+ * graph are unified in the SmartRead workbench (`/dialog`); this page links
+ * Q&A back there instead of hosting a duplicate chat.
  */
 export function ResearchWorkbench() {
   return <ResearchWorkbenchInner />;
@@ -55,11 +68,15 @@ function ResearchWorkbenchInner() {
   const [searchParams] = useSearchParams();
   const initialPageRaw = searchParams.get('page');
   const initialPage = initialPageRaw ? Math.max(1, Number(initialPageRaw)) : undefined;
+  const deepLinkKey = `${initialPageRaw ?? ''}:${searchParams.get('chunk') ?? ''}:${searchParams.get('bbox') ?? ''}`;
+  const targetBbox = useMemo(
+    () => bboxToHighlightRect(parseBboxSearchParam(searchParams.get('bbox'))),
+    [searchParams],
+  );
   const navigate = useNavigate();
   const { activeProjectId } = useWriting();
   const {
     openTab,
-    setActive,
     activeId,
     setTitle,
     getView,
@@ -72,45 +89,28 @@ function ResearchWorkbenchInner() {
   const [annotation, setAnnotation] = useState<AnnotationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { getConversation, sendMessage } = useSmartRead();
-  // B7+ (0.1.8.2 hotfix v3): revert v2's project-scope experiment. v2
-  // tried `project-${activeProjectId}` to make conversations survive paper
-  // switches, but that change itself drifted the storage key away from the
-  // d598fc61 baseline (`material-*`) so users with existing localStorage
-  // entries saw "history disappeared" right after the hotfix shipped.
-  // Back to per-material scope matching the original SmartReadContext
-  // design; the user-reported "切换界面就丢失" is more likely caused by
-  // a separate persist-snapshot failure (now surfaced via console.warn).
-  const scope = materialId || SMART_READ_DEFAULT_SCOPE;
-  const conversation = getConversation(scope);
-  const messages = conversation.messages;
-  const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
-  // Bump this when the active tab changes so PdfReaderShell sees a new
-  // bytes prop reference and re-mounts cleanly between PDFs.
+  // Bump this when the active tab changes so PdfReaderShell sees a new bytes
+  // prop reference and re-mounts cleanly between PDFs.
   const [bytesNonce, setBytesNonce] = useState(0);
   const pdfUrl = useMemo(
     () => (materialId ? `${getApiBaseUrl()}/resources/document/${materialId}/file` : ''),
     [materialId],
   );
 
-  // URL → tab store: any nav into /workbench/paper/:id opens (or
-  // re-activates) the tab. Same materialId is a no-op for the list,
-  // just flips activeId.
+  // URL → tab store: any nav into /workbench/paper/:id opens (or re-activates)
+  // the tab.
   useEffect(() => {
     if (!materialId) return;
     openTab({ materialId, title: materialId }, { activate: true });
   }, [materialId, openTab]);
 
-  // When the active tab changes underfoot (user clicked the strip),
-  // force a clean bytes read from cache by bumping the nonce.
   useEffect(() => {
-    setBytesNonce(n => n + 1);
+    setBytesNonce((n) => n + 1);
   }, [activeId]);
 
   const cachedBytes = useMemo(
     () => (materialId ? getCachedBytes(materialId) : undefined),
     // bytesNonce is the trigger; getCachedBytes itself is stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [materialId, bytesNonce, getCachedBytes],
   );
 
@@ -125,6 +125,19 @@ function ResearchWorkbenchInner() {
   const handleTabPageChange = useCallback((page: number) => {
     if (materialId) updateView(materialId, { page });
   }, [materialId, updateView]);
+  const deepLinkedHighlights = useMemo<Highlight[]>(() => {
+    if (!initialPage || !targetBbox) return [];
+    return [{
+      page: initialPage,
+      text: '当前跳转证据位置',
+      color: '#60A5FA',
+      rects: [targetBbox],
+    }];
+  }, [initialPage, targetBbox]);
+  const readerHighlights = useMemo(
+    () => [...deepLinkedHighlights, ...(annotation?.highlights ?? [])],
+    [deepLinkedHighlights, annotation?.highlights],
+  );
 
   const handleTabStripActivate = useCallback((nextId: string) => {
     if (nextId === materialId) return;
@@ -136,7 +149,7 @@ function ResearchWorkbenchInner() {
   }, [navigate]);
 
   // Load material + annotations. Failure mode: friendly Chinese error,
-  // never raw API path or error.toString().
+  // never raw endpoint path or error.toString().
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -190,7 +203,6 @@ function ResearchWorkbenchInner() {
   const handleAddHighlight = useCallback(
     async (h: Highlight) => {
       try {
-        const { addHighlight } = await import('@/services/annotationApi');
         const updated = await addHighlight(materialId, h);
         setAnnotation(updated);
       } catch {
@@ -206,7 +218,6 @@ function ResearchWorkbenchInner() {
       const next = (annotation.highlights ?? []).slice();
       next.splice(index, 1);
       try {
-        const { replaceHighlights } = await import('@/services/annotationApi');
         const updated = await replaceHighlights(materialId, next);
         setAnnotation(updated);
       } catch {
@@ -216,34 +227,14 @@ function ResearchWorkbenchInner() {
     [annotation, materialId],
   );
 
-  const handleAnalyzeText = useCallback(
-    (text: string, page: number) => {
-      // K1 → K2 bridge: PDF selection becomes a Smart Read message that
-      // routes through SmartReadContext so the assistant reply lands even
-      // if the user navigates away mid-flight.
-      void sendMessage(scope, text, {
-        projectId: activeProjectId || undefined,
-        materialId: materialId || undefined,
-      });
-      void page;
-    },
-    [sendMessage, scope, activeProjectId, materialId],
-  );
-
-  const handleSend = useCallback((text: string) => {
-    // Delegate to SmartReadContext — Provider owns the axios call so the
-    // assistant reply still lands in localStorage if the user navigates
-    // away while the chat is in-flight.
-    void sendMessage(scope, text, {
-      projectId: activeProjectId || undefined,
-      materialId: materialId || undefined,
-    });
-  }, [sendMessage, scope, activeProjectId, materialId]);
-
-  const drawerEvidence: EvidenceRefLike[] = useMemo(() => {
-    const fromMessages = messages.flatMap((m) => m.evidence ?? []);
-    return fromMessages;
-  }, [messages]);
+  const openInSmartRead = useCallback(() => {
+    const params = new URLSearchParams();
+    params.set('scope', 'paper');
+    params.set('material_id', materialId);
+    if (activeProjectId) params.set('project_id', activeProjectId);
+    if (material?.title) params.set('material_title', material.title);
+    navigate(`/dialog?${params.toString()}`);
+  }, [navigate, materialId, activeProjectId, material?.title]);
 
   if (loading) {
     return (
@@ -272,7 +263,7 @@ function ResearchWorkbenchInner() {
 
   return (
     <WorkbenchShell
-      drawerTitle={`证据抽屉（${drawerEvidence.length}）`}
+      drawerTitle="阅读说明"
       header={
         <>
           <button
@@ -294,6 +285,14 @@ function ResearchWorkbenchInner() {
               <Hash size={10} aria-hidden /> 第 {initialPage} 页
             </span>
           )}
+          <button
+            type="button"
+            onClick={openInSmartRead}
+            className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
+            title="在智能研读里围绕本文献提问与讨论"
+          >
+            <MessageCircle size={12} aria-hidden /> 智能研读
+          </button>
         </>
       }
       canvas={
@@ -303,18 +302,17 @@ function ResearchWorkbenchInner() {
             <ErrorBoundary fallbackTitle="PDF 阅读器暂时无法显示">
               <Suspense fallback={<PdfReaderFallback />}>
                 <PdfReaderShell
-                  key={materialId}
+                  key={`${materialId}:${deepLinkKey}`}
                   url={pdfUrl}
                   materialId={materialId}
-                  initialPage={persistedView?.page ?? initialPage}
+                  initialPage={initialPage ?? persistedView?.page}
                   bytes={cachedBytes}
                   onBytesLoaded={handleBytesLoaded}
                   scale={persistedView?.scale}
                   onScaleChange={handleScaleChange}
-                  highlights={annotation?.highlights ?? []}
+                  highlights={readerHighlights}
                   notes={annotation?.notes ?? []}
                   lastPage={annotation?.last_page ?? null}
-                  onAnalyzeText={handleAnalyzeText}
                   onAddHighlight={(h) => void handleAddHighlight(h)}
                   onDeleteHighlight={(i) => void handleDeleteHighlight(i)}
                   onAnnotationUpdate={setAnnotation}
@@ -326,25 +324,33 @@ function ResearchWorkbenchInner() {
         </div>
       }
       inspector={
-        <ErrorBoundary fallbackTitle="检视面板暂时无法显示">
-          <ResearchWorkbenchInspector
-            projectId={activeProjectId ?? null}
-            messages={messages}
-            onSend={handleSend}
-            selectedEvidenceId={selectedEvidenceId}
-            onSelectEvidence={(ev) => setSelectedEvidenceId(ev.evidence_id ?? ev.chunk_id ?? null)}
-          />
-        </ErrorBoundary>
+        <div className="flex h-full min-h-0 flex-col gap-3 p-4">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">在智能研读里继续</h3>
+            <p className="mt-1 text-xs leading-relaxed text-foreground/60">
+              本页是全屏阅读器。围绕本文献的提问、多智能体讨论和证据图谱已统一到智能研读工作台。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openInSmartRead}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <MessageCircle size={13} aria-hidden /> 去智能研读提问
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/knowledge')}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-low px-3 py-2 text-xs font-medium text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
+          >
+            <ArrowLeft size={13} aria-hidden /> 返回知识库
+          </button>
+        </div>
       }
       drawer={
-        <ErrorBoundary fallbackTitle="证据抽屉暂时无法显示">
-          <ResearchWorkbenchEvidenceDrawer
-            evidence={drawerEvidence}
-            projectId={activeProjectId ?? null}
-            selectedEvidenceId={selectedEvidenceId}
-            onSelectEvidence={(ev) => setSelectedEvidenceId(ev.evidence_id ?? ev.chunk_id ?? null)}
-          />
-        </ErrorBoundary>
+        <p className="text-xs leading-relaxed text-foreground/55">
+          证据、笔记与图谱已统一到智能研读工作台；在上方「智能研读」入口围绕本文献提问即可看到对应证据定位。
+        </p>
       }
     />
   );
