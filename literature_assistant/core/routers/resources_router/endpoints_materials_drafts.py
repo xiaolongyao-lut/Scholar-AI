@@ -82,6 +82,32 @@ async def get_material_chunks(
     }
 
 
+@_rr.router.get("/material/{material_id}/suggested-questions")
+async def get_material_suggested_questions(
+    material_id: str,
+    project_id: str = Query(...),
+) -> dict[str, Any]:
+    """Deterministic, model-free suggested questions for a pinned material.
+
+    Generated from the material metadata plus its full chunk set, so the
+    questions are more paper-aware than the frontend's lightweight
+    first-chunks heuristic. No model call is made.
+    """
+    from suggested_questions import build_suggested_questions
+
+    store = _rr.get_writing_resource_store()
+    material = store.get_material(material_id)
+    material_dict = material.to_dict() if material else None
+    chunk_store = _rr._ensure_project_chunks(project_id, material_id=material_id)
+    chunks = chunk_store.get(material_id, [])
+    questions = build_suggested_questions(material_dict, chunks)
+    return {
+        "material_id": material_id,
+        "chunk_count": len(chunks),
+        "questions": questions,
+    }
+
+
 @_rr.router.delete("/material/{material_id}", tags=["Resources"])
 async def delete_material(material_id: str) -> dict[str, str]:
     """Delete a single material by ID."""

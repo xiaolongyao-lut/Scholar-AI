@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import tempfile
 import threading
@@ -21,6 +22,7 @@ from models import (
     ProjectPayload,
     SectionPayload,
     MaterialPayload,
+    FigureTableCandidatePayload,
     DraftPayload,
     RevisionPayload,
     ProjectExportPayload,
@@ -67,6 +69,15 @@ _SCAN_SKIP_DIRS = {".scholarai", ".git", "node_modules", "__pycache__"}
 _SCAN_MODES = {"legacy", "fast"}
 _INGEST_MODES = {"none", "query", "full"}
 
+_PROJECTS_DATA_ROOT = project_data_path("_anchor").parent
+_TEST_PROJECT_TITLES = {
+    "project chat grounding",
+    "ragworkflow chat",
+    "tolf bad env",
+    "tolf chat grounding",
+    "tolf fallback",
+}
+
 
 def _get_project_source_folder(project_id: str) -> str:
     """Return the source_folder stored in the project's metadata (or empty string)."""
@@ -112,7 +123,53 @@ def _resolve_data_dir(project_id: str) -> tuple[Path, Path]:
     return doc_dir, chunk_dir
 
 
-# --- Phase 1 split (2026-05-07): pure helpers extracted to sub-modules ---
+def _project_workspace_dir(project_id: str) -> Path:
+    """Return the canonical workspace data directory for one project."""
+
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        raise ValueError("project_id must be a non-empty string")
+    return project_data_path(normalized_project_id)
+
+
+def _remove_project_workspace_dir(project_id: str) -> bool:
+    """Best-effort removal for project-scoped runtime files.
+
+    Why:
+        Deleting a project should remove the uploaded originals, doc store, and
+        chunk store that belong only to that project. The path guard prevents a
+        bad project id or future path override from deleting outside the
+        workspace projects root.
+    """
+
+    try:
+        target = _project_workspace_dir(project_id).resolve()
+        root = _PROJECTS_DATA_ROOT.resolve()
+    except (OSError, ValueError) as exc:
+        logger.warning("project_workspace_cleanup.resolve_failed project=%s err=%s", project_id, exc)
+        return False
+
+    if target == root or root not in target.parents:
+        logger.warning("project_workspace_cleanup.refused project=%s target=%s root=%s", project_id, target, root)
+        return False
+    if not target.exists():
+        return False
+    if not target.is_dir():
+        logger.warning("project_workspace_cleanup.refused_non_dir project=%s target=%s", project_id, target)
+        return False
+
+    shutil.rmtree(target)
+    return True
+
+
+def _is_test_fixture_project_title(title: str) -> bool:
+    """Return True for known backend test fixture project titles."""
+
+    normalized = re.sub(r"\s+", " ", str(title or "").strip().lower())
+    return normalized in _TEST_PROJECT_TITLES
+
+
+# --- Pure helpers extracted to sub-modules ---
 # Re-exported here so external imports of routers.resources_router.<name> keep working.
 from ._search_helpers import (
     _tokenize_search_text,
@@ -152,7 +209,14 @@ from ._export_helpers import (
     _material_excerpt,
     _paragraphs_with_offsets,
     _build_project_academic_export,
+    _build_project_markdown_export,
+    _build_project_latex_export,
+    _build_project_docx_export,
+    _build_project_pdf_export,
+    _build_file_export_payload,
     _markdown_table_cell,
+    _safe_export_filename_stem,
+    _unique_export_file,
 )
 
 # Wrapper to inject MAX_CHUNKS_PER_MATERIAL (defined later in this module)
@@ -764,7 +828,7 @@ async def _apply_association_mode(base_bundle: Any, mode: str, angle_limit: int)
     )
 
 
-# Phase 4 (2026-05-07): chunk-store / doc-store internals extracted to ._chunk_store_internals
+# Chunk-store / doc-store internals extracted to ._chunk_store_internals
 # Re-export so external imports (),
 # endpoint sub-modules (), and tests
 # () all keep working.
@@ -792,7 +856,7 @@ from ._chunk_store_internals import (  # noqa: E402,F401
     _append_chunk_quarantine_log,
 )
 
-# Endpoint sub-modules (Phase 3 split). Imported here so their @router decorators
+# Endpoint sub-modules. Imported here so their @router decorators
 # register against the live router instance, and so the endpoint functions remain
 # callable as ``resources_router.X`` (legacy direct-call tests rely on this).
 from .endpoints_projects import (  # noqa: E402,F401
@@ -801,6 +865,9 @@ from .endpoints_projects import (  # noqa: E402,F401
     list_projects,
     update_project_status,
     update_project_source_folder,
+    get_project_reasoning_bias,
+    update_project_reasoning_bias,
+    optimize_project_reasoning_bias,
     delete_project,
     scan_project_folder,
     create_section,
@@ -818,6 +885,7 @@ from .endpoints_materials_drafts import (  # noqa: E402,F401
     get_material,
     list_materials,
     get_material_chunks,
+    get_material_suggested_questions,
     delete_material,
     create_draft,
     get_draft,
@@ -834,6 +902,8 @@ from .endpoints_search_upload import (  # noqa: E402,F401
     upload_documents_batch,
     get_project_documents,
     get_project_chunks,
+    derive_figure_table_candidates,
+    list_figure_table_candidates,
     search_chunks,
     serve_document_file,
 )

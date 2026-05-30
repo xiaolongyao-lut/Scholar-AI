@@ -1113,6 +1113,7 @@ export function Dialog() {
   const [annotationNotesError, setAnnotationNotesError] = useState<string | null>(null);
   const [suggestedQuestionChunks, setSuggestedQuestionChunks] = useState<ProjectChunkResource[]>([]);
   const [suggestedQuestionState, setSuggestedQuestionState] = useState<SuggestedQuestionState>('idle');
+  const [backendSuggestedQuestions, setBackendSuggestedQuestions] = useState<SuggestedQuestion[] | null>(null);
   const [embeddedReaderTarget, setEmbeddedReaderTarget] = useState<{
     page?: number;
     bbox?: number[];
@@ -1147,8 +1148,8 @@ export function Dialog() {
     [pinnedMaterialId, projectMaterials],
   );
   const suggestedQuestions = useMemo<SuggestedQuestion[]>(
-    () => buildSuggestedQuestions(activePinnedMaterial, suggestedQuestionChunks),
-    [activePinnedMaterial, suggestedQuestionChunks],
+    () => backendSuggestedQuestions ?? buildSuggestedQuestions(activePinnedMaterial, suggestedQuestionChunks),
+    [backendSuggestedQuestions, activePinnedMaterial, suggestedQuestionChunks],
   );
   const pinnedLooksLikePdf = useMemo(() => {
     const name = String(pinnedMaterialTitle || activePinnedMaterial?.title || '').trim().toLowerCase();
@@ -1256,10 +1257,28 @@ export function Dialog() {
   const refreshSuggestedQuestionChunks = useCallback(async (): Promise<void> => {
     if (!effectiveProjectId || !pinnedMaterialId) {
       setSuggestedQuestionChunks([]);
+      setBackendSuggestedQuestions(null);
       setSuggestedQuestionState('idle');
       return;
     }
     setSuggestedQuestionState('loading');
+    // Prefer backend deterministic generation (uses the full chunk set, no model call).
+    try {
+      const { data } = await axios.get<{ questions?: SuggestedQuestion[] }>(
+        `${getApiBaseUrl()}/resources/material/${encodeURIComponent(pinnedMaterialId)}/suggested-questions`,
+        { params: { project_id: effectiveProjectId }, timeout: 15000 },
+      );
+      const backendQuestions = Array.isArray(data?.questions) ? data.questions : [];
+      if (backendQuestions.length > 0) {
+        setBackendSuggestedQuestions(backendQuestions);
+        setSuggestedQuestionChunks([]);
+        setSuggestedQuestionState('idle');
+        return;
+      }
+    } catch {
+      // Backend unavailable — fall back to local generation below.
+    }
+    setBackendSuggestedQuestions(null);
     try {
       const response = await getWritingBackendService().listMaterialChunks(
         effectiveProjectId,
@@ -1840,12 +1859,13 @@ export function Dialog() {
     return UNIFIED_EMPTY_HINT;
   }, [activeMaterialLabel, dialogContextScope, pinnedMaterialId]);
   const suggestedQuestionStatusLabel = useMemo(() => {
-    if (suggestedQuestionState === 'loading') return '正在根据文献片段生成试问…';
+    if (suggestedQuestionState === 'loading') return '正在根据文献内容生成试问…';
+    if (backendSuggestedQuestions && backendSuggestedQuestions.length > 0) return '已根据文献全文生成';
     if (suggestedQuestionState === 'error') return '片段读取失败，先给出通用试问。';
     if (suggestedQuestionChunks.length > 0) return `已参考 ${suggestedQuestionChunks.length} 个文献片段`;
     if (pinnedMaterialId) return '已参考文献信息';
     return '';
-  }, [pinnedMaterialId, suggestedQuestionChunks.length, suggestedQuestionState]);
+  }, [backendSuggestedQuestions, pinnedMaterialId, suggestedQuestionChunks.length, suggestedQuestionState]);
   function writeDialogContextSearchParams(
     nextScope: DialogContextScope,
     nextProjectId: string = effectiveProjectId,
