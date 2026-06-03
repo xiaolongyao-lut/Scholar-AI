@@ -14,6 +14,9 @@ from pathlib import Path
 from typing import Any
 from literature_assistant.bootstrap import configure_runtime_paths
 
+import mimetypes
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("text/javascript", ".js")
 
 configure_runtime_paths()
 
