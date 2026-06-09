@@ -19,6 +19,8 @@ import {
   EventType,
   JobStatus,
   JobEventQueryOptions,
+  JobEventSnapshot,
+  ListJobsQuery,
 } from '../types/runtime';
 
 export class HttpWritingRuntimeClient implements WritingRuntimeClient {
@@ -67,6 +69,17 @@ export class HttpWritingRuntimeClient implements WritingRuntimeClient {
     return response.data;
   }
 
+  async listJobs(query: ListJobsQuery = {}): Promise<WritingJob[]> {
+    const response = await this.http.get<WritingJob[]>('/runtime/jobs', {
+      params: {
+        session_id: query.sessionId ?? undefined,
+        status: query.status ?? undefined,
+        limit: query.limit ?? undefined,
+      },
+    });
+    return response.data;
+  }
+
   async getJob(jobId: string): Promise<WritingJob> {
     const response = await this.http.get<WritingJob>(`/runtime/job/${jobId}`);
     return response.data;
@@ -89,6 +102,25 @@ export class HttpWritingRuntimeClient implements WritingRuntimeClient {
         params: {
           since_timestamp: options.sinceTimestamp ?? undefined,
           after_event_id: options.afterEventId ?? undefined,
+          after_sequence: options.afterSequence ?? undefined,
+          limit: options.limit ?? undefined,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  async getJobEventSnapshot(
+    jobId: string,
+    options: JobEventQueryOptions = {}
+  ): Promise<JobEventSnapshot> {
+    const response = await this.http.get<JobEventSnapshot>(
+      `/runtime/job/${jobId}/snapshot`,
+      {
+        params: {
+          since_timestamp: options.sinceTimestamp ?? undefined,
+          after_event_id: options.afterEventId ?? undefined,
+          after_sequence: options.afterSequence ?? undefined,
           limit: options.limit ?? undefined,
         },
       }
@@ -101,6 +133,10 @@ export class HttpWritingRuntimeClient implements WritingRuntimeClient {
       `/runtime/job/${jobId}/artifacts`
     );
     return response.data;
+  }
+
+  async getJobs(query: ListJobsQuery = {}): Promise<WritingJob[]> {
+    return this.listJobs(query);
   }
 
   // ==========================================================================
@@ -139,6 +175,13 @@ export class HttpWritingRuntimeClient implements WritingRuntimeClient {
     return response.data;
   }
 
+  async deleteJob(jobId: string): Promise<{ job_id: string; deleted: boolean }> {
+    const response = await this.http.delete<{ job_id: string; deleted: boolean }>(
+      `/runtime/job/${jobId}`
+    );
+    return response.data;
+  }
+
   // ==========================================================================
   // Event Subscription (Polling-based for now)
   // ==========================================================================
@@ -172,17 +215,10 @@ export class HttpWritingRuntimeClient implements WritingRuntimeClient {
   }
 
   private startEventPolling(sessionId: string): NodeJS.Timeout {
-    let lastEventCount = 0;
-
-    return setInterval(async () => {
-      try {
-        // This is a placeholder - in a real implementation,
-        // you would query for new events since lastEventId
-        // For now, we demonstrate the pattern
-      } catch (error) {
-        console.warn(`Error polling events for session ${sessionId}:`, error);
-      }
-    }, 1000);  // Poll every second
+    return setInterval(() => {
+      // Session-level event polling is intentionally idle; job timelines use
+      // `useJobEventPolling` with concrete job ids.
+    }, 1000);
   }
 
   stopEventPolling(sessionId: string): void {

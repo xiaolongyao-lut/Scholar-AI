@@ -7,7 +7,7 @@ other OpenAI-/Cohere-compatible rerank endpoint without editing files.
 
 Endpoints:
 
-  GET  /api/rerank/config        — return masked override (no api_key)
+  GET  /api/rerank/config        — return masked override
   PUT  /api/rerank/config        — update the override fields
   DELETE /api/rerank/config      — clear the override entirely (revert to env)
   POST /api/rerank/test          — probe the configured endpoint with a tiny
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api/rerank", tags=["Rerank"])
 
 
 class RerankConfigPayload(BaseModel):
-    """Public view of the runtime override; api_key never leaves the box."""
+    """Public view of the runtime override with masked credential state."""
 
     provider: str = ""
     base_url: str = ""
@@ -44,7 +44,7 @@ class RerankConfigPayload(BaseModel):
 
 
 class RerankConfigUpdate(BaseModel):
-    """Update payload. None on api_key preserves the previously stored key."""
+    """Update payload. None for the credential field preserves the stored value."""
 
     provider: str | None = None
     base_url: str | None = None
@@ -52,11 +52,44 @@ class RerankConfigUpdate(BaseModel):
     model: str | None = None
 
 
+class RerankCredentialApplyRequest(BaseModel):
+    """Apply a saved rerank RuntimeCredential without returning credential material."""
+
+    credential_id: str = Field(min_length=1, max_length=128)
+
+
 class RerankProbeResult(BaseModel):
     ok: bool
     status: int = 0
     error: str = ""
     elapsed_ms: int = 0
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+
+def _extract_rerank_probe_scores(payload: Any, document_count: int) -> list[float]:
+    if not isinstance(payload, dict):
+        return []
+
+    output = payload.get("output")
+    if isinstance(output, dict):
+        raw_results = output.get("results")
+    else:
+        raw_results = payload.get("results")
+    if not isinstance(raw_results, list):
+        return []
+
+    scores: list[float] = []
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        score = item.get("relevance_score")
+        if not isinstance(index, int) or not 0 <= index < document_count:
+            continue
+        if not isinstance(score, (int, float)):
+            continue
+        scores.append(float(score))
+    return scores
 
 
 @router.get("/config", response_model=RerankConfigPayload)
@@ -71,6 +104,49 @@ async def put_rerank_config(payload: RerankConfigUpdate) -> RerankConfigPayload:
         base_url=payload.base_url,
         api_key=payload.api_key,
         model=payload.model,
+    )
+    return RerankConfigPayload(**updated)
+
+
+@router.post("/config/apply-credential", response_model=RerankConfigPayload)
+async def apply_rerank_credential(
+    payload: RerankCredentialApplyRequest,
+) -> RerankConfigPayload:
+    from credential_store import CredentialNotFoundError
+    from routers.credentials_router import get_credential_store
+
+    try:
+        credential = get_credential_store().get_internal(payload.credential_id)
+    except CredentialNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "credential_not_found",
+                "message": "凭证不存在或已被删除。",
+            },
+        ) from exc
+    if not credential.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "credential_disabled",
+                "message": "选择的凭证已停用，请更换凭证。",
+            },
+        )
+    if credential.category.value != "rerank":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "credential category mismatch: expected rerank, "
+                f"got {credential.category.value}"
+            ),
+        )
+
+    updated = rerank_runtime_config.write_config(
+        provider=credential.provider,
+        base_url=credential.base_url,
+        api_key=credential.api_key,
+        model=credential.model,
     )
     return RerankConfigPayload(**updated)
 
@@ -96,6 +172,13 @@ async def test_rerank_endpoint(payload: RerankConfigUpdate) -> RerankProbeResult
     if not base_url:
         raise HTTPException(status_code=400, detail="base_url is required")
 
+    try:
+        from routers.chat_router import _validate_outbound_llm_base_url
+
+        _validate_outbound_llm_base_url(base_url, "Local LLM")
+    except ValueError as exc:
+        return RerankProbeResult(ok=False, error=str(exc))
+
     probe_body: dict[str, Any] = {
         "model": model or "bge-reranker-v2-m3",
         "query": "ping",
@@ -110,7 +193,7 @@ async def test_rerank_endpoint(payload: RerankConfigUpdate) -> RerankProbeResult
 
     start = _t.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
             resp = await client.post(base_url, headers=headers, json=probe_body)
     except httpx.RequestError as exc:
         return RerankProbeResult(
@@ -122,7 +205,23 @@ async def test_rerank_endpoint(payload: RerankConfigUpdate) -> RerankProbeResult
 
     elapsed_ms = int((_t.monotonic() - start) * 1000)
     if resp.status_code < 400:
-        return RerankProbeResult(ok=True, status=resp.status_code, elapsed_ms=elapsed_ms)
+        try:
+            scores = _extract_rerank_probe_scores(resp.json(), len(probe_body["documents"]))
+        except ValueError:
+            scores = []
+        if not scores:
+            return RerankProbeResult(
+                ok=False,
+                status=resp.status_code,
+                error="重排序接口返回成功状态，但没有返回可用的排序分数",
+                elapsed_ms=elapsed_ms,
+            )
+        return RerankProbeResult(
+            ok=True,
+            status=resp.status_code,
+            elapsed_ms=elapsed_ms,
+            extra={"results": len(scores)},
+        )
     body_preview = resp.text[:240] if resp.text else ""
     return RerankProbeResult(
         ok=False,
@@ -134,7 +233,7 @@ async def test_rerank_endpoint(payload: RerankConfigUpdate) -> RerankProbeResult
 
 @router.post("/models/discover")
 async def discover_rerank_models(payload: RerankConfigUpdate) -> dict[str, Any]:
-    """Discover models from a rerank service (api_key in body, not URL)."""
+    """Discover models from a rerank service without URL credentials."""
     from routers.model_config_router import discover_models_from_endpoint
 
     base_url = (payload.base_url or rerank_runtime_config.get_resolved_field("base_url") or "").strip()

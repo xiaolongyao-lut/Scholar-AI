@@ -10,6 +10,7 @@ import {
   FileText,
   Loader2,
   MessageCircle,
+  Plus,
   RefreshCw,
   AlertCircle,
   History,
@@ -24,6 +25,7 @@ import {
   PanelRightClose,
   Sparkles,
   Users2,
+  Activity,
 } from 'lucide-react';
 import { Conversation } from '@/components/chat/Conversation';
 import { buildSuggestedQuestions, type SuggestedQuestion } from '@/components/chat/suggestedQuestions';
@@ -32,24 +34,34 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { formatChatVisibleError, sanitizeChatVisibleText } from '@/components/chat/chatDisplay';
 import type { ChatAttachment, ChatInputSubmitPayload } from '@/components/chat/ChatInput';
 import type { ChatMessageData, ChatMessageDiagnostics } from '@/components/chat/MessageRenderer';
+import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import { GraphPayloadViewer } from '@/components/graph/GraphPayloadViewer';
 import type { GraphNavigateTarget } from '@/components/graph/GraphPayloadViewer';
 import type { GraphPayloadV0 } from '@/components/graph/payloadToRf';
+import { PdfTabStrip } from '@/components/PdfViewer/PdfTabStrip';
+import type { PdfSelectionAnchor } from '@/components/PdfViewer/PdfViewer';
 import { getAnnotations, type Highlight, type Note as AnnotationNote } from '@/services/annotationApi';
 import { smartReadDialogScope, useSmartRead } from '@/contexts/SmartReadContext';
+import { usePdfTabs } from '@/contexts/PdfTabsContext';
 import {
-  streamIntelligentChatMessage,
+  artifactContentRecord,
+  findLatestArtifact,
+  runBackgroundJob,
+} from '@/services/backgroundJobRunner';
+import { getWritingRuntimeClient } from '@/services/runtimeClient';
+import type { WritingJob } from '@/types/runtime';
+import {
   listChatSessions,
   deleteChatSession,
+  bulkDeleteChatSessions,
   archiveChatSession,
   restoreChatSession,
   forkChatHistoryConversation,
   resumeChatSession,
   searchChatHistory,
-  isSessionModeConflictError,
   type ContextTier,
+  type CurrentPdfContext,
   type IntelligentChatResponse,
-  type IntelligentChatStreamEvent,
   type ChatSessionSummary,
   type ChatHistorySearchResult,
   type ChatResumeMessage,
@@ -62,6 +74,14 @@ import { getWritingBackendService } from '@/services/writingBackend';
 import type { ProjectChunkResource, WritingMaterialResource, WritingProject } from '@/types/resources';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import {
+  encodePdfBboxParam,
+  normalizePdfUrlBbox,
+  parsePdfBboxSearchParam,
+  toPdfHighlightRect,
+  type PdfBbox,
+  type PdfBboxUnit,
+} from '@/lib/pdfAnchor';
+import {
   type DiscussionDefaults,
   DEFAULT_DISCUSSION_DEFAULTS,
   normalizeDiscussionDefaults,
@@ -71,13 +91,14 @@ const UNIFIED_DIALOG_MODE = 'literature_qa' as const;
 const UNIFIED_INPUT_PLACEHOLDER = '围绕当前项目材料提问…';
 const UNIFIED_EMPTY_HINT = '提问后会结合当前项目材料、证据和上下文生成回答。';
 const DISCUSSION_SESSION_SOURCE = 'multi_agent_discussion';
-const DIALOG_REQUEST_TIMEOUT_MS = 60_000;
+const DIALOG_REQUEST_TIMEOUT_MS = 30 * 60_000;
 const DIALOG_REQUEST_TIMEOUT_SECONDS = DIALOG_REQUEST_TIMEOUT_MS / 1000;
 const LEGACY_DIALOG_MODES = ['literature_qa', 'direct', 'inspiration'] as const;
 const DIALOG_PANE_WIDTHS_STORAGE_KEY = 'dialog-pane-widths-v1';
 const DIALOG_HISTORY_COLLAPSED_STORAGE_KEY = 'dialog-history-collapsed-v1';
 const DIALOG_CONTEXT_OPEN_STORAGE_KEY = 'dialog-context-open-v1';
 const DIALOG_CONTEXT_TAB_STORAGE_KEY = 'dialog-context-tab-v1';
+const DIALOG_CENTER_TAB_STORAGE_KEY = 'dialog-center-tab-v1';
 const DIALOG_HISTORY_DEFAULT_WIDTH = 320;
 const DIALOG_HISTORY_MIN_WIDTH = 248;
 const DIALOG_HISTORY_MAX_WIDTH = 440;
@@ -86,6 +107,7 @@ const DIALOG_CONTEXT_MIN_WIDTH = 320;
 const DIALOG_CONTEXT_MAX_WIDTH = 560;
 const DIALOG_MAIN_MIN_WIDTH = 420;
 const dialogAbortControllers = new Map<string, AbortController>();
+const dialogActiveJobsByScope = new Map<string, string>();
 const dialogRequestStartedAtByScope = new Map<string, number>();
 
 interface ChatMessage {
@@ -108,13 +130,29 @@ type SearchState = 'idle' | 'loading' | 'error';
 type HistoryMode = 'recent' | 'archived';
 type DialogContextScope = 'paper' | 'project' | 'workspace';
 type DialogWorkbenchMode = 'chat' | 'discussion';
-type DialogContextRailTab = 'chat' | 'paper' | 'project' | 'graph' | 'notes';
+type DialogCenterTab = 'chat' | 'discussion' | 'reader';
+type DialogContextRailTab = 'chat' | 'discussion' | 'paper' | 'project' | 'graph' | 'notes';
 type DiscussionEnhancementIntent = 'reading' | 'writing' | 'research';
 type ProjectMaterialsState = 'idle' | 'loading' | 'error';
 type AnnotationNotesState = 'idle' | 'loading' | 'error';
 type SuggestedQuestionState = 'idle' | 'loading' | 'error';
-type DialogStreamMetadata = Extract<IntelligentChatStreamEvent, { event: 'metadata' }>;
-type DialogStreamUsage = Extract<IntelligentChatStreamEvent, { event: 'usage' }>;
+
+interface DialogPdfSelectionState {
+  materialId: string;
+  page: number;
+  selectedText: string;
+  bbox: PdfBbox | null;
+  bboxUnit: PdfBboxUnit | null;
+}
+
+interface BuildDialogCurrentPdfContextInput {
+  materialId?: string | null;
+  page?: number | null;
+  chunkId?: string | null;
+  selectedText?: string | null;
+  bbox?: readonly number[] | null;
+  bboxUnit?: PdfBboxUnit | null;
+}
 
 interface SessionBranchGroup {
   root: ChatSessionSummary;
@@ -212,6 +250,7 @@ function normalizeDialogContextRailTab(value: string | null | undefined): Dialog
   const normalized = String(value ?? '').trim().toLowerCase();
   if (
     normalized === 'chat' ||
+    normalized === 'discussion' ||
     normalized === 'paper' ||
     normalized === 'project' ||
     normalized === 'graph' ||
@@ -233,6 +272,30 @@ function readDialogContextRailTab(fallback: DialogContextRailTab): DialogContext
 function writeDialogContextRailTab(tab: DialogContextRailTab): void {
   try {
     localStorage.setItem(DIALOG_CONTEXT_TAB_STORAGE_KEY, tab);
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
+}
+
+function normalizeDialogCenterTab(value: string | null | undefined): DialogCenterTab | null {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'chat' || normalized === 'discussion' || normalized === 'reader') {
+    return normalized;
+  }
+  return null;
+}
+
+function readDialogCenterTab(fallback: DialogCenterTab): DialogCenterTab {
+  try {
+    return normalizeDialogCenterTab(localStorage.getItem(DIALOG_CENTER_TAB_STORAGE_KEY)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeDialogCenterTab(tab: DialogCenterTab): void {
+  try {
+    localStorage.setItem(DIALOG_CENTER_TAB_STORAGE_KEY, tab);
   } catch {
     // Browser storage can be unavailable in private or restricted contexts.
   }
@@ -262,6 +325,131 @@ export function isUnavailableError(error: unknown): boolean {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function readRecordNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return undefined;
+}
+
+function coerceTokenUsageRecord(value: unknown): TokenUsage | undefined {
+  if (!isRecord(value)) return undefined;
+  const prompt = readRecordNumber(value, 'prompt') ?? readRecordNumber(value, 'prompt_tokens') ?? 0;
+  const completion = readRecordNumber(value, 'completion') ?? readRecordNumber(value, 'completion_tokens') ?? 0;
+  const total = readRecordNumber(value, 'total') ?? readRecordNumber(value, 'total_tokens') ?? prompt + completion;
+  return { prompt, completion, total };
+}
+
+function coerceSmartReadTier(value: unknown, fallback: ContextTier): ContextTier {
+  return value === 'fast' || value === 'balanced' || value === 'thorough' ? value : fallback;
+}
+
+function readRecordString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function readRecordStringOrNull(record: Record<string, unknown>, key: string): string | null | undefined {
+  const value = record[key];
+  if (value === null) return null;
+  return typeof value === 'string' ? value : undefined;
+}
+
+function readRecordPage(record: Record<string, unknown>, key: string): number | string | null | undefined {
+  const value = record[key];
+  if (value === null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') return value;
+  return undefined;
+}
+
+function readRecordStringArray(record: Record<string, unknown>, key: string): string[] | undefined {
+  const value = record[key];
+  if (!Array.isArray(value)) return undefined;
+  const strings = value.filter((item): item is string => typeof item === 'string');
+  return strings.length > 0 ? strings : undefined;
+}
+
+function coerceContextMetadata(value: unknown): IntelligentChatResponse['context_metadata'] | undefined {
+  if (!isRecord(value) || !Array.isArray(value.chunks)) return undefined;
+  const chunks = value.chunks.flatMap((chunk, index) => {
+    if (!isRecord(chunk)) return [];
+    const source = readRecordString(chunk, 'source') ?? '来源材料';
+    const content = readRecordString(chunk, 'content') ?? '';
+    return [{
+      index: readRecordNumber(chunk, 'index') ?? index + 1,
+      source,
+      content,
+      relevance_score: readRecordNumber(chunk, 'relevance_score'),
+      chunk_id: readRecordStringOrNull(chunk, 'chunk_id'),
+      material_id: readRecordStringOrNull(chunk, 'material_id'),
+      title: readRecordStringOrNull(chunk, 'title'),
+      section_title: readRecordStringOrNull(chunk, 'section_title'),
+      page: readRecordPage(chunk, 'page'),
+      source_labels: readRecordStringArray(chunk, 'source_labels'),
+      source_hint: readRecordStringOrNull(chunk, 'source_hint'),
+    }];
+  });
+  return {
+    chunks,
+    truncated: value.truncated === true,
+  };
+}
+
+function coerceSmartReadResponsePatch(
+  content: Record<string, unknown>,
+  fallbackTier: ContextTier,
+): {
+  tierUsed: ContextTier;
+  contextMetadata?: IntelligentChatResponse['context_metadata'];
+  evidenceRefs?: IntelligentChatResponse['evidence_refs'];
+  actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
+  tokensUsed?: TokenUsage;
+  insufficientContext?: boolean;
+} {
+  const contextMetadata = coerceContextMetadata(content.context_metadata);
+  const evidenceRefs = Array.isArray(content.evidence_refs)
+    ? content.evidence_refs as IntelligentChatResponse['evidence_refs']
+    : undefined;
+  const actualSamplingParams = isRecord(content.actual_sampling_params)
+    ? content.actual_sampling_params as IntelligentChatResponse['actual_sampling_params']
+    : undefined;
+  const tierUsed = coerceSmartReadTier(content.tier_used, fallbackTier);
+  const tokensUsed = coerceTokenUsageRecord(content.tokens_used);
+  return {
+    tierUsed,
+    contextMetadata,
+    evidenceRefs,
+    actualSamplingParams,
+    tokensUsed,
+    insufficientContext: contextMetadata ? contextMetadata.chunks.length === 0 : undefined,
+  };
+}
+
+function buildSmartReadDiagnostics(
+  patch: {
+    tierUsed: ContextTier;
+    contextMetadata?: IntelligentChatResponse['context_metadata'];
+    evidenceRefs?: IntelligentChatResponse['evidence_refs'];
+    actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
+    tokensUsed?: TokenUsage;
+    insufficientContext?: boolean;
+    content: string;
+  },
+): ChatMessageDiagnostics | undefined {
+  return buildDialogDiagnostics({
+    id: 'smart-read-final',
+    role: 'assistant',
+    content: patch.content,
+    tierUsed: patch.tierUsed,
+    contextMetadata: patch.contextMetadata,
+    evidenceRefs: patch.evidenceRefs,
+    actualSamplingParams: patch.actualSamplingParams,
+    tokensUsed: patch.tokensUsed,
+    timestamp: new Date(),
+    insufficientContext: patch.insufficientContext,
+  });
 }
 
 function parseChatTimestamp(value: string): Date {
@@ -316,6 +504,8 @@ function mapChatDataToDialogMessage(message: ChatMessageData): ChatMessage {
       text: ref.text ?? '',
       quote: ref.text ?? '',
       page: ref.page ?? undefined,
+      bbox: ref.bbox ?? null,
+      bbox_unit: ref.bbox_unit ?? null,
       source_kind: ref.source_kind ?? 'local',
     })),
     actualSamplingParams: diagnostics?.sampling
@@ -398,6 +588,11 @@ function normalizeMaterialId(value: string | null | undefined): string {
   return String(value ?? '').trim();
 }
 
+function normalizeChatHistorySessionId(value: unknown): string | undefined {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized ? normalized : undefined;
+}
+
 function normalizeDialogContextScope(
   value: string | null | undefined,
   materialId: string,
@@ -452,9 +647,8 @@ function writeDiscussionLaunchState(value: DiscussionLaunchState): void {
 function buildDialogSmartReadScope(
   contextScope: DialogContextScope,
   projectId: string,
-  materialId: string,
+  _materialId: string,
 ): string {
-  if (contextScope === 'paper' && materialId) return materialId;
   if (contextScope === 'workspace') return smartReadDialogScope('workspace');
   return smartReadDialogScope(projectId || 'default');
 }
@@ -462,9 +656,8 @@ function buildDialogSmartReadScope(
 function buildDialogStorageScope(
   contextScope: DialogContextScope,
   projectId: string,
-  materialId: string,
+  _materialId: string,
 ): string {
-  if (contextScope === 'paper' && materialId) return `paper-${materialId}`;
   if (contextScope === 'workspace') return 'workspace';
   return projectId || 'default';
 }
@@ -771,6 +964,67 @@ function normalizeEvidencePage(page: string | number | null | undefined): number
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function normalizeDialogReaderPage(page: string | number | null | undefined): number | null {
+  const normalized = normalizeEvidencePage(page);
+  return typeof normalized === 'number' ? Math.round(normalized) : null;
+}
+
+function normalizeDialogSelectionText(value: string | null | undefined): string | null {
+  const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  return normalized.length > 1800 ? `${normalized.slice(0, 1799)}…` : normalized;
+}
+
+function combineSelectionRects(rects: PdfSelectionAnchor['rects'] | undefined): PdfBbox | null {
+  if (!rects || rects.length === 0) return null;
+  const valid = rects.filter((rect) => (
+    Number.isFinite(rect.x)
+    && Number.isFinite(rect.y)
+    && Number.isFinite(rect.w)
+    && Number.isFinite(rect.h)
+    && rect.w > 0
+    && rect.h > 0
+  ));
+  if (valid.length === 0) return null;
+  const left = Math.max(0, Math.min(...valid.map((rect) => rect.x)));
+  const top = Math.max(0, Math.min(...valid.map((rect) => rect.y)));
+  const right = Math.min(1, Math.max(...valid.map((rect) => rect.x + rect.w)));
+  const bottom = Math.min(1, Math.max(...valid.map((rect) => rect.y + rect.h)));
+  if (right <= left || bottom <= top) return null;
+  return [left, top, right - left, bottom - top];
+}
+
+export function buildDialogCurrentPdfContext(input: BuildDialogCurrentPdfContextInput): CurrentPdfContext | undefined {
+  const materialId = normalizeMaterialId(input.materialId ?? '');
+  if (!materialId) return undefined;
+  const page = normalizeDialogReaderPage(input.page);
+  const selectedText = normalizeDialogSelectionText(input.selectedText);
+  const bboxUnit = input.bboxUnit ?? 'normalized_ratio';
+  const bbox = normalizePdfUrlBbox(input.bbox ?? null, bboxUnit);
+  const chunkId = normalizeMaterialId(input.chunkId ?? '');
+  if (!page && !selectedText && !chunkId) return undefined;
+  return {
+    material_id: materialId,
+    ...(page ? { page } : {}),
+    ...(chunkId ? { chunk_id: chunkId } : {}),
+    ...(bbox ? { bbox, bbox_unit: 'normalized_ratio' } : {}),
+    ...(selectedText ? { selected_text: selectedText } : {}),
+    context_kind: selectedText ? 'selection' : bbox || chunkId ? 'deep_link' : 'reader_page',
+    source_labels: [
+      'dialog_smart_read',
+      selectedText ? 'pdf_selection' : 'pdf_reader_page',
+    ],
+  };
+}
+
+export function resolveDialogSmartReadChatSessionId(
+  artifactContent: Record<string, unknown>,
+  previousSessionId?: string | null,
+): string | undefined {
+  return normalizeChatHistorySessionId(artifactContent.session_id)
+    ?? normalizeChatHistorySessionId(previousSessionId);
+}
+
 function mapDialogMessageToChatData(message: ChatMessage): ChatMessageData {
   const diagnostics = buildDialogDiagnostics(message);
   return {
@@ -786,6 +1040,8 @@ function mapDialogMessageToChatData(message: ChatMessage): ChatMessageData {
       text: ref.text || ref.quote,
       score: ref.score ?? undefined,
       page: normalizeEvidencePage(ref.page),
+      bbox: ref.bbox ?? null,
+      bbox_unit: ref.bbox_unit ?? null,
       source_hint: ref.source_hint ?? undefined,
       source_labels: ref.source_labels,
       source_kind: ref.source_kind ?? 'local',
@@ -841,29 +1097,6 @@ function replaceOrAppendChatData(messages: ChatMessageData[], nextMessage: ChatM
   ];
 }
 
-function normalizeUsageNumber(value: number | undefined): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
-function tokenUsageFromStreamUsage(event: DialogStreamUsage | null): TokenUsage | undefined {
-  const usage = event?.usage;
-  if (!usage) return undefined;
-  const prompt = normalizeUsageNumber(usage.prompt ?? usage.prompt_tokens) ?? 0;
-  const completion = normalizeUsageNumber(usage.completion ?? usage.completion_tokens) ?? 0;
-  const total = normalizeUsageNumber(usage.total ?? usage.total_tokens) ?? prompt + completion;
-  return { prompt, completion, total };
-}
-
-function metadataPatch(metadata: DialogStreamMetadata): Partial<ChatMessage> {
-  return {
-    tierUsed: metadata.tier_used,
-    contextMetadata: metadata.context_metadata ?? undefined,
-    evidenceRefs: metadata.evidence_refs ?? undefined,
-    actualSamplingParams: metadata.actual_sampling_params ?? undefined,
-    insufficientContext: metadata.context_chunks_used === 0,
-  };
-}
-
 function markLatestStreamingAssistantStopped(messages: ChatMessageData[]): ChatMessageData[] {
   const index = [...messages]
     .reverse()
@@ -892,27 +1125,6 @@ function PdfReaderFallback() {
       <Loader2 className="h-6 w-6 animate-spin" aria-label="正在载入阅读器" />
     </div>
   );
-}
-
-function bboxToHighlightRect(
-  bbox: number[] | null | undefined,
-): { x: number; y: number; w: number; h: number } | null {
-  if (!Array.isArray(bbox) || bbox.length !== 4) return null;
-  const [a, b, c, d] = bbox;
-  if (![a, b, c, d].every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
-  if (a >= 0 && b >= 0 && c > 0 && d > 0 && a <= 1 && b <= 1 && a + c <= 1.0001 && b + d <= 1.0001) {
-    return { x: a, y: b, w: c, h: d };
-  }
-  if (a >= 0 && b >= 0 && c > a && d > b && c <= 1 && d <= 1) {
-    return { x: a, y: b, w: c - a, h: d - b };
-  }
-  return null;
-}
-
-function encodeBboxParam(bbox: number[] | null | undefined): string | null {
-  if (!Array.isArray(bbox) || bbox.length !== 4) return null;
-  if (!bbox.every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
-  return bbox.map((value) => String(Number(value.toFixed(4)))).join(',');
 }
 
 const ENHANCEMENT_MENU_ITEMS: Array<{
@@ -1038,6 +1250,11 @@ function DialogDiscussionWorkbench({
 export function Dialog() {
   const { activeProjectId, setActiveProjectId } = useWriting();
   const { getConversation, setConversation, clearConversation } = useSmartRead();
+  const {
+    openTab: openPdfTab,
+    getView: getPdfView,
+    updateView: updatePdfView,
+  } = usePdfTabs();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1047,7 +1264,8 @@ export function Dialog() {
   const effectiveProjectId = normalizeProjectId(activeProjectId || queryProjectId);
   const urlContextScope = normalizeDialogContextScope(searchParams.get('scope'), pinnedMaterialId);
   const dialogContextScope = urlContextScope;
-  const dialogMode = normalizeDialogWorkbenchMode(searchParams.get('mode'));
+  const legacyDialogMode = normalizeDialogWorkbenchMode(searchParams.get('mode'));
+  const urlCenterTab = normalizeDialogCenterTab(searchParams.get('tab'));
 
   // The Dialog surface is now one smart-read conversation. Legacy per-mode
   // keys are read as a migration fallback only so existing local drafts still
@@ -1100,8 +1318,19 @@ export function Dialog() {
     readDialogBoolean(DIALOG_CONTEXT_OPEN_STORAGE_KEY, true),
   );
   const [contextRailTab, setContextRailTab] = useState<DialogContextRailTab>(() =>
-    readDialogContextRailTab(pinnedMaterialId ? 'paper' : 'graph'),
+    readDialogContextRailTab(
+      pinnedMaterialId
+        ? pinnedMaterialTitle.toLowerCase().endsWith('.pdf')
+          ? urlCenterTab === 'discussion' ? 'discussion' : 'chat'
+          : 'paper'
+        : 'graph',
+    ),
   );
+  const [centerTab, setCenterTab] = useState<DialogCenterTab>(() => {
+    if (pinnedMaterialId && pinnedMaterialTitle.toLowerCase().endsWith('.pdf')) return 'reader';
+    if (urlCenterTab) return urlCenterTab;
+    return readDialogCenterTab(legacyDialogMode === 'discussion' ? 'discussion' : 'chat');
+  });
   const [paneWidths, setPaneWidths] = useState<DialogPaneWidths>(() => readDialogPaneWidths());
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [projectNames, setProjectNames] = useState<Record<string, string>>({});
@@ -1117,9 +1346,12 @@ export function Dialog() {
   const [embeddedReaderTarget, setEmbeddedReaderTarget] = useState<{
     page?: number;
     bbox?: number[];
+    bboxUnit?: PdfBboxUnit | null;
     chunkId?: string;
     nonce: number;
   }>({ nonce: 0 });
+  const [embeddedReaderPage, setEmbeddedReaderPage] = useState<number | null>(null);
+  const [currentPdfSelection, setCurrentPdfSelection] = useState<DialogPdfSelectionState | null>(null);
   const [discussionLaunchState, setDiscussionLaunchState] = useState<DiscussionLaunchState | null>(() => (
     normalizeDiscussionLaunchState(location.state) ?? readDiscussionLaunchState()
   ));
@@ -1159,20 +1391,31 @@ export function Dialog() {
     () => (pinnedMaterialId ? `${getApiBaseUrl()}/resources/document/${pinnedMaterialId}/file` : ''),
     [pinnedMaterialId],
   );
+  const persistedPinnedPdfView = pinnedMaterialId ? getPdfView(pinnedMaterialId) : undefined;
+  const urlReaderPage = normalizeDialogReaderPage(searchParams.get('page'));
+  const urlReaderChunkId = normalizeMaterialId(searchParams.get('chunk'));
+  const urlReaderBbox = parsePdfBboxSearchParam(searchParams.get('bbox'));
+  const effectiveReaderPage = embeddedReaderTarget.page
+    ?? embeddedReaderPage
+    ?? urlReaderPage
+    ?? persistedPinnedPdfView?.page
+    ?? null;
+  const effectiveReaderBbox = embeddedReaderTarget.bbox ?? urlReaderBbox ?? undefined;
+  const effectiveReaderBboxUnit = embeddedReaderTarget.bboxUnit ?? (urlReaderBbox ? 'normalized_ratio' : null);
+  const effectiveReaderChunkId = embeddedReaderTarget.chunkId ?? urlReaderChunkId ?? undefined;
   const embeddedReaderHighlights = useMemo<Highlight[]>(() => {
-    if (!embeddedReaderTarget.page) return [];
-    const rect = bboxToHighlightRect(embeddedReaderTarget.bbox);
+    if (!effectiveReaderPage) return [];
+    const rect = toPdfHighlightRect(effectiveReaderBbox, effectiveReaderBboxUnit);
     if (!rect) return [];
     return [{
-      page: embeddedReaderTarget.page,
+      page: effectiveReaderPage,
       text: '当前跳转证据位置',
       color: '#60A5FA',
       rects: [rect],
     }];
-  }, [embeddedReaderTarget]);
-  // When a PDF is pinned in chat mode, the reader becomes the large center
-  // column and the chat moves into the resizable right rail as the 对话 tab.
-  const readerInCenter = dialogMode === 'chat' && !!pinnedMaterialId && pinnedLooksLikePdf;
+  }, [effectiveReaderBbox, effectiveReaderBboxUnit, effectiveReaderPage]);
+  const readerTabAvailable = !!pinnedMaterialId && pinnedLooksLikePdf;
+  const readerInCenter = readerTabAvailable;
   const projectMaterialCount = projectMaterials.length;
   const annotationNoteCount = annotationNotes.length;
   const requestProjectId = dialogContextScope === 'workspace' ? undefined : effectiveProjectId || undefined;
@@ -1198,11 +1441,22 @@ export function Dialog() {
   );
   const conversationMessagesRef = useRef<ChatMessageData[]>(conversationMessages);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
+  const activeJobIdRef = useRef<string | null>(dialogActiveJobsByScope.get(smartReadScope) ?? null);
+  const isMountedRef = useRef(true);
+  const restoringSessionIdRef = useRef<string | null>(null);
   const dialogShellRef = useRef<HTMLDivElement | null>(null);
   const previousPinnedMaterialIdRef = useRef('');
   const projectReasoningBias = useProjectReasoningBiasState(activeProjectId);
   const defaultProjectBiasEnabled = projectReasoningBias.isEnabledForSurface('chat_generation');
   const [projectBiasEnabled, setProjectBiasEnabled] = useState(defaultProjectBiasEnabled);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const refreshProjectMaterials = useCallback(async (
     options: { surfaceError?: boolean } = {},
   ): Promise<void> => {
@@ -1352,21 +1606,89 @@ export function Dialog() {
   }, [contextRailTab]);
 
   useEffect(() => {
+    writeDialogCenterTab(centerTab);
+  }, [centerTab]);
+
+  useEffect(() => {
+    const migrated = normalizeDialogCenterTab(searchParams.get('tab'));
+    if (readerTabAvailable) {
+      if (migrated === 'chat' || migrated === 'discussion') {
+        setContextRailTab(migrated);
+      }
+      if (centerTab !== 'reader') {
+        setCenterTab('reader');
+      }
+      return;
+    }
+    if (migrated && migrated !== centerTab) {
+      setCenterTab(migrated);
+      return;
+    }
+    if (!migrated && searchParams.get('mode') === 'discussion' && centerTab === 'chat') {
+      setCenterTab('discussion');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (centerTab === 'reader' && !readerTabAvailable) {
+      setCenterTab('chat');
+    }
+  }, [centerTab, readerTabAvailable]);
+
+  useEffect(() => {
+    if (!pinnedMaterialId || !pinnedLooksLikePdf) return;
+    if (urlCenterTab === 'chat' || urlCenterTab === 'discussion') {
+      setContextRailTab(urlCenterTab);
+    }
+    setCenterTab('reader');
+  }, [pinnedLooksLikePdf, pinnedMaterialId, urlCenterTab]);
+
+  useEffect(() => {
     if (pinnedMaterialId && previousPinnedMaterialIdRef.current !== pinnedMaterialId) {
-      setContextRailTab(dialogMode === 'chat' && pinnedLooksLikePdf ? 'chat' : 'paper');
+      setContextRailTab(
+        pinnedLooksLikePdf
+          ? urlCenterTab === 'discussion' ? 'discussion' : 'chat'
+          : 'paper',
+      );
       setEmbeddedReaderTarget({ nonce: 0 });
+      setEmbeddedReaderPage(null);
+      setCurrentPdfSelection(null);
     }
     previousPinnedMaterialIdRef.current = pinnedMaterialId;
-  }, [pinnedMaterialId]);
+  }, [pinnedLooksLikePdf, pinnedMaterialId, urlCenterTab]);
 
-  // Keep the active context tab valid as the layout mode flips between
-  // reader-in-center (chat tab) and reader-in-rail (paper tab).
+  useEffect(() => {
+    if (!pinnedMaterialId || !pinnedLooksLikePdf) return;
+    openPdfTab(
+      {
+        materialId: pinnedMaterialId,
+        title: activeMaterialLabel || pinnedMaterialTitle || pinnedMaterialId,
+      },
+      { activate: true },
+    );
+  }, [activeMaterialLabel, openPdfTab, pinnedLooksLikePdf, pinnedMaterialId, pinnedMaterialTitle]);
+
   useEffect(() => {
     setContextRailTab((current) => {
-      if (readerInCenter) return current === 'paper' ? 'chat' : current;
-      return current === 'chat' ? (pinnedMaterialId ? 'paper' : 'graph') : current;
+      if (current === 'chat' && !readerTabAvailable) {
+        return pinnedMaterialId ? 'paper' : 'graph';
+      }
+      if (current === 'discussion' && !readerTabAvailable) {
+        return pinnedMaterialId ? 'paper' : 'graph';
+      }
+      if (
+        current === 'project' ||
+        current === 'graph' ||
+        current === 'notes' ||
+        current === 'paper' ||
+        current === 'chat' ||
+        current === 'discussion'
+      ) {
+        return current;
+      }
+      return readerTabAvailable ? 'chat' : pinnedMaterialId ? 'paper' : 'graph';
     });
-  }, [readerInCenter, pinnedMaterialId]);
+  }, [pinnedMaterialId, readerTabAvailable]);
 
   useEffect(() => {
     if (!contextRailOpen) return;
@@ -1444,7 +1766,17 @@ export function Dialog() {
 
   useEffect(() => {
     void refreshSessions(historyMode, { surfaceError: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyMode]);
+
+  // 监听 localStorage 变化，自动刷新会话列表
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'smart-read-conversations-v1') {
+        void refreshSessions(historyMode, { surfaceError: false });
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [historyMode]);
 
   const refreshSessions = async (
@@ -1465,15 +1797,37 @@ export function Dialog() {
     }
   };
 
+  function focusDialogChatPane(): void {
+    if (readerTabAvailable) {
+      setContextRailOpen(true);
+      setContextRailTab('chat');
+      setCenterTab('reader');
+      return;
+    }
+    setCenterTab('chat');
+  }
+  function focusRestoredSessionPane(nextRailTab: 'chat' | 'discussion'): void {
+    if (readerTabAvailable) {
+      setContextRailOpen(true);
+      setContextRailTab(nextRailTab);
+      setCenterTab('reader');
+      return;
+    }
+    setCenterTab(nextRailTab);
+  }
+
   const handleNewSession = () => {
     conversationMessagesRef.current = [];
     clearConversation(smartReadScope);
+    setDiscussionLaunchState(null);
+    clearDiscussionLaunchState();
     setSessionId(undefined);
     setErrorMessage(null);
     setIsUnavailable(false);
     setChatState('ready');
     setRequestStartedAt(null);
     setHistoryErrorMessage(null);
+    focusDialogChatPane();
   };
 
   const handleOpenHistory = async () => {
@@ -1502,28 +1856,34 @@ export function Dialog() {
 
   const handleResumeSession = async (nextSessionId: string, sessionHint?: ChatSessionSummary) => {
     const normalizedSessionId = nextSessionId.trim();
-    if (!normalizedSessionId || chatState === 'responding') return;
+    if (!normalizedSessionId || chatState === 'responding' || restoringSessionIdRef.current) return;
+    restoringSessionIdRef.current = normalizedSessionId;
     setHistoryState('loading');
     setHistoryErrorMessage(null);
     try {
       const response = await resumeChatSession({ session_id: normalizedSessionId, limit: 100 });
       const restoredMessages = response.messages.map(toChatMessage).map(mapDialogMessageToChatData);
       const targetProjectId = normalizeProjectId(response.project_id ?? sessionHint?.project_id);
-      const targetScope = smartReadDialogScope(targetProjectId || 'default');
+      const targetProjectForScope = targetProjectId || effectiveProjectId;
+      const targetScope = smartReadDialogScope(targetProjectForScope || 'default');
+      const targetRailTab = sessionHint && isDiscussionSession(sessionHint) ? 'discussion' : 'chat';
+      writeDialogContextSearchParams('project', targetProjectForScope, targetRailTab);
       if (targetProjectId && targetProjectId !== activeProjectId) {
         setActiveProjectId(targetProjectId);
       }
-      writeDialogContextSearchParams('project', targetProjectId || effectiveProjectId);
       setSessionId(response.session_id);
       conversationMessagesRef.current = restoredMessages;
       setConversation(targetScope, restoredMessages, { sessionId: response.session_id });
       setIsUnavailable(false);
       setChatState('ready');
+      focusRestoredSessionPane(targetRailTab);
       setHistoryRailOpen(false);
       setHistoryState('idle');
     } catch (error) {
       setHistoryState('error');
       setHistoryErrorMessage(getChatErrorMessage(error));
+    } finally {
+      restoringSessionIdRef.current = null;
     }
   };
 
@@ -1540,6 +1900,32 @@ export function Dialog() {
       await deleteChatSession(normalizedSessionId);
       setSessions((prev) => prev.filter((item) => item.session_id !== normalizedSessionId));
       if (sessionId === normalizedSessionId) {
+        handleNewSession();
+      }
+      setHistoryState('idle');
+    } catch (error) {
+      setHistoryState('error');
+      setHistoryErrorMessage(getChatErrorMessage(error));
+    }
+  };
+
+  const handleClearSessionGroup = async (group: SessionProjectGroup) => {
+    if (chatState === 'responding') return;
+    const ids = group.branchGroups
+      .flatMap((branchGroup) => [branchGroup.root, ...branchGroup.forks])
+      .map((item) => item.session_id.trim())
+      .filter(Boolean);
+    if (ids.length === 0) return;
+    if (!window.confirm(`确认清空「${group.label}」分组下的 ${ids.length} 个会话？此操作只删除本机会话记录，不可恢复。`)) {
+      return;
+    }
+    setHistoryState('loading');
+    setHistoryErrorMessage(null);
+    try {
+      const result = await bulkDeleteChatSessions(ids);
+      const deletedSet = new Set(result.deleted);
+      setSessions((prev) => prev.filter((item) => !deletedSet.has(item.session_id)));
+      if (sessionId && deletedSet.has(sessionId)) {
         handleNewSession();
       }
       setHistoryState('idle');
@@ -1588,17 +1974,19 @@ export function Dialog() {
       const response = await resumeChatSession({ session_id: forked.fork_session_id, limit: 100 });
       const restoredMessages = response.messages.map(toChatMessage).map(mapDialogMessageToChatData);
       const targetProjectId = normalizeProjectId(response.project_id);
-      const targetScope = smartReadDialogScope(targetProjectId || 'default');
+      const targetProjectForScope = targetProjectId || effectiveProjectId;
+      const targetScope = smartReadDialogScope(targetProjectForScope || 'default');
+      writeDialogContextSearchParams('project', targetProjectForScope, 'chat');
       if (targetProjectId && targetProjectId !== activeProjectId) {
         setActiveProjectId(targetProjectId);
       }
-      writeDialogContextSearchParams('project', targetProjectId || effectiveProjectId);
       setSessionId(forked.fork_session_id);
       conversationMessagesRef.current = restoredMessages;
       setConversation(targetScope, restoredMessages, { sessionId: forked.fork_session_id });
       setInputValue('从这个分叉继续：');
       setIsUnavailable(false);
       setChatState('ready');
+      focusRestoredSessionPane('chat');
       setHistoryRailOpen(false);
       setHistoryState('idle');
     } catch (error) {
@@ -1609,6 +1997,10 @@ export function Dialog() {
 
   const handleStopGeneration = () => {
     const activeController = activeAbortControllerRef.current ?? dialogAbortControllers.get(smartReadScope);
+    const activeJobId = activeJobIdRef.current ?? dialogActiveJobsByScope.get(smartReadScope);
+    if (activeJobId) {
+      void getWritingRuntimeClient().cancelJob(activeJobId).catch(() => undefined);
+    }
     if (activeController) {
       activeController.abort();
       return;
@@ -1620,6 +2012,10 @@ export function Dialog() {
     }
     setChatState('ready');
     setRequestStartedAt(null);
+  };
+
+  const handleOpenTaskCenter = () => {
+    navigate('/jobs');
   };
 
   const handleEditMessage = (message: ChatMessageData) => {
@@ -1655,151 +2051,169 @@ export function Dialog() {
     const images: ChatAttachment[] = payload.attachmentsEnabled ? payload.attachments : [];
     const selectedTier = loadSmartReadCostTier('medium');
 
-    const userMessage: ChatMessage = {
+    const userMessage: ChatMessageData = {
       id: `user-${Date.now()}`,
       role: 'user',
       content: query,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
-    let assistantMessage: ChatMessage = {
-      id: `assistant-${Date.now()}`,
+    const assistantId = `assistant-${Date.now()}`;
+    const assistantMessage: ChatMessageData = {
+      id: assistantId,
       role: 'assistant',
-      content: '',
-      tierUsed: backendTierForCostTier(selectedTier),
-      timestamp: new Date(),
+      content: 'AI 思考中…',
+      timestamp: new Date().toISOString(),
       status: 'streaming',
+      metadata: {
+        diagnostics: {
+          tier: backendTierForCostTier(selectedTier),
+        },
+      },
     };
+
     const commitMessages = (nextMessages: ChatMessageData[]) => {
       conversationMessagesRef.current = nextMessages;
       setConversation(smartReadScope, nextMessages);
     };
-    const updateAssistantMessage = (patch: Partial<ChatMessage>) => {
-      assistantMessage = { ...assistantMessage, ...patch };
+    const updateAssistantMessage = (patch: Partial<ChatMessageData>): ChatMessageData => {
+      const existing = conversationMessagesRef.current.find((message) => message.id === assistantId) ?? assistantMessage;
+      const nextMessage: ChatMessageData = {
+        ...existing,
+        ...patch,
+        metadata: patch.metadata ?? existing.metadata,
+      };
       commitMessages(
-        replaceOrAppendChatData(
-          conversationMessagesRef.current,
-          mapDialogMessageToChatData(assistantMessage),
-        ),
+        replaceOrAppendChatData(conversationMessagesRef.current, nextMessage),
       );
+      return nextMessage;
     };
+
     commitMessages([
       ...conversationMessagesRef.current,
-      mapDialogMessageToChatData(userMessage),
-      mapDialogMessageToChatData(assistantMessage),
+      userMessage,
+      assistantMessage,
     ]);
     setInputValue('');
     setChatState('responding');
+    focusDialogChatPane();
     const startedAt = Date.now();
     dialogRequestStartedAtByScope.set(smartReadScope, startedAt);
     setRequestStartedAt(startedAt);
     setErrorMessage(null);
+    setIsUnavailable(false);
 
-    const sendOnce = async (
-      currentSessionId: string | undefined,
-      signal: AbortSignal,
-    ): Promise<string | undefined> => {
-      let activeSessionId = currentSessionId;
-      let metadata: DialogStreamMetadata | null = null;
-      let latestMetadataPatch: Partial<ChatMessage> = {};
-      let usage: DialogStreamUsage | null = null;
-      let streamedContent = '';
-
-      await streamIntelligentChatMessage(
-        {
-          query,
-          session_id: currentSessionId,
-          tier: backendTierForCostTier(selectedTier),
-          project_id: requestProjectId,
-          material_id: requestMaterialId,
-          project_reasoning_bias_enabled: defaultProjectBiasEnabled ? projectBiasEnabled : undefined,
-          mode: UNIFIED_DIALOG_MODE,
-          images: images.length > 0 ? images : undefined,
-        },
-        {
-          signal,
-          onEvent: (event) => {
-            if (event.event === 'metadata') {
-              metadata = event;
-              latestMetadataPatch = metadataPatch(event);
-              activeSessionId = event.session_id;
-              updateAssistantMessage({
-                ...latestMetadataPatch,
-                tokensUsed: tokenUsageFromStreamUsage(usage),
-              });
-              return;
-            }
-            if (event.event === 'usage') {
-              usage = event;
-              updateAssistantMessage({
-                tokensUsed: tokenUsageFromStreamUsage(event),
-              });
-              return;
-            }
-            if (event.event === 'text_delta') {
-              streamedContent += event.delta;
-              updateAssistantMessage({
-                content: streamedContent,
-                status: 'streaming',
-              });
-              return;
-            }
-            if (event.event === 'done') {
-              activeSessionId = event.session_id ?? activeSessionId;
-              streamedContent = event.response ?? streamedContent;
-              updateAssistantMessage({
-                content: streamedContent,
-                status: 'done',
-                tokensUsed: event.tokens_used ?? tokenUsageFromStreamUsage(usage),
-                ...latestMetadataPatch,
-              });
-              return;
-            }
-            if (event.event === 'error') {
-              throw new Error(event.error);
-            }
-          },
-        },
-      );
-
-      updateAssistantMessage({
-        content: streamedContent || assistantMessage.content,
-        status: 'done',
-        tokensUsed: assistantMessage.tokensUsed ?? tokenUsageFromStreamUsage(usage),
-        ...latestMetadataPatch,
-      });
-      return activeSessionId;
+    const cleanUpActiveJob = () => {
+      if (dialogActiveJobsByScope.get(smartReadScope) === activeJobIdRef.current) {
+        dialogActiveJobsByScope.delete(smartReadScope);
+      }
+      activeJobIdRef.current = null;
     };
 
     try {
       const abortController = new AbortController();
       activeAbortControllerRef.current = abortController;
       dialogAbortControllers.set(smartReadScope, abortController);
-      let nextSessionId: string | undefined;
-      try {
-        nextSessionId = await sendOnce(sessionId ?? conversation.sessionId, abortController.signal);
-      } catch (firstError) {
-        if (isAbortError(firstError)) throw firstError;
-        const conflict = isSessionModeConflictError(firstError);
-        if (!conflict) throw firstError;
-        // Mode-immutable session — open a new one transparently
-        setSessionId(undefined);
-        nextSessionId = await sendOnce(undefined, abortController.signal);
+      const existingSessionId = sessionId ?? conversation.sessionId ?? undefined;
+      const selectionForRequest = currentPdfSelection?.materialId === requestMaterialId
+        ? currentPdfSelection
+        : null;
+      const currentPdfContext = buildDialogCurrentPdfContext({
+        materialId: requestMaterialId,
+        page: selectionForRequest?.page ?? effectiveReaderPage,
+        chunkId: effectiveReaderChunkId,
+        selectedText: selectionForRequest?.selectedText,
+        bbox: selectionForRequest?.bbox ?? effectiveReaderBbox ?? null,
+        bboxUnit: selectionForRequest?.bboxUnit ?? effectiveReaderBboxUnit ?? null,
+      });
+      if (selectionForRequest) {
+        setCurrentPdfSelection(null);
+      }
+      const jobResult = await runBackgroundJob({
+        sessionTitle: '智能研读',
+        sessionMetadata: {
+          source: 'dialog_smart_read',
+          project_id: effectiveProjectId || undefined,
+          material_id: pinnedMaterialId || undefined,
+          current_pdf_context: currentPdfContext,
+          scope: dialogContextScope,
+        },
+        request: {
+          kind: 'smart_read',
+          input_text: query,
+          session_id: existingSessionId,
+          metadata: {
+            chat_session_id: existingSessionId,
+            project_id: requestProjectId,
+            material_id: requestMaterialId,
+            tier: backendTierForCostTier(selectedTier),
+            mode: UNIFIED_DIALOG_MODE,
+            current_pdf_context: currentPdfContext,
+            images: images.length > 0 ? images : undefined,
+            project_reasoning_bias_enabled: defaultProjectBiasEnabled ? projectBiasEnabled : undefined,
+          },
+          tags: ['dialog', 'smart-read'],
+        },
+        timeoutMs: DIALOG_REQUEST_TIMEOUT_MS,
+        signal: abortController.signal,
+        onJobCreated: (job: WritingJob) => {
+          activeJobIdRef.current = job.job_id;
+          dialogActiveJobsByScope.set(smartReadScope, job.job_id);
+          updateAssistantMessage({
+            content: `AI 正在后台研读，任务已进入任务中心。\n\n任务编号：${job.job_id}`,
+            status: 'streaming',
+          });
+        },
+      });
+      if (!isMountedRef.current) {
+        return;
+      }
+      if (jobResult.status.status !== 'completed') {
+        throw new Error(jobResult.status.error || '智能研读任务未完成。');
       }
 
-      if (nextSessionId) {
-        if (!sessionId || nextSessionId !== sessionId) setSessionId(nextSessionId);
-        setConversation(smartReadScope, conversationMessagesRef.current, { sessionId: nextSessionId });
+      const content = artifactContentRecord(findLatestArtifact(jobResult.artifacts, 'transformed_text'));
+      const response = typeof content.response === 'string'
+        ? content.response
+        : typeof content.text === 'string'
+          ? content.text
+          : '';
+      const nextSessionId = resolveDialogSmartReadChatSessionId(content, existingSessionId);
+      const diagnostics = coerceSmartReadResponsePatch(content, backendTierForCostTier(selectedTier));
+      const finalContent = response || '回答已生成，但未找到可显示的结果。';
+      const finalDiagnostics = buildSmartReadDiagnostics({
+        ...diagnostics,
+        content: finalContent,
+      });
+      const finalAssistant = updateAssistantMessage({
+        content: finalContent,
+        status: 'done',
+        metadata: finalDiagnostics ? { diagnostics: finalDiagnostics } : undefined,
+        evidence: diagnostics.evidenceRefs as EvidenceRefLike[] | undefined,
+      });
+
+      if (nextSessionId && nextSessionId !== sessionId) {
+        setSessionId(nextSessionId);
       }
+      setConversation(
+        smartReadScope,
+        replaceOrAppendChatData(conversationMessagesRef.current, finalAssistant),
+        { sessionId: nextSessionId },
+      );
       setIsUnavailable(false);
       setChatState('ready');
     } catch (error) {
       if (isAbortError(error)) {
+        if (!isMountedRef.current) {
+          return;
+        }
         updateAssistantMessage({
-          content: assistantMessage.content || '已停止生成。',
+          content: '已停止生成。',
           status: 'done',
         });
         setChatState('ready');
-        setRequestStartedAt(null);
+        return;
+      }
+      if (!isMountedRef.current) {
         return;
       }
       const errorMsg = getChatErrorMessage(error);
@@ -1811,22 +2225,25 @@ export function Dialog() {
         setIsUnavailable(true);
         setChatState('unavailable');
       } else {
-        setIsUnavailable(false);
         setErrorMessage(errorMsg);
         setChatState('error');
       }
     } finally {
+      cleanUpActiveJob();
       if (dialogAbortControllers.get(smartReadScope) === activeAbortControllerRef.current) {
         dialogAbortControllers.delete(smartReadScope);
       }
       dialogRequestStartedAtByScope.delete(smartReadScope);
       activeAbortControllerRef.current = null;
-      setRequestStartedAt(null);
+      if (isMountedRef.current) {
+        setRequestStartedAt(null);
+      }
     }
   };
 
   const handleUseSuggestedQuestion = (question: SuggestedQuestion) => {
     if (chatState === 'responding') return;
+    focusDialogChatPane();
     setInputValue(question.question);
   };
 
@@ -1840,12 +2257,20 @@ export function Dialog() {
     setDiscussionLaunchState(launchState);
     writeDiscussionLaunchState(launchState);
     const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('mode', 'discussion');
+    nextParams.delete('mode');
+    nextParams.set('tab', 'discussion');
     if (effectiveProjectId) nextParams.set('project_id', effectiveProjectId);
     if (pinnedMaterialId) nextParams.set('material_id', pinnedMaterialId);
     if (pinnedMaterialTitle) nextParams.set('material_title', pinnedMaterialTitle);
     nextParams.set('scope', dialogContextScope);
     setSearchParams(nextParams, { replace: false });
+    if (readerTabAvailable) {
+      setContextRailOpen(true);
+      setContextRailTab('discussion');
+      setCenterTab('reader');
+      return;
+    }
+    setCenterTab('discussion');
   };
 
   const isInputDisabled = isResponseActive;
@@ -1869,6 +2294,7 @@ export function Dialog() {
   function writeDialogContextSearchParams(
     nextScope: DialogContextScope,
     nextProjectId: string = effectiveProjectId,
+    nextRailTab?: 'chat' | 'discussion',
   ): void {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('scope', nextScope);
@@ -1878,47 +2304,160 @@ export function Dialog() {
     else nextParams.delete('material_title');
     if (nextProjectId) nextParams.set('project_id', nextProjectId);
     else nextParams.delete('project_id');
+    if (nextRailTab) nextParams.set('tab', nextRailTab);
     setSearchParams(nextParams, { replace: true });
   }
   function handleContextScopeChange(nextScope: DialogContextScope): void {
     if (nextScope === 'paper' && !pinnedMaterialId) return;
     writeDialogContextSearchParams(nextScope);
   }
-  function handleWorkbenchModeChange(nextMode: DialogWorkbenchMode): void {
-    const nextParams = new URLSearchParams(searchParams);
-    if (nextMode === 'discussion') nextParams.set('mode', 'discussion');
-    else nextParams.delete('mode');
-    setSearchParams(nextParams, { replace: true });
-    if (nextMode === 'chat') {
-      setDiscussionLaunchState(null);
-      clearDiscussionLaunchState();
-    }
-  }
   const handleOpenPinnedMaterial = () => {
     if (!pinnedMaterialId) return;
     navigate(`/workbench/paper/${encodeURIComponent(pinnedMaterialId)}`);
   };
+  function writeReaderSearchParams(
+    materialId: string,
+    options: {
+      title?: string;
+      page?: number | null;
+      chunkId?: string | null;
+      bbox?: number[] | null;
+      bboxUnit?: PdfBboxUnit | null;
+      replace?: boolean;
+    } = {},
+  ): void {
+    const normalizedMaterialId = normalizeMaterialId(materialId);
+    if (!normalizedMaterialId) return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('scope', 'paper');
+    nextParams.set('tab', 'reader');
+    nextParams.set('material_id', normalizedMaterialId);
+    const title = normalizeMaterialId(options.title);
+    if (title) nextParams.set('material_title', title);
+    else nextParams.delete('material_title');
+    const nextProjectId = effectiveProjectId || queryProjectId;
+    if (nextProjectId) nextParams.set('project_id', nextProjectId);
+    if (options.page && Number.isFinite(options.page) && options.page > 0) {
+      nextParams.set('page', String(Math.round(options.page)));
+    } else {
+      nextParams.delete('page');
+    }
+    if (options.chunkId) nextParams.set('chunk', options.chunkId);
+    else nextParams.delete('chunk');
+    const bboxParam = encodePdfBboxParam(options.bbox ?? null, options.bboxUnit);
+    if (bboxParam) nextParams.set('bbox', bboxParam);
+    else nextParams.delete('bbox');
+    setSearchParams(nextParams, { replace: options.replace ?? false });
+  }
+  function focusMaterialReaderPane(materialId: string, title?: string): string | null {
+    const normalizedMaterialId = normalizeMaterialId(materialId);
+    if (!normalizedMaterialId) return null;
+    openPdfTab(
+      { materialId: normalizedMaterialId, title: normalizeMaterialId(title) || normalizedMaterialId },
+      { activate: true },
+    );
+    setCenterTab('reader');
+    return normalizedMaterialId;
+  }
+  function handleFocusPinnedMaterialReader(): void {
+    if (!pinnedMaterialId) return;
+    if (!pinnedLooksLikePdf) {
+      handleOpenPinnedMaterial();
+      return;
+    }
+    const normalizedMaterialId = focusMaterialReaderPane(
+      pinnedMaterialId,
+      activeMaterialLabel || pinnedMaterialTitle,
+    );
+    if (!normalizedMaterialId) return;
+    writeReaderSearchParams(normalizedMaterialId, {
+      title: activeMaterialLabel || pinnedMaterialTitle || normalizedMaterialId,
+      replace: true,
+    });
+  }
   function handleOpenMaterialInReader(materialId: string): void {
     const normalizedMaterialId = normalizeMaterialId(materialId);
     if (!normalizedMaterialId) return;
-    navigate(`/workbench/paper/${encodeURIComponent(normalizedMaterialId)}`);
+    const material = projectMaterials.find((item) => normalizeMaterialId(item.material_id) === normalizedMaterialId);
+    const title = material ? materialTitleLabel(material) : normalizedMaterialId;
+    focusMaterialReaderPane(normalizedMaterialId, title);
+    writeReaderSearchParams(normalizedMaterialId, { title });
+  }
+  function handlePdfTabActivate(materialId: string): void {
+    const normalizedMaterialId = normalizeMaterialId(materialId);
+    if (!normalizedMaterialId) return;
+    const material = projectMaterials.find((item) => normalizeMaterialId(item.material_id) === normalizedMaterialId);
+    setCenterTab('reader');
+    writeReaderSearchParams(normalizedMaterialId, {
+      title: material ? materialTitleLabel(material) : normalizedMaterialId,
+      replace: true,
+    });
+  }
+  function handlePdfTabsEmpty(): void {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('material_id');
+    nextParams.delete('material');
+    nextParams.delete('material_title');
+    nextParams.delete('title');
+    nextParams.delete('page');
+    nextParams.delete('chunk');
+    nextParams.delete('bbox');
+    nextParams.delete('tab');
+    nextParams.set('scope', effectiveProjectId ? 'project' : 'workspace');
+    setSearchParams(nextParams, { replace: true });
+    setContextRailTab('project');
+    setCenterTab('chat');
   }
   function handleOpenPinnedMaterialPage(page: number): void {
     if (!pinnedMaterialId) return;
     const normalizedPage = Number.isFinite(page) && page > 0 ? Math.round(page) : 1;
-    navigate(`/workbench/paper/${encodeURIComponent(pinnedMaterialId)}?page=${encodeURIComponent(String(normalizedPage))}`);
+    focusMaterialReaderPane(pinnedMaterialId, activeMaterialLabel || pinnedMaterialTitle);
+    writeReaderSearchParams(pinnedMaterialId, {
+      title: activeMaterialLabel,
+      page: normalizedPage,
+      replace: false,
+    });
   }
+
+  function handleEmbeddedReaderPageChange(page: number): void {
+    if (!Number.isFinite(page) || page <= 0) return;
+    const normalizedPage = Math.round(page);
+    setEmbeddedReaderPage(normalizedPage);
+    if (pinnedMaterialId) {
+      updatePdfView(pinnedMaterialId, { page: normalizedPage });
+    }
+  }
+
+  function handleAnalyzeReaderText(text: string, page: number, anchor?: PdfSelectionAnchor): void {
+    if (!pinnedMaterialId) return;
+    const selectedText = normalizeDialogSelectionText(text);
+    if (!selectedText) return;
+    const normalizedPage = normalizeDialogReaderPage(page) ?? effectiveReaderPage ?? 1;
+    const bbox = combineSelectionRects(anchor?.rects);
+    setCurrentPdfSelection({
+      materialId: pinnedMaterialId,
+      page: normalizedPage,
+      selectedText,
+      bbox,
+      bboxUnit: bbox ? 'normalized_ratio' : null,
+    });
+    setEmbeddedReaderPage(normalizedPage);
+    focusDialogChatPane();
+    setInputValue(`请分析当前 PDF 第 ${normalizedPage} 页选中的这段内容：\n\n${selectedText}`);
+  }
+
   function handleSelectContextMaterial(material: WritingMaterialResource): void {
     const materialId = normalizeMaterialId(material.material_id);
     if (!materialId) return;
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('scope', 'paper');
-    nextParams.set('material_id', materialId);
-    nextParams.set('material_title', materialTitleLabel(material));
+    const title = materialTitleLabel(material);
     const materialProjectId = normalizeProjectId(material.project_id) || effectiveProjectId;
-    if (materialProjectId) nextParams.set('project_id', materialProjectId);
-    setContextRailTab('paper');
-    setSearchParams(nextParams, { replace: false });
+    if (materialProjectId && materialProjectId !== activeProjectId) {
+      setActiveProjectId(materialProjectId);
+    }
+    focusMaterialReaderPane(materialId, title);
+    setContextRailOpen(true);
+    setContextRailTab('chat');
+    writeReaderSearchParams(materialId, { title });
   }
   function handleGraphNavigateTarget(target: GraphNavigateTarget): void {
     const targetMaterialId = normalizeMaterialId(target.material_id);
@@ -1927,19 +2466,23 @@ export function Dialog() {
       setEmbeddedReaderTarget((previous) => ({
         page: target.page ?? undefined,
         bbox: target.bbox ?? undefined,
+        bboxUnit: target.bbox_unit ?? null,
         chunkId: target.chunk_id ?? undefined,
         nonce: previous.nonce + 1,
       }));
-      if (!readerInCenter) setContextRailTab('paper');
+      setCenterTab('reader');
       return;
     }
-    const params = new URLSearchParams();
-    if (target.page) params.set('page', String(target.page));
-    if (target.chunk_id) params.set('chunk', target.chunk_id);
-    const bboxParam = encodeBboxParam(target.bbox);
-    if (bboxParam) params.set('bbox', bboxParam);
-    const suffix = params.toString() ? `?${params.toString()}` : '';
-    navigate(`/workbench/paper/${encodeURIComponent(targetMaterialId)}${suffix}`);
+    const material = projectMaterials.find((item) => normalizeMaterialId(item.material_id) === targetMaterialId);
+    focusMaterialReaderPane(targetMaterialId, material ? materialTitleLabel(material) : targetMaterialId);
+    writeReaderSearchParams(targetMaterialId, {
+      title: material ? materialTitleLabel(material) : targetMaterialId,
+      page: target.page,
+      chunkId: target.chunk_id,
+      bbox: target.bbox,
+      bboxUnit: target.bbox_unit,
+      replace: false,
+    });
   }
   function constrainResizablePaneWidth(
     pane: DialogResizablePane,
@@ -2038,24 +2581,17 @@ export function Dialog() {
     icon: typeof BookOpen;
     count?: number;
   }> = [
-    readerInCenter
-      ? { id: 'chat', label: '对话', icon: MessageCircle }
-      : { id: 'paper', label: '本文献', icon: BookOpen, count: pinnedMaterialId ? 1 : 0 },
+    ...(readerTabAvailable
+      ? [
+          { id: 'chat' as const, label: '研读对话', icon: MessageCircle },
+          { id: 'discussion' as const, label: '多人讨论', icon: Users2 },
+        ]
+      : []),
+    { id: 'paper', label: '本文献', icon: BookOpen, count: pinnedMaterialId ? 1 : 0 },
     { id: 'project', label: '项目文献', icon: FolderKanban, count: projectMaterialCount },
     { id: 'graph', label: '图谱', icon: Network, count: evidenceGraphStats.evidence },
     { id: 'notes', label: '笔记', icon: FileText, count: annotationNoteCount },
   ];
-  const activeContextRailTab = contextRailTabs.find((tab) => tab.id === contextRailTab) ?? contextRailTabs[0];
-  const ActiveContextRailIcon = activeContextRailTab.icon;
-  const contextRailSubtitle = contextRailTab === 'chat'
-    ? (pinnedMaterialId ? `围绕「${activeMaterialLabel}」提问` : '智能研读对话')
-    : contextRailTab === 'paper'
-      ? (pinnedMaterialId ? activeMaterialLabel : '未选择文献')
-      : contextRailTab === 'project'
-        ? `${projectMaterialCount} 篇项目文献`
-        : contextRailTab === 'notes'
-          ? `${annotationNoteCount} 条笔记`
-          : `${evidenceGraphStats.materials} 篇文献 · ${evidenceGraphStats.evidence} 条证据`;
 
   const renderProjectMaterialRows = (materials: WritingMaterialResource[]) => (
     <div className="space-y-2">
@@ -2154,46 +2690,21 @@ export function Dialog() {
     if (!pinnedMaterialId) return null;
     const material = activePinnedMaterial;
     return (
-      <div className="flex h-full min-h-0 flex-col gap-2">
-        <div className="flex shrink-0 items-center justify-between gap-2">
-          <h3
-            className="min-w-0 truncate text-sm font-semibold text-foreground"
-            title={material ? materialTitleLabel(material) : activeMaterialLabel}
-          >
-            {material ? materialTitleLabel(material) : activeMaterialLabel}
-          </h3>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => { setContextRailOpen(true); setContextRailTab('project'); }}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2 text-[11px] text-foreground/65 transition-colors hover:border-primary/40 hover:text-foreground"
-              title="切换项目文献"
-            >
-              <FolderKanban className="h-3.5 w-3.5" aria-hidden />
-              切换文献
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenPinnedMaterial}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-outline-variant/60 bg-surface-low text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
-              aria-label="在工作台全屏打开"
-              title="在工作台全屏打开"
-            >
-              <BookOpen className="h-3.5 w-3.5" aria-hidden />
-            </button>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-outline-variant/60 bg-surface-low">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-outline-variant/60 bg-surface-low">
+        <PdfTabStrip onActivate={handlePdfTabActivate} onEmpty={handlePdfTabsEmpty} />
+        <div className="min-h-0 flex-1 overflow-hidden">
           <ErrorBoundary fallbackTitle="PDF 阅读器暂时无法显示">
             <Suspense fallback={<PdfReaderFallback />}>
               <PdfReaderShell
-                key={`${pinnedMaterialId}:${embeddedReaderTarget.nonce}`}
+                key={`${pinnedMaterialId}:${embeddedReaderTarget.nonce}:${searchParams.get('page') ?? ''}:${searchParams.get('bbox') ?? ''}`}
                 url={pinnedPdfUrl}
                 materialId={pinnedMaterialId}
-                initialPage={embeddedReaderTarget.page}
+                initialPage={effectiveReaderPage ?? undefined}
                 highlights={embeddedReaderHighlights}
                 notes={annotationNotes}
                 className="h-full"
+                onAnalyzeText={handleAnalyzeReaderText}
+                onPageChange={handleEmbeddedReaderPageChange}
               />
             </Suspense>
           </ErrorBoundary>
@@ -2203,6 +2714,21 @@ export function Dialog() {
   };
 
   const renderContextRailContent = () => {
+    if (contextRailTab === 'chat') {
+      return chatPanel;
+    }
+
+    if (contextRailTab === 'discussion') {
+      return (
+        <DialogDiscussionWorkbench
+          launchState={discussionLaunchState}
+          onHistoryChanged={() => {
+            void refreshSessions(historyMode, { surfaceError: false });
+          }}
+        />
+      );
+    }
+
     if (contextRailTab === 'paper') {
       const status = renderProjectMaterialsStatus();
       const material = activePinnedMaterial;
@@ -2222,9 +2748,6 @@ export function Dialog() {
           </div>
         );
       }
-      if (pinnedLooksLikePdf) {
-        return renderEmbeddedReader();
-      }
       return (
         <div className="space-y-3">
           {status}
@@ -2242,10 +2765,10 @@ export function Dialog() {
               </div>
               <button
                 type="button"
-                onClick={handleOpenPinnedMaterial}
+                onClick={handleFocusPinnedMaterialReader}
                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-outline-variant/60 bg-surface-lowest text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
-                aria-label="打开本文献阅读器"
-                title="打开本文献阅读器"
+                aria-label={pinnedLooksLikePdf ? '在中间栏阅读本文献' : '打开本文献'}
+                title={pinnedLooksLikePdf ? '在中间栏阅读' : '打开本文献'}
               >
                 <BookOpen className="h-3.5 w-3.5" aria-hidden />
               </button>
@@ -2270,6 +2793,16 @@ export function Dialog() {
               </>
             )}
           </section>
+          {pinnedLooksLikePdf && (
+            <button
+              type="button"
+              onClick={handleFocusPinnedMaterialReader}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-primary/35 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/15"
+            >
+              <BookOpen className="h-3.5 w-3.5" aria-hidden />
+              在中间栏阅读
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setContextRailTab('project')}
@@ -2297,6 +2830,48 @@ export function Dialog() {
           </button>
           {status ?? renderProjectMaterialRows(projectMaterials)}
         </div>
+      );
+    }
+
+    if (contextRailTab === 'graph') {
+      return (
+        <>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-foreground/65">当前上下文图谱</p>
+              <p className="text-[11px] text-foreground/45">
+                {evidenceGraphStats.evidence} 条证据 · {evidenceGraphStats.materials} 篇材料
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshProjectMaterials({ surfaceError: false })}
+              className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 px-2 py-1 text-[11px] text-foreground/60 transition-colors hover:border-primary/40 hover:text-foreground"
+            >
+              <Activity className="h-3.5 w-3.5" aria-hidden />
+              探查
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-outline-variant/60 bg-surface-low">
+            {evidenceGraphPayload ? (
+              <GraphPayloadViewer
+                payload={evidenceGraphPayload}
+                projectId={effectiveProjectId || null}
+                onNavigateTarget={pinnedMaterialId && pinnedLooksLikePdf ? handleGraphNavigateTarget : undefined}
+              />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                <Network className="mb-3 h-10 w-10 text-foreground/20" aria-hidden />
+                <p className="text-sm font-medium text-foreground/60">暂无证据图谱</p>
+              </div>
+            )}
+          </div>
+          {evidenceGraphPayload && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-foreground/45">
+              <span>{evidenceGraphStats.edges} 条关系</span>
+            </div>
+          )}
+        </>
       );
     }
 
@@ -2334,7 +2909,7 @@ export function Dialog() {
             <p className="text-sm font-medium text-foreground/60">暂无笔记</p>
             <button
               type="button"
-              onClick={handleOpenPinnedMaterial}
+              onClick={handleFocusPinnedMaterialReader}
               className="mt-3 inline-flex items-center gap-1 rounded-md border border-outline-variant/60 px-2.5 py-1.5 text-xs text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
             >
               <BookOpen className="h-3.5 w-3.5" aria-hidden />
@@ -2406,29 +2981,7 @@ export function Dialog() {
       );
     }
 
-    return (
-      <>
-        <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-outline-variant/60 bg-surface-low">
-          {evidenceGraphPayload ? (
-            <GraphPayloadViewer
-              payload={evidenceGraphPayload}
-              projectId={effectiveProjectId || null}
-              onNavigateTarget={pinnedMaterialId && pinnedLooksLikePdf ? handleGraphNavigateTarget : undefined}
-            />
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-              <Network className="mb-3 h-10 w-10 text-foreground/20" aria-hidden />
-              <p className="text-sm font-medium text-foreground/60">暂无证据图谱</p>
-            </div>
-          )}
-        </div>
-        {evidenceGraphPayload && (
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-foreground/45">
-            <span>{evidenceGraphStats.edges} 条关系</span>
-          </div>
-        )}
-      </>
-    );
+    return null;
   };
 
   const renderHistoryError = () => (
@@ -2448,9 +3001,21 @@ export function Dialog() {
           <h3 className="min-w-0 truncate text-[11px] font-semibold text-foreground/60">
             {projectGroup.label}
           </h3>
-          <span className="shrink-0 text-[10px] text-foreground/45">
-            {projectGroup.branchGroups.reduce((count, group) => count + 1 + group.forks.length, 0)} 个会话
-          </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="text-[10px] text-foreground/45">
+              {projectGroup.branchGroups.reduce((count, group) => count + 1 + group.forks.length, 0)} 个会话
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleClearSessionGroup(projectGroup)}
+              disabled={historyState === 'loading' || chatState === 'responding'}
+              title="清空本组会话（仅删除本机记录，不可恢复）"
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-foreground/45 transition-colors hover:bg-rose-500/10 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-3 w-3" />
+              清空本组
+            </button>
+          </div>
         </div>
         {projectGroup.branchGroups.map((group) => (
           <div key={group.root.session_id} className="space-y-2">
@@ -2681,24 +3246,7 @@ export function Dialog() {
 
   return (
     <div ref={dialogShellRef} className="flex h-full min-h-0 min-w-0 overflow-hidden bg-background">
-      {historyRailCollapsed ? (
-        <aside className="hidden h-full w-12 shrink-0 flex-col items-center border-r border-outline-variant/60 bg-surface-lowest py-3 lg:flex">
-          <button
-            type="button"
-            onClick={() => setHistoryRailCollapsed(false)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-outline-variant/60 bg-surface-low text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
-            aria-label="展开历史会话"
-            title="展开历史会话"
-          >
-            <PanelLeftOpen className="h-3.5 w-3.5" />
-          </button>
-          <div className="mt-3 flex flex-1 items-center">
-            <span className="[writing-mode:vertical-rl] text-[11px] font-medium tracking-wide text-foreground/45">
-              历史会话
-            </span>
-          </div>
-        </aside>
-      ) : (
+      {!historyRailCollapsed && (
         <>
       <aside
         style={{ width: paneWidths.history }}
@@ -2707,8 +3255,8 @@ export function Dialog() {
         <div className="border-b border-outline-variant/60 px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <h2 className="truncate text-sm font-semibold text-foreground">智能研读历史</h2>
-              <p className="truncate text-[11px] text-foreground/55">按项目延续、归档或恢复对话</p>
+              <h2 className="truncate text-sm font-semibold text-foreground">研读历史</h2>
+              <p className="truncate text-[11px] text-foreground/55">按项目延续、归档或恢复会话</p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
             <button
@@ -2845,81 +3393,65 @@ export function Dialog() {
         </>
       )}
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-outline-variant/60 bg-surface-low px-6 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          {dialogMode === 'discussion' ? (
-            <Users2 className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-          ) : readerInCenter ? (
-            <BookOpen className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-          ) : (
-            <MessageCircle className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-          )}
-          <div className="min-w-0">
-            <h1 className="truncate font-display text-lg font-semibold text-foreground">
-              {readerInCenter ? activeMaterialLabel : '智能研读'}
-            </h1>
-            <p className="truncate font-label text-xs text-foreground/55">
-              {dialogMode === 'discussion'
-                ? '在同一研究工作台内运行多智能体讨论'
-                : readerInCenter
-                  ? '智能研读 · 阅读本文献并提问、讨论、看图谱'
-                  : '围绕当前项目材料进行证据增强对话'}
-            </p>
+      <section
+        aria-label="智能研读工作区"
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-outline-variant/60 bg-surface-low px-6 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            {historyRailCollapsed && (
+              <button
+                type="button"
+                onClick={() => setHistoryRailCollapsed(false)}
+                className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-md border border-outline-variant/60 bg-surface-lowest text-foreground/70 transition-colors hover:border-primary/40 hover:bg-surface-high hover:text-foreground lg:inline-flex"
+                aria-label="展开历史会话"
+                title="展开历史会话"
+              >
+                <PanelLeftOpen className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleNewSession}
+              disabled={chatState === 'responding'}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-2.5 text-xs font-medium text-foreground/75 transition-colors hover:border-primary/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="新建对话"
+              title="新建对话"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">新建对话</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenTaskCenter}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-2.5 text-xs font-medium text-foreground/75 transition-colors hover:border-primary/40 hover:text-foreground"
+              aria-label="打开任务中心"
+              title="打开任务中心"
+            >
+              <Activity className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">任务中心</span>
+            </button>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenHistory}
+              className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-2.5 py-1.5 text-xs font-medium text-foreground/75 transition-colors hover:border-primary/40 hover:text-foreground lg:hidden"
+            >
+              <History className="h-3.5 w-3.5" /> 历史会话
+            </button>
+            <button
+              type="button"
+              onClick={() => setContextRailOpen((open) => !open)}
+              className="hidden h-8 w-8 items-center justify-center rounded-md border border-outline-variant/60 bg-surface-lowest text-foreground/75 transition-colors hover:border-primary/40 hover:text-foreground lg:inline-flex"
+              aria-pressed={contextRailOpen}
+              aria-label={contextRailOpen ? '收起资料栏' : '展开资料栏'}
+              title={contextRailOpen ? '收起资料栏' : '展开资料栏'}
+            >
+              {contextRailOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
+            </button>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="hidden grid-cols-2 rounded-md border border-outline-variant/60 bg-surface-lowest p-1 md:grid">
-            {([
-              { id: 'chat', label: '问答', icon: MessageCircle },
-              { id: 'discussion', label: '讨论', icon: Users2 },
-            ] as const).map((option) => {
-              const Icon = option.icon;
-              const selected = dialogMode === option.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => handleWorkbenchModeChange(option.id)}
-                  className={`inline-flex h-8 items-center justify-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${
-                    selected
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-foreground/60 hover:bg-surface-high hover:text-foreground'
-                  }`}
-                  aria-pressed={selected}
-                >
-                  <Icon className="h-3.5 w-3.5" aria-hidden />
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            onClick={handleOpenHistory}
-            className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-2.5 py-1.5 text-xs font-medium text-foreground/75 transition-colors hover:border-primary/40 hover:text-foreground lg:hidden"
-          >
-            <History className="h-3.5 w-3.5" /> 历史会话
-          </button>
-          <button
-            type="button"
-            onClick={handleNewSession}
-            className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-2.5 py-1.5 text-xs font-medium text-foreground/75 transition-colors hover:border-primary/40 hover:text-foreground"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> 新建会话
-          </button>
-          <button
-            type="button"
-            onClick={() => setContextRailOpen((open) => !open)}
-            className="hidden items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-2.5 py-1.5 text-xs font-medium text-foreground/75 transition-colors hover:border-primary/40 hover:text-foreground lg:inline-flex"
-            aria-pressed={contextRailOpen}
-          >
-            {contextRailOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
-            上下文
-          </button>
-        </div>
-      </div>
 
       {historyRailOpen && (
         <div className="fixed inset-0 z-40 flex justify-end bg-black/20 lg:hidden" onClick={() => setHistoryRailOpen(false)}>
@@ -3055,17 +3587,17 @@ export function Dialog() {
         </div>
       )}
 
-      {dialogMode === 'discussion' ? (
+      {readerInCenter ? (
+        <section aria-label="中间栏本文献阅读器" className="min-h-0 flex-1 p-3">
+          {renderEmbeddedReader()}
+        </section>
+      ) : centerTab === 'discussion' ? (
         <DialogDiscussionWorkbench
           launchState={discussionLaunchState}
           onHistoryChanged={() => {
             void refreshSessions(historyMode, { surfaceError: false });
           }}
         />
-      ) : readerInCenter ? (
-        <div className="min-h-0 flex-1 p-3">
-          {renderEmbeddedReader()}
-        </div>
       ) : (
         chatPanel
       )}
@@ -3086,7 +3618,7 @@ export function Dialog() {
         </div>
       )}
 
-      </main>
+      </section>
       {contextRailOpen && (
         <>
         <button
@@ -3102,28 +3634,8 @@ export function Dialog() {
           style={{ width: paneWidths.context }}
           className="hidden h-full min-h-0 shrink-0 flex-col border-l border-outline-variant/60 bg-surface-lowest lg:flex"
         >
-          <div className="shrink-0 border-b border-outline-variant/60 px-4 py-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <ActiveContextRailIcon className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-                <div className="min-w-0">
-                  <h2 className="truncate text-sm font-semibold text-foreground">研究上下文</h2>
-                  <p className="truncate text-[11px] text-foreground/50">
-                    {contextRailSubtitle}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setContextRailOpen(false)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-outline-variant/60 bg-surface-low text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
-                aria-label="收起上下文"
-                title="收起上下文"
-              >
-                <PanelRightClose className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <div className="mt-3 grid grid-cols-4 gap-1 rounded-md border border-outline-variant/50 bg-surface-low p-1">
+          <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant/60 px-3 py-2">
+            <div className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-md border border-outline-variant/50 bg-surface-low p-1">
               {contextRailTabs.map((tab) => {
                 const Icon = tab.icon;
                 const selected = contextRailTab === tab.id;
@@ -3138,6 +3650,7 @@ export function Dialog() {
                         : 'text-foreground/60 hover:bg-surface-high hover:text-foreground'
                     }`}
                     aria-pressed={selected}
+                    aria-label={tab.label}
                     title={tab.label}
                   >
                     <Icon className="h-3.5 w-3.5" aria-hidden />
@@ -3146,15 +3659,22 @@ export function Dialog() {
                 );
               })}
             </div>
+            <button
+              type="button"
+              onClick={() => setContextRailOpen(false)}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-outline-variant/60 bg-surface-low text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
+              aria-label="收起资料栏"
+              title="收起资料栏"
+            >
+              <PanelRightClose className="h-3.5 w-3.5" />
+            </button>
           </div>
           <div className={`min-h-0 flex-1 ${
-            readerInCenter && contextRailTab === 'chat'
-              ? 'flex flex-col overflow-hidden'
-              : contextRailTab === 'graph' || (contextRailTab === 'paper' && !!pinnedMaterialId && pinnedLooksLikePdf)
-                ? 'flex flex-col overflow-hidden p-3'
-                : 'overflow-y-auto p-3'
+            contextRailTab === 'chat' || contextRailTab === 'discussion' || contextRailTab === 'graph'
+              ? 'flex flex-col overflow-hidden p-3'
+              : 'overflow-y-auto p-3'
           }`}>
-            {readerInCenter && contextRailTab === 'chat' ? chatPanel : renderContextRailContent()}
+            {renderContextRailContent()}
           </div>
         </aside>
         </>

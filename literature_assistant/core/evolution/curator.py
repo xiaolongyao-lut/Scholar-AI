@@ -1,7 +1,7 @@
 """
-Background curator for the evolution candidate store (Slice 7).
+Background curator for the evolution candidate store.
 
-Plan §Slice 7 scope:
+Scope:
     - dedupe similar candidates              (sweep; report-only in v1)
     - detect conflicting candidates           (flag; no auto-resolve)
     - expire stale pending candidates         (PENDING -> EXPIRED, reversible
@@ -192,7 +192,7 @@ class EvolutionCurator:
     ) -> List[Dict[str, Any]]:
         """Group candidates by (workspace_id, project_id, memory_type) and
         flag groups that contain BOTH accepted/promoted AND rejected rows.
-        When the LLM judge is enabled (Opt §5), each flagged group is then
+        When the LLM judge is enabled, each flagged group is then
         sent to the judge for semantic-conflict scoring; the verdict is
         appended as `llm_judge` (report-only — curator still never
         auto-resolves)."""

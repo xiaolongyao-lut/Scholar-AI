@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Pure document-content extraction helpers (Phase 2)."""
+"""Pure document-content extraction helpers."""
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 
 __all__ = [
     "_extract_document_content",
+    "_extract_document_content_from_path",
     "_truncate_document_content",
 ]
 
@@ -130,6 +132,61 @@ def _extract_document_content(filename: str, raw: bytes) -> str:
             content = f"[未知格式文件: {filename}]"
 
     return content
+
+
+def _extract_document_content_from_path(filename: str, source_path: Path) -> str:
+    """Extract textual content from a bounded local source file.
+
+    Args:
+        filename: Display filename used to choose parser behavior.
+        source_path: Existing local file path containing the uploaded bytes.
+
+    Returns:
+        Extracted text or the same user-facing parser placeholder strings used
+        by the byte-based compatibility helper.
+
+    Raises:
+        ValueError: If ``source_path`` is not an existing file.
+    """
+
+    if not isinstance(source_path, Path):
+        raise TypeError("source_path must be a pathlib.Path")
+    if not source_path.is_file():
+        raise ValueError(f"source_path is not a file: {source_path}")
+
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext == "pdf":
+        try:
+            try:
+                import pymupdf  # PyMuPDF (fitz)
+                doc = pymupdf.open(str(source_path))
+                try:
+                    pages = [page.get_text() for page in doc]
+                finally:
+                    doc.close()
+                return "\n\n".join(pages)
+            except ImportError:
+                try:
+                    from PyPDF2 import PdfReader
+                    with source_path.open("rb") as fh:
+                        reader = PdfReader(fh)
+                        pages = [page.extract_text() or "" for page in reader.pages]
+                    return "\n\n".join(pages)
+                except ImportError:
+                    return f"[PDF 文件: {filename}，需安装 pymupdf 或 PyPDF2 才能提取文本]"
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            return f"[PDF 解析失败: {exc}]"
+    if ext == "docx":
+        try:
+            from docx import Document as DocxDocument
+            doc = DocxDocument(str(source_path))
+            return "\n".join(para.text for para in doc.paragraphs if para.text.strip())
+        except ImportError:
+            return f"[DOCX 文件: {filename}，需安装 python-docx 才能提取文本]"
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            return f"[DOCX 解析失败: {exc}]"
+
+    return _extract_document_content(filename, source_path.read_bytes())
 
 
 def _truncate_document_content(content: str) -> str:

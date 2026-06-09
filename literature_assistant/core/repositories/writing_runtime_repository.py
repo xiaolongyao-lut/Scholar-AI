@@ -7,6 +7,7 @@ from collections import defaultdict
 import json
 import os
 from pathlib import Path
+import sqlite3
 from typing import Any, Mapping
 
 from db import (
@@ -80,6 +81,7 @@ class WritingRuntimeRepository:
                     session_id TEXT NOT NULL,
                     event_type TEXT NOT NULL,
                     timestamp TEXT NOT NULL,
+                    sequence INTEGER NOT NULL DEFAULT 0,
                     data TEXT NOT NULL DEFAULT '{}',
                     metadata TEXT NOT NULL DEFAULT '{}',
                     FOREIGN KEY(job_id) REFERENCES jobs(job_id) ON DELETE CASCADE,
@@ -87,6 +89,7 @@ class WritingRuntimeRepository:
                 )
                 """
             )
+            self._ensure_events_sequence_column(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS artifacts (
@@ -147,6 +150,7 @@ class WritingRuntimeRepository:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(session_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_events_job_id ON events(job_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_events_job_sequence ON events(job_id, sequence)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_job_id ON artifacts(job_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_job_id ON approvals(job_id)")
@@ -155,6 +159,16 @@ class WritingRuntimeRepository:
             conn.commit()
         finally:
             conn.close()
+
+    @staticmethod
+    def _ensure_events_sequence_column(conn: sqlite3.Connection) -> None:
+        """Add event sequence storage for repositories created before S9."""
+        columns = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(events)").fetchall()
+        }
+        if "sequence" not in columns:
+            conn.execute("ALTER TABLE events ADD COLUMN sequence INTEGER NOT NULL DEFAULT 0")
 
     def has_data(self) -> bool:
         """Return True when the repository already contains runtime rows."""
@@ -258,11 +272,16 @@ class WritingRuntimeRepository:
                 ],
             )
 
-            event_rows: list[tuple[str, str, str, str, str, str, str]] = []
+            event_rows: list[tuple[str, str, str, str, str, int, str, str]] = []
             for _, event_list in events.items():
                 if not isinstance(event_list, list):
                     raise TypeError("events entries must be lists")
                 for event_payload in event_list:
+                    raw_sequence = event_payload.get("sequence", 0)
+                    try:
+                        event_sequence = int(raw_sequence)
+                    except (TypeError, ValueError):
+                        event_sequence = 0
                     event_rows.append(
                         (
                             str(event_payload["event_id"]),
@@ -270,6 +289,7 @@ class WritingRuntimeRepository:
                             str(event_payload["session_id"]),
                             str(event_payload.get("event_type")),
                             str(event_payload.get("timestamp")),
+                            event_sequence if event_sequence > 0 else 0,
                             json_dumps(event_payload.get("data") or {}),
                             json_dumps(event_payload.get("metadata") or {}),
                         )
@@ -277,8 +297,8 @@ class WritingRuntimeRepository:
             conn.executemany(
                 """
                 INSERT INTO events (
-                    event_id, job_id, session_id, event_type, timestamp, data, metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    event_id, job_id, session_id, event_type, timestamp, sequence, data, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 event_rows,
             )
@@ -410,7 +430,7 @@ class WritingRuntimeRepository:
             }
 
             events: dict[str, list[dict[str, Any]]] = defaultdict(list)
-            for row in conn.execute("SELECT * FROM events ORDER BY timestamp ASC, event_id ASC"):
+            for row in conn.execute("SELECT * FROM events ORDER BY session_id ASC, job_id ASC, sequence ASC, timestamp ASC, event_id ASC"):
                 events[str(row["session_id"])].append(
                     {
                         "event_id": row["event_id"],
@@ -418,6 +438,7 @@ class WritingRuntimeRepository:
                         "session_id": row["session_id"],
                         "event_type": row["event_type"],
                         "timestamp": row["timestamp"],
+                        "sequence": row["sequence"],
                         "data": json_loads(row["data"], default={}),
                         "metadata": json_loads(row["metadata"], default={}),
                     }
@@ -485,6 +506,39 @@ class WritingRuntimeRepository:
             }
         finally:
             conn.close()
+
+    def delete_session(self, session_id: str) -> bool:
+        """Delete one runtime session and its persisted transcript.
+
+        Args:
+            session_id: Existing session identifier.
+
+        Returns:
+            True when a row was deleted; False when the id was absent.
+
+        Raises:
+            ValueError: If ``session_id`` is blank.
+        """
+        normalized = str(session_id or "").strip()
+        if not normalized:
+            raise ValueError("session_id must not be empty")
+        conn = open_sqlite_connection(self.db_path)
+        try:
+            cursor = conn.execute("DELETE FROM sessions WHERE session_id = ?", (normalized,))
+            deleted = cursor.rowcount > 0
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        if deleted:
+            transcript_path = self._transcript_path(normalized)
+            try:
+                transcript_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return deleted
 
     def _transcript_path(self, session_id: str) -> Path:
         return self.transcripts_dir / f"{session_id}.jsonl"

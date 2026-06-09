@@ -1,10 +1,10 @@
-"""Resolve credential refs to raw env/headers at MCP spawn time.
+"""Resolve saved credential bindings at MCP spawn time.
 
 Reads RuntimeCredentialStore via ``get_internal`` (the only path that returns
-the raw api_key). Resolved values:
+credential material). Resolved values:
 
 - NEVER appear in logs.
-- NEVER appear in audit records (the audit layer logs the credential_id).
+- NEVER appear in audit records.
 - NEVER appear in public API responses.
 - Are merged into the subprocess env / HTTP headers in-process and then
   released by normal Python GC once the spawn / request completes.
@@ -16,9 +16,6 @@ Failure cases (all raised as ``CredentialRefError`` with a stable ``code``):
 
 Caller (``mcp_runtime.client_manager``) bubbles these up as
 ``McpServerLaunchError`` so the probe / call surface stays unified.
-
-Per plan 2026-05-20 §Locked Revisions M3 (single source of truth = env_refs
-in MCP config) and §B3 (resolver runs immediately before process start).
 """
 
 from __future__ import annotations
@@ -43,7 +40,7 @@ class CredentialRefError(RuntimeError):
 
 
 class McpCredentialEnvResolver:
-    """Resolve env_refs / header_refs against a RuntimeCredentialStore.
+    """Resolve configured credential references against a RuntimeCredentialStore.
 
     The resolver is stateless aside from the store reference; one instance
     is safe to reuse across many spawns. Tests should inject a tmp-path
@@ -66,10 +63,8 @@ class McpCredentialEnvResolver:
     ) -> dict[str, str]:
         """Return the effective env dict for a stdio subprocess.
 
-        Merge semantics: refs override explicit on key conflict. Rationale:
-        explicit env is non-secret config (e.g. ``DEBUG=1``); refs carry
-        secrets and must win if the operator mistakenly puts a placeholder
-        of the same name in ``env``.
+        Merge semantics: credential bindings override explicit config on
+        key conflict so a placeholder cannot shadow saved credential material.
         """
         if not env_refs:
             return dict(explicit_env)
@@ -108,12 +103,12 @@ class McpCredentialEnvResolver:
         except CredentialNotFoundError as exc:
             raise CredentialRefError(
                 "credential_not_found",
-                f"{target} -> {credential_id!r}: credential not found",
+                f"{target}: credential not found",
             ) from exc
         if not cred.enabled:
             raise CredentialRefError(
                 "credential_disabled",
-                f"{target} -> {credential_id!r}: credential is disabled",
+                f"{target}: credential is disabled",
             )
         return cred
 

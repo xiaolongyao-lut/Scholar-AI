@@ -3,10 +3,7 @@
  *
  * Covers `/runtime/sessions`, `/runtime/session/current`, `/runtime/session/{id}/...`
  * from `routers/runtime_router.py`. Kept separate from `writingBackend.ts` so the
- * conversation-persistence scope stays independently testable / revertable
- * (see plan §S-3.2 and §6.1 rollback lever).
- *
- * Plan: docs/superpowers/plans/2026-04-20-conversation-persistence-mvp.md §S-3
+ * conversation-persistence scope stays independently testable / revertable.
  */
 
 import axios, { AxiosInstance } from "axios";
@@ -71,6 +68,17 @@ export class SessionApiService {
     return response.data;
   }
 
+  /** Delete a persisted session and refresh callers from the next list read. */
+  async deleteSession(sessionId: string): Promise<void> {
+    const normalized = sessionId.trim();
+    if (!normalized) {
+      throw new Error("session_id must not be empty");
+    }
+    await this.client.delete(
+      `/runtime/session/${encodeURIComponent(normalized)}`,
+    );
+  }
+
   /** Resume a persisted session and return its current transcript head. */
   async resumeSession(sessionId: string): Promise<ResumeSessionResult> {
     const response = await this.client.post<ResumeSessionResult>(
@@ -102,8 +110,7 @@ export class SessionApiService {
   /**
    * Rewind a session back to a checkpoint.
    * When `request.mode === 'with_files'`, the backend also creates a
-   * `.rollback_snapshots/rewind-<ts>/` directory before touching workspace
-   * files — see plan §S-5 safety gate.
+   * `.rollback_snapshots/rewind-<ts>/` directory before touching workspace files.
    */
   async rewindSession(
     sessionId: string,

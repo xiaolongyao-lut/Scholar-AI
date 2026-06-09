@@ -1,4 +1,4 @@
-"""Metrics provenance validator (plan v2 §13.1d.3).
+"""Metrics provenance validator.
 
 When eval scripts write ``.metrics.json`` files, the filename frequently
 encodes the rerank model slug (e.g. ``canary30-a2-gte-rerank-v2-...metrics.json``).

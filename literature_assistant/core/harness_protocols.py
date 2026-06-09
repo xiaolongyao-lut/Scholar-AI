@@ -30,6 +30,10 @@ class JobKind(str, Enum):
     PIPELINE_RUN = "pipeline_run"        # Full document pipeline
     APPROVAL = "approval"                # Human review/approval  gate
     ARTIFACT_EXPORT = "artifact_export"  # Output formatting/export
+    SMART_READ = "smart_read"            # Long-running smart-read AI answer
+    DISCUSSION = "discussion"            # Multi-agent discussion run
+    AI_REVIEW = "ai_review"              # AI manuscript review
+    FIGURE_LOAD = "figure_load"          # Backend figure/table asset loading
 
 
 class JobStatus(str, Enum):
@@ -248,6 +252,7 @@ class WritingEvent:
     session_id: str
     event_type: EventType
     timestamp: str  # ISO 8601
+    sequence: int = 0
     data: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -258,14 +263,18 @@ class WritingEvent:
         event_type: EventType,
         data: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        sequence: int = 0,
     ) -> WritingEvent:
         """Factory method to create a new event."""
+        if sequence < 0:
+            raise ValueError("sequence must be non-negative")
         return WritingEvent(
             event_id=f"event_{uuid4().hex[:16]}",
             job_id=job_id,
             session_id=session_id,
             event_type=event_type,
             timestamp=utc_now_iso_z(),
+            sequence=sequence,
             data=data or {},
             metadata=metadata or {},
         )
@@ -280,6 +289,7 @@ class WritingEvent:
             "session_id": self.session_id,
             "event_type": self.event_type.value,
             "timestamp": self.timestamp,
+            "sequence": self.sequence,
             "data": data_copy,
             "metadata": metadata_copy,
         }

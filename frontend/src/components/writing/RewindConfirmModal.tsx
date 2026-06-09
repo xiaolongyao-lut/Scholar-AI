@@ -1,12 +1,5 @@
 /**
- * RewindConfirmModal — SPEC-SESSION-005 safety gate.
- *
- * Shows:
- *   1. Target checkpoint id + index
- *   2. Warning that `with_files` mode will auto-create `.rollback_snapshots/rewind-<ts>/`
- *   3. Explanation that later turns are archived (not deleted)
- *
- * Plan: docs/superpowers/plans/2026-04-20-conversation-persistence-mvp.md §S-5
+ * RewindConfirmModal — safety gate for applying a prior conversation checkpoint.
  */
 
 import React, { useState } from "react";
@@ -66,15 +59,7 @@ export function RewindConfirmModal({
                     确认回退到检查点
                   </h3>
                   <p className="mt-1 font-body text-[11px] text-foreground/60">
-                    即将回退到 checkpoint{" "}
-                    <code className="px-1 bg-surface-high rounded text-[10px]">
-                      {checkpoint.checkpoint_id.slice(0, 12)}
-                    </code>
-                    （event{" "}
-                    <code className="px-1 bg-surface-high rounded text-[10px]">
-                      {checkpoint.event_id.slice(0, 12)}
-                    </code>
-                    ）
+                    即将把会话恢复到所选检查点。检查点之后的对话不会删除，会被归档以便后续分叉找回。
                   </p>
                 </div>
               </div>
@@ -119,8 +104,7 @@ export function RewindConfirmModal({
                     </span>
                   </div>
                   <p className="mt-1 font-body text-[11px] text-foreground/60 leading-relaxed">
-                    只把对话 head 指针回退，不碰工作区文件。稍后 turns 会标记为
-                    archived，不会被删除。
+                    只恢复对话内容，不改动工作区文件。检查点之后的记录会标记为已归档，不会被删除。
                   </p>
                 </div>
               </label>
@@ -150,11 +134,7 @@ export function RewindConfirmModal({
                     </span>
                   </div>
                   <p className="mt-1 font-body text-[11px] text-foreground/60 leading-relaxed">
-                    额外按 checkpoint 时点恢复工作区产物文件。后端会先创建
-                    <code className="mx-1 px-1 bg-surface-high rounded text-[10px]">
-                      .rollback_snapshots/rewind-&lt;ts&gt;/
-                    </code>
-                    快照，不会丢失当前状态；但请确认无未同步的草稿。
+                    额外按检查点恢复工作区产物文件。系统会先创建本地回退快照，不会直接丢失当前状态；但请确认无未同步的草稿。
                   </p>
                 </div>
               </label>
@@ -164,8 +144,8 @@ export function RewindConfirmModal({
             <div className="rounded-sm border border-outline-variant/60 bg-surface-low px-3 py-2">
               <p className="font-label text-[10px] text-foreground/50 leading-relaxed">
                 此操作 <strong className="text-foreground/70">不可逆</strong>
-                （除非再次 fork 或手动 resume archived branch）。
-                所有"被丢弃"的 turn 仍在 transcript JSONL 中，可用 fork 找回。
+                （除非再次创建分叉或从归档记录恢复）。
+                所有被回退覆盖的对话记录仍保留在本机会话库中，可通过分叉找回。
               </p>
             </div>
 

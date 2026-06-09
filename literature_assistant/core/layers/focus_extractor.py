@@ -50,7 +50,7 @@ class FocusExtractor:
         初始化提取器
         
         Args:
-            api_key: 聊天模型 API key
+            api_key: 聊天模型访问凭证
             base_url: API 基础 URL
             model: 使用的大模型名称
             timeout: HTTP 超时时间（秒）
@@ -362,7 +362,7 @@ async def main():
     
     args = parser.parse_args()
     
-    # 获取 API key
+    # 获取访问凭证
     api_key = os.environ.get('ARK_API_KEY') or os.environ.get('SILICONFLOW_API_KEY')
     if not api_key:
         logger.error("环境变量 ARK_API_KEY 未设置（兼容旧的 SILICONFLOW_API_KEY）")

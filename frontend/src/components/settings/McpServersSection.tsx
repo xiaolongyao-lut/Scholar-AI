@@ -17,6 +17,7 @@ import {
   type McpServerConfigPublic,
   type McpTestResponse,
   type McpToolDescriptor,
+  type McpToolCapability,
   type McpTransport,
   createMcpServer,
   deleteMcpServer,
@@ -26,6 +27,7 @@ import {
   updateMcpServer,
 } from '@/services/mcpApi';
 import { McpAuditPanel } from '@/components/settings/McpAuditPanel';
+import { formatMcpActionError, MCP_TRANSPORT_LABELS, sanitizeMcpDisplayLabel, sanitizeMcpVisibleText } from './mcpDisplay';
 
 // ---------------------------------------------------------------------------
 // UI types
@@ -71,15 +73,14 @@ const APPROVAL_NEXT: Record<McpApprovalState, McpApprovalState | null> = {
   enabled_for_session: null,
 };
 
-function toMessage(exc: unknown): string {
-  if (exc && typeof exc === 'object' && 'response' in exc) {
-    const resp = (exc as { response?: { data?: { detail?: string }; status?: number } }).response;
-    if (resp?.data?.detail) return String(resp.data.detail);
-    if (resp?.status) return `HTTP ${resp.status}`;
-  }
-  if (exc instanceof Error) return exc.message;
-  return String(exc);
-}
+const TOOL_CAPABILITY_LABELS: Record<McpToolCapability, string> = {
+  read: '读取',
+  write: '写入',
+  network: '联网',
+  filesystem: '文件',
+  destructive: '高风险',
+  unknown: '未分类',
+};
 
 function parseLinesToMap(raw: string, sep: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -97,6 +98,15 @@ function parseLinesToMap(raw: string, sep: string): Record<string, string> {
 
 function parseArgs(raw: string): string[] {
   return raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+}
+
+function formatProbeResult(result: McpTestResponse): string {
+  if (result.status === 'ok') {
+    return `可用 · ${result.tool_count ?? 0} 个工具`;
+  }
+  const reason = sanitizeMcpVisibleText(result.reason, '测试没有通过，请检查服务配置。');
+  if (result.status === 'skipped') return reason;
+  return reason;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +131,7 @@ export function McpServersSection(): JSX.Element {
       const data = await listMcpServers();
       setList(data);
     } catch (exc) {
-      setError(toMessage(exc));
+      setError(formatMcpActionError(exc, '加载 MCP 服务器失败，请稍后重试。'));
     } finally {
       setLoading(false);
     }
@@ -134,7 +144,7 @@ export function McpServersSection(): JSX.Element {
   const handleCreate = async () => {
     setError(null);
     if (!form.name || !form.server_slug) {
-      setError('name and server_slug are required');
+      setError('请填写名称和本地注册名');
       return;
     }
     try {
@@ -162,7 +172,7 @@ export function McpServersSection(): JSX.Element {
       setForm(EMPTY_FORM);
       await refresh();
     } catch (exc) {
-      setError(toMessage(exc));
+      setError(formatMcpActionError(exc, '新增 MCP 服务器失败，请检查填写内容。'));
     }
   };
 
@@ -175,7 +185,7 @@ export function McpServersSection(): JSX.Element {
       await updateMcpServer(server.server_id, { approval_state: next });
       await refresh();
     } catch (exc) {
-      setError(toMessage(exc));
+      setError(formatMcpActionError(exc, '更新授权状态失败，请稍后重试。'));
     } finally {
       setBusyId(null);
     }
@@ -183,10 +193,11 @@ export function McpServersSection(): JSX.Element {
 
   const handleRevokeApproval = async (server: McpServerConfigPublic) => {
     if (server.approval_state === 'registered') return;
+    const serverLabel = sanitizeMcpDisplayLabel(server.name, 'MCP 服务');
     const confirmed = window.confirm(
-      `撤销 ${server.name} 的会话授权？\n\n` +
-      `状态将从「${APPROVAL_LABELS[server.approval_state]}」回到「Registered」。` +
-      `\n该 server 的工具调用会被拦截，直到再次 Advance。`
+      `撤销 ${serverLabel} 的会话授权？\n\n` +
+      `状态将从「${APPROVAL_LABELS[server.approval_state]}」回到「已登记，未启用」。` +
+      `\n该服务的工具调用会被拦截，直到再次完成授权。`
     );
     if (!confirmed) return;
     setBusyId(server.server_id);
@@ -195,7 +206,7 @@ export function McpServersSection(): JSX.Element {
       await updateMcpServer(server.server_id, { approval_state: 'registered' });
       await refresh();
     } catch (exc) {
-      setError(toMessage(exc));
+      setError(formatMcpActionError(exc, '撤销授权失败，请稍后重试。'));
     } finally {
       setBusyId(null);
     }
@@ -212,7 +223,7 @@ export function McpServersSection(): JSX.Element {
       }
       await refresh();
     } catch (exc) {
-      setError(toMessage(exc));
+      setError(formatMcpActionError(exc, '测试 MCP 服务器失败，请检查服务是否可用。'));
     } finally {
       setBusyId(null);
     }
@@ -225,14 +236,15 @@ export function McpServersSection(): JSX.Element {
       setToolsByServer(prev => ({ ...prev, [server.server_id]: tools }));
       setExpandedId(server.server_id);
     } catch (exc) {
-      setError(toMessage(exc));
+      setError(formatMcpActionError(exc, '读取工具目录失败，请稍后重试。'));
     } finally {
       setBusyId(null);
     }
   };
 
   const handleDelete = async (server: McpServerConfigPublic) => {
-    if (!confirm(`Delete MCP server "${server.name}" (${server.server_slug})?`)) {
+    const serverLabel = sanitizeMcpDisplayLabel(server.name, 'MCP 服务');
+    if (!confirm(`删除 MCP 服务器「${serverLabel}」？`)) {
       return;
     }
     setBusyId(server.server_id);
@@ -241,7 +253,7 @@ export function McpServersSection(): JSX.Element {
       await deleteMcpServer(server.server_id);
       await refresh();
     } catch (exc) {
-      setError(toMessage(exc));
+      setError(formatMcpActionError(exc, '删除 MCP 服务器失败，请稍后重试。'));
     } finally {
       setBusyId(null);
     }
@@ -253,7 +265,7 @@ export function McpServersSection(): JSX.Element {
         <div>
           <h3 className="font-display text-base font-semibold text-foreground">MCP 服务器</h3>
           <p className="mt-1 font-label text-[11px] leading-relaxed text-foreground/55">
-            管理本地 Model Context Protocol 服务。只有「本次会话已授权」的服务才会被对话调用；本地进程运行，没有完整沙箱。
+            管理本地 MCP 服务。只有「本次会话已授权」的服务才会被对话调用；本地进程运行，没有完整沙箱。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -295,7 +307,7 @@ export function McpServersSection(): JSX.Element {
       <div className="space-y-2">
         {list.length === 0 ? (
           <div className="p-4 rounded-md border border-dashed border-outline-variant text-foreground/40 font-label text-xs text-center">
-            No MCP servers configured.
+            还没有配置 MCP 服务器。
           </div>
         ) : list.map(server => {
           const result = testResults[server.server_id];
@@ -303,35 +315,34 @@ export function McpServersSection(): JSX.Element {
           const isBusy = busyId === server.server_id;
           const next = APPROVAL_NEXT[server.approval_state];
           const isUntrusted = server.provenance === 'runtime_untrusted_custom';
+          const serverLabel = sanitizeMcpDisplayLabel(server.name, 'MCP 服务');
           return (
             <div key={server.server_id} className="p-3 rounded-md border border-outline-variant bg-surface-low">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-sm text-foreground truncate">{server.name}</span>
-                    <span className="font-mono text-[10px] text-foreground/40 px-1.5 py-0.5 rounded bg-surface-high">
-                      {server.server_slug}
+                    <span className="font-medium text-sm text-foreground truncate">{serverLabel}</span>
+                    <span className="text-[10px] text-foreground/45 px-1.5 py-0.5 rounded bg-surface-high">
+                      本地服务器
                     </span>
-                    <span className="font-mono text-[10px] text-foreground/40 px-1.5 py-0.5 rounded bg-surface-high">
-                      {server.transport}
+                    <span className="font-label text-[10px] text-foreground/45 px-1.5 py-0.5 rounded bg-surface-high">
+                      {MCP_TRANSPORT_LABELS[server.transport]}
                     </span>
                     <ApprovalBadge state={server.approval_state} />
                     {isUntrusted ? (
-                      <span title="provenance: runtime_untrusted_custom">
+                      <span title="手动添加的服务，请确认来源可信">
                         <ShieldAlert size={12} className="text-amber-500" />
                       </span>
                     ) : null}
                   </div>
-                  <div className="font-mono text-[10px] text-foreground/40 break-all">
+                  <div className="font-label text-[10px] text-foreground/45">
                     {server.transport === 'stdio'
-                      ? `${server.stdio?.command} ${(server.stdio?.args ?? []).join(' ')}`
-                      : server.http?.url}
+                      ? `本地进程 · ${(server.stdio?.args ?? []).length + 1} 项启动配置`
+                      : '网络服务 · 已填写服务地址'}
                   </div>
                   {result ? (
                     <div className={`mt-1 font-label text-[11px] ${result.status === 'ok' ? 'text-emerald-500' : 'text-amber-500'}`}>
-                      {result.status === 'ok'
-                        ? `OK · ${result.tool_count ?? 0} tools · fingerprint ${result.fingerprint ?? ''}`
-                        : `${result.status}${result.reason ? ` — ${result.reason}` : ''}`}
+                      {formatProbeResult(result)}
                     </div>
                   ) : null}
                 </div>
@@ -340,7 +351,7 @@ export function McpServersSection(): JSX.Element {
                     type="button"
                     onClick={() => void handleTest(server)}
                     disabled={isBusy}
-                    title="Probe (list_tools)"
+                    title="测试服务是否可用"
                     className="px-2 py-1.5 rounded text-foreground/60 hover:text-foreground hover:bg-surface-high transition-colors disabled:opacity-50"
                   >
                     {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
@@ -350,7 +361,7 @@ export function McpServersSection(): JSX.Element {
                       type="button"
                       onClick={() => void handleAdvanceApproval(server)}
                       disabled={isBusy}
-                      title={`Advance → ${APPROVAL_LABELS[next]}`}
+                      title={`推进到：${APPROVAL_LABELS[next]}`}
                       className="flex items-center gap-1 px-2 py-1.5 rounded text-emerald-600 hover:bg-emerald-500/10 transition-colors disabled:opacity-50 font-label text-[10px] dark:text-emerald-300 dark:hover:bg-emerald-500/15"
                     >
                       <Check size={12} /> 推进
@@ -391,12 +402,16 @@ export function McpServersSection(): JSX.Element {
               {expandedId === server.server_id && tools ? (
                 <div className="mt-3 pt-3 border-t border-outline-variant space-y-1">
                   {tools.length === 0 ? (
-                    <div className="text-foreground/40 font-label text-[11px]">No tools advertised.</div>
+                    <div className="text-foreground/40 font-label text-[11px]">未发现工具。</div>
                   ) : tools.map(t => (
                     <div key={t.name} className="flex items-baseline gap-2">
-                      <span className="font-mono text-[11px] text-foreground">{t.name}</span>
-                      <span className="font-mono text-[10px] text-foreground/40">[{t.capability}]</span>
-                      <span className="font-label text-[11px] text-foreground/60 truncate">{t.description}</span>
+                      <span className="font-label text-[11px] text-foreground">{sanitizeMcpDisplayLabel(t.name, 'MCP 工具')}</span>
+                      <span className="text-[10px] text-foreground/40">
+                        {TOOL_CAPABILITY_LABELS[t.capability] ?? '未分类'}
+                      </span>
+                      <span className="font-label text-[11px] text-foreground/60 truncate">
+                        {sanitizeMcpVisibleText(t.description, '该工具用于服务提供的扩展操作。')}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -436,7 +451,7 @@ function CreateForm({ form, setForm, onCancel, onSubmit }: CreateFormProps): JSX
   return (
     <div className="p-3 rounded-md border border-outline-variant bg-surface-low space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="font-display text-sm font-semibold text-foreground">Add MCP server</h4>
+        <h4 className="font-display text-sm font-semibold text-foreground">新增 MCP 服务器</h4>
         <button
           type="button"
           onClick={onCancel}
@@ -447,12 +462,12 @@ function CreateForm({ form, setForm, onCancel, onSubmit }: CreateFormProps): JSX
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <Input label="Name" value={form.name} onChange={v => setForm(p => ({ ...p, name: v }))} />
-        <Input label="server_slug (URL-safe)" value={form.server_slug} onChange={v => setForm(p => ({ ...p, server_slug: v }))} mono />
+        <Input label="名称" value={form.name} onChange={v => setForm(p => ({ ...p, name: v }))} />
+        <Input label="本地注册名" value={form.server_slug} onChange={v => setForm(p => ({ ...p, server_slug: v }))} />
       </div>
 
       <div>
-        <label className="font-label text-[10px] text-foreground/60">Transport</label>
+        <label className="font-label text-[10px] text-foreground/60">连接方式</label>
         <div className="flex gap-2 mt-1">
           {(['stdio', 'streamable_http'] as McpTransport[]).map(t => (
             <button
@@ -461,7 +476,7 @@ function CreateForm({ form, setForm, onCancel, onSubmit }: CreateFormProps): JSX
               onClick={() => setForm(p => ({ ...p, transport: t }))}
               className={`px-3 py-1.5 rounded font-mono text-[11px] ${form.transport === t ? 'bg-primary/10 text-primary' : 'bg-surface-high text-foreground/60'}`}
             >
-              {t}
+              {t === 'stdio' ? '本地进程' : '网络服务'}
             </button>
           ))}
         </div>
@@ -469,21 +484,21 @@ function CreateForm({ form, setForm, onCancel, onSubmit }: CreateFormProps): JSX
 
       {isStdio ? (
         <>
-          <Input label="Command" value={form.command} onChange={v => setForm(p => ({ ...p, command: v }))} mono />
-          <TextArea label="Args (one per line)" value={form.args} rows={3} onChange={v => setForm(p => ({ ...p, args: v }))} mono />
-          <TextArea label="Env (KEY=value per line)" value={form.env} rows={3} onChange={v => setForm(p => ({ ...p, env: v }))} mono />
+          <Input label="启动命令" value={form.command} onChange={v => setForm(p => ({ ...p, command: v }))} mono />
+          <TextArea label="启动参数（每行一项）" value={form.args} rows={3} onChange={v => setForm(p => ({ ...p, args: v }))} mono />
+          <TextArea label="普通配置（每行一项）" value={form.env} rows={3} onChange={v => setForm(p => ({ ...p, env: v }))} />
         </>
       ) : (
         <>
-          <Input label="URL" value={form.url} onChange={v => setForm(p => ({ ...p, url: v }))} mono />
-          <TextArea label="Headers (Header: value per line)" value={form.headers} rows={3} onChange={v => setForm(p => ({ ...p, headers: v }))} mono />
+          <Input label="服务地址" value={form.url} onChange={v => setForm(p => ({ ...p, url: v }))} mono />
+          <TextArea label="网络请求配置（名称: 内容，每行一项）" value={form.headers} rows={3} onChange={v => setForm(p => ({ ...p, headers: v }))} mono />
           <p className="font-label text-[10px] text-amber-500">
-            Streamable HTTP execution is gated behind LITERATURE_ENABLE_MCP_STREAMABLE_HTTP=1.
+            该传输方式需要先在本地运行配置中开启。
           </p>
         </>
       )}
 
-      <TextArea label="Notes" value={form.notes} rows={2} onChange={v => setForm(p => ({ ...p, notes: v }))} />
+      <TextArea label="备注" value={form.notes} rows={2} onChange={v => setForm(p => ({ ...p, notes: v }))} />
 
       <div className="flex justify-end gap-2 pt-1">
         <button
@@ -491,14 +506,14 @@ function CreateForm({ form, setForm, onCancel, onSubmit }: CreateFormProps): JSX
           onClick={onCancel}
           className="px-3 py-1.5 rounded font-label text-xs text-foreground/60 hover:bg-surface-high"
         >
-          Cancel
+          取消
         </button>
         <button
           type="button"
           onClick={onSubmit}
           className="px-3 py-1.5 rounded bg-primary text-primary-foreground font-label text-xs font-medium hover:bg-primary/90"
         >
-          Create
+          创建
         </button>
       </div>
     </div>

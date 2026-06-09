@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { getWritingRuntimeClient } from '@/services/runtimeClient';
 import { useWriting, type JobTimelineState } from '@/contexts/WritingContext';
+import { formatWritingRuntimeError, sanitizeRuntimeVisibleText } from '@/components/writing/writingRuntimeDisplay';
 import type { JobStatus, JobStatusDetail, WritingEvent } from '@/types/runtime';
 
 type TerminalEventHandler = (payload: {
@@ -39,6 +40,8 @@ const TERMINAL_STATUSES = new Set<JobStatus>([
 ]);
 
 const MAX_EVENT_BATCH_SIZE = 100;
+const JOB_STATUS_ERROR_FALLBACK = '动作执行失败，请稍后重试。';
+const JOB_POLLING_ERROR_FALLBACK = '事件轮询失败，请稍后重试。';
 
 const normalizeJobStatus = (status: JobStatusDetail['status'] | null | undefined): JobStatus | null => {
   if (!status) {
@@ -47,6 +50,11 @@ const normalizeJobStatus = (status: JobStatusDetail['status'] | null | undefined
 
   const normalized = status as JobStatus;
   return JOB_STATUSES.has(normalized) ? normalized : null;
+};
+
+const readEventSequence = (event: WritingEvent): number | null => {
+  const sequence = Number(event.sequence);
+  return Number.isSafeInteger(sequence) && sequence > 0 ? sequence : null;
 };
 
 export function useJobEventPolling({
@@ -79,12 +87,14 @@ export function useJobEventPolling({
     const seenEventIds = new Set<string>();
     let cursorTimestamp: string | null = null;
     let cursorEventId: string | null = null;
+    let cursorSequence: number | null = null;
     let timeline: JobTimelineState = {
       jobId,
       sessionId,
       events: [],
       lastEventId: null,
       lastTimestamp: null,
+      lastSequence: null,
       status: null,
       errorMessage: null,
     };
@@ -139,8 +149,11 @@ export function useJobEventPolling({
         events: [...timeline.events, ...freshEvents],
         lastTimestamp: cursorTimestamp,
         lastEventId: cursorEventId,
+        lastSequence: cursorSequence,
         status: normalizedStatus,
-        errorMessage: statusDetail.error ?? null,
+        errorMessage: statusDetail.error
+          ? sanitizeRuntimeVisibleText(statusDetail.error, JOB_STATUS_ERROR_FALLBACK)
+          : null,
       };
       setActiveJobTimeline(timeline);
     };
@@ -152,14 +165,14 @@ export function useJobEventPolling({
 
       pollInFlight = true;
       try {
-        const [statusDetail, events] = await Promise.all([
-          runtimeClient.getJobStatus(jobId),
-          runtimeClient.getJobEvents(jobId, {
-            sinceTimestamp: cursorTimestamp,
-            afterEventId: cursorEventId,
-            limit: MAX_EVENT_BATCH_SIZE,
-          }),
-        ]);
+        const snapshot = await runtimeClient.getJobEventSnapshot(jobId, {
+          sinceTimestamp: cursorSequence === null ? cursorTimestamp : null,
+          afterEventId: cursorSequence === null ? cursorEventId : null,
+          afterSequence: cursorSequence,
+          limit: MAX_EVENT_BATCH_SIZE,
+        });
+        const statusDetail = snapshot.status;
+        const events = snapshot.events;
 
         const freshEvents = events.filter((event) => {
           if (seenEventIds.has(event.event_id)) {
@@ -174,6 +187,7 @@ export function useJobEventPolling({
           const latestEvent = freshEvents[freshEvents.length - 1];
           cursorTimestamp = latestEvent.timestamp;
           cursorEventId = latestEvent.event_id;
+          cursorSequence = readEventSequence(latestEvent) ?? cursorSequence;
         }
 
         commitTimeline(statusDetail, freshEvents);
@@ -200,7 +214,7 @@ export function useJobEventPolling({
       } catch (error) {
         timeline = {
           ...timeline,
-          errorMessage: error instanceof Error ? error.message : '事件轮询失败',
+          errorMessage: formatWritingRuntimeError(error, JOB_POLLING_ERROR_FALLBACK),
         };
         setActiveJobTimeline(timeline);
         increasePollInterval();

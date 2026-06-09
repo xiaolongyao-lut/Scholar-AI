@@ -13,7 +13,8 @@ import {
   UserCheck,
   FileText,
   Shield,
-  Code
+  Code,
+  Square,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
@@ -21,11 +22,17 @@ import { useWriting } from '@/contexts/WritingContext';
 import { WritingAction } from '@/types/writing';
 import type { ContinuationContext } from '@/types/writing';
 import { InspirationPanel } from './InspirationPanel';
+import {
+  describeRuntimeEventData,
+  formatRuntimeEventLabel,
+  formatRuntimeJobStatus,
+} from './writingRuntimeDisplay';
 
 interface AssistantDockProps {
   actions: WritingAction[];
   runningActionId: string | null;
   handleRunAction: (actionId: string) => void;
+  handleStopAction?: () => void;
   rightTab: 'assistant' | 'history' | 'inspire';
   setRightTab: (tab: 'assistant' | 'history' | 'inspire') => void;
   onContinueFromSpark?: (context: ContinuationContext) => void;
@@ -48,30 +55,13 @@ export function AssistantDock({
   actions,
   runningActionId,
   handleRunAction,
+  handleStopAction,
   rightTab,
   setRightTab,
   onContinueFromSpark,
 }: AssistantDockProps) {
   const { t } = useI18n();
   const { zenMode, activeJobTimeline } = useWriting();
-
-  const eventTypeLabels: Record<string, string> = {
-    job_created: t('writing.event.job_created'),
-    job_started: t('writing.event.job_started'),
-    job_progress: t('writing.event.job_progress'),
-    tool_requested: t('writing.event.tool_requested'),
-    tool_blocked: t('writing.event.tool_blocked'),
-    approval_required: t('writing.event.approval_required'),
-    approval_granted: t('writing.event.approval_granted'),
-    approval_rejected: t('writing.event.approval_rejected'),
-    artifact_created: t('writing.event.artifact_created'),
-    artifact_updated: t('writing.event.artifact_updated'),
-    job_paused: t('writing.event.job_paused'),
-    job_resumed: t('writing.event.job_resumed'),
-    job_completed: t('writing.event.job_completed'),
-    job_failed: t('writing.event.job_failed'),
-    job_cancelled: t('writing.event.job_cancelled'),
-  };
 
   const formatEventTime = (timestamp: string) => {
     try {
@@ -83,30 +73,6 @@ export function AssistantDock({
     } catch {
       return timestamp;
     }
-  };
-
-  const describeEventData = (data: Record<string, unknown> | undefined) => {
-    if (!data) {
-      return t('writing.event.no_data');
-    }
-
-    const preferredKeys = ['message', 'detail', 'error', 'output_text', 'text', 'reason'];
-    for (const key of preferredKeys) {
-      const value = data[key];
-      if (typeof value === 'string' && value.trim()) {
-        return value;
-      }
-    }
-
-    const entries = Object.entries(data).filter(([, value]) => value !== undefined && value !== null);
-    if (entries.length === 0) {
-      return t('writing.event.no_data');
-    }
-
-    return entries
-      .slice(0, 2)
-      .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
-      .join(' · ');
   };
 
   const timelineEvents = activeJobTimeline?.events ?? [];
@@ -167,33 +133,36 @@ export function AssistantDock({
                   {t('writing.' + cat)}
                 </h4>
                 <div className="grid gap-2">
-                   {actions.filter(a => a.category === cat).map(action => (
-                     <button
-                       key={action.id}
-                       onClick={() => handleRunAction(action.id)}
-                       disabled={runningActionId !== null}
-                       aria-label={action.nameZh}
-                       className={cn(
-                         "group w-full p-4 rounded-sm text-left transition-all border border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed",
-                         runningActionId === action.id 
-                          ? "bg-primary/5 border-primary/20 shadow-inner" 
-                          : "bg-surface-low hover:bg-surface-lowest hover:border-primary/20 hover:shadow-md active:scale-[0.98]"
-                       )}
-                     >
-                       <div className="flex items-center gap-4">
-                         <div className={cn(
-                           "p-2 rounded-sm transition-all", 
-                           runningActionId === action.id ? "bg-primary text-primary-foreground animate-pulse" : "bg-surface-lowest text-primary"
-                         )}>
-                           {runningActionId === action.id ? <RefreshCw size={18} className="animate-spin" /> : actionIconMap[action.icon] || <Sparkles size={18} />}
+                   {actions.filter(a => a.category === cat).map(action => {
+                     const runningThisAction = runningActionId === action.id;
+                     return (
+                       <button
+                         key={action.id}
+                         onClick={() => runningThisAction && handleStopAction ? handleStopAction() : handleRunAction(action.id)}
+                         disabled={runningActionId !== null && !runningThisAction}
+                         aria-label={runningThisAction ? '停止当前动作' : action.nameZh}
+                         className={cn(
+                           "group w-full p-4 rounded-sm text-left transition-all border border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed",
+                           runningThisAction
+                            ? "bg-red-50 border-red-200 text-red-700 shadow-inner dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300"
+                            : "bg-surface-low hover:bg-surface-lowest hover:border-primary/20 hover:shadow-md active:scale-[0.98]"
+                         )}
+                       >
+                         <div className="flex items-center gap-4">
+                           <div className={cn(
+                             "p-2 rounded-sm transition-all",
+                             runningThisAction ? "bg-red-600 text-white" : "bg-surface-lowest text-primary"
+                           )}>
+                             {runningThisAction ? <Square size={18} /> : actionIconMap[action.icon] || <Sparkles size={18} />}
+                           </div>
+                           <div className="flex-1 min-w-0">
+                             <p className="text-[11px] font-bold tracking-tight">{runningThisAction ? '停止当前动作' : action.nameZh}</p>
+                           </div>
+                           <ChevronRight size={14} className="text-foreground/20 group-hover:text-primary transition-colors" />
                          </div>
-                         <div className="flex-1 min-w-0">
-                           <p className="text-[11px] font-bold tracking-tight">{action.nameZh}</p>
-                         </div>
-                         <ChevronRight size={14} className="text-foreground/20 group-hover:text-primary transition-colors" />
-                       </div>
-                     </button>
-                   ))}
+                       </button>
+                     );
+                   })}
                 </div>
               </div>
             ))}
@@ -204,13 +173,13 @@ export function AssistantDock({
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                 <span className="text-[10px] font-label font-medium uppercase text-foreground/50">
-                  {activeJobTimeline ? 'Runtime Timeline' : 'History'}
+                  {activeJobTimeline ? '运行记录' : '历史记录'}
                 </span>
               </div>
               <p className="text-[11px] text-foreground line-clamp-2">
                 {activeJobTimeline
-                  ? `Job ${activeJobTimeline.jobId} · ${activeJobTimeline.status || 'pending'}`
-                  : '启动动作后，这里会显示 job_created、job_started、job_completed 等真实事件。'}
+                  ? `当前动作 · ${formatRuntimeJobStatus(activeJobTimeline.status, t)}`
+                  : '启动动作后，这里会显示实时运行记录和最终状态。'}
               </p>
               <div className="mt-3 flex items-center justify-between text-[8px] font-medium text-foreground/40 uppercase tracking-wider">
                 <span className="flex items-center gap-1">
@@ -241,18 +210,18 @@ export function AssistantDock({
                       index === timelineEvents.length - 1 ? 'bg-primary animate-pulse' : 'bg-foreground/30'
                     )} />
                     <span className="font-label text-[10px] font-medium uppercase text-foreground/50">
-                      {eventTypeLabels[event.event_type] || event.event_type}
+                      {formatRuntimeEventLabel(event.event_type, t)}
                     </span>
                   </div>
                   <p className="text-[11px] text-foreground line-clamp-2">
-                    {describeEventData(event.data as Record<string, unknown>)}
+                    {describeRuntimeEventData(event.data as Record<string, unknown>, t('writing.event.no_data'))}
                   </p>
                   <div className="mt-3 flex items-center justify-between text-[8px] font-medium text-foreground/40 uppercase tracking-wider">
                     <span className="flex items-center gap-1">
                       <Clock size={10} /> {formatEventTime(event.timestamp)}
                     </span>
                     <span className="group-hover:text-primary transition-colors flex items-center gap-1">
-                      {event.event_id.slice(-6)}
+                      详情
                       <ArrowRight size={8} />
                     </span>
                   </div>
@@ -260,7 +229,7 @@ export function AssistantDock({
               ))
             ) : (
               <div className="rounded-sm border border-dashed border-outline-variant bg-surface-low p-4 text-[11px] text-foreground/50 leading-6">
-                暂无事件。启动动作后，这里会实时刷新并显示最新 job 事件与终态。
+                暂无事件。启动动作后，这里会实时刷新并显示最新运行记录与终态。
               </div>
             )}
           </div>

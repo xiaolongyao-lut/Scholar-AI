@@ -1,15 +1,3 @@
-/**
- * Installed MCP servers view (S4c + S6 · live list + legacy env migration).
- *
- * Lightweight read-mostly view; full CRUD (manual edit / approval state
- * machine / tool catalog drill-down) stays in the legacy
- * McpServersSection embedded under the [高级] tab. Here we show the
- * essentials a normal user cares about after running the wizard:
- *   - name / slug / transport / approval state + bound env_refs
- *   - delete (which also triggers backend cleanup_install_dir)
- *   - refresh
- *   - per-server legacy raw-env detection + "迁移到凭证引用" launcher (S6)
- */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   KeyRound,
@@ -28,6 +16,7 @@ import {
 } from '@/services/mcpApi';
 import { fetchLegacyEnv } from '@/services/mcpLegacyEnvApi';
 import McpLegacyEnvMigrationModal from './McpLegacyEnvMigrationModal';
+import { formatMcpActionError, MCP_TRANSPORT_LABELS, sanitizeMcpDisplayLabel } from '../mcpDisplay';
 
 const APPROVAL_LABEL: Record<McpApprovalState, string> = {
   registered: '已登记',
@@ -61,7 +50,6 @@ export function McpInstalledServersView(): JSX.Element {
     try {
       const list = await listMcpServers();
       setServers(list);
-      // Probe each server's legacy env count in parallel; ignore individual failures.
       const counts: Record<string, number> = {};
       await Promise.all(
         list.map(async (s) => {
@@ -75,7 +63,7 @@ export function McpInstalledServersView(): JSX.Element {
       );
       setLegacyCount(counts);
     } catch (exc) {
-      setError(exc instanceof Error ? exc.message : String(exc));
+      setError(formatMcpActionError(exc, '加载 MCP 服务器列表失败，请稍后重试。'));
     } finally {
       setLoading(false);
     }
@@ -86,10 +74,11 @@ export function McpInstalledServersView(): JSX.Element {
   }, [refresh]);
 
   const handleDelete = async (server: McpServerConfigPublic) => {
+    const displayName = sanitizeMcpDisplayLabel(server.name, '当前服务器');
     if (
       !window.confirm(
-        `删除 MCP 服务器「${server.name}」(${server.server_slug})?\n` +
-          '后端会一并清理对应的 install_record 目录。',
+        `删除 MCP 服务器「${displayName}」？\n` +
+          '系统会一并清理对应的本地安装记录。',
       )
     ) {
       return;
@@ -99,7 +88,7 @@ export function McpInstalledServersView(): JSX.Element {
       await deleteMcpServer(server.server_id);
       await refresh();
     } catch (exc) {
-      setError(exc instanceof Error ? exc.message : String(exc));
+      setError(formatMcpActionError(exc, '删除 MCP 服务器失败，请稍后重试。'));
     } finally {
       setBusyId(null);
     }
@@ -110,7 +99,7 @@ export function McpInstalledServersView(): JSX.Element {
       <div className="flex items-start justify-between gap-2">
         <p className="font-label text-[11px] text-foreground/55 flex-1">
           通过「推荐」或「本地安装」注册的 MCP 服务器在此列出。
-          需要修改命令/参数或切换 approval 状态,请到「高级 / 手动添加」tab 的传统表单操作。
+          需要修改启动参数或切换授权状态，请到「高级 / 手动添加」页操作。
         </p>
         <button
           type="button"
@@ -147,6 +136,7 @@ export function McpInstalledServersView(): JSX.Element {
             const tone = APPROVAL_TONE[s.approval_state];
             const isBusy = busyId === s.server_id;
             const legacy = legacyCount[s.server_id] ?? 0;
+            const displayName = sanitizeMcpDisplayLabel(s.name, 'MCP 服务器');
             return (
               <li
                 key={s.server_id}
@@ -158,31 +148,31 @@ export function McpInstalledServersView(): JSX.Element {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-display text-sm font-semibold text-foreground">
-                      {s.name}
+                      {displayName}
                     </span>
-                    <span className="font-mono text-[10px] text-foreground/40 px-1.5 py-0.5 rounded bg-surface-high">
-                      {s.server_slug}
+                    <span className="text-[10px] text-foreground/45 px-1.5 py-0.5 rounded bg-surface-high">
+                      本地服务器
                     </span>
-                    <span className="font-mono text-[10px] text-foreground/40 px-1.5 py-0.5 rounded bg-surface-high">
-                      {s.transport}
+                    <span className="font-label text-[10px] text-foreground/45 px-1.5 py-0.5 rounded bg-surface-high">
+                      {MCP_TRANSPORT_LABELS[s.transport]}
                     </span>
                     <span className={`font-label text-[10px] ${tone}`}>
                       {APPROVAL_LABEL[s.approval_state]}
                     </span>
                   </div>
                   {s.stdio && (
-                    <p className="mt-1 font-mono text-[10px] text-foreground/40 break-all">
-                      {s.stdio.command} {s.stdio.args.join(' ')}
+                    <p className="mt-1 font-label text-[10px] text-foreground/45">
+                      本地进程 · {s.stdio.args.length + 1} 项启动配置
                     </p>
                   )}
                   {s.http && (
-                    <p className="mt-1 font-mono text-[10px] text-foreground/40 break-all">
-                      {s.http.url}
+                    <p className="mt-1 font-label text-[10px] text-foreground/45">
+                      网络服务 · 已填写服务地址
                     </p>
                   )}
                   {s.stdio?.env_refs && Object.keys(s.stdio.env_refs).length > 0 && (
                     <p className="mt-1 font-label text-[10px] text-foreground/55">
-                      绑定凭证 env: {Object.keys(s.stdio.env_refs).join(', ')}
+                      已绑定 {Object.keys(s.stdio.env_refs).length} 项凭证
                     </p>
                   )}
 
@@ -194,7 +184,7 @@ export function McpInstalledServersView(): JSX.Element {
                       />
                       <div className="flex-1 min-w-0">
                         <p className="font-label text-[11px] text-amber-700 dark:text-amber-200">
-                          检测到 {legacy} 项 legacy 明文密钥仍存在于该服务器配置。建议迁移到凭证引用。
+                          检测到 {legacy} 项旧式敏感配置。建议迁移到凭证引用。
                         </p>
                       </div>
                       <button
@@ -211,8 +201,8 @@ export function McpInstalledServersView(): JSX.Element {
                   type="button"
                   onClick={() => void handleDelete(s)}
                   disabled={isBusy}
-                  aria-label={`删除 ${s.name}`}
-                  title="删除并清理 install_record"
+                  aria-label={`删除 ${displayName}`}
+                  title="删除并清理本地安装记录"
                   className="p-2 rounded text-red-500/70 hover:text-red-500 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-300/75 dark:hover:bg-red-500/15 dark:hover:text-red-300"
                 >
                   {isBusy ? (
@@ -230,7 +220,7 @@ export function McpInstalledServersView(): JSX.Element {
       {migrationTarget && (
         <McpLegacyEnvMigrationModal
           serverId={migrationTarget.server_id}
-          serverName={migrationTarget.name}
+          serverName={sanitizeMcpDisplayLabel(migrationTarget.name, 'MCP 服务器')}
           open={true}
           onClose={() => setMigrationTarget(null)}
           onMigrated={() => {

@@ -7,11 +7,10 @@
 //   pending/captured: 详情 / 稍后 / 忽略 / 保存
 //   blocked:          详情 only + short reason text (save disabled)
 //   accepted/snoozed/rejected/expired/rolled_back: status pill, no actions
-//   promoted_to_*:    rollback button is wired in S5.6 via `slot="promoted"`
+//   promoted_to_*:    rollback button is wired via `slot="promoted"`
 //
-// All visible labels are Chinese (plan §Frontend Quality Addendum). Raw IDs,
-// dedupe hashes, evidence JSON, and rollback handles never appear in the card
-// surface — they live in the detail drawer.
+// All visible labels are Chinese. Internal
+// tracing fields stay out of the card surface.
 
 import { Eye, Clock3, X as XIcon, Save, ShieldAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -23,9 +22,12 @@ import {
   deriveEvidenceState,
   EVIDENCE_STATE_LABELS,
   EVIDENCE_STATE_TONES,
+  friendlyDecisionReason,
   MEMORY_TYPE_LABELS,
   RISK_LABELS,
   RISK_TONES,
+  sanitizeEvolutionDetailText,
+  sanitizeEvolutionUserText,
   SOURCE_LABELS,
   STATUS_LABELS,
   STATUS_TONES,
@@ -58,6 +60,10 @@ function CardField({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
+function promotionTargetLabel(memoryType: ExperienceCandidate['memory_type']): string {
+  return memoryType === 'skill_draft' ? '流程草稿' : '长期记忆';
+}
+
 export function CandidateCard({
   candidate,
   pendingAction = null,
@@ -70,6 +76,11 @@ export function CandidateCard({
   const isActionable = ACTIONABLE_STATUSES.has(candidate.status);
   const isBlocked = candidate.status === 'blocked';
   const anyPending = pendingAction !== null;
+  const title = sanitizeEvolutionUserText(candidate.title, '待复审经验');
+  const claim = sanitizeEvolutionDetailText(candidate.claim, title, 260);
+  const futureUse = sanitizeEvolutionUserText(candidate.future_use, '保存后可作为后续任务的参考。');
+  const targetLabel = promotionTargetLabel(candidate.memory_type);
+  const reviewTask = `确认这条“${MEMORY_TYPE_LABELS[candidate.memory_type]}”是否准确、可复用，并决定是否写入${targetLabel}。`;
 
   const evidenceState = deriveEvidenceState({
     status: candidate.status,
@@ -85,7 +96,7 @@ export function CandidateCard({
         'transition-shadow hover:shadow-sm',
         isBlocked && 'border-red-300/50',
       )}
-      aria-label={`经验候选：${candidate.title}`}
+      aria-label={`经验候选：${title}`}
     >
       {/* meta row — type + risk + status + evidence */}
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -104,25 +115,27 @@ export function CandidateCard({
         )}
       </div>
 
-      {/* user-facing fields — Chinese labels, plain content.
-       *  `claim` is deliberately hidden from the card default view because
-       *  many capture sites (runtime_capture, rag_capture) write raw IDs
-       *  or JSON into it (e.g. "job_id=…", `{ "status": "success", … }`),
-       *  which violates the "no raw IDs / no JSON in default view" rule.
-       *  The full claim is still available via the 详情 drawer. */}
+      {/* User-facing fields only; diagnostic capture payloads stay hidden. */}
       <div className="space-y-1.5">
+        <CardField label="复审任务">
+          <span className="text-foreground/75">{reviewTask}</span>
+        </CardField>
         <CardField label="学到了什么">
-          <span className="font-medium text-foreground">{candidate.title}</span>
+          <span className="font-medium text-foreground">{title}</span>
+        </CardField>
+        <CardField label="具体内容">
+          <span className="line-clamp-2 text-foreground/75">{claim}</span>
         </CardField>
         <CardField label="来自哪里">{SOURCE_LABELS[candidate.source_type]}</CardField>
-        <CardField label="以后怎么用">{candidate.future_use}</CardField>
+        <CardField label="以后怎么用">{futureUse}</CardField>
+        <CardField label="保存位置">{targetLabel}</CardField>
       </div>
 
       {/* blocked reason — short non-actionable */}
       {isBlocked && candidate.decision_reason && (
         <div className="mt-3 flex items-start gap-2 rounded-md border border-red-200/60 bg-red-50/70 px-3 py-2 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800/50">
           <ShieldAlert size={14} className="mt-0.5 shrink-0" />
-          <span>不能保存：{candidate.decision_reason}（管理员请查看后台日志）</span>
+          <span>不能保存：{friendlyDecisionReason(candidate.decision_reason)}</span>
         </div>
       )}
 
@@ -132,7 +145,7 @@ export function CandidateCard({
           type="button"
           onClick={onOpenDetails}
           className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-high px-3 py-1.5 text-xs font-label text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
-          aria-label={`查看「${candidate.title}」的详细信息`}
+          aria-label={`查看「${title}」的详细信息`}
         >
           <Eye size={14} />
           详情
@@ -145,7 +158,7 @@ export function CandidateCard({
               onClick={onSnooze}
               disabled={anyPending}
               className="inline-flex min-w-[64px] items-center justify-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-high px-3 py-1.5 text-xs font-label text-foreground/70 transition-colors hover:border-sky-300/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              title="7 天后再提醒"
+              title="这条候选先不处理，7 天后再提醒"
             >
               <Clock3 size={14} />
               {pendingAction === 'snooze' ? '处理中…' : '稍后'}
@@ -155,7 +168,7 @@ export function CandidateCard({
               onClick={onReject}
               disabled={anyPending}
               className="inline-flex min-w-[64px] items-center justify-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-high px-3 py-1.5 text-xs font-label text-foreground/70 transition-colors hover:border-red-300/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              title="永久忽略这条经验"
+              title="确认这条候选不准确或不可复用，永久忽略"
             >
               <XIcon size={14} />
               {pendingAction === 'reject' ? '处理中…' : '忽略'}
@@ -167,7 +180,7 @@ export function CandidateCard({
               className="inline-flex min-w-[64px] items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary px-3 py-1.5 text-xs font-label text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save size={14} />
-              {pendingAction === 'accept' ? '保存中…' : '保存'}
+              {pendingAction === 'accept' ? '保存中…' : `保存到${targetLabel}`}
             </button>
           </>
         )}

@@ -7,7 +7,7 @@ import type { AnalysisChainPayload } from '@/services/discussionApi';
 /**
  * Shared collapsible renderer for a 6-field AnalysisChain.
  *
- * Used by DiscussionPanel (per-agent), Dialog inspiration, and (future)
+ * Used by DiscussionPanel (per-agent), SmartRead messages, and (future)
  * Workbench sources panel. Renders nothing when the chain has no
  * meaningful content so callers can pass partial chains without
  * conditional rendering on their side.
@@ -17,6 +17,12 @@ interface AnalysisChainPanelProps {
   chain: AnalysisChainPayload | null | undefined;
   /** Compact 4-line header when collapsed; expand for full 6 fields. */
   defaultExpanded?: boolean;
+  /** Controlled expansion state for parent-owned trace selection. */
+  expanded?: boolean;
+  /** Called when the user toggles the panel in controlled mode. */
+  onExpandedChange?: (expanded: boolean) => void;
+  /** User-visible title for surfaces that need more precise wording. */
+  title?: string;
   /** Wrapper class — caller controls outer spacing/borders. */
   className?: string;
 }
@@ -35,14 +41,27 @@ function _hasContent(chain: AnalysisChainPayload): boolean {
 export function AnalysisChainPanel({
   chain,
   defaultExpanded = false,
+  expanded,
+  onExpandedChange,
+  title,
   className,
 }: AnalysisChainPanelProps) {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
+  const isControlled = typeof expanded === 'boolean';
+  const isExpanded = isControlled ? expanded : internalExpanded;
 
   if (!chain || !_hasContent(chain)) {
     return null;
   }
+
+  const toggleExpanded = () => {
+    const next = !isExpanded;
+    if (!isControlled) {
+      setInternalExpanded(next);
+    }
+    onExpandedChange?.(next);
+  };
 
   return (
     <div
@@ -53,19 +72,19 @@ export function AnalysisChainPanel({
     >
       <button
         type="button"
-        onClick={() => setExpanded((prev) => !prev)}
+        onClick={toggleExpanded}
         className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-foreground/60 transition-colors hover:text-foreground"
-        aria-expanded={expanded}
+        aria-expanded={isExpanded}
       >
         <span className="flex items-center gap-1.5 font-medium">
-          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          {t('analysis_chain.section_label') || 'AI 推理过程'}
+          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {title || t('analysis_chain.section_label') || '推理过程（证据化摘要）'}
         </span>
         <span className="text-[10px] text-foreground/40">
-          {expanded ? t('analysis_chain.collapse') : t('analysis_chain.expand')}
+          {isExpanded ? t('analysis_chain.collapse') : t('analysis_chain.expand')}
         </span>
       </button>
-      {expanded && (
+      {isExpanded && (
         <dl className="space-y-2 px-3 pb-3 pt-1 text-foreground/75">
           <Field label={t('analysis_chain.field_observation') || '观察'} value={chain.observation} />
           <Field label={t('analysis_chain.field_mechanism') || '机制'} value={chain.mechanism} />

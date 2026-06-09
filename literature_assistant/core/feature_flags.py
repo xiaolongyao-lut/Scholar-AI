@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from _atomic_io import CrossProcessFileLock
 from project_paths import runtime_state_path
 
 
@@ -60,19 +61,29 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
         env_var="INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED",
         label="TOLF 目标导向检索",
         description=(
-            "实验性检索：把问题拆成多面查询、在文献图上扩散、按硬证据筛选。"
+            "把问题拆成多面查询，在文献图上扩散，并按硬证据筛选结果。"
             "比默认 RAG 更慢，但找间接证据、归因清晰、抗弱化措辞。"
             "适合综述、找数据、深度调研。同一问题分别开/关跑一次可直观对比。"
         ),
     ),
+    "local_rerank": FeatureFlagSpec(
+        name="local_rerank",
+        default=True,
+        env_var="ENABLE_LOCAL_RERANK",
+        label="本地 Rerank 主线",
+        description=(
+            "语义路由默认把候选证据交给本机或已配置的 rerank 服务重排。"
+            "未配置 rerank 凭证或服务不可用时仍按现有 fallback 返回检索结果。"
+        ),
+    ),
     "analysis_chain_rag": FeatureFlagSpec(
         name="analysis_chain_rag",
-        default=False,
+        default=True,
         env_var="ANALYSIS_CHAIN_RAG_ENABLED",
         label="RAG 答问附推理过程",
         description=(
-            "RAG 答问在返回答案的同时附带结构化推理过程（观察/机制/证据/边界/反证/下一步）。"
-            "默认走确定性生成；要让 LLM 写完整推理链，再打开「LLM 生成」开关。"
+            "主线答问在返回答案的同时附带结构化推理过程（观察/机制/证据/边界/反证/下一步）。"
+            "默认走确定性生成，不增加模型调用；如需让 LLM 写完整推理链，再打开「LLM 生成」开关。"
         ),
     ),
     "analysis_chain_rag_llm": FeatureFlagSpec(
@@ -87,12 +98,12 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
     ),
     "analysis_chain_discussion": FeatureFlagSpec(
         name="analysis_chain_discussion",
-        default=False,
+        default=True,
         env_var="ANALYSIS_CHAIN_DISCUSSION_ENABLED",
-        label="多 agent 讨论附推理过程",
+        label="多智能体讨论附推理过程",
         description=(
-            "讨论中每个 agent 发言时携带自己的推理链；反对方偏重反证，审稿人偏重边界，主持人偏重下一步。"
-            "可在讨论面板逐个展开每个 agent 的思考路径。"
+            "讨论中每个智能体发言时携带证据化推理摘要；反对方偏重反证，审稿人偏重边界，主持人偏重下一步。"
+            "可在讨论面板点击单个智能体回答，逐个展开该角色的思路。"
         ),
     ),
     "analysis_chain_carryover": FeatureFlagSpec(
@@ -101,18 +112,18 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
         env_var="ANALYSIS_CHAIN_CARRYOVER_ENABLED",
         label="AI 接住上一步推理",
         description=(
-            "下一个 agent / 下一轮对话能拿到上一步的推理链作为参考，AI 不从零想，可承接前一步结论。"
+            "下一个智能体或下一轮对话能拿到上一步的推理链作为参考，AI 不从零想，可承接前一步结论。"
             "当上下文预算紧张时会优先丢弃这部分参考，不影响主流程。"
         ),
     ),
     "analysis_chain_ui": FeatureFlagSpec(
         name="analysis_chain_ui",
-        default=False,
+        default=True,
         env_var="ANALYSIS_CHAIN_UI_ENABLED",
         label="推理过程展开按钮",
         description=(
-            "前端总开关：即使后端返回了推理链，UI 也默认收起，由本开关控制是否提供「展开」入口。"
-            "关闭时不影响后端返回，只影响界面显示。"
+            "答案带有推理过程时，界面提供「展开」入口并默认保持收起。"
+            "关闭时不影响答问能力，只隐藏界面入口。"
         ),
     ),
     "discussion_streaming": FeatureFlagSpec(
@@ -121,19 +132,58 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
         env_var="DISCUSSION_STREAMING_ENABLED",
         label="多智能体讨论流式输出",
         description=(
-            "讨论运行过程通过 SSE 实时推送每个 agent 完成事件，前端可看到逐 agent 出货。"
-            "关闭时仍走非流式 POST /api/discussion/runs（兼容旧客户端）。"
-            "默认开启，让用户在长讨论中能看到进度。"
+            "讨论运行时逐个显示智能体完成进度，长讨论不用等全部结束才看到结果。"
+            "关闭后仍可完成讨论，只是不再显示实时进度。"
         ),
     ),
     "inspector_embed_unified": FeatureFlagSpec(
         name="inspector_embed_unified",
-        default=False,
+        default=True,
         env_var="INSPECTOR_EMBED_UNIFIED_ENABLED",
         label="工作台 Inspector 嵌入完整功能",
         description=(
-            "在研究工作台右侧 Inspector 直接嵌入左栏「智能研读」和「多智能体讨论」的完整组件，"
-            "不再是占位文案或跳转入口。需要配合「多智能体讨论流式输出」一起开启，否则切换页面会丢任务。"
+            "在研究工作台右侧 Inspector 直接嵌入「智能研读」和「多智能体讨论」完整组件，"
+            "作为默认主线入口使用。关闭后才回退为跳转入口。"
+        ),
+    ),
+    "wiki": FeatureFlagSpec(
+        name="wiki",
+        default=False,
+        env_var="LITERATURE_ASSISTANT_WIKI_ENABLED",
+        label="Wiki 知识沉淀",
+        description=(
+            "开启后可使用 Wiki 工作台、页面检索、编译和审阅队列，把项目资料沉淀为可回看的本地知识页。"
+            "关闭时保留已有页面和索引文件，只隐藏/阻止 Wiki API 写入与查询入口。"
+        ),
+    ),
+    "evolution_candidate_capture": FeatureFlagSpec(
+        name="evolution_candidate_capture",
+        default=True,
+        env_var="LITERATURE_ASSISTANT_EVOLUTION_CAPTURE_ENABLED",
+        label="经验候选收纳",
+        description=(
+            "开启后，智能研读、讨论、写作任务、Skill 和 MCP 工具运行完成时，"
+            "会把可复用经验放入复审队列，等待人工确认。"
+        ),
+    ),
+    "evolution_review_ui": FeatureFlagSpec(
+        name="evolution_review_ui",
+        default=False,
+        env_var="LITERATURE_ASSISTANT_EVOLUTION_REVIEW_UI_ENABLED",
+        label="学到的经验复审入口",
+        description=(
+            "开启后显示“学到的经验”页面，用于查看、保存、忽略和撤销经验候选。"
+            "关闭时不删除已有候选。"
+        ),
+    ),
+    "evolution_promotion": FeatureFlagSpec(
+        name="evolution_promotion",
+        default=False,
+        env_var="LITERATURE_ASSISTANT_EVOLUTION_PROMOTION_ENABLED",
+        label="经验应用到长期记忆",
+        description=(
+            "开启后，已保存的经验可以继续应用到长期记忆或 Skill 草稿。"
+            "关闭时仍可复审候选，但不会写入长期记忆。"
         ),
     ),
 }
@@ -141,6 +191,10 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
 
 _OVERRIDE_PATH: Path = runtime_state_path("feature_flags_override.json")
 _LOCK = threading.Lock()
+
+
+def _override_lock_path() -> Path:
+    return _OVERRIDE_PATH.with_suffix(f"{_OVERRIDE_PATH.suffix}.lock")
 
 
 def _read_overrides() -> dict[str, bool]:
@@ -202,13 +256,15 @@ def is_enabled(name: str) -> bool:
     spec = FEATURE_FLAGS.get(name)
     if spec is None:
         return False
-    current, _ = _resolve(spec, _read_overrides())
+    with _LOCK, CrossProcessFileLock(_override_lock_path()):
+        current, _ = _resolve(spec, _read_overrides())
     return current
 
 
 def list_flags() -> list[dict[str, Any]]:
     """Return every registered flag with metadata + currently resolved value."""
-    overrides = _read_overrides()
+    with _LOCK, CrossProcessFileLock(_override_lock_path()):
+        overrides = _read_overrides()
     out: list[dict[str, Any]] = []
     for spec in FEATURE_FLAGS.values():
         current, source = _resolve(spec, overrides)
@@ -230,7 +286,7 @@ def set_flag(name: str, enabled: bool) -> dict[str, Any]:
     """Persist an override for a registered flag. Returns the resolved entry."""
     if name not in FEATURE_FLAGS:
         raise KeyError(f"unknown feature flag: {name}")
-    with _LOCK:
+    with _LOCK, CrossProcessFileLock(_override_lock_path()):
         overrides = _read_overrides()
         overrides[name] = bool(enabled)
         _write_overrides_atomic(overrides)

@@ -8,7 +8,7 @@ Single source of truth for the 6-field reasoning chain shape used across:
 The schema is intentionally tolerant (missing / wrong-shape fields fall back
 to empty strings or empty lists) so an LLM that drops a key cannot break
 the response. This mirrors the contract documented in
-``docs/plans/specs/analysis-chain-cross-pipeline-spec.md`` Slice 0.
+``docs/plans/specs/analysis-chain-cross-pipeline-spec.md``.
 """
 
 from __future__ import annotations

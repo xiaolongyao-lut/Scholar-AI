@@ -19,9 +19,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
+from collections.abc import Awaitable, Callable
+import inspect
+from typing import Any, Literal
 
 from models.analysis_chain import AnalysisChainPayload
+from models.project_reasoning_bias import ProjectReasoningBiasPayload
 
 
 logger = logging.getLogger(__name__)
@@ -31,6 +34,9 @@ _MAX_OBSERVATION_LEN = 240
 _MAX_EVIDENCE_PER_CHAIN = 3
 _MAX_EVIDENCE_LEN = 200
 _DEFAULT_NEXT_ACTION = "对照原文核验关键论点，必要时检索相关综述或最新数据补全证据链。"
+AnalysisChainMode = Literal["deterministic", "llm"]
+SyncLlmInvoke = Callable[[str], str]
+AsyncLlmInvoke = Callable[[str], Awaitable[str]]
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -135,6 +141,171 @@ def _coerce_to_payload(raw: dict[str, Any]) -> AnalysisChainPayload:
     )
 
 
+def _render_prompt_block(
+    *,
+    query: str,
+    answer: str,
+    evidence_snippets: list[str] | None,
+    frame: str,
+    project_reasoning_bias: ProjectReasoningBiasPayload | None = None,
+) -> str | None:
+    try:
+        from prompts.analysis_chain_helpers import render_analysis_chain_prompt_block
+        from prompts.project_reasoning_bias import render_project_reasoning_bias_block
+    except ImportError:
+        logger.debug("analysis_chain_helpers unavailable; returning deterministic chain")
+        return None
+
+    evidence_present = bool(evidence_snippets)
+    context_summary = (
+        f"用户问题：{_truncate(query, 160)}；最终答案前 200 字：{_truncate(answer, 200)}"
+    )
+    prompt_block = render_analysis_chain_prompt_block(
+        frame if frame in ("irac", "fincot") else "irac",
+        context_summary=context_summary,
+        evidence_present=evidence_present,
+    )
+    if project_reasoning_bias is None:
+        return prompt_block
+    return (
+        f"{prompt_block}\n\n"
+        f"{render_project_reasoning_bias_block(project_reasoning_bias, locale=project_reasoning_bias.language)}"
+    )
+
+
+def _payload_from_llm_output(raw: object, deterministic: AnalysisChainPayload) -> AnalysisChainPayload:
+    parsed = _extract_json_object(str(raw or ""))
+    if parsed is None:
+        logger.warning("analysis_chain LLM output unparseable; falling back")
+        return deterministic
+    return _coerce_to_payload(parsed)
+
+
+def build_analysis_chain(
+    *,
+    query: str,
+    answer: str,
+    evidence_snippets: list[str] | None = None,
+    mode: AnalysisChainMode = "deterministic",
+    llm_invoke: SyncLlmInvoke | None = None,
+    frame: str = "irac",
+    project_reasoning_bias: ProjectReasoningBiasPayload | None = None,
+) -> AnalysisChainPayload:
+    """Build the shared 6-field AnalysisChain through the sync interface.
+
+    Args:
+        query: User question.
+        answer: Final assistant/agent answer.
+        evidence_snippets: Ordered evidence strings already used by caller.
+        mode: ``deterministic`` for no LLM call, ``llm`` for prompt-rendered chain.
+        llm_invoke: Synchronous callable accepting one prompt and returning text.
+        frame: Prompt frame name; invalid values degrade to ``irac``.
+        project_reasoning_bias: Optional low-priority project preference block
+            for LLM prompt rendering only; deterministic output is unchanged.
+
+    Returns:
+        AnalysisChainPayload. LLM failures never propagate to the host answer.
+
+    Raises:
+        TypeError: If ``llm_invoke`` is not callable for LLM mode.
+        ValueError: If mode is unsupported.
+    """
+
+    deterministic = build_deterministic(
+        query=query,
+        answer=answer,
+        evidence_snippets=evidence_snippets,
+    )
+    if mode == "deterministic":
+        return deterministic
+    if mode != "llm":
+        raise ValueError(f"unsupported analysis chain mode: {mode}")
+    if llm_invoke is None:
+        return deterministic
+    if not callable(llm_invoke):
+        raise TypeError("llm_invoke must be callable")
+
+    prompt_block = _render_prompt_block(
+        query=query,
+        answer=answer,
+        evidence_snippets=evidence_snippets,
+        frame=frame,
+        project_reasoning_bias=project_reasoning_bias,
+    )
+    if prompt_block is None:
+        return deterministic
+    try:
+        raw = llm_invoke(prompt_block)
+    except Exception:  # noqa: BLE001 — host LLM failure must not break the chat response
+        logger.exception("LLM invocation for analysis_chain failed; falling back")
+        return deterministic
+    return _payload_from_llm_output(raw, deterministic)
+
+
+async def build_analysis_chain_async(
+    *,
+    query: str,
+    answer: str,
+    evidence_snippets: list[str] | None = None,
+    mode: AnalysisChainMode = "deterministic",
+    llm_invoke: AsyncLlmInvoke | None = None,
+    frame: str = "irac",
+    project_reasoning_bias: ProjectReasoningBiasPayload | None = None,
+) -> AnalysisChainPayload:
+    """Build the shared 6-field AnalysisChain through the async interface.
+
+    Args:
+        query: User question.
+        answer: Final assistant/agent answer.
+        evidence_snippets: Ordered evidence strings already used by caller.
+        mode: ``deterministic`` for no LLM call, ``llm`` for async prompt-rendered chain.
+        llm_invoke: Async callable accepting one prompt and returning text.
+        frame: Prompt frame name; invalid values degrade to ``irac``.
+        project_reasoning_bias: Optional low-priority project preference block
+            for LLM prompt rendering only; deterministic output is unchanged.
+
+    Returns:
+        AnalysisChainPayload. LLM failures never propagate to the host answer.
+
+    Raises:
+        TypeError: If ``llm_invoke`` is not callable/awaitable for LLM mode.
+        ValueError: If mode is unsupported.
+    """
+
+    deterministic = build_deterministic(
+        query=query,
+        answer=answer,
+        evidence_snippets=evidence_snippets,
+    )
+    if mode == "deterministic":
+        return deterministic
+    if mode != "llm":
+        raise ValueError(f"unsupported analysis chain mode: {mode}")
+    if llm_invoke is None:
+        return deterministic
+    if not callable(llm_invoke):
+        raise TypeError("llm_invoke must be callable")
+
+    prompt_block = _render_prompt_block(
+        query=query,
+        answer=answer,
+        evidence_snippets=evidence_snippets,
+        frame=frame,
+        project_reasoning_bias=project_reasoning_bias,
+    )
+    if prompt_block is None:
+        return deterministic
+    try:
+        maybe_raw = llm_invoke(prompt_block)
+        if not inspect.isawaitable(maybe_raw):
+            raise TypeError("llm_invoke must return an awaitable")
+        raw = await maybe_raw
+    except Exception:  # noqa: BLE001 — host LLM failure must not break the chat response
+        logger.exception("LLM invocation for analysis_chain (async) failed; falling back")
+        return deterministic
+    return _payload_from_llm_output(raw, deterministic)
+
+
 def build_with_llm(
     *,
     query: str,
@@ -142,6 +313,7 @@ def build_with_llm(
     evidence_snippets: list[str] | None = None,
     llm_invoke: Any = None,
     frame: str = "irac",
+    project_reasoning_bias: ProjectReasoningBiasPayload | None = None,
 ) -> AnalysisChainPayload:
     """Use an LLM to render a full 6-field chain. Falls back deterministically.
 
@@ -154,38 +326,15 @@ def build_with_llm(
     ``analysis_chain_rag=on`` and ``analysis_chain_rag_llm=on``.
     """
 
-    deterministic = build_deterministic(
-        query=query, answer=answer, evidence_snippets=evidence_snippets
+    return build_analysis_chain(
+        query=query,
+        answer=answer,
+        evidence_snippets=evidence_snippets,
+        mode="llm",
+        llm_invoke=llm_invoke,
+        frame=frame,
+        project_reasoning_bias=project_reasoning_bias,
     )
-    if llm_invoke is None:
-        return deterministic
-
-    try:
-        from prompts.analysis_chain_helpers import render_analysis_chain_prompt_block
-    except ImportError:
-        logger.debug("analysis_chain_helpers unavailable; returning deterministic chain")
-        return deterministic
-
-    evidence_present = bool(evidence_snippets)
-    context_summary = (
-        f"用户问题：{_truncate(query, 160)}；最终答案前 200 字：{_truncate(answer, 200)}"
-    )
-    prompt_block = render_analysis_chain_prompt_block(
-        frame if frame in ("irac", "fincot") else "irac",
-        context_summary=context_summary,
-        evidence_present=evidence_present,
-    )
-    try:
-        raw = llm_invoke(prompt_block)
-    except Exception:  # noqa: BLE001 — host LLM failure must not break the chat response
-        logger.exception("LLM invocation for analysis_chain_rag failed; falling back")
-        return deterministic
-
-    parsed = _extract_json_object(str(raw or ""))
-    if parsed is None:
-        logger.warning("analysis_chain_rag LLM output unparseable; falling back")
-        return deterministic
-    return _coerce_to_payload(parsed)
 
 
 async def build_with_llm_async(
@@ -195,6 +344,7 @@ async def build_with_llm_async(
     evidence_snippets: list[str] | None = None,
     llm_invoke: Any = None,
     frame: str = "irac",
+    project_reasoning_bias: ProjectReasoningBiasPayload | None = None,
 ) -> AnalysisChainPayload:
     """Async variant of ``build_with_llm`` for callers in an async context.
 
@@ -204,41 +354,20 @@ async def build_with_llm_async(
     deterministic chain so the caller's chat response is never blocked.
     """
 
-    deterministic = build_deterministic(
-        query=query, answer=answer, evidence_snippets=evidence_snippets
+    return await build_analysis_chain_async(
+        query=query,
+        answer=answer,
+        evidence_snippets=evidence_snippets,
+        mode="llm",
+        llm_invoke=llm_invoke,
+        frame=frame,
+        project_reasoning_bias=project_reasoning_bias,
     )
-    if llm_invoke is None:
-        return deterministic
-
-    try:
-        from prompts.analysis_chain_helpers import render_analysis_chain_prompt_block
-    except ImportError:
-        logger.debug("analysis_chain_helpers unavailable; returning deterministic chain")
-        return deterministic
-
-    evidence_present = bool(evidence_snippets)
-    context_summary = (
-        f"用户问题：{_truncate(query, 160)}；最终答案前 200 字：{_truncate(answer, 200)}"
-    )
-    prompt_block = render_analysis_chain_prompt_block(
-        frame if frame in ("irac", "fincot") else "irac",
-        context_summary=context_summary,
-        evidence_present=evidence_present,
-    )
-    try:
-        raw = await llm_invoke(prompt_block)
-    except Exception:  # noqa: BLE001 — host LLM failure must not break the chat response
-        logger.exception("LLM invocation for analysis_chain_rag (async) failed; falling back")
-        return deterministic
-
-    parsed = _extract_json_object(str(raw or ""))
-    if parsed is None:
-        logger.warning("analysis_chain_rag (async) LLM output unparseable; falling back")
-        return deterministic
-    return _coerce_to_payload(parsed)
 
 
 __all__ = [
+    "build_analysis_chain",
+    "build_analysis_chain_async",
     "build_deterministic",
     "build_with_llm",
     "build_with_llm_async",

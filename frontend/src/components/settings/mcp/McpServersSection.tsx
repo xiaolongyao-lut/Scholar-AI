@@ -1,6 +1,6 @@
 /**
  * MCP Settings section — top-level wrapper introducing the local installer
- * IA (S4a / plan 2026-05-20 §A4).
+ * and the advanced manual server form.
  *
  * Tabs:
  *   - 推荐 (McpRecommendedView)
@@ -9,9 +9,8 @@
  *   - 高级 (McpAdvancedServerForm) — embeds the legacy CRUD form so
  *     existing manual-entry users keep their workflow.
  *
- * Behavior in S4a: tab navigation + view stubs + advanced tab fully
- * functional via legacy embed. Wizard / install / probe logic lands in
- * S4b and S4c.
+ * Behavior: tab navigation plus recommended, local install, installed, and
+ * advanced manual views.
  */
 import React, { useState } from 'react';
 import { Server, Sparkles, FolderInput, ListChecks, Wrench } from 'lucide-react';
@@ -52,7 +51,7 @@ const TABS: McpTab[] = [
     id: 'advanced',
     label: '高级 / 手动添加',
     icon: Wrench,
-    hint: '直接填写 command / args / env (开发者模式)',
+    hint: '直接填写本地启动方式和连接配置',
   },
 ];
 
@@ -71,7 +70,7 @@ export function McpServersSection(): JSX.Element {
               MCP 服务器
             </h2>
             <p className="mt-1 font-label text-[11px] leading-relaxed text-foreground/55 max-w-2xl">
-              管理本地 Model Context Protocol 服务。只有「本次会话已授权」的服务才会被对话调用；
+              管理本地 MCP 服务。只有「本次会话已授权」的服务才会被对话调用；
               本地进程运行，没有完整沙箱。
             </p>
           </div>
@@ -123,7 +122,7 @@ export function McpServersSection(): JSX.Element {
         {activeTab === 'advanced' && (
           <div className="rounded-md border border-outline-variant bg-surface-low p-3">
             <p className="font-label text-[11px] text-foreground/55 mb-3">
-              下面的传统 CRUD 表单保留给已经熟悉 stdio / streamable_http 参数的用户。
+              下面的手动表单保留给已经熟悉本地进程或网络服务连接方式的用户。
               新用户建议使用「推荐」或「本地安装」。
             </p>
             <McpServersSectionLegacy />

@@ -73,8 +73,10 @@ class TestDiscussionCredentialId:
 
     def test_credential_id_not_found_raises_error(self, tmp_store):
         """Non-existent credential_id raises DiscussionCredentialMissingError."""
-        with pytest.raises(DiscussionCredentialMissingError, match="credential not found: nonexistent"):
+        with pytest.raises(DiscussionCredentialMissingError) as exc_info:
             _default_credential_resolver("nonexistent")
+        assert "凭证不存在或已被删除" in str(exc_info.value)
+        assert "nonexistent" not in str(exc_info.value)
 
     def test_credential_id_disabled_raises_error(self, tmp_store):
         """Disabled credential raises DiscussionCredentialMissingError."""
@@ -91,8 +93,10 @@ class TestDiscussionCredentialId:
             )
         )
 
-        with pytest.raises(DiscussionCredentialMissingError, match="is disabled"):
+        with pytest.raises(DiscussionCredentialMissingError) as exc_info:
             _default_credential_resolver(cred.credential_id)
+        assert "选择的凭证已停用" in str(exc_info.value)
+        assert cred.credential_id not in str(exc_info.value)
 
 
 class TestDiscussionStrategyHint:

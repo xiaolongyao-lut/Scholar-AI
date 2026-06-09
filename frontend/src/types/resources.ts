@@ -6,6 +6,7 @@
  */
 
 import type { components } from "../generated/openapi";
+import type { PdfBboxUnit } from "@/lib/pdfAnchor";
 
 export enum ProjectStatus {
   DRAFT = "draft",
@@ -63,6 +64,77 @@ export type WritingDraft = components["schemas"]["DraftPayload"];
  */
 export type WritingRevision = components["schemas"]["RevisionPayload"];
 
+/** Section-backed outline item returned by /api/writing/outline. */
+export type OutlineItemResource = components["schemas"]["OutlineItemPayload"];
+
+/** Complete outline payload returned by writing outline APIs. */
+export type OutlineResource = components["schemas"]["OutlinePayload"];
+
+/** Request payload for AI-assisted outline generation. */
+export type GenerateOutlineRequest = components["schemas"]["GenerateOutlineRequest"];
+
+export interface ProjectDocumentResource {
+  material_id: string;
+  title: string;
+  content: string;
+}
+
+export interface ProjectChunkResource {
+  material_id?: string;
+  chunk_id?: string;
+  content?: string;
+  title?: string;
+  page?: number | string | null;
+  chunk_index?: number | null;
+  bbox?: number[] | null;
+  bbox_unit?: PdfBboxUnit | null;
+  section_title?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ProjectChunksResponse {
+  project_id: string;
+  total_chunks: number;
+  chunks: ProjectChunkResource[];
+}
+
+export interface MaterialChunksResponse {
+  material_id: string;
+  total_chunks: number;
+  chunks: ProjectChunkResource[];
+}
+
+export type FigureTableCandidateResource =
+  components["schemas"]["FigureTableCandidatePayload"];
+
+/** Citation source metadata used by the writing citation manager. */
+export type CitationSourceResource =
+  components["schemas"]["CitationSourcePayload"];
+
+/** Editable bibliographic metadata for a citation source. */
+export type CitationSourceUpdate =
+  components["schemas"]["CitationSourceUpdate"];
+
+/** AI-suggested citation returned for a draft context. */
+export type CitationSuggestionResource =
+  components["schemas"]["CitationSuggestionPayload"];
+
+/** Request payload for citation suggestions. */
+export type SuggestCitationsRequest =
+  components["schemas"]["SuggestCitationsRequest"];
+
+/** Real extracted or uploaded figure/table asset. */
+export type FigureAssetResource =
+  components["schemas"]["FigureAssetPayload"];
+
+/** Request payload for registering a figure/table asset. */
+export type CreateFigureAssetRequest =
+  components["schemas"]["CreateFigureAssetRequest"];
+
+/** Request payload for updating a persisted figure/table asset. */
+export type UpdateFigureAssetRequest =
+  components["schemas"]["UpdateFigureAssetRequest"];
+
 /**
  * Request to create a new project.
  */
@@ -118,28 +190,146 @@ export type WritingAssociationBundle = components["schemas"]["WritingAssociation
  */
 export type WritingActionResource = components["schemas"]["WritingActionPayload"];
 
+type GeneratedProjectReasoningBiasScopes =
+  components["schemas"]["ProjectReasoningBiasScopes"];
+type GeneratedProjectReasoningBiasPayload =
+  components["schemas"]["ProjectReasoningBiasPayload"];
+type GeneratedProjectReasoningBiasUpdateRequest =
+  components["schemas"]["ProjectReasoningBiasUpdateRequest"];
+type GeneratedProjectReasoningBiasOptimizeRequest =
+  components["schemas"]["ProjectReasoningBiasOptimizeRequest"];
+type GeneratedProjectReasoningBiasOptimizeResponse =
+  components["schemas"]["ProjectReasoningBiasOptimizeResponse"];
+type GeneratedProjectReasoningBiasFieldSuggestions =
+  components["schemas"]["ProjectReasoningBiasFieldSuggestions"];
+
+/** UI-normalized scope payload derived from the generated OpenAPI schema. */
+export interface ProjectReasoningBiasScopes
+  extends Omit<GeneratedProjectReasoningBiasScopes, "discussion_agent_ids"> {
+  discussion_agent_ids: string[];
+}
+
+/** UI-normalized project bias payload derived from the generated OpenAPI schema. */
+export interface ProjectReasoningBiasPayload
+  extends Omit<GeneratedProjectReasoningBiasPayload, "scopes"> {
+  scopes: ProjectReasoningBiasScopes;
+}
+
+/** UI-normalized update request derived from the generated OpenAPI schema. */
+export interface ProjectReasoningBiasUpdateRequest
+  extends Omit<GeneratedProjectReasoningBiasUpdateRequest, "scopes"> {
+  scopes: ProjectReasoningBiasScopes;
+}
+
+export type ProjectReasoningBiasOptimizeScope =
+  NonNullable<GeneratedProjectReasoningBiasOptimizeRequest["target_scopes"]>[number];
+
+/** UI-normalized optimizer field suggestions derived from generated OpenAPI schema. */
+export type ProjectReasoningBiasFieldSuggestions =
+  GeneratedProjectReasoningBiasFieldSuggestions;
+
+/** UI-normalized optimize request derived from the generated OpenAPI schema. */
+export interface ProjectReasoningBiasOptimizeRequest
+  extends Omit<GeneratedProjectReasoningBiasOptimizeRequest, "target_scopes"> {
+  target_scopes: ProjectReasoningBiasOptimizeScope[];
+}
+
+/** UI-normalized optimize response derived from the generated OpenAPI schema. */
+export interface ProjectReasoningBiasOptimizeResponse
+  extends Omit<GeneratedProjectReasoningBiasOptimizeResponse, "field_suggestions" | "safety_notes"> {
+  field_suggestions: ProjectReasoningBiasFieldSuggestions;
+  safety_notes: string[];
+}
+
 
 // ---------------------------------------------------------------------------
 // New types for enriched API (export, statistics, batch operations)
 // ---------------------------------------------------------------------------
 
 /** Project export formats */
-export type ProjectExportFormat = components["schemas"]["ProjectExportFormat"];
+export type ProjectExportFormat =
+  | "json"
+  | "markdown"
+  | "word"
+  | "latex"
+  | "pdf";
+
+export interface ProjectExportSourceAnchor {
+  material_id: string;
+  chunk_id?: string | null;
+  page?: number | null;
+  bbox?: number[] | null;
+  bbox_unit?: PdfBboxUnit | null;
+  text_preview?: string;
+  open_url: string;
+}
 
 export type ProjectExportEvidenceProvenance =
   components["schemas"]["ProjectExportEvidenceProvenancePayload"];
 
 export type ProjectExportEvidenceRow =
-  components["schemas"]["ProjectExportEvidenceRowPayload"];
+  components["schemas"]["ProjectExportEvidenceRowPayload"] & {
+    source_anchor?: ProjectExportSourceAnchor | null;
+  };
 
 export type ProjectExportCitationChainRow =
-  components["schemas"]["ProjectExportCitationChainPayload"];
+  components["schemas"]["ProjectExportCitationChainPayload"] & {
+    source_anchor?: ProjectExportSourceAnchor | null;
+  };
 
 export type ProjectExportReviewFinding =
   components["schemas"]["ProjectExportReviewFindingPayload"];
 
+export type ProjectExportBibliographyEntry =
+  components["schemas"]["ProjectExportBibliographyEntryPayload"];
+
+export interface ProjectExportFigureAsset {
+  asset_id: string;
+  project_id: string;
+  kind: "figure" | "table";
+  caption: string;
+  numbering: string;
+  material_id?: string | null;
+  source_page?: number | null;
+  bbox?: number[] | null;
+  bbox_unit?: PdfBboxUnit | null;
+  asset_path: string;
+  width?: number | null;
+  height?: number | null;
+  format?: string | null;
+  source_anchor?: ProjectExportSourceAnchor | null;
+}
+
 /** Project export response */
 export type ProjectExportResult = components["schemas"]["ProjectExportPayload"];
+
+export interface ProjectExportResponseEnvelope {
+  project_id?: string | null;
+  format: ProjectExportFormat;
+  filename?: string | null;
+  content?: string | null;
+  content_base64?: string | null;
+  media_type?: string | null;
+  file_path?: string | null;
+  project?: components["schemas"]["ProjectPayload"] | null;
+  sections?: components["schemas"]["SectionPayload"][];
+  drafts?: components["schemas"]["DraftPayload"][];
+  materials?: components["schemas"]["MaterialPayload"][];
+  document_count?: number | null;
+  evidence_rows?: ProjectExportEvidenceRow[];
+  citation_chain?: ProjectExportCitationChainRow[];
+  bibliography_entries?: ProjectExportBibliographyEntry[];
+  review_findings?: components["schemas"]["ProjectExportReviewFindingPayload"][];
+  figure_assets?: ProjectExportFigureAsset[];
+}
+
+/** Reviewer submission request. */
+export type SubmitForReviewRequest =
+  components["schemas"]["SubmitForReviewRequest"];
+
+/** Reviewer submission response. */
+export type SubmissionResponseResource =
+  components["schemas"]["SubmissionResponsePayload"];
 
 /** Project statistics */
 export interface ProjectStats {

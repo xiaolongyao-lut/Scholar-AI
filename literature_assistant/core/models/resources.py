@@ -4,6 +4,9 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from .evidence import PdfAnchorFields, PdfBboxUnit
+from .project_reasoning_bias import ProjectReasoningBiasPayload
+
 
 class CitationAnchorPayload(BaseModel):
     """Stable citation anchor metadata exchanged with the frontend editor."""
@@ -29,6 +32,7 @@ class ProjectPayload(BaseModel):
     user_id: Optional[str] = None
     tags: List[str]
     source_folder: str = ""  # User-specified folder for literature files & chunk storage
+    project_reasoning_bias: Optional[ProjectReasoningBiasPayload] = None
 
 
 class SectionPayload(BaseModel):
@@ -74,7 +78,10 @@ class FigureTableCandidatePayload(BaseModel):
         chunk_index: Source chunk ordinal when available.
         bbox: Optional source layout box reserved for PDF layout extraction.
         asset_path: Optional extracted asset path reserved for image/table crops.
-        source: Candidate extraction source. ``chunk_text`` means text-only.
+        source: Candidate extraction source. ``chunk_text`` means text-only,
+            ``pdf_crop`` means a generated preview image was rendered from the
+            source PDF, and ``chunk_*`` values mean the pixel asset was already
+            recorded by the chunking pipeline.
     """
 
     id: str
@@ -127,6 +134,24 @@ class ProjectExportEvidenceProvenancePayload(BaseModel):
     material_type: str
 
 
+class ProjectExportSourceAnchorPayload(PdfAnchorFields):
+    """PDF source anchor preserved by writing/export appendices.
+
+    Args:
+        material_id: Non-empty material id used by the direct PDF reader route.
+        chunk_id: Optional extracted chunk id when a locator exists.
+        page: Optional one-based PDF page; required when bbox is present.
+        text_preview: Short source text preview for reviewer-facing appendices.
+        open_url: App-local URL that opens the original PDF reader.
+    """
+
+    material_id: str = Field(min_length=1)
+    chunk_id: Optional[str] = None
+    page: Optional[int] = Field(None, ge=1)
+    text_preview: str = ""
+    open_url: str = Field(min_length=1)
+
+
 class ProjectExportEvidenceRowPayload(BaseModel):
     """Academic evidence row derived for project export."""
 
@@ -138,6 +163,7 @@ class ProjectExportEvidenceRowPayload(BaseModel):
     score: Optional[float] = None
     provenance: ProjectExportEvidenceProvenancePayload
     anchor_ids: List[str] = Field(default_factory=list)
+    source_anchor: Optional[ProjectExportSourceAnchorPayload] = None
     status: str
 
 
@@ -152,7 +178,30 @@ class ProjectExportCitationChainPayload(BaseModel):
     claim_excerpt: str
     source_excerpt: str
     page: Optional[int] = None
+    source_anchor: Optional[ProjectExportSourceAnchorPayload] = None
     confidence: Optional[float] = None
+
+
+class ProjectExportBibliographyEntryPayload(BaseModel):
+    """Structured reference-list entry derived from project materials.
+
+    The shape intentionally mirrors common CSL-style metadata without claiming
+    Word field-code semantics; exporters can render a deterministic bibliography
+    even when source records only contain title/summary material metadata.
+    """
+
+    citation_key: str
+    material_id: str
+    ordinal: int
+    title: str
+    type: str = "reference"
+    authors: List[str] = Field(default_factory=list)
+    year: Optional[str] = None
+    venue: Optional[str] = None
+    doi: Optional[str] = None
+    url: Optional[str] = None
+    summary: str = ""
+    display_text: str
 
 
 class ProjectExportReviewFindingPayload(BaseModel):
@@ -166,13 +215,45 @@ class ProjectExportReviewFindingPayload(BaseModel):
     material_id: Optional[str] = None
 
 
+class ProjectExportFigureAssetPayload(BaseModel):
+    """Figure/table asset provenance included in writing export metadata.
+
+    Args:
+        asset_id: Stable persisted figure/table asset id.
+        kind: Asset type, currently ``figure`` or ``table``.
+        material_id: Optional source material id.
+        source_page: Optional source PDF page.
+        bbox: Optional source bbox as stored on the asset record.
+        bbox_unit: Declared bbox unit when it can be interpreted safely.
+        source_anchor: Direct reader anchor when the asset has PDF provenance.
+    """
+
+    asset_id: str
+    project_id: str
+    kind: str = Field(pattern="^(figure|table)$")
+    caption: str
+    numbering: str
+    material_id: Optional[str] = None
+    source_page: Optional[int] = None
+    bbox: Optional[List[float]] = None
+    bbox_unit: Optional[PdfBboxUnit] = None
+    asset_path: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    format: Optional[str] = None
+    source_anchor: Optional[ProjectExportSourceAnchorPayload] = None
+
+
 class ProjectExportPayload(BaseModel):
-    """Project export response for JSON and Markdown formats."""
+    """Project export response for text and generated file formats."""
 
     project_id: Optional[str] = None
     format: str
     filename: Optional[str] = None
     content: Optional[str] = None
+    content_base64: Optional[str] = None
+    media_type: Optional[str] = None
+    file_path: Optional[str] = None
     project: Optional[ProjectPayload] = None
     sections: List[SectionPayload] = Field(default_factory=list)
     drafts: List[DraftPayload] = Field(default_factory=list)
@@ -180,7 +261,9 @@ class ProjectExportPayload(BaseModel):
     document_count: Optional[int] = None
     evidence_rows: List[ProjectExportEvidenceRowPayload] = Field(default_factory=list)
     citation_chain: List[ProjectExportCitationChainPayload] = Field(default_factory=list)
+    bibliography_entries: List[ProjectExportBibliographyEntryPayload] = Field(default_factory=list)
     review_findings: List[ProjectExportReviewFindingPayload] = Field(default_factory=list)
+    figure_assets: List[ProjectExportFigureAssetPayload] = Field(default_factory=list)
 
 
 class AssociationSignalPayload(BaseModel):
@@ -334,7 +417,9 @@ class GenerateOutlineRequest(BaseModel):
 class CitationSourcePayload(BaseModel):
     """Citation source metadata (not Word-style bibliography).
 
-    Tracks source material metadata for citation anchors in drafts.
+    Tracks source material metadata for citation anchors in drafts. Fields map
+    to CSL-JSON for downstream citeproc formatting (``publication`` =
+    container-title; ``csl_type`` = CSL item type such as ``article-journal``).
     """
 
     source_id: str
@@ -346,9 +431,34 @@ class CitationSourcePayload(BaseModel):
     publication: Optional[str] = None
     doi: Optional[str] = None
     url: Optional[str] = None
+    publisher: Optional[str] = None
+    volume: Optional[str] = None
+    issue: Optional[str] = None
+    pages: Optional[str] = None
+    csl_type: str = "article-journal"
     citation_count: int = Field(0, description="Number of times cited in project")
     created_at: str
     updated_at: str
+
+
+class CitationSourceUpdate(BaseModel):
+    """Editable bibliographic metadata for a citation source.
+
+    All fields optional; only provided fields are persisted into the material
+    metadata. ``None`` leaves the stored value untouched.
+    """
+
+    title: Optional[str] = None
+    authors: Optional[List[str]] = None
+    year: Optional[int] = None
+    publication: Optional[str] = None
+    doi: Optional[str] = None
+    url: Optional[str] = None
+    publisher: Optional[str] = None
+    volume: Optional[str] = None
+    issue: Optional[str] = None
+    pages: Optional[str] = None
+    csl_type: Optional[str] = None
 
 
 class CitationSuggestionPayload(BaseModel):
@@ -408,6 +518,51 @@ class CreateFigureAssetRequest(BaseModel):
     width: Optional[int] = None
     height: Optional[int] = None
     format: Optional[str] = None
+
+
+class UpdateFigureAssetRequest(BaseModel):
+    """Request to update persisted figure/table asset metadata."""
+
+    kind: Optional[str] = Field(None, pattern="^(figure|table)$")
+    caption: Optional[str] = None
+    numbering: Optional[str] = None
+    material_id: Optional[str] = None
+    source_page: Optional[int] = None
+    bbox: Optional[List[float]] = None
+    asset_path: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    format: Optional[str] = None
+
+
+class GenerateFigureAssetsRequest(BaseModel):
+    """Request to generate local figure/table assets from existing candidates.
+
+    Args:
+        project_id: Non-empty project id that owns chunk-derived candidates.
+        candidate_ids: Optional candidate ids to materialize; empty means the
+            first eligible candidates are selected deterministically.
+        max_items: Maximum number of candidates to materialize in one request.
+        kind: Optional asset kind filter.
+        overwrite_existing: When false, candidates whose asset path is already
+            registered are skipped instead of creating duplicate assets.
+    """
+
+    project_id: str = Field(min_length=1)
+    candidate_ids: List[str] = Field(default_factory=list, max_length=50)
+    max_items: int = Field(1, ge=1, le=20)
+    kind: Optional[str] = Field(None, pattern="^(figure|table)$")
+    overwrite_existing: bool = False
+
+
+class GenerateFigureAssetsResponse(BaseModel):
+    """Response for deterministic local figure/table asset generation."""
+
+    project_id: str
+    generated_count: int = Field(ge=0)
+    generated_assets: List[FigureAssetPayload] = Field(default_factory=list)
+    skipped_candidate_ids: List[str] = Field(default_factory=list)
+    message: str
 
 
 class SubmitForReviewRequest(BaseModel):

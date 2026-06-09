@@ -2,7 +2,7 @@
 Pure-function state machine for ExperienceCandidate transitions.
 
 Source: docs/plans/active/2026-05-17-literature-evolution-agent-incremental-upgrade-plan.md
-        §Locked P0 Decisions D-EVO-P0-8 (idempotency) + §Implementation Slices Slice 2.
+        idempotency rules and state-transition constraints.
 
 Allowed transitions (S = source, T = target):
     captured       -> pending | blocked
@@ -15,7 +15,7 @@ Allowed transitions (S = source, T = target):
     expired        -> (terminal)
     blocked        -> (terminal — manual unblock requires a fresh candidate)
 
-Forbidden per D-EVO-P0-8:
+Forbidden:
     - reject-after-promote
     - re-accept-after-rollback
     - any transition from a terminal state to a non-terminal state

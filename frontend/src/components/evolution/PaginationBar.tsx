@@ -1,4 +1,4 @@
-// PaginationBar — prev/next using backend's real total (S8.1 contract).
+// PaginationBar — prev/next using the backend's real total.
 //
 // Boundary rules enforced here (the parent should not have to repeat them):
 //   - prev disabled when offset === 0

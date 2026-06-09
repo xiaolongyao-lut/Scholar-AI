@@ -1,13 +1,13 @@
 """
-Promotion of accepted evolution candidates into durable artifacts (Slice 6 + 6.5).
+Promotion of accepted evolution candidates into durable artifacts.
 
 Two promotion targets:
     (a) MemPalace memory drawer  — for any non-skill memory_type;
         uses MempalaceMemoryAdapter.add_memory(); rollback is tombstone-first
-        per D-EVO-P0-6 (status -> ROLLED_BACK with rollback_ref preserved;
+        per tombstone-first rollback semantics (status -> ROLLED_BACK with rollback_ref preserved;
         actual MemPalace deletion is a later MemPalace-owner decision).
     (b) Managed skill draft       — for memory_type=SKILL_DRAFT;
-        Slice 6.5 wires the existing skills/ approval + security audit
+        The managed-skill path wires the existing skills/ approval + security audit
         pipeline: a minimal SKILL.md (no scripts, no permissions, hidden
         UI, experimental flag) is rendered from the candidate, imported
         via WritingSkillService.import_user_skill which writes the
@@ -21,7 +21,7 @@ Two promotion targets:
         partial setup), the call degrades to recording a proposal id
         identical to the pre-Slice-6.5 contract.
 
-Idempotency (plan §D-EVO-P0-8):
+Idempotency:
     - Promotion only runs when candidate.status == ACCEPTED.
     - A candidate already in PROMOTED_TO_MEMORY / PROMOTED_TO_SKILL_DRAFT
       / ROLLED_BACK is rejected with promoted=False, reason explaining why.
@@ -33,7 +33,7 @@ Idempotency (plan §D-EVO-P0-8):
       candidate is already PROMOTED_TO_SKILL_DRAFT so we never re-import.
 
 Kill switch:
-    - `evolution.promotion_enabled` defaults to false (plan §Kill Switches).
+    - `evolution.promotion_enabled` defaults to false.
     - When false, promote() returns PromotionResult(promoted=False,
       target="none", reason="promotion_enabled=false").
 """
@@ -207,9 +207,9 @@ class EvolutionPromoter:
         managed `skill:{skill_id}` identifier so a future rollback can
         locate the installed package.
 
-        When `skill_service` is None (pre-Slice-6.5 wiring or test
+        When `skill_service` is None (minimal wiring or test
         fixtures that didn't inject a service), fall back to recording a
-        synthetic proposal id. This preserves the original Slice 6
+        synthetic proposal id. This preserves the existing
         contract so callers can still depend on a non-empty
         rollback_ref + transition to PROMOTED_TO_SKILL_DRAFT.
         """

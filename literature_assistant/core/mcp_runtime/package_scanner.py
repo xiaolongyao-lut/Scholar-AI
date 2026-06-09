@@ -1,4 +1,4 @@
-"""MCP package scanner (S2 / plan 2026-05-20 §A2).
+"""MCP package scanner.
 
 Walks a user-supplied local path and produces an ``McpPackageScanResult``
 describing how to install the package as an MCP server. Read-only:
@@ -9,7 +9,7 @@ describing how to install the package as an MCP server. Read-only:
 - Validates launch candidates against ``security_policy.validate_stdio_command``
   before returning them.
 
-Manifest precedence (plan §A1 + Decision #2):
+Manifest precedence:
 
 1. ``literature-mcp.json`` (primary)
 2. ``lit-mcp.json``
@@ -17,19 +17,24 @@ Manifest precedence (plan §A1 + Decision #2):
 4. ``server.json``
 
 Fallback scanners (``package.json``, ``pyproject.toml``, README) are stubs
-in this slice; they emit a ``low`` confidence candidate at most or route to
-``needs_manual_launch=True``. Implementation lands in a follow-up commit
-inside the same S2 slice.
+in this implementation; they emit a ``low`` confidence candidate at most or
+route to ``needs_manual_launch=True``.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from pathlib import Path
 from typing import Any
 
+from dynamic_config_schema import (
+    extract_dynamic_config_schema,
+    parse_dynamic_config_schema,
+)
+from extension_secret_policy import is_plaintext_secret_config_field
 from models.mcp_installation import (
     CONFIG_FIELD_TYPES,
     CREDENTIAL_KINDS,
@@ -62,7 +67,7 @@ MANIFEST_FILENAMES = (
     "server.json",
 )
 """Tried in order; first match wins. literature-mcp.json is the primary
-documented name (Decision #2)."""
+documented name."""
 
 MAX_MANIFEST_BYTES = 256 * 1024  # 256 KiB — manifest is metadata, not data
 MAX_ARGS = 64
@@ -109,7 +114,9 @@ class McpPackageScanner:
         normalized = self._normalize_source_path(request.source_path)
 
         # Try first-class manifests.
-        manifest_path, manifest_data = self._try_lit_manifests(normalized)
+        manifest_path, manifest_data = self._try_lit_manifests(normalized, warnings)
+        if any(w.level == McpScanWarningLevel.BLOCK for w in warnings) and manifest_data is None:
+            return self._build_blocked_manual_result(normalized=normalized, warnings=warnings)
         if manifest_data is not None:
             return self._build_result_from_manifest(
                 normalized=normalized,
@@ -143,7 +150,7 @@ class McpPackageScanner:
                 level=McpScanWarningLevel.WARN,
                 code="no_first_class_manifest",
                 message=(
-                    f"No {' / '.join(MANIFEST_FILENAMES)} at {normalized}. "
+                    f"No {' / '.join(MANIFEST_FILENAMES)} was found. "
                     "Falling back to manual launch entry."
                 ),
             )
@@ -169,18 +176,22 @@ class McpPackageScanner:
         """
         if REMOTE_SCHEME_RE.match(raw):
             raise McpPackageScanError(
-                f"remote URLs are not allowed as source_path: {raw!r}"
+                "remote URLs are not allowed as source paths"
             )
         candidate = Path(raw).expanduser()
+        if candidate.is_symlink():
+            raise McpPackageScanError(
+                "source path must not be a symbolic link"
+            )
         try:
             resolved = candidate.resolve(strict=True)
         except FileNotFoundError as exc:
             raise McpPackageScanError(
-                f"source_path does not exist: {raw!r}"
+                "source path does not exist"
             ) from exc
         except OSError as exc:
             raise McpPackageScanError(
-                f"source_path could not be resolved: {raw!r} ({exc})"
+                "source path could not be resolved"
             ) from exc
 
         if resolved.is_file():
@@ -194,7 +205,7 @@ class McpPackageScanner:
             return resolved.parent
         if not resolved.is_dir():
             raise McpPackageScanError(
-                f"source_path must be a directory, file, or zip: {raw!r}"
+                "source path must be a directory, file, or zip"
             )
         return resolved
 
@@ -217,13 +228,26 @@ class McpPackageScanner:
     # --------------------------------------------------------------- manifest
 
     def _try_lit_manifests(
-        self, root: Path
+        self, root: Path, warnings: list[McpScanWarning]
     ) -> tuple[Path | None, dict[str, Any] | None]:
         """Look for the first-class manifest in precedence order."""
         if not root.is_dir():
             return None, None
         for name in MANIFEST_FILENAMES:
             candidate = root / name
+            if candidate.exists() and candidate.is_symlink():
+                warnings.append(
+                    McpScanWarning(
+                        level=McpScanWarningLevel.BLOCK,
+                        code="manifest_symlink_rejected",
+                        message=(
+                            f"{name} is a symbolic link; package manifests "
+                            "must be regular files inside the package root"
+                        ),
+                        field=name,
+                    )
+                )
+                continue
             text = self._read_manifest_text(candidate)
             if text is None:
                 continue
@@ -231,13 +255,30 @@ class McpPackageScanner:
                 data = json.loads(text)
             except json.JSONDecodeError as exc:
                 logger.warning(
-                    "manifest %s rejected (invalid JSON): %s", candidate, exc
+                    "manifest rejected (invalid JSON): %s", exc
                 )
                 continue
             if not isinstance(data, dict):
                 continue
             return candidate, data
         return None, None
+
+    def _build_blocked_manual_result(
+        self,
+        *,
+        normalized: Path,
+        warnings: list[McpScanWarning],
+    ) -> McpPackageScanResult:
+        """Return a manual result when a hard scan warning forbids automation."""
+        return McpPackageScanResult(
+            scan_id=generate_scan_id(),
+            source_path=str(normalized),
+            confidence=McpScanConfidence.NONE,
+            transport="stdio",
+            needs_manual_launch=True,
+            warnings=warnings,
+            expires_at=compute_scan_expiry(),
+        )
 
     def _build_result_from_manifest(
         self,
@@ -316,6 +357,62 @@ class McpPackageScanner:
             manifest_data.get("required_credentials", [])
         )
         warnings.extend(rc_warnings)
+
+        schema_result = parse_dynamic_config_schema(
+            extract_dynamic_config_schema(manifest_data),
+            existing_config_keys={
+                key
+                for field in config_fields
+                for key in (field.id, field.env)
+            },
+            existing_credential_keys={
+                key
+                for credential in required_credentials
+                for key in (credential.id, credential.env)
+            },
+        )
+        config_fields.extend(
+            McpInstallConfigField(
+                id=field.id,
+                label=field.label,
+                env=field.env,
+                type=field.type,
+                required=field.required,
+                default=field.default,
+                options=[
+                    {"value": option.value, "label": option.label}
+                    for option in field.options
+                ]
+                if field.options is not None
+                else None,
+                min=field.min,
+                max=field.max,
+                step=field.step,
+                description=field.description,
+            )
+            for field in schema_result.config_fields
+        )
+        required_credentials.extend(
+            McpRequiredCredential(
+                id=credential.id,
+                label=credential.label,
+                env=credential.env,
+                kind=credential.kind,
+                provider_hints=list(credential.provider_hints),
+                required=credential.required,
+                description=credential.description,
+            )
+            for credential in schema_result.required_credentials
+        )
+        warnings.extend(
+            McpScanWarning(
+                level=McpScanWarningLevel.WARN,
+                code="config_schema_mapping_warning",
+                message=message,
+                field="config_schema",
+            )
+            for message in schema_result.warnings
+        )
 
         expected_tools = self._parse_string_list(
             manifest_data.get("expected_tools", []), max_items=64
@@ -500,6 +597,28 @@ class McpPackageScanner:
                     )
                 )
                 continue
+            normalized_default = self._normalize_config_default(
+                field_type, entry.get("default")
+            )
+            if is_plaintext_secret_config_field(
+                field_id=str(entry.get("id", "") or ""),
+                label=str(entry.get("label", "") or ""),
+                env=str(entry.get("env", "") or ""),
+                description=str(entry.get("description", "") or ""),
+                default=normalized_default,
+            ):
+                warnings.append(
+                    McpScanWarning(
+                        level=McpScanWarningLevel.BLOCK,
+                        code="config_field_credential_like",
+                        message=(
+                            f"config_fields[{i}] appears to contain credential "
+                            "material; declare it under required_credentials"
+                        ),
+                        field=f"config_fields[{i}]",
+                    )
+                )
+                continue
             try:
                 field = McpInstallConfigField(
                     id=str(entry.get("id", "")),
@@ -507,12 +626,11 @@ class McpPackageScanner:
                     env=str(entry.get("env", "")),
                     type=field_type,
                     required=bool(entry.get("required", True)),
-                    default=(
-                        str(entry["default"])
-                        if entry.get("default") is not None
-                        else None
-                    ),
+                    default=normalized_default,
                     options=entry.get("options"),
+                    min=self._parse_optional_number(entry.get("min")),
+                    max=self._parse_optional_number(entry.get("max")),
+                    step=self._parse_optional_number(entry.get("step")),
                     description=str(entry.get("description", "") or ""),
                 )
             except (ValueError, TypeError) as exc:
@@ -602,6 +720,34 @@ class McpPackageScanner:
         return out, warnings
 
     @staticmethod
+    def _parse_optional_number(raw: Any) -> float | None:
+        if raw is None or raw == "":
+            return None
+        if isinstance(raw, bool):
+            return None
+        if isinstance(raw, (int, float)):
+            parsed = float(raw)
+            return parsed if math.isfinite(parsed) else None
+        if isinstance(raw, str):
+            try:
+                parsed = float(raw.strip())
+                return parsed if math.isfinite(parsed) else None
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _normalize_config_default(field_type: str, raw: Any) -> str | None:
+        if raw is None:
+            return None
+        if field_type == "boolean":
+            if isinstance(raw, bool):
+                return "true" if raw else "false"
+            normalized = str(raw).strip().lower()
+            return "true" if normalized in {"1", "true", "yes", "on"} else "false"
+        return str(raw)
+
+    @staticmethod
     def _parse_string_list(raw: Any, *, max_items: int) -> list[str]:
         if not isinstance(raw, list):
             return []
@@ -630,6 +776,8 @@ class McpPackageScanner:
         if not root.is_dir():
             return None
         pkg_path = root / "package.json"
+        if pkg_path.exists() and pkg_path.is_symlink():
+            return None
         text = self._read_manifest_text(pkg_path)
         if text is None:
             return None
@@ -716,6 +864,8 @@ class McpPackageScanner:
         if not root.is_dir():
             return None
         pyp = root / "pyproject.toml"
+        if pyp.exists() and pyp.is_symlink():
+            return None
         text = self._read_manifest_text(pyp)
         if text is None:
             return None
@@ -885,6 +1035,8 @@ class McpPackageScanner:
                 ),
             )
         )
+        if any(w.level == McpScanWarningLevel.BLOCK for w in warnings):
+            return self._build_blocked_manual_result(normalized=normalized, warnings=warnings)
         return McpPackageScanResult(
             scan_id=generate_scan_id(),
             source_path=str(normalized),

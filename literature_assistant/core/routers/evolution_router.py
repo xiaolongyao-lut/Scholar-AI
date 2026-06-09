@@ -1,38 +1,24 @@
-"""
-Evolution API Router — `/evolution/*` endpoints.
+"""Experience review API router.
 
-Slice 2 scope (plan §Public API Draft):
-    GET  /evolution/status
-    GET  /evolution/candidates
-    POST /evolution/candidates/{candidate_id}/accept
-    POST /evolution/candidates/{candidate_id}/reject
-    POST /evolution/candidates/{candidate_id}/snooze
-    POST /evolution/candidates/{candidate_id}/rollback
-
-Slice 2 also exposes one capture endpoint for manual / test backfill:
-    POST /evolution/capture/manual
-
-Inspiration / discussion / runtime-job capture endpoints belong to Slice 3-4
-and are intentionally not registered here; calling them returns 404 by
-FastAPI default, which is the correct signal that those slices are pending.
-
-Opt §2 (2026-05-19): Endpoints take EvolutionService via FastAPI `Depends`
-so tests can substitute isolated stores through `app.dependency_overrides`
-instead of mutating the process-wide singleton. The shared singleton is
-still the default, so non-FastAPI callers (capture sites, scripts) work
-unchanged.
+Endpoints take ``EvolutionService`` via FastAPI dependencies so tests can use
+isolated stores while the application keeps a shared default service.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from evolution import EvolutionService, get_evolution_service
-from evolution.config import load_evolution_config
+from evolution.config import (
+    is_candidate_capture_enabled,
+    is_promotion_enabled,
+    is_review_ui_enabled,
+    load_evolution_config,
+)
 from evolution.store import default_db_path
 from models.evolution import (
     CandidateDecisionPayload,
@@ -53,22 +39,29 @@ logger = logging.getLogger("EvolutionRouter")
 router = APIRouter(prefix="/evolution", tags=["Evolution"])
 
 
+def _candidate_not_found_error() -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail="经验候选不存在或已被删除。",
+    )
+
+
 # --- status ------------------------------------------------------------------
 
 @router.get("/status", response_model=EvolutionStatusPayload)
 async def get_evolution_status(
     service: EvolutionService = Depends(get_evolution_service),
 ) -> EvolutionStatusPayload:
-    """Return evolution-layer configuration + candidate counts snapshot."""
+    """Return the local experience-review feature state and item counts."""
 
     cfg = load_evolution_config()
     counts = service.status_counts()
     return EvolutionStatusPayload(
         enabled=True,
         recall_enabled=bool(cfg.get("recall_enabled", False)),
-        candidate_capture_enabled=bool(cfg.get("candidate_capture_enabled", True)),
-        review_ui_enabled=bool(cfg.get("review_ui_enabled", False)),
-        promotion_enabled=bool(cfg.get("promotion_enabled", False)),
+        candidate_capture_enabled=is_candidate_capture_enabled(),
+        review_ui_enabled=is_review_ui_enabled(),
+        promotion_enabled=is_promotion_enabled(),
         curator_enabled=bool(cfg.get("curator_enabled", False)),
         db_path=str(default_db_path()),
         candidate_counts=counts,
@@ -83,16 +76,12 @@ async def list_candidates(
     project_id: Optional[str] = Query(None),
     status: Optional[CandidateStatus] = Query(None),
     memory_type: Optional[CandidateMemoryType] = Query(None),
+    sort_by: Literal["updated_at", "created_at", "confidence"] = Query("updated_at"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     service: EvolutionService = Depends(get_evolution_service),
 ) -> CandidateListPayload:
-    """List candidates with optional scoping filters.
-
-    `total` is the pagination-independent filter cardinality (S8.1 fix);
-    previously it was len(items) which mislead frontend pagination when
-    `limit < matching_rows`.
-    """
+    """List reviewable experience items with optional filters."""
 
     memory_type_value = memory_type.value if memory_type else None
     items = service.list(
@@ -100,6 +89,7 @@ async def list_candidates(
         project_id=project_id,
         status=status,
         memory_type=memory_type_value,
+        sort_by=sort_by,
         limit=limit,
         offset=offset,
     )
@@ -122,7 +112,7 @@ def _apply_transition(
 ) -> CandidateDecisionPayload:
     existing = service.get(candidate_id)
     if existing is None:
-        raise HTTPException(status_code=404, detail=f"candidate not found: {candidate_id}")
+        raise _candidate_not_found_error()
     previous_status = existing.status
 
     try:
@@ -138,10 +128,10 @@ def _apply_transition(
                 rollback_ref=request.rollback_ref,
                 decision_reason=request.decision_reason,
             )
-        else:  # pragma: no cover — guarded by router definitions below
-            raise HTTPException(status_code=400, detail=f"unknown action: {action}")
+        else:  # pragma: no cover
+            raise HTTPException(status_code=400, detail="不支持的经验候选操作。")
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise _candidate_not_found_error() from exc
 
     if not result.transition_applied:
         raise HTTPException(status_code=409, detail=result.reason)
@@ -196,21 +186,18 @@ async def promote_candidate(
     candidate_id: str,
     service: EvolutionService = Depends(get_evolution_service),
 ) -> CandidatePromotionPayload:
-    """Promote an ACCEPTED candidate to MemPalace or skill draft proposal.
+    """Apply a saved experience to long-term memory or a workflow draft.
 
-    Returns 404 if the candidate doesn't exist. Returns 409 when the
-    candidate isn't in a promotable state, the kill switch is off, or the
-    underlying MemPalace adapter rejects the write — the candidate row
-    stays at its current status in that case (no partial promotion).
+    The item remains unchanged when it cannot be applied.
     """
 
     try:
         outcome = service.promote(candidate_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise _candidate_not_found_error() from exc
 
-    if outcome.candidate is None:  # pragma: no cover - guarded by KeyError above
-        raise HTTPException(status_code=404, detail=f"candidate not found: {candidate_id}")
+    if outcome.candidate is None:  # pragma: no cover
+        raise _candidate_not_found_error()
 
     if not outcome.promoted:
         raise HTTPException(status_code=409, detail=outcome.reason)
@@ -238,14 +225,7 @@ async def run_curator(
     workspace_id: Optional[str] = Query(None),
     service: EvolutionService = Depends(get_evolution_service),
 ) -> CuratorRunPayload:
-    """Run one curator pass (Slice 7).
-
-    No-op (returns enabled=false) when `evolution.curator_enabled` is off.
-    Otherwise sweeps PENDING candidates for stale + low-confidence
-    transitions and surfaces conflict + dedupe groups as report-only data.
-    Reviewers act on conflicts through the regular accept/reject/snooze
-    endpoints — the curator never auto-resolves.
-    """
+    """Run one local organizer pass over pending experience items."""
 
     from evolution import EvolutionCurator, is_curator_enabled
 
@@ -253,7 +233,7 @@ async def run_curator(
         return CuratorRunPayload(
             enabled=False,
             workspace_id=workspace_id,
-            reason="evolution.curator_enabled=false (kill switch)",
+            reason="经验整理功能尚未开启：curator_enabled=false (kill switch)。",
         )
 
     curator = EvolutionCurator(service)
@@ -278,16 +258,7 @@ async def get_evolution_audit(
     recent_decision_limit: int = Query(10, ge=0, le=50),
     service: EvolutionService = Depends(get_evolution_service),
 ) -> EvolutionAuditPayload:
-    """Opt §6: aggregate roll-up of the candidate store.
-
-    All values are derived from COUNT / GROUP BY queries; no raw
-    candidate text (claim / title / future_use / source_summary) is
-    surfaced. `recent_decisions` carries up to `recent_decision_limit`
-    most-recent non-empty `decision_reason` strings (truncated to
-    240 chars each), which are only ever written by service / curator
-    / promoter code — never by user input — so they are safe to expose
-    to an operator audit panel.
-    """
+    """Return a read-only summary for the experience review panel."""
 
     summary = service.audit_summary(
         workspace_id=workspace_id,
@@ -296,10 +267,10 @@ async def get_evolution_audit(
     return EvolutionAuditPayload(**summary)
 
 
-# --- manual capture (test / backfill only) -----------------------------------
+# --- manual capture ----------------------------------------------------------
 
 class ManualCaptureRequest(BaseModel):
-    """Body for POST /evolution/capture/manual."""
+    """Request body for controlled manual experience import."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -329,11 +300,7 @@ async def capture_manual(
     request: ManualCaptureRequest,
     service: EvolutionService = Depends(get_evolution_service),
 ) -> ManualCaptureResponse:
-    """Capture a candidate from a manual source (test / backfill).
-
-    Inspiration / discussion / runtime-job capture endpoints belong to Slice 3-4
-    and are not yet registered.
-    """
+    """Capture an experience item from a controlled manual source."""
 
     result = service.capture(
         workspace_id=request.workspace_id,

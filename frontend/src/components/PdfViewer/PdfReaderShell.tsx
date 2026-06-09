@@ -4,7 +4,7 @@ import {
   PanelRight, Plus, Trash2, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PdfViewer, type PdfOutlineEntry } from '@/components/PdfViewer/PdfViewer';
+import { PdfViewer, type PdfOutlineEntry, type PdfSelectionAnchor } from '@/components/PdfViewer/PdfViewer';
 import {
   type AnnotationData,
   type Highlight,
@@ -39,7 +39,7 @@ interface PdfReaderShellProps {
    *  loadDetail) — null when the PDF has no outline / the call failed.
    *  Out of scope for F3 (placeholder); F5 wires the real fetch. */
   outline?: OutlineEntry[] | null;
-  onAnalyzeText?: (text: string, page: number) => void;
+  onAnalyzeText?: (text: string, page: number, anchor?: PdfSelectionAnchor) => void;
   onAddHighlight?: (highlight: Highlight) => void;
   onDeleteHighlight?: (index: number) => void;
   onAnnotationUpdate?: (annotation: AnnotationData) => void;
@@ -129,10 +129,7 @@ export function PdfReaderShell({
   const [pendingPage, setPendingPage] = useState<number | undefined>(initialPage);
   const [localNotes, setLocalNotes] = useState<Note[]>(notes ?? []);
   const [savingExport, setSavingExport] = useState(false);
-  // Track C F5: outline auto-loaded from PDF.js. null until the
-  // document resolves; then either the outline tree or null when the
-  // PDF has none / call failed.
-  const [loadedOutline, setLoadedOutline] = useState<PdfOutlineEntry[] | null>(null);
+  const [loadedOutline, setLoadedOutline] = useState<PdfOutlineEntry[] | null | undefined>(undefined);
   // Track C F4: selection-anchored note popover state. Opened when
   // PdfViewer's "添加笔记" button fires the onAddNote callback.
   const [notePopover, setNotePopover] = useState<{
@@ -292,7 +289,7 @@ export function PdfReaderShell({
 
   // The outline can come from an explicit prop (e.g. tests) or the
   // auto-loaded outline from PdfViewer; explicit prop wins.
-  const effectiveOutline = outline ?? loadedOutline;
+  const effectiveOutline = outline === undefined ? loadedOutline : outline;
 
   // Memo the count chips so the toolbar doesn't re-render every keystroke.
   const counts = useMemo(() => ({
@@ -303,7 +300,7 @@ export function PdfReaderShell({
 
   return (
     <div className={cn('flex h-full bg-surface-lowest', className)}>
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col relative">
         <PdfViewer
           url={url}
           materialId={materialId}
@@ -323,33 +320,47 @@ export function PdfReaderShell({
         />
       </div>
 
-      {/* Sidebar toggle rail */}
-      <div className="flex-none flex flex-col items-center gap-2 border-l border-outline-variant/60 bg-surface-low px-1 py-2">
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          className="p-1.5 rounded text-foreground/80 hover:bg-surface-high hover:text-foreground transition-colors"
-          aria-label={sidebarOpen ? '收起阅读侧栏' : '展开阅读侧栏'}
-          title={sidebarOpen ? '收起' : '展开侧栏'}
-        >
-          {sidebarOpen ? <PanelRightClose size={16} /> : <PanelRight size={16} />}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleExport()}
-          disabled={savingExport}
-          className="p-1.5 rounded text-foreground/80 hover:bg-surface-high hover:text-foreground transition-colors disabled:opacity-40"
-          aria-label="导出笔记 Markdown"
-          title="导出笔记 (Markdown)"
-        >
-          {savingExport ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-        </button>
-      </div>
+      {!sidebarOpen && (
+        <aside className="flex w-11 flex-none items-start justify-center border-l border-outline-variant/60 bg-surface-low px-1.5 py-2">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-outline-variant/60 bg-surface-lowest text-foreground/70 transition-colors hover:border-primary/40 hover:bg-surface-high hover:text-foreground"
+            aria-label="展开阅读侧栏"
+            title="展开侧栏"
+          >
+            <PanelRight size={16} />
+          </button>
+        </aside>
+      )}
 
       {sidebarOpen && (
         <aside className="w-80 flex-none flex flex-col border-l border-outline-variant/60 bg-surface-low">
           <div className="flex-none border-b border-outline-variant/60">
-            <TabBar active={activeTab} counts={counts} onSelect={handleTabSelect} />
+            <div className="flex items-center justify-between gap-2 px-3 py-2">
+              <TabBar active={activeTab} counts={counts} onSelect={handleTabSelect} />
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void handleExport()}
+                  disabled={savingExport}
+                  className="p-1.5 rounded text-foreground/70 hover:bg-surface-high hover:text-foreground transition-colors disabled:opacity-40"
+                  aria-label="导出笔记"
+                  title="导出笔记"
+                >
+                  {savingExport ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleSidebar}
+                  className="p-1.5 rounded text-foreground/70 hover:bg-surface-high hover:text-foreground transition-colors"
+                  aria-label="收起阅读侧栏"
+                  title="收起侧栏"
+                >
+                  <PanelRightClose size={14} />
+                </button>
+              </div>
+            </div>
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
             {activeTab === 'highlights' && (
@@ -796,9 +807,18 @@ function OutlineTab({
   outline,
   onJump,
 }: {
-  outline: OutlineEntry[] | null;
+  outline: OutlineEntry[] | null | undefined;
   onJump: (page: number) => void;
 }) {
+  if (outline === undefined) {
+    return (
+      <EmptyState
+        icon={<ListTree size={20} className="text-foreground/30" />}
+        title="正在读取大纲"
+        hint="PDF.js 正在解析章节目录。"
+      />
+    );
+  }
   if (!outline || outline.length === 0) {
     return (
       <EmptyState

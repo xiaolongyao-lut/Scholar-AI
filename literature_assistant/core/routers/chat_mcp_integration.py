@@ -1,4 +1,4 @@
-"""Chat-side MCP integration helpers (Phase 2 / TASK-205).
+"""Chat-side MCP integration helpers.
 
 Lives next to chat_router so the router stays slim. Responsibilities:
 

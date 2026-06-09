@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { formatEvolutionError } from '../components/evolution/labels';
 import { getEvolutionStatus } from '../services/evolutionApi';
 import type { EvolutionStatusPayload } from '../services/evolutionTypes';
 
@@ -27,8 +28,7 @@ export function useEvolutionStatus(): UseEvolutionStatusResult {
       const next = await getEvolutionStatus();
       setStatus(next);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
+      setError(formatEvolutionError(err, '系统状态获取失败，请稍后重试。'));
     } finally {
       setIsLoading(false);
     }

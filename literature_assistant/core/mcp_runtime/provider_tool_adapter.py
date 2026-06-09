@@ -1,4 +1,4 @@
-"""Provider tool-schema adapter (Phase 2 / TASK-201).
+"""Provider tool-schema adapter.
 
 Converts cached ``McpToolDescriptor`` lists into the schema that each LLM
 provider expects on the request side, and parses the namespaced tool name

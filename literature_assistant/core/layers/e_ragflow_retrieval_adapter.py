@@ -7,7 +7,7 @@ Single Responsibility: This module is strictly scoped to executing RAGFlow
 retrieval calls, parameter validation, response standardization, resource
 teardown, and emitting failure fallback signals. It does NOT perform PDF
 parsing, table extraction, or any downstream business logic.
-Features: Connection pooling, API key validation, parameter validation, SSL verification,
+Features: Connection pooling, credential validation, parameter validation, SSL verification,
           thread-safe, retry mechanism, resource management, timeout optimization,
           request telemetry, and standardized metadata mapping.
 

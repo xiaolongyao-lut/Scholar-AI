@@ -1,5 +1,5 @@
 """
-Shared dataclass for capture extractors (Slice 3/4 inspiration / discussion / runtime).
+Shared dataclass for capture extractors across inspiration, discussion, and runtime capture.
 
 Defines the kwargs payload that extractor modules return and capture-site
 hooks splat into EvolutionService.capture(). Centralizing the shape avoids

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from datetime_utils import utc_now_iso_z
+from extension_secret_policy import require_no_plaintext_secret_config
 from skills.user_manifest import UserSkillManifest, parse_skill_md_frontmatter, validate_manifest
 
 
@@ -41,6 +42,8 @@ class SkillInstallMetadata:
     last_run_at: str | None = None
     last_status: str | None = None
     last_warnings: list[str] = field(default_factory=list)
+    config_values: dict[str, str] = field(default_factory=dict)
+    credential_bindings: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-safe dictionary preserving stable metadata keys."""
@@ -64,6 +67,8 @@ class SkillInstallMetadata:
         last_warnings = payload.get("last_warnings", [])
         if not isinstance(last_warnings, list):
             last_warnings = []
+        config_values = _string_dict(payload.get("config_values"))
+        credential_bindings = _string_dict(payload.get("credential_bindings"))
 
         enabled = bool(payload.get("enabled", False))
         disabled_reason = payload.get("disabled_reason")
@@ -91,6 +96,8 @@ class SkillInstallMetadata:
             last_run_at=str(payload["last_run_at"]) if payload.get("last_run_at") else None,
             last_status=str(payload["last_status"]) if payload.get("last_status") else None,
             last_warnings=[str(item) for item in last_warnings],
+            config_values=config_values,
+            credential_bindings=credential_bindings,
         )
 
 
@@ -167,6 +174,17 @@ def write_install_metadata(skill_dir: Path, metadata: SkillInstallMetadata) -> N
     tmp_path.replace(meta_path)
 
 
+def _string_dict(value: Any) -> dict[str, str]:
+    """Return a sanitized string dictionary for user-editable runtime settings."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(key): str(item)
+        for key, item in value.items()
+        if isinstance(key, str) and key.strip() and item is not None
+    }
+
+
 def set_install_enabled(skill_dir: Path, enabled: bool, reason: str | None) -> SkillInstallMetadata:
     """Persist enabled state for an imported skill package."""
     manifest = load_user_skill_manifest(skill_dir)
@@ -187,6 +205,8 @@ def set_install_enabled(skill_dir: Path, enabled: bool, reason: str | None) -> S
         last_run_at=current.last_run_at,
         last_status=current.last_status,
         last_warnings=current.last_warnings,
+        config_values=current.config_values,
+        credential_bindings=current.credential_bindings,
     )
     write_install_metadata(skill_dir, updated)
     return updated
@@ -216,6 +236,44 @@ def record_install_run_state(skill_dir: Path, status: str, warnings: list[str]) 
         last_run_at=utc_now_iso_z(),
         last_status=status,
         last_warnings=[str(item) for item in warnings],
+        config_values=current.config_values,
+        credential_bindings=current.credential_bindings,
+    )
+    write_install_metadata(skill_dir, updated)
+    return updated
+
+
+def set_install_runtime_settings(
+    skill_dir: Path,
+    config_values: dict[str, str],
+    credential_bindings: dict[str, str],
+) -> SkillInstallMetadata:
+    """Persist non-sensitive Skill runtime settings beside a managed package."""
+    if not isinstance(config_values, dict):
+        raise TypeError("config_values must be a dictionary")
+    if not isinstance(credential_bindings, dict):
+        raise TypeError("credential_bindings must be a dictionary")
+    require_no_plaintext_secret_config(config_values)
+
+    manifest = load_user_skill_manifest(skill_dir)
+    current = read_install_metadata(skill_dir, fallback_manifest=manifest)
+    updated = SkillInstallMetadata(
+        skill_id=current.skill_id,
+        version=current.version,
+        content_hash=current.content_hash,
+        origin=current.origin,
+        installed_at=current.installed_at,
+        enabled=current.enabled,
+        trust_level=current.trust_level,
+        high_risk_flags=current.high_risk_flags,
+        disabled_reason=current.disabled_reason,
+        installed_path=str(skill_dir),
+        updated_at=utc_now_iso_z(),
+        last_run_at=current.last_run_at,
+        last_status=current.last_status,
+        last_warnings=current.last_warnings,
+        config_values=_string_dict(config_values),
+        credential_bindings=_string_dict(credential_bindings),
     )
     write_install_metadata(skill_dir, updated)
     return updated

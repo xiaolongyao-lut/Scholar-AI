@@ -1,22 +1,20 @@
-"""Discussion Orchestrator (Slice D / DEC-003a / DEC-003b / DEC-003c).
+"""RAG-aware multi-agent discussion orchestration.
 
-RAG-aware multi-agent discussion runner. Pipeline:
+Pipeline:
 
-    1. Build EvidencePack via Slice B (or accept manual chunk_ids per DEC-003b)
+    1. Build an evidence pack or accept caller-provided evidence identifiers.
     2. For each turn 0..max_turns-1:
          a. Compose per-agent prompt = system + role + evidence + running history
-         b. arun_parallel_round (Slice C) executes all agents concurrently
+         b. Execute all agents concurrently through the injected chat callable.
          c. Append agent answers to running history
     3. Synthesizer agent (single invocation) consolidates the final history
     4. Return ``DiscussionRunResult`` with full trace + synthesis
 
-Hard guarantees (plan v2 §13.2 #12 #16 #17):
-    #12 max_concurrency is per-call; cross-call discussion concurrency cap
-        belongs to a separate orchestrator-level semaphore (deferred until
-        ``DISCUSSION_AGENT_MAX_CONCURRENCY`` ships)
-    #16 EvidencePack is built fresh each call (no reuse cache)
-    #17 Agents bind to model/capability policy by default; ``credential_id``
-        only takes priority when explicitly pinned
+Hard guarantees:
+    - ``max_concurrency`` is scoped to one discussion run.
+    - Evidence is built fresh for each call.
+    - Agents bind to model policy by default; an explicit credential pin takes
+      priority only for that agent.
 """
 
 from __future__ import annotations
@@ -54,6 +52,8 @@ from model_dispatcher import (
     arun_parallel_round,
 )
 from models.discussion import (
+    AgentThoughtTracePayload,
+    AgentThoughtTraceStep,
     DiscussionAgentConfig,
     DiscussionAgentTrace,
     DiscussionConvergenceJudgeCall,
@@ -68,6 +68,13 @@ from models.discussion import (
     DiscussionTurnTrace,
 )
 from prompts.identity_renderer import render_identity_header  # 2026-05-18 identity injection plan
+from prompts.project_reasoning_bias import (
+    ProjectReasoningBiasContext,
+    apply_project_reasoning_bias,
+    load_project_reasoning_bias,
+    render_project_reasoning_bias_block,
+    should_apply_project_reasoning_bias,
+)
 
 
 logger = logging.getLogger("DiscussionOrchestrator")
@@ -140,10 +147,7 @@ RetrieverFn = Callable[[str, str, int], list[dict]]
 
 
 def _default_credential_resolver(credential_id: str) -> dict[str, Any]:
-    """Resolve a credential_id via RuntimeCredentialStore (Slice A1).
-
-    D1 (2026-05-26): Added enabled check — disabled credentials raise
-    DiscussionCredentialMissingError with clear message.
+    """Resolve a saved credential through RuntimeCredentialStore.
 
     Returns a dict with provider/model/base_url/api_key/protocol fields.
     """
@@ -156,11 +160,11 @@ def _default_credential_resolver(credential_id: str) -> dict[str, Any]:
         cred = store.get_internal(credential_id)
     except CredentialNotFoundError as exc:
         raise DiscussionCredentialMissingError(
-            f"credential not found: {credential_id}"
+            "凭证不存在或已被删除。"
         ) from exc
     if not cred.enabled:
         raise DiscussionCredentialMissingError(
-            f"credential {credential_id!r} is disabled"
+            "选择的凭证已停用，请更换凭证。"
         )
     return {
         "provider": cred.provider,
@@ -273,6 +277,17 @@ def _build_candidate(
     # as inline-LLM agents without leaking secrets to traces.
     if endpoint.get("api_key"):
         metadata["_resolved_api_key"] = str(endpoint["api_key"])
+    sampling_override = endpoint.get("sampling_override")
+    if sampling_override is not None:
+        if hasattr(sampling_override, "model_dump"):
+            sampling_items = sampling_override.model_dump(exclude_none=True).items()
+        elif isinstance(sampling_override, dict):
+            sampling_items = sampling_override.items()
+        else:
+            sampling_items = ()
+        for key, value in sampling_items:
+            if key in {"temperature", "top_p", "max_tokens", "system_prompt"} and value is not None:
+                metadata[str(key)] = value
     if endpoint.get("temperature") is not None:
         metadata["temperature"] = endpoint["temperature"]
     if endpoint.get("top_p") is not None:
@@ -373,18 +388,17 @@ def _format_evidence_with_ids(
 
     Returns ``(legacy_evidence_text_for_prompt, context_items, evidence_ids)``.
 
-    Per FD-13 B2 (2026-05-21), the B-path refactor moves real evidence-pack
-    snippets out of the assembled prompt body and into the ``ChatRequest.context``
-    transport slot:
+    Evidence-pack snippets are carried through ``ChatRequest.context`` instead
+    of being duplicated in the assembled prompt body:
 
     - **Evidence pack present (non-empty snippets)**:
       Each snippet becomes one ``context_items[i]`` entry with its
       ``[E<n>] source (chunk=… score=…)`` header followed by the snippet
       content. The first tuple element is empty (``""``) so the caller knows
-      the prompt's ``# Evidence`` section should render a placeholder like
+      the prompt's ``# Evidence`` section should render a marker such as
       ``"(provided in context channel)"`` instead of inlining the evidence.
       ``evidence_ids`` mirrors ``build_evidence_ids(len(snippets))`` and is
-      still used for the citation contract suffix + parser whitelist.
+      still used for the citation contract suffix and parser allow-list.
 
     - **Manual or empty evidence**:
       Returns ``(legacy_text, [], [])`` — the pre-B-path string-only shape is
@@ -465,21 +479,33 @@ def _build_agent_prompt(
     turn_index: int,
     cite_evidence: bool = False,
     context_items: list[str] | None = None,
+    project_reasoning_bias: Any | None = None,
 ) -> str:
     role_label = agent.role_label or agent.role.value
     base_system = agent.system_prompt.strip() or "(no extra system prompt)"
     if cite_evidence:
         base_system = base_system + CITATION_CONTRACT_SUFFIX
+    if project_reasoning_bias is not None:
+        try:
+            bias_block = render_project_reasoning_bias_block(
+                project_reasoning_bias,
+                locale=project_reasoning_bias.language,
+            )
+            base_system = apply_project_reasoning_bias(base_system, bias_block)
+        except Exception as exc:  # noqa: BLE001 - discussion prompt augmentation must never block a run.
+            logger.warning(
+                "discussion project_reasoning_bias render skipped for agent=%s err=%s",
+                agent.agent_id,
+                exc,
+            )
     identity_header = render_identity_header(
         "discussion",
         context={"turn_index": turn_index},
     )
-    # FD-14.1 + FD-13.1 (2026-05-21): compute the dynamic remaining budget
-    # for the history block. The cap covers prompt **plus** the system_text
-    # that chat_router will compose from context_items downstream; otherwise
-    # B-path evidence (delivered via ChatRequest.context[]) silently bypasses
-    # the FD-14.2 envelope guard.
-    # Build the non-history sections first (with a placeholder marker for the
+    # Compute the dynamic remaining budget for the history block. The cap
+    # covers prompt text plus downstream context text, so evidence carried
+    # through ChatRequest.context cannot bypass the envelope guard.
+    # Build the non-history sections first (with a marker for the
     # history slot), measure their length, and pass the remainder to
     # _format_history as max_length. The cap is also bounded above by
     # MAX_HISTORY_LENGTH so short non-history prompts do not balloon history.
@@ -529,6 +555,7 @@ def _build_synthesis_prompt(
     history: list[dict[str, Any]],
     strategy: str,
     context_items: list[str] | None = None,
+    project_reasoning_bias: Any | None = None,
 ) -> str:
     # FD-14.1 + FD-13.1 (2026-05-21): same dynamic-remaining-budget pattern as
     # _build_agent_prompt — synthesis is fed the entire discussion history,
@@ -548,6 +575,15 @@ def _build_synthesis_prompt(
         "",
         "# Discussion to synthesize",
     ]
+    if project_reasoning_bias is not None:
+        try:
+            bias_block = render_project_reasoning_bias_block(
+                project_reasoning_bias,
+                locale=project_reasoning_bias.language,
+            )
+            pre_sections[0] = apply_project_reasoning_bias(pre_sections[0], bias_block)
+        except Exception as exc:  # noqa: BLE001 - synthesis prompt augmentation must never block a run.
+            logger.warning("discussion synthesis project_reasoning_bias render skipped: %s", exc)
     post_sections = [
         "",
         "# Your task",
@@ -573,8 +609,58 @@ def _build_synthesis_prompt(
     return prompt
 
 
+def _resolve_project_reasoning_bias_for_discussion(
+    config: DiscussionRunConfig,
+) -> Any | None:
+    """Resolve the saved project bias once per run for discussion surfaces."""
+    project_id = str(config.project_id or "").strip()
+    if not project_id:
+        return None
+    try:
+        bias = load_project_reasoning_bias(project_id)
+        if bias is None:
+            return None
+        if getattr(config, "project_reasoning_bias_enabled", None) is False:
+            return None
+        return bias
+    except Exception as exc:  # noqa: BLE001 - discussion must keep running when preference lookup fails.
+        logger.warning(
+            "discussion project_reasoning_bias resolution skipped: project=%s err=%s",
+            project_id,
+            exc,
+        )
+        return None
+
+
+def _discussion_bias_for_agent(
+    bias: Any | None,
+    *,
+    agent_id: str,
+    is_synthesizer: bool = False,
+    request_enabled: bool | None = None,
+) -> Any | None:
+    """Return the resolved bias only when the current agent should receive it."""
+    if bias is None:
+        return None
+    if request_enabled is False:
+        return None
+    try:
+        if should_apply_project_reasoning_bias(
+            bias,
+            ProjectReasoningBiasContext(
+                surface="discussion_synthesis" if is_synthesizer else "discussion_agent",
+                agent_id=agent_id,
+                request_enabled=True if request_enabled is None else bool(request_enabled),
+            ),
+        ):
+            return bias
+    except Exception as exc:  # noqa: BLE001 - discussion prompt augmentation must never block a run.
+        logger.warning("discussion project_reasoning_bias scope check failed: agent=%s err=%s", agent_id, exc)
+    return None
+
+
 # ---------------------------------------------------------------------------
-# Strategy enforcement (TASK-607)
+# Strategy enforcement
 # ---------------------------------------------------------------------------
 
 
@@ -630,6 +716,129 @@ def _result_to_trace(
     )
 
 
+_DISCUSSION_CONTRIBUTION_TYPE_BY_ROLE: dict[str, str] = {
+    "proposer": "supporting_argument",
+    "critic": "boundary_review",
+    "devil_advocate": "counter_evidence_probe",
+    "domain_expert": "mechanism_analysis",
+    "synthesizer": "synthesis",
+    "custom": "role_specific_contribution",
+}
+
+
+def _normalize_trace_evidence_ids(values: list[str]) -> list[str]:
+    """Return bounded evidence ids for public trace metadata."""
+
+    if not isinstance(values, list):
+        raise TypeError("values must be a list")
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        item = value.strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        normalized.append(item[:64])
+        if len(normalized) >= 50:
+            break
+    return normalized
+
+
+def _append_trace_step(
+    steps: list[AgentThoughtTraceStep],
+    *,
+    label: str,
+    summary: str,
+    evidence_ids: list[str] | None = None,
+) -> None:
+    """Append one public trace step when the summary is non-empty."""
+
+    if not label.strip():
+        raise ValueError("label must not be empty")
+    cleaned = summary.strip()
+    if not cleaned:
+        return
+    steps.append(
+        AgentThoughtTraceStep(
+            label=label,
+            summary=cleaned,
+            evidence_ids=_normalize_trace_evidence_ids(evidence_ids or []),
+        )
+    )
+
+
+def _build_agent_thought_trace(
+    *,
+    agent: DiscussionAgentConfig,
+    trace: DiscussionAgentTrace,
+) -> AgentThoughtTracePayload | None:
+    """Build the rich visible trace wrapper for a successful agent answer.
+
+    Args:
+        agent: Static agent configuration that supplies role and stance.
+        trace: Completed agent trace with `analysis_chain` and citations.
+
+    Returns:
+        A public, evidence-grounded wrapper or `None` when no chain exists.
+    """
+
+    chain = trace.analysis_chain
+    if chain is None:
+        return None
+    evidence_ids = _normalize_trace_evidence_ids(trace.cited_evidence_ids)
+    steps: list[AgentThoughtTraceStep] = []
+    _append_trace_step(
+        steps,
+        label="core_observation",
+        summary=chain.observation,
+        evidence_ids=evidence_ids,
+    )
+    _append_trace_step(
+        steps,
+        label="mechanism",
+        summary=chain.mechanism,
+        evidence_ids=evidence_ids,
+    )
+    _append_trace_step(
+        steps,
+        label="evidence_basis",
+        summary="；".join(item.strip() for item in chain.evidence if item.strip()),
+        evidence_ids=evidence_ids,
+    )
+    _append_trace_step(
+        steps,
+        label="boundary",
+        summary=chain.boundary,
+        evidence_ids=[],
+    )
+    _append_trace_step(
+        steps,
+        label="counter_evidence",
+        summary="；".join(item.strip() for item in chain.counter_evidence if item.strip()),
+        evidence_ids=evidence_ids,
+    )
+    _append_trace_step(
+        steps,
+        label="next_action",
+        summary=chain.next_action,
+        evidence_ids=[],
+    )
+    confidence = 0.72 if evidence_ids else 0.6
+    return AgentThoughtTracePayload(
+        agent_stance=agent.role_label or agent.role.value,
+        contribution_type=_DISCUSSION_CONTRIBUTION_TYPE_BY_ROLE.get(
+            agent.role.value,
+            "role_specific_contribution",
+        ),
+        evidence_refs=evidence_ids,
+        confidence=confidence,
+        trace_steps=steps,
+        analysis_chain=chain,
+    )
+
+
 def _evidence_to_payload(
     pack: EvidencePack,
     evidence_ids: list[str],
@@ -662,14 +871,12 @@ async def run_discussion(
 ) -> DiscussionRunResult:
     """Execute a RAG-aware multi-agent discussion.
 
-    ``invoke_agent`` is REQUIRED — production code passes a chat-router-backed
-    callable; tests pass a stub. The orchestrator never reaches into the
-    chat layer itself, so this module stays cheap to test in isolation.
+    ``invoke_agent`` is REQUIRED. The orchestrator never reaches into the chat
+    layer itself, so discussion execution stays isolated and testable.
 
-    ``on_event`` (DSE-021): optional async observer invoked at agent-done,
-    turn-done, and synthesis-done milestones. Default None preserves the
-    existing single-return contract. Observer exceptions are swallowed and
-    logged so a faulty SSE client cannot break the orchestrator.
+    ``on_event`` is an optional async observer invoked at agent-done, turn-done,
+    and synthesis-done milestones. Observer exceptions are swallowed and logged
+    so a faulty streaming client cannot break the orchestrator.
     """
     _check_strategy(config.synthesis_strategy)
     started = time.perf_counter()
@@ -728,11 +935,10 @@ async def run_discussion(
     )
     cite_evidence = bool(evidence_ids)
 
-    # FD-13 B3 (2026-05-21): when evidence pack snippets are present, they
-    # ride in ``ChatRequest.context[]`` instead of being inlined into the
-    # prompt body. ``evidence_text`` from the formatter is empty in that
-    # case; substitute a short placeholder so the prompt's ``# Evidence``
-    # section still signals to the agent where the snippets came from.
+    # When evidence pack snippets are present, they ride in
+    # ``ChatRequest.context[]`` instead of being inlined into the prompt body.
+    # Keep a short marker in the prompt so the agent can locate the evidence
+    # channel consistently.
     if context_items:
         # Local import avoids a circular dep (router imports orchestrator
         # at module load; orchestrator only needs the validator at runtime).
@@ -746,6 +952,7 @@ async def run_discussion(
         )
     else:
         prompt_evidence_text = evidence_text
+    project_reasoning_bias = _resolve_project_reasoning_bias_for_discussion(config)
 
     # ---------- Agent slot prep --------------------------------------------
     endpoints: dict[str, dict[str, Any]] = {}
@@ -817,6 +1024,11 @@ async def run_discussion(
                 turn_index=turn_index,
                 cite_evidence=cite_evidence,
                 context_items=context_items,
+                project_reasoning_bias=_discussion_bias_for_agent(
+                    project_reasoning_bias,
+                    agent_id=agent.agent_id,
+                    request_enabled=config.project_reasoning_bias_enabled,
+                ),
             )
             if carryover_block:
                 # Prepend carry-over reference; budget guard is applied inside
@@ -883,6 +1095,15 @@ async def run_discussion(
                     query=config.query,
                     answer=trace.answer,
                     evidence_text=evidence_text,
+                    project_reasoning_bias=_discussion_bias_for_agent(
+                        project_reasoning_bias,
+                        agent_id=agent.agent_id,
+                        request_enabled=config.project_reasoning_bias_enabled,
+                    ),
+                )
+                trace.thought_trace = _build_agent_thought_trace(
+                    agent=agent,
+                    trace=trace,
                 )
             agent_traces.append(trace)
             if trace.success:
@@ -1023,6 +1244,12 @@ async def run_discussion(
         history=history,
         strategy=config.synthesis_strategy.value,
         context_items=context_items,
+        project_reasoning_bias=_discussion_bias_for_agent(
+            project_reasoning_bias,
+            agent_id=synth_id,
+            is_synthesizer=True,
+            request_enabled=config.project_reasoning_bias_enabled,
+        ),
     )
     try:
         synth_text = await asyncio.wait_for(
@@ -1130,14 +1357,17 @@ def _maybe_render_carryover(prior_chains: list[dict[str, Any]]) -> str:
 
 
 def _maybe_build_agent_chain(
-    *, query: str, answer: str, evidence_text: str
+    *,
+    query: str,
+    answer: str,
+    evidence_text: str,
+    project_reasoning_bias: Any | None = None,
 ) -> "AnalysisChainPayload | None":
-    """ACR-030 ~ ACR-034: optionally attach a reasoning chain per agent trace.
+    """Optionally attach a reasoning chain per agent trace.
 
     Returns None when ``analysis_chain_discussion`` feature flag is off so
     callers see byte-identical behavior. Uses the deterministic RAG builder
-    (same module that powers ACR Slice 1) — role-aware bias is a TODO for
-    the next slice.
+    shared with the analysis-chain surface.
     """
 
     try:
@@ -1155,6 +1385,7 @@ def _maybe_build_agent_chain(
             answer=answer,
             evidence_snippets=snippets,
             mode="deterministic",
+            project_reasoning_bias=project_reasoning_bias,
         )
     except Exception:  # noqa: BLE001 — chain builder must never block trace emission
         logger.exception("analysis_chain_discussion deterministic builder failed")

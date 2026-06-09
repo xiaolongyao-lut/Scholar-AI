@@ -3,7 +3,7 @@
 Each subsystem (chat, embedding, rerank) gets its own JSON file under
 ``runtime_state/`` with identical semantics:
 
-- Fields: provider, base_url, api_key, model, updated_at
+- Fields: provider, base_url, api_key_secret_ref, model, updated_at
 - Missing fields fall through to the env resolution chain
 - api_key is never exposed in public config (masked only)
 - Writes are atomic (tempfile + os.replace)
@@ -28,7 +28,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from _atomic_io import CrossProcessFileLock
+from credential_store import CredentialSecretBackend, _select_secret_backend
+from models.credentials import mask_api_key
 from project_paths import runtime_state_path
+
+
+MODEL_OVERRIDE_SECRET_REF_FIELD = "api_key_secret_ref"
 
 
 def _now_iso() -> str:
@@ -70,6 +76,10 @@ class SettingsStore:
     def path(self) -> Path:
         return self._path
 
+    @property
+    def _file_lock_path(self) -> Path:
+        return self._path.with_suffix(f"{self._path.suffix}.lock")
+
     def _read_raw(self) -> dict[str, Any]:
         try:
             with open(self._path, "r", encoding="utf-8") as handle:
@@ -82,12 +92,13 @@ class SettingsStore:
 
     def get_settings(self) -> dict[str, Any]:
         """Return all stored settings."""
-        raw = self._read_raw()
+        with self._lock, CrossProcessFileLock(self._file_lock_path):
+            raw = self._read_raw()
         return {k: v for k, v in raw.items() if k in self._allowed_fields or k == "updated_at"}
 
     def write_settings(self, updates: dict[str, Any]) -> dict[str, Any]:
         """Atomically write settings. Only allowed_fields are persisted."""
-        with self._lock:
+        with self._lock, CrossProcessFileLock(self._file_lock_path):
             existing = self._read_raw()
             payload: dict[str, Any] = dict(existing)
             for field, value in updates.items():
@@ -112,11 +123,14 @@ class SettingsStore:
                 except OSError:
                     pass
                 raise
-        return self.get_settings()
+            return {
+                k: v for k, v in payload.items()
+                if k in self._allowed_fields or k == "updated_at"
+            }
 
     def clear_settings(self) -> None:
         """Remove the settings file."""
-        with self._lock:
+        with self._lock, CrossProcessFileLock(self._file_lock_path):
             try:
                 self._path.unlink()
             except FileNotFoundError:
@@ -129,12 +143,18 @@ _VALID_FIELDS = frozenset({"provider", "base_url", "api_key", "model"})
 class ModelConfigStore:
     """Runtime override store for a single model subsystem."""
 
-    __slots__ = ("_subsystem", "_path", "_lock")
+    __slots__ = ("_subsystem", "_path", "_lock", "_secret_backend")
 
-    def __init__(self, subsystem: str) -> None:
+    def __init__(
+        self,
+        subsystem: str,
+        *,
+        secret_backend: CredentialSecretBackend | None = None,
+    ) -> None:
         self._subsystem = subsystem
         self._path: Path = runtime_state_path(f"{subsystem}_override.json")
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._secret_backend = secret_backend
 
     @property
     def subsystem(self) -> str:
@@ -144,32 +164,89 @@ class ModelConfigStore:
     def path(self) -> Path:
         return self._path
 
+    @property
+    def _file_lock_path(self) -> Path:
+        return self._path.with_suffix(f"{self._path.suffix}.lock")
+
+    @property
+    def _active_secret_backend(self) -> CredentialSecretBackend:
+        if self._secret_backend is not None:
+            return self._secret_backend
+        return _select_secret_backend(self._path)
+
+    def _new_secret_ref(self) -> str:
+        return self._active_secret_backend.create_secret_ref(f"model_override_{self._subsystem}")
+
+    def _read_api_key_from_raw(self, raw: dict[str, Any]) -> str | None:
+        legacy_key = _coerce_string(raw.get("api_key"))
+        if legacy_key:
+            return legacy_key
+        secret_ref = _coerce_string(raw.get(MODEL_OVERRIDE_SECRET_REF_FIELD))
+        if not secret_ref:
+            return None
+        try:
+            return _coerce_string(self._active_secret_backend.get_secret(secret_ref))
+        except Exception:
+            return None
+
+    def _migrate_plaintext_api_key_if_needed(self, raw: dict[str, Any]) -> dict[str, Any]:
+        api_key = _coerce_string(raw.get("api_key"))
+        if not api_key:
+            return raw
+        migrated = dict(raw)
+        migrated.pop("api_key", None)
+        secret_ref = _coerce_string(migrated.get(MODEL_OVERRIDE_SECRET_REF_FIELD)) or self._new_secret_ref()
+        self._active_secret_backend.store_secret(secret_ref, api_key)
+        migrated[MODEL_OVERRIDE_SECRET_REF_FIELD] = secret_ref
+        self._write_raw_payload(migrated)
+        return migrated
+
     def _read_raw(self) -> dict[str, Any]:
         try:
             with open(self._path, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
-            return data if isinstance(data, dict) else {}
+            raw = data if isinstance(data, dict) else {}
+            if raw:
+                return self._migrate_plaintext_api_key_if_needed(raw)
+            return raw
         except FileNotFoundError:
             return {}
         except (json.JSONDecodeError, OSError):
             return {}
 
+    def _write_raw_payload(self, payload: dict[str, Any]) -> None:
+        if "api_key" in payload:
+            raise ValueError("model override payload must not contain api_key")
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=f"{self._subsystem}_override_",
+            suffix=".json.tmp",
+            dir=str(self._path.parent),
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_path, self._path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
     def get_public_config(self) -> dict[str, Any]:
         """Return override fields safe to surface to the UI (api_key masked)."""
-        raw = self._read_raw()
-        api_key = _coerce_string(raw.get("api_key"))
-        masked_key = ""
-        has_key = bool(api_key)
-        if has_key:
-            if len(api_key or "") >= 8:
-                masked_key = f"{api_key[:4]}***{api_key[-4:]}"
-            else:
-                masked_key = "***"
+        with self._lock, CrossProcessFileLock(self._file_lock_path):
+            raw = self._read_raw()
+            api_key = self._read_api_key_from_raw(raw)
+        masked_key = mask_api_key(api_key or "")
         return {
             "provider": _coerce_string(raw.get("provider")) or "",
             "base_url": _coerce_string(raw.get("base_url")) or "",
             "model": _coerce_string(raw.get("model")) or "",
-            "has_api_key": has_key,
+            "has_api_key": bool(api_key),
             "api_key_masked": masked_key,
             "updated_at": _coerce_string(raw.get("updated_at")) or "",
         }
@@ -178,7 +255,10 @@ class ModelConfigStore:
         """Return the raw override value for a field, or None to fall through."""
         if name not in _VALID_FIELDS:
             return None
-        raw = self._read_raw()
+        with self._lock, CrossProcessFileLock(self._file_lock_path):
+            raw = self._read_raw()
+            if name == "api_key":
+                return self._read_api_key_from_raw(raw)
         return _coerce_string(raw.get(name))
 
     def write_config(
@@ -193,7 +273,7 @@ class ModelConfigStore:
 
         api_key semantics: None = keep existing, "" = clear, str = set.
         """
-        with self._lock:
+        with self._lock, CrossProcessFileLock(self._file_lock_path):
             existing = self._read_raw()
             payload: dict[str, Any] = {}
             for field, value in (
@@ -204,42 +284,39 @@ class ModelConfigStore:
                 cleaned = _coerce_string(value)
                 if cleaned:
                     payload[field] = cleaned
+            existing_ref = _coerce_string(existing.get(MODEL_OVERRIDE_SECRET_REF_FIELD))
             if api_key is None:
-                existing_key = _coerce_string(existing.get("api_key"))
-                if existing_key:
-                    payload["api_key"] = existing_key
+                if existing_ref:
+                    payload[MODEL_OVERRIDE_SECRET_REF_FIELD] = existing_ref
             else:
                 cleaned_key = _coerce_string(api_key)
                 if cleaned_key:
-                    payload["api_key"] = cleaned_key
+                    secret_ref = existing_ref or self._new_secret_ref()
+                    self._active_secret_backend.store_secret(secret_ref, cleaned_key)
+                    payload[MODEL_OVERRIDE_SECRET_REF_FIELD] = secret_ref
+                elif existing_ref:
+                    try:
+                        self._active_secret_backend.delete_secret(existing_ref)
+                    except Exception:
+                        pass
             payload["updated_at"] = _now_iso()
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp_path = tempfile.mkstemp(
-                prefix=f"{self._subsystem}_override_",
-                suffix=".json.tmp",
-                dir=str(self._path.parent),
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    json.dump(payload, handle, ensure_ascii=False, indent=2)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(tmp_path, self._path)
-            except Exception:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+            self._write_raw_payload(payload)
         return self.get_public_config()
 
     def clear_config(self) -> None:
         """Remove the override file (revert to env-only resolution)."""
-        with self._lock:
+        with self._lock, CrossProcessFileLock(self._file_lock_path):
+            raw = self._read_raw()
+            secret_ref = _coerce_string(raw.get(MODEL_OVERRIDE_SECRET_REF_FIELD))
             try:
                 self._path.unlink()
             except FileNotFoundError:
                 pass
+            if secret_ref:
+                try:
+                    self._active_secret_backend.delete_secret(secret_ref)
+                except Exception:
+                    pass
 
 
 # Singleton instances for each subsystem
@@ -256,6 +333,17 @@ _DISCUSSION_DEFAULTS_FIELDS = frozenset({
 })
 discussion_defaults_store = SettingsStore("discussion_defaults", _DISCUSSION_DEFAULTS_FIELDS)
 
+_CHAT_CONTEXT_COMPRESSION_FIELDS = frozenset({
+    "enabled",
+    "trigger_tokens",
+    "target_tokens",
+    "keep_recent_turns",
+})
+chat_context_compression_store = SettingsStore(
+    "chat_context_compression",
+    _CHAT_CONTEXT_COMPRESSION_FIELDS,
+)
+
 __all__ = [
     "ModelConfigStore",
     "SettingsStore",
@@ -263,4 +351,5 @@ __all__ = [
     "embedding_store",
     "rerank_store",
     "discussion_defaults_store",
+    "chat_context_compression_store",
 ]

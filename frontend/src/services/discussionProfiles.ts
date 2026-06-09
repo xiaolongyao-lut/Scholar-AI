@@ -22,6 +22,7 @@ export interface DiscussionAgentProfile {
   apiKeyMasked: string;
   protocol: string;
   temperature: number;
+  topP: number;
   maxTokens: number;
   strictPin: boolean;
   systemPrompt: string;
@@ -93,6 +94,7 @@ const DEFAULT_PROFILE_VALUES = Object.freeze({
   apiKeyMasked: '',
   protocol: 'openai_chat_completions',
   temperature: 0.7,
+  topP: 0.9,
   maxTokens: 2048,
   strictPin: false,
 });
@@ -113,6 +115,7 @@ export const DEFAULT_DISCUSSION_PROFILE_STORE: DiscussionProfileStore = Object.f
     apiKeyMasked: DEFAULT_PROFILE_VALUES.apiKeyMasked,
     protocol: DEFAULT_PROFILE_VALUES.protocol,
     temperature: DEFAULT_PROFILE_VALUES.temperature,
+    topP: DEFAULT_PROFILE_VALUES.topP,
     maxTokens: DEFAULT_PROFILE_VALUES.maxTokens,
     strictPin: DEFAULT_PROFILE_VALUES.strictPin,
     systemPrompt: DEFAULT_SYSTEM_PROMPTS[id],
@@ -190,6 +193,7 @@ export function createCustomDiscussionProfile(
     apiKeyMasked: DEFAULT_PROFILE_VALUES.apiKeyMasked,
     protocol: DEFAULT_PROFILE_VALUES.protocol,
     temperature: DEFAULT_PROFILE_VALUES.temperature,
+    topP: DEFAULT_PROFILE_VALUES.topP,
     maxTokens: DEFAULT_PROFILE_VALUES.maxTokens,
     strictPin: DEFAULT_PROFILE_VALUES.strictPin,
     systemPrompt: '',
@@ -220,6 +224,7 @@ function normalizeProfile(value: unknown, fallback: DiscussionAgentProfile): Dis
     apiKeyMasked: readString(value, 'apiKeyMasked', fallback.apiKeyMasked).trim(),
     protocol: readString(value, 'protocol', fallback.protocol).trim() || fallback.protocol,
     temperature: readNumber(value, 'temperature', fallback.temperature, 0, 2),
+    topP: readNumber(value, 'topP', fallback.topP, 0, 1),
     maxTokens: Math.round(readNumber(value, 'maxTokens', fallback.maxTokens, 64, 32_000)),
     strictPin: readBoolean(value, 'strictPin', fallback.strictPin),
     systemPrompt: readString(value, 'systemPrompt', fallback.systemPrompt),
@@ -364,6 +369,9 @@ export function buildAgentConfigFromProfile(
     metadata: {
       profile_id: profile.id,
       api_mode: profile.apiMode,
+      temperature: profile.temperature,
+      top_p: profile.topP,
+      max_tokens: profile.maxTokens,
     },
   };
 
@@ -424,6 +432,7 @@ function buildInlineLlm(profile: DiscussionAgentProfile): DiscussionLLMConfig | 
     api_key: apiKey,
     protocol: profile.protocol.trim() || DEFAULT_PROFILE_VALUES.protocol,
     temperature: profile.temperature,
+    top_p: profile.topP,
     max_tokens: profile.maxTokens,
   };
 }

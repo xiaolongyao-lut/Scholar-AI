@@ -20,6 +20,178 @@ from db import (
 )
 
 
+RESOURCE_STATE_KEYS = (
+    "projects",
+    "sections",
+    "materials",
+    "figure_assets",
+    "drafts",
+    "revisions",
+    "draft_revisions",
+)
+
+
+def _clone_resource_section(state: Mapping[str, Any], key: str) -> dict[str, dict[str, Any]]:
+    raw_value = state.get(key, {})
+    if not isinstance(raw_value, Mapping):
+        raise TypeError(f"serialized writing resource state section {key!r} must be a mapping")
+
+    cloned: dict[str, dict[str, Any]] = {}
+    for item_id, payload in raw_value.items():
+        if not isinstance(payload, Mapping):
+            raise TypeError(f"serialized writing resource state item {key}.{item_id!s} must be a mapping")
+        cloned[str(item_id)] = dict(payload)
+    return cloned
+
+
+def _required_text(payload: Mapping[str, Any], field_name: str) -> str:
+    value = payload.get(field_name)
+    if value in (None, ""):
+        raise TypeError(f"serialized writing resource item must include non-empty {field_name!r}")
+    return str(value)
+
+
+def _optional_text(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def normalize_writing_resource_state(state: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """
+    Return a persistence-safe writing resource snapshot and repair notes.
+
+    Args:
+        state: Serialized store snapshot with project/resource mappings.
+
+    Returns:
+        A normalized snapshot plus human-readable repair notes. The snapshot
+        preserves valid resources and applies SQLite-equivalent reference
+        semantics before full-state replacement.
+    """
+    if not isinstance(state, Mapping):
+        raise TypeError("state must be a mapping")
+
+    projects = _clone_resource_section(state, "projects")
+    sections = _clone_resource_section(state, "sections")
+    materials = _clone_resource_section(state, "materials")
+    figure_assets = _clone_resource_section(state, "figure_assets")
+    drafts = _clone_resource_section(state, "drafts")
+    revisions = _clone_resource_section(state, "revisions")
+
+    raw_draft_revisions = state.get("draft_revisions", {})
+    if not isinstance(raw_draft_revisions, Mapping):
+        raise TypeError("serialized writing resource state section 'draft_revisions' must be a mapping")
+
+    repairs: list[str] = []
+    project_ids = {_required_text(payload, "project_id") for payload in projects.values()}
+
+    def keep_project_scoped(
+        items: dict[str, dict[str, Any]],
+        *,
+        kind: str,
+    ) -> dict[str, dict[str, Any]]:
+        kept: dict[str, dict[str, Any]] = {}
+        for key, payload in items.items():
+            project_id = _required_text(payload, "project_id")
+            if project_id not in project_ids:
+                repairs.append(f"dropped {kind} {key}: missing project {project_id}")
+                continue
+            kept[key] = payload
+        return kept
+
+    sections = keep_project_scoped(sections, kind="section")
+    materials = keep_project_scoped(materials, kind="material")
+    material_ids = {_required_text(payload, "material_id") for payload in materials.values()}
+
+    kept_figure_assets: dict[str, dict[str, Any]] = {}
+    for key, payload in figure_assets.items():
+        project_id = _required_text(payload, "project_id")
+        if project_id not in project_ids:
+            repairs.append(f"dropped figure asset {key}: missing project {project_id}")
+            continue
+        material_id = _optional_text(payload.get("material_id"))
+        if material_id is not None and material_id not in material_ids:
+            payload = dict(payload)
+            payload["material_id"] = None
+            repairs.append(f"cleared figure asset {key} material link: missing material {material_id}")
+        kept_figure_assets[key] = payload
+    figure_assets = kept_figure_assets
+
+    section_ids = {_required_text(payload, "section_id") for payload in sections.values()}
+    kept_drafts: dict[str, dict[str, Any]] = {}
+    for key, payload in drafts.items():
+        project_id = _required_text(payload, "project_id")
+        if project_id not in project_ids:
+            repairs.append(f"dropped draft {key}: missing project {project_id}")
+            continue
+        section_id = _optional_text(payload.get("section_id"))
+        if section_id is not None and section_id not in section_ids:
+            payload = dict(payload)
+            payload["section_id"] = None
+            repairs.append(f"cleared draft {key} section link: missing section {section_id}")
+        kept_drafts[key] = payload
+    drafts = kept_drafts
+
+    draft_project_ids = {
+        _required_text(payload, "draft_id"): _required_text(payload, "project_id")
+        for payload in drafts.values()
+    }
+    kept_revisions: dict[str, dict[str, Any]] = {}
+    for key, payload in revisions.items():
+        draft_id = _required_text(payload, "draft_id")
+        draft_project_id = draft_project_ids.get(draft_id)
+        if draft_project_id is None:
+            repairs.append(f"dropped revision {key}: missing draft {draft_id}")
+            continue
+        project_id = _required_text(payload, "project_id")
+        if project_id != draft_project_id:
+            payload = dict(payload)
+            payload["project_id"] = draft_project_id
+            repairs.append(f"repaired revision {key} project link: {project_id} -> {draft_project_id}")
+        kept_revisions[key] = payload
+    revisions = kept_revisions
+
+    revision_draft_ids = {
+        _required_text(payload, "revision_id"): _required_text(payload, "draft_id")
+        for payload in revisions.values()
+    }
+    normalized_draft_revisions: dict[str, list[str]] = {}
+    for draft_id_raw, revision_ids_raw in raw_draft_revisions.items():
+        draft_id = str(draft_id_raw)
+        if draft_id not in draft_project_ids:
+            repairs.append(f"dropped revision links for missing draft {draft_id}")
+            continue
+        if not isinstance(revision_ids_raw, Sequence) or isinstance(revision_ids_raw, (str, bytes)):
+            raise TypeError("draft_revisions entries must be sequences")
+        normalized_revision_ids: list[str] = []
+        for revision_id_raw in revision_ids_raw:
+            revision_id = str(revision_id_raw)
+            linked_draft_id = revision_draft_ids.get(revision_id)
+            if linked_draft_id is None:
+                repairs.append(f"dropped draft {draft_id} link to missing revision {revision_id}")
+                continue
+            if linked_draft_id != draft_id:
+                repairs.append(f"dropped draft {draft_id} link to revision {revision_id}: belongs to {linked_draft_id}")
+                continue
+            normalized_revision_ids.append(revision_id)
+        normalized_draft_revisions[draft_id] = normalized_revision_ids
+
+    normalized = dict(state)
+    normalized.update(
+        {
+            "projects": projects,
+            "sections": sections,
+            "materials": materials,
+            "figure_assets": figure_assets,
+            "drafts": drafts,
+            "revisions": revisions,
+            "draft_revisions": normalized_draft_revisions,
+        }
+    )
+    return normalized, repairs
+
+
 class WritingResourceRepository:
     """Durable SQLite storage for projects, sections, materials, drafts, and revisions."""
 
@@ -82,6 +254,27 @@ class WritingResourceRepository:
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS figure_assets (
+                    asset_id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    caption TEXT NOT NULL,
+                    numbering TEXT NOT NULL,
+                    material_id TEXT,
+                    source_page INTEGER,
+                    bbox TEXT,
+                    asset_path TEXT NOT NULL,
+                    width INTEGER,
+                    height INTEGER,
+                    format TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS drafts (
                     draft_id TEXT PRIMARY KEY,
                     project_id TEXT NOT NULL,
@@ -129,6 +322,8 @@ class WritingResourceRepository:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sections_project_id ON sections(project_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_materials_project_id ON materials(project_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_figure_assets_project_id ON figure_assets(project_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_figure_assets_material_id ON figure_assets(material_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_drafts_project_id ON drafts(project_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_drafts_section_id ON drafts(section_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_revisions_draft_id ON revisions(draft_id)")
@@ -176,6 +371,7 @@ class WritingResourceRepository:
 
     def replace_state(self, state: Mapping[str, Any]) -> None:
         """Replace the full repository state from serialized resource data."""
+        state, _repairs = normalize_writing_resource_state(state)
         conn = open_sqlite_connection(self.db_path)
         try:
             conn.execute("BEGIN")
@@ -183,6 +379,7 @@ class WritingResourceRepository:
                 "draft_revision_links",
                 "revisions",
                 "drafts",
+                "figure_assets",
                 "materials",
                 "sections",
                 "projects",
@@ -192,6 +389,7 @@ class WritingResourceRepository:
             projects = state.get("projects", {})
             sections = state.get("sections", {})
             materials = state.get("materials", {})
+            figure_assets = state.get("figure_assets", {})
             drafts = state.get("drafts", {})
             revisions = state.get("revisions", {})
             draft_revisions = state.get("draft_revisions", {})
@@ -265,6 +463,35 @@ class WritingResourceRepository:
                         json_dumps(payload.get("metadata") or {}),
                     )
                     for payload in materials.values()
+                ],
+            )
+
+            conn.executemany(
+                """
+                INSERT INTO figure_assets (
+                    asset_id, project_id, kind, caption, numbering, material_id,
+                    source_page, bbox, asset_path, width, height, format,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        str(payload["asset_id"]),
+                        str(payload["project_id"]),
+                        str(payload["kind"]),
+                        str(payload["caption"]),
+                        str(payload["numbering"]),
+                        None if payload.get("material_id") in (None, "") else str(payload.get("material_id")),
+                        payload.get("source_page"),
+                        json_dumps(payload.get("bbox")) if payload.get("bbox") is not None else None,
+                        str(payload.get("asset_path")),
+                        payload.get("width"),
+                        payload.get("height"),
+                        None if payload.get("format") in (None, "") else str(payload.get("format")),
+                        str(payload.get("created_at")),
+                        str(payload.get("updated_at")),
+                    )
+                    for payload in figure_assets.values()
                 ],
             )
 
@@ -387,6 +614,26 @@ class WritingResourceRepository:
                 for row in conn.execute("SELECT * FROM materials ORDER BY created_at DESC, material_id ASC")
             }
 
+            figure_assets = {
+                str(row["asset_id"]): {
+                    "asset_id": row["asset_id"],
+                    "project_id": row["project_id"],
+                    "kind": row["kind"],
+                    "caption": row["caption"],
+                    "numbering": row["numbering"],
+                    "material_id": row["material_id"],
+                    "source_page": row["source_page"],
+                    "bbox": json_loads(row["bbox"], default=None) if row["bbox"] is not None else None,
+                    "asset_path": row["asset_path"],
+                    "width": row["width"],
+                    "height": row["height"],
+                    "format": row["format"],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                }
+                for row in conn.execute("SELECT * FROM figure_assets ORDER BY created_at DESC, asset_id ASC")
+            }
+
             drafts = {
                 str(row["draft_id"]): {
                     "draft_id": row["draft_id"],
@@ -428,6 +675,7 @@ class WritingResourceRepository:
                 "projects": projects,
                 "sections": sections,
                 "materials": materials,
+                "figure_assets": figure_assets,
                 "drafts": drafts,
                 "revisions": revisions,
                 "draft_revisions": dict(draft_revisions),

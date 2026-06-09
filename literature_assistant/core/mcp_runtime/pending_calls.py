@@ -1,4 +1,4 @@
-"""MCP pending-call protocol (Phase 3 / TASK-301).
+"""MCP pending-call protocol.
 
 Provides the backend signal that the modal-only UX skeleton (shipped
 2026-05-16 in `frontend/src/components/mcp/McpToolApprovalModal.tsx`)
@@ -9,7 +9,7 @@ polls / decides via the REST endpoints in ``routers/mcp_router``.
 This module owns three concerns:
 
 1. **Capability → action classification** (``classify_action``). Pure
-   function over ``McpToolCapability``. Resume plan §Phase 3 mapping:
+   function over ``McpToolCapability``. Mapping:
        read         -> allow
        write        -> ask
        network      -> ask
@@ -66,7 +66,7 @@ _ACTION_MAP: dict[McpToolCapability, Action] = {
 def classify_action(capability: McpToolCapability) -> Action:
     """Map an MCP tool capability tag to the protocol action.
 
-    Resume plan §Phase 3 (locked 2026-05-16):
+    Capability mapping:
       read -> allow (silent + audit)
       write/network/filesystem/unknown -> ask (modal)
       destructive -> block (toast / inline error)

@@ -13,30 +13,64 @@ import html
 import json
 import os
 import re
-import tempfile
 import threading
 import time
 import uuid
+from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
 from enum import Enum
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from mcp_runtime.accessors import get_enabled_server
 from mcp_runtime.client_manager import get_mcp_client_manager
+from models import (
+    PDF_URL_BBOX_UNIT,
+    PdfAnchorFields,
+    PdfBboxUnit,
+    coerce_pdf_bbox,
+    pdf_bbox_matches_unit,
+)
 from project_paths import REPO_ROOT, runtime_state_path
-from model_config_store import chat_store
+from model_config_store import chat_context_compression_store, chat_store
 from pre_llm_call_hooks import (
     PreLlmCallContext,
     PreLlmCallImage,
     run_pre_llm_call_hooks,
 )
 from runtime_env import env_value
-from routers.chat_router import ChatRequest, LLMConfig, chat_ask
+from chat.pipeline import (
+    apply_session_auto_compression,
+    append_session_turns,
+    build_chat_pipeline,
+    build_session_context_messages,
+    clean_optional_text,
+    coerce_evidence_reference_records,
+    extract_source_labels,
+    load_session_store,
+    render_context_strings,
+    save_session_store,
+    summarize_session_record,
+    title_from_session_messages,
+)
+from chat.discussion_history import (
+    DISCUSSION_SESSION_SOURCE,
+    mirror_completed_discussion_runs_to_smart_read,
+)
+from chat.history_store import ChatHistoryStore, default_chat_history_db_path
+from routers.chat_router import (
+    ChatRequest,
+    ChatStreamRequest,
+    LLMConfig,
+    _maybe_build_analysis_chain as _maybe_build_chat_analysis_chain,
+    chat_ask,
+    chat_stream as lower_chat_stream,
+)
+from models.analysis_chain import AnalysisChainPayload
 from routers.llm_cost_router import _read_cost_aggregate
 from routers.resources_router import load_project_chunks_for_rag, search_project_chunks_for_query
 from tolf_text_selector import select_tolf_context_chunks
@@ -45,14 +79,15 @@ from writing_resources import get_writing_resource_store
 
 ContextTier = Literal["fast", "balanced", "thorough"]
 MessageRole = Literal["user", "assistant"]
+_CHAT_PIPELINE = build_chat_pipeline()
 
 
 class ChatMode(str, Enum):
-    """Dialog page mode — see docs/plans/active/2026-05-13-dialog-merge-plan.md §4.1.
+    """Legacy persisted mode for compatibility with old Dialog sessions.
 
-    Persisted as a string on each session record. ``session.mode`` is
-    immutable once the first message lands; mismatched ``mode`` on a
-    subsequent ``POST /api/chat`` returns 409.
+    New product UI is a single smart-read surface. These values remain only so
+    older session records and explicit legacy API callers can be resumed or
+    rejected deterministically.
     """
 
     DIRECT = "direct"
@@ -86,6 +121,10 @@ _VISION_MAX_BYTES = 4 * 1024 * 1024
 _VISION_ALLOWED_MIME = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif"})
 _VISION_AUX_SERVER_SLUG = "vision-auxiliary"
 _VISION_AUX_TOOL_NAME = "analyze_images_batch"
+_CURRENT_PDF_CONTEXT_MAX_CHARS = 1800
+_CURRENT_PDF_CONTEXT_LABEL = "current_pdf_context"
+_CURRENT_PDF_SELECTION_LABEL = "current_pdf_selection"
+_CURRENT_PDF_POSITION_LABEL = "current_pdf_position"
 
 
 class TokenUsagePayload(BaseModel):
@@ -96,7 +135,30 @@ class TokenUsagePayload(BaseModel):
     total: int = Field(0, ge=0)
 
 
-class ContextChunkPayload(BaseModel):
+def _coerce_pdf_bbox_unit(value: object) -> PdfBboxUnit | None:
+    """Return a known PDF bbox unit for optional API metadata."""
+
+    if isinstance(value, PdfBboxUnit):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return PdfBboxUnit(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_context_bbox(value: object, unit: PdfBboxUnit | None) -> list[float] | None:
+    """Return a bbox only when it matches its declared coordinate unit."""
+
+    bbox = coerce_pdf_bbox(value)
+    if bbox is None:
+        return None
+    resolved_unit = unit or PDF_URL_BBOX_UNIT
+    return bbox if pdf_bbox_matches_unit(bbox, resolved_unit) else None
+
+
+class ContextChunkPayload(PdfAnchorFields):
     """Single context chunk disclosed under an assistant message."""
 
     index: int = Field(..., ge=1)
@@ -119,7 +181,7 @@ class ContextMetadataPayload(BaseModel):
     truncated: bool = False
 
 
-class EvidenceReferencePayload(BaseModel):
+class EvidenceReferencePayload(PdfAnchorFields):
     """Machine-readable provenance reference for context used in a response."""
 
     chunk_id: str
@@ -142,6 +204,65 @@ class EvidenceReferencePayload(BaseModel):
     source_kind: Literal["local", "web", "mcp"] = "local"
 
 
+class CurrentPdfContextPayload(PdfAnchorFields):
+    """Current reader position or selected text supplied by the browser.
+
+    The payload is untrusted UI state. It is accepted only as a bounded hint
+    for the current SmartRead turn and must still match the material-scoped
+    request before the model can see it.
+    """
+
+    material_id: str = Field(..., min_length=1, max_length=256)
+    page: int | None = Field(default=None, ge=1)
+    page_label: str | None = Field(default=None, max_length=64)
+    chunk_id: str | None = Field(default=None, max_length=256)
+    selected_text: str | None = Field(default=None, max_length=4000)
+    context_kind: Literal["reader_page", "selection", "deep_link"] = "reader_page"
+    source_labels: list[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("material_id", "page_label", "chunk_id", "selected_text", mode="before")
+    @classmethod
+    def _trim_optional_text(cls, value: object) -> object:
+        """Normalize empty browser strings before validation."""
+
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    @field_validator("source_labels", mode="before")
+    @classmethod
+    def _coerce_source_labels(cls, value: object) -> list[str]:
+        """Keep source labels bounded and string-only."""
+
+        if not isinstance(value, list):
+            return []
+        labels: list[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            label = item.strip()
+            if label and label not in labels:
+                labels.append(label[:64])
+            if len(labels) >= 8:
+                break
+        return labels
+
+    @model_validator(mode="after")
+    def _validate_current_pdf_anchor(self) -> "CurrentPdfContextPayload":
+        """Reject anchors that cannot point back into a PDF."""
+
+        if self.bbox is not None and self.page is None:
+            raise ValueError("current_pdf_context.bbox requires page")
+        if self.page is None and not self.chunk_id and not self.selected_text:
+            raise ValueError("current_pdf_context requires page, chunk_id, or selected_text")
+        if self.selected_text and self.context_kind == "reader_page":
+            self.context_kind = "selection"
+        return self
+
+
 class SamplingParamsPayload(BaseModel):
     """Actual generation sampling settings used for the backend call."""
 
@@ -154,8 +275,8 @@ class SamplingParamsPayload(BaseModel):
 class ImageAttachmentPayload(BaseModel):
     """Browser-provided image attachment accepted by `/api/chat`.
 
-    The endpoint stores no path and performs no vision analysis by default.
-    Slice 0 only exposes a typed, bounded payload to pre-LLM hooks.
+    The endpoint receives bounded in-memory image data and does not expose a
+    local file path.
     """
 
     mime: str = Field(..., min_length=1, max_length=128)
@@ -190,8 +311,33 @@ class IntelligentChatRequest(BaseModel):
         ),
     )
     source_paths: list[str] | None = None
-    direct_mode: bool = False
-    mode: ChatMode | None = None
+    direct_mode: bool = Field(
+        default=False,
+        description=(
+            "Deprecated pre-unification Dialog hint. New smart-read callers "
+            "should omit this; it no longer creates a separate direct-call "
+            "product path."
+        ),
+        json_schema_extra={"deprecated": True},
+    )
+    mode: ChatMode | None = Field(
+        default=None,
+        description=(
+            "Legacy compatibility mode. New callers should omit it or send "
+            "literature_qa for the unified smart-read path."
+        ),
+    )
+    project_reasoning_bias_enabled: bool | None = Field(
+        default=None,
+        description="Per-request override. False disables project reasoning bias injection for this chat turn.",
+    )
+    current_pdf_context: CurrentPdfContextPayload | None = Field(
+        default=None,
+        description=(
+            "Browser reader state for the current PDF page or selected text. "
+            "When material_id is also supplied, both material ids must match."
+        ),
+    )
     inspiration_context: "InspirationContextPayload | None" = None
     images: list[ImageAttachmentPayload] = Field(default_factory=list, max_length=_VISION_MAX_IMAGES)
 
@@ -199,9 +345,8 @@ class IntelligentChatRequest(BaseModel):
 class InspirationContextPayload(BaseModel):
     """Structured spark context attached to assistant turns in inspiration mode.
 
-    Phase 1 only ships ``evidence_texts`` (string snippets).
-    ``evidence_refs`` is reserved for the eventual upgrade to
-    ``EvidenceReferencePayload`` with chunk_id/page anchors (P3 scope).
+    Text evidence is supported today; structured evidence references can be
+    present when upstream retrieval provides them.
     """
 
     spark_id: str
@@ -226,12 +371,21 @@ class IntelligentChatResponse(BaseModel):
     context_metadata: ContextMetadataPayload | None = None
     actual_sampling_params: SamplingParamsPayload | None = None
     evidence_refs: list[EvidenceReferencePayload] = Field(default_factory=list)
+    analysis_chain: AnalysisChainPayload | None = Field(
+        default=None,
+        description=(
+            "Structured evidence-grounded reasoning summary for the completed "
+            "assistant answer. Additive; old clients can ignore it."
+        ),
+    )
 
 
 class ChatSessionSummaryPayload(BaseModel):
     """Small session row for the history drawer."""
 
     session_id: str
+    project_id: str | None = None
+    title: str = ""
     total_turns: int = Field(..., ge=0)
     total_tokens: int = Field(..., ge=0)
     created_at: str | None = None
@@ -239,12 +393,109 @@ class ChatSessionSummaryPayload(BaseModel):
     preview: str = ""
     mode: ChatMode = ChatMode.LITERATURE_QA
     legacy_mode_inferred: bool = False
+    source: str | None = None
+    agent_count: int | None = Field(default=None, ge=0)
+    synthesis_preview: str | None = None
+    fork: dict[str, str] | None = None
+    archived: bool = False
+    archived_at: str | None = None
 
 
 class ChatSessionListResponse(BaseModel):
     """List wrapper returned by ``GET /api/chat/sessions``."""
 
     sessions: list[ChatSessionSummaryPayload] = Field(default_factory=list)
+
+
+class ChatSessionDeleteResponse(BaseModel):
+    """Response returned after deleting a saved chat session."""
+
+    session_id: str
+    deleted: bool = True
+
+
+class ChatSessionBulkDeleteRequest(BaseModel):
+    """Request body for deleting several saved chat sessions at once."""
+
+    session_ids: list[str] = Field(default_factory=list)
+
+
+class ChatSessionBulkDeleteResponse(BaseModel):
+    """Result of a bulk chat-session deletion."""
+
+    deleted: list[str] = Field(default_factory=list)
+    missing: list[str] = Field(default_factory=list)
+    deleted_count: int = Field(0, ge=0)
+
+
+class ChatSessionArchiveResponse(BaseModel):
+    """Response returned after archiving or restoring a saved chat session."""
+
+    session_id: str
+    archived: bool
+    archived_at: str | None = None
+
+
+class ChatHistorySearchResultPayload(BaseModel):
+    """One searchable chat-history result."""
+
+    conversation_id: str
+    node_id: str
+    role: str
+    node_type: str
+    snippet: str
+
+
+class ChatHistorySearchResponse(BaseModel):
+    """Search response for the durable SmartRead history index."""
+
+    query: str
+    results: list[ChatHistorySearchResultPayload] = Field(default_factory=list)
+
+
+class ChatHistoryForkRequest(BaseModel):
+    """Request to create a branch from an existing history node."""
+
+    base_node_id: str = Field(..., min_length=1)
+    branch_id: str | None = None
+    title: str = ""
+
+
+class ChatHistoryForkResponse(BaseModel):
+    """Created branch metadata."""
+
+    conversation_id: str
+    branch_id: str
+    base_node_id: str
+    fork_session_id: str
+
+
+class ChatHistoryImportResponse(BaseModel):
+    """Import summary for legacy JSON session migration."""
+
+    imported_conversations: int = Field(..., ge=0)
+    imported_messages: int = Field(..., ge=0)
+    imported_compression_snapshots: int = Field(..., ge=0)
+
+
+class ChatAgentPayload(BaseModel):
+    """Agent participant attached to a conversation."""
+
+    agent_id: str
+    conversation_id: str
+    agent_role: str = ""
+    display_name: str = ""
+    provider: str | None = None
+    model: str | None = None
+    created_at: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatAgentsResponse(BaseModel):
+    """Agent participants for one conversation."""
+
+    conversation_id: str
+    agents: list[ChatAgentPayload] = Field(default_factory=list)
 
 
 class ChatResumeRequest(BaseModel):
@@ -265,6 +516,7 @@ class ChatResumeMessagePayload(BaseModel):
     context_metadata: ContextMetadataPayload | None = None
     tokens_used: TokenUsagePayload | None = None
     evidence_refs: list[EvidenceReferencePayload] = Field(default_factory=list)
+    analysis_chain: AnalysisChainPayload | None = None
     inspiration_context: InspirationContextPayload | None = None
 
 
@@ -272,6 +524,7 @@ class ChatResumeResponse(BaseModel):
     """Response for ``POST /api/chat/resume``."""
 
     session_id: str
+    project_id: str | None = None
     messages: list[ChatResumeMessagePayload]
 
 
@@ -423,10 +676,7 @@ def _score_text(query_terms: set[str], text: str) -> float:
 
 
 def _clean_optional_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
+    return clean_optional_text(value)
 
 
 def _validate_project_id(project_id: str | None) -> str | None:
@@ -463,18 +713,7 @@ def _extract_project_chunk_source(chunk: dict[str, Any]) -> str:
 
 
 def _extract_source_labels(chunk: dict[str, Any], fallback: str) -> list[str]:
-    raw_labels = chunk.get("source_labels")
-    labels: list[str] = []
-    if isinstance(raw_labels, list):
-        labels.extend(str(label).strip() for label in raw_labels if str(label).strip())
-    raw_label = chunk.get("source_label")
-    if raw_label is not None and str(raw_label).strip():
-        label_str = str(raw_label).strip()
-        if label_str not in labels:
-            labels.append(label_str)
-    if not labels:
-        labels.append(fallback)
-    return labels
+    return extract_source_labels(chunk, fallback)
 
 
 def _chunk_text(text: str, *, chunk_chars: int = 1200) -> list[str]:
@@ -608,6 +847,8 @@ def _build_project_context_chunks(
         score = result.get("score")
         numeric_score = float(score) if isinstance(score, int | float) else None
         title = _clean_optional_text(result.get("title"))
+        bbox_unit = _coerce_pdf_bbox_unit(result.get("bbox_unit"))
+        bbox = _coerce_context_bbox(result.get("bbox"), bbox_unit)
         chunks.append(
             ContextChunkPayload(
                 index=len(chunks) + 1,
@@ -621,6 +862,8 @@ def _build_project_context_chunks(
                 page=result.get("page") if isinstance(result.get("page"), int | str) else None,
                 source_labels=_extract_source_labels(result, "project_chunks"),
                 source_hint=_clean_optional_text(result.get("source_hint")),
+                bbox=bbox,
+                bbox_unit=bbox_unit if bbox is not None else None,
             )
         )
         used_chars += len(content)
@@ -631,82 +874,71 @@ def _build_project_context_chunks(
 
 
 def _build_context_strings(chunks: list[ContextChunkPayload]) -> list[str]:
-    context_strings: list[str] = []
-    for chunk in chunks:
-        meta_parts = [f"source={chunk.source}"]
-        if chunk.chunk_id:
-            meta_parts.append(f"chunk_id={chunk.chunk_id}")
-        if chunk.material_id:
-            meta_parts.append(f"material_id={chunk.material_id}")
-        if chunk.section_title:
-            meta_parts.append(f"section={chunk.section_title}")
-        if chunk.page is not None:
-            meta_parts.append(f"page={chunk.page}")
-        context_strings.append(f"[{chunk.index}] {'; '.join(meta_parts)}\n{chunk.content}")
-    return context_strings
+    return render_context_strings(chunks)
 
 
-def _build_evidence_refs(chunks: list[ContextChunkPayload]) -> list[EvidenceReferencePayload]:
-    refs: list[EvidenceReferencePayload] = []
-    for idx, chunk in enumerate(chunks):
-        refs.append(
-            EvidenceReferencePayload(
-                chunk_id=chunk.chunk_id or f"local-{chunk.index}",
-                material_id=chunk.material_id,
-                source=chunk.source,
-                text=chunk.content,
-                quote=chunk.content[:300],
-                label="project_chunk" if chunk.material_id else "local_context",
-                score=chunk.relevance_score,
-                source_labels=chunk.source_labels or (["project_chunks"] if chunk.material_id else ["local_context"]),
-                page=chunk.page,
-                source_hint=chunk.source_hint,
-                rank=idx,
-                source_kind="local",  # B2: RAG-retrieved local literature
-            )
+def _build_session_context_strings(session_id: str | None) -> list[str]:
+    normalized = str(session_id or "").strip()
+    if not normalized:
+        return []
+    policy = _compression_policy()
+    if not bool(policy["enabled"]):
+        return []
+    with _SESSION_LOCK:
+        sessions = _load_session_store().get("sessions", {})
+        session = sessions.get(normalized) if isinstance(sessions, dict) else None
+    if not isinstance(session, dict):
+        return []
+    try:
+        return build_session_context_messages(
+            session=session,
+            keep_recent_turns=int(policy["keep_recent_turns"]),
         )
-    return refs
+    except (TypeError, ValueError):
+        return []
+
+
+def _compose_llm_context(
+    *,
+    session_id: str,
+    inspiration_extras: list[str],
+    chunks: list[ContextChunkPayload],
+) -> list[str]:
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError("session_id must be a non-empty string")
+    if not isinstance(inspiration_extras, list):
+        raise TypeError("inspiration_extras must be a list")
+    if not isinstance(chunks, list):
+        raise TypeError("chunks must be a list")
+    return inspiration_extras + _build_session_context_strings(session_id) + _build_context_strings(chunks)
+
+
+def _build_evidence_refs(raw_sources: Any, *, coerce_invalid: bool = False) -> list[EvidenceReferencePayload]:
+    records = (
+        coerce_evidence_reference_records(raw_sources)
+        if coerce_invalid
+        else _CHAT_PIPELINE.build_evidence_records(raw_sources)
+    )
+    return [
+        EvidenceReferencePayload.model_validate(record)
+        for record in records
+    ]
 
 
 def _coerce_evidence_refs(raw_refs: Any) -> list[EvidenceReferencePayload]:
-    refs: list[EvidenceReferencePayload] = []
+    """Return normalized evidence refs for legacy callers and persisted payloads.
+
+    Args:
+        raw_refs: A list-like payload containing dict-shaped evidence refs.
+
+    Returns:
+        Validated evidence refs with unknown or missing source_kind coerced to local.
+    """
+    if raw_refs is None:
+        return []
     if not isinstance(raw_refs, list):
-        return refs
-    for raw_ref in raw_refs:
-        if not isinstance(raw_ref, dict):
-            continue
-        text = str(raw_ref.get("text") or raw_ref.get("compressed_text") or raw_ref.get("quote") or "").strip()
-        source = str(raw_ref.get("source") or raw_ref.get("material_id") or raw_ref.get("chunk_id") or "").strip()
-        chunk_id = str(raw_ref.get("chunk_id") or "").strip()
-        if not chunk_id or not source or not text:
-            continue
-        # B2: classify source. Heuristic: rag_workflow label or explicit
-        # source_kind in raw_ref → trust; otherwise default local.
-        raw_kind = raw_ref.get("source_kind")
-        if raw_kind in ("local", "web", "mcp"):
-            source_kind: Literal["local", "web", "mcp"] = raw_kind
-        else:
-            # rag_workflow output is still local literature; web/mcp must be
-            # explicitly set by upstream tool integrations.
-            source_kind = "local"
-        refs.append(
-            EvidenceReferencePayload(
-                chunk_id=chunk_id,
-                material_id=_clean_optional_text(raw_ref.get("material_id")),
-                source=source,
-                text=text,
-                quote=str(raw_ref.get("quote") or text[:300]).strip(),
-                label=str(raw_ref.get("label") or "rag_workflow").strip() or "rag_workflow",
-                score=float(raw_ref["score"]) if isinstance(raw_ref.get("score"), int | float) else None,
-                source_labels=_extract_source_labels(raw_ref, "rag_workflow"),
-                page=raw_ref.get("page") if isinstance(raw_ref.get("page"), int | str) else None,
-                source_hint=_clean_optional_text(raw_ref.get("source_hint")),
-                rank=raw_ref.get("rank") if isinstance(raw_ref.get("rank"), int) else None,
-                query_overlap_tokens=[str(t) for t in raw_ref.get("query_overlap_tokens", []) if isinstance(t, str)],
-                source_kind=source_kind,
-            )
-        )
-    return refs
+        raise TypeError("raw_refs must be a list or None")
+    return _build_evidence_refs(raw_refs, coerce_invalid=True)
 
 
 def _context_chunks_from_evidence_refs(refs: list[EvidenceReferencePayload], tier: ContextTier) -> tuple[list[ContextChunkPayload], bool]:
@@ -738,10 +970,118 @@ def _context_chunks_from_evidence_refs(refs: list[EvidenceReferencePayload], tie
                 page=ref.page,
                 source_labels=ref.source_labels,
                 source_hint=ref.source_hint,
+                bbox=ref.bbox,
+                bbox_unit=ref.bbox_unit,
             )
         )
         used_chars += len(content)
     return chunks, truncated
+
+
+def _truncate_context_text(value: str, max_chars: int = _CURRENT_PDF_CONTEXT_MAX_CHARS) -> str:
+    """Bound browser-provided selected text before it reaches an LLM prompt."""
+
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
+    cleaned = re.sub(r"\s+", " ", value).strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return f"{cleaned[: max_chars - 1]}…"
+
+
+def _current_pdf_context_source_labels(ctx: CurrentPdfContextPayload) -> list[str]:
+    """Return stable source labels for current-PDF context chunks."""
+
+    labels = [_CURRENT_PDF_CONTEXT_LABEL]
+    if ctx.selected_text:
+        labels.append(_CURRENT_PDF_SELECTION_LABEL)
+    else:
+        labels.append(_CURRENT_PDF_POSITION_LABEL)
+    for label in ctx.source_labels:
+        if label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _render_current_pdf_context_content(ctx: CurrentPdfContextPayload) -> str:
+    """Render a bounded provider-facing block for the current PDF anchor."""
+
+    details = [f"material_id={ctx.material_id}"]
+    if ctx.page is not None:
+        details.append(f"page={ctx.page}")
+    if ctx.page_label:
+        details.append(f"page_label={ctx.page_label}")
+    if ctx.chunk_id:
+        details.append(f"chunk_id={ctx.chunk_id}")
+    if ctx.bbox is not None:
+        details.append(f"bbox_unit={(ctx.bbox_unit or PDF_URL_BBOX_UNIT).value}")
+
+    if ctx.selected_text:
+        selected = _truncate_context_text(ctx.selected_text)
+        return (
+            "[当前PDF选区]\n"
+            f"{'; '.join(details)}\n"
+            "这段文本来自用户当前打开的PDF选区，只作为本轮问题的局部阅读上下文。\n"
+            f"{selected}"
+        )
+
+    return (
+        "[当前PDF阅读位置]\n"
+        f"{'; '.join(details)}\n"
+        "浏览器只提供了当前阅读位置，没有提供该页全文；回答时必须继续依赖检索到的证据文本。"
+    )
+
+
+def _current_pdf_context_chunk(req: IntelligentChatRequest) -> ContextChunkPayload | None:
+    """Convert browser PDF reader state into a SmartRead context chunk."""
+
+    ctx = req.current_pdf_context
+    if ctx is None:
+        return None
+    material_id = (req.material_id or "").strip()
+    if material_id and ctx.material_id != material_id:
+        raise HTTPException(status_code=422, detail="current_pdf_context.material_id must match material_id")
+    source = "当前PDF选区" if ctx.selected_text else "当前PDF阅读位置"
+    page_token = str(ctx.page) if ctx.page is not None else "unknown"
+    chunk_id = ctx.chunk_id or f"current-pdf:{ctx.material_id}:page:{page_token}"
+    return ContextChunkPayload(
+        index=1,
+        source=source,
+        content=_render_current_pdf_context_content(ctx),
+        relevance_score=1.0 if ctx.selected_text else None,
+        chunk_id=chunk_id,
+        material_id=ctx.material_id,
+        title=source,
+        section_title="current_pdf_context",
+        page=ctx.page,
+        source_labels=_current_pdf_context_source_labels(ctx),
+        source_hint="current_pdf_context",
+        bbox=ctx.bbox,
+        bbox_unit=ctx.bbox_unit,
+    )
+
+
+def _prepend_current_pdf_context(
+    req: IntelligentChatRequest,
+    chunks: list[ContextChunkPayload],
+) -> list[ContextChunkPayload]:
+    """Prepend current-PDF context and keep chunk indices stable."""
+
+    current = _current_pdf_context_chunk(req)
+    if current is None:
+        return chunks
+    merged = [current, *chunks]
+    return [chunk.model_copy(update={"index": index}) for index, chunk in enumerate(merged, start=1)]
+
+
+def _build_evidence_refs_from_context_chunks(chunks: list[ContextChunkPayload]) -> list[EvidenceReferencePayload]:
+    """Build evidence refs while excluding page-only reader-position hints."""
+
+    evidence_chunks = [
+        chunk for chunk in chunks
+        if _CURRENT_PDF_POSITION_LABEL not in chunk.source_labels
+    ]
+    return _build_evidence_refs(evidence_chunks)
 
 
 def _float_setting(name: str, default: float) -> float:
@@ -768,7 +1108,7 @@ def _load_default_llm_config() -> LLMConfig:
     """Resolve Dialog's default LLM from runtime override and repo-local env.
 
     Returns:
-        A complete chat LLM config. API key may be empty only for providers
+        A complete chat LLM config. Credential may be empty only for providers
         that tolerate keyless local endpoints.
 
     Raises:
@@ -819,6 +1159,144 @@ def _usage_from_mapping(usage: dict[str, Any] | None) -> TokenUsagePayload:
     return TokenUsagePayload(prompt=prompt, completion=completion, total=total)
 
 
+def _sampling_from_llm_config(llm: LLMConfig) -> SamplingParamsPayload:
+    """Render current chat defaults into the SmartRead response shape."""
+
+    return SamplingParamsPayload(
+        temperature=llm.temperature,
+        top_p=llm.top_p,
+        top_k=llm.top_k,
+        max_tokens=llm.max_tokens,
+    )
+
+
+def _sse_data(payload: dict[str, Any]) -> str:
+    """Serialize one JSON Server-Sent Event payload."""
+
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _analysis_chain_context_strings(chunks: list[ContextChunkPayload]) -> list[str]:
+    """Render context chunks for deterministic analysis-chain evidence.
+
+    Args:
+        chunks: Validated SmartRead context chunks in retrieval order.
+
+    Returns:
+        Provider-safe text snippets suitable for `AnalysisChainPayload.evidence`.
+    """
+
+    if not isinstance(chunks, list):
+        raise TypeError("chunks must be a list")
+    return _build_context_strings(chunks)
+
+
+async def _maybe_build_smart_read_analysis_chain(
+    *,
+    req: IntelligentChatRequest,
+    answer: str,
+    context_strings: list[str],
+    project_id: str | None,
+) -> AnalysisChainPayload | None:
+    """Build the optional SmartRead analysis-chain payload.
+
+    Args:
+        req: Validated SmartRead request that supplies query and bias controls.
+        answer: Completed assistant answer after streaming has finished.
+        context_strings: Evidence snippets that were visible to the chat path.
+        project_id: Normalized project id, if the turn is project-scoped.
+
+    Returns:
+        A structured chain when feature flags allow it; otherwise `None`.
+    """
+
+    if not isinstance(answer, str):
+        raise TypeError("answer must be a string")
+    if not isinstance(context_strings, list) or not all(isinstance(item, str) for item in context_strings):
+        raise TypeError("context_strings must be a list of strings")
+
+    chain_request = ChatRequest(
+        query=req.query,
+        context=context_strings,
+        history=[],
+        project_id=project_id,
+        project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
+    )
+    return await _maybe_build_chat_analysis_chain(req=chain_request, answer=answer)
+
+
+async def _sse_analysis_chain_done(
+    *,
+    req: IntelligentChatRequest,
+    answer: str,
+    context_strings: list[str],
+    project_id: str | None,
+    session_id: str,
+) -> tuple[str | None, AnalysisChainPayload | None]:
+    """Serialize the optional final trace event for SmartRead streaming.
+
+    Args:
+        req: Validated SmartRead request.
+        answer: Completed assistant answer.
+        context_strings: Provider-visible context strings used for evidence grounding.
+        project_id: Normalized project id, if available.
+        session_id: Final backend session id.
+
+    Returns:
+        A tuple of `(sse_event, chain)`. The event is `None` when the chain is
+        disabled or empty so callers can persist the same chain object safely.
+    """
+
+    if not session_id.strip():
+        raise ValueError("session_id must not be empty")
+    chain = await _maybe_build_smart_read_analysis_chain(
+        req=req,
+        answer=answer,
+        context_strings=context_strings,
+        project_id=project_id,
+    )
+    if chain is None:
+        return None, None
+    return (
+        _sse_data(
+            {
+                "event": "analysis_chain_done",
+                "session_id": session_id,
+                "analysis_chain": chain.model_dump(),
+            }
+        ),
+        chain,
+    )
+
+
+async def _iter_sse_json_payloads(response: StreamingResponse) -> AsyncIterator[dict[str, Any]]:
+    """Yield JSON payloads from an existing SSE StreamingResponse.
+
+    The lower chat router already normalizes provider-specific streaming into
+    JSON ``data:`` events. This parser lets SmartRead reuse that transport
+    without duplicating provider streaming code.
+    """
+
+    buffer = ""
+    async for chunk in response.body_iterator:
+        buffer += chunk.decode("utf-8", errors="replace") if isinstance(chunk, bytes) else str(chunk)
+        while "\n\n" in buffer:
+            block, buffer = buffer.split("\n\n", 1)
+            for line in block.splitlines():
+                normalized = line.strip()
+                if not normalized.startswith("data:"):
+                    continue
+                data = normalized[5:].strip()
+                if not data:
+                    continue
+                try:
+                    payload = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(payload, dict):
+                    yield payload
+
+
 def _load_skill_tool_schemas() -> list[dict[str, Any]] | None:
     """Get OpenAI-compatible tool schemas for enabled non-experimental skills."""
     try:
@@ -860,7 +1338,13 @@ def _execute_skill_tool_calls(tool_calls: list[dict[str, Any]]) -> list[str]:
     return results
 
 
-async def _call_llm_answer(query: str, context: list[str]) -> tuple[str, TokenUsagePayload, SamplingParamsPayload]:
+async def _call_llm_answer(
+    query: str,
+    context: list[str],
+    *,
+    project_id: str | None = None,
+    project_reasoning_bias_enabled: bool | None = None,
+) -> tuple[str, TokenUsagePayload, SamplingParamsPayload]:
     llm = _load_default_llm_config()
     tool_schemas = _load_skill_tool_schemas()
     response = await chat_ask(
@@ -869,6 +1353,8 @@ async def _call_llm_answer(query: str, context: list[str]) -> tuple[str, TokenUs
             context=context,
             history=[],
             llm=llm,
+            project_id=project_id,
+            project_reasoning_bias_enabled=project_reasoning_bias_enabled,
             tools=tool_schemas,
         )
     )
@@ -886,6 +1372,8 @@ async def _call_llm_answer(query: str, context: list[str]) -> tuple[str, TokenUs
                     context=followup_context,
                     history=[],
                     llm=llm,
+                    project_id=project_id,
+                    project_reasoning_bias_enabled=project_reasoning_bias_enabled,
                 )
             )
 
@@ -933,7 +1421,7 @@ def _chat_model_supports_image(llm: LLMConfig) -> bool:
 
     The existing `chat_ask` contract is text/context only. We therefore
     default to False and accept an explicit env override only after a future
-    transport slice can actually forward image blocks to the provider.
+    transport can actually forward image blocks to the provider.
     """
 
     explicit = env_value("CHAT_MODEL_SUPPORTS_IMAGE")
@@ -1167,7 +1655,14 @@ async def _prepare_pre_llm_call(
             session_id=session_id,
             project_id=project_id,
             images=_hook_images_from_request(req.images),
-            metadata={"tier": req.tier},
+            metadata={
+                "tier": req.tier,
+                "current_pdf_context": (
+                    req.current_pdf_context.model_dump(mode="json")
+                    if req.current_pdf_context is not None
+                    else None
+                ),
+            },
         )
     )
     return result.query, list(result.context)
@@ -1217,7 +1712,7 @@ async def _call_project_ragworkflow_answer(
     finally:
         await workflow.close()
 
-    refs = _coerce_evidence_refs(list(result.evidence_refs))
+    refs = _build_evidence_refs(list(result.evidence_refs), coerce_invalid=True)
     chunks, truncated = _context_chunks_from_evidence_refs(refs, tier)
     if "error" in result.trace:
         raise HTTPException(status_code=502, detail=f"RAGWorkflow failed: {result.trace['error']}")
@@ -1237,7 +1732,7 @@ async def _call_project_ragworkflow_answer(
 
 
 def _schedule_rag_capture(*, query: str, project_id: str, result: Any) -> None:
-    """Opt §1: fire RAG capture off the request path. See evolution/background.py."""
+    """Fire RAG capture off the request path. See evolution/background.py."""
 
     try:
         from evolution import run_capture_in_background
@@ -1256,10 +1751,8 @@ def _schedule_rag_capture(*, query: str, project_id: str, result: Any) -> None:
 def _capture_rag_candidate(*, query: str, project_id: str, result: Any) -> None:
     """Best-effort write of an evolution candidate from a project RAG answer.
 
-    Slice 4b contract (mirrors inspiration / discussion / runtime hooks):
-      - never raises; capture failures degrade to a warning log
-      - skipped entirely when evolution.candidate_capture_enabled = false
-      - return tuple shape unchanged regardless of outcome
+    Capture failures degrade to a warning log, and disabled capture leaves the
+    calling response unchanged.
     """
 
     import logging
@@ -1309,34 +1802,108 @@ def _capture_rag_candidate(*, query: str, project_id: str, result: Any) -> None:
 
 
 def _load_session_store() -> dict[str, Any]:
-    if not _SESSION_STORE_PATH.exists():
-        return {"sessions": {}}
-    try:
-        payload = json.loads(_SESSION_STORE_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        return {"sessions": {}}
-    if not isinstance(payload, dict) or not isinstance(payload.get("sessions"), dict):
-        return {"sessions": {}}
-    return payload
+    return dict(load_session_store(_SESSION_STORE_PATH))
 
 
 def _save_session_store(payload: dict[str, Any]) -> None:
-    _SESSION_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    serialized = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=_SESSION_STORE_PATH.parent,
-        prefix=f"{_SESSION_STORE_PATH.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        tmp_path = Path(handle.name)
-        handle.write(serialized)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(tmp_path, _SESSION_STORE_PATH)
+    save_session_store(_SESSION_STORE_PATH, payload)
+
+
+def _chat_history_store() -> ChatHistoryStore:
+    return ChatHistoryStore(default_chat_history_db_path())
+
+
+def _mirror_discussion_history_to_smart_read() -> None:
+    try:
+        mirror_completed_discussion_runs_to_smart_read()
+    except Exception:
+        return
+
+
+def _import_session_to_history_store(session: dict[str, Any]) -> None:
+    try:
+        _chat_history_store().import_legacy_session(session)
+    except Exception:
+        return
+
+
+def _sync_session_to_history_store(session: dict[str, Any]) -> None:
+    if not isinstance(session, dict):
+        raise TypeError("session must be a dict")
+    store = _chat_history_store()
+    store.import_legacy_session(session)
+    session_id = str(session.get("session_id") or "").strip()
+    if not session_id:
+        raise ValueError("session_id must not be empty")
+    archived = bool(session.get("archived"))
+    archived_at = str(session.get("archived_at") or "").strip() or None
+    store.set_conversation_archived(session_id, archived=archived, archived_at=archived_at)
+
+
+def _delete_session_from_history_store(session_id: str) -> None:
+    normalized = session_id.strip()
+    if not normalized:
+        raise ValueError("session_id must not be empty")
+    _chat_history_store().delete_conversation(normalized, delete_transcript=True)
+
+
+def _fork_session_in_store(
+    *,
+    store: dict[str, Any],
+    source_session_id: str,
+    base_node_id: str,
+    fork_session_id: str,
+    branch_id: str,
+    now_iso: str,
+) -> dict[str, Any]:
+    if not isinstance(store, dict):
+        raise TypeError("store must be a mutable dict")
+    normalized_source = source_session_id.strip()
+    normalized_base = base_node_id.strip()
+    normalized_fork = fork_session_id.strip()
+    normalized_branch = branch_id.strip()
+    if not normalized_source or not normalized_base or not normalized_fork or not normalized_branch:
+        raise ValueError("source_session_id, base_node_id, fork_session_id, and branch_id are required")
+    sessions = store.setdefault("sessions", {})
+    if not isinstance(sessions, dict):
+        raise ValueError("store.sessions must be a mutable dict")
+    source = sessions.get(normalized_source)
+    if not isinstance(source, dict):
+        raise KeyError(normalized_source)
+    raw_messages = source.get("messages")
+    messages = raw_messages if isinstance(raw_messages, list) else []
+    base_index: int | None = None
+    for index, message in enumerate(messages):
+        if isinstance(message, Mapping) and str(message.get("id") or "") == normalized_base:
+            base_index = index
+            break
+    if base_index is None:
+        raise ValueError("base_node_id must exist in source session")
+    forked_messages = [
+        dict(message)
+        for message in messages[: base_index + 1]
+        if isinstance(message, Mapping)
+    ]
+    forked_session: dict[str, Any] = {
+        "session_id": normalized_fork,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "mode": str(source.get("mode") or "literature_qa"),
+        "messages": forked_messages,
+        "fork": {
+            "source_session_id": normalized_source,
+            "base_node_id": normalized_base,
+            "branch_id": normalized_branch,
+            "created_at": now_iso,
+        },
+        "total_tokens": sum(
+            int((message.get("tokens_used") or {}).get("total") or 0)
+            for message in forked_messages
+            if isinstance(message, Mapping)
+        ),
+    }
+    sessions[normalized_fork] = forked_session
+    return forked_session
 
 
 def _persist_turns(
@@ -1345,41 +1912,14 @@ def _persist_turns(
     query: str,
     response: IntelligentChatResponse,
     mode: ChatMode,
+    project_id: str | None = None,
     inspiration_context: InspirationContextPayload | None = None,
 ) -> None:
     now = _now_iso()
     with _SESSION_LOCK:
         store = _load_session_store()
-        sessions = store.setdefault("sessions", {})
-        session = sessions.setdefault(
-            session_id,
-            {
-                "session_id": session_id,
-                "created_at": now,
-                "updated_at": now,
-                "mode": mode.value,
-                "messages": [],
-            },
-        )
-        # Defensive: if session existed without mode (legacy), backfill it
-        # only when no messages yet. Once messages exist the immutability
-        # check in /api/chat must have already enforced consistency.
-        if not session.get("mode"):
-            session["mode"] = mode.value
-        messages = session.setdefault("messages", [])
-        messages.append(
-            {
-                "id": f"user-{uuid.uuid4().hex[:12]}",
-                "role": "user",
-                "content": query,
-                "timestamp": now,
-            }
-        )
-        assistant_message: dict[str, Any] = {
-            "id": f"assistant-{uuid.uuid4().hex[:12]}",
-            "role": "assistant",
+        assistant_turn: dict[str, Any] = {
             "content": response.response,
-            "timestamp": now,
             "tier_used": response.tier_used,
             "context_metadata": (
                 response.context_metadata.model_dump() if response.context_metadata is not None else None
@@ -1387,56 +1927,81 @@ def _persist_turns(
             "tokens_used": response.tokens_used.model_dump(),
             "evidence_refs": [ref.model_dump() for ref in response.evidence_refs],
         }
+        if response.analysis_chain is not None:
+            assistant_turn["analysis_chain"] = response.analysis_chain.model_dump()
         if mode == ChatMode.INSPIRATION and inspiration_context is not None:
-            assistant_message["inspiration_context"] = inspiration_context.model_dump()
-        messages.append(assistant_message)
-        session["updated_at"] = now
-        session["total_tokens"] = sum(
-            int((message.get("tokens_used") or {}).get("total") or 0)
-            for message in messages
-            if isinstance(message, dict)
+            assistant_turn["inspiration_context"] = inspiration_context.model_dump()
+        append_session_turns(
+            store=store,
+            session_id=session_id,
+            query=query,
+            assistant_turn=assistant_turn,
+            mode=mode.value,
+            now_iso=now,
+            project_id=project_id,
         )
+        _apply_auto_compression_to_store(store, session_id=session_id, now_iso=now)
+        sessions = store.get("sessions")
+        persisted_session = sessions.get(session_id) if isinstance(sessions, dict) else None
+        if isinstance(persisted_session, dict):
+            _import_session_to_history_store(persisted_session)
         _save_session_store(store)
 
 
-def _resolve_mode(req: IntelligentChatRequest) -> ChatMode:
-    """Pick the effective ChatMode for a request.
+def _compression_policy() -> dict[str, int | bool]:
+    settings = chat_context_compression_store.get_settings()
+    return {
+        "enabled": bool(settings.get("enabled", True)),
+        "trigger_tokens": int(settings.get("trigger_tokens") or 24_000),
+        "target_tokens": int(settings.get("target_tokens") or 2_000),
+        "keep_recent_turns": int(settings.get("keep_recent_turns") or 6),
+    }
 
-    Precedence: req.mode (new field) > req.direct_mode (legacy bool).
-    When neither is given, default to LITERATURE_QA — the historical
-    default behaviour of /api/chat before the Dialog merge plan.
+
+def _apply_auto_compression_to_store(
+    store: dict[str, Any],
+    *,
+    session_id: str,
+    now_iso: str,
+) -> bool:
+    policy = _compression_policy()
+    if not bool(policy["enabled"]):
+        return False
+    sessions = store.get("sessions")
+    if not isinstance(sessions, dict):
+        return False
+    session = sessions.get(session_id)
+    if not isinstance(session, dict):
+        return False
+    try:
+        return apply_session_auto_compression(
+            session=session,
+            trigger_tokens=int(policy["trigger_tokens"]),
+            target_tokens=int(policy["target_tokens"]),
+            keep_recent_turns=int(policy["keep_recent_turns"]),
+            now_iso=now_iso,
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+def _resolve_mode(req: IntelligentChatRequest) -> ChatMode:
+    """Pick the legacy-compatible mode without splitting new smart-read turns.
+
+    Explicit ``mode`` is honored for persisted/legacy callers. The old
+    ``direct_mode`` boolean is intentionally ignored so new requests do not
+    recreate direct-call vs literature-answer product branches.
     """
-    if req.mode is not None:
-        return req.mode
-    return ChatMode.DIRECT if req.direct_mode else ChatMode.LITERATURE_QA
+    decision = _CHAT_PIPELINE.resolve_mode(mode=req.mode, direct_mode=req.direct_mode)
+    return ChatMode(decision.execution_mode)
 
 
 def _session_summary(session: dict[str, Any]) -> ChatSessionSummaryPayload:
-    messages = session.get("messages") if isinstance(session.get("messages"), list) else []
-    preview = ""
-    for message in reversed(messages):
-        if isinstance(message, dict) and str(message.get("role")) == "user":
-            preview = str(message.get("content") or "")[:160]
-            break
-    raw_mode = session.get("mode")
-    if raw_mode in ("direct", "literature_qa", "inspiration"):
-        mode = ChatMode(raw_mode)
-        legacy = False
-    else:
-        # D-DM-3 / plan §4.3: always return a valid mode; UI uses
-        # legacy_mode_inferred to decide whether to badge the row.
-        mode = ChatMode.LITERATURE_QA
-        legacy = True
-    return ChatSessionSummaryPayload(
-        session_id=str(session.get("session_id") or ""),
-        total_turns=len(messages),
-        total_tokens=int(session.get("total_tokens") or 0),
-        created_at=session.get("created_at"),
-        updated_at=session.get("updated_at"),
-        preview=preview,
-        mode=mode,
-        legacy_mode_inferred=legacy,
-    )
+    return ChatSessionSummaryPayload.model_validate(summarize_session_record(session))
+
+
+def _title_from_session_messages(messages: list[Any], *, session_id: str) -> str:
+    return title_from_session_messages(messages, session_id=session_id)
 
 
 def _classify_chat_error(exc: BaseException) -> tuple[int, str]:
@@ -1454,7 +2019,7 @@ def _classify_chat_error(exc: BaseException) -> tuple[int, str]:
     if isinstance(exc, httpx.HTTPStatusError):
         status = exc.response.status_code if exc.response is not None else 502
         if status == 401:
-            return 401, "LLM API key 无效或未授权,请检查设置中的凭据配置"
+            return 401, "LLM 访问凭证无效或未授权,请检查设置中的凭据配置"
         if status == 429:
             return 429, "LLM 上游限流,请稍后重试"
         if status >= 500:
@@ -1485,6 +2050,365 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
         raise HTTPException(status_code=status, detail=detail) from exc
 
 
+@router.post("/chat/stream")
+async def intelligent_chat_stream(req: IntelligentChatRequest) -> StreamingResponse:
+    """Stream a SmartRead answer while reusing the unified pipeline boundary."""
+
+    try:
+        stream = await _intelligent_chat_stream_response(req)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — top-level boundary
+        status, detail = _classify_chat_error(exc)
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "intelligent_chat_stream setup failed: %s → %d %s",
+            exc.__class__.__name__,
+            status,
+            detail,
+        )
+        raise HTTPException(status_code=status, detail=detail) from exc
+    return stream
+
+
+async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> StreamingResponse | JSONResponse:
+    """Build the SmartRead SSE response after pre-stream validation."""
+
+    project_id = _validate_project_id(req.project_id)
+    requested_session_id = (req.session_id or "").strip()
+    existing_session: dict[str, Any] | None = None
+    if requested_session_id:
+        with _SESSION_LOCK:
+            candidate = _load_session_store().get("sessions", {}).get(requested_session_id)
+        if isinstance(candidate, dict):
+            existing_session = candidate
+
+    turn_plan = _CHAT_PIPELINE.plan_turn(
+        requested_session_id=req.session_id,
+        generated_session_id=f"session_{uuid.uuid4().hex[:12]}",
+        mode=req.mode,
+        direct_mode=req.direct_mode,
+        existing_session=existing_session,
+    )
+    session_id = turn_plan.session_id
+    effective_mode = ChatMode(turn_plan.mode_decision.execution_mode)
+    if turn_plan.conflict is not None:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "ok": False,
+                "error": "session_mode_conflict",
+                "current_mode": turn_plan.conflict.current_mode,
+                "requested_mode": turn_plan.conflict.requested_mode,
+            },
+        )
+
+    async def event_generator() -> AsyncIterator[str]:
+        answer_parts: list[str] = []
+        usage = TokenUsagePayload()
+        sampling: SamplingParamsPayload | None = None
+        chunks: list[ContextChunkPayload] = []
+        truncated = False
+        evidence_refs: list[EvidenceReferencePayload] = []
+        context_metadata = ContextMetadataPayload(chunks=[], truncated=False)
+
+        try:
+            default_llm = _load_default_llm_config()
+            sampling = _sampling_from_llm_config(default_llm)
+            if effective_mode == ChatMode.DIRECT:
+                llm_query, llm_context = await _prepare_pre_llm_call(
+                    req=req,
+                    session_id=session_id,
+                    effective_mode=effective_mode,
+                    project_id=project_id,
+                    context=[],
+                )
+            else:
+                from user_research_profile import (
+                    add_direction,
+                    extract_keywords,
+                    get_boost_keywords,
+                    load_profile,
+                    save_profile,
+                )
+
+                profile = load_profile(runtime_state_path())
+                boost_keywords = get_boost_keywords(profile)
+
+                if project_id is not None and _ragworkflow_chat_enabled() and req.current_pdf_context is None:
+                    rag_answer, chunks, truncated, evidence_refs, rag_sampling = await _call_project_ragworkflow_answer(
+                        query=req.query,
+                        project_id=project_id,
+                        tier=req.tier,
+                    )
+                    sampling = rag_sampling or sampling
+                    context_metadata = ContextMetadataPayload(chunks=chunks, truncated=truncated)
+                    answer_parts.append(rag_answer)
+                    yield _sse_data(
+                        {
+                            "event": "metadata",
+                            "session_id": session_id,
+                            "context_chunks_used": len(chunks),
+                            "tier_used": req.tier,
+                            "context_metadata": context_metadata.model_dump(),
+                            "evidence_refs": [ref.model_dump() for ref in evidence_refs],
+                            "actual_sampling_params": sampling.model_dump() if sampling else None,
+                        }
+                    )
+                    if rag_answer:
+                        yield _sse_data({"event": "text_delta", "delta": rag_answer})
+                    usage = TokenUsagePayload()
+                    trace_event, analysis_chain = await _sse_analysis_chain_done(
+                        req=req,
+                        answer=rag_answer,
+                        context_strings=_analysis_chain_context_strings(chunks),
+                        project_id=project_id,
+                        session_id=session_id,
+                    )
+                    if trace_event is not None:
+                        yield trace_event
+                    yield _sse_data(
+                        {
+                            "event": "done",
+                            "response": rag_answer,
+                            "session_id": session_id,
+                            "tokens_used": usage.model_dump(),
+                        }
+                    )
+                    response = IntelligentChatResponse(
+                        response=rag_answer,
+                        session_id=session_id,
+                        context_chunks_used=len(chunks),
+                        tokens_used=usage,
+                        tier_used=req.tier,
+                        context_metadata=context_metadata,
+                        actual_sampling_params=sampling,
+                        evidence_refs=evidence_refs,
+                        analysis_chain=analysis_chain,
+                    )
+                    _persist_turns(
+                        session_id=session_id,
+                        query=req.query,
+                        response=response,
+                        mode=effective_mode,
+                        project_id=project_id,
+                        inspiration_context=req.inspiration_context,
+                    )
+                    detected = extract_keywords(req.query, profile)
+                    for keyword in detected:
+                        add_direction(profile, keyword, weight=0.2)
+                    if detected:
+                        save_profile(profile, runtime_state_path())
+                    return
+
+                if project_id is not None:
+                    chunks, truncated = _build_project_context_chunks(
+                        req.query,
+                        project_id,
+                        req.tier,
+                        boost_keywords=boost_keywords,
+                        material_id=req.material_id,
+                    )
+                    chunks = _prepend_current_pdf_context(req, chunks)
+                    evidence_refs = _build_evidence_refs_from_context_chunks(chunks)
+                else:
+                    source_paths = _resolve_source_paths(req.source_paths)
+                    if not source_paths:
+                        raise HTTPException(status_code=400, detail="No literature source paths configured")
+                    chunks, truncated = _build_context_chunks(req.query, source_paths, req.tier)
+                    chunks = _prepend_current_pdf_context(req, chunks)
+                    evidence_refs = _build_evidence_refs_from_context_chunks(chunks)
+
+                context_metadata = ContextMetadataPayload(chunks=chunks, truncated=truncated)
+                inspiration_extras: list[str] = []
+                if effective_mode == ChatMode.INSPIRATION and req.inspiration_context is not None:
+                    spark = req.inspiration_context
+                    parts = [f"[灵感参考 spark_id={spark.spark_id}] {spark.content}"]
+                    if spark.causal_chain_summary:
+                        parts.append(f"因果链摘要：{spark.causal_chain_summary}")
+                    if spark.evidence_texts:
+                        parts.append("证据片段：\n- " + "\n- ".join(spark.evidence_texts[:3]))
+                    if spark.suggested_angles:
+                        parts.append("建议切入角度：\n- " + "\n- ".join(spark.suggested_angles[:3]))
+                    inspiration_extras.append("\n".join(parts))
+
+                llm_context = _compose_llm_context(
+                    session_id=session_id,
+                    inspiration_extras=inspiration_extras,
+                    chunks=chunks,
+                )
+                llm_query = req.query
+                llm_query, llm_context = await _prepare_pre_llm_call(
+                    req=req,
+                    session_id=session_id,
+                    effective_mode=effective_mode,
+                    project_id=project_id,
+                    context=llm_context,
+                )
+
+                if not chunks and not inspiration_extras and not llm_context:
+                    empty_answer = "No relevant literature context was found for this query."
+                    answer_parts.append(empty_answer)
+                    yield _sse_data(
+                        {
+                            "event": "metadata",
+                            "session_id": session_id,
+                            "context_chunks_used": 0,
+                            "tier_used": req.tier,
+                            "context_metadata": ContextMetadataPayload(chunks=[], truncated=False).model_dump(),
+                            "evidence_refs": [],
+                            "actual_sampling_params": sampling.model_dump() if sampling else None,
+                        }
+                    )
+                    yield _sse_data({"event": "text_delta", "delta": empty_answer})
+                    trace_event, analysis_chain = await _sse_analysis_chain_done(
+                        req=req,
+                        answer=empty_answer,
+                        context_strings=[],
+                        project_id=project_id,
+                        session_id=session_id,
+                    )
+                    if trace_event is not None:
+                        yield trace_event
+                    yield _sse_data(
+                        {
+                            "event": "done",
+                            "response": empty_answer,
+                            "session_id": session_id,
+                            "tokens_used": usage.model_dump(),
+                        }
+                    )
+                    response = IntelligentChatResponse(
+                        response=empty_answer,
+                        session_id=session_id,
+                        context_chunks_used=0,
+                        tokens_used=usage,
+                        tier_used=req.tier,
+                        context_metadata=ContextMetadataPayload(chunks=[], truncated=False),
+                        evidence_refs=[],
+                    actual_sampling_params=sampling,
+                        analysis_chain=analysis_chain,
+                    )
+                    _persist_turns(
+                        session_id=session_id,
+                        query=req.query,
+                        response=response,
+                        mode=effective_mode,
+                        project_id=project_id,
+                        inspiration_context=req.inspiration_context,
+                    )
+                    return
+
+            yield _sse_data(
+                {
+                    "event": "metadata",
+                    "session_id": session_id,
+                    "context_chunks_used": len(chunks),
+                    "tier_used": req.tier,
+                    "context_metadata": context_metadata.model_dump(),
+                    "evidence_refs": [ref.model_dump() for ref in evidence_refs],
+                    "actual_sampling_params": sampling.model_dump() if sampling else None,
+                }
+            )
+            lower_response = await lower_chat_stream(
+                ChatStreamRequest(
+                    query=llm_query,
+                    context=llm_context,
+                    history=[],
+                    llm=default_llm,
+                    project_id=project_id,
+                    project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
+                    stream=True,
+                )
+            )
+            async for payload in _iter_sse_json_payloads(lower_response):
+                event = payload.get("event")
+                if event == "text_delta":
+                    delta = str(payload.get("delta") or "")
+                    if delta:
+                        answer_parts.append(delta)
+                    yield _sse_data(payload)
+                elif event == "usage":
+                    raw_usage = payload.get("usage")
+                    usage = _usage_from_mapping(raw_usage if isinstance(raw_usage, dict) else None)
+                    yield _sse_data(payload)
+                elif event == "error":
+                    yield _sse_data(payload)
+                    return
+                elif event == "done":
+                    break
+
+            answer = "".join(answer_parts)
+            trace_event, analysis_chain = await _sse_analysis_chain_done(
+                req=req,
+                answer=answer,
+                context_strings=llm_context,
+                project_id=project_id,
+                session_id=session_id,
+            )
+            if trace_event is not None:
+                yield trace_event
+            response = IntelligentChatResponse(
+                response=answer,
+                session_id=session_id,
+                context_chunks_used=len(chunks),
+                tokens_used=usage,
+                tier_used=req.tier,
+                context_metadata=context_metadata,
+                actual_sampling_params=sampling,
+                evidence_refs=evidence_refs,
+                analysis_chain=analysis_chain,
+            )
+            _persist_turns(
+                session_id=session_id,
+                query=req.query,
+                response=response,
+                mode=effective_mode,
+                project_id=project_id,
+                inspiration_context=req.inspiration_context,
+            )
+
+            if effective_mode != ChatMode.DIRECT:
+                from user_research_profile import (
+                    add_direction,
+                    extract_keywords,
+                    load_profile,
+                    save_profile,
+                )
+
+                profile = load_profile(runtime_state_path())
+                detected = extract_keywords(req.query, profile)
+                for keyword in detected:
+                    add_direction(profile, keyword, weight=0.2)
+                if detected:
+                    save_profile(profile, runtime_state_path())
+
+            yield _sse_data(
+                {
+                    "event": "done",
+                    "response": answer,
+                    "session_id": session_id,
+                    "tokens_used": usage.model_dump(),
+                }
+            )
+        except HTTPException as exc:
+            yield _sse_data({"event": "error", "error": str(exc.detail), "status_code": exc.status_code})
+        except Exception as exc:  # noqa: BLE001
+            status, detail = _classify_chat_error(exc)
+            yield _sse_data({"event": "error", "error": detail, "status_code": status})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChatResponse:
     """Internal implementation; outer wrapper classifies exceptions."""
     project_id = _validate_project_id(req.project_id)
@@ -1492,43 +2416,45 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
     ragworkflow_sampling: SamplingParamsPayload | None = None
     evidence_refs: list[EvidenceReferencePayload]
 
-    session_id = (req.session_id or "").strip() or f"session_{uuid.uuid4().hex[:12]}"
-    effective_mode = _resolve_mode(req)
+    requested_session_id = (req.session_id or "").strip()
+    existing_session: dict[str, Any] | None = None
+    if requested_session_id:
+        with _SESSION_LOCK:
+            candidate = _load_session_store().get("sessions", {}).get(requested_session_id)
+        if isinstance(candidate, dict):
+            existing_session = candidate
 
-    # Session.mode immutability gate (D-DM-5 / plan §4.1).
+    turn_plan = _CHAT_PIPELINE.plan_turn(
+        requested_session_id=req.session_id,
+        generated_session_id=f"session_{uuid.uuid4().hex[:12]}",
+        mode=req.mode,
+        direct_mode=req.direct_mode,
+        existing_session=existing_session,
+    )
+    session_id = turn_plan.session_id
+    effective_mode = ChatMode(turn_plan.mode_decision.execution_mode)
+
+    # Session.mode immutability gate.
     # Triggered only when the client supplied a session_id pointing at a
     # session that already has messages and a mode different from the
     # requested one. Returns 409 with a structured detail body so the
     # frontend can clear session_id and retry — never silently swaps.
-    if req.session_id:
-        with _SESSION_LOCK:
-            existing = _load_session_store().get("sessions", {}).get(session_id)
-        if isinstance(existing, dict):
-            existing_messages = existing.get("messages") or []
-            if isinstance(existing_messages, list) and len(existing_messages) > 0:
-                raw_existing_mode = existing.get("mode")
-                if raw_existing_mode in ("direct", "literature_qa", "inspiration"):
-                    existing_mode = ChatMode(raw_existing_mode)
-                else:
-                    # Legacy session without mode — infer literature_qa.
-                    existing_mode = ChatMode.LITERATURE_QA
-                if existing_mode != effective_mode:
-                    # Bypass the global HTTPException handler so the 409 body
-                    # surfaces the structured fields verbatim (see
-                    # python_adapter_server.http_exception_handler which
-                    # would otherwise stringify detail into ErrorResponse).
-                    return JSONResponse(
-                        status_code=409,
-                        content={
-                            "ok": False,
-                            "error": "session_mode_conflict",
-                            "current_mode": existing_mode.value,
-                            "requested_mode": effective_mode.value,
-                        },
-                    )
+    if turn_plan.conflict is not None:
+        # Bypass the global HTTPException handler so the 409 body surfaces
+        # structured fields verbatim (see python_adapter_server handler).
+        return JSONResponse(
+            status_code=409,
+            content={
+                "ok": False,
+                "error": "session_mode_conflict",
+                "current_mode": turn_plan.conflict.current_mode,
+                "requested_mode": turn_plan.conflict.requested_mode,
+            },
+        )
 
-    # Direct-mode: skip retrieval, call LLM directly. Lets users get a general
-    # answer when the question isn't literature-grounded (e.g. "你好", coding help).
+    # Legacy explicit direct-mode: kept only for old API callers and persisted
+    # sessions. The current Dialog/SmartRead product always enters the unified
+    # evidence-enhanced path.
     if effective_mode == ChatMode.DIRECT:
         llm_query, llm_context = await _prepare_pre_llm_call(
             req=req,
@@ -1537,7 +2463,18 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
             project_id=project_id,
             context=[],
         )
-        answer, usage, sampling = await _call_llm_answer(llm_query, llm_context)
+        answer, usage, sampling = await _call_llm_answer(
+            llm_query,
+            llm_context,
+            project_id=project_id,
+            project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
+        )
+        analysis_chain = await _maybe_build_smart_read_analysis_chain(
+            req=req,
+            answer=answer,
+            context_strings=llm_context,
+            project_id=project_id,
+        )
         response = IntelligentChatResponse(
             response=answer,
             session_id=session_id,
@@ -1547,12 +2484,14 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
             context_metadata=ContextMetadataPayload(chunks=[], truncated=False),
             evidence_refs=[],
             actual_sampling_params=sampling,
+            analysis_chain=analysis_chain,
         )
         _persist_turns(
             session_id=session_id,
             query=req.query,
             response=response,
             mode=effective_mode,
+            project_id=project_id,
         )
         return response
 
@@ -1561,7 +2500,7 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
     profile = load_profile(runtime_state_path())
     boost_keywords = get_boost_keywords(profile)
 
-    if project_id is not None and _ragworkflow_chat_enabled():
+    if project_id is not None and _ragworkflow_chat_enabled() and req.current_pdf_context is None:
         ragworkflow_answer, chunks, truncated, evidence_refs, ragworkflow_sampling = await _call_project_ragworkflow_answer(
             query=req.query,
             project_id=project_id,
@@ -1575,17 +2514,19 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
             boost_keywords=boost_keywords,
             material_id=req.material_id,
         )
-        evidence_refs = _build_evidence_refs(chunks)
+        chunks = _prepend_current_pdf_context(req, chunks)
+        evidence_refs = _build_evidence_refs_from_context_chunks(chunks)
     else:
         source_paths = _resolve_source_paths(req.source_paths)
         if not source_paths:
             raise HTTPException(status_code=400, detail="No literature source paths configured")
         chunks, truncated = _build_context_chunks(req.query, source_paths, req.tier)
-        evidence_refs = _build_evidence_refs(chunks)
+        chunks = _prepend_current_pdf_context(req, chunks)
+        evidence_refs = _build_evidence_refs_from_context_chunks(chunks)
 
     context_metadata = ContextMetadataPayload(chunks=chunks, truncated=truncated)
 
-    # INSPIRATION mode (D-DM / plan §4.1): reuse the LITERATURE_QA retrieval
+    # INSPIRATION mode reuses the LITERATURE_QA retrieval
     # path; only difference is the structured inspiration_context payload
     # which we prepend to the LLM context as an opt-in extra block. The
     # backend never drops literature grounding for inspiration mode.
@@ -1601,7 +2542,11 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
             parts.append("建议切入角度：\n- " + "\n- ".join(spark.suggested_angles[:3]))
         inspiration_extras.append("\n".join(parts))
 
-    llm_context = inspiration_extras + _build_context_strings(chunks)
+    llm_context = _compose_llm_context(
+        session_id=session_id,
+        inspiration_extras=inspiration_extras,
+        chunks=chunks,
+    )
     llm_query = req.query
     if ragworkflow_answer is None:
         llm_query, llm_context = await _prepare_pre_llm_call(
@@ -1613,8 +2558,15 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
         )
 
     if not chunks and not inspiration_extras and not llm_context:
+        empty_answer = ragworkflow_answer or "No relevant literature context was found for this query."
+        analysis_chain = await _maybe_build_smart_read_analysis_chain(
+            req=req,
+            answer=empty_answer,
+            context_strings=[],
+            project_id=project_id,
+        )
         response = IntelligentChatResponse(
-            response=ragworkflow_answer or "No relevant literature context was found for this query.",
+            response=empty_answer,
             session_id=session_id,
             context_chunks_used=0,
             tokens_used=TokenUsagePayload(),
@@ -1622,12 +2574,14 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
             context_metadata=ContextMetadataPayload(chunks=[], truncated=False),
             evidence_refs=[],
             actual_sampling_params=ragworkflow_sampling,
+            analysis_chain=analysis_chain,
         )
         _persist_turns(
             session_id=session_id,
             query=req.query,
             response=response,
             mode=effective_mode,
+            project_id=project_id,
             inspiration_context=req.inspiration_context,
         )
         return response
@@ -1637,7 +2591,18 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
         usage = TokenUsagePayload()
         sampling = ragworkflow_sampling
     else:
-        answer, usage, sampling = await _call_llm_answer(llm_query, llm_context)
+        answer, usage, sampling = await _call_llm_answer(
+            llm_query,
+            llm_context,
+            project_id=project_id,
+            project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
+        )
+    analysis_chain = await _maybe_build_smart_read_analysis_chain(
+        req=req,
+        answer=answer,
+        context_strings=llm_context,
+        project_id=project_id,
+    )
     response = IntelligentChatResponse(
         response=answer,
         session_id=session_id,
@@ -1647,12 +2612,14 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
         context_metadata=context_metadata,
         actual_sampling_params=sampling,
         evidence_refs=evidence_refs,
+        analysis_chain=analysis_chain,
     )
     _persist_turns(
         session_id=session_id,
         query=req.query,
         response=response,
         mode=effective_mode,
+        project_id=project_id,
         inspiration_context=req.inspiration_context,
     )
 
@@ -1667,8 +2634,9 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
 
 
 @router.get("/chat/sessions", response_model=ChatSessionListResponse)
-async def list_chat_sessions() -> ChatSessionListResponse:
+async def list_chat_sessions(include_archived: bool = False, archived_only: bool = False) -> ChatSessionListResponse:
     """Return saved Intelligent Chat sessions sorted by update time."""
+    _mirror_discussion_history_to_smart_read()
     with _SESSION_LOCK:
         sessions = list(_load_session_store().get("sessions", {}).values())
     summaries = [
@@ -1676,8 +2644,246 @@ async def list_chat_sessions() -> ChatSessionListResponse:
         for session in sessions
         if isinstance(session, dict) and str(session.get("session_id") or "").strip()
     ]
+    if archived_only:
+        summaries = [session for session in summaries if session.archived]
+    elif not include_archived:
+        summaries = [session for session in summaries if not session.archived]
     summaries.sort(key=lambda item: item.updated_at or "", reverse=True)
     return ChatSessionListResponse(sessions=summaries)
+
+
+@router.put("/chat/sessions/{session_id}/archive", response_model=ChatSessionArchiveResponse)
+async def archive_chat_session(session_id: str) -> ChatSessionArchiveResponse:
+    """Archive a saved Intelligent Chat session without deleting its transcript."""
+    normalized = session_id.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="session_id must not be empty")
+    archived_at = _now_iso()
+    with _SESSION_LOCK:
+        store = _load_session_store()
+        sessions = store.setdefault("sessions", {})
+        session = sessions.get(normalized) if isinstance(sessions, dict) else None
+        if not isinstance(session, dict):
+            raise HTTPException(status_code=404, detail=f"Session not found: {normalized}")
+        updated_session = dict(session)
+        updated_session["archived"] = True
+        updated_session["archived_at"] = archived_at
+        try:
+            _sync_session_to_history_store(updated_session)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail="Failed to update durable chat history archive state") from exc
+        session.update(updated_session)
+        _save_session_store(store)
+    return ChatSessionArchiveResponse(session_id=normalized, archived=True, archived_at=archived_at)
+
+
+@router.put("/chat/sessions/{session_id}/restore", response_model=ChatSessionArchiveResponse)
+async def restore_chat_session(session_id: str) -> ChatSessionArchiveResponse:
+    """Restore an archived Intelligent Chat session to the active history list."""
+    normalized = session_id.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="session_id must not be empty")
+    with _SESSION_LOCK:
+        store = _load_session_store()
+        sessions = store.setdefault("sessions", {})
+        session = sessions.get(normalized) if isinstance(sessions, dict) else None
+        if not isinstance(session, dict):
+            raise HTTPException(status_code=404, detail=f"Session not found: {normalized}")
+        updated_session = dict(session)
+        updated_session["archived"] = False
+        updated_session.pop("archived_at", None)
+        try:
+            _sync_session_to_history_store(updated_session)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail="Failed to update durable chat history restore state") from exc
+        session.clear()
+        session.update(updated_session)
+        _save_session_store(store)
+    return ChatSessionArchiveResponse(session_id=normalized, archived=False, archived_at=None)
+
+
+@router.delete("/chat/sessions/{session_id}", response_model=ChatSessionDeleteResponse)
+async def delete_chat_session(session_id: str) -> ChatSessionDeleteResponse:
+    """Delete a saved Intelligent Chat session from the local store."""
+    normalized = session_id.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="session_id must not be empty")
+    with _SESSION_LOCK:
+        store = _load_session_store()
+        sessions = store.setdefault("sessions", {})
+        if normalized not in sessions:
+            raise HTTPException(status_code=404, detail=f"Session not found: {normalized}")
+        try:
+            _delete_session_from_history_store(normalized)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail="Failed to delete durable chat history state") from exc
+        del sessions[normalized]
+        _save_session_store(store)
+    return ChatSessionDeleteResponse(session_id=normalized)
+
+
+@router.post("/chat/sessions/bulk-delete", response_model=ChatSessionBulkDeleteResponse)
+async def bulk_delete_chat_sessions(req: ChatSessionBulkDeleteRequest) -> ChatSessionBulkDeleteResponse:
+    """Delete several saved Intelligent Chat sessions from the local store.
+
+    Accepts an explicit list of ``session_ids`` so the history UI stays in
+    control of exactly which sessions are removed; the endpoint never deletes by
+    server-side wildcard. Deletion is atomic under the store lock and is
+    persisted only when at least one id matched.
+    """
+    raw_ids = req.session_ids if isinstance(req.session_ids, list) else []
+    seen: set[str] = set()
+    unique_ids: list[str] = []
+    for value in raw_ids:
+        normalized = str(value or "").strip()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            unique_ids.append(normalized)
+    if not unique_ids:
+        raise HTTPException(status_code=400, detail="session_ids must contain at least one non-empty id")
+    deleted: list[str] = []
+    missing: list[str] = []
+    with _SESSION_LOCK:
+        store = _load_session_store()
+        sessions = store.setdefault("sessions", {})
+        if not isinstance(sessions, dict):
+            raise HTTPException(status_code=500, detail="session store is corrupted")
+        for session_id in unique_ids:
+            if session_id in sessions:
+                deleted.append(session_id)
+            else:
+                missing.append(session_id)
+        if deleted:
+            try:
+                for session_id in deleted:
+                    _delete_session_from_history_store(session_id)
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail="Failed to delete durable chat history state") from exc
+            for session_id in deleted:
+                del sessions[session_id]
+            _save_session_store(store)
+    return ChatSessionBulkDeleteResponse(
+        deleted=deleted,
+        missing=missing,
+        deleted_count=len(deleted),
+    )
+
+
+@router.post("/chat/history/import", response_model=ChatHistoryImportResponse)
+async def import_chat_history() -> ChatHistoryImportResponse:
+    """Import legacy JSON SmartRead sessions into the durable history store."""
+    _mirror_discussion_history_to_smart_read()
+    with _SESSION_LOCK:
+        sessions = _load_session_store().get("sessions", {})
+        legacy_sessions = [
+            session for session in sessions.values()
+            if isinstance(session, dict) and str(session.get("session_id") or "").strip()
+        ] if isinstance(sessions, dict) else []
+    imported_conversations = 0
+    imported_messages = 0
+    imported_snapshots = 0
+    store = _chat_history_store()
+    for session in legacy_sessions:
+        metadata = session.get("metadata")
+        if isinstance(metadata, dict) and metadata.get("source") == DISCUSSION_SESSION_SOURCE:
+            continue
+        try:
+            result = store.import_legacy_session(session)
+            session_id = str(session.get("session_id") or "").strip()
+            if session_id:
+                store.set_conversation_archived(
+                    session_id,
+                    archived=bool(session.get("archived")),
+                    archived_at=str(session.get("archived_at") or "").strip() or None,
+                )
+        except (TypeError, ValueError):
+            continue
+        imported_conversations += 1
+        imported_messages += int(result.get("messages") or 0)
+        imported_snapshots += int(result.get("compression_snapshots") or 0)
+    return ChatHistoryImportResponse(
+        imported_conversations=imported_conversations,
+        imported_messages=imported_messages,
+        imported_compression_snapshots=imported_snapshots,
+    )
+
+
+@router.get("/chat/history/search", response_model=ChatHistorySearchResponse)
+async def search_chat_history(q: str, limit: int = 20) -> ChatHistorySearchResponse:
+    """Search durable SmartRead history, importing legacy JSON first."""
+    normalized_query = q.strip()
+    if not normalized_query:
+        raise HTTPException(status_code=400, detail="q must not be empty")
+    try:
+        await import_chat_history()
+        results = _chat_history_store().search(normalized_query, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ChatHistorySearchResponse(
+        query=normalized_query,
+        results=[ChatHistorySearchResultPayload.model_validate(result) for result in results],
+    )
+
+
+@router.post("/chat/history/conversations/{conversation_id}/fork", response_model=ChatHistoryForkResponse)
+async def fork_chat_history_conversation(
+    conversation_id: str,
+    req: ChatHistoryForkRequest,
+) -> ChatHistoryForkResponse:
+    """Create a durable branch and a forked JSON session from a history node."""
+    normalized_conversation_id = conversation_id.strip()
+    if not normalized_conversation_id:
+        raise HTTPException(status_code=400, detail="conversation_id must not be empty")
+    branch_id = (req.branch_id or f"branch_{uuid.uuid4().hex[:12]}").strip()
+    if not branch_id:
+        raise HTTPException(status_code=400, detail="branch_id must not be empty")
+    now = _now_iso()
+    fork_session_id = f"{normalized_conversation_id}__{branch_id}"
+    try:
+        await import_chat_history()
+        _chat_history_store().fork_conversation(
+            conversation_id=normalized_conversation_id,
+            base_node_id=req.base_node_id,
+            branch_id=branch_id,
+            title=req.title,
+            created_at=now,
+        )
+        with _SESSION_LOCK:
+            store = _load_session_store()
+            forked_session = _fork_session_in_store(
+                store=store,
+                source_session_id=normalized_conversation_id,
+                base_node_id=req.base_node_id,
+                fork_session_id=fork_session_id,
+                branch_id=branch_id,
+                now_iso=now,
+            )
+            _save_session_store(store)
+        _import_session_to_history_store(forked_session)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Session not found: {normalized_conversation_id}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ChatHistoryForkResponse(
+        conversation_id=normalized_conversation_id,
+        branch_id=branch_id,
+        base_node_id=req.base_node_id,
+        fork_session_id=fork_session_id,
+    )
+
+
+@router.get("/chat/history/conversations/{conversation_id}/agents", response_model=ChatAgentsResponse)
+async def list_chat_history_agents(conversation_id: str) -> ChatAgentsResponse:
+    """Return agent participants recorded for one conversation."""
+    normalized_conversation_id = conversation_id.strip()
+    if not normalized_conversation_id:
+        raise HTTPException(status_code=400, detail="conversation_id must not be empty")
+    await import_chat_history()
+    agents = _chat_history_store().list_agents(normalized_conversation_id)
+    return ChatAgentsResponse(
+        conversation_id=normalized_conversation_id,
+        agents=[ChatAgentPayload.model_validate(agent) for agent in agents],
+    )
 
 
 @router.post("/chat/resume", response_model=ChatResumeResponse)
@@ -1691,6 +2897,7 @@ async def resume_chat_session(req: ChatResumeRequest) -> ChatResumeResponse:
     recent = raw_messages[-req.limit :]
     return ChatResumeResponse(
         session_id=req.session_id,
+        project_id=str(session.get("project_id") or "").strip() or None,
         messages=[
             ChatResumeMessagePayload.model_validate(message)
             for message in recent

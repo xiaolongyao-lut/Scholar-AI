@@ -8,9 +8,12 @@ import React, {
   useState,
   type ReactNode,
 } from 'react';
+import { formatChatVisibleError } from '@/components/chat/chatDisplay';
+import { artifactContentRecord, findLatestArtifact, runBackgroundJob } from '@/services/backgroundJobRunner';
+import { getWritingRuntimeClient } from '@/services/runtimeClient';
+import type { WritingJob } from '@/types/runtime';
 import {
   discussionApi,
-  DiscussionStreamError,
   type DiscussionAgentTrace,
   type DiscussionRunConfig,
   type DiscussionRunResult,
@@ -63,6 +66,8 @@ export interface DiscussionSession {
   currentStage: string | null;
   /** B1/B7: server-generated run id, populated by ``started`` event. */
   runId: string | null;
+  /** Runtime task-center job id for long-running discussion execution. */
+  runtimeJobId: string | null;
 }
 
 const IDLE_SESSION: DiscussionSession = {
@@ -77,10 +82,35 @@ const IDLE_SESSION: DiscussionSession = {
   error: null,
   currentStage: null,
   runId: null,
+  runtimeJobId: null,
 };
 
 const SESSION_STORAGE_KEY = 'discussion-context-session-v1';
 const RUN_ID_STORAGE_KEY = 'discussion-context-run-id-v1';
+const DISCUSSION_VISIBLE_ERROR_FALLBACK = '讨论运行失败，请检查角色接口和证据配置。';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readDiscussionErrorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return typeof error === 'string' ? error : String(error ?? '');
+}
+
+export function formatDiscussionSessionError(error: unknown): string {
+  const raw = readDiscussionErrorText(error);
+  if (raw.includes('convergence_judge_agent_id')) {
+    return '裁判角色必须来自当前角色列表。';
+  }
+  if (raw.includes('project_id is required')) {
+    return '当前证据来源需要先选择项目。';
+  }
+  if (raw.includes('evidence_chunk_ids')) {
+    return '手动证据需要填写至少一个证据编号。';
+  }
+  return formatChatVisibleError(raw, { fallback: DISCUSSION_VISIBLE_ERROR_FALLBACK });
+}
 
 function loadPersistedRunId(): string | null {
   if (typeof window === 'undefined') return null;
@@ -113,7 +143,10 @@ function loadPersistedSession(): DiscussionSession | null {
     // Only restore terminal states so a half-completed in-flight run never
     // resurrects as a phantom "running" session after a page refresh.
     if (parsed && (parsed.state === 'completed' || parsed.state === 'cancelled' || parsed.state === 'error')) {
-      return { ...IDLE_SESSION, ...parsed } as DiscussionSession;
+      const restored = { ...IDLE_SESSION, ...parsed } as DiscussionSession;
+      return restored.error
+        ? { ...restored, error: formatDiscussionSessionError(restored.error) }
+        : restored;
     }
     return null;
   } catch {
@@ -149,6 +182,7 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
     () => loadPersistedSession() ?? IDLE_SESSION,
   );
   const abortRef = useRef<AbortController | null>(null);
+  const activeRuntimeJobIdRef = useRef<string | null>(null);
 
   // Persist completed / cancelled / error sessions so the next mount can
   // restore them. The full payload includes liveTraces + synthesis +
@@ -158,14 +192,10 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   const applyEvent = useCallback((event: DiscussionStreamEvent) => {
-    // B7+ (0.1.8.2 hotfix v5): user F12 default level hid console.debug
-    // so the v1 "[DiscussionContext] event ..." traces were invisible
-    // and "看不到任何事件" reports were ambiguous (SSE not flowing vs.
-    // log filtered out). Promote to console.info so the default log
-    // level captures them; downgrade if it gets too chatty later.
+    // Keep the dev trace as a control-flow marker only. Full event payloads
+    // may contain user prompts, evidence, or model output.
     if (typeof console !== 'undefined') {
-      // eslint-disable-next-line no-console
-      console.info('[DiscussionContext] event', event.event, event);
+      console.info('[DiscussionContext] event', event.event);
     }
     setSession((prev) => {
       switch (event.event) {
@@ -198,22 +228,26 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
         case 'synthesis_done':
           return { ...prev, synthesis: event.synthesis };
         case 'done':
+          activeRuntimeJobIdRef.current = null;
           return {
             ...prev,
             state: 'completed',
             endedAt: Date.now(),
             finalResult: event.result,
+            runtimeJobId: null,
             // Final result is authoritative — replace any partial traces with
             // the full ordered set from the server.
             liveTraces: event.result.turns.flatMap((t) => t.agent_traces),
             synthesis: event.result.synthesis,
           };
         case 'error':
+          activeRuntimeJobIdRef.current = null;
           return {
             ...prev,
             state: 'error',
             endedAt: Date.now(),
-            error: event.error,
+            error: formatDiscussionSessionError(event.error),
+            runtimeJobId: null,
           };
         default:
           return prev;
@@ -228,16 +262,11 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
       if (session.state === 'running') {
         return;
       }
-      // B7+ (0.1.8.2 hotfix v2): user reported F12 console didn't show
-      // [DiscussionContext] event lines after clicking 开始讨论. Print a
-      // visible start-marker so we can tell whether startSession actually
-      // ran vs whether the click handler silently dropped.
+      // Control-flow marker only; avoid logging the user's prompt.
       if (typeof console !== 'undefined') {
-        // eslint-disable-next-line no-console
         console.info(
-          '[DiscussionContext] startSession invoked; agents=%d, query=%s',
+          '[DiscussionContext] startSession invoked; agents=%d',
           config.agent_configs?.length ?? 0,
-          (config.query || '').slice(0, 40),
         );
       }
       const controller = new AbortController();
@@ -250,66 +279,71 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
       });
 
       try {
-        await discussionApi.runDiscussionStream(config, {
-          onEvent: applyEvent,
+        const result = await runBackgroundJob({
+          sessionTitle: '多智能体讨论',
+          sessionMetadata: {
+            source: 'discussion_panel',
+            project_id: config.project_id ?? undefined,
+          },
+          request: {
+            kind: 'discussion',
+            input_text: config.query,
+            metadata: {
+              config,
+              title: config.query,
+              source: 'discussion_panel',
+            },
+            tags: ['discussion', 'multi-agent'],
+          },
+          timeoutMs: Math.max(120_000, (config.timeout_seconds ?? 120) * 1000 + 30_000),
           signal: controller.signal,
+          onJobCreated: (job: WritingJob) => {
+            activeRuntimeJobIdRef.current = job.job_id;
+            setSession((prev) => ({
+              ...prev,
+              runtimeJobId: job.job_id,
+            }));
+          },
         });
+        if (result.status.status !== 'completed') {
+          throw new Error(result.status.error || '讨论任务未完成。');
+        }
+        const content = artifactContentRecord(findLatestArtifact(result.artifacts, 'transformed_text'));
+        const resultPayload = content.result;
+        if (isRecord(resultPayload)) {
+          const synthesized = resultPayload as unknown as DiscussionRunResult;
+          applyEvent({
+            event: 'done',
+            result: synthesized,
+          });
+        } else {
+          applyEvent({
+            event: 'error',
+            status: 500,
+            error: '讨论任务未返回可用结果。',
+          });
+        }
       } catch (err) {
-        // B7+: tell the user (via console) what happened. The catch path
-        // is reached for: stream endpoint 404/405, transport failure,
-        // user abort, backend exception. Each maps differently below;
-        // logging once here surfaces a single deterministic line so
-        // troubleshooting "no events showed up" doesn't require guessing.
-        if (typeof console !== 'undefined') {
-          // eslint-disable-next-line no-console
-          console.warn(
-            '[DiscussionContext] stream caught error: status=%s aborted=%s msg=%s',
-            err instanceof DiscussionStreamError ? err.status : 'n/a',
-            controller.signal.aborted,
-            err instanceof Error ? err.message : String(err),
-          );
-        }
-        // 404 (flag off) / 405 (endpoint missing in old build) / 501 / any
-        // non-success that's not a user-initiated abort ⇒ degrade to the
-        // non-streaming endpoint so users on older backends still see a
-        // result. Caller-initiated abort is honored as cancellation.
-        const isStreamUnavailable =
-          err instanceof DiscussionStreamError &&
-          (err.status === 404 || err.status === 405 || err.status >= 500);
-        if (isStreamUnavailable && !controller.signal.aborted) {
-          try {
-            const result = await discussionApi.runDiscussion(config, {
-              signal: controller.signal,
-            });
-            applyEvent({ event: 'done', result });
-          } catch (fallbackErr) {
-            if (!controller.signal.aborted) {
-              applyEvent({
-                event: 'error',
-                status: 500,
-                error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
-              });
-            }
-          }
-          return;
-        }
         if (controller.signal.aborted) {
+          activeRuntimeJobIdRef.current = null;
           setSession((prev) => ({
             ...prev,
             state: 'cancelled',
             endedAt: Date.now(),
+            runtimeJobId: null,
           }));
           return;
         }
         applyEvent({
           event: 'error',
-          status: err instanceof DiscussionStreamError ? err.status : 500,
-          error: err instanceof Error ? err.message : String(err),
+          status: 500,
+          error: formatDiscussionSessionError(err),
         });
       } finally {
         if (abortRef.current === controller) {
           abortRef.current = null;
         }
+        activeRuntimeJobIdRef.current = null;
       }
     },
     [applyEvent, session.state],
@@ -319,6 +353,10 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
+    }
+    if (activeRuntimeJobIdRef.current) {
+      void getWritingRuntimeClient().cancelJob(activeRuntimeJobIdRef.current).catch(() => undefined);
+      activeRuntimeJobIdRef.current = null;
     }
     // B1: stop tracking this run so a future mount doesn't try to reconnect
     // to a cancelled session.
@@ -330,7 +368,7 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
     // discussion is now considered cancelled.
     setSession((prev) =>
       prev.state === 'running'
-        ? { ...prev, state: 'cancelled', endedAt: Date.now(), runId: null }
+        ? { ...prev, state: 'cancelled', endedAt: Date.now(), runId: null, runtimeJobId: null }
         : prev,
     );
   }, []);
@@ -340,6 +378,7 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
       abortRef.current.abort();
     }
     persistRunId(null);
+    activeRuntimeJobIdRef.current = null;
     setSession(IDLE_SESSION);
   }, []);
 
@@ -383,12 +422,12 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
               onEvent: applyEvent,
               signal: controller.signal,
             });
-          } catch (err) {
+          } catch (err: unknown) {
             if (!cancelled && !controller.signal.aborted) {
               applyEvent({
                 event: 'error',
-                status: err instanceof DiscussionStreamError ? err.status : 500,
-                error: err instanceof Error ? err.message : String(err),
+                status: 500,
+                error: formatDiscussionSessionError(err),
               });
             }
           } finally {
@@ -417,7 +456,7 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
           liveTraces: snapshot.live_traces,
           synthesis: snapshot.synthesis,
           finalResult: snapshot.final_result,
-          error: snapshot.error,
+          error: snapshot.error ? formatDiscussionSessionError(snapshot.error) : null,
         }));
         persistRunId(null);
       } catch {
@@ -430,7 +469,6 @@ export function DiscussionProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount-only
 
   const value = useMemo<DiscussionContextValue>(

@@ -1,16 +1,16 @@
 """
-Pure-function candidate extraction for RAG project answers (Slice 4b).
+Pure-function candidate extraction for RAG project answers.
 
 Maps `RAGResult` (returned by `main_rag_workflow.RAGWorkflow.ask_my_literature`)
 to the kwargs `EvolutionService.capture()` needs. The intelligent_chat_router
 wraps the RAG call so this extractor runs server-side before any response
 shape transformation.
 
-Eligibility (Slice 4b v1):
+Eligibility:
     - skip when result.trace contains an "error" key (RAG itself failed)
     - skip when generated_answer is empty/whitespace
     - skip when evidence_refs is empty (no evidence → cannot promote as
-      evidence rule; plan §Fail-closed)
+      evidence rule)
     - otherwise emit ONE candidate with memory_type=EVIDENCE_RULE
 
 Memory queries / focused_points / memory_hits-based candidates are a
@@ -70,8 +70,7 @@ def extract_from_rag_result(
 
     short_query = _shorten(query, 200)
     # claim is rendered in the card default view by default, so it must NOT
-    # leak raw JSON shapes from the answer payload (see plan §Frontend
-    # Quality Addendum). 280 chars is plenty for the user-facing summary;
+    # leak raw JSON shapes from the answer payload. 280 chars is plenty for the user-facing summary;
     # the full answer is still reconstructable from the source materials
     # via the 详情 drawer and the project RAG run trace.
     short_answer = _shorten(answer, 280)

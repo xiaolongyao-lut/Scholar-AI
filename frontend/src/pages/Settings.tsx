@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Settings as SettingsIcon, Key, Cpu, Network, FolderOpen, Layers, Server,
-  Activity, Check, ChevronRight, Info, Zap,
+  Activity, ArrowLeft, Check, ChevronRight, Info, Zap,
   Loader2, RefreshCw, AlertCircle, CheckCircle2, XCircle, Users,
-  Plus, Trash2, FlaskConical,
+  Play, Plus, Trash2, ToggleLeft, BookMarked,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -16,9 +16,12 @@ import { discoverModels, type DiscoveredModel } from '@/services/chatApi';
 import { getSampling, putSampling, deleteSamplingTask, type SamplingParams, type TaskDefaults } from '@/services/samplingApi';
 import { buildSamplingSaveRequest, hasSamplingOverrides, updateSamplingOverrides } from '@/services/samplingPayload';
 import { listFeatureFlags, setFeatureFlag, type FeatureFlagEntry } from '@/services/featureFlagsApi';
+import { getUnifiedSettings, type UnifiedSettings, type SettingsApiConfig } from '@/services/settingsApi';
 import { Tooltip as UiTooltip } from '@/components/ui/Tooltip';
 import { migrateLegacyCredentials } from '@/components/settings/subsystemMigration';
+import { CslStylesSection } from '@/components/settings/CslStylesSection';
 import {
+  applyCredentialToSubsystem,
   createCredential,
   listCredentials,
   testCredential,
@@ -26,12 +29,20 @@ import {
   type RuntimeCredentialPublic,
 } from '@/services/credentialsApi';
 import { ApiEndpointForm, type ApiEndpointFormValue } from '@/components/settings/ApiEndpointForm';
+import CredentialPicker from '@/components/settings/credentials/CredentialPicker';
+import { TierSelector } from '@/components/chat/TierSelector';
+import { useSmartReadCostTier } from '@/hooks/useSmartReadCostTier';
+import {
+  workspaceCostProfileForTier,
+  type SmartReadCostTier,
+} from '@/services/smartReadTiers';
 import {
   DISCUSSION_DEFAULT_BOUNDS,
   DISCUSSION_TURN_WARNING_THRESHOLD,
 } from '@/services/discussionDefaults';
 import {
   type SectionId,
+  buildSettingsSectionPath,
   isSectionId,
   normalizeSection,
   resolveInitialSection,
@@ -53,14 +64,12 @@ import {
 const SkillManagerLazy = React.lazy(() => import('@/components/skills/SkillManager'));
 const CredentialsSectionLazy = React.lazy(() => import('@/components/settings/CredentialsSection'));
 const McpServersSectionLazy = React.lazy(() => import('@/components/settings/mcp/McpServersSection'));
+const SETTINGS_API_PROBE_TIMEOUT_MS = 60_000;
+const SETTINGS_API_PROBE_TIMEOUT_SECONDS = SETTINGS_API_PROBE_TIMEOUT_MS / 1000;
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
-// SectionId, SECTION_IDS, isSectionId, normalizeSection, and
-// resolveInitialSection live in `@/pages/settingsSections` so the URL
-// back-compat contract has its own unit-test surface.
-
 function getInitialSection(): SectionId {
   return resolveInitialSection();
 }
@@ -230,6 +239,221 @@ function StatusPill({ status, t }: { status: string; t: (k: string) => string })
   );
 }
 
+function useProbeElapsedSeconds(active: boolean): number {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!active) {
+      setElapsedSeconds(0);
+      return undefined;
+    }
+
+    const startedAt = Date.now();
+    setElapsedSeconds(0);
+    const intervalId = window.setInterval(() => {
+      setElapsedSeconds(Math.min(
+        SETTINGS_API_PROBE_TIMEOUT_SECONDS,
+        Math.floor((Date.now() - startedAt) / 1000),
+      ));
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [active]);
+
+  return elapsedSeconds;
+}
+
+function sanitizeSettingsUserMessage(value: string, fallback: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return fallback;
+  }
+  if (
+    /(?:\/(?:api|runtime|resources|pipeline|memory)\/|https?:\/\/|[A-Za-z]:\\|api[_\s-]?key|base[_\s-]?url|token|secret|authorization|bearer|env=|env_refs|capability_[a-z0-9_]*|[{}[\]"`])/i.test(normalized)
+    || /^[a-z]+(?:_[a-z0-9]+){1,}$/i.test(normalized)
+  ) {
+    return fallback;
+  }
+  return normalized.length > 120 ? `${normalized.slice(0, 117)}…` : normalized;
+}
+
+function sanitizeSettingsProbeMessage(value: string): string {
+  return sanitizeSettingsUserMessage(value, '测试失败，请检查服务地址、访问密钥和模型名称。');
+}
+
+function formatSettingsProbeDuration(elapsedMs: number | null | undefined): string {
+  if (typeof elapsedMs !== 'number' || !Number.isFinite(elapsedMs) || elapsedMs < 0) {
+    return '可用';
+  }
+  const seconds = Math.max(0.1, elapsedMs / 1000);
+  return `可用 · 耗时 ${seconds.toFixed(seconds < 10 ? 1 : 0)} 秒`;
+}
+
+export function formatSettingsActionError(error: unknown, fallback = '操作失败，请稍后重试。'): string {
+  let message = typeof error === 'string'
+    ? error
+    : error instanceof Error
+      ? error.message
+      : fallback;
+  if (axios.isAxiosError(error) && error.response) {
+    const body = error.response.data;
+    if (body?.error?.message) {
+      message = body.error.message;
+    } else if (body?.detail) {
+      message = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
+    } else {
+      message = `请求失败 (${error.response.status})`;
+    }
+  }
+  return sanitizeSettingsUserMessage(message, fallback);
+}
+
+export function formatApiConnectionSummary(config: SettingsApiConfig): string {
+  const provider = sanitizeSettingsUserMessage(config.provider, '未填写供应商');
+  const model = sanitizeSettingsUserMessage(config.model, '未填写模型');
+  const credential = config.has_api_key ? '访问密钥已保存' : '未保存访问密钥';
+  return `${provider} · ${model} · ${credential}`;
+}
+
+export function formatApiServiceAddressSummary(config: Pick<SettingsApiConfig, 'base_url'>): string {
+  return config.base_url.trim() ? '服务地址已填写' : '未填写服务地址';
+}
+
+export function formatSavedCredentialSecondary(credential: RuntimeCredentialPublic): string {
+  const address = credential.base_url.trim() ? '服务地址已填写' : '服务地址未填写';
+  const secret = credential.has_api_key ? '访问密钥已保存' : '未保存访问密钥';
+  return `${address} · ${secret}`;
+}
+
+export function ApiConfigSummaryRow({
+  label,
+  config,
+  subsystem,
+  targetSection,
+  onOpen,
+}: {
+  label: string;
+  config: SettingsApiConfig;
+  subsystem: 'chat' | 'embedding' | 'rerank';
+  targetSection: SectionId;
+  onOpen: (section: SectionId) => void;
+}) {
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+  const [testMessage, setTestMessage] = useState('');
+  const testElapsedSeconds = useProbeElapsedSeconds(testStatus === 'testing');
+  const configured = Boolean(config.provider || config.base_url || config.model || config.has_api_key);
+  const testEndpoint = subsystem === 'chat'
+    ? '/api/chat/test'
+    : subsystem === 'embedding'
+      ? '/api/embedding/test'
+      : '/api/rerank/test';
+
+  const runTest = async () => {
+    if (!configured || testStatus === 'testing') return;
+    setTestStatus('testing');
+    setTestMessage('');
+    try {
+      const { data } = await axios.post<{ ok: boolean; status?: number; error?: string; elapsed_ms?: number }>(
+        `${getApiBaseUrl()}${testEndpoint}`,
+        {
+          provider: config.provider,
+          base_url: config.base_url,
+          api_key: null,
+          model: config.model,
+        },
+        { timeout: SETTINGS_API_PROBE_TIMEOUT_MS },
+      );
+      if (!data.ok) {
+        throw new Error(data.error || `HTTP ${data.status ?? 0}`);
+      }
+      setTestStatus('ok');
+      setTestMessage(formatSettingsProbeDuration(data.elapsed_ms));
+    } catch (err: unknown) {
+      setTestStatus('fail');
+      setTestMessage(sanitizeSettingsProbeMessage(formatSettingsActionError(err, '测试失败，请检查服务地址、访问密钥和模型名称。')));
+    } finally {
+      window.setTimeout(() => {
+        setTestStatus((current) => current === 'testing' ? current : 'idle');
+        setTestMessage('');
+      }, 6000);
+    }
+  };
+
+  const testLabel = testStatus === 'testing'
+    ? `测试中 ${testElapsedSeconds}s / ${SETTINGS_API_PROBE_TIMEOUT_SECONDS}s`
+    : testStatus === 'ok'
+      ? '可用'
+      : testStatus === 'fail'
+        ? '失败'
+        : '测试';
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-outline-variant/50 bg-surface-low p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold text-foreground">{label}</h3>
+          <span className={cn(
+            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+            configured
+              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+              : 'bg-surface-high text-foreground/45',
+          )}>
+            {configured ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+            {configured ? '已配置' : '未配置'}
+          </span>
+        </div>
+        <p className="mt-1 truncate text-[11px] text-foreground/50">
+          {formatApiConnectionSummary(config)}
+        </p>
+        <p className="mt-1 truncate text-[10px] text-foreground/35">
+          {formatApiServiceAddressSummary(config)}
+        </p>
+        {testMessage ? (
+          <p
+            className={cn(
+              'mt-1 line-clamp-2 text-[11px]',
+              testStatus === 'ok' ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300',
+            )}
+            title={testMessage}
+          >
+            {testMessage}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void runTest()}
+          disabled={!configured || testStatus === 'testing'}
+          className={cn(
+            'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            testStatus === 'ok'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300'
+              : testStatus === 'fail'
+                ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300'
+                : 'border-outline-variant bg-surface-high text-foreground/70 hover:border-primary/35 hover:text-primary',
+          )}
+        >
+          {testStatus === 'testing'
+            ? <Loader2 size={14} className="animate-spin" />
+            : testStatus === 'ok'
+              ? <CheckCircle2 size={14} />
+              : <Play size={14} />}
+          {testLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => onOpen(targetSection)}
+          className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-outline-variant bg-surface-high px-3 py-2 text-xs font-medium text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary"
+        >
+          <ChevronRight size={14} />
+          配置
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ToggleSwitch({
   defaultChecked,
   checked,
@@ -285,6 +509,14 @@ interface ChatPublicConfig {
   updated_at: string;
 }
 
+interface ChatContextCompressionConfig {
+  enabled: boolean;
+  trigger_tokens: number;
+  target_tokens: number;
+  keep_recent_turns: number;
+  updated_at: string;
+}
+
 interface EmbeddingPublicConfig {
   provider: string;
   base_url: string;
@@ -294,6 +526,293 @@ interface EmbeddingPublicConfig {
   updated_at: string;
 }
 
+type EndpointSubsystem = 'generation' | 'embedding' | 'rerank';
+
+function SectionApiSettings({
+  onOpenSection,
+}: {
+  onOpenSection: (section: SectionId) => void;
+}) {
+  const [settings, setSettings] = useState<UnifiedSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setSettings(await getUnifiedSettings());
+    } catch (err: unknown) {
+      setError(formatSettingsActionError(err, 'API 配置加载失败，请稍后重试。'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="font-headline text-lg font-semibold text-foreground">API 配置</h2>
+        <p className="mt-1 text-xs leading-relaxed text-foreground/55">
+          统一查看研读/写作、向量化、重排序和凭证中心状态；具体编辑仍走各自的专用表单。
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-foreground/55">
+          <Loader2 size={14} className="animate-spin" />
+          正在加载 API 配置…
+        </div>
+      ) : error ? (
+        <div className="rounded-lg border border-red-500/20 bg-red-50 p-3 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">
+          {error}
+        </div>
+      ) : settings ? (
+        <>
+          <div className="grid grid-cols-1 gap-3">
+            <ApiConfigSummaryRow
+              label="研读和写作"
+              config={settings.api.chat}
+              subsystem="chat"
+              targetSection="chat"
+              onOpen={onOpenSection}
+            />
+            <ApiConfigSummaryRow
+              label="向量化"
+              config={settings.api.embedding}
+              subsystem="embedding"
+              targetSection="semantic-routing"
+              onOpen={onOpenSection}
+            />
+            <ApiConfigSummaryRow
+              label="重排序"
+              config={settings.api.rerank}
+              subsystem="rerank"
+              targetSection="semantic-routing"
+              onOpen={onOpenSection}
+            />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => onOpenSection('credentials')}
+              className="rounded-lg border border-outline-variant/50 bg-surface-low p-3 text-left transition-colors hover:border-primary/35"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-foreground">API 凭证</span>
+                <Key size={16} className="text-foreground/40" />
+              </div>
+              <p className="mt-2 text-xs text-foreground/55">
+                共 {settings.credentials.total} 个，启用 {settings.credentials.enabled} 个
+              </p>
+              <p className="mt-1 text-[10px] text-foreground/35">
+                研读/写作 {settings.credentials.generation} · 向量 {settings.credentials.embedding} · 重排 {settings.credentials.rerank}
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenSection('experimental')}
+              className="rounded-lg border border-outline-variant/50 bg-surface-low p-3 text-left transition-colors hover:border-primary/35"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-foreground">功能开关</span>
+                <ToggleLeft size={16} className="text-foreground/40" />
+              </div>
+              <p className="mt-2 text-xs text-foreground/55">
+                {settings.feature_flags.filter((flag) => flag.current).length} / {settings.feature_flags.length} 已启用
+              </p>
+              <p className="mt-1 truncate text-[10px] text-foreground/35">
+                管理 Wiki、经验沉淀、讨论和检索能力
+              </p>
+            </button>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function credentialToEndpointForm(credential: RuntimeCredentialPublic): ApiEndpointFormValue {
+  return {
+    provider: credential.provider,
+    baseUrl: credential.base_url,
+    apiKey: '',
+    model: credential.model,
+  };
+}
+
+function AppliedCredentialPicker({
+  subsystem,
+  selectedId,
+  onSelectedIdChange,
+  onApplied,
+  disabled,
+}: {
+  subsystem: EndpointSubsystem;
+  selectedId: string;
+  onSelectedIdChange: (credentialId: string) => void;
+  onApplied: (credential: RuntimeCredentialPublic) => void;
+  disabled?: boolean;
+}) {
+  const trackedTimeout = useTrackedTimeout();
+  const [credentials, setCredentials] = useState<RuntimeCredentialPublic[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const [message, setMessage] = useState('');
+
+  const loadCredentials = useCallback(async () => {
+    setLoading(true);
+    setMessage('');
+    try {
+      const data = await listCredentials({
+        category: subsystem,
+        enabledOnly: true,
+      });
+      setCredentials(data);
+      if (!selectedId && data.length === 1) {
+        onSelectedIdChange(data[0].credential_id);
+      }
+    } catch (err: unknown) {
+      setStatus('fail');
+      setMessage(formatSettingsActionError(err, '已保存 API 加载失败，请稍后重试。'));
+    } finally {
+      setLoading(false);
+    }
+  }, [onSelectedIdChange, selectedId, subsystem]);
+
+  useEffect(() => {
+    void loadCredentials();
+  }, [loadCredentials]);
+
+  const selectedCredential = credentials.find((item) => item.credential_id === selectedId) ?? null;
+
+  const applySelected = async () => {
+    if (!selectedCredential) {
+      setStatus('fail');
+      setMessage('请选择一个已保存 API。');
+      trackedTimeout(() => setStatus('idle'), 3000);
+      return;
+    }
+    setApplying(true);
+    setStatus('idle');
+    setMessage('');
+    try {
+      await applyCredentialToSubsystem(subsystem, selectedCredential.credential_id);
+      onApplied(selectedCredential);
+      setStatus('ok');
+      setMessage(`已应用 ${selectedCredential.provider} · ${selectedCredential.model}`);
+      trackedTimeout(() => setStatus('idle'), 3000);
+    } catch (err: unknown) {
+      setStatus('fail');
+      setMessage(formatSettingsActionError(err, '应用已保存 API 失败，请稍后重试。'));
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-outline-variant/50 bg-surface-lowest p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <Field
+          label="已保存 API"
+          tooltip="从 API 凭证中心选择并应用；原始访问密钥只在后端内部读取，不经过前端。"
+          htmlFor={`${subsystem}-credential-picker`}
+        >
+          <select
+            id={`${subsystem}-credential-picker`}
+            value={selectedId}
+            onChange={(event) => onSelectedIdChange(event.target.value)}
+            disabled={disabled || loading || applying}
+            className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none disabled:opacity-60"
+          >
+            <option value="">{loading ? '正在加载 API…' : '选择已保存 API'}</option>
+            {credentials.map((credential) => (
+              <option key={credential.credential_id} value={credential.credential_id}>
+                {formatSavedCredentialLabel(credential)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => void loadCredentials()}
+            disabled={disabled || loading || applying}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-high px-3 py-2 text-xs font-medium text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            刷新
+          </button>
+          <button
+            type="button"
+            onClick={() => void applySelected()}
+            disabled={disabled || applying || !selectedCredential}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            {applying ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            应用
+          </button>
+        </div>
+      </div>
+      {selectedCredential ? (
+        <p className="mt-2 truncate text-[11px] text-foreground/45">
+          {formatSavedCredentialSecondary(selectedCredential)}
+        </p>
+      ) : credentials.length === 0 && !loading ? (
+        <p className="mt-2 text-[11px] text-foreground/45">
+          没有可用凭证。请先到“API 凭证”分区新增。
+        </p>
+      ) : null}
+      {message ? (
+        <p className={cn(
+          'mt-2 text-[11px]',
+          status === 'ok' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300',
+        )}>
+          {message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function SmartReadDefaultTierControl(): JSX.Element {
+  const [tier, setTier] = useSmartReadCostTier(loadSettings().workspace.smartReadCostTier ?? 'medium');
+
+  const handleTierChange = useCallback((nextTier: SmartReadCostTier) => {
+    setTier(nextTier);
+    const settings = loadSettings();
+    settings.workspace.smartReadCostTier = nextTier;
+    settings.workspace.aiCostProfile = workspaceCostProfileForTier(nextTier);
+    saveSettings(settings);
+  }, [setTier]);
+
+  return (
+    <div className="rounded-lg border border-outline-variant/50 bg-surface-low p-3">
+      <div className="flex flex-col gap-3 min-[720px]:flex-row min-[720px]:items-start min-[720px]:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground/75">智能研读默认成本模式</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-foreground/50">
+            这里控制智能研读、知识库智读和工作台问答的默认调用预算；提问界面不再单独显示这个开关。
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-foreground/45">
+            Claude 系列最高用 <span className="font-semibold text-foreground/70">Max</span>；
+            Codex 系列最高用 <span className="font-semibold text-foreground/70">XHigh</span>，快速任务可选 Fast/低成本类配置。
+          </p>
+        </div>
+        <TierSelector
+          selectedTier={tier}
+          onTierChange={handleTierChange}
+          label="默认档位"
+        />
+      </div>
+    </div>
+  );
+}
+
 function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Record<string, string | number>) => string; settings: AppSettings; onChange: (s: AppSettings) => void; isDirty: boolean }) {
   const llm = settings.llm;
   const setLlm = (patch: Partial<typeof llm>) => onChange({ ...settings, llm: { ...llm, ...patch } });
@@ -301,6 +820,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
 
   const [config, setConfig] = useState<ChatPublicConfig | null>(null);
   const [form, setForm] = useState<ApiEndpointFormValue>({ provider: '', baseUrl: '', apiKey: '', model: '' });
+  const [selectedCredentialId, setSelectedCredentialId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'fail'>('idle');
@@ -308,15 +828,29 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
 
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [testError, setTestError] = useState('');
+  const testElapsedSeconds = useProbeElapsedSeconds(testStatus === 'testing');
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([]);
   const [discoverStatus, setDiscoverStatus] = useState<'idle' | 'loading' | 'ok' | 'fail'>('idle');
   const [discoverError, setDiscoverError] = useState('');
+  const [compression, setCompression] = useState<ChatContextCompressionConfig>({
+    enabled: true,
+    trigger_tokens: 24000,
+    target_tokens: 2000,
+    keep_recent_turns: 6,
+    updated_at: '',
+  });
+  const [compressionStatus, setCompressionStatus] = useState<'idle' | 'saving' | 'saved' | 'fail'>('idle');
+  const [compressionError, setCompressionError] = useState('');
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get<ChatPublicConfig>(`${getApiBaseUrl()}/api/chat/config`);
+      const [{ data }, compressionResponse] = await Promise.all([
+        axios.get<ChatPublicConfig>(`${getApiBaseUrl()}/api/chat/config`),
+        axios.get<ChatContextCompressionConfig>(`${getApiBaseUrl()}/api/chat/context-compression`),
+      ]);
       setConfig(data);
+      setCompression(compressionResponse.data);
       setForm({ provider: data.provider, baseUrl: data.base_url, apiKey: '', model: data.model });
 
       const legacy = readLegacyCredentialBlob('llm');
@@ -361,14 +895,14 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
       trackedTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err: unknown) {
       setSaveStatus('fail');
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(formatSettingsActionError(err));
     } finally {
       setSaving(false);
     }
   };
 
   const handleClear = async () => {
-    if (!window.confirm('清除当前 chat 配置覆盖，恢复 .env 默认？')) return;
+    if (!window.confirm('清除当前研读和写作模型配置覆盖，恢复系统默认配置？')) return;
     setSaving(true);
     try {
       const { data } = await axios.delete<ChatPublicConfig>(`${getApiBaseUrl()}/api/chat/config`);
@@ -378,7 +912,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
       trackedTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err: unknown) {
       setSaveStatus('fail');
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(formatSettingsActionError(err));
     } finally {
       setSaving(false);
     }
@@ -396,6 +930,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
           api_key: form.apiKey === '' ? null : form.apiKey,
           model: form.model,
         },
+        { timeout: SETTINGS_API_PROBE_TIMEOUT_MS },
       );
       if (!data.ok) {
         throw new Error(data.error || `HTTP ${data.status}`);
@@ -405,19 +940,8 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
         saveSettings(settings);
       }
     } catch (err: unknown) {
-      let msg = err instanceof Error ? err.message : String(err);
-      if (axios.isAxiosError(err) && err.response) {
-        const d = err.response.data;
-        if (d?.error?.message) {
-          msg = d.error.message;
-        } else if (d?.detail) {
-          msg = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail);
-        } else {
-          msg = `请求失败 (${err.response.status})`;
-        }
-      }
       setTestStatus('fail');
-      setTestError(msg);
+      setTestError(sanitizeSettingsProbeMessage(formatSettingsActionError(err, '测试失败，请检查服务地址、访问密钥和模型名称。')));
     }
     trackedTimeout(() => setTestStatus('idle'), 6000);
   };
@@ -432,9 +956,26 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
     } else {
       setDiscoveredModels([]);
       setDiscoverStatus('fail');
-      setDiscoverError(result.error || '获取失败');
+      setDiscoverError(sanitizeSettingsUserMessage(result.error || '获取失败', '获取模型列表失败，请检查服务地址和访问密钥。'));
     }
     trackedTimeout(() => setDiscoverStatus('idle'), 4000);
+  };
+
+  const handleCompressionSave = async () => {
+    setCompressionStatus('saving');
+    setCompressionError('');
+    try {
+      const { data } = await axios.put<ChatContextCompressionConfig>(
+        `${getApiBaseUrl()}/api/chat/context-compression`,
+        compression,
+      );
+      setCompression(data);
+      setCompressionStatus('saved');
+      trackedTimeout(() => setCompressionStatus('idle'), 3000);
+    } catch (err: unknown) {
+      setCompressionStatus('fail');
+      setCompressionError(formatSettingsActionError(err));
+    }
   };
 
   return (
@@ -447,10 +988,36 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
         </h3>
         <StatusPill status={config?.has_api_key ? 'online' : 'ready'} t={t} />
       </div>
+      <div className="rounded-lg border border-outline-variant/50 bg-surface-low px-3 py-2">
+        <p className="text-[11px] leading-relaxed text-foreground/55">
+          这里配置智能研读和写作使用的 API；主界面智能研读、知识库智读和工作台问答共用这套接口。
+          当前应用内同类请求会按顺序发送，避免上游并发。
+        </p>
+      </div>
+      <SmartReadDefaultTierControl />
       {loading ? (
         <p className="text-xs text-foreground/40 italic">加载中…</p>
       ) : (
         <>
+          <AppliedCredentialPicker
+            subsystem="generation"
+            selectedId={selectedCredentialId}
+            onSelectedIdChange={setSelectedCredentialId}
+            disabled={saving}
+            onApplied={(credential) => {
+              setConfig({
+                provider: credential.provider,
+                base_url: credential.base_url,
+                model: credential.model,
+                has_api_key: credential.has_api_key,
+                api_key_masked: credential.api_key_masked,
+                updated_at: new Date().toISOString(),
+              });
+              setForm(credentialToEndpointForm(credential));
+              setSaveStatus('saved');
+              trackedTimeout(() => setSaveStatus('idle'), 3000);
+            }}
+          />
           <ApiEndpointForm
             idPrefix="chat"
             value={form}
@@ -459,9 +1026,9 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
             apiKeyLabel={t('settings.api_key')}
             modelLabel={t('settings.chat_model')}
             baseUrlLabel={t('settings.base_url')}
-            providerPlaceholder="DeepSeek / OpenAI / Claude / 自定义"
-            apiKeyPlaceholder="sk-***************"
-            modelPlaceholder={t('settings.chat_model_placeholder') || '模型 ID，如 deepseek-chat、gpt-4o'}
+            providerPlaceholder="任意兼容服务名称，可手动填写"
+            apiKeyPlaceholder="粘贴服务提供的访问密钥"
+            modelPlaceholder={t('settings.chat_model_placeholder') || '填写服务提供的模型名称'}
             apiKeyTooltip={t('settings.api_key_tooltip')}
             modelTooltip={t('settings.chat_model_tooltip')}
             baseUrlTooltip={t('settings.base_url_tooltip')}
@@ -474,6 +1041,8 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
             onTest={handleTestConnection}
             testStatus={testStatus}
             testError={testError ? t('settings.test_fail_detail', { provider: form.provider || 'chat', error: testError }) : ''}
+            testElapsedSeconds={testElapsedSeconds}
+            testTimeoutSeconds={SETTINGS_API_PROBE_TIMEOUT_SECONDS}
             onSave={handleSave}
             saveStatus={saving ? 'saving' : saveStatus}
             saveError={saveError}
@@ -484,7 +1053,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
                 disabled={saving}
                 className="px-4 py-2 rounded-lg text-sm font-label text-red-600 border border-red-200 hover:bg-red-50 transition-colors disabled:opacity-50 dark:border-red-700/40 dark:text-red-300 dark:hover:bg-red-500/15"
               >
-                恢复 .env 默认
+                恢复系统默认
               </button>
             ) : null}
           />
@@ -498,7 +1067,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
         <Field label={t('settings.top_p')} htmlFor="chat-top-p">
           <SliderInput id="chat-top-p" value={llm.topP} min={0} max={1} step={0.05} ariaLabel={t('settings.top_p')} onChange={v => setLlm({ topP: v })} />
         </Field>
-        <Field label={t('settings.max_tokens')} htmlFor="chat-max-tokens">
+        <Field label={t('settings.max_tokens')} tooltip="限制智能研读或写作一次回复最多生成多少内容；不是笔记数量，也不会截断已保存的原文。" htmlFor="chat-max-tokens">
           <input id="chat-max-tokens" type="number" value={llm.maxTokens} onChange={e => setLlm({ maxTokens: Number(e.target.value) })}
             aria-label={t('settings.max_tokens')}
             className="w-full bg-surface-high rounded-lg px-3 py-2 border border-outline-variant/50 text-sm font-mono text-foreground focus:outline-none focus:border-primary/40 transition-colors" />
@@ -515,6 +1084,83 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
           className="w-full bg-surface-high rounded-lg px-3 py-2 border border-outline-variant/50 text-sm font-label text-foreground focus:outline-none focus:border-primary/40 transition-colors resize-none"
         />
       </Field>
+      <div className="rounded-lg border border-outline-variant/40 bg-surface-lowest p-4">
+        <div className="flex flex-col gap-3 min-[720px]:flex-row min-[720px]:items-start min-[720px]:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-foreground/75">长对话自动摘要</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-foreground/50">
+              对话很长时，把较早内容整理成摘要以继续提问；原始对话仍完整保留，供搜索、恢复和分叉使用。
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-foreground/55">{compression.enabled ? '已启用' : '已关闭'}</span>
+            <ToggleSwitch
+              checked={compression.enabled}
+              onChange={(enabled) => setCompression(prev => ({ ...prev, enabled }))}
+              ariaLabel="启用长对话自动摘要"
+            />
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <Field label="开始整理的长度" tooltip="对话累计内容接近这个长度后，系统开始把较早消息整理成摘要。数值越大，越晚整理。" htmlFor="chat-compression-trigger">
+            <input
+              id="chat-compression-trigger"
+              type="number"
+              min={512}
+              max={1000000}
+              step={512}
+              value={compression.trigger_tokens}
+              onChange={event => setCompression(prev => ({ ...prev, trigger_tokens: Number(event.target.value) }))}
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 font-mono text-sm text-foreground focus:border-primary/40 focus:outline-none"
+            />
+          </Field>
+          <Field label="整理后的摘要长度" tooltip="较早对话被整理后保留的大致长度，必须小于开始整理的长度。" htmlFor="chat-compression-target">
+            <input
+              id="chat-compression-target"
+              type="number"
+              min={128}
+              max={64000}
+              step={128}
+              value={compression.target_tokens}
+              onChange={event => setCompression(prev => ({ ...prev, target_tokens: Number(event.target.value) }))}
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 font-mono text-sm text-foreground focus:border-primary/40 focus:outline-none"
+            />
+          </Field>
+          <Field label="最近对话保留轮数" tooltip="整理较早消息时，最近 N 轮会继续保留原文，方便接着追问。" htmlFor="chat-compression-keep">
+            <input
+              id="chat-compression-keep"
+              type="number"
+              min={1}
+              max={100}
+              value={compression.keep_recent_turns}
+              onChange={event => setCompression(prev => ({ ...prev, keep_recent_turns: Number(event.target.value) }))}
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 font-mono text-sm text-foreground focus:border-primary/40 focus:outline-none"
+            />
+          </Field>
+        </div>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className={cn(
+            'text-[11px]',
+            compressionStatus === 'saved' ? 'text-emerald-600 dark:text-emerald-300' : compressionStatus === 'fail' ? 'text-red-600 dark:text-red-300' : 'text-foreground/40',
+          )}>
+            {compressionStatus === 'saved'
+              ? '长对话自动摘要设置已保存。'
+              : compressionStatus === 'fail'
+                ? compressionError || '长对话自动摘要设置保存失败。'
+                : compression.updated_at ? `上次更新：${compression.updated_at}` : '保存后，对新的智能研读对话生效。'}
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleCompressionSave()}
+            disabled={compressionStatus === 'saving'}
+            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+          >
+            {compressionStatus === 'saving' ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {compressionStatus === 'saved' ? '已保存' : '保存摘要设置'}
+          </button>
+        </div>
+      </div>
+      <SectionSampling t={t} embedded />
     </section>
   );
 }
@@ -523,12 +1169,14 @@ function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<st
   const trackedTimeout = useTrackedTimeout();
   const [config, setConfig] = useState<EmbeddingPublicConfig | null>(null);
   const [form, setForm] = useState<ApiEndpointFormValue>({ provider: '', baseUrl: '', apiKey: '', model: '' });
+  const [selectedCredentialId, setSelectedCredentialId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'fail'>('idle');
   const [saveError, setSaveError] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [testError, setTestError] = useState('');
+  const testElapsedSeconds = useProbeElapsedSeconds(testStatus === 'testing');
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([]);
   const [discoverStatus, setDiscoverStatus] = useState<'idle' | 'loading' | 'ok' | 'fail'>('idle');
   const [discoverError, setDiscoverError] = useState('');
@@ -582,14 +1230,14 @@ function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<st
       trackedTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err: unknown) {
       setSaveStatus('fail');
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(formatSettingsActionError(err));
     } finally {
       setSaving(false);
     }
   };
 
   const handleClear = async () => {
-    if (!window.confirm('清除当前 embedding 配置覆盖，恢复 .env 默认？')) return;
+    if (!window.confirm('清除当前语义向量配置覆盖，恢复系统默认配置？')) return;
     setSaving(true);
     try {
       const { data } = await axios.delete<EmbeddingPublicConfig>(`${getApiBaseUrl()}/api/embedding/config`);
@@ -599,7 +1247,7 @@ function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<st
       trackedTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err: unknown) {
       setSaveStatus('fail');
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(formatSettingsActionError(err));
     } finally {
       setSaving(false);
     }
@@ -616,18 +1264,19 @@ function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<st
           base_url: form.baseUrl,
           api_key: form.apiKey === '' ? null : form.apiKey,
           model: form.model,
-        }
+        },
+        { timeout: SETTINGS_API_PROBE_TIMEOUT_MS },
       );
       if (data.ok) {
         setTestStatus('ok');
       } else {
         setTestStatus('fail');
-        setTestError(data.error || `HTTP ${data.status}`);
+        setTestError(sanitizeSettingsProbeMessage(data.error || `HTTP ${data.status}`));
       }
       trackedTimeout(() => setTestStatus('idle'), 6000);
     } catch (err: unknown) {
       setTestStatus('fail');
-      setTestError(err instanceof Error ? err.message : String(err));
+      setTestError(formatSettingsActionError(err, '测试失败，请检查服务地址、访问密钥和模型名称。'));
     }
   };
 
@@ -641,7 +1290,7 @@ function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<st
     } else {
       setDiscoveredModels([]);
       setDiscoverStatus('fail');
-      setDiscoverError(result.error || '获取失败');
+      setDiscoverError(sanitizeSettingsUserMessage(result.error || '获取失败', '获取模型列表失败，请检查服务地址和访问密钥。'));
     }
     trackedTimeout(() => setDiscoverStatus('idle'), 4000);
   };
@@ -662,6 +1311,25 @@ function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<st
         <p className="text-xs text-foreground/40 italic">加载中…</p>
       ) : (
         <>
+          <AppliedCredentialPicker
+            subsystem="embedding"
+            selectedId={selectedCredentialId}
+            onSelectedIdChange={setSelectedCredentialId}
+            disabled={saving}
+            onApplied={(credential) => {
+              setConfig({
+                provider: credential.provider,
+                base_url: credential.base_url,
+                model: credential.model,
+                has_api_key: credential.has_api_key,
+                api_key_masked: credential.api_key_masked,
+                updated_at: new Date().toISOString(),
+              });
+              setForm(credentialToEndpointForm(credential));
+              setSaveStatus('saved');
+              trackedTimeout(() => setSaveStatus('idle'), 3000);
+            }}
+          />
           <ApiEndpointForm
             idPrefix="embedding"
             value={form}
@@ -670,9 +1338,9 @@ function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<st
             apiKeyLabel={t('settings.embedding_api_key')}
             modelLabel={t('settings.embedding_model')}
             baseUrlLabel={t('settings.embedding_base_url')}
-            providerPlaceholder="OpenAI / Jina / Cohere / 自定义"
-            apiKeyPlaceholder="sk-emb-***************"
-            modelPlaceholder="text-embedding-3-small / bge-large-zh-v1.5"
+            providerPlaceholder="任意兼容向量服务，可手动填写"
+            apiKeyPlaceholder="粘贴服务提供的访问密钥"
+            modelPlaceholder="填写服务提供的向量模型名称"
             apiKeyTooltip={t('settings.embedding_api_key_tooltip')}
             modelTooltip={t('settings.embedding_model_tooltip')}
             savedKeyMasked={config?.has_api_key ? config.api_key_masked : ''}
@@ -684,6 +1352,8 @@ function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<st
             onTest={handleTest}
             testStatus={testStatus}
             testError={testError}
+            testElapsedSeconds={testElapsedSeconds}
+            testTimeoutSeconds={SETTINGS_API_PROBE_TIMEOUT_SECONDS}
             onSave={handleSave}
             saveStatus={saving ? 'saving' : saveStatus}
             saveError={saveError}
@@ -694,7 +1364,7 @@ function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<st
                 disabled={saving}
                 className="px-4 py-2 rounded-lg text-sm font-label text-red-600 border border-red-200 hover:bg-red-50 transition-colors disabled:opacity-50 dark:border-red-700/40 dark:text-red-300 dark:hover:bg-red-500/15"
               >
-                恢复 .env 默认
+                恢复系统默认
               </button>
             ) : null}
           />
@@ -733,6 +1403,10 @@ function SectionWorkspace({
             ariaLabel={t('settings.local_storage_path')}
             onChange={value => setWs({ localStoragePath: value })}
           />
+          <p className="mt-1.5 text-[11px] leading-relaxed text-foreground/45">
+            默认写入安装目录下的 <code className="rounded bg-surface-high px-1 font-mono text-foreground/65">workspace_artifacts/generated/output</code>，
+            生成的导出文件、报告和临时产物都集中在这里，方便备份和清理。
+          </p>
         </Field>
         <div className="flex items-center justify-between">
           <label id="workspace-auto-index-label" className="font-label text-xs font-medium text-foreground">{t('settings.auto_index')}</label>
@@ -743,28 +1417,6 @@ function SectionWorkspace({
             onChange={next => setWs({ autoIndex: next })}
           />
         </div>
-        <Field
-          label="检索 Top-K"
-          tooltip="Workbench 文献问答每次向后端请求的候选片段数量，范围 3-20。"
-          htmlFor="workspace-retrieval-top-k"
-        >
-          <input
-            id="workspace-retrieval-top-k"
-            type="number"
-            min={3}
-            max={20}
-            step={1}
-            value={ws.retrievalTopK}
-            aria-label="检索 Top-K"
-            onChange={event => {
-              const next = Number(event.target.value);
-              if (Number.isFinite(next)) {
-                setWs({ retrievalTopK: Math.min(20, Math.max(3, Math.round(next))) });
-              }
-            }}
-            className="w-full bg-surface-high rounded-lg px-3 py-2 border border-outline-variant/50 text-sm text-foreground focus:outline-none focus:border-primary/40 transition-colors"
-          />
-        </Field>
       </div>
     </section>
   );
@@ -787,10 +1439,12 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
   const trackedTimeout = useTrackedTimeout();
   const [config, setConfig] = useState<RerankPublicConfig | null>(null);
   const [form, setForm] = useState<ApiEndpointFormValue>({ provider: '', baseUrl: '', apiKey: '', model: '' });
+  const [selectedCredentialId, setSelectedCredentialId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [testMessage, setTestMessage] = useState('');
+  const testElapsedSeconds = useProbeElapsedSeconds(testStatus === 'testing');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'fail'>('idle');
   const [saveError, setSaveError] = useState('');
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([]);
@@ -830,14 +1484,14 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
       trackedTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err: unknown) {
       setSaveStatus('fail');
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(formatSettingsActionError(err));
     } finally {
       setSaving(false);
     }
   };
 
   const handleClear = async () => {
-    if (!window.confirm('清除当前 rerank 配置覆盖，恢复 .env 设置？')) return;
+    if (!window.confirm('清除当前重排模型配置覆盖，恢复系统默认配置？')) return;
     setSaving(true);
     try {
       const { data } = await axios.delete<RerankPublicConfig>(`${getApiBaseUrl()}/api/rerank/config`);
@@ -847,7 +1501,7 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
       trackedTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err: unknown) {
       setSaveStatus('fail');
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(formatSettingsActionError(err));
     } finally {
       setSaving(false);
     }
@@ -864,19 +1518,20 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
           base_url: form.baseUrl,
           api_key: form.apiKey === '' ? null : form.apiKey,
           model: form.model,
-        }
+        },
+        { timeout: SETTINGS_API_PROBE_TIMEOUT_MS },
       );
       if (data.ok) {
         setTestStatus('ok');
-        setTestMessage(`HTTP ${data.status} · ${data.elapsed_ms} ms`);
+        setTestMessage(formatSettingsProbeDuration(data.elapsed_ms));
       } else {
         setTestStatus('fail');
-        setTestMessage(data.error || `HTTP ${data.status}`);
+        setTestMessage(sanitizeSettingsProbeMessage(data.error || `HTTP ${data.status}`));
       }
       trackedTimeout(() => setTestStatus('idle'), 6000);
     } catch (err: unknown) {
       setTestStatus('fail');
-      setTestMessage(err instanceof Error ? err.message : String(err));
+      setTestMessage(formatSettingsActionError(err, '测试失败，请检查服务地址、访问密钥和模型名称。'));
     }
   };
 
@@ -890,7 +1545,7 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
     } else {
       setDiscoveredModels([]);
       setDiscoverStatus('fail');
-      setDiscoverError(result.error || '获取失败');
+      setDiscoverError(sanitizeSettingsUserMessage(result.error || '获取失败', '获取模型列表失败，请检查服务地址和访问密钥。'));
     }
     trackedTimeout(() => setDiscoverStatus('idle'), 4000);
   };
@@ -901,7 +1556,7 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
         <h4 className="font-headline text-xs font-semibold text-foreground flex items-center gap-2">
           <Layers size={14} className="text-primary" />
           Rerank 模型配置
-          <Tooltip text="文献检索后排序的 reranker 模型 — 默认用 SiliconFlow，可填本地 BGE 等 OpenAI/Cohere 兼容服务。配置写到 runtime_state/rerank_override.json 并立刻生效（不需要重启）。" />
+          <Tooltip text="文献检索后的精排模型，可接云端 rerank，也可接本地 BGE 等 Cohere 兼容服务。保存后会立即应用到本机语义路由。" />
         </h4>
         <StatusPill status={config?.has_api_key ? 'online' : 'ready'} t={_t} />
       </div>
@@ -917,21 +1572,40 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
         <p className="text-xs text-foreground/40 italic">加载中…</p>
       ) : (
         <>
+          <AppliedCredentialPicker
+            subsystem="rerank"
+            selectedId={selectedCredentialId}
+            onSelectedIdChange={setSelectedCredentialId}
+            disabled={saving}
+            onApplied={(credential) => {
+              setConfig({
+                provider: credential.provider,
+                base_url: credential.base_url,
+                model: credential.model,
+                has_api_key: credential.has_api_key,
+                api_key_masked: credential.api_key_masked,
+                updated_at: new Date().toISOString(),
+              });
+              setForm(credentialToEndpointForm(credential));
+              setSaveStatus('saved');
+              trackedTimeout(() => setSaveStatus('idle'), 3000);
+            }}
+          />
           <ApiEndpointForm
             idPrefix="rerank"
             value={form}
             onChange={setForm}
             providerLabel="供应商"
-            apiKeyLabel="API Key"
-            modelLabel="模型 ID"
+            apiKeyLabel="访问密钥"
+            modelLabel="模型名称"
             baseUrlLabel="服务地址"
-            providerPlaceholder="SiliconFlow / DashScope / 本地服务"
-            apiKeyPlaceholder="sk-..."
-            modelPlaceholder="bge-reranker-v2-m3 / qwen3-rerank"
-            baseUrlPlaceholder="http://localhost:7997/rerank"
-            apiKeyTooltip="保存为本地运行时配置；本地 rerank 服务可留空。"
+            providerPlaceholder="任意兼容重排服务，可手动填写"
+            apiKeyPlaceholder="粘贴服务提供的访问密钥；本地服务可留空"
+            modelPlaceholder="填写服务提供的重排模型名称"
+            baseUrlPlaceholder="填写兼容重排服务地址"
+            apiKeyTooltip="保存为本地运行时配置；本地重排服务可留空。"
             modelTooltip="例如 bge-reranker-v2-m3、qwen3-rerank、gte-rerank。"
-            baseUrlTooltip="OpenAI/Cohere 兼容的 rerank 端点完整地址。"
+            baseUrlTooltip="兼容重排接口的完整服务地址。"
             savedKeyMasked={config?.has_api_key ? config.api_key_masked : ''}
             updatedAt={config?.updated_at}
             models={discoveredModels}
@@ -941,6 +1615,8 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
             onTest={handleTest}
             testStatus={testStatus}
             testError={testMessage}
+            testElapsedSeconds={testElapsedSeconds}
+            testTimeoutSeconds={SETTINGS_API_PROBE_TIMEOUT_SECONDS}
             onSave={handleSave}
             saveStatus={saving ? 'saving' : saveStatus}
             saveError={saveError}
@@ -951,23 +1627,10 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
                 disabled={saving}
                 className="px-4 py-2 rounded-lg text-sm font-label text-red-600 border border-red-200 hover:bg-red-50 transition-colors disabled:opacity-50 dark:border-red-700/40 dark:text-red-300 dark:hover:bg-red-500/15"
               >
-                恢复 .env 默认
+                恢复系统默认
               </button>
             ) : null}
           />
-
-          <details className="text-[11px] text-foreground/50">
-            <summary className="cursor-pointer hover:text-foreground/70">本地 rerank 服务怎么搭？</summary>
-            <p className="mt-2 p-2 bg-surface-high rounded text-[11px] leading-relaxed">
-              本地 rerank 是<strong>独立服务</strong>，桌面 App 通过 HTTP 调用。只要服务兼容 Cohere <code>/rerank</code> 协议，
-              填上面的 Base URL + 模型 ID 就能用。
-              <br />
-              <br />
-              三种部署方式（Docker / Python 参考脚本 / 复用已有服务）、协议规范、故障排查见仓库文档：
-              <br />
-              <code className="text-foreground/80">docs/local-rerank.md</code>
-            </p>
-          </details>
         </>
       )}
     </div>
@@ -975,6 +1638,9 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
 }
 
 function SectionSemanticRouting({ t, settings, onChange }: { t: (k: string, p?: Record<string, string | number>) => string; settings: AppSettings; onChange: (s: AppSettings) => void }) {
+  const ws = settings.workspace;
+  const setWs = (patch: Partial<typeof ws>) => onChange({ ...settings, workspace: { ...ws, ...patch } });
+
   return (
     <section id="section-semantic-routing" className="space-y-5">
       <div className="flex items-center justify-between">
@@ -987,13 +1653,65 @@ function SectionSemanticRouting({ t, settings, onChange }: { t: (k: string, p?: 
       <p className="text-xs text-foreground/50 leading-relaxed">
         {t('settings.section_semantic_routing_intro')}
       </p>
+      <div className="rounded-lg border border-primary/15 bg-primary/5 p-3 text-[11px] leading-relaxed text-foreground/55">
+        <p className="font-medium text-foreground/70">语义路由 = Embedding 召回 + Rerank 精排</p>
+        <p className="mt-1">
+          Embedding 决定哪些片段先进入候选池；Rerank 决定这些候选证据的最终顺序。两者可分别绑定保存的 API 凭证，也可以指向本地服务。
+        </p>
+      </div>
+      <div className="rounded-lg border border-outline-variant/45 bg-surface-lowest p-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-foreground/75">检索与排序范围</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-foreground/50">
+              语义路由只控制候选证据怎么召回、怎么精排；温度、核采样、最大输出和提示词属于生成设置，放在“研读和写作”和“多智能体讨论”里。
+            </p>
+          </div>
+          <Field
+            label="检索 Top-K"
+            tooltip="智能研读和知识库智读请求候选证据的默认数量，范围 3-20。"
+            htmlFor="semantic-routing-retrieval-top-k"
+          >
+            <input
+              id="semantic-routing-retrieval-top-k"
+              type="number"
+              min={3}
+              max={20}
+              step={1}
+              value={ws.retrievalTopK}
+              aria-label="语义路由检索 Top-K"
+              onChange={event => {
+                const next = Number(event.target.value);
+                if (Number.isFinite(next)) {
+                  setWs({ retrievalTopK: Math.min(20, Math.max(3, Math.round(next))) });
+                }
+              }}
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground transition-colors focus:border-primary/40 focus:outline-none md:w-32"
+            />
+          </Field>
+        </div>
+      </div>
+      <details className="rounded-lg border border-outline-variant/45 bg-surface-lowest px-3 py-2 text-[11px] text-foreground/50">
+        <summary className="cursor-pointer font-medium text-foreground/65 hover:text-foreground/80">本地向量化与重排怎么接？</summary>
+        <p className="mt-2 leading-relaxed">
+          本地语义路由由两段组成：向量化把文本转成可检索表示，填写兼容服务地址和模型名称；
+          重排模型会对候选证据重新排序。填写兼容服务地址和模型名称；本地服务没有鉴权时访问密钥可留空。
+          常见组合是本地向量服务提供语义向量，BGE、Jina 或 Cohere 兼容服务提供重排。
+        </p>
+      </details>
       <EmbeddingCard t={t} settings={settings} onChange={onChange} />
       <RerankCard t={t} />
     </section>
   );
 }
 
-function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | number>) => string }) {
+function SectionSampling({
+  t,
+  embedded = false,
+}: {
+  t: (k: string, p?: Record<string, string | number>) => string;
+  embedded?: boolean;
+}) {
   const trackedTimeout = useTrackedTimeout();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1034,7 +1752,7 @@ function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | num
       setModelMaxTokens(data?.model_max_tokens ?? 32768);
       setUserOverrides(data?.tasks ?? {});
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatSettingsActionError(err);
       setError(msg);
       // Even on backend failure, keep panel renderable with frontend defaults
       // so users can at least see what the sampling shape looks like.
@@ -1091,11 +1809,7 @@ function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | num
       setSaveStatus(prev => ({ ...prev, [task]: 'saved' }));
       trackedTimeout(() => setSaveStatus(prev => ({ ...prev, [task]: 'idle' })), 2000);
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      if (axios.isAxiosError(err) && err.response?.status === 422) {
-        const detail = err.response.data?.detail;
-        msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
-      }
+      const msg = formatSettingsActionError(err);
       setSaveStatus(prev => ({ ...prev, [task]: 'error' }));
       setSaveError(prev => ({ ...prev, [task]: msg }));
       trackedTimeout(() => setSaveStatus(prev => ({ ...prev, [task]: 'idle' })), 4000);
@@ -1116,14 +1830,14 @@ function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | num
         return next;
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatSettingsActionError(err);
       setSaveError(prev => ({ ...prev, [task]: msg }));
     }
   };
 
   if (loading) {
     return (
-      <section className="space-y-5">
+      <section className={cn('space-y-5', embedded && 'rounded-lg border border-outline-variant/40 bg-surface-lowest p-4')}>
         <div className="flex items-center gap-2 text-foreground/40">
           <Loader2 size={16} className="animate-spin" />
           <span className="text-sm">{t('common.loading')}</span>
@@ -1134,7 +1848,7 @@ function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | num
 
   if (error) {
     return (
-      <section className="space-y-5">
+      <section className={cn('space-y-5', embedded && 'rounded-lg border border-outline-variant/40 bg-surface-lowest p-4')}>
         <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg dark:border-red-700/40 dark:bg-red-500/15">
           <AlertCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
           <p className="font-body text-xs text-red-700 dark:text-red-300">{error}</p>
@@ -1144,14 +1858,19 @@ function SectionSampling({ t }: { t: (k: string, p?: Record<string, string | num
   }
 
   return (
-    <section id="section-sampling" className="space-y-5">
+    <section
+      id={embedded ? 'section-chat-sampling' : 'section-sampling'}
+      className={cn('space-y-5', embedded && 'rounded-lg border border-outline-variant/40 bg-surface-lowest p-4')}
+    >
       <h3 className="font-headline text-sm font-semibold text-foreground flex items-center gap-2">
         <Cpu size={16} className="text-primary" />
-        {t('settings.section_sampling')}
+        {embedded ? '任务采样参数' : t('settings.section_sampling')}
         <Tooltip text={t('settings.section_sampling_tooltip')} />
       </h3>
       <p className="text-xs text-foreground/50 leading-relaxed">
-        {t('settings.sampling_description')}
+        {embedded
+          ? '这些参数属于研读和写作调用。API 凭证页只管理上游连接；这里按任务覆写默认温度、Top-p、Top-k 和最大输出。'
+          : t('settings.sampling_description')}
       </p>
 
       <div className="space-y-2">
@@ -1368,18 +2087,17 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
   });
   const [profileStore, setProfileStore] = React.useState(loadDiscussionProfileStore);
   const [activeProfileId, setActiveProfileId] = React.useState<DiscussionProfileId>('proposer');
+  const [roleDetailOpen, setRoleDetailOpen] = React.useState(false);
   const [roleNameDraft, setRoleNameDraft] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [saveState, setSaveState] = React.useState<SaveState>('idle');
-  const [credentials, setCredentials] = React.useState<RuntimeCredentialPublic[]>([]);
-  const [credentialLoading, setCredentialLoading] = React.useState(false);
-  const [credentialError, setCredentialError] = React.useState('');
   const [roleApiSaving, setRoleApiSaving] = React.useState(false);
   const [roleApiSaveState, setRoleApiSaveState] = React.useState<SaveState>('idle');
   const [roleApiSaveError, setRoleApiSaveError] = React.useState('');
   const [roleApiTestState, setRoleApiTestState] = React.useState<ProbeState>('idle');
   const [roleApiTestError, setRoleApiTestError] = React.useState('');
+  const roleApiTestElapsedSeconds = useProbeElapsedSeconds(roleApiTestState === 'testing');
   const [roleModels, setRoleModels] = React.useState<DiscoveredModel[]>([]);
   const [roleDiscoverState, setRoleDiscoverState] = React.useState<DiscoverState>('idle');
   const [roleDiscoverError, setRoleDiscoverError] = React.useState('');
@@ -1456,33 +2174,6 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
     setRoleModels([]);
   }, [activeProfileId]);
 
-  React.useEffect(() => {
-    let alive = true;
-    const loadCredentialList = async () => {
-      setCredentialLoading(true);
-      setCredentialError('');
-      try {
-        const data = await listCredentials({ category: 'generation', enabledOnly: true });
-        if (alive) {
-          setCredentials(data);
-        }
-      } catch {
-        if (alive) {
-          setCredentials([]);
-          setCredentialError('模型凭证加载失败。');
-        }
-      } finally {
-        if (alive) {
-          setCredentialLoading(false);
-        }
-      }
-    };
-    void loadCredentialList();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   const updateProfile = (id: DiscussionProfileId, patch: Partial<DiscussionAgentProfile>) => {
     setProfileStore((current) => ({
       ...current,
@@ -1493,20 +2184,6 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
     setSaveState('idle');
     setRoleApiSaveState('idle');
   };
-
-  const refreshCredentials = React.useCallback(async () => {
-    setCredentialLoading(true);
-    setCredentialError('');
-    try {
-      const data = await listCredentials({ category: 'generation', enabledOnly: true });
-      setCredentials(data);
-    } catch {
-      setCredentials([]);
-      setCredentialError('模型凭证加载失败。');
-    } finally {
-      setCredentialLoading(false);
-    }
-  }, []);
 
   const addCustomRole = () => {
     const customCount = profileStore.profiles.filter((profile) => profile.role === 'custom').length + 1;
@@ -1519,6 +2196,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
         profiles: [...current.profiles, nextProfile],
       };
     });
+    setRoleDetailOpen(true);
     setRoleNameDraft('');
     setSaveState('idle');
   };
@@ -1532,6 +2210,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
       const nextProfiles = current.profiles.filter((item) => item.id !== profileId);
       const nextJudge = current.defaultJudgeProfileId === profileId ? 'synthesizer' : current.defaultJudgeProfileId;
       setActiveProfileId(nextProfiles[0]?.id ?? 'proposer');
+      setRoleDetailOpen(false);
       return {
         ...current,
         defaultJudgeProfileId: nextJudge,
@@ -1561,7 +2240,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
     } else {
       setRoleModels([]);
       setRoleDiscoverState('fail');
-      setRoleDiscoverError(result.error || '获取失败');
+      setRoleDiscoverError(sanitizeSettingsUserMessage(result.error || '获取失败', '获取模型列表失败，请检查服务地址和访问密钥。'));
     }
     trackedTimeout(() => setRoleDiscoverState('idle'), 4000);
   };
@@ -1573,21 +2252,13 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
     const apiKey = activeProfile.apiKey.trim();
     if (!provider || !baseUrl || !model) {
       setRoleApiSaveState('error');
-      setRoleApiSaveError('供应商、Base URL 和模型不能为空。');
+      setRoleApiSaveError('供应商、服务地址和模型不能为空。');
       return;
     }
     if (!apiKey && !activeProfile.credentialId.trim()) {
       setRoleApiSaveState('error');
-      setRoleApiSaveError('首次保存角色 API 时需要填写 API Key。');
+      setRoleApiSaveError('首次保存角色 API 时需要填写访问密钥。');
       return;
-    }
-    if (activeProfile.credentialId.trim()) {
-      const credential = credentials.find((item) => item.credential_id === activeProfile.credentialId.trim());
-      if (credential && credential.category !== 'generation') {
-        setRoleApiSaveState('error');
-        setRoleApiSaveError('角色 API 只能绑定生成类凭证。');
-        return;
-      }
     }
     setRoleApiSaving(true);
     setRoleApiSaveState('idle');
@@ -1643,12 +2314,11 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
       };
       setProfileStore(nextStore);
       saveDiscussionProfileStore(nextStore);
-      await refreshCredentials();
       setRoleApiSaveState('saved');
       trackedTimeout(() => setRoleApiSaveState('idle'), 2500);
     } catch (err: unknown) {
       setRoleApiSaveState('error');
-      setRoleApiSaveError(err instanceof Error ? err.message : String(err));
+      setRoleApiSaveError(formatSettingsActionError(err));
     } finally {
       setRoleApiSaving(false);
     }
@@ -1661,6 +2331,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
       if (activeProfile.credentialId.trim() && !activeProfile.apiKey.trim()) {
         const result = await testCredential(activeProfile.credentialId.trim(), {
           trustSourceOverride: 'runtime_user_confirmed',
+          timeoutMs: SETTINGS_API_PROBE_TIMEOUT_MS,
         });
         if (result.status !== 'ok' && result.status !== 'skipped') {
           throw new Error(result.reason || result.probe?.error || result.status);
@@ -1674,6 +2345,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
             api_key: activeProfile.apiKey || null,
             model: activeProfile.model,
           },
+          { timeout: SETTINGS_API_PROBE_TIMEOUT_MS },
         );
         if (!data.ok) {
           throw new Error(data.error || `HTTP ${data.status}`);
@@ -1682,7 +2354,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
       setRoleApiTestState('ok');
     } catch (err: unknown) {
       setRoleApiTestState('fail');
-      setRoleApiTestError(err instanceof Error ? err.message : String(err));
+      setRoleApiTestError(formatSettingsActionError(err, '测试失败，请检查服务地址、访问密钥和模型名称。'));
     } finally {
       trackedTimeout(() => setRoleApiTestState('idle'), 6000);
     }
@@ -1813,7 +2485,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
             </div>
           </Field>
 
-          <Field label="默认裁判角色" tooltip="讨论页会优先从已选角色中匹配这个裁判。">
+          <Field label="默认裁判角色" tooltip="讨论页会优先从已选角色中匹配这个裁判。这里使用角色详情中显示的“讨论角色 ID”，不是角色显示名称。">
             <select
               value={profileStore.defaultJudgeProfileId}
               onChange={(event) => {
@@ -1833,6 +2505,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
         </div>
       </div>
 
+      {!roleDetailOpen ? (
       <div className="rounded-lg border border-outline-variant bg-surface-lowest p-4 shadow-sm">
         <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div>
@@ -1864,13 +2537,12 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
-          <div className="grid content-start gap-2 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="grid content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {profileStore.profiles.map((profile) => (
               <div
                 key={profile.id}
                 className={cn(
-                  'group flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors',
+                  'group flex min-w-0 items-start gap-2 rounded-lg border px-3 py-3 transition-colors',
                   activeProfileId === profile.id
                     ? 'border-primary/45 bg-primary/10 text-primary'
                     : 'border-outline-variant/50 bg-surface-low hover:border-primary/30 hover:bg-surface-high',
@@ -1878,11 +2550,17 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
               >
                 <button
                   type="button"
-                  onClick={() => setActiveProfileId(profile.id)}
+                  onClick={() => {
+                    setActiveProfileId(profile.id);
+                    setRoleDetailOpen(true);
+                  }}
                   className="min-w-0 flex-1 text-left"
                 >
                   <span className="block truncate text-xs font-semibold">{profile.displayName}</span>
                   <span className="mt-1 block truncate text-[10px] text-foreground/45">{describeApiBinding(profile)}</span>
+                  <span className="mt-2 inline-flex rounded bg-surface-lowest px-1.5 py-0.5 text-[10px] text-foreground/45">
+                    T={profile.temperature.toFixed(2)} · P={profile.topP.toFixed(2)} · {profile.maxTokens}
+                  </span>
                 </button>
                 {!isBuiltInDiscussionProfile(profile) ? (
                   <button
@@ -1895,15 +2573,43 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
                     <Trash2 size={12} />
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveProfileId(profile.id);
+                    setRoleDetailOpen(true);
+                  }}
+                  className="rounded-md p-1 text-foreground/35 transition-colors hover:bg-surface-high hover:text-primary"
+                  title="进入详情"
+                  aria-label={`进入 ${profile.displayName} 详情`}
+                >
+                  <ChevronRight size={13} />
+                </button>
               </div>
             ))}
-          </div>
-
+        </div>
+      </div>
+      ) : (
+      <div className="rounded-lg border border-outline-variant bg-surface-lowest p-4 shadow-sm">
           <div className="space-y-4 rounded-lg border border-outline-variant/50 bg-surface-low p-4">
             <div className="flex flex-col gap-2 border-b border-outline-variant/40 pb-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">{activeProfile.displayName}</p>
-                <p className="mt-0.5 text-[11px] text-foreground/45">{describeApiBinding(activeProfile)}</p>
+              <div className="flex min-w-0 items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRoleDetailOpen(false)}
+                  className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-outline-variant bg-surface-lowest text-foreground/60 transition-colors hover:border-primary/35 hover:text-primary"
+                  aria-label="返回角色列表"
+                  title="返回"
+                >
+                  <ArrowLeft size={15} />
+                </button>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-foreground">{activeProfile.displayName}</p>
+                  <p className="mt-0.5 text-[11px] text-foreground/45">{describeApiBinding(activeProfile)}</p>
+                  <p className="mt-1 break-all text-[11px] text-foreground/45">
+                    讨论角色 ID：<span className="font-mono text-foreground/65">{activeProfile.id}</span>
+                  </p>
+                </div>
               </div>
               <span className="inline-flex w-fit items-center rounded-md bg-surface-high px-2 py-1 text-[10px] text-foreground/50">
                 {isBuiltInDiscussionProfile(activeProfile) ? '内置角色' : '自定义角色'}
@@ -1921,7 +2627,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
               </Field>
               <Field
                 label="API 绑定方式"
-                tooltip="每个角色都可以复用聊天与生成设置、选择已保存 API，或单独填写一套 API。"
+                tooltip="每个角色都可以复用研读和写作设置、选择已保存 API，或单独填写一套 API。"
                 htmlFor={`discussion-profile-${activeProfile.id}-api-mode`}
               >
                 <select
@@ -1943,16 +2649,16 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
                 value={roleApiValue}
                 onChange={handleRoleApiChange}
                 providerLabel="供应商"
-                apiKeyLabel="API Key"
-                modelLabel="模型 ID"
-                baseUrlLabel="Base URL"
-                providerPlaceholder="OpenAI / DeepSeek / Claude / 自定义"
-                apiKeyPlaceholder="sk-***************"
-                modelPlaceholder="deepseek-chat / gpt-4o / claude-3-5-sonnet"
-                baseUrlPlaceholder="https://api.openai.com/v1"
-                apiKeyTooltip="每个角色可使用不同 API Key；保存后会进入本机已保存 API 配置，并在讨论时按角色调用。"
+                apiKeyLabel="访问密钥"
+                modelLabel="模型名称"
+                baseUrlLabel="服务地址"
+                providerPlaceholder="任意兼容服务名称，可手动填写"
+                apiKeyPlaceholder="粘贴服务提供的访问密钥"
+                modelPlaceholder="填写服务提供的模型名称"
+                baseUrlPlaceholder="填写兼容服务地址"
+                apiKeyTooltip="每个角色可使用不同访问密钥；保存后会进入本机已保存 API 配置，并在讨论时按角色调用。"
                 modelTooltip="该角色发言时使用的模型。"
-                baseUrlTooltip="OpenAI Chat Completions 兼容端点。"
+                baseUrlTooltip="兼容研读和写作模型接口的服务地址。"
                 savedKeyMasked={activeProfile.apiKeyMasked}
                 models={roleModels}
                 onDiscover={handleRoleDiscover}
@@ -1961,6 +2667,8 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
                 onTest={handleRoleApiTest}
                 testStatus={roleApiTestState}
                 testError={roleApiTestError}
+                testElapsedSeconds={roleApiTestElapsedSeconds}
+                testTimeoutSeconds={SETTINGS_API_PROBE_TIMEOUT_SECONDS}
                 onSave={handleRoleApiSave}
                 saveStatus={roleApiSaving ? 'saving' : roleApiSaveState === 'error' ? 'fail' : roleApiSaveState}
                 saveError={roleApiSaveError}
@@ -1969,49 +2677,31 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
             ) : null}
 
             {activeProfile.apiMode === 'credential' ? (
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-                <Field label="已保存 API" tooltip="来自“API 凭证”页的生成类 API 配置。" htmlFor={`discussion-profile-${activeProfile.id}-credential`}>
-                  <select
-                    id={`discussion-profile-${activeProfile.id}-credential`}
-                    value={activeProfile.credentialId}
-                    onChange={(event) => updateProfile(activeProfile.id, { credentialId: event.target.value })}
-                    disabled={credentialLoading}
-                    className="w-full rounded-lg border border-outline-variant/50 bg-surface-lowest px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none disabled:opacity-60"
-                  >
-                    <option value="">{credentialLoading ? '正在加载 API…' : '选择已保存 API'}</option>
-                    {credentials.map((credential) => (
-                      <option key={credential.credential_id} value={credential.credential_id}>
-                        {formatDiscussionCredentialLabel(credential)}
-                      </option>
-                    ))}
-                    {activeProfile.credentialId.trim() && !credentials.some((credential) => credential.credential_id === activeProfile.credentialId.trim()) ? (
-                      <option value={activeProfile.credentialId}>当前已选 API 不可见</option>
-                    ) : null}
-                  </select>
-                  {credentialError ? (
-                    <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{credentialError}</p>
-                  ) : credentials.length === 0 && !credentialLoading ? (
-                    <p className="mt-1 text-[11px] text-foreground/45">没有可选 API，可切换到“单独填写 API”保存一套角色 API。</p>
-                  ) : null}
-                </Field>
-                <button
-                  type="button"
-                  onClick={() => void refreshCredentials()}
-                  disabled={credentialLoading}
-                  className="self-end rounded-lg border border-outline-variant/60 bg-surface-lowest px-3 py-2 text-xs text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary disabled:opacity-50"
-                >
-                  {credentialLoading ? '刷新中…' : '刷新 API'}
-                </button>
+              <div className="rounded-lg border border-outline-variant/50 bg-surface-lowest p-3">
+                <CredentialPicker
+                  category="generation"
+                  requirement={{
+                    id: `discussion-profile-${activeProfile.id}-credential`,
+                    label: '已保存 API',
+                    env: 'CHAT_API_KEY',
+                    kind: 'api_key',
+                    provider_hints: [],
+                    required: false,
+                    description: '来自“API 凭证”页的生成类 API 配置。',
+                  }}
+                  value={activeProfile.credentialId.trim() || null}
+                  onChange={(credentialId) => updateProfile(activeProfile.id, { credentialId: credentialId ?? '' })}
+                />
               </div>
             ) : null}
 
             {activeProfile.apiMode === 'default' ? (
               <div className="rounded-lg border border-outline-variant/60 bg-surface-lowest px-3 py-2 text-xs leading-relaxed text-foreground/55">
-                该角色直接使用“聊天与生成”分区的模型配置。需要单独指定模型或 Key 时，切换到“单独填写 API”。
+                该角色直接使用“研读和写作”分区的模型配置。需要单独指定模型或 Key 时，切换到“单独填写 API”。
               </div>
             ) : null}
 
-            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
               <Field label="温度" tooltip="控制发散程度，0 更稳定，2 更发散。" htmlFor={`discussion-profile-${activeProfile.id}-temperature`}>
                 <input
                   id={`discussion-profile-${activeProfile.id}-temperature`}
@@ -2024,7 +2714,19 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
                   className="w-full rounded-lg border border-outline-variant/50 bg-surface-lowest px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none"
                 />
               </Field>
-              <Field label="最大输出" tooltip="单次角色发言的最大 token 数。" htmlFor={`discussion-profile-${activeProfile.id}-max-tokens`}>
+              <Field label="核采样" tooltip="控制候选词的累计概率，1 更开放，0 更保守。" htmlFor={`discussion-profile-${activeProfile.id}-top-p`}>
+                <input
+                  id={`discussion-profile-${activeProfile.id}-top-p`}
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={activeProfile.topP}
+                  onChange={(event) => updateProfile(activeProfile.id, { topP: Number(event.target.value) })}
+                  className="w-full rounded-lg border border-outline-variant/50 bg-surface-lowest px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+                />
+              </Field>
+              <Field label="单次发言长度上限" tooltip="限制这个角色每次发言最多生成多少内容。数值越大，回答可能更长，耗时和成本也会增加。" htmlFor={`discussion-profile-${activeProfile.id}-max-tokens`}>
                 <input
                   id={`discussion-profile-${activeProfile.id}-max-tokens`}
                   type="number"
@@ -2057,8 +2759,8 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
               />
             </Field>
           </div>
-        </div>
       </div>
+      )}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className={cn(
@@ -2092,11 +2794,11 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
   );
 }
 
-function formatDiscussionCredentialLabel(credential: RuntimeCredentialPublic): string {
+function formatSavedCredentialLabel(credential: RuntimeCredentialPublic): string {
   const provider = credential.provider.trim() || '自定义供应商';
   const model = credential.model.trim() || '未命名模型';
-  const hint = credential.strategy_hint === 'discussion' ? ' · 讨论优先' : '';
-  return `${provider} · ${model}${hint}`;
+  const disabled = credential.enabled ? '' : ' · 已停用';
+  return `${provider} · ${model}${disabled}`;
 }
 
 
@@ -2104,6 +2806,62 @@ function formatDiscussionCredentialLabel(credential: RuntimeCredentialPublic): s
 /* ------------------------------------------------------------------ */
 /*  Experimental Features section                                      */
 /* ------------------------------------------------------------------ */
+
+const FEATURE_FLAG_DISPLAY_COPY: Record<string, { label?: string; description: string }> = {
+  tolf_context: {
+    label: '深度证据检索',
+    description: '把问题拆成多面查询，在文献图上扩散，并按硬证据筛选结果。比默认检索更慢，但更适合综述、找数据和深度调研。',
+  },
+  local_rerank: {
+    label: '本地重排主线',
+    description: '语义路由默认用本机或已配置的重排服务整理候选证据。没有可用服务或凭证时会保留现有检索结果，不会阻断答问。',
+  },
+  analysis_chain_rag: {
+    label: '答复附推理过程',
+    description: '智能研读回答时附带结构化推理过程，包括观察、机制、证据、边界、反证和下一步。默认不增加模型调用。',
+  },
+  analysis_chain_rag_llm: {
+    label: '增强推理说明',
+    description: '让模型生成更完整的推理过程，适合需要复核思路的复杂问题。失败时会自动回到基础推理过程，不影响答问。',
+  },
+  analysis_chain_discussion: {
+    label: '多智能体讨论附推理过程',
+    description: '讨论中每个智能体发言时携带自己的推理链，可在讨论面板逐个展开查看。',
+  },
+  analysis_chain_carryover: {
+    label: '承接上一步思路',
+    description: '下一位智能体或下一轮对话会参考上一步推理，减少重复思考，让讨论更连贯。',
+  },
+  analysis_chain_ui: {
+    label: '推理过程展开入口',
+    description: '答案带有推理过程时，界面提供展开入口并默认收起。关闭后只隐藏入口，不影响答问能力。',
+  },
+  discussion_streaming: {
+    label: '讨论实时进度',
+    description: '讨论运行时逐个显示智能体完成进度，长讨论不用等全部结束才看到结果。关闭后仍可完成讨论。',
+  },
+  inspector_embed_unified: {
+    label: '工作台右侧助手',
+    description: '在研究工作台右侧检视面板直接使用智能研读和多智能体讨论完整能力，关闭后回到跳转入口。',
+  },
+  wiki: {
+    label: 'Wiki 知识沉淀',
+    description: '开启后可使用 Wiki 工作台、页面检索、编译和审阅队列，把项目资料沉淀为可回看的本地知识页。关闭后保留已有页面，只暂停入口和 API 能力。',
+  },
+  evolution_candidate_capture: {
+    label: '经验候选收纳',
+    description: '开启后，智能研读、讨论、写作任务、Skill 和 MCP 工具运行完成时，会把可复用经验放入复审队列，等待人工确认。',
+  },
+  evolution_review_ui: {
+    label: '学到的经验复审入口',
+    description: '开启后显示“学到的经验”页面，用于查看、保存、忽略和撤销经验候选。关闭时不删除已有候选。',
+  },
+  evolution_promotion: {
+    label: '经验应用到长期记忆',
+    description: '开启后，已保存的经验可以继续应用到长期记忆或 Skill 草稿。关闭时仍可复审候选，但不会写入长期记忆。',
+  },
+};
+
 function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string | number>) => string }) {
   const [flags, setFlags] = useState<FeatureFlagEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2118,7 +2876,7 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
       const data = await listFeatureFlags();
       setFlags(data);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : String(err));
+      setLoadError(formatSettingsActionError(err, '功能开关加载失败，请稍后重试。'));
     } finally {
       setLoading(false);
     }
@@ -2133,7 +2891,7 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
       const updated = await setFeatureFlag(name, next);
       setFlags(prev => prev.map(f => f.name === name ? updated : f));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatSettingsActionError(err);
       setSaveError(prev => ({ ...prev, [name]: msg }));
     } finally {
       setSaving(prev => ({ ...prev, [name]: false }));
@@ -2170,20 +2928,21 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
         <p className="text-xs text-foreground/50">{t('settings.experimental_empty')}</p>
       )}
 
-      {!loading && flags.map(flag => (
+      {!loading && flags.map(flag => {
+        const displayCopy = FEATURE_FLAG_DISPLAY_COPY[flag.name];
+        const displayLabel = displayCopy?.label ?? flag.label;
+        const displayDescription = displayCopy?.description ?? flag.description;
+        return (
         <div key={flag.name} className="border border-outline-variant rounded-lg p-4 bg-surface">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-semibold text-sm text-foreground">{flag.label}</h3>
+                <h3 className="font-semibold text-sm text-foreground">{displayLabel}</h3>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-lowest text-foreground/60 border border-outline-variant">
                   {sourceLabel(flag.source)}
                 </span>
               </div>
-              <p className="text-xs text-foreground/60 leading-relaxed whitespace-pre-line">{flag.description}</p>
-              {flag.env_var && (
-                <p className="text-[10px] text-foreground/40 mt-1.5 font-mono">env: {flag.env_var}</p>
-              )}
+              <p className="text-xs text-foreground/60 leading-relaxed whitespace-pre-line">{displayDescription}</p>
             </div>
             <button
               type="button"
@@ -2195,7 +2954,7 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
                 saving[flag.name] && 'opacity-50 cursor-wait',
               )}
               aria-pressed={flag.current}
-              aria-label={flag.label}
+              aria-label={displayLabel}
             >
               <span
                 className={cn(
@@ -2211,7 +2970,8 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
             </p>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -2221,16 +2981,14 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
 /* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
-const TABS: { id: SectionId; icon: React.ElementType; labelKey: string }[] = [
-  { id: 'chat', icon: Zap, labelKey: 'settings.section_chat' },
-  { id: 'semantic-routing', icon: Network, labelKey: 'settings.section_semantic_routing' },
-  { id: 'sampling', icon: Cpu, labelKey: 'settings.section_sampling' },
+export const SETTINGS_NAV_TABS: { id: SectionId; icon: React.ElementType; labelKey: string }[] = [
+  { id: 'api', icon: Key, labelKey: 'settings.section_api' },
   { id: 'workspace', icon: FolderOpen, labelKey: 'settings.section_workspace' },
   { id: 'skills', icon: Layers, labelKey: 'skills.settings_section' },
-  { id: 'credentials', icon: Key, labelKey: 'settings.section_credentials' },
   { id: 'mcp', icon: Server, labelKey: 'settings.section_mcp' },
   { id: 'discussion', icon: Users, labelKey: 'settings.section_discussion' },
-  { id: 'experimental', icon: FlaskConical, labelKey: 'settings.section_experimental' },
+  { id: 'citation-styles', icon: BookMarked, labelKey: 'settings.section_citation_styles' },
+  { id: 'experimental', icon: ToggleLeft, labelKey: 'settings.section_experimental' },
 ];
 
 export function SettingsPage() {
@@ -2246,6 +3004,14 @@ export function SettingsPage() {
   const isDirty = JSON.stringify(settings) !== JSON.stringify(loadSettings());
   const showGlobalSave = activeSection === 'workspace' && isDirty;
 
+  const setSettingsSection = useCallback((section: SectionId) => {
+    const normalized = normalizeSection(section);
+    setActiveSection(normalized);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', buildSettingsSectionPath(normalized));
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -2253,9 +3019,9 @@ export function SettingsPage() {
 
     const section = new URLSearchParams(window.location.search).get('section');
     if (isSectionId(section)) {
-      setActiveSection(normalizeSection(section));
+      setSettingsSection(section);
     }
-  }, []);
+  }, [setSettingsSection]);
 
   const checkHealth = useCallback(async () => {
     setHealthLoading(true);
@@ -2301,11 +3067,12 @@ export function SettingsPage() {
   };
 
   const sectionMap: Record<SectionId, React.ReactNode> = {
+    api: <SectionApiSettings onOpenSection={setSettingsSection} />,
     chat: <SectionChat t={t} settings={settings} onChange={setSettings} isDirty={isDirty} />,
     embedding: <SectionSemanticRouting t={t} settings={settings} onChange={setSettings} />,
     rerank: <SectionSemanticRouting t={t} settings={settings} onChange={setSettings} />,
     'semantic-routing': <SectionSemanticRouting t={t} settings={settings} onChange={setSettings} />,
-    sampling: <SectionSampling t={t} />,
+    sampling: <SectionChat t={t} settings={settings} onChange={setSettings} isDirty={isDirty} />,
     workspace: <SectionWorkspace t={t} settings={settings} onChange={setSettings} />,
     skills: <SkillManagerLazy />,
     credentials: (
@@ -2319,24 +3086,25 @@ export function SettingsPage() {
       </React.Suspense>
     ),
     discussion: <SectionDiscussion t={t} />,
+    'citation-styles': <CslStylesSection />,
     experimental: <SectionExperimental t={t} />,
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-w-0 flex-col lg:flex-row">
       {/* -------- Left sidebar: tabs -------- */}
-      <div className="w-52 border-r border-outline-variant bg-surface-lowest p-4 flex flex-col flex-shrink-0">
-        <h2 className="font-display text-lg font-semibold text-foreground mb-1 px-2">{t('settings.title')}</h2>
-        <p className="font-label text-[10px] text-foreground/40 mb-4 px-2 leading-relaxed">{t('settings.description')}</p>
+      <div className="flex shrink-0 flex-col border-b border-outline-variant bg-surface-lowest p-3 lg:w-52 lg:border-b-0 lg:border-r lg:p-4">
+        <h2 className="mb-1 px-2 font-display text-base font-semibold text-foreground lg:text-lg">{t('settings.title')}</h2>
+        <p className="mb-3 hidden px-2 font-label text-[10px] leading-relaxed text-foreground/40 lg:block">{t('settings.description')}</p>
 
-        <nav className="space-y-0.5 flex-1">
-          {TABS.map(tab => (
+        <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:block lg:flex-1 lg:space-y-0.5 lg:overflow-visible lg:px-0 lg:pb-0">
+          {SETTINGS_NAV_TABS.map(tab => (
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveSection(tab.id)}
+              onClick={() => setSettingsSection(tab.id)}
               className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg font-label text-xs transition-all',
+                'flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2 font-label text-xs transition-all lg:w-full',
                 activeSection === tab.id
                   ? 'bg-primary/10 text-primary font-medium'
                   : 'text-foreground/50 hover:text-foreground hover:bg-surface-high',
@@ -2351,13 +3119,16 @@ export function SettingsPage() {
       </div>
 
       {/* -------- Center content -------- */}
-      <form autoComplete="off" onSubmit={e => e.preventDefault()} className="flex-1 p-8 overflow-y-auto custom-scrollbar">
+      <form autoComplete="off" onSubmit={e => e.preventDefault()} className="min-w-0 flex-1 overflow-y-auto p-4 custom-scrollbar lg:p-8">
         <motion.div
           key={activeSection}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.15 }}
-          className="max-w-2xl space-y-6"
+          className={cn(
+            'space-y-6',
+            activeSection === 'credentials' ? 'max-w-5xl' : 'max-w-2xl',
+          )}
         >
           {sectionMap[activeSection]}
 
@@ -2378,7 +3149,7 @@ export function SettingsPage() {
       </form>
 
       {/* -------- Right panel: System Health -------- */}
-      <div className="w-56 border-l border-outline-variant bg-surface-lowest p-4 flex-shrink-0 flex flex-col">
+      <div className="hidden w-56 flex-shrink-0 flex-col border-l border-outline-variant bg-surface-lowest p-4 xl:flex">
         <div className="flex items-center justify-between mb-1">
           <h3 className="font-headline text-sm font-semibold text-foreground flex items-center gap-2">
             <Activity size={14} className="text-primary" />

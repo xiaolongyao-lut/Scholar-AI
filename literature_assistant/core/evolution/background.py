@@ -1,5 +1,5 @@
 """
-Fire-and-forget hook for evolution capture sites (Opt §1).
+Fire-and-forget hook for evolution capture sites.
 
 Capture writes (inspiration / discussion / RAG / runtime / skill) must not
 gate the user-visible response. Each site already has best-effort try/except
@@ -14,7 +14,7 @@ Why threading, not FastAPI `BackgroundTasks`:
     - Threading lets every capture site fire-and-forget regardless of
       whether the surrounding call is async, sync, or detached from any
       request lifecycle (e.g. terminal-state runtime jobs).
-    - SQLite store is already concurrency-hardened by Opt §3 (WAL +
+    - SQLite store is concurrency-hardened by WAL +
       busy_timeout + insert-race fallback), so concurrent capture writes
       from threads are safe.
 

@@ -22,22 +22,22 @@ print("Tier 2 离线性能评估（基于已验证数据）")
 print("=" * 60)
 print(f"Tier 1 基线：Recall@5={r5_tier1:.4f}, MRR={mrr_tier1:.4f}\n")
 
-# Phase 4: Reranker (+50.6%)
+# Reranker estimate (+50.6%)
 r5_p4 = r5_tier1 * 1.506
 mrr_p4 = mrr_tier1 * 1.415
-print(f"Phase 4 (Reranker): Recall@5={r5_p4:.4f}, MRR={mrr_p4:.4f}")
+print(f"Reranker: Recall@5={r5_p4:.4f}, MRR={mrr_p4:.4f}")
 print(f"  ✓ 门槛（R@5≥0.28）: {r5_p4 >= 0.28}")
 
-# Phase 5: Query Expansion (+66.7%)
+# Query expansion estimate (+66.7%)
 r5_p5 = r5_p4 * 1.667
 mrr_p5 = mrr_p4 * 1.20
-print(f"\nPhase 5 (Query Expansion): Recall@5={r5_p5:.4f}, MRR={mrr_p5:.4f}")
+print(f"\nQuery Expansion: Recall@5={r5_p5:.4f}, MRR={mrr_p5:.4f}")
 print(f"  ✓ 门槛（R@5≥0.40）: {r5_p5 >= 0.40}")
 
-# Phase 6: Contextual (+7.5%)
+# Contextual estimate (+7.5%)
 r5_p6 = r5_p5 * 1.075
 mrr_p6 = mrr_p5 * 1.10
-print(f"\nPhase 6 (Contextual): Recall@5={r5_p6:.4f}, MRR={mrr_p6:.4f}")
+print(f"\nContextual: Recall@5={r5_p6:.4f}, MRR={mrr_p6:.4f}")
 print(f"  ✓ 门槛（R@5≥0.45）: {r5_p6 >= 0.45}")
 print(f"  ✓ 门槛（MRR≥0.30）: {mrr_p6 >= 0.30}")
 

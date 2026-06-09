@@ -5,12 +5,16 @@ Provides high-level operations on WikiPage objects backed by WikiPageStore.
 from __future__ import annotations
 
 import json
+import os
+import re
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from wiki.models import WikiPage, WikiPageKind, WikiPageStatus, make_stable_slug
 from wiki.page_store import WikiPageStore
+from wiki.permissions import DEFAULT_WIKI_OWNER, PERMISSIONS_KEY, WikiPagePermissions, set_permissions
 
 
 class WikiService:
@@ -60,6 +64,23 @@ class WikiService:
 
         # Write back to store
         self._write_page(updated_page)
+        self._record_version(updated_page, action="update_extra")
+
+    def list_page_versions(self, slug: str) -> list[dict[str, Any]]:
+        """Return metadata snapshots for a wiki page's local version history."""
+        if not isinstance(slug, str) or not slug.strip():
+            raise ValueError("slug cannot be empty")
+        path = self._version_history_path(slug.strip())
+        if not path.exists():
+            return []
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        versions = payload.get("versions") if isinstance(payload, dict) else None
+        if not isinstance(versions, list):
+            return []
+        return [dict(item) for item in versions if isinstance(item, dict)]
 
     def _split_frontmatter(self, content: str) -> tuple[dict[str, Any], str]:
         """Split frontmatter and body from page content."""
@@ -122,6 +143,50 @@ class WikiService:
         rendered = render_page(relative_path, frontmatter, page.body)
         self.page_store.write_rendered(rendered, allow_overwrite=True)
 
+    def _version_history_path(self, slug: str) -> Path:
+        safe_slug = re.sub(r"[^A-Za-z0-9._-]+", "-", slug.strip()).strip("-")
+        if not safe_slug:
+            raise ValueError("slug cannot be empty")
+        return self.page_store.wiki_root / ".versions" / f"{safe_slug}.json"
+
+    def _record_version(self, page: WikiPage, *, action: str) -> None:
+        if not isinstance(page, WikiPage):
+            raise TypeError("page must be a WikiPage")
+        if not action.strip():
+            raise ValueError("action cannot be empty")
+        path = self._version_history_path(page.stable_slug)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        current_versions = self.list_page_versions(page.stable_slug)
+        version_index = len(current_versions) + 1
+        entry = {
+            "version": version_index,
+            "action": action.strip(),
+            "stable_slug": page.stable_slug,
+            "kind": page.kind.value,
+            "status": page.status.value,
+            "title": page.title,
+            "body_hash": self._hash_text(page.body),
+            "created_at_iso": page.created_at_iso,
+            "updated_at_iso": page.updated_at_iso,
+            "recorded_at_iso": datetime.now(timezone.utc).isoformat(),
+        }
+        payload = {"schema_version": 1, "stable_slug": page.stable_slug, "versions": [*current_versions, entry]}
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, path)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+    @staticmethod
+    def _hash_text(value: str) -> str:
+        import hashlib
+
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
     def create_page(
         self,
         title: str,
@@ -160,6 +225,10 @@ class WikiService:
 
         now_iso = datetime.now(timezone.utc).isoformat()
 
+        page_extra = dict(extra or {})
+        if PERMISSIONS_KEY not in page_extra:
+            page_extra = set_permissions(page_extra, WikiPagePermissions.default(DEFAULT_WIKI_OWNER))
+
         page = WikiPage(
             stable_slug=slug,
             kind=kind_enum,
@@ -171,10 +240,11 @@ class WikiService:
             created_at_iso=now_iso,
             updated_at_iso=now_iso,
             schema_version=1,
-            extra=extra or {},
+            extra=page_extra,
         )
 
         self._write_page(page)
+        self._record_version(page, action="create")
         return page
 
     def update_page(
@@ -227,6 +297,7 @@ class WikiService:
 
         updated_page = page.evolve(**updates)
         self._write_page(updated_page)
+        self._record_version(updated_page, action="update")
         return updated_page
 
     def delete_page(self, slug: str) -> None:
@@ -249,11 +320,12 @@ class WikiService:
         # Delete file
         if full_path.exists():
             full_path.unlink()
+        self._record_version(page, action="delete")
 
 
 def get_wiki_service() -> WikiService:
     """Get singleton wiki service instance."""
-    from literature_assistant.core.runtime_env import wiki_generated_root
+    from literature_assistant.core.project_paths import wiki_generated_root
 
     page_store = WikiPageStore(wiki_generated_root(), create=False)
     return WikiService(page_store)

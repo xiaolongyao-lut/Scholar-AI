@@ -1,7 +1,8 @@
-import { AlertTriangle, CheckCircle2, Database, GitBranch, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Database, FileText, GitBranch, RefreshCw, ShieldCheck } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { WikiStatusModel } from '@/types/wiki';
+import { formatWikiError, formatWikiWarning } from './wikiDisplay';
 
 interface WikiStatusCardProps {
   status: WikiStatusModel | null;
@@ -19,10 +20,10 @@ interface StatusMetric {
 
 export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStatusCardProps) {
   const metrics: StatusMetric[] = status ? [
-    { id: 'graph-json', label: '图谱文件', active: status.graph_json_exists, icon: GitBranch },
+    { id: 'graph-file', label: '图谱文件', active: status.graph_json_exists, icon: GitBranch },
     { id: 'graph-db', label: '图谱数据库', active: status.graph_db_exists, icon: Database },
     { id: 'query-index', label: '查询索引', active: status.query_index_exists, icon: ShieldCheck },
-    { id: 'review-queue', label: '复审队列', active: status.review_queue_exists, icon: ShieldCheck },
+    { id: 'review-queue', label: '待审页面', active: status.review_queue_exists, icon: ShieldCheck },
   ] : [];
 
   const enabledTone = status?.enabled
@@ -31,6 +32,7 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
   const staleTone = status?.stale
     ? 'text-red-700 bg-red-50 border-red-200/80 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300'
     : 'text-slate-600 bg-surface-high border-outline-variant/40';
+  const resourceRows = status ? buildResourceRows(status) : [];
 
   return (
     <section className="glass-card rounded-2xl p-6 border border-outline-variant/40 shadow-sm">
@@ -63,7 +65,7 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
 
       {error ? (
         <div className="mt-5 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
-          {error}
+          {formatWikiError(error, '读取 Wiki 状态失败，请稍后重试。')}
         </div>
       ) : null}
 
@@ -101,15 +103,40 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
           </div>
         </div>
 
-        <details className="rounded-2xl border border-outline-variant/30 bg-surface-lowest/70 p-5">
-          <summary className="cursor-pointer list-none font-label text-[11px] tracking-[0.2em] text-foreground/45 hover:text-foreground/70">
-            高级 · 资源路径（点击展开）
-          </summary>
-          <div className="mt-4 space-y-3">
-            {status ? Object.entries(status.paths).map(([key, value]) => (
-              <div key={key} className="rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-3">
-                <div className="font-label text-[10px] tracking-[0.18em] text-foreground/40">{key}</div>
-                <div className="mt-1 break-all font-mono text-[11px] leading-5 text-foreground/65">{value}</div>
+        <div className="rounded-2xl border border-outline-variant/30 bg-surface-lowest/70 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-label text-[11px] tracking-[0.2em] text-foreground/45">
+                资源与索引配置
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-foreground/50">
+                Wiki 页面、图谱、查询索引和复审队列由工作区统一管理；默认只显示可用状态。
+              </p>
+            </div>
+            <FileText size={18} className="shrink-0 text-primary/60" />
+          </div>
+          <div className="mt-4 space-y-2">
+            {status ? resourceRows.map((row) => (
+              <div key={row.key} className="rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={cn('h-1.5 w-1.5 rounded-full', row.exists ? 'bg-emerald-500' : 'bg-amber-500')} />
+                      <span className="font-label text-xs font-medium text-foreground/70">{row.label}</span>
+                      <span className={cn(
+                        'rounded px-1.5 py-0.5 text-[10px]',
+                        row.exists
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                          : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+                      )}>
+                        {row.exists ? '可用' : '待生成'}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[11px] leading-5 text-foreground/45">
+                      {row.exists ? '工作区已有对应管理记录。' : '等待系统生成对应管理记录。'}
+                    </p>
+                  </div>
+                </div>
               </div>
             )) : (
               <div className="rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-6 text-center text-sm text-foreground/45">
@@ -117,7 +144,7 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
               </div>
             )}
           </div>
-        </details>
+        </div>
       </div>
 
       {status?.warnings?.length ? (
@@ -137,9 +164,36 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
   );
 }
 
-function formatWikiWarning(warning: string): string {
-  if (warning.includes('Wiki integration is disabled')) {
-    return 'Wiki 集成尚未启用。';
-  }
-  return warning;
+function buildResourceRows(status: WikiStatusModel): Array<{
+  key: string;
+  label: string;
+  exists: boolean;
+}> {
+  return [
+    {
+      key: 'page_root',
+      label: '页面目录',
+      exists: status.page_count > 0,
+    },
+    {
+      key: 'graph_file',
+      label: '知识图谱文件',
+      exists: status.graph_json_exists,
+    },
+    {
+      key: 'graph_db',
+      label: '知识图谱数据库',
+      exists: status.graph_db_exists,
+    },
+    {
+      key: 'query_index',
+      label: '检索索引',
+      exists: status.query_index_exists,
+    },
+    {
+      key: 'review_queue',
+      label: '待审页面',
+      exists: status.review_queue_exists,
+    },
+  ];
 }

@@ -5,9 +5,7 @@
 //   - skill_draft → "生成流程草稿"
 //   - everything else → "应用到长期记忆"
 //
-// When `promotion_enabled === false`, the button renders disabled with a
-// `title` tooltip explaining the kill switch state (per plan §Action
-// Semantics: "长期记忆功能尚未开启").
+// When the long-term-memory action is disabled, the tooltip stays user-facing.
 
 import { useState } from 'react';
 import { Sparkles } from 'lucide-react';
@@ -40,7 +38,7 @@ export function PromoteButton({
       <button
         type="button"
         disabled
-        title="长期记忆功能尚未开启。请联系管理员或在配置中打开 promotion_enabled。"
+        title="长期记忆功能尚未开启。请到设置的功能开关中打开后再应用。"
         aria-label={`${label}（功能尚未开启）`}
         className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-high px-3 py-1.5 text-xs font-label text-foreground/40 disabled:cursor-not-allowed"
       >

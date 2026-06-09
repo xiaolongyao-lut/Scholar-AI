@@ -16,7 +16,7 @@ import { SectionCard } from '@/components/common/SectionCard';
 type DefaultsLoadState = 'loading' | 'ready' | 'fallback';
 
 /**
- * Discussion page — Long-Run v2 Slice E rebuild.
+ * Discussion page.
  *
  * Visual reference:
  *   - `07_object_surfaces/09_discussion_object_active.png` (object header pattern)

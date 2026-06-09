@@ -1,9 +1,4 @@
-/**
- * MCP install wizard (S4b/S4c / plan 2026-05-20 §A4).
- *
- * S4b: steps 'source' through 'credentials' (scan + candidate + config + bind).
- * S4c: 'review' (trust checkbox) + 'installing' + 'done' / 'error' with retry.
- */
+/** MCP install wizard for scan, config, credential binding, review, and install. */
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -26,11 +21,20 @@ import {
 import CredentialPicker from '@/components/settings/credentials/CredentialPicker';
 import {
   clearWizardState,
+  defaultWizardState,
   loadWizardState,
   saveWizardState,
   type WizardState,
   type WizardStep,
 } from './wizardState';
+import { sanitizeMcpDisplayLabel, sanitizeMcpVisibleText } from '@/components/settings/mcpDisplay';
+import {
+  formatDynamicConfigFieldLabel,
+  formatDynamicCredentialLabel,
+  formatDynamicDescription,
+  formatDynamicOptionLabel,
+  getDynamicConfigManualEntryHint,
+} from '@/components/settings/dynamicConfigDisplay';
 
 export interface McpInstallWizardProps {
   initialPath?: string;
@@ -76,24 +80,19 @@ export function McpInstallWizard(props: McpInstallWizardProps): JSX.Element | nu
 
   const [state, setState] = useState<WizardState>(() => {
     const restored = loadWizardState();
-    if (restored) return restored;
-    return {
-      version: 1,
-      step: 'source',
-      source_path: initialPath ?? '',
-      template_hint: templateHint,
-      scan_result: undefined,
-      selected_candidate_sha: undefined,
-      server_slug: presetSlug ?? '',
-      display_name: presetDisplayName ?? '',
-      config_values: {},
-      credential_bindings: {},
-      trust_to_probe: false,
-      enable_for_session: true,
-      install_result: undefined,
-      install_error_code: undefined,
-      install_error_message: undefined,
-    };
+    if (restored && isRestoredWizardForCurrentOpen(restored, {
+      initialPath,
+      templateHint,
+      presetSlug,
+      presetDisplayName,
+    })) return restored;
+    if (restored) clearWizardState();
+    return defaultWizardState({
+      sourcePath: initialPath ?? '',
+      templateHint,
+      serverSlug: presetSlug ?? '',
+      displayName: presetDisplayName ?? '',
+    });
   });
 
   useEffect(() => {
@@ -260,6 +259,7 @@ function SourceStep(props: {
           : result.launch_candidates.length === 1
           ? 'config'
           : 'candidate',
+        server_slug: deriveServerSlug(state.server_slug, result),
         display_name: state.display_name || result.display_name || '',
         config_values: applyDefaults(state.config_values, result),
       };
@@ -272,7 +272,10 @@ function SourceStep(props: {
     } catch (exc) {
       const code: McpInstallErrorCode =
         exc instanceof McpInstallApiError ? exc.code : 'install_error';
-      const message = exc instanceof Error ? exc.message : String(exc);
+      const message = sanitizeMcpVisibleText(
+        exc instanceof Error ? exc.message : String(exc),
+        '扫描失败，请检查本地包是否完整。',
+      );
       setError(message);
       setState({
         ...state,
@@ -294,8 +297,8 @@ function SourceStep(props: {
           type="text"
           value={state.source_path}
           onChange={(e) => setState({ ...state, source_path: e.target.value })}
-          placeholder="/path/to/lit-mcp-vision-auxiliary 或 D:\\packages\\my-mcp"
-          className="mt-1 w-full px-3 py-2 rounded border border-outline-variant bg-surface-lowest text-foreground text-xs font-mono"
+          placeholder="选择或粘贴本机 MCP 包目录"
+          className="mt-1 w-full px-3 py-2 rounded border border-outline-variant bg-surface-lowest text-foreground text-xs"
         />
       </label>
       {error && (
@@ -328,6 +331,48 @@ function applyDefaults(
     }
   }
   return next;
+}
+
+function normalizeWizardPath(value: string | undefined): string {
+  return String(value ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+function isRestoredWizardForCurrentOpen(
+  restored: WizardState,
+  current: {
+    initialPath?: string;
+    templateHint?: string;
+    presetSlug?: string;
+    presetDisplayName?: string;
+  },
+): boolean {
+  const currentHint = current.templateHint?.trim();
+  if (currentHint) {
+    return restored.template_hint === currentHint;
+  }
+  const currentPath = normalizeWizardPath(current.initialPath);
+  if (currentPath) {
+    return normalizeWizardPath(restored.source_path) === currentPath;
+  }
+  return !restored.template_hint;
+}
+
+function deriveServerSlug(
+  currentSlug: string,
+  scan: McpPackageScanResult,
+): string {
+  const current = currentSlug.trim();
+  if (current) return current;
+
+  const scanned = scan.server_slug?.trim();
+  if (scanned) return scanned;
+
+  return scan.package_id
+    .trim()
+    .toLowerCase()
+    .replace(/^lit[-_]mcp[-_]/, '')
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 function ScanningStep(): JSX.Element {
@@ -374,12 +419,16 @@ function CandidateStep(props: {
                 ].join(' ')}
               >
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-foreground font-medium">{c.command}</span>
-                  <span className="font-mono text-[10px] text-foreground/55">{c.args.join(' ')}</span>
+                  <span className="text-[11px] text-foreground font-medium">
+                    启动方式 {scan.launch_candidates.indexOf(c) + 1}
+                  </span>
+                  <span className="text-[10px] text-foreground/55">
+                    {c.args.length + 1} 项启动配置
+                  </span>
                   <ConfidenceBadge confidence={c.confidence} />
                 </div>
-                <p className="font-mono text-[10px] text-foreground/40 mt-0.5">
-                  cwd={c.cwd} · source={c.source} · sha={c.sha}
+                <p className="font-label text-[10px] text-foreground/40 mt-0.5" title="自动识别的启动方式">
+                  启动配置已识别 · 识别来源：{formatCandidateSource(c.source)}
                 </p>
               </button>
             </li>
@@ -390,6 +439,13 @@ function CandidateStep(props: {
   );
 }
 
+function formatCandidateSource(value: string): string {
+  if (value.includes('manifest')) return '声明文件';
+  if (value.includes('package')) return '包描述';
+  if (value.includes('pyproject')) return 'Python 项目配置';
+  return '扫描结果';
+}
+
 function ConfidenceBadge({ confidence }: { confidence: string }): JSX.Element {
   const map: Record<string, string> = {
     high: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
@@ -398,9 +454,15 @@ function ConfidenceBadge({ confidence }: { confidence: string }): JSX.Element {
     none: 'bg-red-500/15 text-red-700 dark:text-red-300',
   };
   const cls = map[confidence] ?? 'bg-foreground/10 text-foreground/55';
+  const labelMap: Record<string, string> = {
+    high: '高可信',
+    medium: '需确认',
+    low: '低可信',
+    none: '需手动确认',
+  };
   return (
-    <span className={`font-label text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded ${cls}`}>
-      {confidence}
+    <span className={`font-label text-[9px] px-1.5 py-0.5 rounded ${cls}`}>
+      {labelMap[confidence] ?? '需确认'}
     </span>
   );
 }
@@ -417,38 +479,82 @@ function ConfigStep(props: {
   return (
     <div className="space-y-4">
       <p className="font-label text-[12px] text-foreground/70">
-        填写非敏感配置(将以纯文本形式存入 MCP 配置)。敏感值请在下一步绑定凭证。
+        按 MCP 包声明自动生成配置项。普通配置可选预设也可手动填写；敏感信息请在下一步绑定已保存凭证。
       </p>
-      {scan.config_fields.map((f) => (
+      {scan.config_fields.map((f, fieldIndex) => {
+        const label = formatDynamicConfigFieldLabel(f.label, fieldIndex);
+        const description = formatDynamicDescription(f.description);
+        const manualHint = getDynamicConfigManualEntryHint(f);
+        return (
         <div key={f.id} className="space-y-1">
           <label className="font-label text-[11px] text-foreground/70 font-medium block">
-            {f.label}
+            {label}
             {f.required && <span className="text-red-500 ml-0.5" aria-label="必填">*</span>}
-            <span className="ml-2 font-mono text-[10px] text-foreground/40">env={f.env}</span>
           </label>
-          {f.description && (
-            <p className="font-label text-[10px] text-foreground/55">{f.description}</p>
+          {description && (
+            <p className="font-label text-[10px] text-foreground/55">{description}</p>
           )}
           {f.type === 'select' && f.options ? (
-            <select
-              value={configValues[f.env] ?? f.default ?? ''}
-              onChange={(e) => setConfigValues({ ...configValues, [f.env]: e.target.value })}
-              className="w-full px-2 py-1.5 rounded border border-outline-variant bg-surface-lowest text-foreground text-xs"
+            <div className="space-y-2">
+              <select
+                value={configValues[f.env] ?? f.default ?? ''}
+                onChange={(e) => setConfigValues({ ...configValues, [f.env]: e.target.value })}
+                className="w-full px-2 py-1.5 rounded border border-outline-variant bg-surface-lowest text-foreground text-xs"
+              >
+                <option value="">手动填写 / 不使用预设</option>
+                {f.options.map((o, optionIndex) => (
+                  <option key={o.value} value={o.value}>
+                    {formatDynamicOptionLabel(o.label, optionIndex)}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={configValues[f.env] ?? f.default ?? ''}
+                onChange={(e) => setConfigValues({ ...configValues, [f.env]: e.target.value })}
+                placeholder="手动填写自定义取值"
+                className="w-full px-2 py-1.5 rounded border border-outline-variant bg-surface-lowest text-foreground text-xs"
+              />
+            </div>
+          ) : f.type === 'boolean' ? (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={(configValues[f.env] ?? f.default ?? '') === 'true'}
+              onClick={() => {
+                const current = configValues[f.env] ?? f.default ?? '';
+                setConfigValues({ ...configValues, [f.env]: current === 'true' ? 'false' : 'true' });
+              }}
+              className={[
+                'w-full flex items-center justify-between px-3 py-2 rounded border text-xs font-label transition-colors',
+                (configValues[f.env] ?? f.default ?? '') === 'true'
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-outline-variant bg-surface-lowest text-foreground/60',
+              ].join(' ')}
             >
-              {f.options.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+              <span>{(configValues[f.env] ?? f.default ?? '') === 'true' ? '已开启' : '已关闭'}</span>
+              <span className="text-[10px] text-foreground/45">点击切换</span>
+            </button>
           ) : (
             <input
-              type="text"
+              type={f.type === 'number' ? 'number' : 'text'}
               value={configValues[f.env] ?? f.default ?? ''}
+              min={f.min ?? undefined}
+              max={f.max ?? undefined}
+              step={f.step ?? undefined}
               onChange={(e) => setConfigValues({ ...configValues, [f.env]: e.target.value })}
+              placeholder={manualHint}
               className="w-full px-2 py-1.5 rounded border border-outline-variant bg-surface-lowest text-foreground text-xs font-mono"
             />
           )}
+          {f.type !== 'boolean' && (
+            <p className="font-label text-[10px] leading-relaxed text-foreground/45">
+              {manualHint}
+            </p>
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -466,7 +572,7 @@ function CredentialsStep(props: {
   return (
     <div className="space-y-5">
       <p className="font-label text-[12px] text-foreground/70">
-        为下面的每个 env 绑定一个凭证。凭证以引用(credential_id)的形式保存,原始 api_key 不会进入 MCP 配置文件。
+        为下面每个敏感配置选择一个已保存的凭证。系统只保存凭证引用，不会把原始密钥写入 MCP 配置文件。
       </p>
       {scan.required_credentials.map((rc) => (
         <CredentialPicker
@@ -493,25 +599,14 @@ function ReviewStep(props: {
   return (
     <div className="space-y-4">
       <p className="font-label text-[12px] text-foreground/70">请确认以下信息后安装。</p>
-      <div className="rounded-md border border-outline-variant bg-surface-low p-3 space-y-2 font-mono text-[11px] text-foreground/70">
+      <div className="rounded-md border border-outline-variant bg-surface-low p-3 space-y-2 text-[11px] text-foreground/70">
         <Row label="名称" value={state.display_name || state.scan_result.display_name} />
+        <Row label="本地注册名" value="系统自动生成" />
+        <Row label="启动方式" value={candidate ? `${candidate.args.length + 1} 项启动配置` : '自动识别'} />
+        <Row label="普通配置" value={summarizeConfigFields(state)} />
         <Row
-          label="slug"
-          value={
-            <input
-              type="text"
-              value={state.server_slug}
-              onChange={(e) => setState({ ...state, server_slug: e.target.value })}
-              placeholder="vision_auxiliary"
-              className="px-2 py-1 rounded border border-outline-variant bg-surface-lowest text-foreground text-[11px] font-mono w-48"
-            />
-          }
-        />
-        <Row label="启动命令" value={`${candidate?.command} ${candidate?.args.join(' ')}`} />
-        <Row label="env keys" value={Object.keys(state.config_values).join(', ') || '(无)'} />
-        <Row
-          label="env_refs"
-          value={Object.keys(state.credential_bindings).join(', ') || '(无)'}
+          label="凭证引用"
+          value={summarizeCredentialBindings(state)}
         />
       </div>
 
@@ -527,7 +622,7 @@ function ReviewStep(props: {
             我信任此包,允许启动进程探测工具列表
           </p>
           <p className="font-label text-[11px] text-amber-700/80 dark:text-amber-200/80 mt-0.5">
-            探测会运行该 MCP 包的启动命令,并读取它公开的 tools/list 结果。未勾选时仅注册不启用,你可以之后在「已安装」单独探测。
+            探测会运行该 MCP 包的启动方式，并读取它公开的工具列表。未勾选时仅注册不启用，你可以之后在「已安装」单独探测。
           </p>
         </div>
       </label>
@@ -555,6 +650,26 @@ function Row(props: { label: string; value: React.ReactNode }): JSX.Element {
   );
 }
 
+function summarizeConfigFields(state: WizardState): string {
+  const fields = state.scan_result?.config_fields ?? [];
+  const labels = fields.flatMap((field, index): string[] => {
+    const value = state.config_values[field.env]?.trim();
+    const label = formatDynamicConfigFieldLabel(field.label, index);
+    return value ? [`${label}: 已填写`] : [];
+  });
+  return labels.length > 0 ? labels.join('，') : '无';
+}
+
+function summarizeCredentialBindings(state: WizardState): string {
+  const requirements = state.scan_result?.required_credentials ?? [];
+  const labels = requirements.flatMap((item, index): string[] => {
+    const binding = state.credential_bindings[item.env]?.trim();
+    const label = formatDynamicCredentialLabel(item.label, index);
+    return binding ? [`${label}: 已绑定`] : [];
+  });
+  return labels.length > 0 ? labels.join('，') : '无';
+}
+
 function DoneStep(props: { result: McpInstallationInstallResponse }): JSX.Element {
   const { result } = props;
   return (
@@ -563,20 +678,20 @@ function DoneStep(props: { result: McpInstallationInstallResponse }): JSX.Elemen
         <Check size={18} />
         <h4 className="font-display text-sm font-semibold">安装完成</h4>
       </div>
-      <div className="rounded-md border border-outline-variant bg-surface-low p-3 font-mono text-[11px] text-foreground/70 space-y-1">
-        <div>server_id: {result.server_id}</div>
-        <div>install_dir: {result.install_dir}</div>
-        <div>cwd: {result.absolute_cwd}</div>
-        <div>approval_state: {result.approval_state}</div>
-        <div>probe: {result.probe.status} ({result.probe.tool_count} tools)</div>
+      <div className="rounded-md border border-outline-variant bg-surface-low p-3 text-[11px] text-foreground/70 space-y-1">
+        <div>注册信息: 已保存</div>
+        <div>本机记录: 已保存</div>
+        <div>运行配置: 已生成</div>
+        <div>审批状态: {formatApprovalState(result.approval_state)}</div>
+        <div>探测结果: {formatProbeStatus(result.probe.status)}（{result.probe.tool_count} 个工具）</div>
       </div>
       {result.probe.status === 'ok' && result.probe.tools.length > 0 && (
         <div>
           <p className="font-label text-[11px] text-foreground/55 mb-1">已发现的工具:</p>
-          <ul className="text-[11px] space-y-0.5 font-mono">
+          <ul className="text-[11px] space-y-0.5">
             {result.probe.tools.map((t, i) => (
               <li key={i} className="text-foreground/70">
-                · {String((t as { name?: string }).name ?? '(unnamed)')}
+                · {sanitizeMcpDisplayLabel(String((t as { name?: string }).name ?? ''), `工具 ${i + 1}`)}
               </li>
             ))}
           </ul>
@@ -584,6 +699,19 @@ function DoneStep(props: { result: McpInstallationInstallResponse }): JSX.Elemen
       )}
     </div>
   );
+}
+
+function formatApprovalState(value: string): string {
+  if (value === 'trusted') return '已信任';
+  if (value === 'pending') return '待确认';
+  if (value === 'blocked') return '已阻止';
+  return value || '未知';
+}
+
+function formatProbeStatus(value: McpInstallationInstallResponse['probe']['status']): string {
+  if (value === 'ok') return '成功';
+  if (value === 'skipped_untrusted') return '已跳过';
+  return '失败';
 }
 
 function ErrorStep(props: {
@@ -600,12 +728,7 @@ function ErrorStep(props: {
         <h4 className="font-display text-sm font-semibold">安装失败</h4>
       </div>
       <div className="rounded-md border border-red-300/40 bg-red-500/5 dark:border-red-700/40 dark:bg-red-500/15 p-3 text-[11px] text-red-700 dark:text-red-200 font-label space-y-1">
-        {code && (
-          <div>
-            <span className="font-mono text-[10px] uppercase tracking-wide">code:</span>{' '}
-            <code className="font-mono">{code}</code>
-          </div>
-        )}
+        {code && <div>失败类型：{formatInstallErrorCode(code)}</div>}
         {message && <p>{message}</p>}
       </div>
       <div className="flex justify-end gap-2">
@@ -626,6 +749,21 @@ function ErrorStep(props: {
       </div>
     </div>
   );
+}
+
+function formatInstallErrorCode(value: string): string {
+  const labels: Record<string, string> = {
+    scan_rejected: '未识别可用启动方式',
+    scan_not_found: '扫描结果已丢失',
+    scan_expired: '扫描结果已过期',
+    candidate_mismatch: '启动方式已变化',
+    credential_not_found: '凭证不存在',
+    credential_disabled: '凭证已停用',
+    transport_unsupported: '暂不支持的连接方式',
+    server_slug_conflict: '本地注册名已被占用',
+    install_error: '安装失败',
+  };
+  return labels[value] ?? '安装失败';
 }
 
 function WizardFooter(props: {
@@ -672,7 +810,10 @@ function WizardFooter(props: {
       onInstalled(result);
     } catch (exc) {
       const code = exc instanceof McpInstallApiError ? exc.code : 'install_error';
-      const message = exc instanceof Error ? exc.message : String(exc);
+      const message = sanitizeMcpVisibleText(
+        exc instanceof Error ? exc.message : String(exc),
+        '安装失败，请检查配置后重试。',
+      );
       setState({
         ...state,
         step: 'error',
@@ -710,7 +851,7 @@ function WizardFooter(props: {
               !state.trust_to_probe
                 ? '请先勾选信任确认'
                 : !state.server_slug.trim()
-                ? '请填写 server_slug'
+                ? '请返回上一步重新扫描'
                 : '注册并探测'
             }
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 font-label text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"

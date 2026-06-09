@@ -1,6 +1,7 @@
 import { FileText, Globe, Wrench } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { locateChunk, type ChunkLocator } from '@/services/resourcesApi';
+import { encodePdfBboxParam, type PdfBboxUnit } from '@/lib/pdfAnchor';
 import { cn } from '@/lib/utils';
 
 /**
@@ -34,16 +35,18 @@ export function __resetEvidencePillCacheForTests(): void {
  * `EvidenceReference` (chat) so callers can pass either without
  * adapter code at the call site.
  *
- * Phase 1a contract (Slice 2): consumers SHOULD pass `material_id`
+ * Consumers should pass `material_id`
  * + at least one of `page` / `chunk_id` for a useful click target.
  */
 export interface EvidenceRefLike {
   material_id?: string | null;
   chunk_id?: string | null;
   page?: number | null;
+  bbox?: number[] | null;
+  bbox_unit?: PdfBboxUnit | null;
   text?: string | null;
   source?: string | null;
-  /** Optional opaque id for cross-pane selection bus (Slice 3). */
+  /** Optional opaque id for cross-pane selection. */
   evidence_id?: string | null;
   /**
    * B2 (0.1.8.2): provenance classification so the UI can visually
@@ -63,8 +66,11 @@ interface EvidencePillProps {
   selected?: boolean;
   /** Override the default Library-route navigation. When provided,
    *  click invokes the handler instead of navigating; useful for the
-   *  Workbench selection bus (Slice 3). */
+   *  Workbench selection bus. */
   onActivate?: (evidence: EvidenceRefLike) => void;
+  /** Workbench can select a pill for focus styling and still follow the
+   *  canonical PDF deep-link in the same click. */
+  navigateAfterActivate?: boolean;
   className?: string;
   /** Tooltip override; defaults to evidence.text. */
   title?: string;
@@ -88,6 +94,7 @@ export function EvidencePill({
   projectId,
   selected,
   onActivate,
+  navigateAfterActivate = false,
   className,
   title,
 }: EvidencePillProps) {
@@ -96,13 +103,14 @@ export function EvidencePill({
   const handleClick = async () => {
     if (onActivate) {
       onActivate(evidence);
-      return;
+      if (!navigateAfterActivate) return;
     }
     if (!evidence.material_id) return;
     const params = new URLSearchParams();
 
     let pageNum =
       typeof evidence.page === 'number' && evidence.page > 0 ? evidence.page : NaN;
+    let bboxParam = encodePdfBboxParam(evidence.bbox, evidence.bbox_unit);
 
     if (!(Number.isFinite(pageNum) && pageNum > 0) && evidence.chunk_id && projectId) {
       const key = cacheKey(projectId, evidence.chunk_id);
@@ -114,10 +122,14 @@ export function EvidencePill({
       if (cached && typeof cached.page === 'number' && cached.page > 0) {
         pageNum = cached.page;
       }
+      if (!bboxParam && cached?.bbox) {
+        bboxParam = encodePdfBboxParam(cached.bbox, cached.bbox_unit);
+      }
     }
 
     if (Number.isFinite(pageNum) && pageNum > 0) params.set('page', String(pageNum));
     if (evidence.chunk_id) params.set('chunk', evidence.chunk_id);
+    if (bboxParam) params.set('bbox', bboxParam);
     const suffix = params.toString() ? `?${params.toString()}` : '';
     navigate(`/workbench/paper/${encodeURIComponent(evidence.material_id)}${suffix}`);
   };

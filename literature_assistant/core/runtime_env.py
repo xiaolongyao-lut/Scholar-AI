@@ -10,6 +10,10 @@ from urllib.parse import urlsplit
 logger = logging.getLogger(__name__)
 
 _NESTED_ENV_URL_VALUE_RE = re.compile(r"^(?:[A-Z][A-Z0-9_]*=)+(https?://.+)$")
+_TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
+_LOCAL_ENV_FILE_ENV = "LITASSIST_LOCAL_ENV_FILE"
+_ENABLE_REPO_DOTENV_ENV = "LITASSIST_ENABLE_REPO_DOTENV"
+_LEGACY_ENABLE_REPO_DOTENV_ENV = "RUNTIME_ENV_ENABLE_DOTENV"
 
 
 def _clean(value: str | None) -> str | None:
@@ -30,14 +34,86 @@ def _clean_urlish(value: str | None) -> str | None:
 
 
 def _dotenv_disabled() -> bool:
-    return _clean(os.getenv("RUNTIME_ENV_DISABLE_DOTENV")) in {"1", "true", "yes"}
+    return _clean(os.getenv("RUNTIME_ENV_DISABLE_DOTENV")) in _TRUTHY_ENV_VALUES
 
 
-@lru_cache(maxsize=1)
-def _repo_env() -> dict[str, str]:
+def _repo_dotenv_enabled() -> bool:
+    return (
+        _clean(os.getenv(_ENABLE_REPO_DOTENV_ENV)) in _TRUTHY_ENV_VALUES
+        or _clean(os.getenv(_LEGACY_ENABLE_REPO_DOTENV_ENV)) in _TRUTHY_ENV_VALUES
+    )
+
+
+def _runtime_env_path() -> Path:
+    """Return the ignored local env catalog path used outside source files.
+
+    Why:
+        Runtime API catalogs can contain credentials. Keeping the default env
+        catalog under runtime state avoids treating source directories as a
+        secret store while preserving a local-first workflow.
+    """
+
+    try:
+        from project_paths import runtime_state_path
+
+        return runtime_state_path("local_env", "literature_assistant.env")
+    except Exception:
+        return (
+            Path(__file__).resolve().parents[2]
+            / "workspace_artifacts"
+            / "runtime_state"
+            / "local_env"
+            / "literature_assistant.env"
+        )
+
+
+def _cwd_dotenv_path() -> Path | None:
+    """Return a temporary cwd dotenv only when it is outside source roots."""
+
+    cwd_dotenv = (Path.cwd() / ".env").resolve()
+    if not cwd_dotenv.exists():
+        return None
+    repo_root = Path(__file__).resolve().parents[2]
+    try:
+        cwd_dotenv.relative_to(repo_root)
+        return None
+    except ValueError:
+        pass
+    if cwd_dotenv == Path(__file__).resolve().with_name(".env"):
+        return None
+    return cwd_dotenv
+
+
+def _dotenv_paths() -> tuple[Path, ...]:
+    """Return local env files in increasing override order."""
+
     if _dotenv_disabled():
-        return {}
-    env_path = Path(__file__).resolve().with_name(".env")
+        return ()
+
+    paths: list[Path] = [_runtime_env_path()]
+    cwd_dotenv = _cwd_dotenv_path()
+    if cwd_dotenv is not None:
+        paths.append(cwd_dotenv)
+    if _repo_dotenv_enabled():
+        paths.append(Path(__file__).resolve().with_name(".env"))
+
+    explicit_path = _clean(os.getenv(_LOCAL_ENV_FILE_ENV))
+    if explicit_path is not None:
+        paths.append(Path(explicit_path).expanduser())
+    return tuple(paths)
+
+
+def _read_dotenv_file(env_path: Path) -> dict[str, str]:
+    """Parse one dotenv file into raw string values.
+
+    Args:
+        env_path: Path to a local dotenv-style file. Missing files return an
+            empty mapping.
+
+    Returns:
+        A mapping of variable names to unexpanded values from that file.
+    """
+
     if not env_path.exists():
         return {}
 
@@ -65,6 +141,14 @@ def _repo_env() -> dict[str, str]:
         elif " #" in value:
             value = value.split(" #", 1)[0].rstrip()
         values[key] = value
+    return values
+
+
+@lru_cache(maxsize=1)
+def _repo_env() -> dict[str, str]:
+    values: dict[str, str] = {}
+    for env_path in _dotenv_paths():
+        values.update(_read_dotenv_file(env_path))
     return values
 
 
@@ -103,6 +187,12 @@ def env_bool(*names: str, default: bool = False) -> bool:
 def wiki_enabled() -> bool:
     """Return whether the LLM-Wiki integration is globally enabled."""
 
+    try:
+        from feature_flags import is_enabled
+
+        return is_enabled("wiki")
+    except Exception:
+        pass
     return env_bool("LITERATURE_ASSISTANT_WIKI_ENABLED", default=False)
 
 
@@ -751,7 +841,7 @@ def resolve_embedding_config(
         )
         return _finalize_candidate(fallback_key, fallback_base_url, fallback_model)
 
-    logger.error("No embedding API key found in any known env var.")
+    logger.error("No embedding credential found in configured environment variables.")
     return None, resolved_base_url, resolved_model
 
 

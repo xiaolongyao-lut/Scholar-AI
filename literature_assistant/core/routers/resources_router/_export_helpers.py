@@ -12,7 +12,9 @@ import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import quote
 
+from models import PdfBboxUnit, coerce_pdf_bbox, pdf_bbox_matches_unit
 
 __all__ = [
     "ProjectExportFormat",
@@ -65,6 +67,298 @@ def _material_excerpt(material: Any) -> str:
         or (focus_points[0] if focus_points else "")
         or getattr(material, "title", "")
     ).strip()
+
+
+def _coerce_export_positive_int(value: Any) -> int | None:
+    """Return a positive integer metadata value or None."""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value.strip())
+        return parsed if parsed > 0 else None
+    return None
+
+
+def _coerce_export_non_negative_int(value: Any) -> int | None:
+    """Return a non-negative integer metadata value or None."""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value.strip())
+        return parsed if parsed >= 0 else None
+    return None
+
+
+def _coerce_normalized_export_bbox(value: Any) -> list[float] | None:
+    """Return a normalized-ratio bbox suitable for PDF reader URLs."""
+
+    bbox = coerce_pdf_bbox(value)
+    if bbox is None:
+        return None
+    return bbox if pdf_bbox_matches_unit(bbox, PdfBboxUnit.NORMALIZED_RATIO) else None
+
+
+def _format_export_bbox_param(bbox: list[float]) -> str:
+    """Return the compact bbox query-string value used by PDF deep links."""
+
+    return ",".join(str(round(item, 4)).rstrip("0").rstrip(".") for item in bbox)
+
+
+def _build_source_open_url(
+    material_id: str,
+    *,
+    page: int | None = None,
+    chunk_id: str | None = None,
+    bbox: list[float] | None = None,
+) -> str:
+    """Build an app-local URL that opens the original PDF reader."""
+
+    normalized_material_id = str(material_id or "").strip()
+    if not normalized_material_id:
+        raise ValueError("material_id must be non-empty")
+    params: list[tuple[str, str]] = []
+    if page is not None:
+        params.append(("page", str(page)))
+    if chunk_id:
+        params.append(("chunk", chunk_id))
+    if bbox:
+        params.append(("bbox", _format_export_bbox_param(bbox)))
+    query = "&".join(f"{quote(key, safe='')}={quote(value, safe='')}" for key, value in params)
+    base = f"/workbench/paper/{quote(normalized_material_id, safe='')}"
+    return f"{base}?{query}" if query else base
+
+
+def _build_project_source_anchor(
+    material_id: str,
+    *,
+    chunk_id: Any = None,
+    page: Any = None,
+    bbox: Any = None,
+    text_preview: Any = "",
+) -> dict[str, Any] | None:
+    """Return a PDF-first source anchor for export appendices."""
+
+    normalized_material_id = str(material_id or "").strip()
+    if not normalized_material_id:
+        return None
+    normalized_chunk_id = str(chunk_id or "").strip() or None
+    normalized_page = _coerce_export_positive_int(page)
+    normalized_bbox = _coerce_normalized_export_bbox(bbox) if normalized_page is not None else None
+    anchor = {
+        "material_id": normalized_material_id,
+        "chunk_id": normalized_chunk_id,
+        "page": normalized_page,
+        "bbox": normalized_bbox,
+        "bbox_unit": PdfBboxUnit.NORMALIZED_RATIO.value if normalized_bbox is not None else None,
+        "text_preview": _shorten_export_text(str(text_preview or ""), 180),
+        "open_url": _build_source_open_url(
+            normalized_material_id,
+            page=normalized_page,
+            chunk_id=normalized_chunk_id,
+            bbox=normalized_bbox,
+        ),
+    }
+    return anchor
+
+
+def _chunk_export_preview(chunk: Mapping[str, Any]) -> str:
+    """Return a compact source preview from chunk text fields."""
+
+    for key in ("text_preview", "raw_content", "content", "text"):
+        value = str(chunk.get(key) or "").strip()
+        if value:
+            return _shorten_export_text(value, 180)
+    return ""
+
+
+def _sorted_material_chunks(chunk_store: Mapping[str, Any], material_id: str) -> list[dict[str, Any]]:
+    """Return material chunks in deterministic chunk-index order."""
+
+    chunks = chunk_store.get(material_id)
+    if not isinstance(chunks, list):
+        return []
+    rows = [dict(chunk) for chunk in chunks if isinstance(chunk, Mapping)]
+    return sorted(
+        rows,
+        key=lambda chunk: (
+            _coerce_export_non_negative_int(chunk.get("chunk_index")) or 0,
+            str(chunk.get("chunk_id") or ""),
+        ),
+    )
+
+
+def _first_material_source_anchor(
+    project_id: str | None,
+    material_id: str,
+    chunk_store: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Resolve the best available export anchor for one material."""
+
+    normalized_material_id = str(material_id or "").strip()
+    if not normalized_material_id:
+        return None
+    if not isinstance(chunk_store, Mapping):
+        return _build_project_source_anchor(normalized_material_id)
+
+    for chunk in _sorted_material_chunks(chunk_store, normalized_material_id):
+        chunk_id = str(chunk.get("chunk_id") or "").strip()
+        if not chunk_id:
+            continue
+        locator: dict[str, Any] | None = None
+        if project_id:
+            try:
+                from routers.resources_router.endpoints_search_upload import (
+                    enrich_chunk_locator_with_pdf,
+                    find_chunk_locator,
+                )
+
+                located = find_chunk_locator(dict(chunk_store), chunk_id)
+                if located is not None:
+                    locator = enrich_chunk_locator_with_pdf(str(project_id), dict(chunk_store), located)
+            except (ImportError, RuntimeError, TypeError, ValueError):
+                locator = None
+        if locator is None:
+            locator = {
+                "material_id": normalized_material_id,
+                "chunk_id": chunk_id,
+                "page": chunk.get("page"),
+                "bbox": chunk.get("bbox"),
+            }
+        return _build_project_source_anchor(
+            str(locator.get("material_id") or normalized_material_id),
+            chunk_id=locator.get("chunk_id") or chunk_id,
+            page=locator.get("page"),
+            bbox=locator.get("bbox"),
+            text_preview=locator.get("text_preview") or _chunk_export_preview(chunk),
+        )
+
+    return _build_project_source_anchor(normalized_material_id)
+
+
+def _build_material_source_anchors(
+    project_id: str | None,
+    materials: list[Any],
+    chunk_store: Mapping[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Build source anchors keyed by material id without mutating chunk stores."""
+
+    anchors: dict[str, dict[str, Any]] = {}
+    for material in materials:
+        material_id = str(getattr(material, "material_id", "") or "").strip()
+        if not material_id:
+            continue
+        anchor = _first_material_source_anchor(project_id, material_id, chunk_store)
+        if anchor is not None:
+            anchors[material_id] = anchor
+    return anchors
+
+
+def _source_anchor_label(anchor: Mapping[str, Any] | None) -> str:
+    """Return a compact human-readable source anchor label for appendices."""
+
+    if not isinstance(anchor, Mapping):
+        return ""
+    parts: list[str] = []
+    page = _coerce_export_positive_int(anchor.get("page"))
+    if page is not None:
+        parts.append(f"p.{page}")
+    chunk_id = str(anchor.get("chunk_id") or "").strip()
+    if chunk_id:
+        parts.append(chunk_id)
+    bbox = _coerce_normalized_export_bbox(anchor.get("bbox"))
+    if bbox is not None:
+        parts.append(f"bbox={_format_export_bbox_param(bbox)}")
+    open_url = str(anchor.get("open_url") or "").strip()
+    suffix = f" ({'; '.join(parts)})" if parts else ""
+    return f"{open_url}{suffix}" if open_url else "; ".join(parts)
+
+
+def _asset_to_mapping(asset: Any) -> dict[str, Any]:
+    """Convert a dataclass-like figure asset to a mapping."""
+
+    if isinstance(asset, Mapping):
+        return dict(asset)
+    to_dict = getattr(asset, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        if isinstance(payload, Mapping):
+            return dict(payload)
+    return {
+        key: getattr(asset, key, None)
+        for key in (
+            "asset_id",
+            "project_id",
+            "kind",
+            "caption",
+            "numbering",
+            "material_id",
+            "source_page",
+            "bbox",
+            "asset_path",
+            "width",
+            "height",
+            "format",
+        )
+    }
+
+
+def _build_project_figure_assets_export(
+    project_id: str | None,
+    figure_assets: list[Any] | None,
+) -> list[dict[str, Any]]:
+    """Return export-safe figure/table asset provenance rows."""
+
+    if not figure_assets:
+        return []
+    rows: list[dict[str, Any]] = []
+    for asset in figure_assets:
+        payload = _asset_to_mapping(asset)
+        asset_id = str(payload.get("asset_id") or "").strip()
+        asset_path = str(payload.get("asset_path") or "").strip()
+        kind = str(payload.get("kind") or "").strip()
+        caption = str(payload.get("caption") or "").strip()
+        numbering = str(payload.get("numbering") or "").strip()
+        if not asset_id or kind not in {"figure", "table"} or not caption or not numbering or not asset_path:
+            continue
+        material_id = str(payload.get("material_id") or "").strip() or None
+        page = _coerce_export_positive_int(payload.get("source_page"))
+        bbox = coerce_pdf_bbox(payload.get("bbox"))
+        normalized_bbox = _coerce_normalized_export_bbox(bbox) if page is not None else None
+        source_anchor = (
+            _build_project_source_anchor(
+                material_id,
+                page=page,
+                bbox=normalized_bbox,
+                text_preview=caption,
+            )
+            if material_id
+            else None
+        )
+        rows.append(
+            {
+                "asset_id": asset_id,
+                "project_id": str(payload.get("project_id") or project_id or ""),
+                "kind": kind,
+                "caption": caption,
+                "numbering": numbering,
+                "material_id": material_id,
+                "source_page": page,
+                "bbox": bbox,
+                "bbox_unit": PdfBboxUnit.NORMALIZED_RATIO.value if normalized_bbox is not None else None,
+                "asset_path": asset_path,
+                "width": _coerce_export_positive_int(payload.get("width")),
+                "height": _coerce_export_positive_int(payload.get("height")),
+                "format": str(payload.get("format") or "").strip() or None,
+                "source_anchor": source_anchor,
+            }
+        )
+    return sorted(rows, key=lambda row: (str(row["kind"]), str(row["numbering"]), str(row["asset_id"])))
 
 
 def _material_metadata_value(material: Any, key: str) -> Any:
@@ -155,9 +449,14 @@ def _build_project_academic_export(
     sections: list[Any],
     drafts: list[Any],
     materials: list[Any],
+    *,
+    project_id: str | None = None,
+    chunk_store: Mapping[str, Any] | None = None,
+    figure_assets: list[Any] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Derive academic evidence view-models from existing materials and anchors."""
     material_lookup = {material.material_id: material for material in materials}
+    source_anchors = _build_material_source_anchors(project_id, materials, chunk_store)
     anchors_by_material: dict[str, list[dict[str, Any]]] = {}
     citation_chain: list[dict[str, Any]] = []
     review_findings: list[dict[str, Any]] = []
@@ -185,6 +484,13 @@ def _build_project_academic_export(
             )
             material = material_lookup.get(str(material_id)) if material_id else None
             excerpt = _material_excerpt(material) if material else ""
+            source_anchor = (
+                source_anchors.get(material.material_id)
+                if material
+                else _build_project_source_anchor(str(material_id), text_preview=excerpt)
+                if material_id
+                else None
+            )
             citation_chain.append(
                 {
                     "anchor_id": anchor_id,
@@ -198,7 +504,8 @@ def _build_project_academic_export(
                         else ""
                     ),
                     "source_excerpt": _shorten_export_text(excerpt) if excerpt else "",
-                    "page": None,
+                    "page": source_anchor.get("page") if source_anchor else None,
+                    "source_anchor": source_anchor,
                     "confidence": None,
                 }
             )
@@ -239,6 +546,10 @@ def _build_project_academic_export(
     evidence_rows: list[dict[str, Any]] = []
     for material in materials:
         excerpt = _material_excerpt(material)
+        source_anchor = source_anchors.get(material.material_id) or _build_project_source_anchor(
+            material.material_id,
+            text_preview=excerpt,
+        )
         anchor_ids = [
             str(anchor.get("id", ""))
             for anchor in anchors_by_material.get(material.material_id, [])
@@ -250,8 +561,8 @@ def _build_project_academic_export(
             {
                 "evidence_id": f"evidence:{material.material_id}",
                 "material_id": material.material_id,
-                "chunk_id": None,
-                "page": None,
+                "chunk_id": source_anchor.get("chunk_id") if source_anchor else None,
+                "page": source_anchor.get("page") if source_anchor else None,
                 "excerpt": _shorten_export_text(excerpt),
                 "score": None,
                 "provenance": {
@@ -259,17 +570,20 @@ def _build_project_academic_export(
                     "material_type": material.type,
                 },
                 "anchor_ids": anchor_ids,
+                "source_anchor": source_anchor,
                 "status": status,
             }
         )
 
     bibliography_entries = _build_bibliography_entries(materials)
+    figure_asset_rows = _build_project_figure_assets_export(project_id, figure_assets)
 
     return {
         "evidence_rows": evidence_rows,
         "citation_chain": citation_chain,
         "bibliography_entries": bibliography_entries,
         "review_findings": review_findings,
+        "figure_assets": figure_asset_rows,
     }
 
 
@@ -322,8 +636,8 @@ def _iter_project_export_markdown_lines(
     evidence_rows = academic_export.get("evidence_rows", [])
     if evidence_rows:
         lines.append("\n## 证据表\n")
-        lines.append("| Evidence ID | Material | Status | Anchors | Excerpt |")
-        lines.append("|---|---|---|---|---|")
+        lines.append("| Evidence ID | Material | Status | Anchors | PDF Anchor | Excerpt |")
+        lines.append("|---|---|---|---|---|---|")
         for row in evidence_rows:
             anchors = ", ".join(row["anchor_ids"])
             material_title = row["provenance"]["material_title"]
@@ -335,6 +649,7 @@ def _iter_project_export_markdown_lines(
                         _markdown_table_cell(material_title),
                         _markdown_table_cell(row["status"]),
                         _markdown_table_cell(anchors),
+                        _markdown_table_cell(_source_anchor_label(row.get("source_anchor"))),
                         _markdown_table_cell(row["excerpt"]),
                     ]
                 )
@@ -344,8 +659,8 @@ def _iter_project_export_markdown_lines(
     citation_chain = academic_export.get("citation_chain", [])
     if citation_chain:
         lines.append("\n## 引用链\n")
-        lines.append("| Anchor | Section | Paragraph | Material | Claim | Source |")
-        lines.append("|---|---|---|---|---|---|")
+        lines.append("| Anchor | Section | Paragraph | Material | PDF Anchor | Claim | Source |")
+        lines.append("|---|---|---|---|---|---|---|")
         for row in citation_chain:
             section = section_map.get(row["section_id"])
             material = material_map.get(row["material_id"])
@@ -359,8 +674,33 @@ def _iter_project_export_markdown_lines(
                         _markdown_table_cell(
                             material.title if material else row["material_id"]
                         ),
+                        _markdown_table_cell(_source_anchor_label(row.get("source_anchor"))),
                         _markdown_table_cell(row["claim_excerpt"]),
                         _markdown_table_cell(row["source_excerpt"]),
+                    ]
+                )
+                + " |"
+            )
+
+    figure_assets = academic_export.get("figure_assets", [])
+    if figure_assets:
+        lines.append("\n## 图表资产 provenance\n")
+        lines.append("| Asset | Kind | Numbering | Source | Page | Bbox | Asset Path |")
+        lines.append("|---|---|---|---|---|---|---|")
+        for row in figure_assets:
+            bbox = row.get("bbox")
+            bbox_label = _format_export_bbox_param(bbox) if isinstance(bbox, list) else ""
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _markdown_table_cell(row.get("asset_id")),
+                        _markdown_table_cell(row.get("kind")),
+                        _markdown_table_cell(row.get("numbering")),
+                        _markdown_table_cell(_source_anchor_label(row.get("source_anchor"))),
+                        _markdown_table_cell(row.get("source_page")),
+                        _markdown_table_cell(bbox_label),
+                        _markdown_table_cell(row.get("asset_path")),
                     ]
                 )
                 + " |"
@@ -461,8 +801,8 @@ def _build_project_latex_export(
         lines.extend(
             [
                 r"\section{证据表}",
-                r"\begin{longtable}{p{0.22\linewidth}p{0.24\linewidth}p{0.14\linewidth}p{0.30\linewidth}}",
-                r"Evidence ID & Material & Status & Excerpt \\",
+                r"\begin{longtable}{p{0.18\linewidth}p{0.20\linewidth}p{0.12\linewidth}p{0.22\linewidth}p{0.22\linewidth}}",
+                r"Evidence ID & Material & Status & PDF Anchor & Excerpt \\",
                 r"\hline",
             ]
         )
@@ -474,7 +814,33 @@ def _build_project_latex_export(
                         _latex_escape(row["evidence_id"]),
                         _latex_escape(material_title),
                         _latex_escape(row["status"]),
+                        _latex_escape(_source_anchor_label(row.get("source_anchor"))),
                         _latex_escape(row["excerpt"]),
+                    ]
+                )
+                + r" \\"
+            )
+        lines.append(r"\end{longtable}")
+
+    figure_assets = academic_export.get("figure_assets", [])
+    if figure_assets:
+        lines.extend(
+            [
+                r"\section{图表资产 provenance}",
+                r"\begin{longtable}{p{0.16\linewidth}p{0.12\linewidth}p{0.18\linewidth}p{0.26\linewidth}p{0.20\linewidth}}",
+                r"Asset & Kind & Numbering & Source & Asset Path \\",
+                r"\hline",
+            ]
+        )
+        for row in figure_assets:
+            lines.append(
+                " & ".join(
+                    [
+                        _latex_escape(row.get("asset_id")),
+                        _latex_escape(row.get("kind")),
+                        _latex_escape(row.get("numbering")),
+                        _latex_escape(_source_anchor_label(row.get("source_anchor"))),
+                        _latex_escape(row.get("asset_path")),
                     ]
                 )
                 + r" \\"
@@ -559,17 +925,34 @@ def _build_project_docx_export(
     evidence_rows = academic_export.get("evidence_rows", [])
     if evidence_rows:
         document.add_heading("证据表", level=1)
-        table = document.add_table(rows=1, cols=4)
+        table = document.add_table(rows=1, cols=5)
         table.style = "Table Grid"
         header_cells = table.rows[0].cells
-        for index, label in enumerate(("Evidence ID", "Material", "Status", "Excerpt")):
+        for index, label in enumerate(("Evidence ID", "Material", "Status", "PDF Anchor", "Excerpt")):
             header_cells[index].text = label
         for row in evidence_rows:
             cells = table.add_row().cells
             cells[0].text = str(row["evidence_id"])
             cells[1].text = str(row["provenance"]["material_title"])
             cells[2].text = str(row["status"])
-            cells[3].text = str(row["excerpt"])
+            cells[3].text = _source_anchor_label(row.get("source_anchor"))
+            cells[4].text = str(row["excerpt"])
+
+    figure_assets = academic_export.get("figure_assets", [])
+    if figure_assets:
+        document.add_heading("图表资产 provenance", level=1)
+        table = document.add_table(rows=1, cols=5)
+        table.style = "Table Grid"
+        header_cells = table.rows[0].cells
+        for index, label in enumerate(("Asset", "Kind", "Numbering", "Source", "Asset Path")):
+            header_cells[index].text = label
+        for row in figure_assets:
+            cells = table.add_row().cells
+            cells[0].text = str(row.get("asset_id") or "")
+            cells[1].text = str(row.get("kind") or "")
+            cells[2].text = str(row.get("numbering") or "")
+            cells[3].text = _source_anchor_label(row.get("source_anchor"))
+            cells[4].text = str(row.get("asset_path") or "")
 
     review_findings = academic_export.get("review_findings", [])
     if review_findings:
@@ -836,6 +1219,7 @@ def _build_file_export_payload(
     citation_chain: list[dict[str, Any]] | None = None,
     bibliography_entries: list[dict[str, Any]] | None = None,
     review_findings: list[dict[str, Any]] | None = None,
+    figure_assets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Return a JSON-safe file payload containing path metadata and base64."""
     if not file_path.exists() or not file_path.is_file():
@@ -853,6 +1237,7 @@ def _build_file_export_payload(
         "citation_chain": citation_chain or [],
         "bibliography_entries": bibliography_entries or [],
         "review_findings": review_findings or [],
+        "figure_assets": figure_assets or [],
     }
 
 

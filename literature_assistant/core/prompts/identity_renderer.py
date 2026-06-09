@@ -1,4 +1,4 @@
-"""Identity header renderer (Slice 3 of agent identity injection plan).
+"""Identity header renderer.
 
 Public API:
     ``render_identity_header(entry_id, context=None) -> str``

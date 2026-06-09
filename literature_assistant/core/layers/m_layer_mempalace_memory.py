@@ -271,6 +271,49 @@ class MemorySyncResult:
         }
 
 
+@dataclass(frozen=True)
+class MemoryRecord:
+    """Repository-owned view of one long-term memory drawer."""
+
+    memory_id: str
+    text: str
+    wing: str
+    room: str
+    source_file: str
+    metadata: dict[str, Any]
+
+    @staticmethod
+    def from_chroma(
+        *,
+        memory_id: str,
+        text: str,
+        metadata: Mapping[str, Any] | None,
+    ) -> "MemoryRecord":
+        """Normalize a Chroma row into the public memory CRUD shape."""
+
+        raw_metadata = dict(metadata or {})
+        return MemoryRecord(
+            memory_id=str(memory_id),
+            text=str(text),
+            wing=str(raw_metadata.get("wing") or "unknown"),
+            room=str(raw_metadata.get("room") or "unknown"),
+            source_file=str(raw_metadata.get("source_file") or ""),
+            metadata=raw_metadata,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the memory row to a JSON-safe payload."""
+
+        return {
+            "memory_id": self.memory_id,
+            "text": self.text,
+            "wing": self.wing,
+            "room": self.room,
+            "source_file": self.source_file,
+            "metadata": self.metadata,
+        }
+
+
 class MempalaceMemoryAdapter:
     """Defensive adapter around the vendored MemPalace package."""
 
@@ -439,9 +482,7 @@ class MempalaceMemoryAdapter:
 
         normalized_content = content.strip()
         content_hash = hashlib.sha256(normalized_content.encode("utf-8")).hexdigest()
-        self.settings.palace_path.mkdir(parents=True, exist_ok=True)
-        client = chromadb.PersistentClient(path=str(self.settings.palace_path))
-        collection = client.get_or_create_collection(self.settings.collection_name)
+        collection = self._get_collection()
         existing = collection.get(where={"content_hash": content_hash}, limit=1)
         if existing.get("ids"):
             existing_ids = existing.get("ids", [])
@@ -480,6 +521,57 @@ class MempalaceMemoryAdapter:
             duplicate=False,
             reason=None,
         )
+
+    def list_memories(
+        self,
+        *,
+        wing: str | None = None,
+        room: str | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryRecord]:
+        """List repository-owned long-term memory rows.
+
+        Output is capped to a positive limit and scoped by wing/room metadata
+        when supplied.
+        """
+
+        if not self.settings.enabled:
+            return []
+        collection = self._get_collection()
+        where = self._build_scope_where(wing=wing, room=room)
+        result = collection.get(
+            where=where or None,
+            limit=self._normalize_limit(limit),
+        )
+        return self._records_from_chroma_get(result)
+
+    def get_memory(self, memory_id: str) -> MemoryRecord | None:
+        """Return one memory row by id, or None when it does not exist."""
+
+        if not isinstance(memory_id, str) or not memory_id.strip():
+            raise ValueError("memory_id must be a non-empty string")
+        if not self.settings.enabled:
+            return None
+        result = self._get_collection().get(ids=[memory_id.strip()], limit=1)
+        records = self._records_from_chroma_get(result)
+        return records[0] if records else None
+
+    def delete_memory(self, memory_id: str) -> bool:
+        """Delete one memory row by id.
+
+        Returns false when the row does not exist so routers can emit 404.
+        """
+
+        if not isinstance(memory_id, str) or not memory_id.strip():
+            raise ValueError("memory_id must be a non-empty string")
+        if not self.settings.enabled:
+            return False
+        collection = self._get_collection()
+        existing = collection.get(ids=[memory_id.strip()], limit=1)
+        if not existing.get("ids"):
+            return False
+        collection.delete(ids=[memory_id.strip()])
+        return True
 
     def compose_runtime_memory_content(
         self,
@@ -674,6 +766,67 @@ class MempalaceMemoryAdapter:
                 continue
             normalized[normalized_key] = json.dumps(value, ensure_ascii=False, sort_keys=True)
         return normalized
+
+    def _get_collection(self) -> Any:
+        """Return the configured Chroma collection, creating it if needed."""
+
+        chromadb = self._import_chromadb()
+        self.settings.palace_path.mkdir(parents=True, exist_ok=True)
+        client = chromadb.PersistentClient(path=str(self.settings.palace_path))
+        return client.get_or_create_collection(self.settings.collection_name)
+
+    def _normalize_limit(self, limit: int | None) -> int:
+        """Clamp list limits to avoid unbounded memory reads."""
+
+        if limit is None:
+            return self.settings.search_limit
+        try:
+            parsed = int(limit)
+        except (TypeError, ValueError):
+            return self.settings.search_limit
+        return min(max(parsed, 1), 200)
+
+    def _build_scope_where(
+        self,
+        *,
+        wing: str | None,
+        room: str | None,
+    ) -> dict[str, Any]:
+        """Build a Chroma metadata filter from optional namespace inputs."""
+
+        clauses: list[dict[str, str]] = []
+        if isinstance(wing, str) and wing.strip():
+            clauses.append({"wing": wing.strip()})
+        if isinstance(room, str) and room.strip():
+            clauses.append({"room": room.strip()})
+        if not clauses:
+            return {}
+        if len(clauses) == 1:
+            return clauses[0]
+        return {"$and": clauses}
+
+    def _records_from_chroma_get(self, result: Mapping[str, Any]) -> list[MemoryRecord]:
+        """Convert Chroma get() output to MemoryRecord objects."""
+
+        ids = result.get("ids", [])
+        documents = result.get("documents", [])
+        metadatas = result.get("metadatas", [])
+        if not isinstance(ids, Sequence) or isinstance(ids, (str, bytes, bytearray)):
+            return []
+        records: list[MemoryRecord] = []
+        for index, memory_id in enumerate(ids):
+            text = documents[index] if isinstance(documents, Sequence) and index < len(documents) else ""
+            metadata = metadatas[index] if isinstance(metadatas, Sequence) and index < len(metadatas) else {}
+            if not isinstance(memory_id, str):
+                continue
+            records.append(
+                MemoryRecord.from_chroma(
+                    memory_id=memory_id,
+                    text=str(text),
+                    metadata=metadata if isinstance(metadata, Mapping) else {},
+                )
+            )
+        return records
 
     def _serialize_content(self, content: Any) -> str:
         """Serialize artifact content to text without losing the original shape."""

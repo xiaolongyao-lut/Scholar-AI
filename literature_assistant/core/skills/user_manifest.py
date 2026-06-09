@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""User Skill manifest parser and validator (TASK-184).
+"""User Skill manifest parser and validator.
 
 Parses SKILL.md frontmatter into a typed UserSkillManifest dataclass and
 validates all fields according to the security rules defined in the
@@ -9,9 +9,16 @@ user-skill-extension-design.md.
 from __future__ import annotations
 
 import re
+import math
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
+
+from dynamic_config_schema import (
+    extract_dynamic_config_schema,
+    parse_dynamic_config_schema,
+)
+from extension_secret_policy import is_plaintext_secret_config_field
 
 
 # ---------------------------------------------------------------------------
@@ -52,11 +59,11 @@ MAX_PACKAGE_BYTES = 20 * 1024 * 1024  # 20 MB
 HIGH_RISK_PERMISSIONS = frozenset({"script.execute", "network", "files.write"})
 
 
-# Skill credential / config-field allowlists (S5 / plan 2026-05-20 §C1 +
-# reinforcement B). Mirror the v1 allowlists used by McpInstallConfigField /
-# McpRequiredCredential so MCP and Skill share the same install-time UX.
+# Skill credential / config-field allowlists. Mirror the allowlists used by
+# McpInstallConfigField / McpRequiredCredential so MCP and Skill share the
+# same install-time UX.
 SKILL_CREDENTIAL_KINDS = frozenset({"api_key"})
-SKILL_CONFIG_FIELD_TYPES = frozenset({"text", "select"})
+SKILL_CONFIG_FIELD_TYPES = frozenset({"text", "select", "number", "boolean"})
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +91,7 @@ class SkillRequiredCredential:
 
 @dataclass
 class SkillConfigField:
-    """A non-secret config field the install wizard prompts for and the skill
+    """A non-sensitive config field the install wizard prompts for and the skill
     runtime injects into the execution env as a plain string.
     """
 
@@ -96,6 +103,9 @@ class SkillConfigField:
     required: bool = False
     description: str = ""
     options: list[dict[str, str]] | None = None  # for type=select
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
 
 
 @dataclass
@@ -128,9 +138,8 @@ class UserSkillManifest:
     display_group: str = "user"
     experimental: bool = False
 
-    # S5 extension: required credential refs + non-secret config fields
-    # (plan 2026-05-20 §C1 + reinforcement B). Empty lists by default so
-    # existing manifests parse without changes.
+    # Required credential bindings and non-sensitive config fields. Empty
+    # lists by default so existing manifests parse without changes.
     required_credentials: list[SkillRequiredCredential] = field(default_factory=list)
     config_fields: list[SkillConfigField] = field(default_factory=list)
 
@@ -260,6 +269,50 @@ def validate_manifest(data: dict[str, Any]) -> UserSkillManifest:
     config_fields = _parse_config_fields(
         data.get("config_fields", []), errors
     )
+    schema_result = parse_dynamic_config_schema(
+        extract_dynamic_config_schema(data),
+        existing_config_keys={
+            key for config_field in config_fields for key in (config_field.id, config_field.env)
+        },
+        existing_credential_keys={
+            key
+            for credential in required_credentials
+            for key in (credential.id, credential.env)
+        },
+    )
+    required_credentials.extend(
+        SkillRequiredCredential(
+            id=credential.id,
+            label=credential.label,
+            env=credential.env,
+            kind=credential.kind,
+            provider_hints=list(credential.provider_hints),
+            required=credential.required,
+            description=credential.description,
+        )
+        for credential in schema_result.required_credentials
+    )
+    config_fields.extend(
+        SkillConfigField(
+            id=config_field.id,
+            label=config_field.label,
+            env=config_field.env,
+            type=config_field.type,
+            default=config_field.default,
+            required=config_field.required,
+            description=config_field.description,
+            options=[
+                {"value": option.value, "label": option.label}
+                for option in config_field.options
+            ]
+            if config_field.options is not None
+            else None,
+            min=config_field.min,
+            max=config_field.max,
+            step=config_field.step,
+        )
+        for config_field in schema_result.config_fields
+    )
 
     if errors:
         raise ManifestValidationError(errors)
@@ -315,7 +368,7 @@ def _validate_relative_path(path_str: str, field_name: str, errors: list[str]) -
 def _parse_required_credentials(
     raw: Any, errors: list[str]
 ) -> list[SkillRequiredCredential]:
-    """Validate the manifest's ``required_credentials`` block (S5 §C1).
+    """Validate the manifest's ``required_credentials`` block.
 
     Each entry must declare ``id``/``label``/``env`` and the optional ``kind``
     falls in the v1 allowlist. Malformed entries append errors and are
@@ -397,7 +450,7 @@ def _parse_required_credentials(
 
 
 def _parse_config_fields(raw: Any, errors: list[str]) -> list[SkillConfigField]:
-    """Validate the manifest's ``config_fields`` block (S5 §C1)."""
+    """Validate the manifest's ``config_fields`` block."""
     out: list[SkillConfigField] = []
     if raw is None or raw == []:
         return out
@@ -418,9 +471,11 @@ def _parse_config_fields(raw: Any, errors: list[str]) -> list[SkillConfigField]:
         ftype = str(entry.get("type", "text")).strip() or "text"
         required = bool(entry.get("required", False))
         description = str(entry.get("description", "") or "")
-        default_raw = entry.get("default")
-        default = str(default_raw) if default_raw is not None else None
+        default = _normalize_config_default(ftype, entry.get("default"))
         options_raw = entry.get("options")
+        minimum = _parse_optional_number(entry.get("min"))
+        maximum = _parse_optional_number(entry.get("max"))
+        step = _parse_optional_number(entry.get("step"))
 
         local: list[str] = []
         if not fid:
@@ -439,6 +494,17 @@ def _parse_config_fields(raw: Any, errors: list[str]) -> list[SkillConfigField]:
             local.append(
                 f"config_fields[{i}].type={ftype!r} not in v1 allowlist "
                 f"{sorted(SKILL_CONFIG_FIELD_TYPES)}"
+            )
+        if is_plaintext_secret_config_field(
+            field_id=fid,
+            label=label,
+            env=env,
+            description=description,
+            default=default,
+        ):
+            local.append(
+                f"config_fields[{i}] appears to describe credential material; "
+                "use required_credentials instead"
             )
 
         options: list[dict[str, str]] | None = None
@@ -484,9 +550,42 @@ def _parse_config_fields(raw: Any, errors: list[str]) -> list[SkillConfigField]:
                 required=required,
                 description=description,
                 options=options,
+                min=minimum,
+                max=maximum,
+                step=step,
             )
         )
     return out
+
+
+def _parse_optional_number(raw: Any) -> float | None:
+    """Return a finite numeric UI constraint or None when omitted/malformed."""
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        parsed = float(raw)
+        return parsed if math.isfinite(parsed) else None
+    if isinstance(raw, str):
+        try:
+            parsed = float(raw.strip())
+            return parsed if math.isfinite(parsed) else None
+        except ValueError:
+            return None
+    return None
+
+
+def _normalize_config_default(field_type: str, raw: Any) -> str | None:
+    """Return the string value persisted by runtime settings for one field."""
+    if raw is None:
+        return None
+    if field_type == "boolean":
+        if isinstance(raw, bool):
+            return "true" if raw else "false"
+        normalized = str(raw).strip().lower()
+        return "true" if normalized in {"1", "true", "yes", "on"} else "false"
+    return str(raw)
 
 
 def parse_skill_md_frontmatter(content: str) -> dict[str, Any]:

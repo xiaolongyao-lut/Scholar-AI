@@ -5,7 +5,7 @@ Reuses literature_assistant.core.wiki.evaluation.scan_text_for_secrets so the
 detection pattern set stays a single source of truth (wiki citation auditor
 already uses it for compiled wiki pages).
 
-Policy (plan §Fail-closed Rules):
+Policy:
     - Any non-zero finding count blocks the write.
     - Scanned fields: title, claim, future_use, source_summary.
     - Findings are surfaced as a short reason string; raw matches are never

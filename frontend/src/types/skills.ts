@@ -1,5 +1,5 @@
 /**
- * Frontend types for user skill management (TASK-189).
+ * Frontend types for user skill management.
  *
  * These types mirror the backend SkillDescriptor and user manifest models.
  */
@@ -61,6 +61,40 @@ export interface SkillDescriptor {
     disabled_reason: string | null;
   };
   trust_level: 'trusted' | 'limited' | 'untrusted';
+}
+
+export interface SkillConfigOption {
+  value: string;
+  label: string;
+}
+
+export interface SkillConfigField {
+  id: string;
+  label: string;
+  env: string;
+  type: 'text' | 'select' | 'number' | 'boolean';
+  default: string | null;
+  required: boolean;
+  description: string;
+  options: SkillConfigOption[] | null;
+  min?: number | null;
+  max?: number | null;
+  step?: number | null;
+}
+
+export interface SkillRequiredCredential {
+  id: string;
+  label: string;
+  env: string;
+  kind: 'api_key';
+  provider_hints: string[];
+  required: boolean;
+  description: string;
+}
+
+export interface SkillRuntimeSettings {
+  config_values: Record<string, string>;
+  credential_bindings: Record<string, string>;
 }
 
 export interface SkillEvidenceRef {
@@ -127,8 +161,15 @@ export interface SkillAuditEvent {
   timestamp: string;
   job_id: string | null;
   capability_id: string | null;
+  user_id?: string | null;
+  session_id?: string | null;
   description: string;
+  status?: string;
   severity: string;
+  context?: Record<string, unknown>;
+  previous_state?: Record<string, unknown> | null;
+  new_state?: Record<string, unknown> | null;
+  error_code?: string | null;
   error_message: string | null;
 }
 
@@ -187,4 +228,11 @@ export interface SkillRollbackResult {
   restored_path: string;
   backup_path: string;
   warnings: string[];
+}
+
+export interface SkillExportResult {
+  success: boolean;
+  skill_id: string;
+  export_path: string;
+  errors: string[];
 }

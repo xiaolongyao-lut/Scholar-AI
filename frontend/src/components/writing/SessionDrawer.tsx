@@ -1,10 +1,5 @@
 /**
- * SessionDrawer — Conversation persistence UI (Workbench).
- *
- * Lists recent sessions scoped to the current workspace, lets the user
- * resume / fork / rewind, and renders the timeline of a selected session.
- *
- * Plan: docs/superpowers/plans/2026-04-20-conversation-persistence-mvp.md §S-4 / §S-5
+ * SessionDrawer — conversation persistence UI for the Workbench.
  * Backend contract: routers/runtime_router.py
  */
 
@@ -16,6 +11,7 @@ import {
   History,
   Loader2,
   RotateCcw,
+  Trash2,
   X,
   ChevronDown,
   ChevronRight,
@@ -31,10 +27,11 @@ import type {
 } from "@/types/runtime";
 import {
   sortAndLimitSessions,
-  shortSessionId,
   sessionPreviewText,
   isForkedSession,
-  classifyTimelineEvent,
+  formatTimelineEventLabel,
+  formatTimelineEventPreview,
+  formatSessionDrawerError,
   resolveNextCursor,
   formatRelativeTimestamp,
 } from "./sessionDrawerHelpers";
@@ -49,9 +46,9 @@ interface SessionDrawerProps {
   workspaceKey?: string;
   /** Called after a successful resume so Workbench can pick up the new head. */
   onSessionResumed?: (result: ResumeSessionResult) => void;
-  /** Called after a fork; parent passes `result.session.session_id` to switch view. */
+  /** Called after a branch is created; parent switches to the returned session. */
   onSessionForked?: (result: ResumeSessionResult) => void;
-  /** Called after a rewind (conversation or with_files). */
+  /** Called after rollback preview is applied. */
   onSessionRewound?: (result: ResumeSessionResult) => void;
 }
 
@@ -141,8 +138,7 @@ export function SessionDrawer({
       setSessions(result);
       setListState("idle");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load sessions";
-      setListError(msg);
+      setListError(formatSessionDrawerError(err, "无法加载会话，请稍后重试。"));
       setListState("error");
     }
   }, [api, workspaceRoot, workspaceKey]);
@@ -171,8 +167,7 @@ export function SessionDrawer({
         setCheckpoints(cps);
         setTimelineState("idle");
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Failed to load timeline";
-        setTimelineError(msg);
+        setTimelineError(formatSessionDrawerError(err, "无法加载时间线，请稍后重试。"));
         setTimelineState("error");
       }
     },
@@ -191,8 +186,7 @@ export function SessionDrawer({
       setTimelineCursor(resolveNextCursor(page.items, page.next_cursor));
       setTimelineState("idle");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load next page";
-      setTimelineError(msg);
+      setTimelineError(formatSessionDrawerError(err, "无法加载更多时间线，请稍后重试。"));
       setTimelineState("error");
     }
   }, [api, expandedId, timelineCursor]);
@@ -226,6 +220,39 @@ export function SessionDrawer({
       }
     },
     [resume, onSessionResumed, onClose],
+  );
+
+  const handleDeleteSession = useCallback(
+    async (sessionId: string) => {
+      const target = sessionPreviewText(
+        sessions.find((session) => session.session_id === sessionId) ?? {
+          session_id: sessionId,
+          mode: "prompt",
+          created_at: "",
+          settings: {},
+          tags: [],
+          metadata: {},
+        },
+      );
+      if (!window.confirm(`确认删除会话「${target}」？此操作只删除本机会话记录。`)) {
+        return;
+      }
+      setBusyAction(`delete:${sessionId}`);
+      try {
+        await api.deleteSession(sessionId);
+        setSessions((prev) => prev.filter((session) => session.session_id !== sessionId));
+        if (expandedId === sessionId) {
+          setExpandedId(null);
+          resetTimelineState();
+        }
+        toast("会话已删除", "success");
+      } catch (err) {
+        toast(formatSessionDrawerError(err, "删除会话失败，请稍后重试。"), "error");
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [api, expandedId, resetTimelineState, sessions, setSessions, toast],
   );
 
   const requestFork = useCallback(
@@ -342,15 +369,12 @@ export function SessionDrawer({
                     </p>
                     {typeof lastRewindToast.archivedCount === "number" && (
                       <p className="mt-1 font-body text-[10px] text-foreground/70">
-                        已 archive {lastRewindToast.archivedCount} 条 turn（未删除，可 fork 找回）
+                        已归档 {lastRewindToast.archivedCount} 条后续记录，未删除，可通过分叉找回。
                       </p>
                     )}
                     {lastRewindToast.snapshot && (
                       <p className="mt-1 font-body text-[10px] text-foreground/70 break-all">
-                        快照：
-                        <code className="px-1 bg-foreground/10 rounded text-[9px]">
-                          {lastRewindToast.snapshot}
-                        </code>
+                        已创建本地回退快照；需要恢复时请从本机回滚记录中选择。
                       </p>
                     )}
                   </div>
@@ -404,7 +428,7 @@ export function SessionDrawer({
                   <p className="mt-2 font-body text-[11px] leading-5 text-foreground/50">
                     发起一次对话后，会话会自动落盘到
                     <code className="mx-1 px-1 bg-surface-high rounded text-[10px]">
-                      .modular/sessions/
+                          本机会话库
                     </code>
                     并出现在这里。
                   </p>
@@ -448,20 +472,16 @@ export function SessionDrawer({
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <code className="font-label text-[10px] font-medium px-1.5 py-0.5 bg-surface-high rounded-sm text-foreground/70">
-                            {shortSessionId(sid)}
-                          </code>
+                          <span className="font-label text-[10px] font-medium px-1.5 py-0.5 bg-surface-high rounded-sm text-foreground/70">
+                            会话记录
+                          </span>
                           {forked && (
                             <span
                               className="inline-flex items-center gap-1 font-label text-[9px] font-medium px-1.5 py-0.5 bg-violet-100 text-violet-700 border border-violet-200 rounded-sm"
-                              title={
-                                parent
-                                  ? `Fork of ${parent.slice(0, 8)}`
-                                  : "Forked session"
-                              }
+                              title={parent ? "从早前会话分叉而来" : "分叉会话"}
                             >
                               <GitBranch size={9} />
-                              fork
+                              分叉
                             </span>
                           )}
                           <span className="ml-auto flex items-center gap-1 font-label text-[10px] text-foreground/40">
@@ -480,7 +500,7 @@ export function SessionDrawer({
                       <button
                         type="button"
                         onClick={() => handleResume(sid)}
-                        disabled={busyAction === `resume:${sid}`}
+                        disabled={busyAction === `resume:${sid}` || busyAction === `delete:${sid}`}
                         className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1 font-label text-[10px] font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-40"
                         aria-label="恢复该会话"
                       >
@@ -493,7 +513,23 @@ export function SessionDrawer({
                       </button>
                       <button
                         type="button"
+                        onClick={() => handleDeleteSession(sid)}
+                        disabled={busyAction === `delete:${sid}`}
+                        className="inline-flex items-center gap-1.5 rounded-sm border border-red-200 bg-red-50 px-3 py-1 font-label text-[10px] font-medium text-red-700 transition-all hover:bg-red-100 disabled:opacity-40 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300"
+                        aria-label="删除该会话"
+                        title="删除该会话"
+                      >
+                        {busyAction === `delete:${sid}` ? (
+                          <Loader2 size={10} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={10} />
+                        )}
+                        删除
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => toggleExpand(sid)}
+                        disabled={busyAction === `delete:${sid}`}
                         className="inline-flex items-center gap-1.5 rounded-sm border border-outline-variant bg-surface-lowest px-3 py-1 font-label text-[10px] font-medium text-foreground/60 transition-all hover:text-foreground"
                       >
                         {isExpanded ? "隐藏时间线" : "查看时间线"}
@@ -529,7 +565,7 @@ export function SessionDrawer({
                           )}
 
                         {timelineEvents.map((event) => {
-                          const kind = classifyTimelineEvent(event);
+                          const kind = event.event_kind;
                           const badgeClass =
                             kindBadgeClass[kind] ?? kindBadgeClass.other;
                           const cp = checkpoints.find(
@@ -543,11 +579,11 @@ export function SessionDrawer({
                               <div className="flex items-center gap-2 mb-1">
                                 <span
                                   className={cn(
-                                    "font-label text-[9px] font-medium uppercase px-1.5 py-0.5 rounded-sm border tracking-wider",
+                                    "font-label text-[9px] font-medium px-1.5 py-0.5 rounded-sm border",
                                     badgeClass,
                                   )}
                                 >
-                                  {event.event_kind}
+                                  {formatTimelineEventLabel(event)}
                                 </span>
                                 <span className="font-label text-[9px] text-foreground/40">
                                   {formatRelativeTimestamp(event.timestamp)}
@@ -555,9 +591,9 @@ export function SessionDrawer({
                                 {event.ref && (
                                   <span
                                     className="font-label text-[9px] text-foreground/40"
-                                    title={`Blob ref: ${event.ref}`}
+                                    title="正文已安全存放在本地记录中"
                                   >
-                                    ⎋ spilled
+                                    有正文
                                   </span>
                                 )}
                                 {cp && (
@@ -572,10 +608,11 @@ export function SessionDrawer({
                                         `fork:${cp.checkpoint_id}`
                                       }
                                       className="inline-flex items-center gap-1 rounded-sm border border-outline-variant bg-surface-lowest px-1.5 py-0.5 font-label text-[9px] text-foreground/60 hover:text-primary hover:border-primary/30 disabled:opacity-40"
-                                      title="从该检查点 fork"
+                                      title="从该检查点分叉"
+                                      aria-label="从该检查点分叉"
                                     >
                                       <GitBranch size={9} />
-                                      fork
+                                      分叉
                                     </button>
                                     <button
                                       type="button"
@@ -586,15 +623,16 @@ export function SessionDrawer({
                                       }
                                       className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-label text-[9px] text-amber-800 hover:bg-amber-100 disabled:opacity-40"
                                       title="回退到该检查点"
+                                      aria-label="回退到该检查点"
                                     >
                                       <RotateCcw size={9} />
-                                      rewind
+                                      回退
                                     </button>
                                   </div>
                                 )}
                               </div>
                               <p className="font-body text-[11px] text-foreground/60 leading-snug line-clamp-2">
-                                {eventPreview(event)}
+                                {formatTimelineEventPreview(event)}
                               </p>
                             </div>
                           );
@@ -647,18 +685,4 @@ export function SessionDrawer({
       )}
     </>
   );
-}
-
-/** Compact preview of an event's payload for the drawer row. */
-function eventPreview(event: TimelineEvent): string {
-  const payload = event.payload ?? {};
-  const text =
-    (typeof payload.text === "string" && payload.text) ||
-    (typeof payload.content === "string" && payload.content) ||
-    (typeof payload.tool_name === "string" &&
-      `tool: ${payload.tool_name}`) ||
-    (typeof payload.summary === "string" && payload.summary) ||
-    "";
-  if (!text) return `(${event.event_kind})`;
-  return text.length > 140 ? text.slice(0, 139) + "…" : text;
 }

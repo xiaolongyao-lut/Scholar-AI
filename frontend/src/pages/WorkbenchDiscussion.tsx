@@ -5,7 +5,7 @@ import { WorkbenchShell } from '@/components/workbench/WorkbenchShell';
 import { DiscussionPanel } from '@/components/DiscussionPanel';
 
 /**
- * Slice 4 — Discussion as a first-class Workbench object.
+ * Discussion as a first-class Workbench object.
  *
  * Route: `/workbench/discussion`
  * Behind `VITE_FLAG_RESEARCH_WORKBENCH` — same gate as the Paper

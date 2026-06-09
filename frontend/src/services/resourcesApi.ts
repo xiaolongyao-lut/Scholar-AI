@@ -15,31 +15,61 @@
  */
 import axios from 'axios';
 import { getApiBaseUrl } from './apiBaseUrl';
+import {
+  PDF_URL_BBOX_UNIT,
+  isPdfBboxUnit,
+  readPdfBbox,
+  type PdfBbox,
+  type PdfBboxUnit,
+} from '@/lib/pdfAnchor';
 
 export interface ChunkLocator {
   material_id: string;
   chunk_id: string;
   page: number | null;
   chunk_index: number | null;
+  bbox?: PdfBbox | null;
+  bbox_unit?: PdfBboxUnit | null;
 }
 
-function isLocatorShape(value: unknown): value is ChunkLocator {
+function parseLocator(value: unknown): ChunkLocator | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return false;
+    return null;
   }
   const obj = value as Record<string, unknown>;
-  if (typeof obj.material_id !== 'string' || obj.material_id.length === 0) return false;
-  if (typeof obj.chunk_id !== 'string' || obj.chunk_id.length === 0) return false;
+  if (typeof obj.material_id !== 'string' || obj.material_id.length === 0) return null;
+  if (typeof obj.chunk_id !== 'string' || obj.chunk_id.length === 0) return null;
   if (obj.page !== null && (typeof obj.page !== 'number' || !Number.isFinite(obj.page))) {
-    return false;
+    return null;
   }
   if (
     obj.chunk_index !== null &&
     (typeof obj.chunk_index !== 'number' || !Number.isFinite(obj.chunk_index))
   ) {
-    return false;
+    return null;
   }
-  return true;
+  const hasBbox = Object.prototype.hasOwnProperty.call(obj, 'bbox');
+  const bbox = hasBbox && obj.bbox !== null ? readPdfBbox(obj.bbox) : null;
+  if (hasBbox && obj.bbox !== null && bbox === null) {
+    return null;
+  }
+  const hasBboxUnit = Object.prototype.hasOwnProperty.call(obj, 'bbox_unit');
+  const bboxUnit = hasBboxUnit && obj.bbox_unit !== null
+    ? (isPdfBboxUnit(obj.bbox_unit) ? obj.bbox_unit : null)
+    : bbox
+      ? PDF_URL_BBOX_UNIT
+      : null;
+  if (hasBboxUnit && obj.bbox_unit !== null && bboxUnit === null) {
+    return null;
+  }
+  return {
+    material_id: obj.material_id,
+    chunk_id: obj.chunk_id,
+    page: obj.page,
+    chunk_index: obj.chunk_index,
+    ...(hasBbox ? { bbox } : {}),
+    ...(bbox ? { bbox_unit: bboxUnit ?? PDF_URL_BBOX_UNIT } : hasBboxUnit ? { bbox_unit: null } : {}),
+  };
 }
 
 /**
@@ -72,7 +102,7 @@ export async function locateChunk(
       params: { project_id: projectId },
       timeout: 5000,
     });
-    return isLocatorShape(data) ? data : null;
+    return parseLocator(data);
   } catch {
     return null;
   }

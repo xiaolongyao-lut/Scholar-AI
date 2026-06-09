@@ -12,6 +12,7 @@ import time
 import urllib.request
 import shutil
 from pathlib import Path
+from typing import Final
 
 from literature_assistant.bootstrap import configure_runtime_paths
 from literature_assistant.core.project_paths import app_profile_path
@@ -28,6 +29,29 @@ DEFAULT_PORT = 8000
 WINDOW_TITLE = "Modular Pipeline — 文献处理工作台"
 WINDOW_WIDTH = 1440
 WINDOW_HEIGHT = 900
+BROWSER_CACHE_VERSION_FILE: Final[str] = ".frontend_cache_version"
+
+
+def _show_startup_error(title: str, message: str) -> None:
+    """Show a startup failure without blocking headless console sessions."""
+
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError("title must be non-empty")
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError("message must be non-empty")
+    print(f"[启动器] {title}: {message}")
+    if sys.platform != "win32":
+        return
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(title, message)
+        root.destroy()
+    except Exception:
+        return
 
 
 def _find_python() -> str:
@@ -46,10 +70,14 @@ def _build_frontend() -> bool:
     if not (frontend_dir / "package.json").exists():
         print("[启动器] ❌ 找不到 frontend/package.json")
         return False
+    npm_name = "npm.cmd" if sys.platform == "win32" else "npm"
+    npm_path = shutil.which(npm_name) or shutil.which("npm")
+    if not npm_path:
+        print("[启动器] ❌ 找不到 npm，请先安装 Node.js")
+        return False
     result = subprocess.run(
-        ["npm", "run", "build"],
+        [npm_path, "run", "build"],
         cwd=str(frontend_dir),
-        shell=True,
         capture_output=True,
         text=True,
         check=False,
@@ -102,19 +130,68 @@ def _find_browser_for_app_mode() -> str | None:
     return None
 
 
+def _frontend_cache_version() -> str:
+    """Return a stable cache version tied to the built SPA shell.
+
+    Why:
+        Hashed Vite assets should not require deleting browser cache on every
+        launch. The index mtime is enough to clear stale profile cache only
+        after a new frontend build lands.
+    """
+
+    if FRONTEND_DIST.exists():
+        return str(FRONTEND_DIST.stat().st_mtime_ns)
+    return "frontend-dist-missing"
+
+
+def _remove_cache_dir(cache_dir: Path, profile_root: Path) -> None:
+    """Delete one browser cache directory only inside the app profile."""
+
+    resolved_cache = cache_dir.resolve()
+    resolved_profile = profile_root.resolve()
+    if resolved_cache == resolved_profile or resolved_profile not in resolved_cache.parents:
+        raise RuntimeError(f"Refusing to delete cache outside app profile: {cache_dir}")
+    if resolved_cache.is_dir():
+        shutil.rmtree(resolved_cache)
+
+
+def _clear_stale_browser_cache(profile_root: Path, cache_version: str) -> None:
+    """Clear Edge/Chrome cache only when the frontend build version changes.
+
+    Args:
+        profile_root: Dedicated browser profile path passed to ``--user-data-dir``.
+        cache_version: Non-empty identifier for the current frontend build.
+    """
+
+    if not isinstance(profile_root, Path):
+        raise TypeError("profile_root must be a pathlib.Path")
+    normalized_version = str(cache_version or "").strip()
+    if not normalized_version:
+        raise ValueError("cache_version must be non-empty")
+
+    marker = profile_root / BROWSER_CACHE_VERSION_FILE
+    if marker.is_file() and marker.read_text(encoding="utf-8").strip() == normalized_version:
+        return
+
+    for relative in (("Default", "Cache"), ("Default", "Code Cache")):
+        cache_dir = profile_root.joinpath(*relative)
+        try:
+            _remove_cache_dir(cache_dir, profile_root)
+        except OSError as exc:
+            print(f"[启动器] 浏览器缓存清理跳过: {cache_dir.name}: {exc}")
+
+    profile_root.mkdir(parents=True, exist_ok=True)
+    marker.write_text(normalized_version, encoding="utf-8")
+
+
 def _open_app_window(url: str) -> subprocess.Popen | None:
     """Open a standalone app window using Edge/Chrome --app mode."""
     browser = _find_browser_for_app_mode()
     if not browser:
         return None
-    user_data = str(APP_PROFILE)
-    # Clear stale browser cache to ensure latest frontend build is served
-    cache_dir = Path(user_data) / "Default" / "Cache"
-    if cache_dir.is_dir():
-        shutil.rmtree(cache_dir, ignore_errors=True)
-    code_cache_dir = Path(user_data) / "Default" / "Code Cache"
-    if code_cache_dir.is_dir():
-        shutil.rmtree(code_cache_dir, ignore_errors=True)
+    user_data_path = APP_PROFILE
+    _clear_stale_browser_cache(user_data_path, _frontend_cache_version())
+    user_data = str(user_data_path)
     return subprocess.Popen([
         browser,
         f"--app={url}",
@@ -142,7 +219,7 @@ def main() -> None:
     if not _check_frontend_build():
         if not _build_frontend():
             print("[启动器] ❌ 无法启动：前端构建失败")
-            input("按回车键退出...")
+            _show_startup_error("启动失败", "前端构建失败，请检查 Node.js/npm 和 frontend 构建日志。")
             sys.exit(1)
 
     print("[启动器] ✅ 前端已就绪")
@@ -154,7 +231,7 @@ def main() -> None:
     if not _wait_for_server(port):
         print("[启动器] ❌ 服务未在 15 秒内就绪")
         server.terminate()
-        input("按回车键退出...")
+        _show_startup_error("启动失败", "后端服务未在 15 秒内就绪，请检查 runtime_state/logs/backend.log。")
         sys.exit(1)
 
     url = f"http://localhost:{port}"

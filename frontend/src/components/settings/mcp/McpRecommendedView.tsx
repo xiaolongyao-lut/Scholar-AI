@@ -1,18 +1,14 @@
-/**
- * Recommended MCP capability cards (S4b · wired to install wizard).
- */
+/** Recommended MCP capability cards wired to the install wizard. */
 import React, { useState } from 'react';
 import { Image as ImageIcon, Paintbrush, Search, FolderInput } from 'lucide-react';
 import McpInstallWizard from './McpInstallWizard';
-import { loadWizardState } from './wizardState';
+import { clearWizardState, loadWizardState } from './wizardState';
 
 interface RecommendedCapability {
   id: string;
   display_name: string;
   description: string;
   icon: React.ElementType;
-  package_id: string;
-  hint_path: string;
 }
 
 const RECOMMENDED: RecommendedCapability[] = [
@@ -21,24 +17,18 @@ const RECOMMENDED: RecommendedCapability[] = [
     display_name: '视觉辅助',
     description: '让纯文本聊天模型能处理图片输入。',
     icon: ImageIcon,
-    package_id: 'lit-mcp-vision-auxiliary',
-    hint_path: 'extension_packages/mcp/lit_mcp_vision_auxiliary',
   },
   {
     id: 'image-gen',
     display_name: 'AI 生图',
     description: '通过你配置的图像模型生成插图。',
     icon: Paintbrush,
-    package_id: 'lit-mcp-image-gen',
-    hint_path: '/path/to/lit-mcp-image-gen',
   },
   {
     id: 'web-search',
     display_name: '网络搜索',
     description: 'DuckDuckGo / Tavily 搜索接入。',
     icon: Search,
-    package_id: 'lit-mcp-web-search',
-    hint_path: '/path/to/lit-mcp-web-search',
   },
 ];
 
@@ -66,13 +56,23 @@ export function McpRecommendedView(): JSX.Element {
   });
 
   const openWizard = (cap: RecommendedCapability) => {
+    clearWizardState();
     setWizard({
-      open: true,
-      initialPath: cap.hint_path,
+      open: false,
+      initialPath: '',
       templateHint: cap.id,
       presetSlug: cap.id.replace(/-/g, '_'),
       presetDisplayName: cap.display_name,
     });
+    window.setTimeout(() => {
+      setWizard({
+        open: true,
+        initialPath: '',
+        templateHint: cap.id,
+        presetSlug: cap.id.replace(/-/g, '_'),
+        presetDisplayName: cap.display_name,
+      });
+    }, 0);
   };
 
   return (
@@ -98,13 +98,10 @@ export function McpRecommendedView(): JSX.Element {
                   <h3 className="font-display text-sm font-semibold text-foreground">
                     {cap.display_name}
                   </h3>
-                  <span className="font-mono text-[10px] text-foreground/40 px-1.5 py-0.5 rounded bg-surface-high">
-                    {cap.package_id}
-                  </span>
                 </div>
                 <p className="mt-1 font-label text-[11px] text-foreground/55">{cap.description}</p>
-                <p className="mt-2 font-mono text-[10px] text-foreground/40 break-all">
-                  建议路径: {cap.hint_path}
+                <p className="mt-2 font-label text-[10px] text-foreground/40">
+                  在向导中选择你已经下载到本机的对应 MCP 包目录。
                 </p>
                 <button
                   type="button"
@@ -120,6 +117,7 @@ export function McpRecommendedView(): JSX.Element {
       </ul>
 
       <McpInstallWizard
+        key={`${wizard.open ? 'open' : 'closed'}:${wizard.templateHint ?? 'manual'}:${wizard.initialPath}`}
         open={wizard.open}
         initialPath={wizard.initialPath}
         templateHint={wizard.templateHint}

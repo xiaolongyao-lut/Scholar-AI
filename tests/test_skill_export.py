@@ -56,8 +56,8 @@ class TestSkillExport:
         assert data["errors"] == []
 
     def test_export_with_custom_output_path(self, client, mock_skill_service, tmp_path):
-        """Export with custom output_path passes to service."""
-        custom_path = tmp_path / "custom_export.zip"
+        """Export with custom output filename passes to service."""
+        custom_path = "custom_export.zip"
         mock_skill_service.export_user_skill.return_value = {
             "success": True,
             "skill_id": "test_skill",
@@ -72,7 +72,7 @@ class TestSkillExport:
 
         # Verify service was called with custom path
         mock_skill_service.export_user_skill.assert_called_once_with(
-            "test_skill", output_path=str(custom_path)
+            "test_skill", output_path=custom_path
         )
 
     def test_export_skill_not_found(self, client, mock_skill_service):
@@ -139,8 +139,9 @@ class TestSkillExportService:
 
         # Export
         export_root = tmp_path / "exports"
-        export_path = export_root / "test_skill.zip"
-        result = service.export_user_skill("test_skill", output_path=export_path)
+        export_path = export_root / "skill_exports" / "test_skill.zip"
+        with patch("skills.service.WORKSPACE_ARTIFACTS_ROOT", export_root):
+            result = service.export_user_skill("test_skill", output_path="test_skill.zip")
 
         assert result["success"] is True
         assert result["skill_id"] == "test_skill"
@@ -184,7 +185,8 @@ class TestSkillExportService:
         )
         service._registry.register(descriptor)
 
-        result = service.export_user_skill("test_skill")
+        with patch("skills.service.WORKSPACE_ARTIFACTS_ROOT", tmp_path):
+            result = service.export_user_skill("test_skill")
 
         assert result["success"] is True
         export_path = Path(result["export_path"])
@@ -223,3 +225,33 @@ class TestSkillExportService:
 
         with pytest.raises(ValueError, match="Skill not found"):
             service.export_user_skill("nonexistent")
+
+    def test_export_rejects_path_traversal_output_path(self, tmp_path):
+        """export_user_skill keeps custom output filenames under skill_exports."""
+        from skills.service import WritingSkillService
+        from skills.models import SkillDescriptor, SkillSource, SkillKind, UIVisibility
+
+        skill_dir = tmp_path / "test_skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("# Test", encoding="utf-8")
+
+        service = WritingSkillService(managed_root=tmp_path)
+        descriptor = SkillDescriptor(
+            id="test_skill",
+            name="Test Skill",
+            description="Test skill",
+            kind=SkillKind.TRANSFORM,
+            source=SkillSource.IMPORTED,
+            entry_mode="manual",
+            supported_scopes=["selection"],
+            ui_visibility=UIVisibility.BOTH,
+            requires_assets=False,
+            default_parameters={"installed_path": str(skill_dir)},
+        )
+        service._registry.register(descriptor)
+
+        with patch("skills.service.WORKSPACE_ARTIFACTS_ROOT", tmp_path), pytest.raises(
+            ValueError,
+            match="filename under skill_exports",
+        ):
+            service.export_user_skill("test_skill", output_path="../escape.zip")

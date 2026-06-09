@@ -9,12 +9,14 @@
  *   raw env or header values.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshCw, AlertTriangle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { RefreshCw, AlertTriangle, CheckCircle2, ShieldAlert, Trash2, ChevronDown } from 'lucide-react';
 import {
+  clearMcpAuditRecords,
   listMcpAuditRecords,
   type McpAuditRecord,
   type McpToolCapability,
 } from '@/services/mcpApi';
+import { formatMcpActionError, sanitizeMcpDisplayLabel, sanitizeMcpVisibleText } from './mcpDisplay';
 
 const CAPABILITY_OPTIONS: Array<McpToolCapability | 'all'> = [
   'all',
@@ -37,7 +39,7 @@ const CAPABILITY_LABELS_ZH: Record<McpToolCapability | 'all', string> = {
   unknown: '未分类',
 };
 
-/** 把后端返回的英文 blocked_reason 收敛成一行人话；详情仍可展开看原文。 */
+/** 把后端返回的英文 blocked_reason 收敛成一行人话。 */
 function friendlyBlockedReason(raw: string): string {
   const lower = raw.toLowerCase();
   if (lower.startsWith('approval_blocked')) return '已被授权策略拦截';
@@ -47,6 +49,17 @@ function friendlyBlockedReason(raw: string): string {
   if (lower.startsWith('rate_limit')) return '请求过于频繁，已被限流';
   if (lower.startsWith('timeout')) return '调用超时';
   return '被拦截';
+}
+
+function buildAuditServerLabels(records: McpAuditRecord[]): Map<string, string> {
+  const ids = Array.from(new Set(records.map((record) => record.server_id))).sort();
+  return new Map(
+    ids.map((serverId, index) => {
+      const fallback = `MCP 服务 ${index + 1}`;
+      const record = records.find((item) => item.server_id === serverId);
+      return [serverId, sanitizeMcpDisplayLabel(record?.server_label, fallback)];
+    }),
+  );
 }
 
 type StatusFilter = 'any' | 'ok' | 'error_or_blocked';
@@ -99,8 +112,11 @@ interface McpAuditPanelProps {
 export function McpAuditPanel({ initialLimit = 500 }: McpAuditPanelProps) {
   const [records, setRecords] = useState<McpAuditRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,13 +124,30 @@ export function McpAuditPanel({ initialLimit = 500 }: McpAuditPanelProps) {
     try {
       const resp = await listMcpAuditRecords({ limit: initialLimit });
       setRecords(resp.records);
+      setLastLoadedAt(new Date().toLocaleTimeString());
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load audit log';
-      setError(msg);
+      setError(formatMcpActionError(err, '加载 MCP 调用日志失败，请稍后重试。'));
     } finally {
       setLoading(false);
     }
   }, [initialLimit]);
+
+  const clearRecords = useCallback(async () => {
+    const confirmed = window.confirm('清空 MCP 调用日志？这只会清空本地审计展示记录，不会删除 MCP 服务配置。');
+    if (!confirmed) return;
+    setClearing(true);
+    setError(null);
+    try {
+      await clearMcpAuditRecords();
+      setRecords([]);
+      setExpandedId(null);
+      setLastLoadedAt(new Date().toLocaleTimeString());
+    } catch (err: unknown) {
+      setError(formatMcpActionError(err, '清空 MCP 调用日志失败，请稍后重试。'));
+    } finally {
+      setClearing(false);
+    }
+  }, []);
 
   useEffect(() => {
     void load();
@@ -122,11 +155,11 @@ export function McpAuditPanel({ initialLimit = 500 }: McpAuditPanelProps) {
 
   const filtered = useMemo(() => filterRecords(records, filters), [records, filters]);
 
-  const distinctServers = useMemo(() => {
-    const set = new Set<string>();
-    records.forEach((r) => set.add(r.server_id));
-    return Array.from(set).sort();
-  }, [records]);
+  const serverLabels = useMemo(() => buildAuditServerLabels(records), [records]);
+  const distinctServers = useMemo(
+    () => Array.from(serverLabels.entries()).map(([id, label]) => ({ id, label })),
+    [serverLabels],
+  );
 
   return (
     <div className="rounded-lg border border-outline-variant bg-surface-low p-3 space-y-3" data-testid="mcp-audit-panel">
@@ -136,17 +169,33 @@ export function McpAuditPanel({ initialLimit = 500 }: McpAuditPanelProps) {
           <span className="text-xs font-label text-foreground/70">
             MCP 调用日志 <span className="text-foreground/40">· 最近 {initialLimit} 条 · 显示 {filtered.length}/{records.length} 条</span>
           </span>
+          {lastLoadedAt ? (
+            <span className="font-label text-[10px] text-foreground/35">上次刷新 {lastLoadedAt}</span>
+          ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="text-xs font-label text-foreground/60 hover:text-foreground/80 inline-flex items-center gap-1 disabled:opacity-40"
-          data-testid="mcp-audit-refresh"
-        >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-          {loading ? '加载中…' : '刷新'}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void clearRecords()}
+            disabled={clearing || loading || records.length === 0}
+            className="text-xs font-label text-red-500/70 hover:text-red-500 inline-flex items-center gap-1 disabled:opacity-35"
+            data-testid="mcp-audit-clear"
+            title="清空本地 MCP 调用日志"
+          >
+            {clearing ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            清空
+          </button>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading || clearing}
+            className="text-xs font-label text-foreground/60 hover:text-foreground/80 inline-flex items-center gap-1 disabled:opacity-40"
+            data-testid="mcp-audit-refresh"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            {loading ? '加载中…' : '刷新'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-[11px]">
@@ -158,8 +207,8 @@ export function McpAuditPanel({ initialLimit = 500 }: McpAuditPanelProps) {
           aria-label="按服务筛选"
         >
           <option value="">全部服务</option>
-          {distinctServers.map((sid) => (
-            <option key={sid} value={sid}>{sid}</option>
+          {distinctServers.map((server) => (
+            <option key={server.id} value={server.id}>{server.label}</option>
           ))}
         </select>
         <input
@@ -220,10 +269,18 @@ export function McpAuditPanel({ initialLimit = 500 }: McpAuditPanelProps) {
             没有匹配的记录。
           </div>
         )}
-        {filtered.map((r) => (
+        {filtered.map((r, index) => {
+          const expanded = expandedId === r.tool_call_id;
+          const serverLabel = serverLabels.get(r.server_id) ?? 'MCP 服务';
+          const toolLabel = sanitizeMcpDisplayLabel(r.tool_name, `工具 ${index + 1}`);
+          const preview = r.preview
+            ? sanitizeMcpVisibleText(r.preview, '调用返回内容已隐藏，避免显示内部配置或本地路径。')
+            : '';
+          const blockedReason = r.blocked_reason ? friendlyBlockedReason(r.blocked_reason) : '';
+          return (
           <div
             key={r.tool_call_id}
-            className="rounded border border-outline-variant bg-surface-lowest p-2 text-[11px] space-y-1"
+            className="rounded border border-outline-variant bg-surface-lowest p-2 text-[11px] space-y-1.5"
             data-testid={`mcp-audit-record-${r.tool_call_id}`}
           >
             <div className="flex items-center justify-between gap-2">
@@ -233,8 +290,8 @@ export function McpAuditPanel({ initialLimit = 500 }: McpAuditPanelProps) {
                 ) : (
                   <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
                 )}
-                <span className="font-mono truncate">
-                  {r.server_slug || r.server_id}<span className="text-foreground/40">::</span>{r.tool_name}
+                <span className="font-label truncate">
+                  {serverLabel}<span className="text-foreground/40"> · </span>{toolLabel}
                 </span>
                 {r.capability && (
                   <span className="text-[10px] px-1 rounded bg-primary/10 text-primary">
@@ -246,25 +303,58 @@ export function McpAuditPanel({ initialLimit = 500 }: McpAuditPanelProps) {
                 {r.elapsed_ms}ms · {new Date(r.ts).toLocaleTimeString()}
               </span>
             </div>
-            {r.preview && (
+            <button
+              type="button"
+              onClick={() => setExpandedId(expanded ? null : r.tool_call_id)}
+              className="inline-flex items-center gap-1 rounded px-1 py-0.5 font-label text-[10px] text-primary hover:bg-primary/10"
+              data-testid={`mcp-audit-detail-${r.tool_call_id}`}
+            >
+              <ChevronDown size={11} className={expanded ? 'rotate-180 transition-transform' : 'transition-transform'} />
+              {expanded ? '收起详情' : '查看详情'}
+            </button>
+            {preview && (
               <p className="text-[11px] text-foreground/70 whitespace-pre-wrap break-words line-clamp-3">
-                {r.preview}{r.truncated ? '…' : ''}
+                {preview}{r.truncated ? '…' : ''}
               </p>
             )}
-            {r.blocked_reason && (
+            {blockedReason && (
               <details className="text-[10px]">
                 <summary className="cursor-pointer list-none text-amber-700 hover:underline dark:text-amber-300">
-                  {friendlyBlockedReason(r.blocked_reason)}
+                  {blockedReason}
                   <span className="ml-1 text-amber-700/60 dark:text-amber-300/70">· 查看详情</span>
                 </summary>
-                <p className="mt-1 break-all rounded bg-amber-50 px-2 py-1 font-mono text-[10px] text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
-                  {r.blocked_reason}
+                <p className="mt-1 rounded bg-amber-50 px-2 py-1 font-label text-[10px] text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                  {blockedReason}
                 </p>
               </details>
             )}
+            {expanded ? (
+              <dl className="mt-2 grid gap-2 rounded border border-outline-variant/40 bg-surface-low p-2 md:grid-cols-2">
+                <AuditDetail label="服务" value={serverLabel} />
+                <AuditDetail label="工具名称" value={toolLabel} />
+                <AuditDetail label="能力类型" value={CAPABILITY_LABELS_ZH[(r.capability ?? 'unknown') as McpToolCapability] ?? '未分类'} />
+                <AuditDetail label="状态" value={r.is_error ? '错误或被阻止' : '成功'} />
+                <AuditDetail label="耗时" value={`${r.elapsed_ms}ms`} />
+                <AuditDetail label="时间" value={new Date(r.ts).toLocaleString()} />
+                {blockedReason ? <AuditDetail label="拦截原因" value={blockedReason} /> : null}
+                {preview ? <AuditDetail label="返回预览" value={`${preview}${r.truncated ? '…' : ''}`} /> : null}
+              </dl>
+            ) : null}
           </div>
-        ))}
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+function AuditDetail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <dt className="font-label text-[10px] text-foreground/40">{label}</dt>
+      <dd className={`${mono ? 'font-mono' : 'font-label'} mt-0.5 whitespace-pre-wrap break-words text-[11px] text-foreground/70`}>
+        {value}
+      </dd>
     </div>
   );
 }

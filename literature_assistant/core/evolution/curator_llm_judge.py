@@ -1,5 +1,5 @@
 """
-LLM-judged semantic conflict detection (post-S8.1 Opt §5).
+LLM-judged semantic conflict detection.
 
 Scope:
     - Receive small batches of candidate claims that already share
@@ -14,9 +14,9 @@ Scope:
 This module is intentionally narrow:
     - No persistence.
     - No credential storage.
-    - No retry loop beyond what `gated_call` already provides.
-    - No secrets in prompts, logs, or failure output: callers must
-      have run the secret scan upstream (capture path already does).
+    - No retry loop beyond what `llm.gateway.invoke` already provides.
+    - No sensitive material in prompts, logs, or failure output: callers must
+      have run the sensitive-content scan upstream (capture path already does).
 
 Default gating: `evolution.curator_llm_judge_enabled` (false) AND
 `evolution.curator_enabled` (false). Both must be true for the curator
@@ -34,7 +34,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import httpx
 
-from model_call_gateway import gated_call
+from llm.gateway import invoke as invoke_llm_gateway
 from runtime_env import resolve_llm_config
 
 
@@ -184,7 +184,7 @@ def call_curator_llm_judge(
     """Default judge implementation. Returns a structural verdict on failure.
 
     Truncates claim list to MAX_CLAIMS_PER_BUCKET, then routes through
-    `gated_call(kind="llm", task="evolution_curator_judge", ...)` so the
+    `llm.gateway.invoke(kind="llm", task="evolution_curator_judge", ...)` so the
     call participates in the existing cache, retry, semaphore, and
     metrics infrastructure.
     """
@@ -215,7 +215,7 @@ def call_curator_llm_judge(
 
     prompt = _build_prompt(trimmed)
     try:
-        raw = gated_call(
+        raw = invoke_llm_gateway(
             kind="llm",
             cache_key_parts={
                 "model": resolved_model,
@@ -224,7 +224,7 @@ def call_curator_llm_judge(
                 "task": "evolution_curator_judge",
             },
             payload={"prompt": prompt},
-            invoke=lambda: _call_judge_once(
+            invoke_fn=lambda: _call_judge_once(
                 prompt,
                 resolved_key,
                 model=resolved_model,

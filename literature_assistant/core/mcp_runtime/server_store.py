@@ -1,11 +1,11 @@
-"""Runtime MCP server registry (Phase 1A / TASK-102).
+"""Runtime MCP server registry.
 
 JSON-on-disk persistence under ``runtime_state_path("mcp_servers",
 "runtime_mcp_servers.json")``. Atomic writes via the shared
 ``_atomic_io.atomic_write_json``, schema-version migration guard, masked
 public dump, forward-only approval state machine.
 
-Mirrors the credential_store pattern (Slice A1) but for MCP server config.
+Mirrors the credential_store pattern but for MCP server config.
 Public reads NEVER include raw env / header secret values.
 """
 
@@ -87,7 +87,7 @@ class RuntimeMcpServerStore:
             "servers": [ <McpServerConfig serialized>, ... ]
         }
 
-    Public API never exposes raw secrets in env / headers; callers receive
+    Public API never exposes credential material in env / headers; callers receive
     ``McpServerConfigPublic`` (env / header values masked).
     Internal API (``get_internal`` / ``list_internal``) returns the full
     ``McpServerConfig`` for client_manager use only — never log the result.

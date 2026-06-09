@@ -1,10 +1,10 @@
-"""Model Dispatcher (Slice C / DEC-004 / Hard Constraints #2 #3 #12 #13).
+"""Model Dispatcher.
 
 Reusable invocation semantics on top of caller-provided ``invoke(candidate)``
 functions. The dispatcher does NOT own credentials or call providers itself —
 it only orchestrates which candidate(s) run and how their results merge.
 
-Modes (plan v2 §13.1):
+Modes:
     failover       sequential; first success wins
     race           top-N concurrent; first success wins, others cancelled
     fanout         top-N concurrent; gather successes + structured errors
@@ -12,8 +12,8 @@ Modes (plan v2 §13.1):
     parallel_round per-agent slot; gather all results with agent_id/role
 
 Hard constraints honored:
-    #2  This module is for NEW callers (Slice D). The four existing A2 pool
-        callsites are NOT migrated here until Slice C+1 parity work.
+    #2  This module is for new callers. The four existing A2 pool
+        callsites are not migrated here until parity work is complete.
     #3  Race / fanout cap to ``max_concurrency`` after priority sort. Filtered
         candidates are returned as ``skipped=True``,
         ``skip_reason='skipped_by_priority_filter'``.
@@ -154,7 +154,7 @@ def dump_metadata_safe_to_log(metadata: dict[str, Any]) -> dict[str, Any]:
     """Strip private (``_``-prefixed) keys from ``DispatchCandidate.metadata``
     so the result is safe to log / serialize per the docstring contract.
 
-    Private keys carry transport-only payloads such as resolved API keys
+    Private keys carry transport-only payloads such as resolved credentials
     (``_resolved_api_key``) and inlined evidence text (``_context_items``).
     Logging them would leak secrets and large opaque blobs into operator
     surfaces. Use this helper at every dump site.

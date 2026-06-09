@@ -1,6 +1,6 @@
 """Generation Dispatch Adapter — bridge between KeyPool and ModelDispatcher.
 
-Purpose (plan v2 §13.1f.1):
+Purpose:
     Provide a reusable, pure-helper layer so that new dispatcher-aware
     callers (discussion orchestrator, future agents) can drive the SAME
     credential failover + cooldown logic that the legacy ``pool.try_call``

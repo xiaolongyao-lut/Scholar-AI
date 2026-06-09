@@ -16,11 +16,12 @@ export interface ChatHistoryMessage {
 const askWithPayload = async (
   body: Record<string, unknown>,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<ChatAskResponse> => {
   const { data } = await axios.post<ChatAskResponse>(
     `${getApiBaseUrl()}/chat/ask`,
     body,
-    { timeout: timeoutMs },
+    { timeout: timeoutMs, signal },
   );
   return data;
 };
@@ -41,6 +42,7 @@ export async function askChatWithConfig(params: {
   llm: LLMConfig;
   aiCostProfile?: 'balanced' | 'aggressive' | 'quality';
   timeoutMs?: number;
+  signal?: AbortSignal;
   fallbackMode?: 'gemini-first' | 'none';
   mcpServerIds?: string[];
 }): Promise<ChatAskResponse> {
@@ -51,6 +53,7 @@ export async function askChatWithConfig(params: {
     llm,
     aiCostProfile,
     timeoutMs = 180000,
+    signal,
     mcpServerIds,
   } = params;
 
@@ -65,7 +68,7 @@ export async function askChatWithConfig(params: {
     body.mcp_server_ids = mcpServerIds;
   }
 
-  return await askWithPayload(body, timeoutMs);
+  return await askWithPayload(body, timeoutMs, signal);
 }
 
 export interface DiscoveredModel {
@@ -83,7 +86,7 @@ export interface DiscoverModelsResult {
 
 export async function discoverModels(baseUrl: string, apiKey: string, subsystem: 'chat' | 'embedding' | 'rerank' = 'chat'): Promise<DiscoverModelsResult> {
   if (!baseUrl.trim()) {
-    return { ok: false, models: [], error: 'Base URL is empty' };
+    return { ok: false, models: [], error: '请先填写服务地址' };
   }
   try {
     const resp = await axios.post(`${getApiBaseUrl()}/api/${subsystem}/models/discover`, {

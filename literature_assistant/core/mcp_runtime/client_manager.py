@@ -1,4 +1,4 @@
-"""MCP client lifecycle manager (Phase 1B / TASK-104).
+"""MCP client lifecycle manager.
 
 Per-operation session lifecycle. Each ``list_tools`` / ``call_tool``
 opens a fresh stdio (or streamable_http) session, performs the operation,
@@ -6,9 +6,9 @@ and closes the session inside the SAME asyncio task. This avoids the
 anyio "exit cancel scope in a different task" error that appears when
 the mcp SDK's AsyncExitStack is held across HTTP request boundaries.
 
-Phase 2 tool-use loop may add an in-request session pool (open once per
+The tool-use loop may add an in-request session pool (open once per
 tool-call round, reuse for the bounded loop) but cross-request pooling
-is **out of scope for v1** (plan v0.3 §4.4 / §11).
+is **out of scope for v1**.
 
 Streamable HTTP transport persists in the store from day 1 but execution
 is gated behind ``LITERATURE_ENABLE_MCP_STREAMABLE_HTTP=1``.
@@ -52,7 +52,7 @@ class McpClientManagerError(RuntimeError):
 
 class McpStreamableHttpDisabledError(McpClientManagerError):
     """Raised when caller tries to launch streamable_http while feature flag
-    is off (plan v0.3 §4.4)."""
+    is off."""
 
 
 class McpServerLaunchError(McpClientManagerError):
@@ -71,10 +71,10 @@ class McpToolCallError(McpClientManagerError):
 def _capability_from_tool(tool: Any) -> Any:
     """Map MCP ToolAnnotations hints to McpToolCapability.
 
-    The MCP spec defines annotations as untrusted hints, but we use them to
-    soften UX gating: a self-declared read-only tool can be invoked without
-    explicit elevation, while a self-declared destructive tool stays gated
-    (we trust the server when it flags itself dangerous).
+    The MCP spec defines annotations as untrusted hints. Negative risk
+    declarations, such as ``readOnlyHint``, must not downgrade approval
+    requirements for an untrusted server; positive danger declarations still
+    raise the capability class because they make the stricter path explicit.
 
     Priority: destructive > readOnly > openWorld > unknown.
     Servers that omit annotations entirely still get UNKNOWN, which the
@@ -88,7 +88,7 @@ def _capability_from_tool(tool: Any) -> Any:
     if getattr(annotations, "destructiveHint", None) is True:
         return McpToolCapability.DESTRUCTIVE
     if getattr(annotations, "readOnlyHint", None) is True:
-        return McpToolCapability.READ
+        return McpToolCapability.UNKNOWN
     if getattr(annotations, "openWorldHint", None) is True:
         return McpToolCapability.NETWORK
     return McpToolCapability.UNKNOWN
@@ -155,12 +155,12 @@ class McpClientManager:
 
         if config.stdio is None:
             raise McpServerLaunchError(
-                f"server {config.server_id}: stdio block is None"
+                "MCP stdio configuration is missing"
             )
         validate_stdio_command(config.stdio)
         cwd = self._resolve_stdio_cwd(config)
-        # Resolve env_refs -> raw api_key values BEFORE prepare_subprocess_env
-        # so the sanitizer can apply its full policy to the merged dict.
+        # Resolve saved credential bindings before applying subprocess
+        # environment isolation.
         try:
             resolved_user_env = self._credential_resolver.resolve_env(
                 explicit_env=config.stdio.env,
@@ -168,8 +168,7 @@ class McpClientManager:
             )
         except CredentialRefError as exc:
             raise McpServerLaunchError(
-                f"server {config.server_id} env_refs resolution failed "
-                f"({exc.code}): {exc}"
+                f"MCP credential binding resolution failed ({exc.code})"
             ) from exc
         env = prepare_subprocess_env(
             server_id=config.server_id,
@@ -196,8 +195,7 @@ class McpClientManager:
                 raise
             except Exception as exc:
                 raise McpServerLaunchError(
-                    f"server {config.server_id} stdio launch failed: "
-                    f"{type(exc).__name__}: {exc}"
+                    f"MCP stdio launch failed: {type(exc).__name__}"
                 ) from exc
             yield session
 
@@ -210,7 +208,7 @@ class McpClientManager:
         """
         if config.stdio is None:
             raise McpServerLaunchError(
-                f"server {config.server_id}: stdio block is None"
+                "MCP stdio configuration is missing"
             )
         raw_cwd = (config.stdio.cwd or "").strip()
         if not raw_cwd:
@@ -219,11 +217,11 @@ class McpClientManager:
             resolved = Path(raw_cwd).expanduser().resolve(strict=True)
         except OSError as exc:
             raise McpServerLaunchError(
-                f"server {config.server_id}: cwd is not accessible: {raw_cwd!r}"
+                "MCP working directory is not accessible"
             ) from exc
         if not resolved.is_dir():
             raise McpServerLaunchError(
-                f"server {config.server_id}: cwd is not a directory: {raw_cwd!r}"
+                "MCP working directory is not a directory"
             )
         return str(resolved)
 
@@ -238,7 +236,7 @@ class McpClientManager:
 
         if config.http is None:
             raise McpServerLaunchError(
-                f"server {config.server_id}: http block is None"
+                "MCP HTTP configuration is missing"
             )
         validate_streamable_http_url(config.http.url)
         try:
@@ -248,8 +246,7 @@ class McpClientManager:
             )
         except CredentialRefError as exc:
             raise McpServerLaunchError(
-                f"server {config.server_id} header_refs resolution failed "
-                f"({exc.code}): {exc}"
+                f"MCP credential binding resolution failed ({exc.code})"
             ) from exc
         async with AsyncExitStack() as stack:
             try:
@@ -269,8 +266,7 @@ class McpClientManager:
                 )
             except Exception as exc:
                 raise McpServerLaunchError(
-                    f"server {config.server_id} streamable_http launch failed: "
-                    f"{type(exc).__name__}: {exc}"
+                    f"MCP streamable HTTP launch failed: {type(exc).__name__}"
                 ) from exc
             yield session
 
@@ -307,7 +303,7 @@ class McpClientManager:
         """Open a session, invoke a tool, close session.
 
         Returns ``{"is_error": bool, "content": [...]}`` — provider-native
-        formatting happens in Phase 2 ``tool_result_formatter``.
+        formatting happens in ``tool_result_formatter``.
         """
         async with self._session_for(config) as session:
             try:
@@ -317,13 +313,11 @@ class McpClientManager:
                 )
             except asyncio.TimeoutError as exc:
                 raise McpToolCallError(
-                    f"tool {tool_name!r} on server {config.server_id} timed "
-                    f"out after {self._policy.per_call_timeout_seconds}s"
+                    f"MCP tool call timed out after {self._policy.per_call_timeout_seconds}s"
                 ) from exc
             except Exception as exc:
                 raise McpToolCallError(
-                    f"tool {tool_name!r} on server {config.server_id} "
-                    f"raised: {type(exc).__name__}"
+                    f"MCP tool call failed: {type(exc).__name__}"
                 ) from exc
 
             content_parts: list[dict[str, Any]] = []

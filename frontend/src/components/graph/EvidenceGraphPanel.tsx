@@ -10,6 +10,7 @@ import {
 interface EvidenceGraphPanelProps {
   query: string;
   sources: ReadonlyArray<WorkbenchSource>;
+  projectId?: string | null;
   /** Optional fixed height for the embedded viewer; defaults to 280 px. */
   height?: number;
   /** Optional initial open state; default collapsed to keep the chat scroll cheap. */
@@ -37,6 +38,7 @@ interface EvidenceGraphPanelProps {
 export function EvidenceGraphPanel({
   query,
   sources,
+  projectId,
   height = 280,
   defaultOpen = false,
   className,
@@ -76,7 +78,7 @@ export function EvidenceGraphPanel({
           className="mt-2 rounded border border-outline-variant/40 bg-surface-lowest"
           style={{ height }}
         >
-          <GraphPayloadViewer payload={payload} />
+          <GraphPayloadViewer payload={payload} projectId={projectId} />
         </div>
       )}
     </div>

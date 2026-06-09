@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ArrowLeft,
   Check,
+  ChevronRight,
   Download,
-  Edit3,
   Eye,
   EyeOff,
   Loader2,
@@ -17,7 +18,9 @@ import {
 } from 'lucide-react';
 import {
   type CredentialCategory,
+  isCredentialNotFoundError,
   type CredentialProtocol,
+  type CredentialStrategyHint,
   type CredentialTrustSource,
   type RuntimeCredentialCreate,
   type RuntimeCredentialPublic,
@@ -30,7 +33,7 @@ import {
   updateCredential,
 } from '@/services/credentialsApi';
 import { discoverModels, type DiscoveredModel } from '@/services/chatApi';
-import { loadSettings, saveSettings, type LLMConfig } from '@/services/settingsStore';
+import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Local UI state
@@ -45,6 +48,7 @@ interface FormState {
   base_url: string;
   protocol: CredentialProtocol;
   api_key: string;
+  strategy_hint: CredentialStrategyHint;
   trust_source: CredentialTrustSource;
   enabled: boolean;
   notes: string;
@@ -57,11 +61,12 @@ const EMPTY_FORM: FormState = {
   base_url: '',
   protocol: 'openai_chat_completions',
   api_key: '',
+  strategy_hint: 'medium',
   // 2026-05-24: default to runtime_user_confirmed so a freshly-created
   // credential pointing at a third-party / NewAPI / sub2api gateway is
   // usable immediately — the prior `runtime_untrusted_custom` default
-  // showed a confusing "已拦截 official_provider_host_mismatch" badge in
-  // the list until the user manually re-saved with a different trust source.
+  // showed a confusing internal rejection badge until the user manually
+  // re-saved with a different trust source.
   trust_source: 'runtime_user_confirmed',
   enabled: true,
   notes: '',
@@ -69,7 +74,7 @@ const EMPTY_FORM: FormState = {
 
 const CATEGORY_OPTIONS: CredentialCategory[] = ['generation', 'embedding', 'rerank'];
 const CATEGORY_LABELS: Record<CredentialCategory, string> = {
-  generation: '聊天与生成',
+  generation: '研读和写作',
   embedding: '语义召回',
   rerank: '语义精排',
 };
@@ -81,9 +86,9 @@ const PROTOCOL_OPTIONS: CredentialProtocol[] = [
   'rerank',
 ];
 const PROTOCOL_LABELS: Record<CredentialProtocol, string> = {
-  openai_chat_completions: 'OpenAI 聊天补全',
-  openai_responses: 'OpenAI Responses',
-  anthropic_messages: 'Anthropic Messages',
+  openai_chat_completions: '聊天补全兼容',
+  openai_responses: '响应式兼容',
+  anthropic_messages: '消息协议兼容',
   embeddings: '向量嵌入',
   rerank: '重排序',
 };
@@ -93,11 +98,88 @@ const TRUST_OPTIONS: { value: CredentialTrustSource; label: string }[] = [
   { value: 'runtime_user_confirmed', label: '本机已确认' },
   { value: 'runtime_untrusted_custom', label: '本机待确认' },
 ];
+const STRATEGY_OPTIONS: { value: CredentialStrategyHint; label: string; hint: string }[] = [
+  { value: 'low', label: '低', hint: '低成本、短问答优先' },
+  { value: 'medium', label: '中', hint: '默认平衡档' },
+  { value: 'high', label: '高', hint: '复杂分析与长证据' },
+  { value: 'xhigh', label: 'XHigh', hint: 'Codex 路由优先' },
+  { value: 'max', label: 'Max', hint: 'Claude Max 路由优先' },
+];
+const INPUT_CLASS = 'min-w-0 max-w-full w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground transition-colors placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none disabled:opacity-60';
+
+function defaultProtocolForCategory(category: CredentialCategory): CredentialProtocol {
+  if (category === 'embedding') {
+    return 'embeddings';
+  }
+  if (category === 'rerank') {
+    return 'rerank';
+  }
+  return 'openai_chat_completions';
+}
+
+function canonicalStrategyHint(value: CredentialStrategyHint | string | null | undefined): CredentialStrategyHint {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'low' || normalized === 'cheap' || normalized === 'save' || normalized === 'aggressive') {
+    return 'low';
+  }
+  if (normalized === 'high' || normalized === 'quality' || normalized === 'high-quality' || normalized === 'high_quality') {
+    return 'high';
+  }
+  if (normalized === 'xhigh') {
+    return 'xhigh';
+  }
+  if (normalized === 'max') {
+    return 'max';
+  }
+  return 'medium';
+}
+
+export function strategyHintLabel(value: CredentialStrategyHint | string | null | undefined): string {
+  const canonical = canonicalStrategyHint(value);
+  return STRATEGY_OPTIONS.find(option => option.value === canonical)?.label ?? '中';
+}
+
+function strategyHintDescription(value: CredentialStrategyHint | string | null | undefined): string {
+  const canonical = canonicalStrategyHint(value);
+  const option = STRATEGY_OPTIONS.find(item => item.value === canonical);
+  return option ? `${option.label} · ${option.hint}` : '中 · 默认平衡档';
+}
+
+const CREDENTIAL_INTERNAL_TEXT_PATTERN =
+  /(?:\/api\/|https?:\/\/|[A-Za-z]:[\\/]|api[_-]?key|base[_-]?url|authorization|bearer|token|secret|env=|env_refs|sk-[A-Za-z0-9_-]+|\b[a-z]+(?:_[a-z0-9]+){1,}\b|[{}[\]"`]|[A-Za-z0-9+/]{32,}={0,2})/i;
+
+export function sanitizeCredentialVisibleText(value: unknown, fallback: string): string {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw || raw.length > 180 || CREDENTIAL_INTERNAL_TEXT_PATTERN.test(raw)) {
+    return fallback;
+  }
+  return raw;
+}
+
+export function formatCredentialProbeError(
+  value: unknown,
+  fallback = '连接失败，请检查服务地址、访问密钥和接口协议。',
+): string {
+  return sanitizeCredentialVisibleText(value, fallback);
+}
+
+export function formatCredentialCardSecondary(credential: Pick<RuntimeCredentialPublic, 'base_url' | 'has_api_key'>): string {
+  const address = credential.base_url.trim() ? '服务地址已填写' : '未填写服务地址';
+  const secret = credential.has_api_key ? '访问密钥已保存' : '未保存访问密钥';
+  return `${address} · ${secret}`;
+}
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
+/**
+ * Renders the reusable API credential manager.
+ *
+ * The component keeps credential material in the existing backend credential API and only
+ * edits masked/public credential metadata on screen unless the user enters a
+ * new access credential explicitly.
+ */
 export function CredentialsSection(): JSX.Element {
   const [list, setList] = useState<RuntimeCredentialPublic[]>([]);
   const [loading, setLoading] = useState(false);
@@ -123,6 +205,25 @@ export function CredentialsSection(): JSX.Element {
       setLoading(false);
     }
   }, []);
+
+  const handleMissingCredential = useCallback(async (credentialId: string) => {
+    setMode('idle');
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setRevealKey(false);
+    setPendingTrust(current => (
+      current?.credential_id === credentialId ? null : current
+    ));
+    setTestResult(current => {
+      if (!(credentialId in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[credentialId];
+      return next;
+    });
+    await refresh();
+  }, [refresh]);
 
   useEffect(() => {
     refresh();
@@ -160,6 +261,7 @@ export function CredentialsSection(): JSX.Element {
       base_url: cred.base_url,
       protocol: cred.protocol,
       api_key: '',
+      strategy_hint: canonicalStrategyHint(cred.strategy_hint),
       trust_source: cred.trust_source,
       enabled: cred.enabled,
       notes: cred.notes ?? '',
@@ -186,6 +288,7 @@ export function CredentialsSection(): JSX.Element {
           base_url: form.base_url.trim(),
           protocol: form.protocol,
           api_key: form.api_key,
+          strategy_hint: form.strategy_hint,
           trust_source: form.trust_source,
           enabled: form.enabled,
           notes: form.notes,
@@ -197,6 +300,7 @@ export function CredentialsSection(): JSX.Element {
           model: form.model.trim() || undefined,
           base_url: form.base_url.trim() || undefined,
           protocol: form.protocol,
+          strategy_hint: form.strategy_hint,
           trust_source: form.trust_source,
           enabled: form.enabled,
           notes: form.notes,
@@ -209,7 +313,12 @@ export function CredentialsSection(): JSX.Element {
       onCancel();
       await refresh();
     } catch (exc) {
-      setError(toMessage(exc));
+      if (mode === 'edit' && editingId && isCredentialNotFoundError(exc)) {
+        await handleMissingCredential(editingId);
+        setError('该 API 凭证已不存在，列表已刷新。请重新选择或新建凭证。');
+      } else {
+        setError(toMessage(exc));
+      }
     } finally {
       setBusyId(null);
     }
@@ -223,6 +332,9 @@ export function CredentialsSection(): JSX.Element {
     try {
       await deleteCredential(cred.credential_id);
       await refresh();
+      if (editingId === cred.credential_id) {
+        onCancel();
+      }
     } catch (exc) {
       setError(toMessage(exc));
     } finally {
@@ -264,9 +376,14 @@ export function CredentialsSection(): JSX.Element {
       setPendingTrust(null);
       await refresh();
       // Re-test now that trust has been upgraded
-      await onTest(cred);
+      await onTest({ ...cred, trust_source: 'runtime_user_confirmed' });
     } catch (exc) {
-      setError(toMessage(exc));
+      if (isCredentialNotFoundError(exc)) {
+        await handleMissingCredential(cred.credential_id);
+        setError('该 API 凭证已不存在，列表已刷新。请重新选择或新建凭证。');
+      } else {
+        setError(toMessage(exc));
+      }
     } finally {
       setBusyId(null);
     }
@@ -280,7 +397,7 @@ export function CredentialsSection(): JSX.Element {
     if (!legacyKey) return;
     if (
       !window.confirm(
-        '浏览器旧设置里发现了一个 API Key。是否作为新的 API 配置导入并补全提供商与模型？',
+        '浏览器旧设置里发现了一个访问密钥。是否作为新的 API 配置导入并补全提供商与模型？',
       )
     ) {
       return;
@@ -306,47 +423,70 @@ export function CredentialsSection(): JSX.Element {
     }
   };
 
+  const selectedCredential = useMemo(
+    () => (editingId ? list.find(cred => cred.credential_id === editingId) ?? null : null),
+    [editingId, list],
+  );
+  const selectedStatusBadge = useMemo(
+    () => selectedCredential
+      ? credentialStatusBadge(selectedCredential, testResult[selectedCredential.credential_id])
+      : null,
+    [selectedCredential, testResult],
+  );
+  const detailOpen = mode !== 'idle';
+  const detailTitle = mode === 'create'
+    ? '新增 API'
+    : selectedCredential
+      ? `${selectedCredential.provider || '未命名提供商'} / ${selectedCredential.model || '未填模型'}`
+      : '编辑 API';
+  const detailSubtitle = mode === 'create'
+    ? '创建后会出现在列表中，可被研读和写作、语义路由和多智能体复用。'
+    : selectedCredential
+      ? `${CATEGORY_LABELS[selectedCredential.category]} · ${formatCredentialCardSecondary(selectedCredential)}`
+      : '该 API 凭证可能已被删除，请返回列表刷新。';
+
   // ------------------------------------------------------------------ render
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="rounded-lg border border-outline-variant bg-surface-lowest p-4 shadow-sm">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h3 className="font-headline text-base font-semibold text-foreground">
             API 凭证
           </h3>
-          <p className="font-label text-[11px] text-foreground/50 mt-0.5">
-            管理聊天、语义路由和多智能体可复用的 API 配置。
+          <p className="mt-1 font-label text-xs text-foreground/45">
+            统一管理可复用的提供商、服务地址、模型、密钥和调用档位。
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={loading}
-            aria-label="刷新 API 列表"
-            className="p-2 text-foreground/60 hover:text-foreground rounded-md hover:bg-surface-high transition-colors"
-            title="刷新"
-          >
-            {loading ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
-          </button>
-          <button
-            type="button"
-            onClick={onAddNew}
-            className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs font-medium hover:bg-primary/90 transition-all"
-          >
-            <Plus size={12} aria-hidden="true" /> 新增
-          </button>
-        </div>
+        {!detailOpen ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={loading}
+              aria-label="刷新 API 列表"
+              className="rounded-md p-2 text-foreground/60 transition-colors hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              title="刷新"
+            >
+              {loading ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
+            </button>
+            <button
+              type="button"
+              onClick={onAddNew}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <Plus size={12} aria-hidden="true" /> 新增
+            </button>
+          </div>
+        ) : null}
       </div>
-
       {legacyKey && (
-        <div className="border border-amber-300 bg-amber-50 rounded-lg p-3 flex items-start gap-3 dark:border-amber-700/40 dark:bg-amber-500/15">
-          <Upload size={14} className="text-amber-700 mt-0.5 dark:text-amber-300" aria-hidden="true" />
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700/40 dark:bg-amber-500/15">
+          <Upload size={14} className="mt-0.5 text-amber-700 dark:text-amber-300" aria-hidden="true" />
           <div className="flex-1">
-            <p className="font-label text-xs text-amber-900 leading-relaxed dark:text-amber-200">
-              浏览器旧设置里发现了一个 API Key。可以导入为本机 API 配置，系统不会自动导入。
+            <p className="font-label text-xs leading-relaxed text-amber-900 dark:text-amber-200">
+              浏览器旧设置里发现了一个访问密钥。可以导入为本机 API 配置，系统不会自动导入。
             </p>
-            <div className="flex gap-2 mt-2">
+            <div className="mt-2 flex gap-2">
               <button
                 type="button"
                 onClick={onImportLegacy}
@@ -368,12 +508,12 @@ export function CredentialsSection(): JSX.Element {
 
       {error && (
         <div
-          className="border border-red-300 bg-red-50 rounded-lg p-3 flex items-start gap-2 dark:border-red-700/40 dark:bg-red-500/15"
+          className="mb-4 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 dark:border-red-700/40 dark:bg-red-500/15"
           role="alert"
           aria-live="polite"
         >
-          <ShieldAlert size={14} className="text-red-700 mt-0.5 dark:text-red-300" aria-hidden="true" />
-          <p className="font-label text-xs text-red-900 flex-1 dark:text-red-200">{error}</p>
+          <ShieldAlert size={14} className="mt-0.5 text-red-700 dark:text-red-300" aria-hidden="true" />
+          <p className="flex-1 font-label text-xs text-red-900 dark:text-red-200">{error}</p>
           <button
             type="button"
             onClick={() => setError(null)}
@@ -385,50 +525,106 @@ export function CredentialsSection(): JSX.Element {
         </div>
       )}
 
-      {mode !== 'idle' && (
-        <CredentialForm
-          mode={mode}
-          form={form}
-          onForm={setForm}
-          revealKey={revealKey}
-          onToggleReveal={() => setRevealKey(v => !v)}
-          onCancel={onCancel}
-          onSubmit={onSubmit}
-          busy={busyId === '__form__'}
-          editingId={mode === 'edit' ? editingId : null}
-        />
-      )}
+      {!detailOpen ? (
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+          {loading && list.length === 0 ? (
+            <div className="rounded-lg border border-outline-variant/50 bg-surface-low px-3 py-4 text-center text-xs text-foreground/45 sm:col-span-2">
+              <Loader2 size={14} className="mx-auto mb-2 animate-spin" aria-hidden="true" />
+              正在加载 API 凭证
+            </div>
+          ) : null}
 
-      <div className="space-y-2">
-        {list.length === 0 && !loading && (
-          <div className="border border-dashed border-outline-variant rounded-lg p-6 text-center">
-            <p className="font-label text-xs text-foreground/50">
-              还没有保存 API。点击“新增”添加一套配置。
-            </p>
+          {list.length === 0 && !loading ? (
+            <div className="rounded-lg border border-dashed border-outline-variant/70 bg-surface-low px-4 py-8 text-center sm:col-span-2">
+              <p className="font-label text-xs text-foreground/50">
+                还没有保存 API。点击“新增”添加一套配置。
+              </p>
+              <button
+                type="button"
+                onClick={onAddNew}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <Plus size={12} aria-hidden="true" /> 新增 API
+              </button>
+            </div>
+          ) : null}
+
+          {list.map(cred => (
+            <CredentialListItem
+              key={cred.credential_id}
+              cred={cred}
+              active={false}
+              test={testResult[cred.credential_id]}
+              busy={busyId === cred.credential_id}
+              onSelect={() => onEdit(cred)}
+              onEdit={() => onEdit(cred)}
+              onDelete={() => onDelete(cred)}
+              onTest={() => onTest(cred)}
+              onConfirmTrust={
+                pendingTrust && pendingTrust.credential_id === cred.credential_id
+                  ? () => onConfirmTrust(cred)
+                  : null
+              }
+              onCancelTrust={
+                pendingTrust && pendingTrust.credential_id === cred.credential_id
+                  ? onCancelTrust
+                  : null
+              }
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="min-w-0 space-y-4 rounded-lg border border-outline-variant/50 bg-surface-low p-4 sm:p-5">
+          <div className="flex flex-col gap-3 border-b border-outline-variant/40 pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-outline-variant bg-surface-lowest text-foreground/60 transition-colors hover:border-primary/35 hover:text-primary"
+                aria-label="返回 API 列表"
+                title="返回"
+              >
+                <ArrowLeft size={15} aria-hidden="true" />
+              </button>
+              <div className="min-w-0">
+                <h4 className="truncate font-headline text-sm font-semibold text-foreground">
+                  {detailTitle}
+                </h4>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-foreground/45">
+                  {detailSubtitle}
+                </p>
+              </div>
+            </div>
+            {mode === 'edit' && selectedCredential && selectedStatusBadge ? (
+              <span
+                className={cn('inline-flex w-fit max-w-full items-center truncate rounded-md px-2 py-1 text-[10px]', selectedStatusBadge.cls)}
+                title={selectedStatusBadge.label}
+              >
+                {selectedStatusBadge.label}
+              </span>
+            ) : null}
           </div>
-        )}
-        {list.map(cred => (
-          <CredentialCard
-            key={cred.credential_id}
-            cred={cred}
-            test={testResult[cred.credential_id]}
-            busy={busyId === cred.credential_id}
-            onEdit={() => onEdit(cred)}
-            onDelete={() => onDelete(cred)}
-            onTest={() => onTest(cred)}
-            onConfirmTrust={
-              pendingTrust && pendingTrust.credential_id === cred.credential_id
-                ? () => onConfirmTrust(cred)
-                : null
-            }
-            onCancelTrust={
-              pendingTrust && pendingTrust.credential_id === cred.credential_id
-                ? onCancelTrust
-                : null
-            }
-          />
-        ))}
-      </div>
+
+          {mode === 'edit' && !selectedCredential ? (
+            <div className="rounded-lg border border-dashed border-outline-variant/70 bg-surface-lowest px-4 py-8 text-center">
+              <p className="font-label text-xs text-foreground/50">
+                该 API 凭证已不在当前列表中。返回列表刷新后重新选择。
+              </p>
+            </div>
+          ) : (
+            <CredentialForm
+              mode={mode}
+              form={form}
+              onForm={setForm}
+              revealKey={revealKey}
+              onToggleReveal={() => setRevealKey(v => !v)}
+              onCancel={onCancel}
+              onSubmit={onSubmit}
+              busy={busyId === '__form__'}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -446,10 +642,6 @@ interface CredentialFormProps {
   onCancel: () => void;
   onSubmit: () => void;
   busy: boolean;
-  /** When editing an existing credential, pass its id so the "测试连接"
-   *  button can call /test against the persisted record. Omitted in
-   *  create mode (test happens after save). */
-  editingId?: string | null;
 }
 
 function CredentialForm({
@@ -461,7 +653,6 @@ function CredentialForm({
   onCancel,
   onSubmit,
   busy,
-  editingId,
 }: CredentialFormProps) {
   const baseId = React.useId();
   const fieldId = (suffix: string) => `${baseId}-${suffix}`;
@@ -470,23 +661,6 @@ function CredentialForm({
   const [discovered, setDiscovered] = useState<DiscoveredModel[] | null>(null);
   const [testing, setTesting] = useState(false);
   const [testMessage, setTestMessage] = useState<string | null>(null);
-
-  // 2026-05-24 (Slice ν): per-credential form also surfaces the global
-  // LLMConfig (温度 / top_p / max_tokens / system_prompt) so the user
-  // doesn't have to bounce to 「聊天与生成」 just to set sampling. These
-  // values are global (shared by all generation credentials) — when the
-  // backend gains per-credential overrides, this block can store on
-  // `form` instead. For now: edit in-place, persist to settings.
-  const [llmCfg, setLlmCfg] = useState<LLMConfig>(() => loadSettings().llm);
-  const updateLlm = useCallback((patch: Partial<LLMConfig>) => {
-    setLlmCfg(prev => {
-      const next = { ...prev, ...patch };
-      const all = loadSettings();
-      all.llm = next;
-      saveSettings(all);
-      return next;
-    });
-  }, []);
 
   // Subsystem mapping: a credential's category drives which /api/{x}/models/
   // discover backend endpoint we call. Generation → chat;
@@ -505,15 +679,15 @@ function CredentialForm({
     try {
       const result = await discoverModels(form.base_url, form.api_key, subsystem);
       if (!result.ok) {
-        setDiscoverError(result.error || '未能获取模型列表');
+        setDiscoverError(formatCredentialProbeError(result.error, '未能获取模型列表，请检查服务配置。'));
         return;
       }
       setDiscovered(result.models);
       if (result.models.length === 0) {
-        setDiscoverError('上游返回空列表 — 请确认 API Key 与协议是否匹配');
+        setDiscoverError('上游返回空列表 — 请确认访问密钥与接口协议是否匹配');
       }
     } catch (err) {
-      setDiscoverError(err instanceof Error ? err.message : String(err));
+      setDiscoverError(formatCredentialProbeError(err instanceof Error ? err.message : String(err), '未能获取模型列表，请稍后重试。'));
     } finally {
       setDiscovering(false);
     }
@@ -527,7 +701,7 @@ function CredentialForm({
     setTesting(true);
     setTestMessage(null);
     try {
-      // 2026-05-24: parity with 「聊天与生成」 — probe directly from form
+      // 2026-05-24: parity with 「研读和写作」 — probe directly from form
       // data (base_url + api_key) without requiring a saved credential id.
       // Reuses `/api/{subsystem}/models/discover` which already does an
       // authenticated GET against the upstream and returns ok/error.
@@ -536,34 +710,33 @@ function CredentialForm({
       const result = await discoverModels(form.base_url, form.api_key, subsystem);
       if (result.ok) {
         const count = result.models.length;
-        const endpoint = result.endpoint ? ` · ${result.endpoint}` : '';
         setTestMessage(
           count > 0
-            ? `✓ 连接正常 · 上游返回 ${count} 个可用模型${endpoint}`
-            : `✓ 连接正常${endpoint}`,
+            ? `✓ 连接正常 · 上游返回 ${count} 个可用模型`
+            : '✓ 连接正常',
         );
       } else {
-        setTestMessage(`✗ ${result.error || '连接失败'}`);
+        setTestMessage(`✗ ${formatCredentialProbeError(result.error)}`);
       }
     } catch (err) {
-      setTestMessage(`✗ ${err instanceof Error ? err.message : String(err)}`);
+      setTestMessage(`✗ ${formatCredentialProbeError(err instanceof Error ? err.message : String(err))}`);
     } finally {
       setTesting(false);
     }
   }, [form.base_url, form.api_key, subsystem]);
 
   return (
-    <div className="border border-outline-variant rounded-lg p-4 bg-surface-low space-y-3">
-      <h4 className="font-headline text-sm font-semibold text-foreground">
-        {mode === 'create' ? '新增 API' : '编辑 API'}
-      </h4>
-      <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-4">
+      <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
         <FormField label="用途" htmlFor={fieldId('category')}>
           <select
             id={fieldId('category')}
             value={form.category}
-            onChange={e => onForm({ ...form, category: e.target.value as CredentialCategory })}
-            className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface"
+            onChange={e => {
+              const category = e.target.value as CredentialCategory;
+              onForm({ ...form, category, protocol: defaultProtocolForCategory(category) });
+            }}
+            className={INPUT_CLASS}
           >
             {CATEGORY_OPTIONS.map(c => (
               <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
@@ -576,26 +749,26 @@ function CredentialForm({
             type="text"
             value={form.provider}
             onChange={e => onForm({ ...form, provider: e.target.value })}
-            placeholder="OpenAI / Anthropic / DeepSeek / ..."
-            className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface"
+            placeholder="任意兼容服务名称，可手动填写"
+            className={INPUT_CLASS}
           />
         </FormField>
         <FormField label="模型" htmlFor={fieldId('model')}>
-          <div className="flex gap-1.5">
+          <div className="flex min-w-0 gap-1.5">
             <input
               id={fieldId('model')}
               type="text"
               value={form.model}
               onChange={e => onForm({ ...form, model: e.target.value })}
-              placeholder="gpt-4o / claude-opus-4-7 / ..."
-              className="flex-1 min-w-0 px-2 py-1.5 border border-outline rounded text-xs bg-surface"
+              placeholder="填写服务提供的模型名称"
+              className="min-w-0 flex-1 rounded border border-outline bg-surface px-2 py-1.5 text-xs"
             />
             <button
               type="button"
               onClick={handleDiscover}
               disabled={discovering || !form.base_url.trim()}
-              title="向服务地址发送 GET /v1/models 自动获取可用模型(NewAPI/sub2api/OneAPI/Ollama/vLLM 等 OpenAI 兼容端点均支持)"
-              className="shrink-0 inline-flex items-center gap-1 px-2 py-1.5 border border-outline rounded text-[11px] font-medium text-foreground/75 hover:bg-surface-high hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+              title="尝试从服务地址读取可用模型"
+              className="inline-flex shrink-0 items-center gap-1 rounded border border-outline px-2 py-1.5 text-[11px] font-medium text-foreground/75 hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
               {discovering ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
               获取模型
@@ -615,7 +788,7 @@ function CredentialForm({
                     setDiscovered(null);
                     setDiscoverError(null);
                   }}
-                  className="w-full text-left px-2 py-1 text-[11px] hover:bg-primary/10 font-mono text-foreground/85"
+                  className="w-full min-w-0 truncate px-2 py-1 text-left font-mono text-[11px] text-foreground/85 hover:bg-primary/10"
                   title={m.description || m.name}
                 >
                   {m.id}
@@ -632,12 +805,29 @@ function CredentialForm({
             id={fieldId('protocol')}
             value={form.protocol}
             onChange={e => onForm({ ...form, protocol: e.target.value as CredentialProtocol })}
-            className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface"
+            className={INPUT_CLASS}
           >
             {PROTOCOL_OPTIONS.map(p => (
               <option key={p} value={p}>{PROTOCOL_LABELS[p]}</option>
             ))}
           </select>
+        </FormField>
+        <FormField label="调用档位" htmlFor={fieldId('strategy')}>
+          <select
+            id={fieldId('strategy')}
+            value={form.strategy_hint}
+            onChange={e => onForm({ ...form, strategy_hint: e.target.value as CredentialStrategyHint })}
+            className={INPUT_CLASS}
+          >
+            {STRATEGY_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label} · {option.hint}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[10px] leading-relaxed text-foreground/45">
+            {strategyHintDescription(form.strategy_hint)}。低/中/高控制成本与上下文预算；XHigh 和 Max 用于区分 Codex、Claude Max 等高预算模型路由。
+          </p>
         </FormField>
         <FormField label="服务地址" full htmlFor={fieldId('base-url')}>
           <input
@@ -645,32 +835,32 @@ function CredentialForm({
             type="url"
             value={form.base_url}
             onChange={e => onForm({ ...form, base_url: e.target.value })}
-            placeholder="https://api.openai.com/v1 · https://your-newapi.com/v1 · http://localhost:11434"
-            className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface font-mono"
+            placeholder="填写兼容服务地址"
+            className={`${INPUT_CLASS} font-mono text-xs`}
           />
           <p className="mt-1 text-[10px] text-foreground/50">
-            填到 <code className="px-0.5 rounded bg-surface-high font-mono">/v1</code> 一级即可。任何 OpenAI 兼容端点(NewAPI、sub2api、OneAPI、Ollama、vLLM、LM Studio、OpenRouter、SiliconFlow 等)均可使用,无需匹配官方域名。
+            请按服务商文档填写兼容地址；官方、聚合或本地服务都可以手动填写，无需固定域名。
           </p>
         </FormField>
         <FormField
-          label={mode === 'edit' ? 'API Key（留空保留当前值）' : 'API Key'}
+          label={mode === 'edit' ? '访问密钥（留空保留当前值）' : '访问密钥'}
           full
           htmlFor={fieldId('api-key')}
         >
-          <div className="flex gap-2">
+          <div className="flex min-w-0 gap-2">
             <input
               id={fieldId('api-key')}
               type={revealKey ? 'text' : 'password'}
               value={form.api_key}
               onChange={e => onForm({ ...form, api_key: e.target.value })}
-              placeholder={mode === 'edit' ? '••••••••' : 'sk-...'}
-              className="flex-1 px-2 py-1.5 border border-outline rounded text-xs bg-surface font-mono"
+              placeholder={mode === 'edit' ? '已保存，留空保留' : '粘贴服务提供的访问密钥'}
+              className="min-w-0 flex-1 rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 font-mono text-xs text-foreground transition-colors placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none disabled:opacity-60"
               autoComplete="off"
             />
             <button
               type="button"
               onClick={onToggleReveal}
-              aria-label={revealKey ? '隐藏 API Key' : '显示 API Key'}
+              aria-label={revealKey ? '隐藏访问密钥' : '显示访问密钥'}
               aria-pressed={revealKey}
               className="px-2 text-foreground/50 hover:text-foreground"
               title={revealKey ? '隐藏' : '显示'}
@@ -684,7 +874,7 @@ function CredentialForm({
             id={fieldId('trust')}
             value={form.trust_source}
             onChange={e => onForm({ ...form, trust_source: e.target.value as CredentialTrustSource })}
-            className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface"
+            className={INPUT_CLASS}
           >
             {TRUST_OPTIONS.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -698,7 +888,7 @@ function CredentialForm({
             value={form.notes}
             onChange={e => onForm({ ...form, notes: e.target.value })}
             placeholder="可选"
-            className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface"
+            className={INPUT_CLASS}
           />
         </FormField>
         <FormField label="启用" htmlFor={fieldId('enabled')}>
@@ -711,102 +901,7 @@ function CredentialForm({
           />
         </FormField>
       </div>
-
-      {form.category === 'generation' && (
-        <div className="mt-2 rounded border border-outline-variant/60 bg-surface-lowest px-3 py-2.5 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-medium text-foreground/65">采样参数(全局)</p>
-            <p className="text-[10px] text-foreground/45">
-              所有「聊天与生成」类凭证共享,影响 Dialog / 智能研读 / 多智能体等接口
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label
-                htmlFor={fieldId('llm-temperature')}
-                className="font-label text-[10px] font-medium text-foreground/60 uppercase tracking-wide"
-              >
-                温度系数
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  id={fieldId('llm-temperature')}
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  value={llmCfg.temperature}
-                  onChange={e => updateLlm({ temperature: Number(e.target.value) })}
-                  className="flex-1 accent-primary"
-                />
-                <span className="w-9 text-right text-[11px] font-mono text-foreground/75">{llmCfg.temperature.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label
-                htmlFor={fieldId('llm-topp')}
-                className="font-label text-[10px] font-medium text-foreground/60 uppercase tracking-wide"
-              >
-                核采样(top_p)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  id={fieldId('llm-topp')}
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={llmCfg.topP}
-                  onChange={e => updateLlm({ topP: Number(e.target.value) })}
-                  className="flex-1 accent-primary"
-                />
-                <span className="w-9 text-right text-[11px] font-mono text-foreground/75">{llmCfg.topP.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label
-                htmlFor={fieldId('llm-maxtok')}
-                className="font-label text-[10px] font-medium text-foreground/60 uppercase tracking-wide"
-              >
-                最大生成长度
-              </label>
-              <input
-                id={fieldId('llm-maxtok')}
-                type="number"
-                min={64}
-                max={32768}
-                step={64}
-                value={llmCfg.maxTokens}
-                onChange={e => {
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n) && n > 0) updateLlm({ maxTokens: n });
-                }}
-                className="w-full px-2 py-1 border border-outline rounded text-xs bg-surface font-mono"
-              />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <label
-              htmlFor={fieldId('llm-sysprompt')}
-              className="font-label text-[10px] font-medium text-foreground/60 uppercase tracking-wide"
-            >
-              系统提示词(可选)
-            </label>
-            <textarea
-              id={fieldId('llm-sysprompt')}
-              value={llmCfg.systemPrompt}
-              onChange={e => updateLlm({ systemPrompt: e.target.value })}
-              placeholder="在此输入系统提示词…"
-              rows={2}
-              className="w-full px-2 py-1.5 border border-outline rounded text-xs bg-surface resize-none"
-            />
-          </div>
-          <p className="text-[10px] text-foreground/40">
-            修改后自动保存到本机设置;每个凭证的具体覆写参数待后端 schema 拓展后再支持。
-          </p>
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-2 pt-2">
+      <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex-1 min-w-0">
           {testMessage && (
             <p
@@ -821,13 +916,13 @@ function CredentialForm({
             </p>
           )}
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2">
           <button
             type="button"
             onClick={handleTestConnection}
             disabled={busy || testing || !form.base_url.trim()}
-            title="用当前表单的服务地址与 API Key 实时探测上游(不需要先保存)"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-outline rounded hover:bg-surface-high disabled:opacity-60"
+            title="用当前表单的服务地址与访问密钥实时探测上游(不需要先保存)"
+            className="flex items-center gap-1.5 rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-xs font-medium text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary disabled:opacity-60"
           >
             {testing ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
             测试连接
@@ -836,7 +931,7 @@ function CredentialForm({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="px-3 py-1.5 text-xs font-medium border border-outline rounded hover:bg-surface-high"
+            className="rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-xs font-medium text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary disabled:opacity-60"
           >
             取消
           </button>
@@ -844,7 +939,7 @@ function CredentialForm({
             type="button"
             onClick={onSubmit}
             disabled={busy}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-60"
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
           >
             {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
             {mode === 'create' ? '创建' : '保存'}
@@ -867,10 +962,10 @@ function FormField({
   children: React.ReactNode;
 }) {
   return (
-    <div className={full ? 'col-span-2 space-y-1' : 'space-y-1'}>
+    <div className={full ? 'min-w-0 space-y-1 md:col-span-2' : 'min-w-0 space-y-1'}>
       <label
         htmlFor={htmlFor}
-        className="font-label text-[10px] font-medium text-foreground/60 uppercase tracking-wide"
+        className="font-label text-[11px] font-medium text-foreground/65"
       >
         {label}
       </label>
@@ -883,10 +978,12 @@ function FormField({
 // Card
 // ---------------------------------------------------------------------------
 
-function CredentialCard({
+function CredentialListItem({
   cred,
+  active,
   test,
   busy,
+  onSelect,
   onEdit,
   onDelete,
   onTest,
@@ -894,44 +991,68 @@ function CredentialCard({
   onCancelTrust,
 }: {
   cred: RuntimeCredentialPublic;
+  active: boolean;
   test?: CredentialTestResponse;
   busy: boolean;
+  onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onTest: () => void;
   onConfirmTrust: (() => void) | null;
   onCancelTrust: (() => void) | null;
 }) {
-  const trustBadge = useMemo(() => trustBadgeFor(cred.trust_source), [cred.trust_source]);
+  const statusBadge = useMemo(() => credentialStatusBadge(cred, test), [cred, test]);
   return (
-    <div className="border border-outline-variant rounded-lg p-3 bg-surface-low">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-headline text-sm font-semibold text-foreground">
-              {cred.provider} / {cred.model}
+    <div
+      className={cn(
+        'group rounded-lg border p-3 transition-colors',
+        active
+          ? 'border-primary/45 bg-primary/10 text-primary'
+          : 'border-outline-variant/50 bg-surface-low hover:border-primary/30 hover:bg-surface-high',
+      )}
+    >
+      <div className="flex min-w-0 items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={onSelect}
+            className="block w-full min-w-0 text-left"
+            aria-pressed={active}
+          >
+            <span className="block truncate text-sm font-semibold">
+              {cred.provider || '(未命名提供商)'}
             </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${trustBadge.cls}`}>
-              {trustBadge.label}
+            <span className="mt-1 block truncate font-mono text-[11px] text-foreground/45">
+              {cred.model || '(未填模型)'}
             </span>
-            <span className="text-[10px] text-foreground/40">{CATEGORY_LABELS[cred.category]}</span>
+          </button>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span
+              className={cn('max-w-full truncate rounded px-1.5 py-0.5 text-[10px]', statusBadge.cls)}
+              title={statusBadge.label}
+            >
+              {statusBadge.label}
+            </span>
+            <span className="rounded bg-surface-lowest px-1.5 py-0.5 text-[10px] text-foreground/45">
+              {CATEGORY_LABELS[cred.category]}
+            </span>
+            <span className="rounded bg-surface-lowest px-1.5 py-0.5 text-[10px] text-foreground/45">
+              档位 {strategyHintLabel(cred.strategy_hint)}
+            </span>
             {!cred.enabled && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-foreground/10 text-foreground/60">
+              <span className="rounded bg-foreground/10 px-1.5 py-0.5 text-[10px] text-foreground/60">
                 已停用
               </span>
             )}
           </div>
-          <p className="font-mono text-[11px] text-foreground/60 mt-1 truncate">
-            {cred.base_url} · {cred.api_key_masked || '(no key)'}
+          <p className="mt-2 truncate font-mono text-[10px] text-foreground/40">
+            {formatCredentialCardSecondary(cred)}
           </p>
           {cred.notes && (
-            <p className="font-label text-[11px] text-foreground/50 mt-1">{cred.notes}</p>
-          )}
-          {test && (
-            <CredentialTestBadge result={test} />
+            <p className="mt-1 truncate font-label text-[10px] text-foreground/45">{cred.notes}</p>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={onTest}
@@ -944,16 +1065,6 @@ function CredentialCard({
           </button>
           <button
             type="button"
-            onClick={onEdit}
-            disabled={busy}
-            aria-label={`编辑 ${cred.provider} ${cred.model}`}
-            className="p-1.5 text-foreground/60 hover:text-primary rounded hover:bg-surface-high"
-            title="编辑"
-          >
-            <Edit3 size={14} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
             onClick={onDelete}
             disabled={busy}
             aria-label={`删除 ${cred.provider} ${cred.model}`}
@@ -962,21 +1073,31 @@ function CredentialCard({
           >
             <Trash2 size={14} aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={busy}
+            aria-label={`进入 ${cred.provider} ${cred.model} 详情`}
+            className="p-1.5 text-foreground/50 hover:text-primary rounded hover:bg-surface-high"
+            title="进入详情"
+          >
+            <ChevronRight size={14} aria-hidden="true" />
+          </button>
         </div>
       </div>
 
       {onConfirmTrust && onCancelTrust && (
         <div
-          className="mt-3 border-t border-outline-variant pt-3 flex items-start gap-2"
+          className="mt-3 flex items-start gap-2 border-t border-outline-variant pt-3"
           role="alertdialog"
           aria-label="Trust this endpoint"
         >
-          <ShieldAlert size={14} className="text-amber-700 mt-0.5 dark:text-amber-300" aria-hidden="true" />
+          <ShieldAlert size={14} className="mt-0.5 text-amber-700 dark:text-amber-300" aria-hidden="true" />
           <div className="flex-1">
             <p className="font-label text-xs text-foreground/80">
               这个端点还没有被信任，因此跳过了网络测试。确认后会在本机信任并重新测试。
             </p>
-            <div className="flex gap-2 mt-2">
+            <div className="mt-2 flex gap-2">
               <button
                 type="button"
                 onClick={onConfirmTrust}
@@ -999,66 +1120,36 @@ function CredentialCard({
   );
 }
 
-function CredentialTestBadge({ result }: { result: CredentialTestResponse }) {
-  const statusLabel = (() => {
-    switch (result.status) {
-      case 'ok':
-        return '连接通过';
-      case 'skipped':
-        return '已跳过';
-      case 'rejected':
-        return '已拦截';
-      case 'probe_failed':
-      default:
-        return '测试失败';
-    }
-  })();
-  const tone = (() => {
-    switch (result.status) {
-      case 'ok':
-        return 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300';
-      case 'skipped':
-        return 'bg-amber-50 text-amber-800 border border-amber-200 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300';
-      case 'rejected':
-        return 'bg-red-50 text-red-800 border border-red-200 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300';
-      case 'probe_failed':
-      default:
-        return 'bg-foreground/5 text-foreground/70 border border-outline-variant';
-    }
-  })();
-  const detail = result.probe?.status_code
-    ? `HTTP ${result.probe.status_code}`
-    : result.reason ?? '';
-  return (
-    <p
-      role="status"
-      className={`mt-2 inline-block text-[10px] font-medium px-2 py-0.5 rounded ${tone}`}
-    >
-      {statusLabel}{detail ? ` · ${detail}` : ''}
-    </p>
-  );
-}
-
-function trustBadgeFor(t: CredentialTrustSource): { label: string; cls: string } {
-  switch (t) {
-    case 'official_provider':
-      return { label: '官方', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' };
-    case 'env_configured_gateway':
-      return { label: '环境配置', cls: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300' };
-    case 'runtime_user_confirmed':
-      return { label: '已信任', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' };
-    case 'runtime_untrusted_custom':
-      return { label: '待确认', cls: 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' };
+export function credentialStatusBadge(
+  cred: RuntimeCredentialPublic,
+  test: CredentialTestResponse | undefined,
+): { label: string; cls: string } {
+  if (!cred.enabled) {
+    return { label: '已停用', cls: 'bg-foreground/10 text-foreground/60' };
   }
+  if (test?.status === 'rejected') {
+    const reason = formatCredentialProbeError(
+      test.reason?.trim() || test.decision.reason,
+      '策略拒绝，请确认服务来源或信任设置。',
+    );
+    return { label: `已拦截 · ${reason}`, cls: 'bg-red-50 text-red-800 dark:bg-red-500/15 dark:text-red-300' };
+  }
+  if (test?.status === 'probe_failed') {
+    const reason = formatCredentialProbeError(test.probe?.error || test.reason);
+    return { label: `连接失败 · ${reason}`, cls: 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' };
+  }
+  if (cred.trust_source === 'runtime_untrusted_custom') {
+    return { label: '已拦截 · 待确认', cls: 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' };
+  }
+  return { label: '已信任', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' };
 }
 
 function toMessage(exc: unknown): string {
   if (typeof exc === 'object' && exc && 'message' in exc) {
     const e = exc as { response?: { data?: { detail?: string } }; message?: string };
-    if (e.response?.data?.detail) return e.response.data.detail;
-    return e.message ?? '未知错误';
+    return formatCredentialProbeError(e.response?.data?.detail ?? e.message, '操作失败，请稍后重试。');
   }
-  return String(exc);
+  return formatCredentialProbeError(String(exc), '操作失败，请稍后重试。');
 }
 
 export default CredentialsSection;

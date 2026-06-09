@@ -1,21 +1,13 @@
 // Evolution layer wire types.
 //
 // Hand-mirror of literature_assistant/core/models/evolution.py. The backend
-// remains authoritative for risk, dedupe, eligibility, and promotion (plan
-// §Backend Reliability); this file only describes what the wire payloads
-// look like to the frontend.
+// remains authoritative for risk, dedupe, eligibility, and promotion; this
+// file only describes what the wire payloads look like to the frontend.
 //
 // When the backend models change, update this file by hand. We intentionally
-// avoid `npm run generate:openapi` here because that script touches shared
-// generated artefacts that belong to the wider OpenAPI surface; mirroring by
-// hand keeps the evolution slice's blast radius contained.
+// avoid `npm run generate:openapi` here because that script touches the wider
+// generated OpenAPI surface; mirroring by hand keeps this UI client focused.
 //
-// Reference:
-//   - docs/plans/active/2026-05-17-literature-evolution-agent-incremental-upgrade-plan.md
-//     §Experience Candidate Contract
-//   - docs/plans/active/2026-05-18-evolution-s5-review-ui-plan.md
-//     §Action Semantics
-
 // ---------------------------------------------------------------------------
 // Enums (string literal unions — matches Pydantic `str, Enum`)
 // ---------------------------------------------------------------------------
@@ -148,7 +140,7 @@ export interface CandidatePromotionPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Curator (Slice 7)
+// Curator maintenance payload
 // ---------------------------------------------------------------------------
 
 export type CuratorConflict = Record<string, unknown>;
@@ -167,7 +159,7 @@ export interface CuratorRunPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Audit (Opt §6 — /evolution/audit)
+// Audit roll-up payload
 // ---------------------------------------------------------------------------
 
 /** One row in `EvolutionAuditPayload.recent_decisions`.
@@ -201,7 +193,7 @@ export interface EvolutionAuditPayload {
 }
 
 // ---------------------------------------------------------------------------
-// UI constants (decided 2026-05-18 — see S5 plan §Action Semantics)
+// UI constants for default review actions.
 // ---------------------------------------------------------------------------
 
 export const SNOOZE_DURATION_DAYS = 7;

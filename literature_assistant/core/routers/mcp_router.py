@@ -1,18 +1,9 @@
 # -*- coding: utf-8 -*-
-"""MCP Server registry HTTP API (Phase 1B / TASK-106).
+"""MCP service registry, connectivity, audit, and approval HTTP API.
 
-Exposes:
-
-  GET    /api/mcp/servers                    list_public
-  POST   /api/mcp/servers                    create
-  GET    /api/mcp/servers/{server_id}        get_public
-  PUT    /api/mcp/servers/{server_id}        update (incl. approval state)
-  DELETE /api/mcp/servers/{server_id}        delete (also tears down session)
-  POST   /api/mcp/servers/{server_id}/test   connectivity probe (list_tools)
-  GET    /api/mcp/servers/{server_id}/tools  cached tool catalog
-
-Phase 2 will add tool execution; this router is registry + probe only.
-Audit endpoint deferred to Phase 5.
+The public boundary returns masked configuration and bounded user-facing
+errors. Runtime identifiers remain structural fields for client actions, not
+ordinary display text.
 """
 
 from __future__ import annotations
@@ -55,6 +46,11 @@ router = APIRouter(prefix="/api/mcp", tags=["MCP"])
 
 _store: RuntimeMcpServerStore | None = None
 _catalog: McpToolCatalog | None = None
+
+
+def _server_not_found_error() -> HTTPException:
+    """Build a bounded 404 error that does not echo local server ids."""
+    return HTTPException(status_code=404, detail="MCP 服务不存在或已被删除。")
 
 
 def get_mcp_server_store() -> RuntimeMcpServerStore:
@@ -129,9 +125,7 @@ async def get_server(server_id: str) -> McpServerConfigPublic:
     try:
         return store.get_public(server_id)
     except McpServerNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"mcp server not found: {server_id}"
-        ) from exc
+        raise _server_not_found_error() from exc
 
 
 @router.put("/servers/{server_id}", response_model=McpServerConfigPublic)
@@ -145,9 +139,7 @@ async def update_server(
     except McpApprovalTransitionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except McpServerNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"mcp server not found: {server_id}"
-        ) from exc
+        raise _server_not_found_error() from exc
     # Config edit invalidates any cached tool catalog for this server.
     catalog.invalidate(server_id)
     return public
@@ -159,10 +151,8 @@ async def delete_server(server_id: str) -> dict[str, Any]:
     catalog = get_mcp_tool_catalog()
     deleted = store.delete(server_id)
     if not deleted:
-        raise HTTPException(
-            status_code=404, detail=f"mcp server not found: {server_id}"
-        )
-    # Per-operation sessions in Phase 1B → no live session to tear down.
+        raise _server_not_found_error()
+    # Per-operation sessions leave no long-lived client session to tear down.
     catalog.invalidate(server_id)
     install_record_deleted = False
     try:
@@ -197,9 +187,7 @@ async def test_server(server_id: str) -> dict[str, Any]:
     try:
         config = store.get_internal(server_id)
     except McpServerNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"mcp server not found: {server_id}"
-        ) from exc
+        raise _server_not_found_error() from exc
 
     try:
         tools = await catalog.get_tools(config, refresh=True)
@@ -207,14 +195,14 @@ async def test_server(server_id: str) -> dict[str, Any]:
         return {
             "server_id": server_id,
             "status": "skipped",
-            "reason": str(exc),
+            "reason": "MCP streamable HTTP execution is disabled.",
             "probed": False,
         }
     except (McpServerLaunchError, McpClientManagerError) as exc:
         return {
             "server_id": server_id,
             "status": "probe_failed",
-            "reason": f"{type(exc).__name__}: {exc}",
+            "reason": "MCP service probe failed. Check the service configuration.",
             "probed": True,
         }
 
@@ -238,18 +226,14 @@ async def test_server(server_id: str) -> dict[str, Any]:
 
 @router.get("/servers/{server_id}/tools", response_model=list[McpToolDescriptor])
 async def list_server_tools(server_id: str) -> list[McpToolDescriptor]:
-    """Return the cached tool catalog for ``server_id``. If the cache is
-    empty, runs a fresh list_tools to populate it.
-    """
+    """Return the cached tool catalog for the selected MCP service."""
     store = get_mcp_server_store()
     catalog = get_mcp_tool_catalog()
 
     try:
         config = store.get_internal(server_id)
     except McpServerNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"mcp server not found: {server_id}"
-        ) from exc
+        raise _server_not_found_error() from exc
 
     try:
         return await catalog.get_tools(config)
@@ -257,39 +241,81 @@ async def list_server_tools(server_id: str) -> list[McpToolDescriptor]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except (McpServerLaunchError, McpClientManagerError) as exc:
         raise HTTPException(
-            status_code=502, detail=f"mcp list_tools failed: {exc}"
+            status_code=502, detail="MCP 工具目录读取失败，请检查服务是否可用。"
         ) from exc
 
 
 # ---------------------------------------------------------------------------
-# Audit (Phase 5 / TASK-502): read-only JSONL tail
+# Local MCP call audit
 # ---------------------------------------------------------------------------
 
 
 @router.get("/audit")
 async def list_audit(limit: int = 200) -> dict[str, Any]:
-    """Tail the MCP tool-call audit log. Records are already redacted
-    (security_policy.redact_text_for_audit on previews); this endpoint is
-    read-only.
-    """
+    """Return recent MCP call records with redacted previews."""
     from mcp_runtime import audit as mcp_audit
+
     records = mcp_audit.read_recent(limit=limit)
+    records = _attach_server_labels(records)
     return {"count": len(records), "records": records}
 
 
+def _attach_server_labels(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return audit records with user-facing MCP service names when available.
+
+    Input records are JSON dictionaries read from local audit storage. The
+    output preserves every original field, adds only ``server_label`` for
+    currently registered services, and leaves deleted/unknown services
+    unchanged so the frontend can keep its bounded fallback labels.
+    """
+    if not records:
+        return []
+    server_ids = {
+        str(record.get("server_id", "")).strip()
+        for record in records
+        if isinstance(record, dict) and str(record.get("server_id", "")).strip()
+    }
+    if not server_ids:
+        return [dict(record) for record in records]
+    try:
+        public_servers = get_mcp_server_store().list_public()
+    except McpServerSchemaError:
+        logger.warning("mcp_audit_label_enrichment_failed")
+        return [dict(record) for record in records]
+    labels = {
+        server.server_id: server.name
+        for server in public_servers
+        if server.server_id in server_ids and server.name.strip()
+    }
+    enriched: list[dict[str, Any]] = []
+    for record in records:
+        item = dict(record)
+        server_id = str(item.get("server_id", "")).strip()
+        if server_id in labels and not str(item.get("server_label", "")).strip():
+            item["server_label"] = labels[server_id]
+        enriched.append(item)
+    return enriched
+
+
+@router.delete("/audit", status_code=204)
+async def clear_audit() -> None:
+    """Clear the local MCP tool-call audit log without touching server configs."""
+    from mcp_runtime import audit as mcp_audit
+
+    mcp_audit.clear()
+
+
 # ---------------------------------------------------------------------------
-# Legacy raw-env detection + migration (S6 / plan 2026-05-20 §6)
+# Sensitive configuration migration
 # ---------------------------------------------------------------------------
 
 
 @router.get("/servers/{server_id}/legacy-env")
 async def list_legacy_env(server_id: str) -> dict[str, Any]:
-    """Detect raw-secret-shaped env / header entries on a server.
+    """Detect sensitive local configuration that should move to credentials.
 
-    Returns masked values only — the raw plaintext never crosses this
-    boundary. Caller (frontend installed-view banner) uses the result to
-    show a migration prompt; the actual move happens via the POST
-    ``/migrate-env-to-refs`` endpoint below.
+    The response contains only masked values and field labels needed for the
+    migration UI; plaintext values never cross this boundary.
     """
     from mcp_runtime.legacy_env_migrator import detect_legacy_secrets
 
@@ -297,9 +323,7 @@ async def list_legacy_env(server_id: str) -> dict[str, Any]:
     try:
         config = store.get_internal(server_id)
     except McpServerNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"mcp server not found: {server_id}"
-        ) from exc
+        raise _server_not_found_error() from exc
     stdio_env = dict(config.stdio.env) if config.stdio else None
     stdio_env_refs = dict(config.stdio.env_refs) if config.stdio else None
     http_headers = dict(config.http.headers) if config.http else None
@@ -328,47 +352,28 @@ async def list_legacy_env(server_id: str) -> dict[str, Any]:
 async def migrate_env_to_refs(
     server_id: str, body: dict[str, Any]
 ) -> dict[str, Any]:
-    """Move raw env / header values into env_refs / header_refs.
+    """Move selected sensitive configuration into saved-credential bindings.
 
-    Body schema:
-        {
-          "mapping": {"<env_key>": "<credential_id>", ...},
-          "confirm_remove_raw": true
-        }
-
-    Validation:
-    - Every credential_id in ``mapping`` must exist + be enabled.
-    - Every ``env_key`` in ``mapping`` must currently exist in either
-      ``stdio.env`` or ``http.headers`` of the target server.
-    - ``confirm_remove_raw`` must be exactly ``true`` (plan §6: "never
-      auto-migrate"). The frontend's migration modal flips this only on
-      the user's explicit click.
-
-    Effects:
-    - Adds ``mapping[env_key] -> credential_id`` to ``env_refs`` (stdio)
-      or ``header_refs`` (http).
-    - Removes the corresponding ``env_key`` from ``env`` / ``headers``.
-    - Increments fingerprint via the standard update path (v2 includes
-      env_refs / header_refs keys, M4).
-    - Triggers reverse-index rebuild on the binding index.
+    Requires explicit confirmation. The operation keeps non-sensitive local
+    configuration in place and rebuilds the credential binding index.
     """
     from routers.credentials_router import get_credential_store
     from credential_bindings import get_credential_binding_index
 
     if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="body must be a JSON object")
+        raise HTTPException(status_code=400, detail="请求格式无效，请重试。")
     mapping = body.get("mapping") or {}
     if not isinstance(mapping, dict) or not mapping:
         raise HTTPException(
             status_code=400,
-            detail={"code": "mapping_required", "message": "non-empty mapping is required"},
+            detail={"code": "mapping_required", "message": "请至少选择一项需要迁移的配置。"},
         )
     if body.get("confirm_remove_raw") is not True:
         raise HTTPException(
             status_code=400,
             detail={
                 "code": "confirm_required",
-                "message": "confirm_remove_raw must be true; raw values are never auto-migrated",
+                "message": "请先确认迁移后再执行。",
             },
         )
 
@@ -376,9 +381,7 @@ async def migrate_env_to_refs(
     try:
         config = store.get_internal(server_id)
     except McpServerNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"mcp server not found: {server_id}"
-        ) from exc
+        raise _server_not_found_error() from exc
 
     # Validate credentials exist + enabled.
     cred_store = get_credential_store()
@@ -387,14 +390,14 @@ async def migrate_env_to_refs(
         if not isinstance(env_key, str) or not env_key.strip():
             raise HTTPException(
                 status_code=400,
-                detail={"code": "mapping_key_invalid", "message": f"invalid env key: {env_key!r}"},
+                detail={"code": "mapping_key_invalid", "message": "配置项名称无效，请重新选择。"},
             )
         if not isinstance(cred_id, str) or not cred_id.strip():
             raise HTTPException(
                 status_code=400,
                 detail={
                     "code": "mapping_value_invalid",
-                    "message": f"invalid credential_id for {env_key!r}",
+                    "message": "请选择有效的已保存凭证。",
                 },
             )
         try:
@@ -404,7 +407,7 @@ async def migrate_env_to_refs(
                 status_code=400,
                 detail={
                     "code": "credential_not_found",
-                    "message": f"credential {cred_id!r} bound to {env_key!r} not found",
+                    "message": "选择的凭证不存在，请重新选择。",
                 },
             ) from exc
         if not cred.enabled:
@@ -412,7 +415,7 @@ async def migrate_env_to_refs(
                 status_code=400,
                 detail={
                     "code": "credential_disabled",
-                    "message": f"credential {cred_id!r} bound to {env_key!r} is disabled",
+                    "message": "选择的凭证已停用，请更换凭证。",
                 },
             )
 
@@ -462,7 +465,7 @@ async def migrate_env_to_refs(
             status_code=400,
             detail={
                 "code": "no_matching_env_keys",
-                "message": "none of the supplied keys exist in this server's raw env / headers",
+                "message": "没有找到可迁移的匹配配置，请刷新后重试。",
             },
         )
 
@@ -471,11 +474,7 @@ async def migrate_env_to_refs(
         McpServerConfigUpdate(stdio=new_stdio, http=new_http),
     )
 
-    # Refresh derived state: catalog fingerprint changed → invalidate;
-    # binding index needs rebuilt for the new env_refs. We rebuild via the
-    # binding_index singleton (not installer._bindings) so tests that
-    # inject a fresh index via set_credential_binding_index() see the
-    # updated state.
+    # Refresh derived state after credential bindings change.
     catalog = get_mcp_tool_catalog()
     catalog.invalidate(server_id)
     idx = get_credential_binding_index()
@@ -490,16 +489,13 @@ async def migrate_env_to_refs(
 
 
 # ---------------------------------------------------------------------------
-# Pending-call protocol (Phase 3 / TASK-301)
+# Pending-call approval protocol
 # ---------------------------------------------------------------------------
 
 
 @router.get("/pending-calls")
 async def list_pending_calls() -> list[dict[str, Any]]:
-    """Return all currently-pending MCP tool calls awaiting operator
-    approval. Empty list when no pending — cheap poll target per the
-    transport ADR.
-    """
+    """Return MCP tool calls currently waiting for user approval."""
     from mcp_runtime.pending_calls import get_pending_call_store
 
     store = get_pending_call_store()
@@ -508,19 +504,14 @@ async def list_pending_calls() -> list[dict[str, Any]]:
 
 @router.post("/pending-calls/{call_id}/decide", status_code=204)
 async def decide_pending_call(call_id: str, body: dict[str, Any]) -> None:
-    """Record an operator decision for a pending MCP tool call.
-
-    Body: ``{"decision": "approve" | "reject", "remember_for_run": bool}``.
-    Returns 204 on success; 404 if the id is unknown / already decided /
-    timed out; 400 on invalid body.
-    """
+    """Record the user's decision for a pending MCP tool call."""
     from mcp_runtime.pending_calls import get_pending_call_store
 
     decision = body.get("decision")
     if decision not in {"approve", "reject"}:
         raise HTTPException(
             status_code=400,
-            detail="decision must be 'approve' or 'reject'",
+            detail="请选择允许或拒绝本次工具调用。",
         )
     remember_for_run = bool(body.get("remember_for_run", False))
 
@@ -534,7 +525,7 @@ async def decide_pending_call(call_id: str, body: dict[str, Any]) -> None:
     except KeyError as exc:
         raise HTTPException(
             status_code=404,
-            detail=f"unknown_pending_call: {call_id}",
+            detail="这次工具调用已经结束或不存在。",
         ) from exc
 
 

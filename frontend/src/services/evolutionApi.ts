@@ -7,11 +7,6 @@
 // only serializes requests and surfaces typed responses; it does not validate
 // or rewrite candidates locally.
 //
-// Reference:
-//   - literature_assistant/core/routers/evolution_router.py (route handlers)
-//   - docs/plans/active/2026-05-18-evolution-s5-review-ui-plan.md
-//     §Action Semantics (snooze=7d default, reject=permanent, promote no body)
-
 import { createApiClient } from './httpClient.ts';
 import {
   REJECT_REASON_TAG,
@@ -57,9 +52,12 @@ export interface ListCandidatesOptions {
   projectId?: string;
   status?: CandidateStatus;
   memoryType?: CandidateMemoryType;
+  sortBy?: CandidateSortBy;
   limit?: number;
   offset?: number;
 }
+
+export type CandidateSortBy = 'updated_at' | 'created_at' | 'confidence';
 
 export async function listCandidates(
   opts: ListCandidatesOptions = {},
@@ -72,6 +70,7 @@ export async function listCandidates(
   if (opts.projectId) params.project_id = opts.projectId;
   if (opts.status) params.status = opts.status;
   if (opts.memoryType) params.memory_type = opts.memoryType;
+  if (opts.sortBy) params.sort_by = opts.sortBy;
 
   const resp = await client().get<CandidateListPayload>(`${PATH}/candidates`, {
     params,
@@ -151,7 +150,7 @@ export async function promoteCandidate(
 }
 
 // ---------------------------------------------------------------------------
-// Curator (Slice 7)
+// Curator maintenance
 // ---------------------------------------------------------------------------
 
 export async function runCurator(workspaceId?: string): Promise<CuratorRunPayload> {
@@ -166,7 +165,7 @@ export async function runCurator(workspaceId?: string): Promise<CuratorRunPayloa
 }
 
 // ---------------------------------------------------------------------------
-// Audit roll-up (Opt §6)
+// Audit roll-up
 // ---------------------------------------------------------------------------
 
 export interface GetEvolutionAuditOptions {

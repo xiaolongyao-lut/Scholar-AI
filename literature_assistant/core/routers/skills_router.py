@@ -17,6 +17,8 @@ from models import (
     ImportUserSkillResponse,
     SkillToggleResponse,
     SkillTestRunResponse,
+    SkillRuntimeSettingsUpdate,
+    SkillRuntimeSettingsResponse,
     SkillApprovalRequestCreate,
     SkillApprovalRequestPayload,
     SkillApprovalDecisionCreate,
@@ -154,6 +156,28 @@ async def get_skill(skill_id: str) -> SkillDescriptorPayload:
     return SkillDescriptorPayload(**payload)
 
 
+@router.put("/skills/{skill_id}/runtime-settings", response_model=SkillRuntimeSettingsResponse)
+async def update_skill_runtime_settings(
+    skill_id: str,
+    request: SkillRuntimeSettingsUpdate,
+) -> SkillRuntimeSettingsResponse:
+    """Persist manifest-driven Skill settings without storing credential material."""
+    service = get_skill_service()
+    try:
+        payload = service.update_skill_runtime_settings(
+            skill_id,
+            config_values=dict(request.config_values),
+            credential_bindings=dict(request.credential_bindings),
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if "not found" in detail.lower() else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    except TypeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SkillRuntimeSettingsResponse(**payload)
+
+
 @router.get("/skill_packs", response_model=list[SkillPackPayload])
 async def list_skill_packs(
     ui_mode: str = Query(default="skill_assisted"),
@@ -204,7 +228,7 @@ async def get_transform_result(job_id: str) -> SkillRunResultPayload:
 
 
 # =========================================================================
-# User Skill Management (TASK-186/187/188)
+# User Skill Management
 # =========================================================================
 
 @router.post("/skills/import", response_model=ImportUserSkillResponse)
@@ -214,7 +238,7 @@ async def import_user_skill_endpoint(request: ImportUserSkillRequest) -> ImportU
         service = get_skill_service()
         result = service.import_user_skill(
             source_path=request.source_path,
-            managed_root=request.managed_root,
+            managed_root=None,  # Server-side fixed root for security
             origin=request.origin,
         )
     except ValueError as exc:
@@ -312,7 +336,7 @@ async def export_skill(
 
     Args:
         skill_id: Skill ID to export.
-        output_path: Optional output zip path. Defaults to workspace_artifacts/skill_exports/{skill_id}.zip.
+        output_path: Optional output zip filename under workspace_artifacts/skill_exports.
 
     Returns:
         SkillExportResponse with success/export_path/errors.
@@ -353,4 +377,3 @@ async def test_run_skill(
 
     result = service.run_skill(skill_id=skill_id, input_text=input_text)
     return SkillTestRunResponse(**result.to_dict())
-

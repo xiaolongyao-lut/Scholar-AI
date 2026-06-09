@@ -2,7 +2,7 @@
 """
 WritingRuntime - Long-lived backend runtime for session and job management.
 
-Phase 2 of harness upgrade: Manages WritingSession, WritingJob, WritingEvent, and WritingArtifact.
+Manages WritingSession, WritingJob, WritingEvent, and WritingArtifact.
 Provides stable in-memory state management with clean interfaces for future persistence.
 Maintains backward compatibility with legacy run_action flows.
 """
@@ -132,6 +132,7 @@ class WritingRuntime:
         self._event_subscribers: dict[str, list[Callable]] = {}  # session_id -> callbacks
         self._session_transcripts: dict[str, list[dict[str, Any]]] = {}
         self._session_checkpoints: dict[str, list[dict[str, Any]]] = {}
+        self._job_tasks: dict[str, asyncio.Task[Any]] = {}
         self._logger = logging.getLogger(f"{__name__}.{id(self)}")
         self._memory_adapter: Any | None = None
         self._memory_adapter_resolved = False
@@ -222,6 +223,55 @@ class WritingRuntime:
             resolved_workspace_key = _stable_workspace_key(root_candidate)
         sessions = self.list_sessions(workspace_key=resolved_workspace_key)
         return sessions[0] if sessions else None
+
+    def delete_session(self, session_id: str) -> bool:
+        """Delete a session and all runtime state owned by it.
+
+        Args:
+            session_id: Existing runtime session identifier.
+
+        Returns:
+            True when a session was deleted; False when it did not exist.
+
+        Raises:
+            ValueError: If ``session_id`` is blank.
+        """
+        normalized = str(session_id or "").strip()
+        if not normalized:
+            raise ValueError("session_id must not be empty")
+        if normalized not in self._sessions:
+            return False
+
+        job_ids = [
+            job_id
+            for job_id, job in self._jobs.items()
+            if job.session_id == normalized
+        ]
+        approval_ids = [
+            approval_id
+            for approval_id, approval in self._approval_requests.items()
+            if approval.session_id == normalized
+        ]
+
+        self._sessions.pop(normalized, None)
+        self._events.pop(normalized, None)
+        self._session_transcripts.pop(normalized, None)
+        self._session_checkpoints.pop(normalized, None)
+        self._event_subscribers.pop(normalized, None)
+        for job_id in job_ids:
+            self._jobs.pop(job_id, None)
+            self._job_contexts.pop(job_id, None)
+            self._artifacts.pop(job_id, None)
+        job_id_set = set(job_ids)
+        self._job_queue = [job_id for job_id in self._job_queue if job_id not in job_id_set]
+        for approval_id in approval_ids:
+            self._approval_requests.pop(approval_id, None)
+
+        if self._repository is not None:
+            self._repository.delete_session(normalized)
+        self._autosave_if_enabled()
+        self._logger.info("Deleted session %s", normalized)
+        return True
 
     def resume_session(
         self,
@@ -470,6 +520,98 @@ class WritingRuntime:
         """Retrieve a job by ID."""
         return self._jobs.get(job_id)
 
+    def delete_job(self, job_id: str) -> bool:
+        """Delete a job and all runtime data owned by that job.
+
+        Args:
+            job_id: Existing runtime job identifier.
+
+        Returns:
+            True when the job existed and was removed; False when it was absent.
+
+        Raises:
+            ValueError: If ``job_id`` is blank.
+        """
+        normalized = str(job_id or "").strip()
+        if not normalized:
+            raise ValueError("job_id must not be empty")
+        job = self._jobs.get(normalized)
+        if job is None:
+            return False
+
+        task = self._job_tasks.pop(normalized, None)
+        if task is not None and not task.done():
+            task.cancel()
+
+        session_id = job.session_id
+        self._jobs.pop(normalized, None)
+        self._job_contexts.pop(normalized, None)
+        self._artifacts.pop(normalized, None)
+        self._job_queue = [queued_id for queued_id in self._job_queue if queued_id != normalized]
+        self._approval_requests = {
+            approval_id: approval
+            for approval_id, approval in self._approval_requests.items()
+            if approval.job_id != normalized
+        }
+        self._events[session_id] = [
+            event
+            for event in self._events.get(session_id, [])
+            if event.job_id != normalized
+        ]
+        self._session_checkpoints[session_id] = [
+            checkpoint
+            for checkpoint in self._session_checkpoints.get(session_id, [])
+            if dict(checkpoint.get("metadata") or {}).get("source_job_id") != normalized
+        ]
+
+        self._ensure_transcript_loaded(session_id)
+        filtered_transcript = [
+            event
+            for event in self._session_transcripts.get(session_id, [])
+            if not self._transcript_event_references_job(event, normalized)
+        ]
+        self._session_transcripts[session_id] = filtered_transcript
+        if self.get_session(session_id) is not None:
+            remaining_checkpoint_ids = {
+                str(checkpoint.get("checkpoint_id"))
+                for checkpoint in self._session_checkpoints.get(session_id, [])
+            }
+            current_session = self.get_session(session_id)
+            current_head_event_id = str(current_session.metadata.get("head_event_id") or "") if current_session else ""
+            current_head_checkpoint_id = str(current_session.metadata.get("head_checkpoint_id") or "") if current_session else ""
+            remaining_event_ids = {
+                str(event.get("event_id"))
+                for event in filtered_transcript
+                if isinstance(event, dict)
+            }
+            metadata_updates: dict[str, Any] = {}
+            if current_head_event_id and current_head_event_id not in remaining_event_ids:
+                metadata_updates["head_event_id"] = filtered_transcript[-1]["event_id"] if filtered_transcript else None
+            if current_head_checkpoint_id and current_head_checkpoint_id not in remaining_checkpoint_ids:
+                checkpoints = self._session_checkpoints.get(session_id, [])
+                metadata_updates["head_checkpoint_id"] = checkpoints[-1]["checkpoint_id"] if checkpoints else None
+            if metadata_updates:
+                self._replace_session_metadata(session_id, **metadata_updates)
+            if self._repository is not None:
+                self._repository.replace_transcript(session_id, filtered_transcript)
+
+        self._autosave_if_enabled()
+        self._logger.info("Deleted job %s and its runtime data", normalized)
+        return True
+
+    @staticmethod
+    def _transcript_event_references_job(event: dict[str, Any], job_id: str) -> bool:
+        """Return True when a transcript event belongs to the target job."""
+        if not isinstance(event, dict):
+            return False
+        payload = event.get("payload")
+        if isinstance(payload, dict):
+            if str(payload.get("job_id") or "") == job_id:
+                return True
+            if str(payload.get("source_job_id") or "") == job_id:
+                return True
+        return False
+
     def list_jobs(self, session_id: str, status: JobStatus | None = None) -> list[WritingJob]:
         """List all jobs in a session, optionally filtered by status."""
         jobs = [j for j in self._jobs.values() if j.session_id == session_id]
@@ -495,7 +637,145 @@ class WritingRuntime:
             "is_paused": ctx.is_paused if ctx else False,
             "is_cancelled": ctx.is_cancelled if ctx else False,
             "error": job.error,
+            "metadata": dict(job.metadata),
         }
+
+    def get_job_event_head_sequence(self, job_id: str) -> int:
+        """Return the highest event sequence currently recorded for a job.
+
+        Args:
+            job_id: Runtime job identifier.
+
+        Returns:
+            The highest per-job sequence, or ``0`` when the job has no events.
+
+        Raises:
+            ValueError: If ``job_id`` is blank.
+        """
+        normalized = str(job_id or "").strip()
+        if not normalized:
+            raise ValueError("job_id must not be empty")
+        job = self.get_job(normalized)
+        if job is None:
+            return 0
+        self._ensure_session_event_sequences(job.session_id)
+        return max(
+            (event.sequence for event in self._events.get(job.session_id, []) if event.job_id == normalized),
+            default=0,
+        )
+
+    @staticmethod
+    def _coerce_event_sequence(value: Any) -> int:
+        """Coerce persisted sequence values into the safe non-negative range."""
+        if isinstance(value, bool):
+            return 0
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return 0
+        return parsed if parsed > 0 else 0
+
+    def _next_event_sequence(self, job_id: str) -> int:
+        """Return the next monotonic sequence value for one job."""
+        normalized = str(job_id or "").strip()
+        if not normalized:
+            raise ValueError("job_id must not be empty")
+        highest = 0
+        for events in self._events.values():
+            for event in events:
+                if event.job_id == normalized and event.sequence > highest:
+                    highest = event.sequence
+        return highest + 1
+
+    def _with_event_sequence(self, event: WritingEvent) -> WritingEvent:
+        """Attach a per-job sequence when an incoming event does not have one."""
+        if event.sequence > 0:
+            return event
+        return replace(event, sequence=self._next_event_sequence(event.job_id))
+
+    def _ensure_session_event_sequences(self, session_id: str) -> None:
+        """Backfill missing event sequences for old in-memory or persisted state."""
+        events = self._events.get(session_id, [])
+        if not events:
+            return
+        next_by_job: dict[str, int] = {}
+        for event in events:
+            current_sequence = self._coerce_event_sequence(event.sequence)
+            if current_sequence > 0:
+                next_by_job[event.job_id] = max(next_by_job.get(event.job_id, 1), current_sequence + 1)
+        normalized_events: list[WritingEvent] = []
+        changed = False
+        for event in sorted(events, key=lambda item: (item.timestamp, item.event_id)):
+            job_id = event.job_id
+            current_sequence = self._coerce_event_sequence(event.sequence)
+            if current_sequence > 0:
+                normalized_events.append(event if current_sequence == event.sequence else replace(event, sequence=current_sequence))
+                changed = changed or current_sequence != event.sequence
+                continue
+            next_sequence = next_by_job.get(job_id, 1)
+            next_by_job[job_id] = next_sequence + 1
+            normalized_events.append(replace(event, sequence=next_sequence))
+            changed = True
+        if changed:
+            self._events[session_id] = normalized_events
+
+    def emit_job_progress(
+        self,
+        job_id: str,
+        *,
+        stage: str,
+        message: str,
+        progress: int | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        """Append a machine-readable progress event for a running job.
+
+        Args:
+            job_id: Existing runtime job identifier.
+            stage: Stable stage key, short ASCII or Chinese label.
+            message: User-facing progress summary.
+            progress: Optional 0..100 progress percentage.
+            data: Optional JSON-serializable event payload extensions.
+
+        Raises:
+            ValueError: If the job does not exist or payload fields are blank.
+        """
+        normalized_stage = str(stage or "").strip()
+        normalized_message = str(message or "").strip()
+        if not normalized_stage:
+            raise ValueError("stage must not be empty")
+        if not normalized_message:
+            raise ValueError("message must not be empty")
+        job = self.get_job(job_id)
+        if job is None:
+            raise ValueError(f"Job {job_id} not found")
+        payload: dict[str, Any] = {
+            "stage": normalized_stage,
+            "message": normalized_message,
+        }
+        if progress is not None:
+            payload["progress"] = max(0, min(100, int(progress)))
+        if data:
+            payload.update(dict(data))
+        metadata = dict(job.metadata)
+        metadata.update(
+            {
+                "progress_stage": normalized_stage,
+                "progress_message": normalized_message,
+                **({"progress": payload["progress"]} if "progress" in payload else {}),
+            }
+        )
+        self._jobs[job_id] = replace(job, metadata=metadata)
+        self._emit_event(
+            job.session_id,
+            WritingEvent.create(
+                job_id=job_id,
+                session_id=job.session_id,
+                event_type=EventType.JOB_PROGRESS,
+                data=payload,
+            ),
+        )
+        self._autosave_if_enabled()
 
     # ==========================================================================
     # Job Lifecycle Control
@@ -528,17 +808,54 @@ class WritingRuntime:
         self._logger.info("Started job %s", job_id)
 
         if executor:
-            try:
-                executor_result = executor(job)
-                if inspect.isawaitable(executor_result):
-                    executor_result = await executor_result
-                await self._finalize_executor_result(job_id, executor_result)
-            except _RUNTIME_RECOVERABLE_EXCEPTIONS as exc:
-                self._logger.error("Executor error for job %s: %s", job_id, exc)
-                await self.fail_job(job_id, str(exc))
+            task = asyncio.create_task(self._run_job_executor(job_id, executor))
+            self._job_tasks[job_id] = task
 
         self._autosave_if_enabled()
         return self.get_job(job_id) or job
+
+    async def _run_job_executor(self, job_id: str, executor: Callable[[WritingJob], Any]) -> None:
+        """Run a job executor outside the request path and finalize its result."""
+        job = self.get_job(job_id)
+        if not job:
+            self._job_tasks.pop(job_id, None)
+            return
+        try:
+            ctx = self._job_contexts.get(job_id)
+            if ctx and ctx.is_cancelled:
+                return
+            job = job.with_status(JobStatus.IN_PROGRESS)
+            self._jobs[job_id] = job
+            self._emit_event(
+                job.session_id,
+                WritingEvent.create(
+                    job_id=job_id,
+                    session_id=job.session_id,
+                    event_type=EventType.JOB_PROGRESS,
+                    data={"stage": "running", "message": "任务已进入后台执行"},
+                ),
+            )
+            executor_result = executor(job)
+            if inspect.isawaitable(executor_result):
+                executor_result = await executor_result
+            ctx = self._job_contexts.get(job_id)
+            current = self.get_job(job_id)
+            if (ctx and ctx.is_cancelled) or (current and current.status == JobStatus.CANCELLED):
+                return
+            await self._finalize_executor_result(job_id, executor_result)
+        except asyncio.CancelledError:
+            current = self.get_job(job_id)
+            if current and current.status != JobStatus.CANCELLED:
+                await self.cancel_job(job_id)
+            raise
+        except _RUNTIME_RECOVERABLE_EXCEPTIONS as exc:
+            current = self.get_job(job_id)
+            if current and current.status != JobStatus.CANCELLED:
+                self._logger.error("Executor error for job %s: %s", job_id, exc)
+                await self.fail_job(job_id, str(exc))
+        finally:
+            self._job_tasks.pop(job_id, None)
+            self._autosave_if_enabled()
 
     async def pause_job(self, job_id: str) -> WritingJob:
         """Pause a running job."""
@@ -613,6 +930,9 @@ class WritingRuntime:
         if ctx:
             ctx.is_cancelled = True
             ctx.cancel_event.set()
+        task = self._job_tasks.pop(job_id, None)
+        if task is not None and not task.done():
+            task.cancel()
 
         job = job.with_status(JobStatus.CANCELLED)
         self._jobs[job_id] = job
@@ -700,7 +1020,7 @@ class WritingRuntime:
         *,
         error: str | None = None,
     ) -> None:
-        """Opt §1: fire runtime-job capture off the terminal-state path."""
+        """Fire runtime-job capture off the terminal-state path."""
 
         try:
             from evolution import run_capture_in_background
@@ -724,7 +1044,7 @@ class WritingRuntime:
     ) -> None:
         """Best-effort runtime-job → evolution candidate write.
 
-        Slice 4a contract (mirrors inspiration_router._capture_inspiration_candidates):
+        Capture contract:
           - never raises; capture failures degrade to a debug log
           - skipped entirely when evolution.candidate_capture_enabled = false
           - CANCELLED jobs are not captured (extractor returns None)
@@ -779,7 +1099,7 @@ class WritingRuntime:
         job: "WritingJob",
         result: "SkillRunResult",
     ) -> None:
-        """Opt §1: fire skill capture off the job-completion path."""
+        """Fire skill capture off the job-completion path."""
 
         try:
             from evolution import run_capture_in_background
@@ -799,10 +1119,10 @@ class WritingRuntime:
     ) -> None:
         """Best-effort skill_run → evolution candidate write.
 
-        Slice 4b contract (parallel to _capture_runtime_job_to_evolution):
+        Capture contract:
           - never raises; capture failures degrade to a warning log
           - skipped entirely when evolution.candidate_capture_enabled = false
-          - SUCCESS / PARTIAL  → SKILL_DRAFT candidate (future Slice 6 may
+          - SUCCESS / PARTIAL  → SKILL_DRAFT candidate (future promotion may
                                   promote to a managed disabled skill draft)
           - FAILED / TIMEOUT / CANCELLED → TOOL_RELIABILITY candidate
           - both candidates coexist with the broader runtime-job capture
@@ -1001,6 +1321,7 @@ class WritingRuntime:
         job_id: str,
         since_timestamp: str | None = None,
         after_event_id: str | None = None,
+        after_sequence: int | None = None,
         limit: int | None = None,
     ) -> list[WritingEvent]:
         """Get events for a job, optionally filtered by a polling cursor."""
@@ -1009,13 +1330,18 @@ class WritingRuntime:
             return []
 
         session_id = job.session_id
+        if after_sequence is not None and after_sequence < 0:
+            raise ValueError("after_sequence must be non-negative")
+        self._ensure_session_event_sequences(session_id)
         session_events = self._events.get(session_id, [])
         job_events = sorted(
             [e for e in session_events if e.job_id == job_id],
-            key=lambda event: (event.timestamp, event.event_id),
+            key=lambda event: (event.sequence, event.timestamp, event.event_id),
         )
 
-        if since_timestamp is not None:
+        if after_sequence is not None:
+            job_events = [event for event in job_events if event.sequence > after_sequence]
+        elif since_timestamp is not None:
             job_events = [
                 event
                 for event in job_events
@@ -1053,8 +1379,9 @@ class WritingRuntime:
         """Emit an event to all subscribers."""
         if session_id not in self._events:
             self._events[session_id] = []
-        self._events[session_id].append(event)
-        event_payload = event.to_dict()
+        sequenced_event = self._with_event_sequence(event)
+        self._events[session_id].append(sequenced_event)
+        event_payload = sequenced_event.to_dict()
         event_payload.update(dict(event.data))
         self._append_transcript_event(session_id, event.event_type.value, event_payload)
 
@@ -1062,7 +1389,7 @@ class WritingRuntime:
         subscribers = self._event_subscribers.get(session_id, [])
         for callback in subscribers:
             try:
-                callback(event)
+                callback(sequenced_event)
             except _RUNTIME_RECOVERABLE_EXCEPTIONS as exc:
                 self._logger.error("Error in event subscriber: %s", exc)
 
@@ -1351,6 +1678,7 @@ class WritingRuntime:
                 ctx.is_cancelled = True
                 ctx.cancel_event.set()
             self._job_contexts[job_id] = ctx
+        self._job_tasks = {}
 
         events: dict[str, list[WritingEvent]] = {}
         for session_id, event_list in events_raw.items():
@@ -1367,12 +1695,15 @@ class WritingRuntime:
                         session_id=str(event_payload["session_id"]),
                         event_type=EventType(str(event_payload.get("event_type", EventType.JOB_CREATED.value))),
                         timestamp=str(event_payload.get("timestamp")),
+                        sequence=self._coerce_event_sequence(event_payload.get("sequence")),
                         data=dict(event_payload.get("data") or {}),
                         metadata=dict(event_payload.get("metadata") or {}),
                     )
                 )
             events[str(session_id)] = restored_events
         self._events = events
+        for session_id in list(self._events.keys()):
+            self._ensure_session_event_sequences(session_id)
 
         artifacts: dict[str, list[WritingArtifact]] = {}
         for job_id, artifact_list in artifacts_raw.items():
@@ -1506,6 +1837,32 @@ class WritingRuntime:
         self._sessions[session_id] = updated_session
         return updated_session
 
+    def _refresh_session_title_from_first_prompt(self, session_id: str) -> None:
+        """Replace placeholder titles with the first user-like transcript text."""
+        session = self.get_session(session_id)
+        if session is None:
+            return
+        current_title = str(session.metadata.get("title") or "").strip()
+        if current_title and current_title.lower() != "untitled session":
+            return
+        first_prompt = ""
+        for event in self._session_transcripts.get(session_id, []):
+            payload = event.get("payload") if isinstance(event, dict) else None
+            if not isinstance(payload, dict):
+                continue
+            if event.get("event_kind") not in {"job_created", "user", EventType.JOB_CREATED.value}:
+                continue
+            text = str(payload.get("input_text") or payload.get("text") or payload.get("content") or "").strip()
+            if text:
+                first_prompt = " ".join(text.split())[:30]
+                break
+        if first_prompt:
+            self._replace_session_metadata(
+                session_id,
+                title=first_prompt,
+                first_user_prompt=first_prompt,
+            )
+
     def _append_transcript_event(
         self,
         session_id: str,
@@ -1536,6 +1893,13 @@ class WritingRuntime:
             head_event_id=transcript_event["event_id"],
             updated_at=transcript_event["timestamp"],
         )
+        if event_kind in {"job_created", "user"} or (
+            event_kind == EventType.JOB_CREATED.value and any(
+                str(payload.get(key) or "").strip()
+                for key in ("input_text", "text", "content")
+            )
+        ):
+            self._refresh_session_title_from_first_prompt(session_id)
         if persist and self._repository is not None:
             self._repository.append_transcript_event(session_id, transcript_event)
         return transcript_event

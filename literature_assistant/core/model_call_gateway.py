@@ -513,7 +513,7 @@ def with_generation_pool_failover(
             )
         )
 
-    **Plan v2 §13.1c step 1 — internal dispatcher migration.**
+    Internal dispatcher migration.
     By default this wrapper drives the generation pool via
     ``model_dispatcher.invoke_failover`` + ``generation_dispatch_adapter``
     instead of ``pool.try_call`` directly. Behaviour is byte-equivalent

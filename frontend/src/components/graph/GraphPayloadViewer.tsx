@@ -24,6 +24,7 @@ import {
   sanitizeWikiVisibleText,
 } from '@/components/wiki/wikiDisplay';
 import { locateChunk, type ChunkLocator } from '@/services/resourcesApi';
+import { encodePdfBboxParam, type PdfBboxUnit } from '@/lib/pdfAnchor';
 
 interface GraphPayloadViewerProps {
   payload: GraphPayloadV0 | null;
@@ -44,21 +45,13 @@ export interface GraphNavigateTarget {
   page: number | null;
   chunk_id: string | null;
   bbox: number[] | null;
+  bbox_unit?: PdfBboxUnit | null;
 }
 
 const graphLocatorCache = new Map<string, ChunkLocator | null>();
 
 function locatorCacheKey(projectId: string, chunkId: string): string {
   return `${projectId}::${chunkId}`;
-}
-
-function encodeBboxParam(bbox: number[] | null | undefined): string | null {
-  if (!Array.isArray(bbox) || bbox.length !== 4) return null;
-  const values = bbox.filter((value): value is number => (
-    typeof value === 'number' && Number.isFinite(value)
-  ));
-  if (values.length !== 4) return null;
-  return values.map((value) => String(Number(value.toFixed(4)))).join(',');
 }
 
 function sanitizeEvidencePreviewText(value: unknown, fallback: string): string {
@@ -228,6 +221,7 @@ export function GraphPayloadViewer({
   const navigateToMaterialTarget = useCallback(async (target: MaterialTarget) => {
     let page = typeof target.page === 'number' && target.page > 0 ? target.page : null;
     let bbox = Array.isArray(target.bbox) && target.bbox.length === 4 ? target.bbox : null;
+    let bboxUnit: PdfBboxUnit | null = target.bbox_unit ?? null;
     const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
 
     if (target.chunk_id && normalizedProjectId && (!page || !bbox)) {
@@ -243,6 +237,7 @@ export function GraphPayloadViewer({
         }
         if (!bbox && Array.isArray(locator.bbox) && locator.bbox.length === 4) {
           bbox = locator.bbox;
+          bboxUnit = locator.bbox_unit ?? null;
         }
       }
     }
@@ -253,6 +248,7 @@ export function GraphPayloadViewer({
         page,
         chunk_id: target.chunk_id ?? null,
         bbox,
+        bbox_unit: bboxUnit,
       });
       return;
     }
@@ -260,7 +256,7 @@ export function GraphPayloadViewer({
     const params = new URLSearchParams();
     if (page) params.set('page', String(page));
     if (target.chunk_id) params.set('chunk', target.chunk_id);
-    const bboxParam = encodeBboxParam(bbox);
+    const bboxParam = encodePdfBboxParam(bbox, bboxUnit);
     if (bboxParam) params.set('bbox', bboxParam);
     const suffix = params.toString() ? `?${params.toString()}` : '';
     navigate(`/workbench/paper/${encodeURIComponent(target.material_id)}${suffix}`);

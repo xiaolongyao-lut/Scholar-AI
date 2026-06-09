@@ -122,10 +122,14 @@ class RunActionAcceptedPayload(BaseModel):
 
 
 class ImportUserSkillRequest(BaseModel):
-    """Request to import a local user skill directory or zip package into the managed root."""
+    """Request to import a local user skill directory or zip package into the managed root.
+
+    Security Note:
+        The install root is now fixed server-side to prevent path traversal attacks.
+        The `managed_root` field has been removed from the API surface.
+    """
 
     source_path: str
-    managed_root: Optional[str] = None
     origin: str = "user_import"
 
 
@@ -176,6 +180,21 @@ class SkillTestRunResponse(BaseModel):
     structured_output: Dict[str, Any] = Field(default_factory=dict)
     evidence_refs: List[Dict[str, Any]] = Field(default_factory=list)
     audit_id: Optional[str] = None
+
+
+class SkillRuntimeSettingsUpdate(BaseModel):
+    """User-editable Skill settings stored as non-sensitive values and saved credential bindings."""
+
+    config_values: Dict[str, str] = Field(default_factory=dict)
+    credential_bindings: Dict[str, str] = Field(default_factory=dict)
+
+
+class SkillRuntimeSettingsResponse(BaseModel):
+    """Persisted Skill runtime settings after validation and masking."""
+
+    skill_id: str
+    config_values: Dict[str, str] = Field(default_factory=dict)
+    credential_bindings: Dict[str, str] = Field(default_factory=dict)
 
 
 class SkillApprovalRequestCreate(BaseModel):

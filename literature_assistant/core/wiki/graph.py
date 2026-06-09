@@ -11,6 +11,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from literature_assistant.core.models.evidence import (
+    PDF_URL_BBOX_UNIT,
+    PdfBboxUnit,
+    coerce_pdf_bbox,
+    pdf_bbox_matches_unit,
+)
 from literature_assistant.core.project_paths import wiki_graph_db_path, wiki_graph_path
 from literature_assistant.core.wiki.page_store import WikiPageStore, atomic_write_text
 
@@ -680,9 +686,16 @@ def compute_blast_radius(
 def _node_from_page(page_path: Path, parsed: ParsedWikiPage, content: str) -> WikiGraphNode:
     node_id = node_id_from_path(page_path)
     frontmatter = parsed.frontmatter
+    evidence_refs = _normalize_frontmatter_evidence_refs(frontmatter)
+    source_ref = _source_ref_from_evidence_refs(evidence_refs)
     metadata = {
         "frontmatter_keys": sorted(str(key) for key in frontmatter.keys()),
     }
+    if evidence_refs:
+        metadata["evidence_refs"] = evidence_refs
+    if source_ref:
+        metadata["source_ref"] = source_ref
+        metadata["material_id"] = source_ref["material_id"]
     return WikiGraphNode(
         node_id=node_id,
         page_path=page_path.as_posix(),
@@ -741,6 +754,8 @@ def _edges_from_frontmatter(
             if target_id is None or target_id == source_id:
                 continue
             edge_type = relation["edge_type"]
+            edge_metadata: dict[str, Any] = {"frontmatter_field": field_name}
+            edge_metadata.update(dict(relation.get("metadata") or {}))
             edges.append(
                 _make_edge(
                     source_id=source_id,
@@ -750,7 +765,7 @@ def _edges_from_frontmatter(
                     evidence=relation["evidence"],
                     source_path=page_path.as_posix(),
                     target_path=node_by_id.get(target_id).page_path if target_id in node_by_id else None,
-                    metadata={"frontmatter_field": field_name},
+                    metadata=edge_metadata,
                 )
             )
     return edges
@@ -768,7 +783,14 @@ def _coerce_relation(
         edge_type = _edge_type_from_value(raw_item.get("type"), default_edge_type)
         confidence = _confidence(str(raw_item.get("confidence") or "medium"))
         evidence = str(raw_item.get("evidence") or field_name)
-        return {"target": str(target), "edge_type": edge_type, "confidence": confidence, "evidence": evidence}
+        metadata = _relation_source_metadata(raw_item)
+        return {
+            "target": str(target),
+            "edge_type": edge_type,
+            "confidence": confidence,
+            "evidence": evidence,
+            "metadata": metadata,
+        }
     if isinstance(raw_item, str):
         target = raw_item.strip()
         if not target:
@@ -781,6 +803,7 @@ def _coerce_relation(
             "edge_type": default_edge_type,
             "confidence": "medium",
             "evidence": field_name,
+            "metadata": {},
         }
     return None
 
@@ -877,6 +900,171 @@ def _unique_basename_index(node_ids: Iterable[str]) -> dict[str, str]:
         basename = node_id.rsplit("/", 1)[-1]
         buckets.setdefault(basename, []).append(node_id)
     return {basename: values[0] for basename, values in buckets.items() if len(values) == 1}
+
+
+def _read_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _read_positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized.isdigit():
+            parsed = int(normalized)
+            return parsed if parsed > 0 else None
+    return None
+
+
+def _read_score(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    score = float(value)
+    if score != score or score in (float("inf"), float("-inf")):
+        return None
+    return score
+
+
+def _read_text_list(value: Any) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    labels: list[str] = []
+    for item in value:
+        label = _read_text(item)
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _read_bbox_unit(value: Any, bbox: list[float] | None) -> str | None:
+    if bbox is None:
+        return None
+    try:
+        unit = PdfBboxUnit(str(value)) if value is not None else PDF_URL_BBOX_UNIT
+    except ValueError:
+        return None
+    if not pdf_bbox_matches_unit(bbox, unit):
+        return None
+    return unit.value
+
+
+def _normalize_pdf_evidence_ref(raw: Any) -> dict[str, Any] | None:
+    """Return a graph-safe PDF evidence anchor from wiki frontmatter.
+
+    Invalid optional anchor precision is dropped instead of failing graph build;
+    a malformed legacy wiki page should not disable the whole sidecar graph.
+    """
+
+    if not isinstance(raw, Mapping):
+        return None
+    material_id = _read_text(raw.get("material_id"))
+    if material_id is None:
+        source_ref = raw.get("source_ref")
+        if isinstance(source_ref, Mapping):
+            material_id = _read_text(source_ref.get("material_id"))
+    if material_id is None:
+        return None
+
+    source_ref_payload = raw.get("source_ref") if isinstance(raw.get("source_ref"), Mapping) else {}
+    source_ref_mapping = source_ref_payload if isinstance(source_ref_payload, Mapping) else {}
+    page = _read_positive_int(raw.get("page")) or _read_positive_int(source_ref_mapping.get("page"))
+    chunk_id = _read_text(raw.get("chunk_id")) or _read_text(source_ref_mapping.get("chunk_id"))
+    text = (
+        _read_text(raw.get("text"))
+        or _read_text(raw.get("compressed_text"))
+        or _read_text(raw.get("quote"))
+        or _read_text(raw.get("content"))
+        or ""
+    )
+    bbox = coerce_pdf_bbox(raw.get("bbox"))
+    bbox_unit = _read_bbox_unit(raw.get("bbox_unit"), bbox)
+    if bbox is None and source_ref_mapping:
+        bbox = coerce_pdf_bbox(source_ref_mapping.get("bbox"))
+        bbox_unit = _read_bbox_unit(source_ref_mapping.get("bbox_unit"), bbox)
+
+    normalized: dict[str, Any] = {
+        "material_id": material_id,
+        "page": page,
+        "chunk_id": chunk_id,
+        "text": text,
+    }
+    score = _read_score(raw.get("score"))
+    if score is not None:
+        normalized["score"] = score
+    if bbox is not None and bbox_unit is not None:
+        normalized["bbox"] = bbox
+        normalized["bbox_unit"] = bbox_unit
+    source = _read_text(raw.get("source"))
+    if source:
+        normalized["source"] = source
+    source_labels = _read_text_list(raw.get("source_labels"))
+    if source_labels:
+        normalized["source_labels"] = source_labels
+    return normalized
+
+
+def _source_ref_from_evidence_ref(ref: Mapping[str, Any]) -> dict[str, Any]:
+    source_ref: dict[str, Any] = {
+        "material_id": str(ref["material_id"]),
+        "page": ref.get("page"),
+        "chunk_id": ref.get("chunk_id"),
+    }
+    if ref.get("bbox") is not None and ref.get("bbox_unit") is not None:
+        source_ref["bbox"] = ref["bbox"]
+        source_ref["bbox_unit"] = ref["bbox_unit"]
+    return source_ref
+
+
+def _source_ref_from_evidence_refs(refs: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    for ref in refs:
+        if _read_text(ref.get("material_id")):
+            return _source_ref_from_evidence_ref(ref)
+    return None
+
+
+def _normalize_frontmatter_evidence_refs(frontmatter: Mapping[str, Any]) -> list[dict[str, Any]]:
+    raw_refs = frontmatter.get("evidence_refs")
+    if raw_refs is None:
+        raw_refs = frontmatter.get("references")
+    if not isinstance(raw_refs, Sequence) or isinstance(raw_refs, (str, bytes)):
+        return []
+    refs: list[dict[str, Any]] = []
+    for raw_ref in raw_refs:
+        ref = _normalize_pdf_evidence_ref(raw_ref)
+        if ref is not None:
+            refs.append(ref)
+    return refs
+
+
+def _relation_source_metadata(raw_item: Mapping[str, Any]) -> dict[str, Any]:
+    raw_refs = raw_item.get("evidence_refs")
+    evidence_refs: list[dict[str, Any]] = []
+    if isinstance(raw_refs, Sequence) and not isinstance(raw_refs, (str, bytes)):
+        for raw_ref in raw_refs:
+            ref = _normalize_pdf_evidence_ref(raw_ref)
+            if ref is not None:
+                evidence_refs.append(ref)
+    direct_ref = _normalize_pdf_evidence_ref(raw_item)
+    source_ref = None
+    if direct_ref is not None:
+        source_ref = _source_ref_from_evidence_ref(direct_ref)
+        if not evidence_refs:
+            evidence_refs.append(direct_ref)
+    elif evidence_refs:
+        source_ref = _source_ref_from_evidence_refs(evidence_refs)
+    metadata: dict[str, Any] = {}
+    if evidence_refs:
+        metadata["evidence_refs"] = evidence_refs
+    if source_ref:
+        metadata["source_ref"] = source_ref
+        metadata["material_id"] = source_ref["material_id"]
+    return metadata
 
 
 def _adjacency(

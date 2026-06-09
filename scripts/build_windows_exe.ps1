@@ -14,6 +14,9 @@
 #
 # Usage:
 #   .\scripts\build_windows_exe.ps1 [-Version 1.0.0] [-SkipFrontend] [-SkipInno] [-SkipFrozenSmoke]
+#   Optional installer signing:
+#     $env:LITERATURE_ASSISTANT_INNO_SIGNTOOL_COMMAND = 'signtool sign ... $f'
+#     .\scripts\build_windows_exe.ps1 -Version 1.0.0
 #
 # Output: workspace_artifacts\releases\<version>\onedir\LiteratureAssistant\
 
@@ -21,7 +24,9 @@ param(
     [string]$Version = "1.0.0",
     [switch]$SkipFrontend,
     [switch]$SkipInno,
-    [switch]$SkipFrozenSmoke
+    [switch]$SkipFrozenSmoke,
+    [string]$InnoSignToolName = $env:LITERATURE_ASSISTANT_INNO_SIGNTOOL_NAME,
+    [string]$InnoSignToolCommand = $env:LITERATURE_ASSISTANT_INNO_SIGNTOOL_COMMAND
 )
 
 $ErrorActionPreference = 'Stop'
@@ -147,14 +152,31 @@ if (-not $SkipInno) {
         # blew MAX_PATH for ui-ux-pro-max\src\ui-ux-pro-max\data\stacks\*.csv
         # at alpha-prep attempt 6, 2026-05-12). $ReleaseDir is already absolute
         # via Resolve-Path on $Repo above.
-        & $Iscc "/DAppVersion=$Version" "/DReleaseRoot=$ReleaseDir" $Iss
+        $IsccArgs = @("/DAppVersion=$Version", "/DReleaseRoot=$ReleaseDir")
+        $ResolvedSignToolName = $InnoSignToolName
+        if ([string]::IsNullOrWhiteSpace($ResolvedSignToolName)) {
+            $ResolvedSignToolName = 'ScholarAISignTool'
+        }
+        if (-not [string]::IsNullOrWhiteSpace($InnoSignToolCommand)) {
+            if ($InnoSignToolCommand -notmatch '\$f') {
+                throw "Inno signing command must include `$f placeholder for the file being signed"
+            }
+            $IsccArgs += "/DSignToolName=$ResolvedSignToolName"
+            $IsccArgs += "/S$ResolvedSignToolName=$InnoSignToolCommand"
+            Write-Host "[build:8] inno signing: enabled ($ResolvedSignToolName)"
+        } else {
+            Write-Host "[build:8] inno signing: unsigned (set LITERATURE_ASSISTANT_INNO_SIGNTOOL_COMMAND to enable)"
+        }
+        $IsccArgs += $Iss
+        & $Iscc @IsccArgs
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (exit $LASTEXITCODE)" }
-        $InstallerPath = Join-Path $ReleaseDir "Scholar-AI-Setup-$Version-windows-x64.exe"
+        $InstallerFileName = "Scholar-AI-Setup-$Version-windows-x64.exe"
+        $InstallerPath = Join-Path $ReleaseDir $InstallerFileName
         if (-not (Test-Path $InstallerPath)) {
             throw "Expected installer missing: $InstallerPath"
         }
         $InstallerSha = (Get-FileHash $InstallerPath -Algorithm SHA256).Hash
-        "$InstallerSha *Scholar-AI-Setup-$Version-windows-x64.exe" | `
+        "$InstallerSha *$InstallerFileName" | `
             Add-Content $ShaFile -Encoding ASCII
         Write-Host "[build] installer sha256: $InstallerSha"
     } else {

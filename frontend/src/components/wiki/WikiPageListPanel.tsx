@@ -3,6 +3,7 @@ import { FileText, Filter, RefreshCw } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { WikiPageSummaryModel } from '@/types/wiki';
+import { formatWikiError, formatWikiPageLabel, sanitizeWikiVisibleText } from './wikiDisplay';
 
 interface WikiPageListPanelProps {
   pages: WikiPageSummaryModel[] | null;
@@ -123,7 +124,7 @@ export function WikiPageListPanel({ pages, isLoading, error, onRefresh, selected
 
       {error ? (
         <div className="mt-5 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
-          {error}
+          {formatWikiError(error, '读取 Wiki 页面列表失败，请稍后重试。')}
         </div>
       ) : null}
 
@@ -149,14 +150,18 @@ export function WikiPageListPanel({ pages, isLoading, error, onRefresh, selected
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 text-foreground">
                     <FileText size={16} className="text-primary/60" />
-                    <h3 className="truncate font-headline text-sm font-semibold">{page.title}</h3>
+                    <h3 className="truncate font-headline text-sm font-semibold">
+                      {sanitizeWikiVisibleText(page.title, formatWikiPageLabel(page.path))}
+                    </h3>
                     {selectedPath === page.path ? (
                       <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-label tracking-[0.14em] text-primary/80">
                         预览
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-2 break-all font-mono text-[11px] leading-5 text-foreground/45">{page.path}</div>
+                  <div className="mt-2 text-[11px] leading-5 text-foreground/45">
+                    页面：{formatWikiPageLabel(page.path)}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">

@@ -55,7 +55,8 @@ LEGACY_LLM_API_ENV_NAMES = ("SILICONFLOW_API_KEY",)
 from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
 from layers.r_layer_hybrid_retriever import hybrid_search
 from evidence_packer import EvidenceReference, _token_set, build_evidence_references, format_evidence_item, pack_evidence
-from model_call_gateway import gated_call, _compute_corpus_version
+from llm.gateway import invoke as invoke_llm_gateway
+from model_call_gateway import _compute_corpus_version
 from query_expander import decompose_query_async
 from retrieval_provenance import attach_source_labels, merge_source_labels
 from llm_defaults import resolve_llm_params
@@ -147,7 +148,7 @@ class RAGWorkflow:
             semantic_router: SemanticRouter 实例
             ragflow_adapter: RAGFlowAdapter 实例
             local_data: 本地混合检索的兜底数据
-            api_key: 聊天模型 API key，优先支持 ARK_API_KEY，兼容旧的 SILICONFLOW_API_KEY
+            api_key: 聊天模型访问凭证，优先支持 ARK_API_KEY，兼容旧的 SILICONFLOW_API_KEY
             base_url: API 基础 URL
             model: LLM 模型名称
             llm_client: 可注入的异步 LLM 客户端（测试或外部管理连接时使用）
@@ -263,7 +264,7 @@ class RAGWorkflow:
         embedding_params = resolve_llm_params("embedding")
         try:
             query_vec_list = await asyncio.to_thread(
-                gated_call,
+                invoke_llm_gateway,
                 kind="embedding",
                 cache_key_parts={
                     "model": embedding_params.get("model", "BAAI/bge-m3"),
@@ -271,7 +272,7 @@ class RAGWorkflow:
                     "task": "semantic_cache_lookup",
                 },
                 payload={"input": [user_query]},
-                invoke=lambda: self.rag_adapter._embed_query(user_query),
+                invoke_fn=lambda: self.rag_adapter._embed_query(user_query),
                 validate_result=lambda value: isinstance(value, list) and len(value) > 0,
             )
         except Exception as exc:  # noqa: BLE001
@@ -925,7 +926,7 @@ class RAGWorkflow:
         }
 
         if not self.api_key:
-            logger.warning("未配置 LLM API key，过答案生成")
+            logger.warning("未配置 LLM 访问凭证，跳过答案生成")
             return "LLM 服务不可用"
 
         sampling_payload = {
@@ -937,7 +938,7 @@ class RAGWorkflow:
 
         try:
             answer_text = await asyncio.to_thread(
-                gated_call,
+                invoke_llm_gateway,
                 kind="llm",
                 cache_key_parts={
                     "model": self.model,
@@ -953,7 +954,7 @@ class RAGWorkflow:
                     "task": "generation",
                 },
                 payload=payload,
-                invoke=lambda: self._invoke_generation_once(payload=payload, headers=headers),
+                invoke_fn=lambda: self._invoke_generation_once(payload=payload, headers=headers),
                 validate_result=lambda value: isinstance(value, str),
             )
 

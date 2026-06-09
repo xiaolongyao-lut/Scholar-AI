@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useI18n } from '@/contexts/I18nContext';
 import { getWritingBackendService } from '@/services/writingBackend';
 import { getWritingRuntimeClient } from '@/services/runtimeClient';
 import { useWriting } from '@/contexts/WritingContext';
-import { Loader2 } from 'lucide-react';
+import { ListPlus, Loader2 } from 'lucide-react';
 import { parseCitationAnchors } from '@/lib/citationAnchors';
 
 // Types
@@ -27,6 +28,7 @@ import { ReferenceDrawer } from './writing/ReferenceDrawer';
 import { StatusBar } from './writing/StatusBar';
 import { useJobEventPolling } from '@/hooks/useJobEventPolling';
 import { ExportPreviewModal } from './writing/ExportPreviewModal';
+import { formatWritingRuntimeError, sanitizeRuntimeVisibleText } from './writing/writingRuntimeDisplay';
 
 const writingBackend = getWritingBackendService();
 const runtimeClient = getWritingRuntimeClient();
@@ -49,6 +51,13 @@ const createRequestId = () => {
 
 const getRuntimeSessionStorageKey = (projectId: string) => `writing-runtime-session:${projectId}`;
 
+export function formatDraftStudioDiagnosticError(
+  error: unknown,
+  fallback = '写作运行状态已变化。',
+): string {
+  return formatWritingRuntimeError(error, fallback);
+}
+
 const createEmptyDraftContent = (sectionId: string): DraftContent => ({
   sectionId,
   content: '',
@@ -60,9 +69,11 @@ const createEmptyDraftContent = (sectionId: string): DraftContent => ({
 const WorkspaceEmptyState = ({
   title,
   description,
+  action,
 }: {
   title: string;
   description: string;
+  action?: React.ReactNode;
 }) => (
   <div className="h-full flex items-center justify-center bg-background px-8">
     <div className="max-w-xl rounded-xl border border-outline-variant bg-surface-lowest shadow-lg shadow-black/5 p-10 text-center">
@@ -71,6 +82,7 @@ const WorkspaceEmptyState = ({
       </div>
       <h2 className="font-headline text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
       <p className="mt-3 font-body text-sm leading-6 text-foreground/60">{description}</p>
+      {action && <div className="mt-6">{action}</div>}
     </div>
   </div>
 );
@@ -85,9 +97,11 @@ const FALLBACK_ACTIONS: WritingAction[] = [
 
 export function DraftStudio() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { 
     activeProjectId, 
     setActiveProjectId,
+    projectDataVersion,
     activeSectionId, 
     setActiveSectionId,
     zenMode,
@@ -174,14 +188,20 @@ export function DraftStudio() {
           setSessionStatus('idle');
           setSessionMessage(t('writing.studio.action_completed'));
         } else {
+          const fallbackMessage = statusDetail.status === 'cancelled'
+            ? t('writing.studio.action_cancelled')
+            : t('writing.studio.action_failed');
           setSessionStatus('error');
-          setSessionMessage(statusDetail.error || `${statusDetail.status === 'cancelled' ? t('writing.studio.action_cancelled') : t('writing.studio.action_failed')}`);
+          setSessionMessage(sanitizeRuntimeVisibleText(statusDetail.error, fallbackMessage));
           setTransformResult(null);
           setShowComparison(false);
         }
       } catch (err) {
         setSessionStatus('error');
-        setSessionMessage(err instanceof Error ? err.message : t('writing.studio.action_result_error'));
+        setSessionMessage(sanitizeRuntimeVisibleText(
+          err instanceof Error ? err.message : null,
+          t('writing.studio.action_result_error'),
+        ));
         setTransformResult(null);
         setShowComparison(false);
       } finally {
@@ -195,6 +215,7 @@ export function DraftStudio() {
   const runtimeSessionPromiseRef = React.useRef<{ projectId: string; promise: Promise<string | null> } | null>(null);
   const actionsCacheRef = React.useRef<WritingAction[] | null>(null);
   const actionsPromiseRef = React.useRef<Promise<WritingAction[]> | null>(null);
+  const actionRunGenerationRef = React.useRef(0);
 
   useEffect(() => {
     activeProjectIdRef.current = activeProjectId;
@@ -247,7 +268,10 @@ export function DraftStudio() {
           storedSessionId = window.localStorage.getItem(storageKey);
         } catch (storageError) {
           if (!quiet) {
-            console.warn('Runtime session storage unavailable; creating a new session.', storageError);
+            console.warn(
+              'Runtime session storage unavailable; creating a new session.',
+              formatDraftStudioDiagnosticError(storageError, '本机写作会话缓存不可用。'),
+            );
           }
         }
       }
@@ -265,13 +289,19 @@ export function DraftStudio() {
               window.localStorage.removeItem(storageKey);
             } catch (storageError) {
               if (!quiet) {
-                console.warn('Unable to clear stale runtime session storage.', storageError);
+                console.warn(
+                  'Unable to clear stale runtime session storage.',
+                  formatDraftStudioDiagnosticError(storageError, '本机写作会话缓存清理失败。'),
+                );
               }
             }
           }
 
           if (!quiet) {
-            console.warn('Stored runtime session could not be restored; creating a new one.', error);
+            console.warn(
+              'Stored runtime session could not be restored; creating a new one.',
+              formatDraftStudioDiagnosticError(error, '旧写作会话无法恢复，正在创建新会话。'),
+            );
           }
         }
       }
@@ -292,7 +322,10 @@ export function DraftStudio() {
           window.localStorage.setItem(storageKey, createdSession.session_id);
         } catch (storageError) {
           if (!quiet) {
-            console.warn('Unable to persist runtime session id locally.', storageError);
+            console.warn(
+              'Unable to persist runtime session id locally.',
+              formatDraftStudioDiagnosticError(storageError, '本机写作会话缓存保存失败。'),
+            );
           }
         }
       }
@@ -302,7 +335,10 @@ export function DraftStudio() {
       }
       return createdSession.session_id;
     })().catch((error) => {
-      console.error('Failed to bootstrap runtime session:', error);
+      console.error(
+        'Failed to bootstrap runtime session:',
+        formatDraftStudioDiagnosticError(error, t('writing.studio.session_init_failed')),
+      );
       setConnectionState('degraded');
       if (!quiet && activeProjectIdRef.current === requestProjectId) {
         setSessionStatus('error');
@@ -412,7 +448,10 @@ export function DraftStudio() {
           return;
         }
 
-        console.error('Failed to bootstrap writing workspace:', err);
+        console.error(
+          'Failed to bootstrap writing workspace:',
+          formatDraftStudioDiagnosticError(err, t('writing.studio.project_load_error')),
+        );
         setActions(FALLBACK_ACTIONS);
         setSections([]);
         setMaterials([]);
@@ -491,7 +530,10 @@ export function DraftStudio() {
         setActiveSectionId(normalizedSecs[0].id);
       }
     } catch (err) {
-      console.error("Failed to load project data:", err);
+      console.error(
+        'Failed to load project data:',
+        formatDraftStudioDiagnosticError(err, t('writing.studio.data_load_error')),
+      );
       setConnectionState(typeof navigator !== 'undefined' && navigator.onLine ? 'degraded' : 'offline');
       setActions(FALLBACK_ACTIONS);
       setSections([]);
@@ -507,7 +549,7 @@ export function DraftStudio() {
 
   useEffect(() => {
     if (activeProjectId) loadProjectData(activeProjectId);
-  }, [activeProjectId, loadProjectData]);
+  }, [activeProjectId, loadProjectData, projectDataVersion]);
 
   // Load draft for active section
   useEffect(() => {
@@ -547,6 +589,8 @@ export function DraftStudio() {
   }, [activeSectionId, activeProjectId, setConnectionState, setSessionMessage, setSessionStatus]);
 
   const handleRunAction = async (actionId: string) => {
+    const runGeneration = actionRunGenerationRef.current + 1;
+    actionRunGenerationRef.current = runGeneration;
     setRunningActionId(actionId);
     try {
       const sessionId = await ensureRuntimeSession();
@@ -565,7 +609,16 @@ export function DraftStudio() {
         output_mode: outputMode,
       });
 
+      if (actionRunGenerationRef.current !== runGeneration) {
+        await runtimeClient.cancelJob(job.job_id).catch(() => undefined);
+        return;
+      }
+
       await runtimeClient.startJob(job.job_id);
+      if (actionRunGenerationRef.current !== runGeneration) {
+        await runtimeClient.cancelJob(job.job_id).catch(() => undefined);
+        return;
+      }
       setActiveJobTimeline(null);
       setTransformResult(null);
       setShowComparison(false);
@@ -587,6 +640,32 @@ export function DraftStudio() {
       setShowComparison(false);
       setRunningActionId(null);
       setActiveJobTracking(null);
+    }
+  };
+
+  const handleStopAction = async () => {
+    actionRunGenerationRef.current += 1;
+    const tracking = activeJobTracking;
+    if (!tracking) {
+      setRunningActionId(null);
+      setSessionStatus('idle');
+      setSessionMessage(t('writing.studio.action_cancelled'));
+      return;
+    }
+
+    try {
+      setSessionStatus('loading');
+      setSessionMessage(t('writing.studio.action_cancelled'));
+      await runtimeClient.cancelJob(tracking.jobId);
+      setTransformResult(null);
+      setShowComparison(false);
+      setRunningActionId(null);
+      setActiveJobTracking(null);
+      setSessionStatus('idle');
+      setSessionMessage(t('writing.studio.action_cancelled'));
+    } catch {
+      setSessionStatus('error');
+      setSessionMessage(t('writing.studio.action_failed'));
     }
   };
 
@@ -667,7 +746,10 @@ export function DraftStudio() {
       setIsDirty(false);
       setDraft({ ...draft, isDirty: false, lastSavedAt: new Date().toISOString() });
     } catch (err) {
-      console.warn("Save failed, using local simulation state", err);
+      console.warn(
+        'Save failed, using local simulation state',
+        formatDraftStudioDiagnosticError(err, t('writing.studio.save_error')),
+      );
       setConnectionState(typeof navigator !== 'undefined' && navigator.onLine ? 'degraded' : 'offline');
       setSessionStatus('error');
       setSessionMessage(typeof navigator !== 'undefined' && navigator.onLine ? t('writing.studio.save_error') : t('writing.studio.save_offline'));
@@ -682,7 +764,7 @@ export function DraftStudio() {
       <div className="h-full flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="animate-spin text-primary" size={40} />
-          <p className="font-label text-xs font-medium uppercase tracking-wider text-foreground/50 animate-pulse">Establishing Runtime Connection...</p>
+          <p className="font-label text-xs font-medium uppercase tracking-wider text-foreground/50 animate-pulse">正在连接写作运行环境…</p>
         </div>
       </div>
     );
@@ -702,6 +784,16 @@ export function DraftStudio() {
       <WorkspaceEmptyState
         title={t('writing.draft.no_sections')}
         description={sessionMessage || t('writing.draft.no_sections_desc')}
+        action={
+          <button
+            type="button"
+            onClick={() => navigate('/writing/outline')}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-label font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <ListPlus size={15} />
+            {t('writing.outline.add_section')}
+          </button>
+        }
       />
     );
   }
@@ -743,6 +835,7 @@ export function DraftStudio() {
           actions={actions}
           runningActionId={runningActionId}
           handleRunAction={handleRunAction}
+          handleStopAction={() => void handleStopAction()}
           rightTab={rightTab}
           setRightTab={setRightTab}
           onContinueFromSpark={(ctx: ContinuationContext) => {

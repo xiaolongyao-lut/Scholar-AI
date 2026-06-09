@@ -1,15 +1,11 @@
 /**
- * Legacy env migration API client + modal (S6 frontend / plan 2026-05-20 §6).
+ * Legacy env migration API client + modal.
  *
- * Detects raw secret-shaped env / header entries on an existing MCP
- * server and offers a guided migration to env_refs / header_refs via
- * the shared CredentialPicker.
+ * Detects legacy secret-shaped entries on an existing MCP server and
+ * offers a guided migration through the shared CredentialPicker.
  *
- * Backend contract:
- *   GET  /api/mcp/servers/{id}/legacy-env       → masked detection list
- *   POST /api/mcp/servers/{id}/migrate-env-to-refs
- *        body: { mapping: {env_key: credential_id}, confirm_remove_raw: true }
- *        → moves raw values into refs, removes raw entries, rebuilds binding index
+ * Backend contract is intentionally kept in typed functions below so UI copy
+ * never needs to render machine field names.
  */
 import axios from 'axios';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';

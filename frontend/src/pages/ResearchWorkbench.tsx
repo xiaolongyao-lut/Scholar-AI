@@ -7,6 +7,7 @@ import { PdfTabStrip } from '@/components/PdfViewer/PdfTabStrip';
 import { usePdfTabs } from '@/contexts/PdfTabsContext';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { useWriting } from '@/contexts/WritingContext';
+import { parsePdfBboxSearchParam, toPdfHighlightRect } from '@/lib/pdfAnchor';
 import {
   addHighlight,
   getAnnotations,
@@ -29,27 +30,6 @@ const PdfReaderFallback = () => (
   </div>
 );
 
-function parseBboxSearchParam(value: string | null): number[] | null {
-  if (!value) return null;
-  const parts = value.split(',').map((part) => Number(part.trim()));
-  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) return null;
-  return parts;
-}
-
-function bboxToHighlightRect(bbox: number[] | null): { x: number; y: number; w: number; h: number } | null {
-  if (!bbox || bbox.length !== 4) return null;
-  const [a, b, c, d] = bbox;
-  if (![a, b, c, d].every((value) => Number.isFinite(value))) return null;
-
-  if (a >= 0 && b >= 0 && c > 0 && d > 0 && a <= 1 && b <= 1 && a + c <= 1.0001 && b + d <= 1.0001) {
-    return { x: a, y: b, w: c, h: d };
-  }
-  if (a >= 0 && b >= 0 && c > a && d > b && c <= 1 && d <= 1) {
-    return { x: a, y: b, w: c - a, h: d - b };
-  }
-  return null;
-}
-
 /**
  * ResearchWorkbench — full-screen PDF reader fallback for a single paper.
  *
@@ -70,7 +50,7 @@ function ResearchWorkbenchInner() {
   const initialPage = initialPageRaw ? Math.max(1, Number(initialPageRaw)) : undefined;
   const deepLinkKey = `${initialPageRaw ?? ''}:${searchParams.get('chunk') ?? ''}:${searchParams.get('bbox') ?? ''}`;
   const targetBbox = useMemo(
-    () => bboxToHighlightRect(parseBboxSearchParam(searchParams.get('bbox'))),
+    () => toPdfHighlightRect(parsePdfBboxSearchParam(searchParams.get('bbox'))),
     [searchParams],
   );
   const navigate = useNavigate();

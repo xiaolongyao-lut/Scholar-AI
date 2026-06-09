@@ -1,19 +1,16 @@
-"""MCP local installer models (S2 / plan 2026-05-20 §A2).
+"""MCP local installer models.
 
 Separate from ``models/mcp.py`` to keep the registry / runtime config models
 focused. These models describe the install-time contract:
 
 - ``McpPackageScanRequest`` / ``McpPackageScanResult`` — scanner I/O
-- ``McpLaunchCandidate`` — one detected way to start the server, identified
-  by a content sha (Locked Revisions M5: install requests reference candidates
-  by sha, never by list index, to survive scan_id refresh / re-order)
-- ``McpInstallConfigField`` — generated non-secret UI field
-- ``McpRequiredCredential`` — credential ref slot to bind via CredentialPicker
+- ``McpLaunchCandidate`` — one detected way to start the service
+- ``McpInstallConfigField`` — generated non-sensitive UI setting
+- ``McpRequiredCredential`` — saved-credential slot to bind during install
 - ``McpScanWarning`` — observation about the package, not a hard error
 - ``McpInstallPlan`` — what would be created on confirm; preview/install share it
 
-None of these carry secrets or persist anything; secrets enter the runtime
-only when the installer writes a McpServerConfig with env_refs.
+None of these carry credential values or persist installed runtime state.
 """
 
 from __future__ import annotations
@@ -31,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-SCAN_ID_TTL_SECONDS = 300  # 5 min (plan M5)
+SCAN_ID_TTL_SECONDS = 300  # 5 min
 """Scan_id lifetime. Beyond this the installer rejects with ``scan_expired``.
 Short TTL prevents stale rescans from racing the real package state on disk."""
 
@@ -87,7 +84,7 @@ def _utc_iso(dt: datetime) -> str:
 
 
 def compute_launch_candidate_sha(command: str, args: list[str], cwd: str) -> str:
-    """Stable content-addressed id for a launch candidate (plan M5).
+    """Stable content-addressed id for a launch candidate.
 
     Used so install requests can reference a candidate by sha rather than
     list index — re-scan can re-order candidates without breaking pending
@@ -161,22 +158,25 @@ class _ConfigFieldBase(BaseModel):
     description: str = Field(default="", max_length=512)
 
 
-# v1 type allowlist; M-type extensions stay in v2.
-CONFIG_FIELD_TYPES = frozenset({"text", "select"})
+# Manifest-driven config values are still persisted as strings, but the
+# field type lets the UI choose the least ambiguous control.
+CONFIG_FIELD_TYPES = frozenset({"text", "select", "number", "boolean"})
 
 
 class McpInstallConfigField(_ConfigFieldBase):
-    """Non-secret config field generated for the install wizard.
+    """Non-sensitive runtime setting generated for the install wizard.
 
-    Examples: ``VISION_PROVIDER`` (select with options), ``DEFAULT_TIMEOUT``
-    (text). For secrets use ``McpRequiredCredential`` instead — those get
-    bound through the CredentialPicker and stored as env_refs.
+    Credential-like settings must use ``McpRequiredCredential`` so users bind a
+    saved credential instead of typing sensitive values into ordinary settings.
     """
 
     type: str = Field(min_length=1, max_length=32)
     default: str | None = Field(default=None, max_length=256)
     options: list[dict[str, str]] | None = None
     """For ``type=select``: list of ``{"value": "...", "label": "..."}``."""
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -192,9 +192,10 @@ CREDENTIAL_KINDS = frozenset({"api_key"})
 
 
 class McpRequiredCredential(_ConfigFieldBase):
-    """A credential reference slot that the install wizard binds via the
-    CredentialPicker. After install, the installer writes
-    ``McpStdioConfig.env_refs[env] = credential_id``.
+    """Saved-credential slot bound by the install wizard.
+
+    The installer stores an opaque reference in runtime configuration after
+    the user chooses a saved credential.
     """
 
     kind: str = Field(default="api_key", max_length=32)
@@ -224,7 +225,7 @@ class McpPackageScanRequest(BaseModel):
 
     source_path: str = Field(min_length=1, max_length=1024)
     """Local filesystem path: directory, executable, or zip. Remote URLs
-    are rejected by the scanner (plan §Non-goals)."""
+    are rejected by the scanner."""
     template_hint: str | None = Field(default=None, max_length=64)
     """Optional hint from a Recommended-view card to bias scanner heuristics
     (e.g. ``vision-auxiliary``). The scanner uses this only as a tiebreaker;
@@ -262,7 +263,7 @@ class McpPackageScanResult(BaseModel):
     warnings: list[McpScanWarning] = Field(default_factory=list)
     needs_manual_launch: bool = False
     expires_at: str
-    """ISO-8601 UTC scan_id expiry (plan M5)."""
+    """ISO-8601 UTC scan_id expiry."""
 
 
 __all__ = [

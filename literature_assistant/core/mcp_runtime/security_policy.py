@@ -1,26 +1,59 @@
-"""Q3a-hardened process runner safety policy (Phase 1B / TASK-103).
+"""Hardened process runner safety policy.
 
-Per plan v0.3 §3.2 #Q3 / §4.3 / §5 TASK-103, this module enforces the
-"hardened local process runner" preconditions before client_manager
-launches a stdio MCP server subprocess. NOT a true OS sandbox (Job
-Object / firejail / container would be needed for that).
+⚠️ SECURITY WARNING: This module provides SOFT CONSTRAINTS only, not true OS sandboxing.
 
-What this module does:
+Current Protection Level: ADVISORY ONLY
+========================================
+
+What this module DOES:
   - argv-only validation (no shell string)
   - dangerous-command lint (rm/format/sudo/...)
-  - env allowlist + redaction (only explicit user env passes; PATH /
-    SYSTEMROOT etc. are added as a minimal allowlist for the subprocess
-    to actually be launchable on Windows / POSIX)
-  - cwd isolation (subprocess gets its own runtime_state-anchored dir)
-  - output caps (stdout/stderr line + char limits)
+  - env allowlist + redaction
+  - cwd isolation (runtime_state-anchored)
+  - output caps (stdout/stderr limits)
   - timeout caps (startup + per-call)
 
-What this module does NOT do:
-  - Restrict syscalls or filesystem access (process inherits user privs)
-  - Block network (subprocess can still connect anywhere)
+What this module DOES NOT do (CRITICAL LIMITATIONS):
+  ❌ Restrict syscalls or filesystem access (process inherits full user privileges)
+  ❌ Block network (subprocess can connect anywhere)
+  ❌ Limit memory or CPU (no resource quotas)
+  ❌ Enforce file permissions beyond user's existing rights
 
-Documented limitation: Phase 5 may add OS-level sandbox; Q3b/c upgrade
-in a separate slice.
+RISK ASSESSMENT:
+================
+- Official MCP servers: LOW risk (trusted first-party code)
+- Community MCP servers: HIGH risk (uncontrolled third-party code)
+- User-defined MCP: CRITICAL risk (completely untrusted code)
+
+REQUIRED USER CONFIRMATION:
+===========================
+Before installing any non-official MCP server, the frontend MUST display:
+
+    ⚠️ Security Warning
+
+    You are about to install: {mcp_name}
+
+    Current isolation: SOFT CONSTRAINTS ONLY
+    - ❌ No syscall restrictions
+    - ❌ No filesystem isolation
+    - ❌ No network blocking
+
+    This MCP server can:
+    - Read/write all your files
+    - Access any network address
+    - Execute system commands
+
+    Only proceed if you fully trust this MCP server.
+    Review the source code before installation.
+
+    Continue? [Yes/No]
+
+For implementation of true OS-level sandboxing, see:
+- Windows: Job Objects / AppContainer
+- Linux: seccomp / landlock / containers
+- Cross-platform: Docker/Podman runtime
+
+See MCP_SECURITY_ISOLATION.md for detailed security analysis and roadmap.
 """
 
 from __future__ import annotations
@@ -57,7 +90,7 @@ class ProcessLaunchPolicy:
     startup_timeout_seconds: float = 10.0
     """Hard cap on initialize() handshake."""
     per_call_timeout_seconds: float = 20.0
-    """Hard cap on a single tool call (matches plan §3.2 Q7)."""
+    """Hard cap on a single tool call."""
     max_stdout_chars: int = 1_048_576
     """1 MiB total. Prevents a runaway server from blowing memory."""
     max_stderr_chars: int = 262_144
@@ -206,7 +239,7 @@ def redact_env_for_audit(env: dict[str, str]) -> dict[str, str]:
 
 
 def prepare_isolated_cwd(server_id: str) -> Path:
-    """Create + return the per-server sandbox cwd under runtime_state.
+    """Create + return the per-server guarded workdir under runtime_state.
 
     Layout: ``runtime_state_path("mcp_servers", "{server_id}", "workdir")``.
     Created with ``mkdir -p`` semantics. Caller passes this path as the
@@ -300,7 +333,7 @@ def redact_text_for_audit(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Streamable HTTP URL guard (Phase 5 / TASK-503)
+# Streamable HTTP URL guard
 # ---------------------------------------------------------------------------
 
 

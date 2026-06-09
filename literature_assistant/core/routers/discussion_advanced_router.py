@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Advanced (RAG-aware multi-agent) discussion endpoint (Slice D / TASK-605).
+"""Advanced RAG-aware multi-agent discussion endpoint.
 
 Mounted alongside the existing ``/api/discussion/*`` endpoints (which are
 preserved). This module adds:
@@ -22,9 +22,14 @@ import json
 import logging
 from typing import Any, Awaitable, Callable
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from chat.discussion_history import (
+    delete_discussion_smart_read_session,
+    persist_discussion_result_to_smart_read,
+    set_discussion_smart_read_archived,
+)
 from discussion_orchestrator import (
     DiscussionCredentialMissingError,
     DiscussionOrchestratorError,
@@ -32,11 +37,110 @@ from discussion_orchestrator import (
     run_discussion,
 )
 from model_dispatcher import DispatchCandidate
-from models.discussion import DiscussionRunConfig, DiscussionRunResult
+from models.discussion import (
+    DiscussionRunConfig,
+    DiscussionRunExportPayload,
+    DiscussionRunHistoryItemPayload,
+    DiscussionRunHistoryPagePayload,
+    DiscussionRunResult,
+)
 
 
 logger = logging.getLogger("DiscussionAdvancedRouter")
 router = APIRouter(prefix="/api/discussion", tags=["DiscussionAdvanced"])
+
+
+def _trim_preview(value: Any, *, limit: int = 220) -> str:
+    text = value if isinstance(value, str) else ""
+    normalized = " ".join(text.split())
+    return normalized[:limit]
+
+
+def _history_item_from_snapshot(snapshot: dict[str, Any]) -> DiscussionRunHistoryItemPayload:
+    config = snapshot.get("config") if isinstance(snapshot.get("config"), dict) else {}
+    result = snapshot.get("final_result") if isinstance(snapshot.get("final_result"), dict) else {}
+    synthesis = snapshot.get("synthesis") if isinstance(snapshot.get("synthesis"), dict) else None
+    if synthesis is None and isinstance(result.get("synthesis"), dict):
+        synthesis = result.get("synthesis")
+    turns = result.get("turns") if isinstance(result.get("turns"), list) else []
+    agent_configs = config.get("agent_configs") if isinstance(config.get("agent_configs"), list) else []
+    return DiscussionRunHistoryItemPayload(
+        run_id=str(snapshot.get("run_id") or ""),
+        state=str(snapshot.get("state") or "pending"),
+        query=_trim_preview(config.get("query") or result.get("query") or ""),
+        created_at=float(snapshot.get("created_at") or 0.0),
+        updated_at=float(snapshot.get("updated_at") or 0.0),
+        turn_count=len(turns) if turns else int(snapshot.get("current_turn_index") or 0),
+        agent_count=len(agent_configs),
+        archived=bool(snapshot.get("archived")),
+        archived_at=(
+            float(snapshot["archived_at"])
+            if isinstance(snapshot.get("archived_at"), (int, float))
+            else None
+        ),
+        synthesis_preview=_trim_preview(synthesis.get("text") if isinstance(synthesis, dict) else ""),
+    )
+
+
+def _filter_history_items(
+    items: list[DiscussionRunHistoryItemPayload],
+    *,
+    query: str | None,
+    state: str | None,
+) -> list[DiscussionRunHistoryItemPayload]:
+    filtered = items
+    if state:
+        filtered = [item for item in filtered if item.state == state]
+    if query:
+        needle = query.casefold()
+        filtered = [
+            item for item in filtered
+            if needle in item.query.casefold() or needle in item.synthesis_preview.casefold()
+        ]
+    return filtered
+
+
+def _paginate_history_items(
+    items: list[DiscussionRunHistoryItemPayload],
+    *,
+    page: int,
+    page_size: int,
+) -> DiscussionRunHistoryPagePayload:
+    start = (page - 1) * page_size
+    return DiscussionRunHistoryPagePayload(
+        page=page,
+        page_size=page_size,
+        total=len(items),
+        items=items[start:start + page_size],
+    )
+
+
+def _snapshot_as_markdown(snapshot: dict[str, Any]) -> str:
+    result = snapshot.get("final_result") if isinstance(snapshot.get("final_result"), dict) else {}
+    config = snapshot.get("config") if isinstance(snapshot.get("config"), dict) else {}
+    query = str(config.get("query") or result.get("query") or "")
+    lines = [
+        f"# Discussion {snapshot.get('run_id')}\n\n",
+        f"- State: {snapshot.get('state')}\n",
+        f"- Query: {query}\n\n",
+    ]
+    turns = result.get("turns") if isinstance(result.get("turns"), list) else []
+    for turn in turns:
+        if not isinstance(turn, dict):
+            continue
+        lines.append(f"## Turn {int(turn.get('turn_index') or 0) + 1}\n\n")
+        traces = turn.get("agent_traces") if isinstance(turn.get("agent_traces"), list) else []
+        for trace in traces:
+            if not isinstance(trace, dict):
+                continue
+            label = trace.get("role_label") or trace.get("agent_id") or "agent"
+            answer = trace.get("answer") if isinstance(trace.get("answer"), str) else ""
+            lines.append(f"### {label}\n\n{answer}\n\n")
+    synthesis = result.get("synthesis") if isinstance(result.get("synthesis"), dict) else {}
+    text = synthesis.get("text") if isinstance(synthesis.get("text"), str) else ""
+    if text:
+        lines.append(f"## Synthesis\n\n{text}\n")
+    return "".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -220,14 +324,14 @@ def make_mcp_enabled_invoke_factory(
     ``McpToolUseRunner`` when the run config carries ``mcp_overrides`` and
     the env flag ``LITERATURE_ENABLE_MCP_TOOLS=1`` is set.
 
-    Phase 4 only honors the run-level ``server_ids`` list — it applies to
+    The current implementation honors the run-level ``server_ids`` list — it applies to
     every agent. ``per_agent`` is accepted by the model but ignored here
-    (warning logged once per run); a follow-up slice will add per-agent
+    (warning logged once per run); a follow-up change will add per-agent
     enforcement after UX validation.
 
     Discussion orchestrator code is not modified — the MCP decision lives
     entirely inside the factory wrapper, preserving the orchestrator's
-    generic ``invoke_agent`` seam (plan v0.3 §3.2 Q4 / TASK-402).
+    generic ``invoke_agent`` seam.
     """
     base = base_factory or _make_default_invoke_factory()
 
@@ -243,6 +347,11 @@ def make_mcp_enabled_invoke_factory(
         # J8: Build agent_id -> server_ids mapping based on scope_type
         from models.discussion import McpScopeType
         agent_mcp_map: dict[str, list[str]] = {}
+        if overrides.per_agent:
+            logger.warning(
+                "mcp_overrides.per_agent supplied; entries are ignored unless "
+                "scope_type='agent'"
+            )
 
         if overrides.scope_type == McpScopeType.AGENT:
             # Per-agent isolation: resolve per_agent -> per_role -> server_ids fallback
@@ -311,6 +420,22 @@ def _get_invoke_factory() -> InvokeAgentFactory:
     return make_mcp_enabled_invoke_factory(_make_default_invoke_factory())
 
 
+def _mirror_discussion_to_smart_read(
+    result: DiscussionRunResult,
+    config: DiscussionRunConfig,
+) -> None:
+    """Best-effort bridge from discussion runs to unified SmartRead history."""
+
+    try:
+        persist_discussion_result_to_smart_read(result, config=config)
+    except Exception as exc:  # noqa: BLE001 - history mirroring must not hide the completed run.
+        logger.warning(
+            "discussion smart-read history mirror failed for run_id=%s: %s",
+            result.run_id,
+            exc,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Endpoint
 # ---------------------------------------------------------------------------
@@ -338,6 +463,7 @@ async def post_discussion_run(config: DiscussionRunConfig) -> DiscussionRunResul
     except DiscussionOrchestratorError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     _schedule_discussion_capture(result)
+    _mirror_discussion_to_smart_read(result, config)
     return result
 
 
@@ -415,6 +541,7 @@ async def post_discussion_run_stream(config: DiscussionRunConfig) -> StreamingRe
                 run_id=run_id,
             )
             _schedule_discussion_capture(result)
+            _mirror_discussion_to_smart_read(result, config)
             done_event = {"event": "done", "result": result.model_dump()}
             store.append_event(run_id, done_event)
             await queue.put(done_event)
@@ -485,8 +612,20 @@ async def post_discussion_run_stream(config: DiscussionRunConfig) -> StreamingRe
     )
 
 
+@router.post("/stream")
+async def post_discussion_stream_alias(
+    config: DiscussionRunConfig,
+) -> StreamingResponse:
+    """Compatibility alias for matrix-era clients expecting ``/discussion/stream``.
+
+    Returns the same SSE contract as ``POST /api/discussion/runs/stream`` while
+    preserving the canonical run-scoped URL used by the frontend.
+    """
+    return await post_discussion_run_stream(config)
+
+
 def _schedule_discussion_capture(result: "DiscussionRunResult") -> None:
-    """Opt §1: fire discussion capture off the request path."""
+    """Fire discussion capture off the request path."""
 
     try:
         from evolution import run_capture_in_background
@@ -501,7 +640,7 @@ def _schedule_discussion_capture(result: "DiscussionRunResult") -> None:
 def _capture_discussion_candidates(result: "DiscussionRunResult") -> None:
     """Best-effort write of evolution candidates from a discussion run.
 
-    Slice 4a contract:
+    Capture contract:
       - never raises; capture failures degrade to a warning log
       - skipped entirely when evolution.candidate_capture_enabled = false
       - response shape unchanged regardless of outcome
@@ -570,6 +709,62 @@ def _capture_discussion_candidates(result: "DiscussionRunResult") -> None:
 # ---------------------------------------------------------------------------
 
 
+@router.get("/history", response_model=DiscussionRunHistoryPagePayload)
+async def list_discussion_history(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    q: str | None = Query(None, min_length=1, max_length=200),
+    state: str | None = Query(None, pattern="^(pending|running|completed|cancelled|error)$"),
+    include_archived: bool = Query(False),
+) -> DiscussionRunHistoryPagePayload:
+    """List run-scoped discussion history with pagination."""
+    from discussion_task_store import get_discussion_task_store
+
+    snapshots = get_discussion_task_store().list_runs(include_archived=include_archived)
+    items = [_history_item_from_snapshot(snapshot) for snapshot in snapshots]
+    filtered = _filter_history_items(items, query=q, state=state)
+    return _paginate_history_items(filtered, page=page, page_size=page_size)
+
+
+@router.get("/archived", response_model=DiscussionRunHistoryPagePayload)
+async def list_archived_discussions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    q: str | None = Query(None, min_length=1, max_length=200),
+) -> DiscussionRunHistoryPagePayload:
+    """List read-only archived discussion runs."""
+    from discussion_task_store import get_discussion_task_store
+
+    snapshots = get_discussion_task_store().list_archived()
+    snapshots.sort(
+        key=lambda item: (
+            float(item.get("archived_at", item.get("updated_at", 0.0)) or 0.0),
+            str(item.get("run_id", "")),
+        ),
+        reverse=True,
+    )
+    items = [_history_item_from_snapshot(snapshot) for snapshot in snapshots]
+    filtered = _filter_history_items(items, query=q, state=None)
+    return _paginate_history_items(filtered, page=page, page_size=page_size)
+
+
+@router.get("/history/search", response_model=DiscussionRunHistoryPagePayload)
+async def search_discussion_history(
+    q: str = Query(..., min_length=1, max_length=200),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    archived_only: bool = Query(False),
+) -> DiscussionRunHistoryPagePayload:
+    """Search discussion history and archived run summaries."""
+    from discussion_task_store import get_discussion_task_store
+
+    store = get_discussion_task_store()
+    snapshots = store.list_archived() if archived_only else store.list_runs(include_archived=True)
+    items = [_history_item_from_snapshot(snapshot) for snapshot in snapshots]
+    filtered = _filter_history_items(items, query=q, state=None)
+    return _paginate_history_items(filtered, page=page, page_size=page_size)
+
+
 @router.get("/runs/{run_id}")
 async def get_discussion_run(run_id: str) -> dict[str, Any]:
     """Return the current state for a previously-registered discussion run.
@@ -582,10 +777,94 @@ async def get_discussion_run(run_id: str) -> dict[str, Any]:
     """
     from discussion_task_store import get_discussion_task_store
 
-    snapshot = get_discussion_task_store().get(run_id)
+    snapshot = get_discussion_task_store().get_any(run_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
     return snapshot
+
+
+@router.put("/runs/{run_id}/archive", response_model=DiscussionRunHistoryItemPayload)
+async def archive_discussion_run(run_id: str) -> DiscussionRunHistoryItemPayload:
+    """Archive a run so it can be viewed read-only in history."""
+    from discussion_task_store import get_discussion_task_store
+
+    archived = get_discussion_task_store().archive(run_id)
+    if archived is None:
+        raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+    try:
+        set_discussion_smart_read_archived(
+            run_id,
+            archived=True,
+            archived_at=str(archived.get("archived_at") or ""),
+        )
+    except Exception as exc:  # noqa: BLE001 - discussion archive is source of truth.
+        logger.warning("smart-read archive mirror failed for run_id=%s: %s", run_id, exc)
+    return _history_item_from_snapshot(archived)
+
+
+@router.put("/runs/{run_id}/restore", response_model=DiscussionRunHistoryItemPayload)
+async def restore_discussion_run(run_id: str) -> DiscussionRunHistoryItemPayload:
+    """Restore an archived run to active history."""
+    from discussion_task_store import DiscussionTaskStoreFull, get_discussion_task_store
+
+    try:
+        restored = get_discussion_task_store().restore(run_id)
+    except DiscussionTaskStoreFull as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if restored is None:
+        raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+    try:
+        set_discussion_smart_read_archived(run_id, archived=False)
+    except Exception as exc:  # noqa: BLE001 - discussion restore is source of truth.
+        logger.warning("smart-read restore mirror failed for run_id=%s: %s", run_id, exc)
+    return _history_item_from_snapshot(restored)
+
+
+@router.post("/runs/{run_id}/export", response_model=DiscussionRunExportPayload)
+async def export_discussion_run(
+    run_id: str,
+    format: str = Query("json", pattern="^(json|markdown)$"),
+) -> DiscussionRunExportPayload:
+    """Export one discussion run as JSON or Markdown text."""
+    from discussion_task_store import get_discussion_task_store
+
+    store = get_discussion_task_store()
+    snapshot = store.get(run_id)
+    if snapshot is None:
+        snapshot = next(
+            (entry for entry in store.list_archived() if entry.get("run_id") == run_id),
+            None,
+        )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+    if format == "markdown":
+        return DiscussionRunExportPayload(
+            run_id=run_id,
+            format="markdown",
+            content=_snapshot_as_markdown(snapshot),
+            filename=f"discussion_{run_id}.md",
+        )
+    return DiscussionRunExportPayload(
+        run_id=run_id,
+        format="json",
+        content=json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True),
+        filename=f"discussion_{run_id}.json",
+    )
+
+
+@router.delete("/runs/{run_id}")
+async def delete_discussion_run(run_id: str) -> dict[str, str]:
+    """Delete one run from active history and archive."""
+    from discussion_task_store import get_discussion_task_store
+
+    removed = get_discussion_task_store().delete(run_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+    try:
+        delete_discussion_smart_read_session(run_id)
+    except Exception as exc:  # noqa: BLE001 - discussion delete is source of truth.
+        logger.warning("smart-read delete mirror failed for run_id=%s: %s", run_id, exc)
+    return {"status": "deleted", "run_id": run_id}
 
 
 @router.post("/runs/{run_id}/stream/resume")

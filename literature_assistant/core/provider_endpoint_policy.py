@@ -1,9 +1,8 @@
-"""Provider endpoint policy (Slice A2 / DEC-002a / DEC-002c / R3).
+"""Provider endpoint policy.
 
-Single source of trust enforcement, used by both `/api/credentials/{id}/test`
-(Slice A3) and the Model Dispatcher (Slice C).
+Single source of trust enforcement, used by both credential tests and the Model Dispatcher.
 
-Pipeline (plan v2 §4.4):
+Pipeline:
     URL parse  ->  reject userinfo / query / fragment
     Scheme normalize  ->  remote requires HTTPS (loopback exception deferred)
     Host normalize (lowercase, no trailing dot)
@@ -23,7 +22,7 @@ Public API:
     validate_endpoint(...)  : run the full pipeline against a URL+trust_source
 
 When called by the credential-test endpoint, the policy must run BEFORE any
-Authorization header is constructed (DEC-002b).
+Authorization header is constructed.
 """
 
 from __future__ import annotations
@@ -36,7 +35,7 @@ from urllib.parse import urlsplit
 
 
 # ---------------------------------------------------------------------------
-# Built-in official-provider allowlist (plan v2 §14.1).
+# Built-in official-provider allowlist.
 # ---------------------------------------------------------------------------
 
 OFFICIAL_PROVIDER_HOSTS: dict[str, set[str]] = {
@@ -154,7 +153,7 @@ def _resolve_via_dnspython(host: str) -> list[str]:
         except (dns.resolver.NoNameservers, dns.exception.Timeout) as exc:
             last_exc = exc
             continue
-        except Exception as exc:  # noqa: BLE001 — fail-closed per DEC-Q2: any unexpected dnspython error must NOT leak through as success; we capture, fall through to AAAA / fallback resolver, and ultimately raise DNSResolutionError if no IPs land.
+        except Exception as exc:  # noqa: BLE001 — fail closed on unexpected dnspython errors; resolver fallbacks decide the final result.
             last_exc = exc
             continue
     if not ips:
@@ -230,6 +229,7 @@ def validate_endpoint(
     *,
     trust_source: str | TrustSource,
     skip_dns: bool = False,
+    allow_loopback_http: bool = False,
 ) -> PolicyDecision:
     """Run the full endpoint validation pipeline.
 
@@ -237,6 +237,9 @@ def validate_endpoint(
     trust_source  One of CredentialTrustSource values.
     skip_dns      Tests / dispatcher cache may pass True to defer DNS to the
                   network layer. Production callers should leave False.
+    allow_loopback_http
+                  Permit explicit local HTTP endpoints for self-hosted
+                  providers. Only loopback hosts/IPs may use this exception.
 
     Returns a PolicyDecision describing allow / reject / skip with structured
     reason. Authorization header must NOT be built unless decision.allowed.
@@ -265,33 +268,24 @@ def validate_endpoint(
 
     port = parsed.port
 
-    # Scheme policy: remote MUST be HTTPS. http:// only allowed for explicit
-    # local-loopback (deferred local_gateway_enabled mode in plan v2 §4.4).
+    # Scheme policy: remote MUST be HTTPS. http:// is allowed only for an
+    # explicit loopback provider such as local Ollama or LM Studio.
     if parsed.scheme.lower() == "http":
-        return _reject("http_scheme_not_allowed_for_remote", ts,
-                       scheme=parsed.scheme.lower(), host=host, port=port,
-                       path=parsed.path)
+        loopback_host = False
+        try:
+            loopback_host = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            loopback_host = host == "localhost"
+        if not allow_loopback_http or not loopback_host:
+            return _reject("http_scheme_not_allowed_for_remote", ts,
+                           scheme=parsed.scheme.lower(), host=host, port=port,
+                           path=parsed.path)
 
     # Trust-source gate: untrusted custom is skip_network by default.
     if ts == TrustSource.RUNTIME_UNTRUSTED_CUSTOM.value:
         return _skip("untrusted_custom_requires_explicit_trust", ts,
                      scheme=parsed.scheme.lower(), host=host, port=port,
                      path=parsed.path)
-
-    # 2026-05-24: user-confirmed endpoints bypass the SSRF/DNS check.
-    # Rationale: third-party OpenAI-compatible gateways behind Cloudflare,
-    # GFW-affected DNS, or behind reverse-proxies frequently resolve to
-    # IPs the local resolver classifies as `private` / `reserved`
-    # (`dns_resolved_to_unsafe_ip`). The user has already declared they
-    # trust this endpoint via UI; second-guessing them at the network
-    # layer blocks otherwise-functional NewAPI / sub2api / OneAPI setups.
-    # SSRF protection remains active for `official_provider` (where the
-    # user has not opted in) and `env_configured_gateway` (where the
-    # operator configured it via env, not a per-credential confirmation).
-    if ts == TrustSource.RUNTIME_USER_CONFIRMED.value:
-        return _allow("user_confirmed_skip_network", ts,
-                      scheme=parsed.scheme.lower(), host=host, port=port,
-                      path=parsed.path, skipped_network=True)
 
     # Official-provider trust requires host on allowlist.
     if ts == TrustSource.OFFICIAL_PROVIDER.value:
@@ -301,7 +295,8 @@ def validate_endpoint(
                            path=parsed.path)
 
     # env_configured_gateway and runtime_user_confirmed bypass the host allowlist
-    # but must still pass SSRF base validation (plan v2 §4.4 / DEC-002c).
+    # but must still pass SSRF validation. User confirmation is not a network
+    # safety override.
 
     if skip_dns:
         return _allow("skip_dns_passthrough", ts,
@@ -319,6 +314,12 @@ def validate_endpoint(
     rejected: list[str] = []
     for ip in ips:
         why = classify_ip(ip)
+        if (
+            why == "loopback"
+            and allow_loopback_http
+            and parsed.scheme.lower() == "http"
+        ):
+            continue
         if why is not None:
             rejected.append(f"{ip}({why})")
     if rejected:

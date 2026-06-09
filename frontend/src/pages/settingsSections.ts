@@ -1,16 +1,13 @@
 /**
- * Settings page section ids + URL back-compat normalization.
+ * Settings page section ids and URL compatibility normalization.
  *
- * After Settings S5 (commit `d39f89a5`) the standalone `embedding` and
- * `rerank` sections were merged into `semantic-routing`. To keep old
- * bookmarks and deep links working, the URL `?section=embedding` and
- * `?section=rerank` are normalized to `semantic-routing` at parse time.
- *
- * This module is the single source of truth for the SectionId vocabulary
- * and the normalization rule. Settings.tsx imports both.
+ * Standalone embedding/rerank routes now share the semantic routing surface,
+ * and standalone sampling routes now share the chat surface. Old bookmarks
+ * remain valid through normalization here.
  */
 
 export type SectionId =
+  | 'api'
   | 'chat'
   | 'embedding'
   | 'rerank'
@@ -21,9 +18,11 @@ export type SectionId =
   | 'credentials'
   | 'mcp'
   | 'discussion'
+  | 'citation-styles'
   | 'experimental';
 
 export const SECTION_IDS: readonly SectionId[] = [
+  'api',
   'chat',
   'embedding',
   'rerank',
@@ -34,6 +33,7 @@ export const SECTION_IDS: readonly SectionId[] = [
   'credentials',
   'mcp',
   'discussion',
+  'citation-styles',
   'experimental',
 ];
 
@@ -42,17 +42,21 @@ export function isSectionId(value: string | null): value is SectionId {
 }
 
 /**
- * Map legacy SectionId values to the post-S5 surface. `embedding` and
- * `rerank` collapse into `semantic-routing`; every other id maps to
- * itself.
+ * Map legacy SectionId values to the current settings surface.
  */
 export function normalizeSection(value: SectionId): SectionId {
-  return value === 'embedding' || value === 'rerank' ? 'semantic-routing' : value;
+  if (value === 'embedding' || value === 'rerank') {
+    return 'semantic-routing';
+  }
+  if (value === 'sampling') {
+    return 'chat';
+  }
+  return value;
 }
 
 /**
  * Resolve the initial active section from `?section=` in window.location,
- * applying back-compat normalization. Falls back to `'chat'` when the
+ * applying back-compat normalization. Falls back to `'api'` when the
  * param is absent, unrecognized, or the env has no `window`.
  *
  * Inputs:
@@ -69,5 +73,9 @@ export function resolveInitialSection(search?: string): SectionId {
   } else if (typeof window !== 'undefined') {
     raw = new URLSearchParams(window.location.search).get('section');
   }
-  return isSectionId(raw) ? normalizeSection(raw) : 'chat';
+  return isSectionId(raw) ? normalizeSection(raw) : 'api';
+}
+
+export function buildSettingsSectionPath(section: SectionId): string {
+  return `/settings?section=${encodeURIComponent(normalizeSection(section))}`;
 }

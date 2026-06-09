@@ -49,29 +49,40 @@ def _compute_corpus_version_fallback() -> str | None:
     Returns None if manifest is missing or invalid (fail-open).
     """
     try:
-        chunk_store_root = output_path("chunk_store")
-        if not chunk_store_root.exists():
-            return None
+        candidate_roots: list[Path] = []
+        configured_root = os.environ.get("RERANK_CHUNK_STORE_DIR", "").strip()
+        if configured_root:
+            candidate_roots.append(Path(configured_root).expanduser())
+        disk_dir = _resolve_disk_dir()
+        if disk_dir is not None:
+            candidate_roots.append(disk_dir.parent / "chunk_store")
+        candidate_roots.append(output_path("chunk_store"))
         
         # Collect all project manifests
         hashes: list[str] = []
-        for project_dir in chunk_store_root.iterdir():
-            if not project_dir.is_dir():
+        seen_roots: set[Path] = set()
+        for chunk_store_root in candidate_roots:
+            root = chunk_store_root.expanduser().resolve()
+            if root in seen_roots or not root.exists():
                 continue
-            manifest_path = project_dir / "manifest.json"
-            if not manifest_path.exists():
-                continue
-            try:
-                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-                materials = payload.get("materials", {})
-                if isinstance(materials, dict):
-                    for entry in materials.values():
-                        if isinstance(entry, dict):
-                            sha = str(entry.get("sha256") or "").strip()
-                            if sha:
-                                hashes.append(sha)
-            except (OSError, json.JSONDecodeError):
-                continue
+            seen_roots.add(root)
+            for project_dir in root.iterdir():
+                if not project_dir.is_dir():
+                    continue
+                manifest_path = project_dir / "manifest.json"
+                if not manifest_path.exists():
+                    continue
+                try:
+                    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    materials = payload.get("materials", {})
+                    if isinstance(materials, dict):
+                        for entry in materials.values():
+                            if isinstance(entry, dict):
+                                sha = str(entry.get("sha256") or "").strip()
+                                if sha:
+                                    hashes.append(sha)
+                except (OSError, json.JSONDecodeError):
+                    continue
         
         if not hashes:
             return None

@@ -92,7 +92,7 @@ class SemanticRouter:
         初始化语义路由器
 
         Args:
-            api_key: embedding 服务 API key
+            api_key: embedding 服务访问凭证
             focus_points_path: focus_points.json 文件路径
             base_url: embedding API 基础 URL
             embedding_model: 向量模型名称（bge-m3 输出 1024 维）
@@ -111,7 +111,7 @@ class SemanticRouter:
             default_model=DEFAULT_EMBEDDING_MODEL,
             probe_candidates=False,
         )
-        # 参数验证：API key 不能为空或仅包含空白字符
+        # 参数验证：访问凭证不能为空或仅包含空白字符
         if not self.api_key or not self.api_key.strip():
             raise ValueError("api_key 不能为空")
 
@@ -702,7 +702,7 @@ def route_query_sync(
 async def demo():
     """演示语义路由的效果"""
 
-    # 获取 API key
+    # 获取访问凭证
     api_key = os.environ.get('SILICONFLOW_EMBEDDING_API_KEY') or os.environ.get('SILICONFLOW_API_KEY')
     if not api_key:
         print("❌ 环境变量 SILICONFLOW_API_KEY（或 SILICONFLOW_EMBEDDING_API_KEY）未设置")

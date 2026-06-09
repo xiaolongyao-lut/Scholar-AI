@@ -14,6 +14,7 @@ import os
 import random
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Response
@@ -21,6 +22,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from models.analysis_chain import AnalysisChainPayload
+from prompts.project_reasoning_bias import (
+    ProjectReasoningBiasContext,
+    apply_project_reasoning_bias,
+    load_project_reasoning_bias,
+    render_project_reasoning_bias_block,
+    should_apply_project_reasoning_bias,
+)
 
 from ai_cost_profile import normalize_cost_profile, use_cost_profile
 from llm_defaults import resolve_llm_params
@@ -30,6 +38,7 @@ from sampling_storage import load_user_sampling
 from model_config_store import chat_store
 from runtime_env import env_value
 from routers import chat_mcp_integration
+from provider_endpoint_policy import TrustSource, validate_endpoint
 from provider_catalog import (
     MODEL_CATALOG,
     SUPPORTED_PROVIDERS,
@@ -40,6 +49,12 @@ from provider_catalog import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+
+_CHAT_ASK_DEPRECATION_HEADERS = {
+    "Deprecation": "Tue, 26 May 2026 00:00:00 GMT",
+    "Sunset": "Wed, 01 Jul 2026 00:00:00 GMT",
+    "Link": '</api/chat>; rel="successor-version", </api/chat/stream>; rel="successor-version"',
+}
 
 
 class LLMConfig(BaseModel):
@@ -110,14 +125,18 @@ class ChatRequest(BaseModel):
     llm: LLMConfig | None = Field(default=None, description="LLM config from client (optional; backend resolves from runtime override + env if absent)")
     sampling: dict[str, float | int] | None = Field(default=None, description="Per-task sampling overrides")
     ai_cost_profile: str | None = Field(default=None, description="balanced | aggressive | quality")
+    project_id: str | None = Field(default=None, max_length=128, description="Project id used to resolve project reasoning bias")
+    project_reasoning_bias_enabled: bool | None = Field(
+        default=None,
+        description="Per-request override. False disables project reasoning bias injection.",
+    )
     tools: list[dict[str, Any]] | None = Field(default=None, description="Tool/function definitions for skill calling")
     mcp_server_ids: list[str] | None = Field(
         default=None,
         description=(
-            "Caller-side MCP scope (Phase 2). When non-None AND env "
-            "LITERATURE_ENABLE_MCP_TOOLS=1, the chat_ask handler delegates "
-            "to McpToolUseRunner. `[]` is valid (audit-recorded zero-server "
-            "run). Unknown ids → 400. Never auto-injected."
+            "Optional MCP service scope for this chat request. When omitted, "
+            "the request uses the normal chat path; an empty list records an "
+            "explicit no-service run."
         ),
     )
     mcp_allow_high_risk_tools: bool = Field(
@@ -139,9 +158,8 @@ class ChatResponse(BaseModel):
     mcp_run: dict[str, Any] | None = Field(
         default=None,
         description=(
-            "Phase 2 MCP tool-loop transcript (rounds, stopped_reason, "
-            "per-call records). Only populated when the request triggered "
-            "the MCP runner."
+            "MCP tool-use transcript. Populated only when the request uses "
+            "MCP services."
         ),
     )
     analysis_chain: AnalysisChainPayload | None = Field(
@@ -304,12 +322,16 @@ def _detect_provider_from_url(base_url: str) -> str | None:
 
 
 def _resolve_api_key(provider: str, provided_key: str | None) -> str:
-    """Resolve API key with server-side env fallback.
+    """Resolve service credential with server-side env fallback.
 
     Priority:
-    1) Provider-specific env key (safer for deployment)
-    2) Provided key from request payload
+    1) Provided key from request payload
+    2) Provider-specific env key for server-side defaults
     """
+    explicit_key = (provided_key or "").strip()
+    if explicit_key:
+        return explicit_key
+
     provider_key = _provider_key(provider)
     env_map: dict[str, tuple[str, ...]] = {
         "doubao": ("ARK_API_KEY",),
@@ -333,13 +355,17 @@ def _resolve_api_key(provider: str, provided_key: str | None) -> str:
         if value:
             return value
 
-    return (provided_key or "").strip()
+    return ""
 
 
 def _build_chat_endpoint(base_url: str, provider: str) -> str:
     """Normalize provider base URL to the provider-specific chat endpoint."""
     base = base_url.strip().rstrip("/")
     provider_key = _provider_key(provider)
+    detected_provider = _detect_provider_from_url(base)
+
+    if detected_provider and detected_provider != provider_key:
+        return _build_chat_endpoint(base, detected_provider)
 
     if provider_key == "gemini":
         if base.endswith("/chat/completions"):
@@ -420,6 +446,44 @@ def _build_chat_endpoint(base_url: str, provider: str) -> str:
     return f"{base}/chat/completions"
 
 
+def _build_models_discovery_endpoint(base_url: str) -> str:
+    """Build an OpenAI-compatible models endpoint from a path-only base URL."""
+
+    trimmed = base_url.strip().rstrip("/")
+    if not trimmed:
+        raise ValueError("Base URL is empty")
+    if "/v1/" in trimmed:
+        idx = trimmed.rfind("/v1/")
+        return f"{trimmed[: idx + 3]}/models"
+    if trimmed.endswith("/v1"):
+        return f"{trimmed}/models"
+    return f"{trimmed}/v1/models"
+
+
+def _allows_loopback_http_for_provider(provider: str, base_url: str) -> bool:
+    """Return whether this provider is explicitly scoped to a local HTTP server."""
+
+    try:
+        parsed = urlsplit(base_url.strip())
+    except ValueError:
+        return False
+    if parsed.scheme.lower() != "http":
+        return False
+    return _provider_key(provider) in {"ollama", "local llm"}
+
+
+def _validate_outbound_llm_base_url(base_url: str, provider: str) -> None:
+    """Reject unsafe provider endpoints before credentials are sent over HTTP."""
+
+    decision = validate_endpoint(
+        base_url,
+        trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+        allow_loopback_http=_allows_loopback_http_for_provider(provider, base_url),
+    )
+    if not decision.allowed:
+        raise ValueError(f"provider endpoint rejected: {decision.reason}")
+
+
 def _build_openai_compatible_url(base_url: str, provider: str) -> str:
     """Backward-compatible alias for provider endpoint normalization."""
     return _build_chat_endpoint(base_url, provider)
@@ -438,6 +502,70 @@ def _build_system_text(system_prompt: str, context: list[str]) -> str:
             f"{context_text}"
         )
     return "\n\n".join(part for part in system_parts if part)
+
+
+def _system_text_with_project_reasoning_bias(
+    *,
+    system_prompt: str,
+    context: list[str],
+    project_id: str | None,
+    enabled: bool | None,
+    surface: str,
+) -> str:
+    """Build system text and append project bias only when scope rules allow it."""
+    base_system_text = _build_system_text(system_prompt, context)
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        return base_system_text
+
+    try:
+        bias = load_project_reasoning_bias(normalized_project_id)
+        if not should_apply_project_reasoning_bias(
+            bias,
+            ProjectReasoningBiasContext(
+                surface=surface,
+                request_enabled=True if enabled is None else bool(enabled),
+            ),
+        ):
+            return base_system_text
+        assert bias is not None
+        rendered = render_project_reasoning_bias_block(bias, locale=bias.language)
+        return apply_project_reasoning_bias(base_system_text, rendered)
+    except Exception as exc:  # noqa: BLE001 - preference injection must not block chat.
+        logger.warning("project_reasoning_bias injection skipped: project=%s err=%s", normalized_project_id, exc)
+        return base_system_text
+
+
+def _resolve_project_reasoning_bias_for_surface(
+    *,
+    project_id: str | None,
+    enabled: bool | None,
+    surface: str,
+    agent_id: str | None = None,
+) -> Any | None:
+    """Resolve saved project bias for one AI surface without blocking callers."""
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        return None
+    try:
+        bias = load_project_reasoning_bias(normalized_project_id)
+        if should_apply_project_reasoning_bias(
+            bias,
+            ProjectReasoningBiasContext(
+                surface=surface,
+                agent_id=agent_id,
+                request_enabled=True if enabled is None else bool(enabled),
+            ),
+        ):
+            return bias
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "project_reasoning_bias resolution skipped: project=%s surface=%s err=%s",
+            normalized_project_id,
+            surface,
+            exc,
+        )
+    return None
 
 
 def resolve_effective_system_prompt(llm: LLMConfig | None = None) -> str:
@@ -579,12 +707,21 @@ def _build_chat_request(
     history: list[ChatMessage] | None = None,
     response_format: dict[str, Any] | None = None,
     tools: list[dict[str, Any]] | None = None,
+    project_id: str | None = None,
+    project_reasoning_bias_enabled: bool | None = None,
+    project_reasoning_bias_surface: str = "chat",
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
     """Build provider-specific URL, headers, and payload."""
     provider_key = _provider_key(llm.provider)
     api_key = _resolve_api_key(llm.provider, llm.api_key)
     resolved_model = _resolve_model_name(llm.provider, llm.model, llm.base_url)
-    system_text = _build_system_text(llm.system_prompt, context)
+    system_text = _system_text_with_project_reasoning_bias(
+        system_prompt=llm.system_prompt,
+        context=context,
+        project_id=project_id,
+        enabled=project_reasoning_bias_enabled,
+        surface=project_reasoning_bias_surface,
+    )
     url = _build_chat_endpoint(llm.base_url, llm.provider)
 
     # Reserve ~40% of max_tokens for history; the rest for the current exchange.
@@ -593,7 +730,7 @@ def _build_chat_request(
 
     key_optional_providers = {"ollama", "local llm"}
     if provider_key not in key_optional_providers and not api_key:
-        raise ValueError(f"未配置可用的 API Key: provider={llm.provider}")
+        raise ValueError(f"未配置可用的服务访问凭证: provider={llm.provider}")
 
     if provider_key == "claude":
         headers = {
@@ -673,6 +810,34 @@ def _extract_provider_error_message(raw: str) -> str:
     return friendly
 
 
+def _provider_status_error_message(status_code: int, raw: str) -> str:
+    """Map upstream HTTP failures to safe, actionable chat error copy."""
+
+    if status_code in {401, 403}:
+        return "LLM 访问凭证无效或未授权，请在设置中检查 API Key。"
+    if status_code == 404:
+        return "LLM 模型或服务地址不可用，请检查供应商、Base URL 和模型名称是否匹配。"
+    if status_code == 429:
+        return "LLM 上游限流，请稍后重试或切换可用供应商。"
+    if status_code in {408, 504, 524}:
+        return "上游 LLM 响应超时，请稍后重试或在设置中切换服务地址。"
+    if status_code >= 500:
+        return f"上游 LLM 服务异常（{status_code}），请稍后重试或切换可用供应商。"
+
+    friendly = _extract_provider_error_message(raw).strip()
+    if friendly and len(friendly) <= 160 and "http" not in friendly.lower() and "://" not in friendly:
+        return friendly
+    return f"上游 LLM 返回非预期状态（{status_code}），请检查当前模型配置。"
+
+
+def _provider_request_error_message(exc: httpx.RequestError) -> str:
+    """Map transport failures to safe chat error copy without leaking URLs."""
+
+    if isinstance(exc, httpx.TimeoutException):
+        return "上游 LLM 响应超时，请稍后重试或在设置中切换服务地址。"
+    return "无法连接上游 LLM，请检查网络、Base URL 或切换可用供应商。"
+
+
 def _extract_chat_response(
     data: dict[str, Any],
     provider: str,
@@ -694,7 +859,7 @@ def _extract_chat_response(
     When ``tool_calls_present=False`` and text is missing/null, this
     still raises ``KeyError("content")`` — that's a genuinely malformed
     response and must surface as an error rather than a silent ``"None"``
-    string in the user-visible answer (Phase P0 hotfix).
+    string in the user-visible answer.
     """
     if _provider_key(provider) == "claude":
         content_blocks = data.get("content", []) if isinstance(data, dict) else []
@@ -807,7 +972,7 @@ async def _post_chat_with_retry(
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
-            async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
                 return resp.json()
@@ -829,7 +994,7 @@ async def _post_chat_with_retry(
                 continue
             _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
             logger.error("LLM API error: %s", raw)
-            friendly = _extract_provider_error_message(raw)
+            friendly = _provider_status_error_message(status_code, raw)
             raise HTTPException(status_code=502, detail=friendly) from exc
         except httpx.RequestError as exc:
             last_exc = exc
@@ -843,12 +1008,23 @@ async def _post_chat_with_retry(
                 continue
             _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
             logger.error("LLM connection error: %s", exc)
-            raise HTTPException(status_code=502, detail=f"无法连接 LLM 服务: {exc}") from exc
+            raise HTTPException(status_code=502, detail=_provider_request_error_message(exc)) from exc
     _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
     raise HTTPException(status_code=502, detail=f"LLM 调用失败: {last_exc}")
 
 
-@router.post("/ask", response_model=ChatResponse)
+def _apply_chat_ask_deprecation_headers(response: Response) -> None:
+    for key, value in _CHAT_ASK_DEPRECATION_HEADERS.items():
+        response.headers[key] = value
+
+
+@router.post("/ask", response_model=ChatResponse, deprecated=True)
+async def chat_ask_endpoint(req: ChatRequest, response: Response) -> ChatResponse:
+    """Deprecated HTTP compatibility endpoint for legacy chat clients."""
+    _apply_chat_ask_deprecation_headers(response)
+    return await chat_ask(req)
+
+
 async def chat_ask(req: ChatRequest) -> ChatResponse:
     """Send user query + context to configured LLM and return the answer."""
     resolved_llm = _resolve_chat_llm(req.llm)
@@ -859,14 +1035,24 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
     llm = _apply_ai_cost_profile_to_llm(llm, req.ai_cost_profile)
     with use_cost_profile(req.ai_cost_profile):
         try:
-            url, headers, payload = _build_chat_request(req.query, req.context, llm, history=req.history, tools=req.tools)
+            _validate_outbound_llm_base_url(llm.base_url, llm.provider)
+            url, headers, payload = _build_chat_request(
+                req.query,
+                req.context,
+                llm,
+                history=req.history,
+                tools=req.tools,
+                project_id=req.project_id,
+                project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
+                project_reasoning_bias_surface="chat",
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         telemetry_model = str(payload.get("model", llm.model))
         started_at = time.perf_counter()
 
-        # ---- Phase 2: optional MCP tool-use loop -------------------------
+        # ---- Optional MCP tool-use loop ----------------------------------
         mcp_run_dump: dict[str, Any] | None = None
         if req.mcp_server_ids is not None and chat_mcp_integration.is_mcp_tools_enabled():
             try:
@@ -913,9 +1099,8 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
             )
 
     try:
-        # Phase P0 hotfix: extract tool_calls FIRST so the parser can
-        # tolerate tool_use-only / content=null+tool_calls responses
-        # without raising or returning the literal string "None".
+        # Extract tool_calls first so the parser can tolerate tool-use-only
+        # responses without returning the literal string "None".
         tool_calls = _extract_tool_calls(data, llm.provider)
         answer, usage, model_used = _extract_chat_response(
             data, llm.provider, llm.model,
@@ -966,26 +1151,12 @@ async def _maybe_build_analysis_chain(
     if not is_enabled("analysis_chain_rag"):
         return None
     try:
-        from analysis_chain_rag_builder import (
-            build_deterministic,
-            build_with_llm_async,
-        )
+        from analysis_chain_rag_builder import build_analysis_chain_async
     except ImportError:
         return None
 
     evidence_snippets = list(req.context or [])
-
-    # Fast path: LLM augmentation disabled → deterministic only.
-    if not is_enabled("analysis_chain_rag_llm"):
-        try:
-            return build_deterministic(
-                query=req.query,
-                answer=answer,
-                evidence_snippets=evidence_snippets,
-            )
-        except Exception:  # noqa: BLE001 — never block chat response
-            logger.exception("analysis_chain_rag deterministic builder failed")
-            return None
+    use_llm = is_enabled("analysis_chain_rag_llm")
 
     # B5 LLM path: spin up a minimal sub-chat to render the structured chain.
     # The callable closure deliberately strips MCP tools and history so the
@@ -999,20 +1170,28 @@ async def _maybe_build_analysis_chain(
             history=[],
             llm=req.llm,
             sampling=req.sampling,
+            project_id=req.project_id,
+            project_reasoning_bias_enabled=False,
         )
         sub_resp = await chat_ask(sub_req)
         return sub_resp.answer
 
     try:
-        return await build_with_llm_async(
+        return await build_analysis_chain_async(
             query=req.query,
             answer=answer,
             evidence_snippets=evidence_snippets,
-            llm_invoke=_chain_llm_invoke,
+            mode="llm" if use_llm else "deterministic",
+            llm_invoke=_chain_llm_invoke if use_llm else None,
             frame="irac",
+            project_reasoning_bias=_resolve_project_reasoning_bias_for_surface(
+                project_id=req.project_id,
+                enabled=req.project_reasoning_bias_enabled,
+                surface="analysis_chain_rag",
+            ),
         )
     except Exception:  # noqa: BLE001 — final safety net
-        logger.exception("analysis_chain_rag LLM path crashed; returning None")
+        logger.exception("analysis_chain_rag builder crashed; returning None")
         return None
 
 
@@ -1029,6 +1208,11 @@ class ChatStreamRequest(BaseModel):
     llm: LLMConfig | None = Field(default=None, description="LLM config (optional; backend resolves if absent)")
     sampling: dict[str, float | int] | None = Field(default=None, description="Per-task sampling overrides")
     ai_cost_profile: str | None = Field(default=None, description="balanced | aggressive | quality")
+    project_id: str | None = Field(default=None, max_length=128, description="Project id used to resolve project reasoning bias")
+    project_reasoning_bias_enabled: bool | None = Field(
+        default=None,
+        description="Per-request override. False disables project reasoning bias injection.",
+    )
     stream: bool = Field(True, description="启用流式输出")
 
 
@@ -1050,7 +1234,17 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
     llm = _apply_ai_cost_profile_to_llm(llm, req.ai_cost_profile)
     with use_cost_profile(req.ai_cost_profile):
         try:
-            url, headers, payload = _build_chat_request(req.query, req.context, llm, stream=True, history=req.history)
+            _validate_outbound_llm_base_url(llm.base_url, llm.provider)
+            url, headers, payload = _build_chat_request(
+                req.query,
+                req.context,
+                llm,
+                stream=True,
+                history=req.history,
+                project_id=req.project_id,
+                project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
+                project_reasoning_bias_surface="chat",
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     provider_key = _provider_key(llm.provider)
@@ -1067,13 +1261,13 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
         model_used = telemetry_model
         status = "ok"
         try:
-            async with httpx.AsyncClient(timeout=stream_timeout_s, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=stream_timeout_s, follow_redirects=False) as client:
                 async with client.stream("POST", url, json=payload, headers=headers) as resp:
                     if resp.status_code != 200:
                         status = "error"
                         body = await resp.aread()
                         body_preview = body.decode("utf-8", errors="replace")[:500]
-                        err_msg = _extract_provider_error_message(body_preview)
+                        err_msg = _provider_status_error_message(resp.status_code, body_preview)
                         # Annotate Anthropic transient errors so the client can surface a clearer message.
                         if "overloaded_error" in body_preview.lower():
                             err_msg = f"{err_msg} (上游过载，请稍后重试)"
@@ -1133,7 +1327,7 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
         except httpx.RequestError as exc:
             status = "error"
             logger.error("SSE stream connection error: %s", exc)
-            yield f"data: {json.dumps({'event': 'error', 'error': f'无法连接 LLM 服务: {exc}'})}\n\n"
+            yield f"data: {json.dumps({'event': 'error', 'error': _provider_request_error_message(exc)})}\n\n"
         except (RuntimeError, ValueError, TypeError, KeyError) as exc:
             status = "error"
             logger.exception("SSE stream unexpected error")
@@ -1208,7 +1402,7 @@ async def list_supported_models(
 @router.get("/models/discover")
 async def discover_models(
     base_url: str = Query(..., description="Base URL of LLM service"),
-    api_key: str = Query("", description="API key (optional for local)"),
+    api_key: str = Query("", description="Access credential (optional for local services)"),
 ) -> dict[str, Any]:
     """Auto-discover models from an OpenAI-compatible endpoint.
 
@@ -1222,25 +1416,20 @@ async def discover_models(
       - "https://api.x.com/v1/chat/completions" -> "https://api.x.com/v1/models"
       - trailing slash tolerated
     """
-    trimmed = base_url.strip().rstrip("/")
-    if not trimmed:
-        return {"ok": False, "error": "Base URL is empty", "models": []}
-
-    if "/v1/" in trimmed:
-        # User pasted a full endpoint like .../v1/chat/completions; cut at /v1
-        idx = trimmed.rfind("/v1/")
-        url = f"{trimmed[: idx + 3]}/models"
-    elif trimmed.endswith("/v1"):
-        url = f"{trimmed}/models"
-    else:
-        url = f"{trimmed}/v1/models"
+    try:
+        _validate_outbound_llm_base_url(base_url, "Local LLM")
+        url = _build_models_discovery_endpoint(base_url)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc), "models": []}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"Endpoint rejected: {exc}", "models": []}
 
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
             data = resp.json()
@@ -1261,7 +1450,7 @@ async def discover_models(
         return {"ok": True, "models": [m.model_dump() for m in discovered], "endpoint": url}
     except httpx.HTTPStatusError as exc:
         # Surface upstream response body so the UI can show *why* the test
-        # failed (Invalid API key, model not found, quota exhausted, etc.).
+        # failed (invalid credential, model not found, quota exhausted, etc.).
         body_snippet = ""
         try:
             body_snippet = exc.response.text[:400] if exc.response is not None else ""

@@ -9,7 +9,13 @@ const OPTIONS: Array<{ value: ThemeMode; icon: typeof Sun; label: string; title:
   { value: 'system', icon: Monitor, label: '系统', title: '跟随系统' },
 ];
 
-export function ThemeToggle({ className }: { className?: string }) {
+interface ThemeToggleProps {
+  /** Keeps the segmented control inside narrow host surfaces such as the collapsed sidebar. */
+  compact?: boolean;
+  className?: string;
+}
+
+export function ThemeToggle({ compact = false, className }: ThemeToggleProps) {
   const { mode, setMode } = useTheme();
 
   return (
@@ -18,6 +24,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       aria-label="主题模式"
       className={cn(
         'inline-flex items-center gap-0.5 rounded-md border border-outline-variant/60 bg-surface-low p-0.5',
+        compact && 'flex-col',
         className,
       )}
     >
@@ -34,6 +41,7 @@ export function ThemeToggle({ className }: { className?: string }) {
             onClick={() => setMode(value)}
             className={cn(
               'inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors',
+              compact && 'h-8 w-8 justify-center px-0',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               active
                 ? 'bg-surface-lowest text-foreground shadow-sm'
@@ -41,7 +49,7 @@ export function ThemeToggle({ className }: { className?: string }) {
             )}
           >
             <Icon size={13} strokeWidth={1.75} />
-            <span className="hidden sm:inline">{label}</span>
+            {!compact && <span className="hidden sm:inline">{label}</span>}
           </button>
         );
       })}

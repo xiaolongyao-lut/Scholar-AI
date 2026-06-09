@@ -234,6 +234,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/config/apply-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Credential */
+        post: operations["post_api_chat_config_apply_credential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/context-compression": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chat Context Compression
+         * @description Return SmartRead long-session compression settings.
+         */
+        get: operations["get_api_chat_context_compression"];
+        /**
+         * Put Chat Context Compression
+         * @description Update SmartRead long-session compression settings.
+         */
+        put: operations["put_api_chat_context_compression"];
+        post?: never;
+        /**
+         * Delete Chat Context Compression
+         * @description Reset SmartRead long-session compression settings to defaults.
+         */
+        delete: operations["delete_api_chat_context_compression"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/history/conversations/{conversation_id}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Chat History Agents
+         * @description Return agent participants recorded for one conversation.
+         */
+        get: operations["get_api_chat_history_conversations_conversation_id_agents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/history/conversations/{conversation_id}/fork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fork Chat History Conversation
+         * @description Create a durable branch and a forked JSON session from a history node.
+         */
+        post: operations["post_api_chat_history_conversations_conversation_id_fork"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/history/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Chat History
+         * @description Import legacy JSON SmartRead sessions into the durable history store.
+         */
+        post: operations["post_api_chat_history_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/history/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Chat History
+         * @description Search durable SmartRead history, importing legacy JSON first.
+         */
+        get: operations["get_api_chat_history_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/models/discover": {
         parameters: {
             query?: never;
@@ -245,7 +370,7 @@ export interface paths {
         put?: never;
         /**
          * Discover Chat Models
-         * @description Discover models from a chat/LLM service (api_key in body, not URL).
+         * @description Discover models from a chat/LLM service without URL credentials.
          */
         post: operations["post_api_chat_models_discover"];
         delete?: never;
@@ -294,6 +419,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/sessions/bulk-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Chat Sessions
+         * @description Delete several saved Intelligent Chat sessions from the local store.
+         *
+         *     Accepts an explicit list of ``session_ids`` so the history UI stays in
+         *     control of exactly which sessions are removed; the endpoint never deletes by
+         *     server-side wildcard. Deletion is atomic under the store lock and is
+         *     persisted only when at least one id matched.
+         */
+        post: operations["post_api_chat_sessions_bulk_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Chat Session
+         * @description Delete a saved Intelligent Chat session from the local store.
+         */
+        delete: operations["delete_api_chat_sessions_session_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/sessions/{session_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Archive Chat Session
+         * @description Archive a saved Intelligent Chat session without deleting its transcript.
+         */
+        put: operations["put_api_chat_sessions_session_id_archive"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/sessions/{session_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Restore Chat Session
+         * @description Restore an archived Intelligent Chat session to the active history list.
+         */
+        put: operations["put_api_chat_sessions_session_id_restore"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Intelligent Chat Stream
+         * @description Stream a SmartRead answer while reusing the unified pipeline boundary.
+         */
+        post: operations["post_api_chat_stream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/test": {
         parameters: {
             query?: never;
@@ -316,6 +546,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chunk_to_page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chunk To Page
+         * @description Resolve a chunk id to PDF page and optional bbox metadata.
+         */
+        get: operations["get_api_chunk_to_page"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chunks/{chunk_id}/locator": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chunk Locator
+         * @description Get chunk locator with bbox information when a project id is provided.
+         */
+        get: operations["get_api_chunks_chunk_id_locator"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/citations/detect_overlap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detect Citation Overlap
+         * @description Detect overlapping citations in a project or draft.
+         *
+         *     Identifies citation anchors that reference the same or highly similar chunks.
+         */
+        post: operations["post_api_citations_detect_overlap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/citations/verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Citation Verifications
+         * @description List persisted citation verification records for a project.
+         */
+        get: operations["get_api_citations_verifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/citations/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Citation Source
+         * @description Verify one citation against a concrete PDF source anchor and persist it.
+         */
+        post: operations["post_api_citations_verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/client-error": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Client Error
+         * @description Sink for frontend ErrorBoundary + window.onerror + unhandledrejection.
+         *
+         *     Stays loose-typed so the browser can ship whatever it has; we cap field
+         *     sizes server-side so a runaway stack cannot bloat the log.
+         */
+        post: operations["post_api_client_error"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/credentials": {
         parameters: {
             query?: never;
@@ -325,17 +680,50 @@ export interface paths {
         };
         /**
          * List Credentials
-         * @description List credentials with masked api_key. Optionally filter by category /
+         * @description List credentials with masked access state. Optionally filter by category /
          *     enabled.
          */
         get: operations["get_api_credentials"];
         put?: never;
         /**
          * Create Credential
-         * @description Create a new runtime credential. Body carries the secret on input only;
+         * @description Create a new runtime credential. Body carries credential material only on input;
          *     response is masked.
          */
         post: operations["post_api_credentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/credentials/sample": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sample Credential
+         * @description Sample a credential by category and strategy_hint.
+         *
+         *     Query params:
+         *         category: "generation" | "embedding" | "rerank" (optional, defaults to "generation")
+         *         strategy_hint: cost/quality tier or surface hint (optional, defaults to "medium")
+         *
+         *     Selection logic:
+         *         1. Filter by category + enabled=True
+         *         2. Normalize strategy_hint to canonical tier (cheap→low, default→medium, etc.)
+         *         3. Match exact strategy_hint if possible
+         *         4. Fall back to highest priority credential in category
+         *         5. 404 if no enabled credentials in category
+         *
+         *     Returns: RuntimeCredentialPublic with masked credential state.
+         */
+        post: operations["post_api_credentials_sample"];
         delete?: never;
         options?: never;
         head?: never;
@@ -374,12 +762,126 @@ export interface paths {
          * Test Credential
          * @description Validate endpoint trust and (if allowed) probe reachability.
          *
-         *     Per DEC-002b: the policy ALWAYS runs before any auth header is constructed.
-         *     Per DEC-002c: untrusted_custom returns skipped_network=true unless caller
-         *     overrides with body={"trust_source_override": "runtime_user_confirmed"}.
-         *     The override is intentionally NOT persisted — it is a one-shot test mode.
+         *     The endpoint trust policy runs before any provider request is built. A
+         *     one-shot trust override may allow a probe for this test call only; it is
+         *     never persisted.
          */
         post: operations["post_api_credentials_credential_id_test"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/csl-styles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Csl Styles
+         * @description List builtin + uploaded styles and the active selection.
+         */
+        get: operations["get_api_csl_styles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/csl-styles/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Active Csl Style
+         * @description Return the active style and its CSL XML (single source of truth).
+         */
+        get: operations["get_api_csl_styles_active"];
+        /** Set Active Csl Style */
+        put: operations["put_api_csl_styles_active"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/csl-styles/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Csl Style
+         * @description Validate and store an uploaded ``.csl`` style; it becomes active.
+         */
+        post: operations["post_api_csl_styles_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/csl-styles/{style_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Csl Style */
+        delete: operations["delete_api_csl_styles_style_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/csl-styles/{style_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Csl Style Content */
+        get: operations["get_api_csl_styles_style_id_content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/archived": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Archived Discussions
+         * @description List read-only archived discussion runs.
+         */
+        get: operations["get_api_discussion_archived"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -430,6 +932,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/discussion/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Discussion History
+         * @description List run-scoped discussion history with pagination.
+         */
+        get: operations["get_api_discussion_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/history/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Discussion History
+         * @description Search discussion history and archived run summaries.
+         */
+        get: operations["get_api_discussion_history_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/discussion/runs": {
         parameters: {
             query?: never;
@@ -444,6 +986,295 @@ export interface paths {
          * @description Run a RAG-aware multi-agent discussion.
          */
         post: operations["post_api_discussion_runs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/runs/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Discussion Run Stream
+         * @description Stream a RAG-aware multi-agent discussion via SSE.
+         *
+         *     Gated by feature flag ``discussion_streaming``. When the flag is off,
+         *     callers should fall back to the non-streaming ``POST /runs`` endpoint
+         *     (this endpoint returns 404).
+         *
+         *     SSE events (one JSON object per ``data:`` line):
+         *
+         *     - ``{"event": "started", "run_id": "disc_...", "stage": "retrieval", ...}``  (B7/B1)
+         *     - ``{"event": "stage_progress", "stage": "agents_prep", ...}``               (B7)
+         *     - ``{"event": "agent_done", "turn_index": N, "agent_id": "...", "trace": {...}}``
+         *     - ``{"event": "turn_done", "turn_index": N, "agent_count": N}``
+         *     - ``{"event": "synthesis_done", "synthesis": {...}}``
+         *     - ``{"event": "done", "result": {...}}``  (full DiscussionRunResult)
+         *     - ``{"event": "error", "status": <http-like>, "error": "..."}``
+         *
+         *     B1 (0.1.8.2): the endpoint pre-registers a ``run_id`` with the task store
+         *     before invoking the orchestrator. Every emitted event is mirrored to the
+         *     store so a subsequent ``GET /runs/{run_id}`` or
+         *     ``POST /runs/{run_id}/stream/resume`` can rehydrate the run state after a
+         *     page reload.
+         *
+         *     Discussion capture (evolution candidates) still fires off-path on the
+         *     successful ``done`` event, identical to the non-streaming endpoint.
+         */
+        post: operations["post_api_discussion_runs_stream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discussion Run
+         * @description Return the current state for a previously-registered discussion run.
+         *
+         *     Used by ``DiscussionContext`` on mount to decide whether to:
+         *     - state in ("pending", "running") → call ``/stream/resume`` to reconnect
+         *     - state in ("completed", "cancelled", "error") → restore from final state
+         *     - 404 → drop any stored ``run_id`` and reset to idle (B1 happy-path on
+         *       first launch / after server restart / after 24h TTL expiry)
+         */
+        get: operations["get_api_discussion_runs_run_id"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Discussion Run
+         * @description Delete one run from active history and archive.
+         */
+        delete: operations["delete_api_discussion_runs_run_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/runs/{run_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Archive Discussion Run
+         * @description Archive a run so it can be viewed read-only in history.
+         */
+        put: operations["put_api_discussion_runs_run_id_archive"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/runs/{run_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Discussion Run
+         * @description Export one discussion run as JSON or Markdown text.
+         */
+        post: operations["post_api_discussion_runs_run_id_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/runs/{run_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Restore Discussion Run
+         * @description Restore an archived run to active history.
+         */
+        put: operations["put_api_discussion_runs_run_id_restore"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/runs/{run_id}/stream/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Discussion Run Stream
+         * @description Reconnect to an existing discussion run's event stream.
+         *
+         *     Replays all events from the store's event_log (so the client catches up
+         *     on what was emitted while it was disconnected) and then either:
+         *     - if the run is still pending/running: tails the store via polling
+         *       (lightweight; events arrive ≤ ~250ms after they happen)
+         *     - if the run is terminal: closes after replaying
+         *
+         *     Replay-based design (vs. attaching to the original asyncio.Queue) keeps
+         *     things simple: a fresh consumer always gets the full event sequence and
+         *     multi-tab reconnect just works.
+         *
+         *     Gated by the same ``discussion_streaming`` feature flag as the original
+         *     POST /runs/stream endpoint.
+         */
+        post: operations["post_api_discussion_runs_run_id_stream_resume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Discussions
+         * @description Search discussions by content.
+         */
+        get: operations["get_api_discussion_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Discussions
+         * @description List all discussion sessions with optional filters.
+         */
+        get: operations["get_api_discussion_sessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Discussion Stream Alias
+         * @description Compatibility alias for matrix-era clients expecting ``/discussion/stream``.
+         *
+         *     Returns the same SSE contract as ``POST /api/discussion/runs/stream`` while
+         *     preserving the canonical run-scoped URL used by the frontend.
+         */
+        post: operations["post_api_discussion_stream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Discussion
+         * @description Delete a discussion session.
+         */
+        delete: operations["delete_api_discussion_session_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/{session_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Archive Discussion
+         * @description Archive a discussion session.
+         */
+        put: operations["put_api_discussion_session_id_archive"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussion/{session_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Discussion
+         * @description Export discussion to JSON or Markdown.
+         */
+        post: operations["post_api_discussion_session_id_export"];
         delete?: never;
         options?: never;
         head?: never;
@@ -510,6 +1341,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/discussion/{session_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discussion Summary
+         * @description Get discussion summary/synthesis.
+         */
+        get: operations["get_api_discussion_session_id_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/discussions/{discussion_id}/evidence_pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discussion Evidence Pack
+         * @description Get evidence pack for a discussion session.
+         */
+        get: operations["get_api_discussions_discussion_id_evidence_pack"];
+        put?: never;
+        /**
+         * Save Discussion Evidence Pack
+         * @description Save evidence pack for a discussion session.
+         */
+        post: operations["post_api_discussions_discussion_id_evidence_pack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/embedding/config": {
         parameters: {
             query?: never;
@@ -529,6 +1404,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/embedding/config/apply-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Credential */
+        post: operations["post_api_embedding_config_apply_credential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/embedding/models/discover": {
         parameters: {
             query?: never;
@@ -540,7 +1432,7 @@ export interface paths {
         put?: never;
         /**
          * Discover Embedding Models
-         * @description Discover models from an embedding service (api_key in body, not URL).
+         * @description Discover models from an embedding service without URL credentials.
          */
         post: operations["post_api_embedding_models_discover"];
         delete?: never;
@@ -569,6 +1461,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evidence_refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evidence Refs
+         * @description Get evidence references with optional source_labels filtering.
+         *
+         *     Supports filtering by project_id, material_id, and source_labels.
+         */
+        get: operations["get_api_evidence_refs"];
+        put?: never;
+        /**
+         * Create Evidence Ref
+         * @description Create a new evidence reference with optional bbox.
+         */
+        post: operations["post_api_evidence_refs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evidence_refs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Evidence Refs
+         * @description Export evidence references as a local JSON or CSV attachment.
+         *
+         *     Args:
+         *         material_id: Optional material identifier to match exactly.
+         *         source_labels: Optional source labels; a ref matches any supplied label.
+         *         export_format: Either ``json`` or ``csv``.
+         *
+         *     Returns:
+         *         Downloadable response preserving source labels and PDF anchor fields.
+         */
+        get: operations["get_api_evidence_refs_export"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/export/docx": {
         parameters: {
             query?: never;
@@ -589,6 +1535,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/feature-flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feature Flags
+         * @description Return every registered feature flag with its current resolved value.
+         */
+        get: operations["get_api_feature_flags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/feature-flags/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Feature Flag
+         * @description Persist an override for one registered flag.
+         */
+        post: operations["post_api_feature_flags_name"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Evidence Graph Payload
+         * @description Return the reusable Evidence Graph v1 payload.
+         */
+        get: operations["get_api_graph_evidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/graph/payload": {
         parameters: {
             query?: never;
@@ -596,8 +1602,93 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Graph Payload */
+        /**
+         * Graph Payload
+         * @description Return the canonical KG viewer payload endpoint.
+         */
         get: operations["get_api_graph_payload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inspiration/evidence_refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Inspiration Evidence Refs
+         * @description Get inspiration evidence references with source_labels filtering.
+         *
+         *     Alias to /api/evidence_refs with inspiration-specific context.
+         */
+        get: operations["get_api_inspiration_evidence_refs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kg/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Kg Graph Payload
+         * @description Compatibility alias for matrix-era KG clients expecting `/api/kg/graph`.
+         */
+        get: operations["get_api_kg_graph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/source-vault": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Source Vault Overview
+         * @description Return Source Vault status and recent sources for the workbench UI.
+         */
+        get: operations["get_api_knowledge_source_vault"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/source-vault/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Source Vault Search
+         * @description Search Source Vault chunks by title/text with optional project narrowing.
+         */
+        get: operations["get_api_knowledge_source_vault_search"];
         put?: never;
         post?: never;
         delete?: never;
@@ -615,14 +1706,16 @@ export interface paths {
         };
         /**
          * List Audit
-         * @description Tail the MCP tool-call audit log. Records are already redacted
-         *     (security_policy.redact_text_for_audit on previews); this endpoint is
-         *     read-only.
+         * @description Return recent MCP call records with redacted previews.
          */
         get: operations["get_api_mcp_audit"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Clear Audit
+         * @description Clear the local MCP tool-call audit log without touching server configs.
+         */
+        delete: operations["delete_api_mcp_audit"];
         options?: never;
         head?: never;
         patch?: never;
@@ -697,9 +1790,7 @@ export interface paths {
         };
         /**
          * List Pending Calls
-         * @description Return all currently-pending MCP tool calls awaiting operator
-         *     approval. Empty list when no pending — cheap poll target per the
-         *     transport ADR.
+         * @description Return MCP tool calls currently waiting for user approval.
          */
         get: operations["get_api_mcp_pending_calls"];
         put?: never;
@@ -721,11 +1812,7 @@ export interface paths {
         put?: never;
         /**
          * Decide Pending Call
-         * @description Record an operator decision for a pending MCP tool call.
-         *
-         *     Body: ``{"decision": "approve" | "reject", "remember_for_run": bool}``.
-         *     Returns 204 on success; 404 if the id is unknown / already decided /
-         *     timed out; 400 on invalid body.
+         * @description Record the user's decision for a pending MCP tool call.
          */
         post: operations["post_api_mcp_pending_calls_call_id_decide"];
         delete?: never;
@@ -784,12 +1871,10 @@ export interface paths {
         };
         /**
          * List Legacy Env
-         * @description Detect raw-secret-shaped env / header entries on a server.
+         * @description Detect sensitive local configuration that should move to credentials.
          *
-         *     Returns masked values only — the raw plaintext never crosses this
-         *     boundary. Caller (frontend installed-view banner) uses the result to
-         *     show a migration prompt; the actual move happens via the POST
-         *     ``/migrate-env-to-refs`` endpoint below.
+         *     The response contains only masked values and field labels needed for the
+         *     migration UI; plaintext values never cross this boundary.
          */
         get: operations["get_api_mcp_servers_server_id_legacy_env"];
         put?: never;
@@ -811,29 +1896,10 @@ export interface paths {
         put?: never;
         /**
          * Migrate Env To Refs
-         * @description Move raw env / header values into env_refs / header_refs.
+         * @description Move selected sensitive configuration into saved-credential bindings.
          *
-         *     Body schema:
-         *         {
-         *           "mapping": {"<env_key>": "<credential_id>", ...},
-         *           "confirm_remove_raw": true
-         *         }
-         *
-         *     Validation:
-         *     - Every credential_id in ``mapping`` must exist + be enabled.
-         *     - Every ``env_key`` in ``mapping`` must currently exist in either
-         *       ``stdio.env`` or ``http.headers`` of the target server.
-         *     - ``confirm_remove_raw`` must be exactly ``true`` (plan §6: "never
-         *       auto-migrate"). The frontend's migration modal flips this only on
-         *       the user's explicit click.
-         *
-         *     Effects:
-         *     - Adds ``mapping[env_key] -> credential_id`` to ``env_refs`` (stdio)
-         *       or ``header_refs`` (http).
-         *     - Removes the corresponding ``env_key`` from ``env`` / ``headers``.
-         *     - Increments fingerprint via the standard update path (v2 includes
-         *       env_refs / header_refs keys, M4).
-         *     - Triggers reverse-index rebuild on the binding index.
+         *     Requires explicit confirmation. The operation keeps non-sensitive local
+         *     configuration in place and rebuilds the credential binding index.
          */
         post: operations["post_api_mcp_servers_server_id_migrate_env_to_refs"];
         delete?: never;
@@ -875,12 +1941,79 @@ export interface paths {
         };
         /**
          * List Server Tools
-         * @description Return the cached tool catalog for ``server_id``. If the cache is
-         *     empty, runs a fresh list_tools to populate it.
+         * @description Return the cached tool catalog for the selected MCP service.
          */
         get: operations["get_api_mcp_servers_server_id_tools"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memory_palace/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Memories
+         * @description List repository-owned long-term memory rows with optional scope filters.
+         */
+        get: operations["get_api_memory_palace_memories"];
+        put?: never;
+        /**
+         * Create Memory
+         * @description Create one long-term memory row through the shared MemPalace adapter.
+         */
+        post: operations["post_api_memory_palace_memories"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memory_palace/memories/{memory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Memory
+         * @description Return one repository-owned long-term memory row.
+         */
+        get: operations["get_api_memory_palace_memories_memory_id"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Memory
+         * @description Delete one repository-owned long-term memory row.
+         */
+        delete: operations["delete_api_memory_palace_memories_memory_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memory_palace/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Memory Palace
+         * @description Compatibility alias for matrix-era MemPalace search clients.
+         */
+        post: operations["post_api_memory_palace_search"];
         delete?: never;
         options?: never;
         head?: never;
@@ -906,6 +2039,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rerank/config/apply-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Rerank Credential */
+        post: operations["post_api_rerank_config_apply_credential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rerank/models/discover": {
         parameters: {
             query?: never;
@@ -917,7 +2067,7 @@ export interface paths {
         put?: never;
         /**
          * Discover Rerank Models
-         * @description Discover models from a rerank service (api_key in body, not URL).
+         * @description Discover models from a rerank service without URL credentials.
          */
         post: operations["post_api_rerank_models_discover"];
         delete?: never;
@@ -944,6 +2094,111 @@ export interface paths {
          *     stored config.
          */
         post: operations["post_api_rerank_test"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description Return the unified Settings document.
+         *
+         *     Output never contains credential material and is safe for browser bootstrap.
+         */
+        get: operations["get_api_settings"];
+        /**
+         * Update Settings
+         * @description Apply a partial unified settings update and return the fresh document.
+         */
+        put: operations["put_api_settings"];
+        post?: never;
+        /**
+         * Delete Settings
+         * @description Clear API overrides.
+         *
+         *     When subsystem is omitted, all model API overrides are cleared. Credential
+         *     records are not deleted through this endpoint.
+         */
+        delete: operations["delete_api_settings"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/source_labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Source Labels
+         * @description List all source labels.
+         */
+        get: operations["get_api_source_labels"];
+        put?: never;
+        /**
+         * Create Source Label
+         * @description Create a new source label.
+         */
+        post: operations["post_api_source_labels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/source_labels/{label_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source Label
+         * @description Get a source label by ID.
+         */
+        get: operations["get_api_source_labels_label_id"];
+        /**
+         * Update Source Label
+         * @description Update a source label.
+         */
+        put: operations["put_api_source_labels_label_id"];
+        post?: never;
+        /**
+         * Delete Source Label
+         * @description Delete a source label.
+         */
+        delete: operations["delete_api_source_labels_label_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki Categories
+         * @description Return a read-only category tree derived from readable wiki pages.
+         */
+        get: operations["get_api_wiki_categories"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -984,6 +2239,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wiki/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Export
+         * @description Export all wiki pages as Markdown zip archive (G15 2026-05-26).
+         *
+         *     Args:
+         *         output_path: Optional output zip filename under workspace_artifacts/wiki_exports.
+         *
+         *     Returns:
+         *         WikiExportResponse with success/page_count/output_path/errors
+         */
+        post: operations["post_api_wiki_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/wiki/graph": {
         parameters: {
             query?: never;
@@ -1001,6 +2282,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wiki/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Import
+         * @description Import local Markdown files into private wiki pages.
+         *
+         *     The endpoint accepts only local `.md` paths inside the configured workspace
+         *     roots so a browser caller cannot use the API as a general filesystem reader.
+         */
+        post: operations["post_api_wiki_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/wiki/pages": {
         parameters: {
             query?: never;
@@ -1011,7 +2315,11 @@ export interface paths {
         /** Wiki Pages */
         get: operations["get_api_wiki_pages"];
         put?: never;
-        post?: never;
+        /**
+         * Wiki Page Create
+         * @description Create a new wiki page (G2 2026-05-26).
+         */
+        post: operations["post_api_wiki_pages"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1035,6 +2343,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wiki/pages/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Wiki Page Update
+         * @description Update an existing wiki page (G2 2026-05-26).
+         */
+        put: operations["put_api_wiki_pages_slug"];
+        post?: never;
+        /**
+         * Wiki Page Delete
+         * @description Delete a wiki page (G2 2026-05-26).
+         */
+        delete: operations["delete_api_wiki_pages_slug"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/pages/{slug}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Wiki Page Permissions
+         * @description Get permissions for a wiki page (G14 2026-05-26).
+         */
+        get: operations["get_api_wiki_pages_slug_permissions"];
+        /**
+         * Update Wiki Page Permissions
+         * @description Update permissions for a wiki page (G14 2026-05-26).
+         */
+        put: operations["put_api_wiki_pages_slug_permissions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/pages/{slug}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki Page Versions
+         * @description Return local version metadata for one wiki page.
+         */
+        get: operations["get_api_wiki_pages_slug_versions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/wiki/query": {
         parameters: {
             query?: never;
@@ -1044,7 +2420,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Wiki Query */
+        /**
+         * Wiki Query
+         * @description Wiki query endpoint (legacy name, use /search instead).
+         */
         post: operations["post_api_wiki_query"];
         delete?: never;
         options?: never;
@@ -1103,6 +2482,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wiki/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Search
+         * @description Wiki search endpoint (G5 2026-05-26, canonical name for /query).
+         */
+        post: operations["post_api_wiki_search"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/wiki/status": {
         parameters: {
             query?: never;
@@ -1114,6 +2513,399 @@ export interface paths {
         get: operations["get_api_wiki_status"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki Tags
+         * @description Return a read-only tag index derived from readable wiki pages.
+         */
+        get: operations["get_api_wiki_tags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/citations/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Citation Sources
+         * @description Get citation source metadata for a project.
+         *
+         *     Returns each material as a citation source, reading bibliographic fields
+         *     from material metadata. This is NOT Word-style bibliography generation;
+         *     formatting is done client-side (citeproc) or at export (pandoc).
+         */
+        get: operations["get_api_writing_citations_sources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/citations/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Citation Source
+         * @description Persist editable bibliographic metadata for a source material.
+         *
+         *     Only provided (non-null) fields are written; the rest are preserved.
+         *     ``publication`` is stored as ``venue`` to match the export bibliography
+         *     builder's metadata keys.
+         */
+        put: operations["put_api_writing_citations_sources_source_id"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/citations/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Citations
+         * @description Suggest relevant citations for draft context via AI.
+         *
+         *     Analyzes draft text and recommends materials to cite.
+         */
+        post: operations["post_api_writing_citations_suggest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Project
+         * @description Export project in specified format.
+         *
+         *     Supports JSON, Markdown, Word, LaTeX, and PDF formats.
+         */
+        post: operations["post_api_writing_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/figures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Figure Assets
+         * @description List real figure/table assets for a project.
+         *
+         *     Returns actual extracted/uploaded figures with asset files.
+         *     Distinct from text-derived candidates.
+         */
+        get: operations["get_api_writing_figures"];
+        put?: never;
+        /**
+         * Create Figure Asset
+         * @description Create a figure/table asset.
+         *
+         *     Registers an extracted or uploaded figure/table with asset file.
+         */
+        post: operations["post_api_writing_figures"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/figures/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Figure Candidates Alias
+         * @description List text-derived figure/table candidates (alias to /resources/figure-table-candidates).
+         *
+         *     Returns candidates extracted from chunk text, not real assets.
+         */
+        get: operations["get_api_writing_figures_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/figures/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve Figure Asset File
+         * @description Serve a project-scoped figure/table image for in-app preview and paste.
+         */
+        get: operations["get_api_writing_figures_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/figures/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Figure Assets
+         * @description Generate local figure/table assets from existing chunk-backed candidates.
+         *
+         *     This endpoint intentionally does not call an image model. It materializes
+         *     already extracted pixel candidates into persisted writing assets while
+         *     preserving source material, page, bbox, and local asset path provenance.
+         */
+        post: operations["post_api_writing_figures_generate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/figures/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Figure Asset
+         * @description Update figure/table asset metadata.
+         */
+        put: operations["put_api_writing_figures_asset_id"];
+        post?: never;
+        /**
+         * Delete Figure Asset
+         * @description Delete a figure/table asset.
+         */
+        delete: operations["delete_api_writing_figures_asset_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Outline
+         * @description Get outline for a project.
+         *
+         *     Returns hierarchical outline structure. Currently maps to sections.
+         */
+        get: operations["get_api_writing_outline"];
+        /**
+         * Update Outline
+         * @description Update outline structure.
+         *
+         *     Currently updates sections. Full hierarchical outline support pending.
+         */
+        put: operations["put_api_writing_outline"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/outline/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Outline
+         * @description Generate outline via AI based on topic and materials.
+         *
+         *     Uses project materials and focus areas to generate structured outline.
+         */
+        post: operations["post_api_writing_outline_generate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/outline/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Outline Item
+         * @description Delete an outline item.
+         *
+         *     Currently deletes the corresponding section.
+         */
+        delete: operations["delete_api_writing_outline_item_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Projects Alias
+         * @description List all writing projects (alias to /resources/projects).
+         */
+        get: operations["get_api_writing_projects"];
+        put?: never;
+        /**
+         * Create Project Alias
+         * @description Create a new writing project (alias to /resources/project).
+         */
+        post: operations["post_api_writing_projects"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Alias
+         * @description Get a writing project by ID (alias to /resources/project/{id}).
+         */
+        get: operations["get_api_writing_projects_project_id"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Project Alias
+         * @description Delete a writing project (alias to /resources/project/{id}).
+         */
+        delete: operations["delete_api_writing_projects_project_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/projects/{project_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Project Status Alias
+         * @description Update project status (alias to /resources/project/{id}/status).
+         */
+        put: operations["put_api_writing_projects_project_id_status"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit For Review
+         * @description Submit project for review.
+         *
+         *     Packages project content for reviewer access.
+         */
+        post: operations["post_api_writing_submit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1150,8 +2942,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Chat Ask
-         * @description Send user query + context to configured LLM and return the answer.
+         * Chat Ask Endpoint
+         * @deprecated
+         * @description Deprecated HTTP compatibility endpoint for legacy chat clients.
          */
         post: operations["post_chat_ask"];
         delete?: never;
@@ -1272,15 +3065,7 @@ export interface paths {
         };
         /**
          * Get Evolution Audit
-         * @description Opt §6: aggregate roll-up of the candidate store.
-         *
-         *     All values are derived from COUNT / GROUP BY queries; no raw
-         *     candidate text (claim / title / future_use / source_summary) is
-         *     surfaced. `recent_decisions` carries up to `recent_decision_limit`
-         *     most-recent non-empty `decision_reason` strings (truncated to
-         *     240 chars each), which are only ever written by service / curator
-         *     / promoter code — never by user input — so they are safe to expose
-         *     to an operator audit panel.
+         * @description Return a read-only summary for the experience review panel.
          */
         get: operations["get_evolution_audit"];
         put?: never;
@@ -1300,11 +3085,7 @@ export interface paths {
         };
         /**
          * List Candidates
-         * @description List candidates with optional scoping filters.
-         *
-         *     `total` is the pagination-independent filter cardinality (S8.1 fix);
-         *     previously it was len(items) which mislead frontend pagination when
-         *     `limit < matching_rows`.
+         * @description List reviewable experience items with optional filters.
          */
         get: operations["get_evolution_candidates"];
         put?: never;
@@ -1343,12 +3124,9 @@ export interface paths {
         put?: never;
         /**
          * Promote Candidate
-         * @description Promote an ACCEPTED candidate to MemPalace or skill draft proposal.
+         * @description Apply a saved experience to long-term memory or a workflow draft.
          *
-         *     Returns 404 if the candidate doesn't exist. Returns 409 when the
-         *     candidate isn't in a promotable state, the kill switch is off, or the
-         *     underlying MemPalace adapter rejects the write — the candidate row
-         *     stays at its current status in that case (no partial promotion).
+         *     The item remains unchanged when it cannot be applied.
          */
         post: operations["post_evolution_candidates_candidate_id_promote"];
         delete?: never;
@@ -1419,10 +3197,7 @@ export interface paths {
         put?: never;
         /**
          * Capture Manual
-         * @description Capture a candidate from a manual source (test / backfill).
-         *
-         *     Inspiration / discussion / runtime-job capture endpoints belong to Slice 3-4
-         *     and are not yet registered.
+         * @description Capture an experience item from a controlled manual source.
          */
         post: operations["post_evolution_capture_manual"];
         delete?: never;
@@ -1442,13 +3217,7 @@ export interface paths {
         put?: never;
         /**
          * Run Curator
-         * @description Run one curator pass (Slice 7).
-         *
-         *     No-op (returns enabled=false) when `evolution.curator_enabled` is off.
-         *     Otherwise sweeps PENDING candidates for stale + low-confidence
-         *     transitions and surfaces conflict + dedupe groups as report-only data.
-         *     Reviewers act on conflicts through the regular accept/reject/snooze
-         *     endpoints — the curator never auto-resolves.
+         * @description Run one local organizer pass over pending experience items.
          */
         post: operations["post_evolution_curate_run"];
         delete?: never;
@@ -1466,7 +3235,7 @@ export interface paths {
         };
         /**
          * Get Evolution Status
-         * @description Return evolution-layer configuration + candidate counts snapshot.
+         * @description Return the local experience-review feature state and item counts.
          */
         get: operations["get_evolution_status"];
         put?: never;
@@ -1532,6 +3301,58 @@ export interface paths {
          */
         post: operations["post_inspiration_reload"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inspiration/store": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Saved Inspirations
+         * @description List saved Inspiration sparks from the local store.
+         */
+        get: operations["get_inspiration_store"];
+        put?: never;
+        /**
+         * Create Saved Inspiration
+         * @description Persist one Inspiration spark for local reuse.
+         */
+        post: operations["post_inspiration_store"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inspiration/store/{saved_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Saved Inspiration
+         * @description Read one saved Inspiration spark.
+         */
+        get: operations["get_inspiration_store_saved_id"];
+        /**
+         * Update Saved Inspiration
+         * @description Update one saved Inspiration spark.
+         */
+        put: operations["put_inspiration_store_saved_id"];
+        post?: never;
+        /**
+         * Delete Saved Inspiration
+         * @description Delete one saved Inspiration spark.
+         */
+        delete: operations["delete_inspiration_store_saved_id"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1742,22 +3563,8 @@ export interface paths {
          * Get Pipeline Status
          * @description Read-only health snapshot for pipeline-adjacent state.
          *
-         *     Plan v2 §13.1d.1: exposes generation pool's ``primary_key_active``,
-         *     ``credentials_in_cooldown``, ``last_failure_class`` so a release gate
-         *     or monitoring view can flag a degraded run without reading log files.
-         *
-         *     Plan v2 §13.1d.2: includes ``exhausted_count`` per category — any
-         *     value >0 in a single eval run is a release-blocker signal upstream.
-         *
-         *     Response shape::
-         *
-         *         {
-         *           "keypool": {"pools": [{"category": "generation", ...}, ...]},
-         *           "task_cache": {"size": N, "retention_seconds": ..., "max_cache": ...}
-         *         }
-         *
-         *     No secrets in the response. Endpoint never raises; failure to read
-         *     the pool is encoded as ``keypool.disabled`` with a reason field.
+         *     No credential material is returned. Endpoint never raises; failure to read the pool is
+         *     encoded as ``keypool.disabled`` with a reason field.
          */
         get: operations["get_pipeline_status"];
         put?: never;
@@ -1782,6 +3589,26 @@ export interface paths {
         get: operations["get_pipeline_task_task_id"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipeline/task/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Pipeline Task
+         * @description Mark a queued/running pipeline task as cancelled and stop its async wrapper.
+         */
+        post: operations["post_pipeline_task_task_id_cancel"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2150,8 +3977,39 @@ export interface paths {
         /**
          * Serve Document File
          * @description Serve the original file for a material (e.g. PDF for in-app viewing).
+         *
+         *     ``?as=bin`` returns the bytes with media_type=application/octet-stream so
+         *     browser download-manager extensions (IDM, FlashGet, 迅雷, etc.) don't
+         *     recognise it as a PDF and divert the in-app reader's fetch into a save
+         *     dialog. Used by the in-app PDF viewer; everything else (default) keeps
+         *     the natural MIME so e.g. right-click "open in new tab" still works.
          */
         get: operations["get_resources_document_material_id_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/document/{material_id}/file_b64": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve Document File Base64
+         * @description Return small original files as base64 inside a JSON envelope.
+         *
+         *     Why:
+         *         This compatibility endpoint is memory-expensive because base64 in JSON
+         *         expands payloads and requires whole-file reads. Large PDFs should use
+         *         ``/file`` so Starlette can stream bytes and honor range requests.
+         */
+        get: operations["get_resources_document_material_id_file_b64"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2268,6 +4126,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/resources/figure-table-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Figure Table Candidates
+         * @description List figure/table candidates derived from project chunks.
+         *
+         *     The endpoint starts from chunk text, then best-effort resolves PDF page
+         *     layout and renders a preview crop under the project data workspace. When
+         *     layout is unavailable it still returns the textual caption candidate.
+         */
+        get: operations["get_resources_figure_table_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/resources/maintenance/cleanup": {
         parameters: {
             query?: never;
@@ -2344,6 +4226,30 @@ export interface paths {
          * @description Get chunks for a specific material.
          */
         get: operations["get_resources_material_material_id_chunks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/material/{material_id}/suggested-questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Material Suggested Questions
+         * @description Deterministic, model-free suggested questions for a pinned material.
+         *
+         *     Generated from the material metadata plus its full chunk set, so the
+         *     questions are more paper-aware than the frontend's lightweight
+         *     first-chunks heuristic. No model call is made.
+         */
+        get: operations["get_resources_material_material_id_suggested_questions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2454,6 +4360,50 @@ export interface paths {
         get: operations["get_resources_project_project_id_export"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/project/{project_id}/reasoning-bias": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Reasoning Bias
+         * @description Return the project-level user reasoning bias or the empty default.
+         */
+        get: operations["get_resources_project_project_id_reasoning_bias"];
+        /**
+         * Update Project Reasoning Bias
+         * @description Replace only the project_reasoning_bias key inside project metadata.
+         */
+        put: operations["put_resources_project_project_id_reasoning_bias"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/project/{project_id}/reasoning-bias/optimize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Optimize Project Reasoning Bias
+         * @description Return a structured optimization suggestion without persisting anything.
+         */
+        post: operations["post_resources_project_project_id_reasoning_bias_optimize"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2789,7 +4739,11 @@ export interface paths {
         get: operations["get_runtime_job_job_id"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Job
+         * @description Delete a job and clear its events, artifacts, approvals, and queue state.
+         */
+        delete: operations["delete_runtime_job_job_id"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2895,6 +4849,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/job/{job_id}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job Event Snapshot
+         * @description Return current job state and one sequenced event page.
+         */
+        get: operations["get_runtime_job_job_id_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/job/{job_id}/start": {
         parameters: {
             query?: never;
@@ -2927,6 +4901,38 @@ export interface paths {
          * @description Get detailed job status.
          */
         get: operations["get_runtime_job_job_id_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Jobs
+         * @description List runtime jobs for the task center.
+         *
+         *     Args:
+         *         session_id: Optional session filter. When omitted, jobs across active
+         *             runtime sessions are returned.
+         *         status: Optional raw job status value.
+         *         limit: Maximum number of newest jobs to return.
+         *
+         *     Returns:
+         *         Newest jobs first, serialized through the public job payload model.
+         *
+         *     Raises:
+         *         HTTPException: If ``status`` is not a known runtime job status.
+         */
+        get: operations["get_runtime_jobs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2989,7 +4995,11 @@ export interface paths {
         get: operations["get_runtime_session_session_id"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Session
+         * @description Delete a persisted runtime session and its owned records.
+         */
+        delete: operations["delete_runtime_session_session_id"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3122,7 +5132,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Sampling */
+        /**
+         * Get Sampling
+         * @description Return sampling defaults + user overrides for the Settings page.
+         *
+         *     The response includes saved overrides, versioned defaults, per-task
+         *     default sampling values, and the model context upper bound used by Settings.
+         */
         get: operations["get_sampling"];
         /** Put Sampling */
         put: operations["put_sampling"];
@@ -3374,6 +5390,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/skills/{skill_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Skill
+         * @description Export a user skill to a zip archive.
+         *
+         *     J11 (2026-05-26): Export user skill package for backup/sharing.
+         *
+         *     Args:
+         *         skill_id: Skill ID to export.
+         *         output_path: Optional output zip filename under workspace_artifacts/skill_exports.
+         *
+         *     Returns:
+         *         SkillExportResponse with success/export_path/errors.
+         *
+         *     Raises:
+         *         404: Skill not found.
+         *         400: Cannot export builtin skill or skill directory not found.
+         */
+        post: operations["post_skills_skill_id_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/skills/{skill_id}/rollback": {
         parameters: {
             query?: never;
@@ -3388,6 +5437,26 @@ export interface paths {
          * @description Restore a managed user skill from a rollback snapshot.
          */
         post: operations["post_skills_skill_id_rollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/{skill_id}/runtime-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Skill Runtime Settings
+         * @description Persist manifest-driven Skill settings without storing credential material.
+         */
+        put: operations["put_skills_skill_id_runtime_settings"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3524,43 +5593,49 @@ export interface components {
          */
         AgentRole: "proponent" | "opponent" | "reviewer" | "moderator";
         /**
-         * AnalysisChainPayload
-         * @description LLM-emitted inner reasoning chain (plan §2.1.1).
+         * AgentThoughtTracePayload
+         * @description Backward-compatible rich wrapper for visible agent reasoning summaries.
          *
-         *     Optional + tolerant: missing / wrong-shape fields fall back to empty
-         *     strings or empty lists so the surrounding spark is preserved.
+         *     The payload summarizes observable reasoning signals only: role stance,
+         *     answer contribution, cited evidence ids, confidence, and public summary
+         *     steps. It intentionally does not expose raw hidden chain-of-thought.
          */
-        AnalysisChainPayload: {
+        AgentThoughtTracePayload: {
             /**
-             * Boundary
+             * Agent Stance
              * @default
              */
-            boundary: string;
+            agent_stance: string;
+            analysis_chain?: components["schemas"]["models__analysis_chain__AnalysisChainPayload"] | null;
+            /** Confidence */
+            confidence?: number | null;
             /**
-             * Counter Evidence
-             * @default []
-             */
-            counter_evidence: string[];
-            /**
-             * Evidence
-             * @default []
-             */
-            evidence: string[];
-            /**
-             * Mechanism
+             * Contribution Type
              * @default
              */
-            mechanism: string;
+            contribution_type: string;
+            /** Evidence Refs */
+            evidence_refs?: string[];
+            /** Trace Steps */
+            trace_steps?: components["schemas"]["AgentThoughtTraceStep"][];
+        };
+        /**
+         * AgentThoughtTraceStep
+         * @description One public, evidence-grounded trace step for an agent answer.
+         */
+        AgentThoughtTraceStep: {
+            /** Evidence Ids */
+            evidence_ids?: string[];
             /**
-             * Next Action
+             * Label
              * @default
              */
-            next_action: string;
+            label: string;
             /**
-             * Observation
+             * Summary
              * @default
              */
-            observation: string;
+            summary: string;
         };
         /**
          * ArtifactPayload
@@ -3907,6 +5982,144 @@ export interface components {
             name: string;
         };
         /**
+         * ChatAgentPayload
+         * @description Agent participant attached to a conversation.
+         */
+        ChatAgentPayload: {
+            /** Agent Id */
+            agent_id: string;
+            /**
+             * Agent Role
+             * @default
+             */
+            agent_role: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Model */
+            model?: string | null;
+            /** Provider */
+            provider?: string | null;
+        };
+        /**
+         * ChatAgentsResponse
+         * @description Agent participants for one conversation.
+         */
+        ChatAgentsResponse: {
+            /** Agents */
+            agents?: components["schemas"]["ChatAgentPayload"][];
+            /** Conversation Id */
+            conversation_id: string;
+        };
+        /**
+         * ChatContextCompressionPayload
+         * @description SmartRead long-session compression settings.
+         */
+        ChatContextCompressionPayload: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Keep Recent Turns
+             * @default 6
+             */
+            keep_recent_turns: number;
+            /**
+             * Target Tokens
+             * @default 2000
+             */
+            target_tokens: number;
+            /**
+             * Trigger Tokens
+             * @default 24000
+             */
+            trigger_tokens: number;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+        };
+        /**
+         * ChatHistoryForkRequest
+         * @description Request to create a branch from an existing history node.
+         */
+        ChatHistoryForkRequest: {
+            /** Base Node Id */
+            base_node_id: string;
+            /** Branch Id */
+            branch_id?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /**
+         * ChatHistoryForkResponse
+         * @description Created branch metadata.
+         */
+        ChatHistoryForkResponse: {
+            /** Base Node Id */
+            base_node_id: string;
+            /** Branch Id */
+            branch_id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Fork Session Id */
+            fork_session_id: string;
+        };
+        /**
+         * ChatHistoryImportResponse
+         * @description Import summary for legacy JSON session migration.
+         */
+        ChatHistoryImportResponse: {
+            /** Imported Compression Snapshots */
+            imported_compression_snapshots: number;
+            /** Imported Conversations */
+            imported_conversations: number;
+            /** Imported Messages */
+            imported_messages: number;
+        };
+        /**
+         * ChatHistorySearchResponse
+         * @description Search response for the durable SmartRead history index.
+         */
+        ChatHistorySearchResponse: {
+            /** Query */
+            query: string;
+            /** Results */
+            results?: components["schemas"]["ChatHistorySearchResultPayload"][];
+        };
+        /**
+         * ChatHistorySearchResultPayload
+         * @description One searchable chat-history result.
+         */
+        ChatHistorySearchResultPayload: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Node Id */
+            node_id: string;
+            /** Node Type */
+            node_type: string;
+            /** Role */
+            role: string;
+            /** Snippet */
+            snippet: string;
+        };
+        /**
          * ChatMessage
          * @description A single turn in the conversation history.
          */
@@ -3924,11 +6137,11 @@ export interface components {
         };
         /**
          * ChatMode
-         * @description Dialog page mode — see docs/plans/active/2026-05-13-dialog-merge-plan.md §4.1.
+         * @description Legacy persisted mode for compatibility with old Dialog sessions.
          *
-         *     Persisted as a string on each session record. ``session.mode`` is
-         *     immutable once the first message lands; mismatched ``mode`` on a
-         *     subsequent ``POST /api/chat`` returns 409.
+         *     New product UI is a single smart-read surface. These values remain only so
+         *     older session records and explicit legacy API callers can be resumed or
+         *     rejected deterministically.
          * @enum {string}
          */
         ChatMode: "direct" | "literature_qa" | "inspiration";
@@ -3959,9 +6172,19 @@ export interface components {
             mcp_allow_high_risk_tools: boolean;
             /**
              * Mcp Server Ids
-             * @description Caller-side MCP scope (Phase 2). When non-None AND env LITERATURE_ENABLE_MCP_TOOLS=1, the chat_ask handler delegates to McpToolUseRunner. `[]` is valid (audit-recorded zero-server run). Unknown ids → 400. Never auto-injected.
+             * @description Optional MCP service scope for this chat request. When omitted, the request uses the normal chat path; an empty list records an explicit no-service run.
              */
             mcp_server_ids?: string[] | null;
+            /**
+             * Project Id
+             * @description Project id used to resolve project reasoning bias
+             */
+            project_id?: string | null;
+            /**
+             * Project Reasoning Bias Enabled
+             * @description Per-request override. False disables project reasoning bias injection.
+             */
+            project_reasoning_bias_enabled?: boolean | null;
             /** Query */
             query: string;
             /**
@@ -3981,11 +6204,13 @@ export interface components {
         };
         /** ChatResponse */
         ChatResponse: {
+            /** @description Structured 6-field reasoning chain (observation / mechanism / evidence / boundary / counter_evidence / next_action). Populated only when feature flag ``analysis_chain_rag`` is on. ACR-020 ~ ACR-024. */
+            analysis_chain?: components["schemas"]["models__analysis_chain__AnalysisChainPayload"] | null;
             /** Answer */
             answer: string;
             /**
              * Mcp Run
-             * @description Phase 2 MCP tool-loop transcript (rounds, stopped_reason, per-call records). Only populated when the request triggered the MCP runner.
+             * @description MCP tool-use transcript. Populated only when the request uses MCP services.
              */
             mcp_run?: {
                 [key: string]: unknown;
@@ -4016,6 +6241,7 @@ export interface components {
          * @description Saved chat message returned during session restore.
          */
         ChatResumeMessagePayload: {
+            analysis_chain?: components["schemas"]["models__analysis_chain__AnalysisChainPayload"] | null;
             /** Content */
             content: string;
             context_metadata?: components["schemas"]["ContextMetadataPayload"] | null;
@@ -4055,6 +6281,56 @@ export interface components {
         ChatResumeResponse: {
             /** Messages */
             messages: components["schemas"]["ChatResumeMessagePayload"][];
+            /** Project Id */
+            project_id?: string | null;
+            /** Session Id */
+            session_id: string;
+        };
+        /**
+         * ChatSessionArchiveResponse
+         * @description Response returned after archiving or restoring a saved chat session.
+         */
+        ChatSessionArchiveResponse: {
+            /** Archived */
+            archived: boolean;
+            /** Archived At */
+            archived_at?: string | null;
+            /** Session Id */
+            session_id: string;
+        };
+        /**
+         * ChatSessionBulkDeleteRequest
+         * @description Request body for deleting several saved chat sessions at once.
+         */
+        ChatSessionBulkDeleteRequest: {
+            /** Session Ids */
+            session_ids?: string[];
+        };
+        /**
+         * ChatSessionBulkDeleteResponse
+         * @description Result of a bulk chat-session deletion.
+         */
+        ChatSessionBulkDeleteResponse: {
+            /** Deleted */
+            deleted?: string[];
+            /**
+             * Deleted Count
+             * @default 0
+             */
+            deleted_count: number;
+            /** Missing */
+            missing?: string[];
+        };
+        /**
+         * ChatSessionDeleteResponse
+         * @description Response returned after deleting a saved chat session.
+         */
+        ChatSessionDeleteResponse: {
+            /**
+             * Deleted
+             * @default true
+             */
+            deleted: boolean;
             /** Session Id */
             session_id: string;
         };
@@ -4071,8 +6347,21 @@ export interface components {
          * @description Small session row for the history drawer.
          */
         ChatSessionSummaryPayload: {
+            /** Agent Count */
+            agent_count?: number | null;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /** Archived At */
+            archived_at?: string | null;
             /** Created At */
             created_at?: string | null;
+            /** Fork */
+            fork?: {
+                [key: string]: string;
+            } | null;
             /**
              * Legacy Mode Inferred
              * @default false
@@ -4085,8 +6374,19 @@ export interface components {
              * @default
              */
             preview: string;
+            /** Project Id */
+            project_id?: string | null;
             /** Session Id */
             session_id: string;
+            /** Source */
+            source?: string | null;
+            /** Synthesis Preview */
+            synthesis_preview?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
             /** Total Tokens */
             total_tokens: number;
             /** Total Turns */
@@ -4116,6 +6416,16 @@ export interface components {
             history?: components["schemas"]["ChatMessage"][];
             /** @description LLM config (optional; backend resolves if absent) */
             llm?: components["schemas"]["LLMConfig"] | null;
+            /**
+             * Project Id
+             * @description Project id used to resolve project reasoning bias
+             */
+            project_id?: string | null;
+            /**
+             * Project Reasoning Bias Enabled
+             * @description Per-request override. False disables project reasoning bias injection.
+             */
+            project_reasoning_bias_enabled?: boolean | null;
             /** Query */
             query: string;
             /**
@@ -4158,6 +6468,32 @@ export interface components {
             session_id: string;
         };
         /**
+         * ChunkLocatorPayload
+         * @description Chunk locator with bbox information.
+         */
+        ChunkLocatorPayload: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Chunk Id */
+            chunk_id: string;
+            /** Chunk Index */
+            chunk_index?: number | null;
+            /** Material Id */
+            material_id: string;
+            /** Page */
+            page?: number | null;
+            /**
+             * Text Preview
+             * @default
+             */
+            text_preview: string;
+        };
+        /**
          * CitationAnchorPayload
          * @description Stable citation anchor metadata exchanged with the frontend editor.
          */
@@ -4175,6 +6511,250 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * CitationOverlapPayload
+         * @description Citation overlap detection result.
+         */
+        CitationOverlapPayload: {
+            /** Anchor Id */
+            anchor_id: string;
+            /** Chunk Id */
+            chunk_id: string;
+            /** Material Id */
+            material_id: string;
+            /** Overlap Score */
+            overlap_score: number;
+            /** Overlapping Anchors */
+            overlapping_anchors?: string[];
+            /**
+             * Recommendation
+             * @default
+             */
+            recommendation: string;
+        };
+        /**
+         * CitationSourcePayload
+         * @description Citation source metadata (not Word-style bibliography).
+         *
+         *     Tracks source material metadata for citation anchors in drafts. Fields map
+         *     to CSL-JSON for downstream citeproc formatting (``publication`` =
+         *     container-title; ``csl_type`` = CSL item type such as ``article-journal``).
+         */
+        CitationSourcePayload: {
+            /** Authors */
+            authors?: string[];
+            /**
+             * Citation Count
+             * @description Number of times cited in project
+             * @default 0
+             */
+            citation_count: number;
+            /** Created At */
+            created_at: string;
+            /**
+             * Csl Type
+             * @default article-journal
+             */
+            csl_type: string;
+            /** Doi */
+            doi?: string | null;
+            /** Issue */
+            issue?: string | null;
+            /** Material Id */
+            material_id: string;
+            /** Pages */
+            pages?: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Publication */
+            publication?: string | null;
+            /** Publisher */
+            publisher?: string | null;
+            /** Source Id */
+            source_id: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Url */
+            url?: string | null;
+            /** Volume */
+            volume?: string | null;
+            /** Year */
+            year?: number | null;
+        };
+        /**
+         * CitationSourceUpdate
+         * @description Editable bibliographic metadata for a citation source.
+         *
+         *     All fields optional; only provided fields are persisted into the material
+         *     metadata. ``None`` leaves the stored value untouched.
+         */
+        CitationSourceUpdate: {
+            /** Authors */
+            authors?: string[] | null;
+            /** Csl Type */
+            csl_type?: string | null;
+            /** Doi */
+            doi?: string | null;
+            /** Issue */
+            issue?: string | null;
+            /** Pages */
+            pages?: string | null;
+            /** Publication */
+            publication?: string | null;
+            /** Publisher */
+            publisher?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Volume */
+            volume?: string | null;
+            /** Year */
+            year?: number | null;
+        };
+        /**
+         * CitationSuggestionPayload
+         * @description AI-suggested citation for a draft context.
+         */
+        CitationSuggestionPayload: {
+            /** Excerpt */
+            excerpt: string;
+            /** Material Id */
+            material_id: string;
+            /** Rationale */
+            rationale: string;
+            /** Relevance Score */
+            relevance_score: number;
+            /**
+             * Suggested Position
+             * @description Suggested insertion offset
+             */
+            suggested_position?: number | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * CitationVerificationAnchorPayload
+         * @description Concrete source anchor used to verify one citation.
+         *
+         *     Args:
+         *         material_id: Original PDF or material that owns the evidence.
+         *         chunk_id: Optional extracted chunk tied to the PDF source.
+         *         page: One-based PDF page number when known.
+         *         evidence_ref_id: Optional saved evidence reference id.
+         *         source_label: Optional primary source label.
+         *         source_labels: Additional labels used for filtering and review.
+         */
+        CitationVerificationAnchorPayload: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Evidence Ref Id */
+            evidence_ref_id?: string | null;
+            /** Material Id */
+            material_id?: string | null;
+            /** Page */
+            page?: number | null;
+            /** Source Label */
+            source_label?: string | null;
+            /** Source Labels */
+            source_labels?: string[];
+        };
+        /**
+         * CitationVerificationPayload
+         * @description Persisted citation verification result.
+         */
+        CitationVerificationPayload: {
+            /** Citation Id */
+            citation_id: string;
+            /** Created At */
+            created_at: string;
+            /** Project Id */
+            project_id: string;
+            /** Rationale */
+            rationale: string;
+            source_anchor?: components["schemas"]["CitationVerificationAnchorPayload"] | null;
+            /** Source Kind */
+            source_kind: string;
+            /** Source Labels */
+            source_labels?: string[];
+            status: components["schemas"]["CitationVerificationStatus"];
+            /** Updated At */
+            updated_at: string;
+            /** Verification Id */
+            verification_id: string;
+        };
+        /**
+         * CitationVerificationRequest
+         * @description Request to verify and record one citation against a source anchor.
+         *
+         *     Args:
+         *         project_id: Non-empty project id.
+         *         citation_id: Stable citation or editor-anchor id.
+         *         claim_text: Claim text that the citation is meant to support.
+         *         citation_text: Quoted or displayed citation text.
+         *         evidence_text: Source evidence text when available for deterministic
+         *             overlap checks.
+         *         source_kind: Source class, for example local, web, mcp, figure_description.
+         *         source_anchor: Concrete PDF anchor that makes the citation auditable.
+         *         source_labels: Labels copied from the source or evidence ref.
+         */
+        CitationVerificationRequest: {
+            /** Citation Id */
+            citation_id: string;
+            /**
+             * Citation Text
+             * @default
+             */
+            citation_text: string;
+            /**
+             * Claim Text
+             * @default
+             */
+            claim_text: string;
+            /**
+             * Evidence Text
+             * @default
+             */
+            evidence_text: string;
+            /** Project Id */
+            project_id: string;
+            source_anchor?: components["schemas"]["CitationVerificationAnchorPayload"] | null;
+            /**
+             * Source Kind
+             * @default local
+             */
+            source_kind: string;
+            /** Source Labels */
+            source_labels?: string[];
+        };
+        /**
+         * CitationVerificationStatus
+         * @description Deterministic citation-verification states stored for review.
+         * @enum {string}
+         */
+        CitationVerificationStatus: "verified" | "needs_review" | "unsupported";
+        /**
+         * CitationVerificationsResponse
+         * @description Response for citation verification records.
+         */
+        CitationVerificationsResponse: {
+            /** Records */
+            records?: components["schemas"]["CitationVerificationPayload"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
         /** CleanupRequest */
         CleanupRequest: {
             /**
@@ -4182,10 +6762,22 @@ export interface components {
              * @default true
              */
             dry_run: boolean;
+            /**
+             * Include Test Fixture Projects
+             * @default false
+             */
+            include_test_fixture_projects: boolean;
+            /** Keep Project Ids */
+            keep_project_ids?: string[];
+            /**
+             * Remove Orphan Project Dirs
+             * @default false
+             */
+            remove_orphan_project_dirs: boolean;
         };
         /**
          * ConfigPayload
-         * @description Public view of a subsystem's runtime override (api_key masked).
+         * @description Public view of a subsystem's runtime override with masked credential state.
          */
         ConfigPayload: {
             /**
@@ -4221,7 +6813,7 @@ export interface components {
         };
         /**
          * ConfigUpdate
-         * @description Update payload. None on api_key preserves the previously stored key.
+         * @description Update payload. None for the credential field preserves the stored value.
          */
         ConfigUpdate: {
             /** Api Key */
@@ -4238,6 +6830,13 @@ export interface components {
          * @description Single context chunk disclosed under an assistant message.
          */
         ContextChunkPayload: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id?: string | null;
             /** Content */
@@ -4347,6 +6946,78 @@ export interface components {
             title: string;
         };
         /**
+         * CreateEvidenceRefRequest
+         * @description Request to create evidence reference.
+         */
+        CreateEvidenceRefRequest: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Chunk Id */
+            chunk_id: string;
+            /**
+             * Compressed Text
+             * @default
+             */
+            compressed_text: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Material Id */
+            material_id: string;
+            /** Page */
+            page?: number | null;
+            /**
+             * Quote
+             * @default
+             */
+            quote: string;
+            /** Score */
+            score?: number | null;
+            /** Source */
+            source?: string | null;
+            /** Source Label */
+            source_label?: string | null;
+            /** Source Labels */
+            source_labels?: string[];
+            /** Text */
+            text: string;
+        };
+        /**
+         * CreateFigureAssetRequest
+         * @description Request to create a figure/table asset.
+         */
+        CreateFigureAssetRequest: {
+            /** Asset Path */
+            asset_path: string;
+            /** Bbox */
+            bbox?: number[] | null;
+            /** Caption */
+            caption: string;
+            /** Format */
+            format?: string | null;
+            /** Height */
+            height?: number | null;
+            /** Kind */
+            kind: string;
+            /** Material Id */
+            material_id?: string | null;
+            /** Numbering */
+            numbering: string;
+            /** Project Id */
+            project_id: string;
+            /** Source Page */
+            source_page?: number | null;
+            /** Width */
+            width?: number | null;
+        };
+        /**
          * CreateJobRequest
          * @description Request to create a job in a session.
          */
@@ -4360,6 +7031,10 @@ export interface components {
             input_text: string;
             /** Kind */
             kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
             /** Output Mode */
             output_mode?: string | null;
             /** Scope */
@@ -4476,6 +7151,32 @@ export interface components {
             workspace_root?: string | null;
         };
         /**
+         * CreateSourceLabelRequest
+         * @description Request to create a source label.
+         */
+        CreateSourceLabelRequest: {
+            /** Color */
+            color?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CredentialApplyRequest
+         * @description Apply a saved RuntimeCredential to a subsystem override.
+         *
+         *     The request carries only an opaque local credential reference; the backend
+         *     resolves the credential material internally.
+         */
+        CredentialApplyRequest: {
+            /** Credential Id */
+            credential_id: string;
+        };
+        /**
          * CredentialCategory
          * @enum {string}
          */
@@ -4487,18 +7188,86 @@ export interface components {
         CredentialProtocol: "openai_chat_completions" | "openai_responses" | "anthropic_messages" | "embeddings" | "rerank";
         /**
          * CredentialStrategyHint
+         * @description Cost/quality tier hints for credential selection.
+         *
+         *     Canonical product tiers (B5 decision 2026-05-26):
+         *         LOW, MEDIUM, HIGH, XHIGH, MAX
+         *
+         *     Legacy compatibility values (preserved for existing callers):
+         *         DEFAULT, CHEAP, FAST, QUALITY
+         *
+         *     Surface-specific hints (not cost tiers):
+         *         DISCUSSION, EMBEDDING, RERANK
          * @enum {string}
          */
-        CredentialStrategyHint: "default" | "cheap" | "fast" | "quality" | "discussion" | "embedding" | "rerank";
+        CredentialStrategyHint: "low" | "medium" | "high" | "xhigh" | "max" | "default" | "cheap" | "fast" | "quality" | "discussion" | "embedding" | "rerank";
         /**
          * CredentialTrustSource
-         * @description plan v2 §4.4 — 4-tier trust hierarchy.
+         * @description Trust source for deciding whether a provider endpoint may be probed.
          * @enum {string}
          */
         CredentialTrustSource: "official_provider" | "env_configured_gateway" | "runtime_user_confirmed" | "runtime_untrusted_custom";
         /**
+         * CslActiveStylePayload
+         * @description Active style with its raw CSL XML for the browser-side processor.
+         */
+        CslActiveStylePayload: {
+            /** Csl Xml */
+            csl_xml: string;
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /** CslSetActiveRequest */
+        CslSetActiveRequest: {
+            /** Style Id */
+            style_id: string;
+        };
+        /** CslStyleImportRequest */
+        CslStyleImportRequest: {
+            /** Csl Xml */
+            csl_xml: string;
+            /** Title */
+            title?: string | null;
+        };
+        /** CslStyleListPayload */
+        CslStyleListPayload: {
+            /** Active Style Id */
+            active_style_id: string;
+            /** Styles */
+            styles?: components["schemas"]["CslStyleMetaPayload"][];
+        };
+        /**
+         * CslStyleMetaPayload
+         * @description One citation style row for the settings UI.
+         */
+        CslStyleMetaPayload: {
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+            /**
+             * Can Delete
+             * @default false
+             */
+            can_delete: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "builtin" | "uploaded";
+            /** Title */
+            title: string;
+        };
+        /**
          * CuratorRunPayload
-         * @description Response shape for `/evolution/curate/run` (Slice 7).
+         * @description Response shape for one curator pass.
          */
         CuratorRunPayload: {
             /** Conflicts */
@@ -4530,8 +7299,94 @@ export interface components {
             workspace_id?: string | null;
         };
         /**
+         * CurrentPdfContextPayload
+         * @description Current reader position or selected text supplied by the browser.
+         *
+         *     The payload is untrusted UI state. It is accepted only as a bounded hint
+         *     for the current SmartRead turn and must still match the material-scoped
+         *     request before the model can see it.
+         */
+        CurrentPdfContextPayload: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /**
+             * Context Kind
+             * @default reader_page
+             * @enum {string}
+             */
+            context_kind: "reader_page" | "selection" | "deep_link";
+            /** Material Id */
+            material_id: string;
+            /** Page */
+            page?: number | null;
+            /** Page Label */
+            page_label?: string | null;
+            /** Selected Text */
+            selected_text?: string | null;
+            /** Source Labels */
+            source_labels?: string[];
+        };
+        /**
+         * DeleteSavedInspirationResponse
+         * @description Delete result for a saved Inspiration row.
+         */
+        DeleteSavedInspirationResponse: {
+            /** Deleted */
+            deleted: boolean;
+            /** Saved Id */
+            saved_id: string;
+        };
+        /**
+         * DetectOverlapAnchor
+         * @description Citation anchor candidate supplied by the caller for D8 overlap checks.
+         */
+        DetectOverlapAnchor: {
+            /** Anchor Id */
+            anchor_id: string;
+            /**
+             * Chunk Id
+             * @default
+             */
+            chunk_id: string;
+            /**
+             * Material Id
+             * @default
+             */
+            material_id: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+        };
+        /**
+         * DetectOverlapRequest
+         * @description Request to detect citation overlap.
+         */
+        DetectOverlapRequest: {
+            /** Anchors */
+            anchors?: components["schemas"]["DetectOverlapAnchor"][];
+            /** Draft Id */
+            draft_id?: string | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Threshold
+             * @description Overlap threshold
+             * @default 0.7
+             */
+            threshold: number;
+        };
+        /**
          * DiscoverRequest
-         * @description POST body for model discovery (api_key in body, not URL).
+         * @description POST body for model discovery; credential material is never sent in URLs.
          */
         DiscoverRequest: {
             /**
@@ -4579,19 +7434,20 @@ export interface components {
         };
         /**
          * DiscussionAgentConfig
-         * @description One agent slot in a discussion.
+         * @description One role slot in a discussion.
          *
-         *     Per DEC-003c: agents bind to capability/model policy by default;
-         *     ``credential_id`` is an explicit pin override only.
-         *
-         *     ``credential_id`` and ``llm`` are mutually exclusive but both optional —
-         *     when neither is set the orchestrator falls back to the runtime default
-         *     chat config (see ``_resolve_agent_endpoint``). This keeps the frontend
-         *     request shape secret-free.
+         *     A role can use default chat settings, a saved model setting, a direct
+         *     runtime override, or a cost/quality strategy hint. The model-selection
+         *     modes are mutually exclusive.
          */
         DiscussionAgentConfig: {
             /** Agent Id */
             agent_id: string;
+            /**
+             * Category
+             * @description Model-use category for automatic saved-model selection.
+             */
+            category?: string | null;
             /** Credential Id */
             credential_id?: string | null;
             llm?: components["schemas"]["DiscussionLLMConfig"] | null;
@@ -4612,6 +7468,11 @@ export interface components {
              */
             role_label: string;
             /**
+             * Strategy Hint
+             * @description Cost/quality tier for automatic saved-model selection.
+             */
+            strategy_hint?: string | null;
+            /**
              * Strict Pin
              * @default false
              */
@@ -4631,6 +7492,8 @@ export interface components {
         DiscussionAgentTrace: {
             /** Agent Id */
             agent_id: string;
+            /** @description Optional 6-field reasoning chain attached to this agent's answer when feature flag ``analysis_chain_discussion`` is on. ACR-030 ~ ACR-034. */
+            analysis_chain?: components["schemas"]["models__analysis_chain__AnalysisChainPayload"] | null;
             /**
              * Answer
              * @default
@@ -4659,6 +7522,8 @@ export interface components {
             role_label: string;
             /** Success */
             success: boolean;
+            /** @description Optional rich visible trace wrapper. Preserves `analysis_chain` while adding role stance, contribution type, evidence refs, confidence, and public trace steps. */
+            thought_trace?: components["schemas"]["AgentThoughtTracePayload"] | null;
         };
         /** DiscussionConvergenceJudgeCall */
         DiscussionConvergenceJudgeCall: {
@@ -4725,28 +7590,6 @@ export interface components {
          * @enum {string}
          */
         DiscussionEvidenceMode: "from_project" | "manual_chunk_ids" | "none";
-        /**
-         * DiscussionEvidencePackPayload
-         * @description Mirror of evidence_pack.EvidencePack as a transport object.
-         */
-        DiscussionEvidencePackPayload: {
-            /** Evidence Ids */
-            evidence_ids?: string[];
-            /** Pack Id */
-            pack_id: string;
-            /** Pack Version */
-            pack_version: string;
-            /** Project Id */
-            project_id: string;
-            /** Query */
-            query: string;
-            /** Snippets */
-            snippets: {
-                [key: string]: unknown;
-            }[];
-            /** Truncated */
-            truncated: boolean;
-        };
         /** DiscussionHistoryResponse */
         DiscussionHistoryResponse: {
             /** Messages */
@@ -4781,18 +7624,15 @@ export interface components {
              * @default 0.7
              */
             temperature: number;
+            /**
+             * Top P
+             * @default 0.9
+             */
+            top_p: number;
         };
         /**
          * DiscussionMcpOverrides
-         * @description Run-level MCP scope for a discussion (Phase 4 / TASK-401).
-         *
-         *     Per plan v0.3 §4.6 option (b): a sibling block on
-         *     ``DiscussionRunConfig`` — the shipped ``DiscussionAgentConfig`` is
-         *     intentionally not modified to keep Slice D's regression boundary.
-         *
-         *     Phase 4 only honors ``server_ids`` (applies to all agents in the run).
-         *     ``per_agent`` is accepted but ignored — a follow-up slice will add
-         *     per-agent enforcement once the UX is grilled.
+         * @description Run-level MCP access settings for a discussion.
          */
         DiscussionMcpOverrides: {
             /**
@@ -4800,11 +7640,29 @@ export interface components {
              * @default false
              */
             allow_high_risk_tools: boolean;
-            /** Per Agent */
+            /**
+             * Per Agent
+             * @description Role instance to MCP service selections for isolated access.
+             */
             per_agent?: {
                 [key: string]: string[];
             };
-            /** Server Ids */
+            /**
+             * Per Role
+             * @description Discussion role to MCP service selections used as isolated-access defaults.
+             */
+            per_role?: {
+                [key: string]: string[];
+            };
+            /**
+             * @description Whether MCP access is shared by the discussion or separated by role.
+             * @default surface
+             */
+            scope_type: components["schemas"]["McpScopeType"];
+            /**
+             * Server Ids
+             * @description MCP services shared by the discussion when no role-specific selection is used.
+             */
             server_ids?: string[];
         };
         /**
@@ -4844,7 +7702,7 @@ export interface components {
              * @default 1
              */
             max_turns: number;
-            /** @description Optional MCP scope for this run. When set AND env LITERATURE_ENABLE_MCP_TOOLS=1, the discussion router wraps invoke_agent with McpToolUseRunner. None = no MCP. */
+            /** @description Optional MCP service selection for this discussion run. When omitted, the run uses no MCP services. */
             mcp_overrides?: components["schemas"]["DiscussionMcpOverrides"] | null;
             /**
              * Min Turns
@@ -4853,6 +7711,11 @@ export interface components {
             min_turns: number;
             /** Project Id */
             project_id?: string | null;
+            /**
+             * Project Reasoning Bias Enabled
+             * @description Per-request override. False disables project reasoning bias injection.
+             */
+            project_reasoning_bias_enabled?: boolean | null;
             /** Query */
             query: string;
             /** @default synthesize */
@@ -4865,12 +7728,81 @@ export interface components {
              */
             timeout_seconds: number;
         };
+        /**
+         * DiscussionRunExportPayload
+         * @description Run-scoped discussion export response.
+         */
+        DiscussionRunExportPayload: {
+            /** Content */
+            content: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "json" | "markdown";
+            /** Run Id */
+            run_id: string;
+        };
+        /**
+         * DiscussionRunHistoryItemPayload
+         * @description One run-scoped discussion history row.
+         */
+        DiscussionRunHistoryItemPayload: {
+            /** Agent Count */
+            agent_count: number;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /** Archived At */
+            archived_at?: number | null;
+            /** Created At */
+            created_at: number;
+            /**
+             * Query
+             * @default
+             */
+            query: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "running" | "completed" | "cancelled" | "error";
+            /**
+             * Synthesis Preview
+             * @default
+             */
+            synthesis_preview: string;
+            /** Turn Count */
+            turn_count: number;
+            /** Updated At */
+            updated_at: number;
+        };
+        /**
+         * DiscussionRunHistoryPagePayload
+         * @description Paginated run-scoped discussion history response.
+         */
+        DiscussionRunHistoryPagePayload: {
+            /** Items */
+            items?: components["schemas"]["DiscussionRunHistoryItemPayload"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
         /** DiscussionRunResult */
         DiscussionRunResult: {
             convergence?: components["schemas"]["DiscussionConvergenceTrace"] | null;
             /** Elapsed Ms */
             elapsed_ms: number;
-            evidence?: components["schemas"]["DiscussionEvidencePackPayload"] | null;
+            evidence?: components["schemas"]["models__discussion__DiscussionEvidencePackPayload"] | null;
             /** Project Id */
             project_id?: string | null;
             /** Query */
@@ -5015,6 +7947,12 @@ export interface components {
             event_type: string;
             /** Job Id */
             job_id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Sequence */
+            sequence: number;
             /** Session Id */
             session_id: string;
             /** Timestamp */
@@ -5050,8 +7988,160 @@ export interface components {
             /** Severity */
             severity: string;
         };
+        /**
+         * EvidenceGraphEdge
+         * @description Directed relation in the reusable evidence graph payload.
+         */
+        EvidenceGraphEdge: {
+            /** Confidence */
+            confidence?: number | null;
+            /**
+             * Created By
+             * @enum {string}
+             */
+            created_by: "parser" | "wiki_frontmatter" | "llm_extraction" | "user_action" | "migration" | "runtime_capture" | "wiki_graph" | "source_vault";
+            /** Id */
+            id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Provenance Refs */
+            provenance_refs?: components["schemas"]["EvidenceGraphProvenanceRef"][];
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "contains" | "derived_from" | "cites" | "supports" | "contradicts" | "uses_method" | "uses_dataset" | "evaluated_by" | "mentions" | "promoted_to" | "related";
+            /** Source */
+            source: string;
+            /**
+             * Status
+             * @default candidate
+             * @enum {string}
+             */
+            status: "trusted" | "candidate" | "rejected" | "stale";
+            /** Target */
+            target: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * EvidenceGraphNode
+         * @description Node in the reusable evidence graph payload.
+         */
+        EvidenceGraphNode: {
+            /** Confidence */
+            confidence?: number | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Provenance Refs */
+            provenance_refs?: components["schemas"]["EvidenceGraphProvenanceRef"][];
+            /**
+             * Status
+             * @default trusted
+             * @enum {string}
+             */
+            status: "trusted" | "candidate" | "rejected" | "stale";
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "source" | "chunk" | "paper" | "concept" | "claim" | "method" | "dataset" | "metric" | "finding" | "limitation" | "insight" | "session" | "agent";
+        };
+        /**
+         * EvidenceGraphPayload
+         * @description Versioned evidence graph payload shared by Knowledge Workbench and SmartRead.
+         */
+        EvidenceGraphPayload: {
+            /** Edges */
+            edges?: components["schemas"]["EvidenceGraphEdge"][];
+            /** Nodes */
+            nodes?: components["schemas"]["EvidenceGraphNode"][];
+            scope: components["schemas"]["EvidenceGraphScope"];
+            /** Updated At */
+            updated_at: string;
+            /**
+             * Version
+             * @default v1
+             * @constant
+             */
+            version: "v1";
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * EvidenceGraphProvenanceRef
+         * @description Concrete provenance anchor for a trusted graph relation.
+         *
+         *     At least one source/material/chunk identifier is required so graph clicks
+         *     can resolve back to an auditable source instead of becoming decorative
+         *     relationships.
+         */
+        EvidenceGraphProvenanceRef: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Material Id */
+            material_id?: string | null;
+            /** Page */
+            page?: number | null;
+            /**
+             * Quote
+             * @default
+             */
+            quote: string;
+            /** Source Id */
+            source_id?: string | null;
+            /** Source Vault Chunk Id */
+            source_vault_chunk_id?: string | null;
+            /** Source Vault Id */
+            source_vault_id?: string | null;
+            /** Text Hash */
+            text_hash?: string | null;
+        };
+        /**
+         * EvidenceGraphScope
+         * @description Scope for a reusable evidence graph request.
+         *
+         *     Args:
+         *         kind: Product surface or source-of-truth class being projected.
+         *         ref: Stable id or question text for the scope. Empty is allowed for
+         *             broad project/debug views.
+         */
+        EvidenceGraphScope: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "source" | "knowledge_item" | "insight" | "smart_read_session" | "question" | "project";
+            /**
+             * Ref
+             * @default
+             */
+            ref: string;
+        };
         /** EvidenceRef */
         EvidenceRef: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id?: string | null;
             /** Material Id */
@@ -5064,10 +8154,71 @@ export interface components {
             text: string;
         };
         /**
+         * EvidenceRefPayload
+         * @description Evidence reference with optional source labels and bbox.
+         */
+        EvidenceRefPayload: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Chunk Id */
+            chunk_id: string;
+            /**
+             * Compressed Text
+             * @default
+             */
+            compressed_text: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Material Id */
+            material_id: string;
+            /** Page */
+            page?: number | null;
+            /**
+             * Quote
+             * @default
+             */
+            quote: string;
+            /** Rank */
+            rank?: number | null;
+            /** Ref Id */
+            ref_id: string;
+            /** Score */
+            score?: number | null;
+            /** Source */
+            source?: string | null;
+            /** Source Hint */
+            source_hint?: string | null;
+            /** Source Label */
+            source_label?: string | null;
+            /** Source Labels */
+            source_labels?: string[];
+            /** Text */
+            text: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
          * EvidenceReferencePayload
          * @description Machine-readable provenance reference for context used in a response.
          */
         EvidenceReferencePayload: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id: string;
             /**
@@ -5091,19 +8242,38 @@ export interface components {
             source: string;
             /** Source Hint */
             source_hint?: string | null;
+            /**
+             * Source Kind
+             * @default local
+             * @enum {string}
+             */
+            source_kind: "local" | "web" | "mcp";
             /** Source Labels */
             source_labels?: string[];
             /** Text */
             text: string;
         };
         /**
+         * EvidenceRefsResponse
+         * @description Response for evidence refs list endpoint.
+         */
+        EvidenceRefsResponse: {
+            /** Filtered By Labels */
+            filtered_by_labels?: string[];
+            /** Refs */
+            refs?: components["schemas"]["EvidenceRefPayload"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
          * EvolutionAuditPayload
-         * @description Operator-facing audit roll-up for `/evolution/audit` (Opt §6).
+         * @description Read-only experience review summary for the audit panel.
          *
-         *     All fields are derived from COUNT(*) / GROUP BY queries plus a small
-         *     bounded list of recent decision_reason strings; no raw candidate
-         *     claim / title / future_use / source_summary text is ever surfaced
-         *     through this endpoint.
+         *     Counts and recent decisions are bounded so the panel can explain review
+         *     activity without exposing full candidate text.
          */
         EvolutionAuditPayload: {
             /** By Memory Type */
@@ -5164,7 +8334,7 @@ export interface components {
          * ExperienceCandidate
          * @description A single experience candidate produced by the evolution capture layer.
          *
-         *     Mirrors plan §Experience Candidate Contract. All fields are validated at
+         *     Mirrors the experience candidate contract. All fields are validated at
          *     write time; status transitions are enforced by
          *     literature_assistant.core.evolution.state_machine.
          */
@@ -5233,6 +8403,26 @@ export interface components {
             title: string;
         };
         /**
+         * ExportProjectRequest
+         * @description Request to export project.
+         */
+        ExportProjectRequest: {
+            /** Format */
+            format: string;
+            /**
+             * Include Citations
+             * @default true
+             */
+            include_citations: boolean;
+            /**
+             * Include Evidence
+             * @default true
+             */
+            include_evidence: boolean;
+            /** Project Id */
+            project_id: string;
+        };
+        /**
          * FactInvalidationPayload
          * @description Response for fact invalidation operation.
          */
@@ -5252,6 +8442,124 @@ export interface components {
             /** Success */
             success: boolean;
         };
+        /** FeatureFlagEntry */
+        FeatureFlagEntry: {
+            /** Current */
+            current: boolean;
+            /** Default */
+            default: boolean;
+            /** Description */
+            description: string;
+            /** Env Var */
+            env_var?: string | null;
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
+            /** Source */
+            source: string;
+        };
+        /** FeatureFlagListResponse */
+        FeatureFlagListResponse: {
+            /** Flags */
+            flags: components["schemas"]["FeatureFlagEntry"][];
+        };
+        /**
+         * FigureAssetPayload
+         * @description Real figure/table asset (not text-derived candidate).
+         *
+         *     Represents actual extracted or uploaded figure/table with asset file.
+         *     Distinct from FigureTableCandidatePayload which is text-only.
+         */
+        FigureAssetPayload: {
+            /** Asset Id */
+            asset_id: string;
+            /**
+             * Asset Path
+             * @description Path to extracted image/table file
+             */
+            asset_path: string;
+            /** Bbox */
+            bbox?: number[] | null;
+            /** Caption */
+            caption: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Format
+             * @description png, jpg, svg, etc.
+             */
+            format?: string | null;
+            /** Height */
+            height?: number | null;
+            /** Kind */
+            kind: string;
+            /** Material Id */
+            material_id?: string | null;
+            /**
+             * Numbering
+             * @description e.g., 'Figure 1', 'Table 2'
+             */
+            numbering: string;
+            /** Project Id */
+            project_id: string;
+            /** Source Page */
+            source_page?: number | null;
+            /** Updated At */
+            updated_at: string;
+            /** Width */
+            width?: number | null;
+        };
+        /**
+         * FigureTableCandidatePayload
+         * @description Chunk-derived figure/table candidate for Manuscript Studio.
+         *
+         *     Args:
+         *         id: Stable candidate identifier within one project.
+         *         kind: Candidate type, currently ``figure`` or ``table``.
+         *         label: Display label such as ``图 1`` or ``表 2``.
+         *         caption: Short caption/description derived from the source chunk.
+         *         material_id: Material that owns the source chunk.
+         *         material_title: Human-readable material title.
+         *         page: One-based page number when the chunk store provides it.
+         *         chunk_id: Source chunk identifier for provenance lookup.
+         *         chunk_index: Source chunk ordinal when available.
+         *         bbox: Optional source layout box reserved for PDF layout extraction.
+         *         asset_path: Optional extracted asset path reserved for image/table crops.
+         *         source: Candidate extraction source. ``chunk_text`` means text-only,
+         *             ``pdf_crop`` means a generated preview image was rendered from the
+         *             source PDF, and ``chunk_*`` values mean the pixel asset was already
+         *             recorded by the chunking pipeline.
+         */
+        FigureTableCandidatePayload: {
+            /** Asset Path */
+            asset_path?: string | null;
+            /** Bbox */
+            bbox?: number[] | null;
+            /** Caption */
+            caption: string;
+            /** Chunk Id */
+            chunk_id: string;
+            /** Chunk Index */
+            chunk_index?: number | null;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Material Id */
+            material_id: string;
+            /** Material Title */
+            material_title: string;
+            /** Page */
+            page?: number | null;
+            /**
+             * Source
+             * @default chunk_text
+             */
+            source: string;
+        };
         /**
          * ForkSessionRequest
          * @description Request to fork a session from a checkpoint.
@@ -5261,6 +8569,80 @@ export interface components {
             checkpoint_id: string;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * GenerateFigureAssetsRequest
+         * @description Request to generate local figure/table assets from existing candidates.
+         *
+         *     Args:
+         *         project_id: Non-empty project id that owns chunk-derived candidates.
+         *         candidate_ids: Optional candidate ids to materialize; empty means the
+         *             first eligible candidates are selected deterministically.
+         *         max_items: Maximum number of candidates to materialize in one request.
+         *         kind: Optional asset kind filter.
+         *         overwrite_existing: When false, candidates whose asset path is already
+         *             registered are skipped instead of creating duplicate assets.
+         */
+        GenerateFigureAssetsRequest: {
+            /** Candidate Ids */
+            candidate_ids?: string[];
+            /** Kind */
+            kind?: string | null;
+            /**
+             * Max Items
+             * @default 1
+             */
+            max_items: number;
+            /**
+             * Overwrite Existing
+             * @default false
+             */
+            overwrite_existing: boolean;
+            /** Project Id */
+            project_id: string;
+        };
+        /**
+         * GenerateFigureAssetsResponse
+         * @description Response for deterministic local figure/table asset generation.
+         */
+        GenerateFigureAssetsResponse: {
+            /** Generated Assets */
+            generated_assets?: components["schemas"]["FigureAssetPayload"][];
+            /** Generated Count */
+            generated_count: number;
+            /** Message */
+            message: string;
+            /** Project Id */
+            project_id: string;
+            /** Skipped Candidate Ids */
+            skipped_candidate_ids?: string[];
+        };
+        /**
+         * GenerateOutlineRequest
+         * @description Request to generate outline via AI.
+         */
+        GenerateOutlineRequest: {
+            /**
+             * Content Type
+             * @default academic
+             */
+            content_type: string;
+            /**
+             * Existing Materials
+             * @description Material IDs to reference
+             */
+            existing_materials?: string[];
+            /** Focus Areas */
+            focus_areas?: string[];
+            /** Project Id */
+            project_id: string;
+            /**
+             * Target Length
+             * @description Target word count
+             */
+            target_length?: number | null;
+            /** Topic */
+            topic: string;
         };
         /** GenerateSparksRequest */
         GenerateSparksRequest: {
@@ -5284,6 +8666,11 @@ export interface components {
              * @description 项目ID，用于从知识库生成启发点
              */
             project_id?: string | null;
+            /**
+             * Project Reasoning Bias Enabled
+             * @description Per-request toggle for applying saved project reasoning bias to inspiration prompts
+             */
+            project_reasoning_bias_enabled?: boolean | null;
             /**
              * Query
              * @description 查询/主题
@@ -5392,15 +8779,36 @@ export interface components {
             color: string;
             /** Page */
             page: number;
+            /** Rects */
+            rects?: components["schemas"]["HighlightRect"][] | null;
             /** Text */
             text: string;
+        };
+        /**
+         * HighlightRect
+         * @description Normalized highlight rectangle, relative to the PDF page box.
+         *
+         *     All four values are in [0, 1] so the overlay can be drawn correctly
+         *     regardless of the user's current zoom level. (x, y) is the top-left
+         *     of the rect; w/h are the width/height. A single highlight typically
+         *     has 1-N rects (one per visual line of selected text).
+         */
+        HighlightRect: {
+            /** H */
+            h: number;
+            /** W */
+            w: number;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
         };
         /**
          * ImageAttachmentPayload
          * @description Browser-provided image attachment accepted by `/api/chat`.
          *
-         *     The endpoint stores no path and performs no vision analysis by default.
-         *     Slice 0 only exposes a typed, bounded payload to pre-LLM hooks.
+         *     The endpoint receives bounded in-memory image data and does not expose a
+         *     local file path.
          */
         ImageAttachmentPayload: {
             /** Data B64 */
@@ -5485,9 +8893,8 @@ export interface components {
          * InspirationContextPayload
          * @description Structured spark context attached to assistant turns in inspiration mode.
          *
-         *     Phase 1 only ships ``evidence_texts`` (string snippets).
-         *     ``evidence_refs`` is reserved for the eventual upgrade to
-         *     ``EvidenceReferencePayload`` with chunk_id/page anchors (P3 scope).
+         *     Text evidence is supported today; structured evidence references can be
+         *     present when upstream retrieval provides them.
          */
         InspirationContextPayload: {
             /**
@@ -5542,7 +8949,7 @@ export interface components {
         };
         /**
          * InstallationInstallResponse
-         * @description Public-facing shape; no raw secrets.
+         * @description Public-facing shape without credential material.
          */
         InstallationInstallResponse: {
             /** Absolute Cwd */
@@ -5576,17 +8983,32 @@ export interface components {
          * @description Request payload for the frontend Intelligent Chat endpoint.
          */
         IntelligentChatRequest: {
+            /** @description Browser reader state for the current PDF page or selected text. When material_id is also supplied, both material ids must match. */
+            current_pdf_context?: components["schemas"]["CurrentPdfContextPayload"] | null;
             /**
              * Direct Mode
+             * @deprecated
+             * @description Deprecated pre-unification Dialog hint. New smart-read callers should omit this; it no longer creates a separate direct-call product path.
              * @default false
              */
             direct_mode: boolean;
             /** Images */
             images?: components["schemas"]["ImageAttachmentPayload"][];
             inspiration_context?: components["schemas"]["InspirationContextPayload"] | null;
+            /**
+             * Material Id
+             * @description When the user is reading a specific paper in the Workbench, anchor retrieval to that material's chunks first so the answer stays grounded in 'the paper I'm looking at' rather than project-wide RAG. Empty / null = project-wide retrieval as before.
+             */
+            material_id?: string | null;
+            /** @description Legacy compatibility mode. New callers should omit it or send literature_qa for the unified smart-read path. */
             mode?: components["schemas"]["ChatMode"] | null;
             /** Project Id */
             project_id?: string | null;
+            /**
+             * Project Reasoning Bias Enabled
+             * @description Per-request override. False disables project reasoning bias injection for this chat turn.
+             */
+            project_reasoning_bias_enabled?: boolean | null;
             /** Query */
             query: string;
             /** Session Id */
@@ -5606,6 +9028,8 @@ export interface components {
          */
         IntelligentChatResponse: {
             actual_sampling_params?: components["schemas"]["SamplingParamsPayload"] | null;
+            /** @description Structured evidence-grounded reasoning summary for the completed assistant answer. Additive; old clients can ignore it. */
+            analysis_chain?: components["schemas"]["models__analysis_chain__AnalysisChainPayload"] | null;
             /** Context Chunks Used */
             context_chunks_used: number;
             context_metadata?: components["schemas"]["ContextMetadataPayload"] | null;
@@ -5650,6 +9074,29 @@ export interface components {
             reason?: string | null;
         };
         /**
+         * JobEventSnapshotPayload
+         * @description Refresh-safe job snapshot plus cursor-paginated event page.
+         */
+        JobEventSnapshotPayload: {
+            /** Events */
+            events?: components["schemas"]["EventPayload"][];
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+            job: components["schemas"]["JobPayload"];
+            /** Job Id */
+            job_id: string;
+            /** Latest Sequence */
+            latest_sequence: number;
+            /** Next After Sequence */
+            next_after_sequence?: number | null;
+            /** Session Id */
+            session_id: string;
+            status: components["schemas"]["JobStatusPayload"];
+        };
+        /**
          * JobPayload
          * @description Job response payload.
          */
@@ -5668,6 +9115,10 @@ export interface components {
             job_id: string;
             /** Kind */
             kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
             /** Session Id */
             session_id: string;
             /** Skill Id */
@@ -5676,6 +9127,8 @@ export interface components {
             started_at?: string | null;
             /** Status */
             status: string;
+            /** Tags */
+            tags?: string[];
         };
         /**
          * JobStatusPayload
@@ -5696,6 +9149,10 @@ export interface components {
             job_id: string;
             /** Kind */
             kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
             /** Session Id */
             session_id: string;
             /** Started At */
@@ -5761,7 +9218,7 @@ export interface components {
         };
         /**
          * ManualCaptureRequest
-         * @description Body for POST /evolution/capture/manual.
+         * @description Request body for controlled manual experience import.
          */
         ManualCaptureRequest: {
             /** Claim */
@@ -5840,18 +9297,16 @@ export interface components {
         };
         /**
          * McpApprovalState
-         * @description Approval lifecycle. Forward-only; downgrade requires explicit reset
-         *     back to ``registered`` (Phase 1B will enforce the state machine).
+         * @description Approval lifecycle for using a local MCP service.
          * @enum {string}
          */
         McpApprovalState: "registered" | "catalog_reviewed" | "enabled_for_session";
         /**
          * McpInstallConfigField
-         * @description Non-secret config field generated for the install wizard.
+         * @description Non-sensitive runtime setting generated for the install wizard.
          *
-         *     Examples: ``VISION_PROVIDER`` (select with options), ``DEFAULT_TIMEOUT``
-         *     (text). For secrets use ``McpRequiredCredential`` instead — those get
-         *     bound through the CredentialPicker and stored as env_refs.
+         *     Credential-like settings must use ``McpRequiredCredential`` so users bind a
+         *     saved credential instead of typing sensitive values into ordinary settings.
          */
         McpInstallConfigField: {
             /** Default */
@@ -5867,6 +9322,10 @@ export interface components {
             id: string;
             /** Label */
             label: string;
+            /** Max */
+            max?: number | null;
+            /** Min */
+            min?: number | null;
             /** Options */
             options?: {
                 [key: string]: string;
@@ -5876,6 +9335,8 @@ export interface components {
              * @default true
              */
             required: boolean;
+            /** Step */
+            step?: number | null;
             /** Type */
             type: string;
         };
@@ -5977,9 +9438,10 @@ export interface components {
         McpProvenance: "official_provider" | "runtime_user_confirmed" | "runtime_untrusted_custom";
         /**
          * McpRequiredCredential
-         * @description A credential reference slot that the install wizard binds via the
-         *     CredentialPicker. After install, the installer writes
-         *     ``McpStdioConfig.env_refs[env] = credential_id``.
+         * @description Saved-credential slot bound by the install wizard.
+         *
+         *     The installer stores an opaque reference in runtime configuration after
+         *     the user chooses a saved credential.
          */
         McpRequiredCredential: {
             /**
@@ -6033,6 +9495,12 @@ export interface components {
          */
         McpScanWarningLevel: "info" | "warn" | "block";
         /**
+         * McpScopeType
+         * @description How MCP access is scoped for a discussion run.
+         * @enum {string}
+         */
+        McpScopeType: "surface" | "agent";
+        /**
          * McpServerConfigCreate
          * @description Body of POST /api/mcp/servers. New servers always start at
          *     ``approval_state=registered`` regardless of the requested provenance —
@@ -6059,7 +9527,7 @@ export interface components {
         /**
          * McpServerConfigPublic
          * @description Safe-to-return shape. ``stdio.env`` and ``http.headers`` values are
-         *     masked. Never carries raw secrets.
+         *     masked. Never carries credential material.
          */
         McpServerConfigPublic: {
             approval_state: components["schemas"]["McpApprovalState"];
@@ -6127,8 +9595,7 @@ export interface components {
         };
         /**
          * McpStreamableHttpConfig
-         * @description HTTP transport config. Persisted from day 1; execution is feature-flagged
-         *     off until later slice (plan v0.3 §4.4).
+         * @description HTTP transport config for MCP services.
          */
         McpStreamableHttpConfig: {
             /** Header Refs */
@@ -6180,6 +9647,65 @@ export interface components {
          */
         McpTransport: "stdio" | "streamable_http";
         /**
+         * MemoryCreateRequest
+         * @description Create request for one repository-owned long-term memory row.
+         */
+        MemoryCreateRequest: {
+            /**
+             * Added By
+             * @default memory-api
+             */
+            added_by: string;
+            /** Content */
+            content: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Room */
+            room?: string | null;
+            /**
+             * Source File
+             * @default
+             */
+            source_file: string;
+            /** Wing */
+            wing?: string | null;
+        };
+        /**
+         * MemoryCreateResponsePayload
+         * @description Create response for a memory row.
+         */
+        MemoryCreateResponsePayload: {
+            /** Available */
+            available: boolean;
+            /**
+             * Duplicate
+             * @default false
+             */
+            duplicate: boolean;
+            /** Memory Id */
+            memory_id?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Room */
+            room: string;
+            /** Success */
+            success: boolean;
+            /** Wing */
+            wing: string;
+        };
+        /**
+         * MemoryDeleteResponsePayload
+         * @description Delete response for one memory row.
+         */
+        MemoryDeleteResponsePayload: {
+            /** Deleted */
+            deleted: boolean;
+            /** Memory Id */
+            memory_id: string;
+        };
+        /**
          * MemoryFactPayload
          * @description Single fact from memory snapshot.
          */
@@ -6205,6 +9731,39 @@ export interface components {
             valid_from: string;
             /** Valid To */
             valid_to?: string | null;
+        };
+        /**
+         * MemoryListResponsePayload
+         * @description Bounded list response for repository-owned memory rows.
+         */
+        MemoryListResponsePayload: {
+            /** Available */
+            available: boolean;
+            /** Memories */
+            memories: components["schemas"]["MemoryRecordPayload"][];
+        };
+        /**
+         * MemoryRecordPayload
+         * @description Public long-term memory row returned by CRUD endpoints.
+         */
+        MemoryRecordPayload: {
+            /** Memory Id */
+            memory_id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Room */
+            room: string;
+            /**
+             * Source File
+             * @default
+             */
+            source_file: string;
+            /** Text */
+            text: string;
+            /** Wing */
+            wing: string;
         };
         /**
          * MemorySearchHitPayload
@@ -6364,6 +9923,59 @@ export interface components {
             /** Provider */
             provider: string;
         };
+        /**
+         * OutlineItemPayload
+         * @description Outline item (section/subsection) in hierarchical structure.
+         */
+        OutlineItemPayload: {
+            /** Created At */
+            created_at: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Item Id */
+            item_id: string;
+            /**
+             * Level
+             * @description Heading level (1-6)
+             */
+            level: number;
+            /**
+             * Order
+             * @description Display order within parent
+             */
+            order: number;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Section Id */
+            section_id?: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * OutlinePayload
+         * @description Complete outline structure for a project.
+         */
+        OutlinePayload: {
+            /** Items */
+            items?: components["schemas"]["OutlineItemPayload"][];
+            /** Project Id */
+            project_id: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * PdfBboxUnit
+         * @description Coordinate unit carried by PDF evidence anchors.
+         * @enum {string}
+         */
+        PdfBboxUnit: "normalized_ratio" | "normalized_1000" | "pdf_points" | "css_pixels";
         /**
          * PipelineRequest
          * @description Pipeline execution request payload.
@@ -6541,6 +10153,46 @@ export interface components {
             status: number;
         };
         /**
+         * ProjectExportBibliographyEntryPayload
+         * @description Structured reference-list entry derived from project materials.
+         *
+         *     The shape intentionally mirrors common CSL-style metadata without claiming
+         *     Word field-code semantics; exporters can render a deterministic bibliography
+         *     even when source records only contain title/summary material metadata.
+         */
+        ProjectExportBibliographyEntryPayload: {
+            /** Authors */
+            authors?: string[];
+            /** Citation Key */
+            citation_key: string;
+            /** Display Text */
+            display_text: string;
+            /** Doi */
+            doi?: string | null;
+            /** Material Id */
+            material_id: string;
+            /** Ordinal */
+            ordinal: number;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @default reference
+             */
+            type: string;
+            /** Url */
+            url?: string | null;
+            /** Venue */
+            venue?: string | null;
+            /** Year */
+            year?: string | null;
+        };
+        /**
          * ProjectExportCitationChainPayload
          * @description Trace from a draft anchor back to its source evidence.
          */
@@ -6561,6 +10213,7 @@ export interface components {
             paragraph_index?: number | null;
             /** Section Id */
             section_id?: string | null;
+            source_anchor?: components["schemas"]["ProjectExportSourceAnchorPayload"] | null;
             /** Source Excerpt */
             source_excerpt: string;
         };
@@ -6594,35 +10247,87 @@ export interface components {
             provenance: components["schemas"]["ProjectExportEvidenceProvenancePayload"];
             /** Score */
             score?: number | null;
+            source_anchor?: components["schemas"]["ProjectExportSourceAnchorPayload"] | null;
             /** Status */
             status: string;
+        };
+        /**
+         * ProjectExportFigureAssetPayload
+         * @description Figure/table asset provenance included in writing export metadata.
+         *
+         *     Args:
+         *         asset_id: Stable persisted figure/table asset id.
+         *         kind: Asset type, currently ``figure`` or ``table``.
+         *         material_id: Optional source material id.
+         *         source_page: Optional source PDF page.
+         *         bbox: Optional source bbox as stored on the asset record.
+         *         bbox_unit: Declared bbox unit when it can be interpreted safely.
+         *         source_anchor: Direct reader anchor when the asset has PDF provenance.
+         */
+        ProjectExportFigureAssetPayload: {
+            /** Asset Id */
+            asset_id: string;
+            /** Asset Path */
+            asset_path: string;
+            /** Bbox */
+            bbox?: number[] | null;
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Caption */
+            caption: string;
+            /** Format */
+            format?: string | null;
+            /** Height */
+            height?: number | null;
+            /** Kind */
+            kind: string;
+            /** Material Id */
+            material_id?: string | null;
+            /** Numbering */
+            numbering: string;
+            /** Project Id */
+            project_id: string;
+            source_anchor?: components["schemas"]["ProjectExportSourceAnchorPayload"] | null;
+            /** Source Page */
+            source_page?: number | null;
+            /** Width */
+            width?: number | null;
         };
         /**
          * ProjectExportFormat
          * @enum {string}
          */
-        ProjectExportFormat: "markdown" | "json";
+        ProjectExportFormat: "markdown" | "json" | "word" | "latex" | "pdf";
         /**
          * ProjectExportPayload
-         * @description Project export response for JSON and Markdown formats.
+         * @description Project export response for text and generated file formats.
          */
         ProjectExportPayload: {
+            /** Bibliography Entries */
+            bibliography_entries?: components["schemas"]["ProjectExportBibliographyEntryPayload"][];
             /** Citation Chain */
             citation_chain?: components["schemas"]["ProjectExportCitationChainPayload"][];
             /** Content */
             content?: string | null;
+            /** Content Base64 */
+            content_base64?: string | null;
             /** Document Count */
             document_count?: number | null;
             /** Drafts */
             drafts?: components["schemas"]["DraftPayload"][];
             /** Evidence Rows */
             evidence_rows?: components["schemas"]["ProjectExportEvidenceRowPayload"][];
+            /** Figure Assets */
+            figure_assets?: components["schemas"]["ProjectExportFigureAssetPayload"][];
+            /** File Path */
+            file_path?: string | null;
             /** Filename */
             filename?: string | null;
             /** Format */
             format: string;
             /** Materials */
             materials?: components["schemas"]["MaterialPayload"][];
+            /** Media Type */
+            media_type?: string | null;
             project?: components["schemas"]["ProjectPayload"] | null;
             /** Project Id */
             project_id?: string | null;
@@ -6650,6 +10355,39 @@ export interface components {
             severity: string;
         };
         /**
+         * ProjectExportSourceAnchorPayload
+         * @description PDF source anchor preserved by writing/export appendices.
+         *
+         *     Args:
+         *         material_id: Non-empty material id used by the direct PDF reader route.
+         *         chunk_id: Optional extracted chunk id when a locator exists.
+         *         page: Optional one-based PDF page; required when bbox is present.
+         *         text_preview: Short source text preview for reviewer-facing appendices.
+         *         open_url: App-local URL that opens the original PDF reader.
+         */
+        ProjectExportSourceAnchorPayload: {
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
+            bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Material Id */
+            material_id: string;
+            /** Open Url */
+            open_url: string;
+            /** Page */
+            page?: number | null;
+            /**
+             * Text Preview
+             * @default
+             */
+            text_preview: string;
+        };
+        /**
          * ProjectPayload
          * @description Writing project response.
          */
@@ -6662,6 +10400,7 @@ export interface components {
             description: string;
             /** Project Id */
             project_id: string;
+            project_reasoning_bias?: components["schemas"]["ProjectReasoningBiasPayload"] | null;
             /**
              * Source Folder
              * @default
@@ -6677,6 +10416,201 @@ export interface components {
             updated_at: string;
             /** User Id */
             user_id?: string | null;
+        };
+        /**
+         * ProjectReasoningBiasFieldSuggestions
+         * @description Six-field optimization suggestions aligned with AnalysisChain output.
+         *
+         *     Args:
+         *         observation: Preference for selecting observable issues or phenomena.
+         *         mechanism: Preference for selecting causal mechanisms or rules.
+         *         evidence: Preference for evidence selection and evidence quality.
+         *         boundary: Preference for scope limits, methods, and uncertainty.
+         *         counter_evidence: Preference for opposing evidence and falsification.
+         *         next_action: Preference for follow-up writing, retrieval, or validation.
+         */
+        ProjectReasoningBiasFieldSuggestions: {
+            /**
+             * Boundary
+             * @default
+             */
+            boundary: string;
+            /**
+             * Counter Evidence
+             * @default
+             */
+            counter_evidence: string;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
+            /**
+             * Mechanism
+             * @default
+             */
+            mechanism: string;
+            /**
+             * Next Action
+             * @default
+             */
+            next_action: string;
+            /**
+             * Observation
+             * @default
+             */
+            observation: string;
+        };
+        /**
+         * ProjectReasoningBiasOptimizeRequest
+         * @description Request body for optimizing a user-authored project reasoning bias.
+         *
+         *     Args:
+         *         human_bias: User draft to rewrite into a clearer project preference.
+         *         language: Desired output language. Auto follows the input language.
+         *         target_scopes: Surfaces the user intends to apply the preference to.
+         */
+        ProjectReasoningBiasOptimizeRequest: {
+            /**
+             * Human Bias
+             * @default
+             */
+            human_bias: string;
+            /**
+             * Language
+             * @default auto
+             * @enum {string}
+             */
+            language: "zh" | "en" | "auto";
+            /** Target Scopes */
+            target_scopes?: ("analysis_chain" | "chat_generation" | "discussion_agent" | "project_wide")[];
+        };
+        /**
+         * ProjectReasoningBiasOptimizeResponse
+         * @description Structured optimizer output returned for manual user review only.
+         *
+         *     Args:
+         *         original_bias: The user draft submitted to the optimizer.
+         *         optimized_bias: A safe rewritten preference that the UI may offer to adopt.
+         *         field_suggestions: Six-field suggestions aligned with AnalysisChain.
+         *         safety_notes: Short notes explaining safety and evidence boundaries.
+         *         language: Language used by the optimized text.
+         */
+        ProjectReasoningBiasOptimizeResponse: {
+            field_suggestions?: components["schemas"]["ProjectReasoningBiasFieldSuggestions"];
+            /**
+             * Language
+             * @default zh
+             * @enum {string}
+             */
+            language: "zh" | "en";
+            /**
+             * Optimized Bias
+             * @default
+             */
+            optimized_bias: string;
+            /**
+             * Original Bias
+             * @default
+             */
+            original_bias: string;
+            /** Safety Notes */
+            safety_notes?: string[];
+        };
+        /**
+         * ProjectReasoningBiasPayload
+         * @description Persisted project reasoning bias payload stored in project metadata.
+         *
+         *     Args:
+         *         version: Schema version. Only version 1 is currently accepted.
+         *         human_bias: User-authored preference text. Empty string disables injection.
+         *         scopes: Surfaces where the preference may apply.
+         *         language: Output language preference for rendering or optimization.
+         *         updated_at: Server-maintained ISO timestamp, empty for defaults.
+         *         updated_by: Actor that most recently saved the payload.
+         */
+        ProjectReasoningBiasPayload: {
+            /**
+             * Human Bias
+             * @default
+             */
+            human_bias: string;
+            /**
+             * Language
+             * @default auto
+             * @enum {string}
+             */
+            language: "zh" | "en" | "auto";
+            scopes?: components["schemas"]["ProjectReasoningBiasScopes"];
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * @default user
+             * @enum {string}
+             */
+            updated_by: "user" | "ai_optimize" | "migration";
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+        };
+        /**
+         * ProjectReasoningBiasScopes
+         * @description Scope flags for applying a user-authored project reasoning bias.
+         *
+         *     Args:
+         *         analysis_chain: Applies the preference to six-field reasoning summaries.
+         *         chat_generation: Applies the preference to chat and generation surfaces.
+         *         project_wide: Applies the preference to every registered AI surface.
+         *         discussion_agent_ids: Agent identifiers that opt into the preference.
+         */
+        ProjectReasoningBiasScopes: {
+            /**
+             * Analysis Chain
+             * @default true
+             */
+            analysis_chain: boolean;
+            /**
+             * Chat Generation
+             * @default false
+             */
+            chat_generation: boolean;
+            /** Discussion Agent Ids */
+            discussion_agent_ids?: string[];
+            /**
+             * Project Wide
+             * @default false
+             */
+            project_wide: boolean;
+        };
+        /**
+         * ProjectReasoningBiasUpdateRequest
+         * @description Request body for replacing a project's reasoning bias metadata key.
+         *
+         *     Args:
+         *         human_bias: User-authored preference text. Empty string disables injection.
+         *         scopes: Surfaces where the preference may apply.
+         *         language: Output language preference for rendering or optimization.
+         */
+        ProjectReasoningBiasUpdateRequest: {
+            /**
+             * Human Bias
+             * @default
+             */
+            human_bias: string;
+            /**
+             * Language
+             * @default auto
+             * @enum {string}
+             */
+            language: "zh" | "en" | "auto";
+            scopes?: components["schemas"]["ProjectReasoningBiasScopes"];
         };
         /**
          * ProviderInfo
@@ -6800,7 +10734,7 @@ export interface components {
         };
         /**
          * RerankConfigPayload
-         * @description Public view of the runtime override; api_key never leaves the box.
+         * @description Public view of the runtime override with masked credential state.
          */
         RerankConfigPayload: {
             /**
@@ -6836,7 +10770,7 @@ export interface components {
         };
         /**
          * RerankConfigUpdate
-         * @description Update payload. None on api_key preserves the previously stored key.
+         * @description Update payload. None for the credential field preserves the stored value.
          */
         RerankConfigUpdate: {
             /** Api Key */
@@ -6847,6 +10781,14 @@ export interface components {
             model?: string | null;
             /** Provider */
             provider?: string | null;
+        };
+        /**
+         * RerankCredentialApplyRequest
+         * @description Apply a saved rerank RuntimeCredential without returning credential material.
+         */
+        RerankCredentialApplyRequest: {
+            /** Credential Id */
+            credential_id: string;
         };
         /** RerankProbeResult */
         RerankProbeResult: {
@@ -6860,6 +10802,10 @@ export interface components {
              * @default
              */
             error: string;
+            /** Extra */
+            extra?: {
+                [key: string]: unknown;
+            };
             /** Ok */
             ok: boolean;
             /**
@@ -6959,7 +10905,7 @@ export interface components {
         };
         /**
          * RuntimeCredentialCreate
-         * @description Body of POST /api/credentials. Carries the secret only on input.
+         * @description Body of POST /api/credentials. Carries credential material only on input.
          */
         RuntimeCredentialCreate: {
             /** Api Key */
@@ -6987,6 +10933,7 @@ export interface components {
             protocol: components["schemas"]["CredentialProtocol"];
             /** Provider */
             provider: string;
+            sampling_override?: components["schemas"]["SamplingParams"] | null;
             /** @default default */
             strategy_hint: components["schemas"]["CredentialStrategyHint"];
             /** Tags */
@@ -6996,7 +10943,7 @@ export interface components {
         };
         /**
          * RuntimeCredentialPublic
-         * @description Safe-to-return shape. Never includes raw api_key.
+         * @description Safe-to-return shape. Never includes credential material.
          */
         RuntimeCredentialPublic: {
             /** Api Key Masked */
@@ -7025,6 +10972,7 @@ export interface components {
             protocol: components["schemas"]["CredentialProtocol"];
             /** Provider */
             provider: string;
+            sampling_override?: components["schemas"]["SamplingParams"] | null;
             strategy_hint: components["schemas"]["CredentialStrategyHint"];
             /** Tags */
             tags: string[];
@@ -7034,7 +10982,7 @@ export interface components {
         };
         /**
          * RuntimeCredentialUpdate
-         * @description Body of PUT /api/credentials/{id}. All fields optional; api_key is
+         * @description Body of PUT /api/credentials/{id}. All fields optional; the credential is
          *     accepted only when explicitly rotating.
          */
         RuntimeCredentialUpdate: {
@@ -7053,10 +11001,28 @@ export interface components {
             protocol?: components["schemas"]["CredentialProtocol"] | null;
             /** Provider */
             provider?: string | null;
+            sampling_override?: components["schemas"]["SamplingParams"] | null;
             strategy_hint?: components["schemas"]["CredentialStrategyHint"] | null;
             /** Tags */
             tags?: string[] | null;
             trust_source?: components["schemas"]["CredentialTrustSource"] | null;
+        };
+        /**
+         * SamplingParams
+         * @description Optional per-credential generation controls.
+         *
+         *     All fields are nullable so existing credentials can omit the block and
+         *     callers can override one sampling key without copying unrelated defaults.
+         */
+        SamplingParams: {
+            /** Max Tokens */
+            max_tokens?: number | null;
+            /** System Prompt */
+            system_prompt?: string | null;
+            /** Temperature */
+            temperature?: number | null;
+            /** Top P */
+            top_p?: number | null;
         };
         /**
          * SamplingParamsPayload
@@ -7092,6 +11058,131 @@ export interface components {
             content: string;
             /** Edited By */
             edited_by?: string | null;
+        };
+        /**
+         * SaveEvidencePackRequest
+         * @description Request to save discussion evidence pack.
+         *
+         *     Args:
+         *         project_id: Non-empty project identifier for the discussion.
+         *         query: Non-empty discussion prompt or research question.
+         *         snippets: JSON-serializable evidence snippets captured for the run.
+         *         source_labels: Optional source labels attached to the pack.
+         */
+        SaveEvidencePackRequest: {
+            /** Project Id */
+            project_id: string;
+            /** Query */
+            query: string;
+            /** Snippets */
+            snippets?: {
+                [key: string]: unknown;
+            }[];
+            /** Source Labels */
+            source_labels?: string[];
+        };
+        /**
+         * SavedInspirationCreateRequest
+         * @description Request body for saving one generated or manually curated spark.
+         */
+        SavedInspirationCreateRequest: {
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Query
+             * @default
+             */
+            query: string;
+            /**
+             * Source
+             * @default generated
+             * @enum {string}
+             */
+            source: "generated" | "manual" | "imported";
+            spark: components["schemas"]["SparkResponse"];
+            /** Tags */
+            tags?: string[];
+        };
+        /**
+         * SavedInspirationListResponse
+         * @description Paginated saved Inspiration list response.
+         */
+        SavedInspirationListResponse: {
+            /** Items */
+            items: components["schemas"]["SavedInspirationResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * SavedInspirationResponse
+         * @description Public payload for one saved Inspiration spark.
+         */
+        SavedInspirationResponse: {
+            /** Created At */
+            created_at: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Notes */
+            notes: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Query */
+            query: string;
+            /** Saved Id */
+            saved_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "generated" | "manual" | "imported";
+            spark: components["schemas"]["SparkResponse"];
+            /** Tags */
+            tags?: string[];
+            /** Updated At */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * SavedInspirationUpdateRequest
+         * @description Request body for updating one saved Inspiration spark.
+         */
+        SavedInspirationUpdateRequest: {
+            /**
+             * Clear Project Id
+             * @default false
+             */
+            clear_project_id: boolean;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Notes */
+            notes?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Query */
+            query?: string | null;
+            /** Source */
+            source?: ("generated" | "manual" | "imported") | null;
+            spark?: components["schemas"]["SparkResponse"] | null;
+            /** Tags */
+            tags?: string[] | null;
         };
         /**
          * ScriptPolicyPayload
@@ -7148,6 +11239,110 @@ export interface components {
             tags: string[];
             /** User Id */
             user_id: string | null;
+        };
+        /** SetFeatureFlagRequest */
+        SetFeatureFlagRequest: {
+            /**
+             * Enabled
+             * @description Desired flag state.
+             */
+            enabled: boolean;
+        };
+        /**
+         * SettingsApiBundlePayload
+         * @description Unified API config bundle returned by GET /api/settings.
+         */
+        SettingsApiBundlePayload: {
+            chat: components["schemas"]["SettingsApiConfigPayload"];
+            embedding: components["schemas"]["SettingsApiConfigPayload"];
+            rerank: components["schemas"]["SettingsApiConfigPayload"];
+        };
+        /**
+         * SettingsApiConfigPayload
+         * @description Masked runtime API config for one subsystem.
+         *
+         *     Shape:
+         *     - provider/base_url/model are public strings.
+         *     - credential material is never returned; masked fields are display-only.
+         */
+        SettingsApiConfigPayload: {
+            /**
+             * Api Key Masked
+             * @default
+             */
+            api_key_masked: string;
+            /**
+             * Base Url
+             * @default
+             */
+            base_url: string;
+            /**
+             * Has Api Key
+             * @default false
+             */
+            has_api_key: boolean;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+        };
+        /**
+         * SettingsApiConfigUpdate
+         * @description Partial subsystem update.
+         *
+         *     Passing None for the credential field preserves the stored value; passing an empty string
+         *     clears it, matching the legacy subsystem endpoint semantics.
+         */
+        SettingsApiConfigUpdate: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Provider */
+            provider?: string | null;
+        };
+        /**
+         * SettingsCredentialsSummaryPayload
+         * @description Credential center summary; counts are mask-safe and category-scoped.
+         */
+        SettingsCredentialsSummaryPayload: {
+            /** Embedding */
+            embedding: number;
+            /** Enabled */
+            enabled: number;
+            /** Generation */
+            generation: number;
+            /** Rerank */
+            rerank: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * SettingsFeatureFlagPayload
+         * @description Feature flag public state mirrored from /api/feature-flags.
+         */
+        SettingsFeatureFlagPayload: {
+            /** Current */
+            current: boolean;
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
+            /** Source */
+            source: string;
         };
         /**
          * SkillApprovalDecisionCreate
@@ -7304,6 +11499,22 @@ export interface components {
             version: string;
         };
         /**
+         * SkillExportResponse
+         * @description Response returned after exporting a user skill to zip archive.
+         *
+         *     J11 (2026-05-26): Skill export endpoint response.
+         */
+        SkillExportResponse: {
+            /** Errors */
+            errors?: string[];
+            /** Export Path */
+            export_path: string;
+            /** Skill Id */
+            skill_id: string;
+            /** Success */
+            success: boolean;
+        };
+        /**
          * SkillPackPayload
          * @description Skill pack payload for advanced UI grouping.
          */
@@ -7364,6 +11575,36 @@ export interface components {
             scope: string;
             /** Skillid */
             skillId: string;
+        };
+        /**
+         * SkillRuntimeSettingsResponse
+         * @description Persisted Skill runtime settings after validation and masking.
+         */
+        SkillRuntimeSettingsResponse: {
+            /** Config Values */
+            config_values?: {
+                [key: string]: string;
+            };
+            /** Credential Bindings */
+            credential_bindings?: {
+                [key: string]: string;
+            };
+            /** Skill Id */
+            skill_id: string;
+        };
+        /**
+         * SkillRuntimeSettingsUpdate
+         * @description User-editable Skill settings stored as non-sensitive values and saved credential bindings.
+         */
+        SkillRuntimeSettingsUpdate: {
+            /** Config Values */
+            config_values?: {
+                [key: string]: string;
+            };
+            /** Credential Bindings */
+            credential_bindings?: {
+                [key: string]: string;
+            };
         };
         /**
          * SkillSecurityAssessmentPayload
@@ -7470,16 +11711,127 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /**
+         * SourceLabelPayload
+         * @description Source label for filtering evidence references.
+         */
+        SourceLabelPayload: {
+            /** Color */
+            color?: string | null;
+            /** Created At */
+            created_at: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Label Id */
+            label_id: string;
+            /** Name */
+            name: string;
+            /** Updated At */
+            updated_at: string;
+        };
         /** SourceRef */
         SourceRef: {
-            /** Bbox */
+            /**
+             * Bbox
+             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             */
             bbox?: number[] | null;
+            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id?: string | null;
             /** Material Id */
             material_id: string;
             /** Page */
             page?: number | null;
+        };
+        /**
+         * SourceVaultOverviewResponse
+         * @description Source Vault overview for the Knowledge Workbench source section.
+         */
+        SourceVaultOverviewResponse: {
+            /** Db Path */
+            db_path: string;
+            /** Fts Enabled */
+            fts_enabled: boolean;
+            /** Sources */
+            sources?: components["schemas"]["SourceVaultSourceResponse"][];
+            /** Storage Root */
+            storage_root: string;
+            /** Total Project Links */
+            total_project_links: number;
+            /** Total Sources */
+            total_sources: number;
+        };
+        /**
+         * SourceVaultSearchResponse
+         * @description Search results for source chunks.
+         */
+        SourceVaultSearchResponse: {
+            /** Project Id */
+            project_id?: string | null;
+            /** Query */
+            query: string;
+            /** Results */
+            results?: components["schemas"]["SourceVaultSearchResultResponse"][];
+        };
+        /**
+         * SourceVaultSearchResultResponse
+         * @description One Source Vault chunk search hit.
+         */
+        SourceVaultSearchResultResponse: {
+            /** Chunk Id */
+            chunk_id: string;
+            /** Chunk Index */
+            chunk_index: number;
+            /** Score */
+            score?: number | null;
+            /** Source Hash */
+            source_hash: string;
+            /** Source Id */
+            source_id: string;
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * SourceVaultSourceResponse
+         * @description One Source Vault source row returned to the workbench UI.
+         */
+        SourceVaultSourceResponse: {
+            /** Chunker Version */
+            chunker_version: string;
+            /** File Size */
+            file_size: number;
+            /** First Seen At */
+            first_seen_at: string;
+            /** Last Indexed At */
+            last_indexed_at: string;
+            /** Original Filename */
+            original_filename: string;
+            /** Parser Version */
+            parser_version: string;
+            /** Project Ids */
+            project_ids?: string[];
+            /** Source Hash */
+            source_hash: string;
+            /** Source Id */
+            source_id: string;
+            /** Source Type */
+            source_type: string;
+            /**
+             * Storage Status
+             * @enum {string}
+             */
+            storage_status: "stored" | "referenced" | "missing";
+            /** Stored Path */
+            stored_path: string;
+            /** Title */
+            title: string;
         };
         /**
          * SparkEvidenceRef
@@ -7513,7 +11865,8 @@ export interface components {
              * @default true
              */
             actionable: boolean;
-            analysis_chain?: components["schemas"]["AnalysisChainPayload"] | null;
+            analysis_chain?: components["schemas"]["routers__inspiration_router__AnalysisChainPayload"] | null;
+            causal_dag?: components["schemas"]["GraphPayloadV0"] | null;
             /**
              * Confidence
              * @default 0
@@ -7547,6 +11900,69 @@ export interface components {
              * @default 0
              */
             temporal_sensitivity: number;
+        };
+        /**
+         * SubmissionResponsePayload
+         * @description Response for submission request.
+         */
+        SubmissionResponsePayload: {
+            /** Package Path */
+            package_path?: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Reviewer Email */
+            reviewer_email?: string | null;
+            /** Status */
+            status: string;
+            /** Submission Id */
+            submission_id: string;
+            /** Submitted At */
+            submitted_at: string;
+        };
+        /**
+         * SubmitForReviewRequest
+         * @description Request to submit project for review.
+         */
+        SubmitForReviewRequest: {
+            /**
+             * Include Drafts
+             * @default true
+             */
+            include_drafts: boolean;
+            /**
+             * Include Materials
+             * @default true
+             */
+            include_materials: boolean;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Project Id */
+            project_id: string;
+            /** Reviewer Email */
+            reviewer_email?: string | null;
+        };
+        /**
+         * SuggestCitationsRequest
+         * @description Request to suggest citations via AI.
+         */
+        SuggestCitationsRequest: {
+            /**
+             * Context
+             * @description Draft text context for suggestions
+             */
+            context: string;
+            /** Draft Id */
+            draft_id: string;
+            /**
+             * Max Suggestions
+             * @default 5
+             */
+            max_suggestions: number;
+            /** Project Id */
+            project_id: string;
         };
         /**
          * TimelineItemPayload
@@ -7606,6 +12022,58 @@ export interface components {
             total: number;
         };
         /**
+         * UnifiedSettingsPayload
+         * @description Single Settings document for UI bootstrap and smoke verification.
+         */
+        UnifiedSettingsPayload: {
+            api: components["schemas"]["SettingsApiBundlePayload"];
+            credentials: components["schemas"]["SettingsCredentialsSummaryPayload"];
+            /** Feature Flags */
+            feature_flags: components["schemas"]["SettingsFeatureFlagPayload"][];
+        };
+        /**
+         * UnifiedSettingsUpdate
+         * @description Partial unified settings update.
+         *
+         *     Supported writes are intentionally limited to already-owned runtime stores
+         *     so /api/settings cannot bypass credential masking or endpoint policies.
+         */
+        UnifiedSettingsUpdate: {
+            chat?: components["schemas"]["SettingsApiConfigUpdate"] | null;
+            embedding?: components["schemas"]["SettingsApiConfigUpdate"] | null;
+            /** Feature Flags */
+            feature_flags?: {
+                [key: string]: boolean;
+            } | null;
+            rerank?: components["schemas"]["SettingsApiConfigUpdate"] | null;
+        };
+        /**
+         * UpdateFigureAssetRequest
+         * @description Request to update persisted figure/table asset metadata.
+         */
+        UpdateFigureAssetRequest: {
+            /** Asset Path */
+            asset_path?: string | null;
+            /** Bbox */
+            bbox?: number[] | null;
+            /** Caption */
+            caption?: string | null;
+            /** Format */
+            format?: string | null;
+            /** Height */
+            height?: number | null;
+            /** Kind */
+            kind?: string | null;
+            /** Material Id */
+            material_id?: string | null;
+            /** Numbering */
+            numbering?: string | null;
+            /** Source Page */
+            source_page?: number | null;
+            /** Width */
+            width?: number | null;
+        };
+        /**
          * UpdateNoteRequest
          * @description L2 note replace (body + tags). page + anchor_text immutable.
          */
@@ -7636,6 +12104,18 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * UpdateSourceLabelRequest
+         * @description Request to update a source label.
+         */
+        UpdateSourceLabelRequest: {
+            /** Color */
+            color?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -7649,8 +12129,36 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WikiCategoriesResponse */
+        WikiCategoriesResponse: {
+            /** Categories */
+            categories?: components["schemas"]["WikiCategoryNodePayload"][];
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** WikiCategoryNodePayload */
+        WikiCategoryNodePayload: {
+            /** Children */
+            children?: components["schemas"]["WikiCategoryNodePayload"][];
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+            /** Pages */
+            pages?: components["schemas"]["WikiPageSummaryPayload"][];
+        };
         /** WikiCompileRequest */
         WikiCompileRequest: {
+            /**
+             * Allow Write
+             * @default false
+             */
+            allow_write: boolean;
             /**
              * Dry Run
              * @default true
@@ -7708,6 +12216,20 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * WikiExportResponse
+         * @description Response for wiki export operation (G15 2026-05-26).
+         */
+        WikiExportResponse: {
+            /** Errors */
+            errors?: string[];
+            /** Output Path */
+            output_path: string;
+            /** Page Count */
+            page_count: number;
+            /** Success */
+            success: boolean;
+        };
         /** WikiGraphResponse */
         WikiGraphResponse: {
             /** Enabled */
@@ -7717,12 +12239,178 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * WikiImportItemPayload
+         * @description Per-source result for local Markdown import.
+         */
+        WikiImportItemPayload: {
+            /** Action */
+            action: string;
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /**
+             * Kind
+             * @default
+             */
+            kind: string;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /**
+             * Slug
+             * @default
+             */
+            slug: string;
+            /** Source Path */
+            source_path: string;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * WikiImportRequest
+         * @description Local Markdown import request for the wiki sidecar.
+         */
+        WikiImportRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /**
+             * Kind
+             * @default synthesis
+             */
+            kind: string;
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+            /** Source Paths */
+            source_paths?: string[];
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+        };
+        /**
+         * WikiImportResponse
+         * @description Response for local Markdown wiki import.
+         */
+        WikiImportResponse: {
+            /** Dry Run */
+            dry_run: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Errored
+             * @default 0
+             */
+            errored: number;
+            /**
+             * Imported
+             * @default 0
+             */
+            imported: number;
+            /** Pages */
+            pages?: components["schemas"]["WikiImportItemPayload"][];
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * WikiPageCreateRequest
+         * @description Request to create a new wiki page (G2 2026-05-26).
+         */
+        WikiPageCreateRequest: {
+            /** Body */
+            body: string;
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Extra */
+            extra?: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
+            /** Source Hashes */
+            source_hashes?: string[];
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            /** Title */
+            title: string;
+        };
         /** WikiPageListResponse */
         WikiPageListResponse: {
             /** Enabled */
             enabled: boolean;
             /** Pages */
             pages?: components["schemas"]["WikiPageSummaryPayload"][];
+        };
+        /**
+         * WikiPageMutationResponse
+         * @description Response for create/update/delete operations (G2 2026-05-26).
+         */
+        WikiPageMutationResponse: {
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Slug */
+            slug: string;
+            /** Success */
+            success: boolean;
+        };
+        /**
+         * WikiPagePermissionsRequest
+         * @description Page visibility update request for local wiki ACLs.
+         */
+        WikiPagePermissionsRequest: {
+            /** Shared With */
+            shared_with?: string[];
+            /**
+             * Visibility
+             * @default private
+             */
+            visibility: string;
+        };
+        /**
+         * WikiPagePermissionsResponse
+         * @description Serialized local wiki ACL state.
+         */
+        WikiPagePermissionsResponse: {
+            /** Owner */
+            owner: string;
+            /** Shared With */
+            shared_with?: string[];
+            /** Visibility */
+            visibility: string;
         };
         /** WikiPageReadResponse */
         WikiPageReadResponse: {
@@ -7750,6 +12438,60 @@ export interface components {
             status: string;
             /** Title */
             title: string;
+        };
+        /**
+         * WikiPageUpdateRequest
+         * @description Request to update an existing wiki page (G2 2026-05-26).
+         */
+        WikiPageUpdateRequest: {
+            /** Body */
+            body?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Extra */
+            extra?: {
+                [key: string]: unknown;
+            } | null;
+            /** Source Hashes */
+            source_hashes?: string[] | null;
+            /** Status */
+            status?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** WikiPageVersionPayload */
+        WikiPageVersionPayload: {
+            /** Action */
+            action: string;
+            /** Body Hash */
+            body_hash: string;
+            /** Created At Iso */
+            created_at_iso: string;
+            /** Kind */
+            kind: string;
+            /** Recorded At Iso */
+            recorded_at_iso: string;
+            /** Stable Slug */
+            stable_slug: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Updated At Iso */
+            updated_at_iso: string;
+            /** Version */
+            version: number;
+        };
+        /** WikiPageVersionsResponse */
+        WikiPageVersionsResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Slug */
+            slug: string;
+            /** Versions */
+            versions?: components["schemas"]["WikiPageVersionPayload"][];
         };
         /** WikiQueryRequest */
         WikiQueryRequest: {
@@ -7877,6 +12619,27 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** WikiTagPayload */
+        WikiTagPayload: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+            /** Pages */
+            pages?: components["schemas"]["WikiPageSummaryPayload"][];
+        };
+        /** WikiTagsResponse */
+        WikiTagsResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Tags */
+            tags?: components["schemas"]["WikiTagPayload"][];
+        };
         /**
          * WritingActionPayload
          * @description Legacy-compatible writing action payload.
@@ -7936,6 +12699,128 @@ export interface components {
             related_signals?: components["schemas"]["AssociationSignalPayload"][];
             /** Section Id */
             section_id?: string | null;
+        };
+        /**
+         * AnalysisChainPayload
+         * @description 6-field structured reasoning chain (IRAC + FinCoT compatible).
+         *
+         *     Optional + tolerant: missing / wrong-shape fields fall back to empty
+         *     strings or empty lists so the surrounding response is preserved.
+         */
+        models__analysis_chain__AnalysisChainPayload: {
+            /**
+             * Boundary
+             * @default
+             */
+            boundary: string;
+            /**
+             * Counter Evidence
+             * @default []
+             */
+            counter_evidence: string[];
+            /**
+             * Evidence
+             * @default []
+             */
+            evidence: string[];
+            /**
+             * Mechanism
+             * @default
+             */
+            mechanism: string;
+            /**
+             * Next Action
+             * @default
+             */
+            next_action: string;
+            /**
+             * Observation
+             * @default
+             */
+            observation: string;
+        };
+        /**
+         * DiscussionEvidencePackPayload
+         * @description Mirror of evidence_pack.EvidencePack as a transport object.
+         */
+        models__discussion__DiscussionEvidencePackPayload: {
+            /** Evidence Ids */
+            evidence_ids?: string[];
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Project Id */
+            project_id: string;
+            /** Query */
+            query: string;
+            /** Snippets */
+            snippets: {
+                [key: string]: unknown;
+            }[];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * DiscussionEvidencePackPayload
+         * @description Discussion evidence pack persistence payload.
+         */
+        models__evidence__DiscussionEvidencePackPayload: {
+            /** Created At */
+            created_at: string;
+            /** Discussion Id */
+            discussion_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Query */
+            query: string;
+            /** Snippets */
+            snippets?: {
+                [key: string]: unknown;
+            }[];
+            /** Source Labels */
+            source_labels?: string[];
+        };
+        /**
+         * AnalysisChainPayload
+         * @description LLM-emitted inner reasoning chain.
+         *
+         *     Optional + tolerant: missing / wrong-shape fields fall back to empty
+         *     strings or empty lists so the surrounding spark is preserved.
+         */
+        routers__inspiration_router__AnalysisChainPayload: {
+            /**
+             * Boundary
+             * @default
+             */
+            boundary: string;
+            /**
+             * Counter Evidence
+             * @default []
+             */
+            counter_evidence: string[];
+            /**
+             * Evidence
+             * @default []
+             */
+            evidence: string[];
+            /**
+             * Mechanism
+             * @default
+             */
+            mechanism: string;
+            /**
+             * Next Action
+             * @default
+             */
+            next_action: string;
+            /**
+             * Observation
+             * @default
+             */
+            observation: string;
         };
     };
     responses: never;
@@ -8481,6 +13366,230 @@ export interface operations {
             };
         };
     };
+    post_api_chat_config_apply_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_context_compression: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatContextCompressionPayload"];
+                };
+            };
+        };
+    };
+    put_api_chat_context_compression: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatContextCompressionPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatContextCompressionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_chat_context_compression: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatContextCompressionPayload"];
+                };
+            };
+        };
+    };
+    get_api_chat_history_conversations_conversation_id_agents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatAgentsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_history_conversations_conversation_id_fork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatHistoryForkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatHistoryForkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_history_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatHistoryImportResponse"];
+                };
+            };
+        };
+    };
+    get_api_chat_history_search: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatHistorySearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_api_chat_models_discover: {
         parameters: {
             query?: never;
@@ -8549,7 +13658,10 @@ export interface operations {
     };
     get_api_chat_sessions: {
         parameters: {
-            query?: never;
+            query?: {
+                include_archived?: boolean;
+                archived_only?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8563,6 +13675,174 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatSessionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_sessions_bulk_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatSessionBulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSessionBulkDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_chat_sessions_session_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSessionDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_chat_sessions_session_id_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSessionArchiveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_chat_sessions_session_id_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSessionArchiveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_stream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntelligentChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8596,6 +13876,195 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chunk_to_page: {
+        parameters: {
+            query: {
+                chunk_id: string;
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkLocatorPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chunks_chunk_id_locator: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkLocatorPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_citations_detect_overlap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetectOverlapRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationOverlapPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_citations_verifications: {
+        parameters: {
+            query: {
+                project_id: string;
+                citation_id?: string | null;
+                status?: components["schemas"]["CitationVerificationStatus"] | null;
+                /** @description Filter by source labels */
+                source_labels?: string[];
+                material_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationVerificationsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_citations_verify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CitationVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationVerificationPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_client_error: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -8644,6 +14113,38 @@ export interface operations {
                 "application/json": components["schemas"]["RuntimeCredentialCreate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeCredentialPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_credentials_sample: {
+        parameters: {
+            query?: {
+                category?: string | null;
+                strategy_hint?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -8803,6 +14304,207 @@ export interface operations {
             };
         };
     };
+    get_api_csl_styles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CslStyleListPayload"];
+                };
+            };
+        };
+    };
+    get_api_csl_styles_active: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CslActiveStylePayload"];
+                };
+            };
+        };
+    };
+    put_api_csl_styles_active: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CslSetActiveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CslActiveStylePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_csl_styles_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CslStyleImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CslStyleMetaPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_csl_styles_style_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CslStyleListPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_csl_styles_style_id_content: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CslActiveStylePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_discussion_archived: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscussionRunHistoryPagePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_api_discussion_create: {
         parameters: {
             query?: never;
@@ -8889,6 +14591,75 @@ export interface operations {
             };
         };
     };
+    get_api_discussion_history: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                q?: string | null;
+                state?: string | null;
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscussionRunHistoryPagePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_discussion_history_search: {
+        parameters: {
+            query: {
+                q: string;
+                page?: number;
+                page_size?: number;
+                archived_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscussionRunHistoryPagePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_api_discussion_runs: {
         parameters: {
             query?: never;
@@ -8909,6 +14680,435 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscussionRunResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_discussion_runs_stream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscussionRunConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_discussion_runs_run_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_discussion_runs_run_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_discussion_runs_run_id_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscussionRunHistoryItemPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_discussion_runs_run_id_export: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscussionRunExportPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_discussion_runs_run_id_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscussionRunHistoryItemPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_discussion_runs_run_id_stream_resume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_discussion_search: {
+        parameters: {
+            query: {
+                query: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_discussion_sessions: {
+        parameters: {
+            query?: {
+                start_date?: string | null;
+                end_date?: string | null;
+                topic?: string | null;
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_discussion_stream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscussionRunConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_discussion_session_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_discussion_session_id_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_discussion_session_id_export: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -9017,6 +15217,105 @@ export interface operations {
             };
         };
     };
+    get_api_discussion_session_id_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_discussions_discussion_id_evidence_pack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discussion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["models__evidence__DiscussionEvidencePackPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_discussions_discussion_id_evidence_pack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discussion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveEvidencePackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["models__evidence__DiscussionEvidencePackPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_embedding_config: {
         parameters: {
             query?: never;
@@ -9090,6 +15389,39 @@ export interface operations {
             };
         };
     };
+    post_api_embedding_config_apply_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_api_embedding_models_discover: {
         parameters: {
             query?: never;
@@ -9156,6 +15488,112 @@ export interface operations {
             };
         };
     };
+    get_api_evidence_refs: {
+        parameters: {
+            query?: {
+                /** @description Filter by project */
+                project_id?: string;
+                /** @description Filter by material */
+                material_id?: string;
+                /** @description Filter by source labels */
+                source_labels?: string[];
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceRefsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_evidence_refs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEvidenceRefRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceRefPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_evidence_refs_export: {
+        parameters: {
+            query?: {
+                /** @description Filter by material */
+                material_id?: string | null;
+                /** @description Filter by source labels */
+                source_labels?: string[];
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_api_export_docx: {
         parameters: {
             query?: never;
@@ -9176,6 +15614,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_feature_flags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeatureFlagListResponse"];
+                };
+            };
+        };
+    };
+    post_api_feature_flags_name: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetFeatureFlagRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeatureFlagEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_graph_evidence: {
+        parameters: {
+            query?: {
+                /** @description Evidence graph scope kind. */
+                scope_kind?: "source" | "knowledge_item" | "insight" | "smart_read_session" | "question" | "project";
+                /** @description Scope id, question text, or project id. */
+                scope_ref?: string;
+                /** @description SmartRead session id for smart_read_session or question scoped graphs. */
+                session_id?: string | null;
+                /** @description Comma-separated node ids to keep; omit to use scope-driven projection. */
+                filter?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceGraphPayload"];
                 };
             };
             /** @description Validation Error */
@@ -9225,6 +15756,141 @@ export interface operations {
             };
         };
     };
+    get_api_inspiration_evidence_refs: {
+        parameters: {
+            query?: {
+                /** @description Filter by source labels */
+                source_labels?: string[];
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceRefsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_kg_graph: {
+        parameters: {
+            query?: {
+                /** @description What this subgraph is scoped to. */
+                scope_kind?: "question" | "material" | "concept";
+                /** @description The question text, material_id, or concept id. */
+                scope_ref?: string;
+                /** @description Comma-separated node ids to keep; omit for the full snapshot. */
+                filter?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphPayloadV0"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_source_vault: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceVaultOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_source_vault_search: {
+        parameters: {
+            query: {
+                /** @description Source chunk search query. */
+                q: string;
+                limit?: number;
+                project_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceVaultSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_mcp_audit: {
         parameters: {
             query?: {
@@ -9255,6 +15921,24 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    delete_api_mcp_audit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -9715,6 +16399,167 @@ export interface operations {
             };
         };
     };
+    get_api_memory_palace_memories: {
+        parameters: {
+            query?: {
+                wing?: string | null;
+                room?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryListResponsePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_memory_palace_memories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryCreateResponsePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_memory_palace_memories_memory_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryRecordPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_memory_palace_memories_memory_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryDeleteResponsePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_memory_palace_search: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemorySearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemorySearchResponsePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_rerank_config: {
         parameters: {
             query?: never;
@@ -9788,6 +16633,39 @@ export interface operations {
             };
         };
     };
+    post_api_rerank_config_apply_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RerankCredentialApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RerankConfigPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_api_rerank_models_discover: {
         parameters: {
             query?: never;
@@ -9856,6 +16734,273 @@ export interface operations {
             };
         };
     };
+    get_api_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnifiedSettingsPayload"];
+                };
+            };
+        };
+    };
+    put_api_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnifiedSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnifiedSettingsPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_settings: {
+        parameters: {
+            query?: {
+                subsystem?: ("chat" | "embedding" | "rerank") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnifiedSettingsPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_source_labels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceLabelPayload"][];
+                };
+            };
+        };
+    };
+    post_api_source_labels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSourceLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceLabelPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_source_labels_label_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceLabelPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_source_labels_label_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSourceLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceLabelPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_source_labels_label_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_wiki_categories: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiCategoriesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_api_wiki_compile: {
         parameters: {
             query?: never;
@@ -9891,7 +17036,9 @@ export interface operations {
     };
     get_api_wiki_doctor: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9907,11 +17054,54 @@ export interface operations {
                     "application/json": components["schemas"]["WikiDoctorResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_export: {
+        parameters: {
+            query?: {
+                output_path?: string | null;
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_api_wiki_graph: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9927,6 +17117,50 @@ export interface operations {
                     "application/json": components["schemas"]["WikiGraphResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_import: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_api_wiki_pages: {
@@ -9934,6 +17168,7 @@ export interface operations {
             query?: {
                 kind?: string | null;
                 status?: string | null;
+                user_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -9961,9 +17196,46 @@ export interface operations {
             };
         };
     };
+    post_api_wiki_pages: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiPageCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_wiki_pages_page_path: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: string | null;
+            };
             header?: never;
             path: {
                 page_path: string;
@@ -9992,9 +17264,184 @@ export interface operations {
             };
         };
     };
+    put_api_wiki_pages_slug: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiPageUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_wiki_pages_slug: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_wiki_pages_slug_permissions: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPagePermissionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_wiki_pages_slug_permissions: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiPagePermissionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPagePermissionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_wiki_pages_slug_versions: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageVersionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_api_wiki_query: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10127,9 +17574,46 @@ export interface operations {
             };
         };
     };
+    post_api_wiki_search: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiQueryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_wiki_status: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10143,6 +17627,753 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WikiStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_wiki_tags: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiTagsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_writing_citations_sources: {
+        parameters: {
+            query: {
+                /** @description Project ID */
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationSourcePayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_writing_citations_sources_source_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CitationSourceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationSourcePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_writing_citations_suggest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestCitationsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationSuggestionPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_writing_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectExportPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_writing_figures: {
+        parameters: {
+            query: {
+                /** @description Project ID */
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FigureAssetPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_writing_figures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFigureAssetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FigureAssetPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_writing_figures_candidates: {
+        parameters: {
+            query: {
+                /** @description Project ID */
+                project_id: string;
+                /** @description Maximum number of candidates */
+                limit?: number;
+                /** @description Return only chunk records that already include image assets */
+                pixel_only?: boolean;
+                /** @description Allow PDF page/crop rendering when chunk assets are missing */
+                render_pdf_fallback?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FigureTableCandidatePayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_writing_figures_file: {
+        parameters: {
+            query: {
+                /** @description Project ID */
+                project_id: string;
+                /** @description Local asset path recorded on the figure/table item */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_writing_figures_generate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateFigureAssetsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerateFigureAssetsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_writing_figures_asset_id: {
+        parameters: {
+            query?: {
+                caption?: string | null;
+                numbering?: string | null;
+            };
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UpdateFigureAssetRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FigureAssetPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_writing_figures_asset_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_writing_outline: {
+        parameters: {
+            query: {
+                /** @description Project ID */
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlinePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_writing_outline: {
+        parameters: {
+            query: {
+                /** @description Project ID */
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OutlineItemPayload"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlinePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_writing_outline_generate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateOutlineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlinePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_writing_outline_item_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_writing_projects: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+                /** @description 页码 */
+                page?: number;
+                /** @description 每页条数 */
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_writing_projects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_writing_projects_project_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_writing_projects_project_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_api_writing_projects_project_id_status: {
+        parameters: {
+            query: {
+                /** @description New status */
+                status: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_writing_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitForReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionResponsePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -10236,7 +18467,7 @@ export interface operations {
             query: {
                 /** @description Base URL of LLM service */
                 base_url: string;
-                /** @description API key (optional for local) */
+                /** @description Access credential (optional for local services) */
                 api_key?: string;
             };
             header?: never;
@@ -10359,6 +18590,7 @@ export interface operations {
                 project_id?: string | null;
                 status?: components["schemas"]["CandidateStatus"] | null;
                 memory_type?: components["schemas"]["CandidateMemoryType"] | null;
+                sort_by?: "updated_at" | "created_at" | "confidence";
                 limit?: number;
                 offset?: number;
             };
@@ -10718,6 +18950,171 @@ export interface operations {
             };
         };
     };
+    get_inspiration_store: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                source?: ("generated" | "manual" | "imported") | null;
+                tag?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedInspirationListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_inspiration_store: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedInspirationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedInspirationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_inspiration_store_saved_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                saved_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedInspirationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_inspiration_store_saved_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                saved_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedInspirationUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedInspirationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_inspiration_store_saved_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                saved_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteSavedInspirationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_inspiration_spark_id_context: {
         parameters: {
             query?: never;
@@ -11050,6 +19447,37 @@ export interface operations {
         };
     };
     get_pipeline_task_task_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineTaskStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pipeline_task_task_id_cancel: {
         parameters: {
             query?: never;
             header?: never;
@@ -11623,7 +20051,9 @@ export interface operations {
     };
     get_resources_document_material_id_file: {
         parameters: {
-            query?: never;
+            query?: {
+                as?: string;
+            };
             header?: never;
             path: {
                 material_id: string;
@@ -11639,6 +20069,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_document_material_id_file_b64: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -11882,6 +20345,42 @@ export interface operations {
             };
         };
     };
+    get_resources_figure_table_candidates: {
+        parameters: {
+            query: {
+                project_id: string;
+                limit?: number;
+                /** @description Return only chunk records that already include image assets */
+                pixel_only?: boolean;
+                /** @description Allow PDF page/crop rendering when chunk assets are missing */
+                render_pdf_fallback?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FigureTableCandidatePayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_resources_maintenance_cleanup: {
         parameters: {
             query?: never;
@@ -12015,6 +20514,41 @@ export interface operations {
         };
     };
     get_resources_material_material_id_chunks: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_material_material_id_suggested_questions: {
         parameters: {
             query: {
                 project_id: string;
@@ -12268,6 +20802,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectExportPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_project_project_id_reasoning_bias: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectReasoningBiasPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_resources_project_project_id_reasoning_bias: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectReasoningBiasUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectReasoningBiasPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resources_project_project_id_reasoning_bias_optimize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectReasoningBiasOptimizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectReasoningBiasOptimizeResponse"];
                 };
             };
             /** @description Validation Error */
@@ -12871,6 +21506,39 @@ export interface operations {
             };
         };
     };
+    delete_runtime_job_job_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_runtime_job_job_id_artifacts: {
         parameters: {
             query?: never;
@@ -12940,6 +21608,7 @@ export interface operations {
             query?: {
                 since_timestamp?: string | null;
                 after_event_id?: string | null;
+                after_sequence?: number | null;
                 limit?: number;
             };
             header?: never;
@@ -13036,6 +21705,42 @@ export interface operations {
             };
         };
     };
+    get_runtime_job_job_id_snapshot: {
+        parameters: {
+            query?: {
+                since_timestamp?: string | null;
+                after_event_id?: string | null;
+                after_sequence?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobEventSnapshotPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_runtime_job_job_id_start: {
         parameters: {
             query?: never;
@@ -13087,6 +21792,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobStatusPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_jobs: {
+        parameters: {
+            query?: {
+                session_id?: string | null;
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPayload"][];
                 };
             };
             /** @description Validation Error */
@@ -13184,6 +21922,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_runtime_session_session_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -13863,6 +22634,39 @@ export interface operations {
             };
         };
     };
+    post_skills_skill_id_export: {
+        parameters: {
+            query?: {
+                output_path?: string | null;
+            };
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_skills_skill_id_rollback: {
         parameters: {
             query?: never;
@@ -13885,6 +22689,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SkillRollbackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_skills_skill_id_runtime_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillRuntimeSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillRuntimeSettingsResponse"];
                 };
             };
             /** @description Validation Error */

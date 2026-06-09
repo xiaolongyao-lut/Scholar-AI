@@ -3,6 +3,7 @@ import { CheckCircle2, Clock3, RefreshCw, ShieldCheck, XCircle } from 'lucide-re
 
 import { cn } from '@/lib/utils';
 import type { WikiReviewItemModel } from '@/types/wiki';
+import { formatWikiError, formatWikiPageLabel, sanitizeWikiVisibleText } from './wikiDisplay';
 
 interface ReviewQueuePanelProps {
   items: WikiReviewItemModel[] | null;
@@ -38,7 +39,7 @@ function kindLabel(kind: string): string {
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     all: '全部',
-    pending: '待复审',
+    pending: '待审核',
     approved: '已通过',
     rejected: '已退回',
   };
@@ -68,11 +69,11 @@ export function ReviewQueuePanel({ items, isLoading, error, onRefresh }: ReviewQ
   ), [items, kindFilter, statusFilter]);
 
   return (
-    <section className="glass-card rounded-2xl border border-outline-variant/40 p-5 shadow-sm">
+    <section className="glass-card rounded-lg border border-outline-variant/40 p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="font-label text-[11px] uppercase tracking-[0.22em] text-foreground/35">复审队列</div>
-          <h2 className="mt-2 font-display text-2xl font-semibold text-foreground">复审队列</h2>
+          <div className="font-label text-[11px] uppercase text-foreground/35">待审页面</div>
+          <h2 className="mt-1 font-display text-lg font-semibold text-foreground">待审页面</h2>
         </div>
 
         <button
@@ -82,11 +83,11 @@ export function ReviewQueuePanel({ items, isLoading, error, onRefresh }: ReviewQ
           className="inline-flex items-center gap-2 self-start rounded-xl border border-outline-variant/40 bg-surface-high px-3 py-2 text-xs font-label text-foreground/70 transition-colors hover:border-primary/30 hover:text-foreground disabled:cursor-wait disabled:opacity-60"
         >
           <RefreshCw size={14} className={cn(isLoading && 'animate-spin')} />
-          刷新复审队列
+          刷新待审页面
         </button>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-outline-variant/30 bg-surface-lowest/70 p-4">
+      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-outline-variant/30 bg-surface-lowest/70 p-4">
         <label className="flex items-center gap-2 text-xs text-foreground/55">
           <span className="font-label tracking-[0.14em] text-foreground/35">类型</span>
           <select
@@ -122,14 +123,14 @@ export function ReviewQueuePanel({ items, isLoading, error, onRefresh }: ReviewQ
 
       {error ? (
         <div className="mt-5 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
-          {error}
+          {formatWikiError(error, '读取待审页面失败，请稍后重试。')}
         </div>
       ) : null}
 
       <div className="mt-5 space-y-3">
         {isLoading ? (
           <div className="rounded-2xl border border-outline-variant/30 bg-surface-high/60 px-4 py-8 text-center text-sm text-foreground/45">
-            正在读取复审队列…
+            正在读取待审页面…
           </div>
         ) : filteredItems.length > 0 ? (
           filteredItems.map((item) => (
@@ -138,10 +139,16 @@ export function ReviewQueuePanel({ items, isLoading, error, onRefresh }: ReviewQ
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <ShieldCheck size={16} className="text-primary/60" />
-                    <h3 className="font-headline text-sm font-semibold text-foreground">{item.title}</h3>
+                    <h3 className="font-headline text-sm font-semibold text-foreground">
+                      {sanitizeWikiVisibleText(item.title, formatWikiPageLabel(item.page_path))}
+                    </h3>
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-foreground/65">{item.summary}</p>
-                  <div className="mt-2 break-all font-mono text-[11px] leading-5 text-foreground/45">{item.page_path}</div>
+                  <p className="mt-2 text-sm leading-6 text-foreground/65">
+                    {sanitizeWikiVisibleText(item.summary, '复审摘要已隐藏，避免显示内部路径或系统字段。')}
+                  </p>
+                  <div className="mt-2 text-[11px] leading-5 text-foreground/45">
+                    页面：{formatWikiPageLabel(item.page_path)}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -157,10 +164,12 @@ export function ReviewQueuePanel({ items, isLoading, error, onRefresh }: ReviewQ
 
               {item.decision ? (
                 <div className="mt-4 rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-3 text-xs text-foreground/60">
-                  <div className="font-label tracking-[0.14em] text-foreground/35">复审结论</div>
-                  <div className="mt-1">{item.decision.reason}</div>
+                  <div className="font-label tracking-[0.14em] text-foreground/35">审核结论</div>
+                  <div className="mt-1">
+                    {sanitizeWikiVisibleText(item.decision.reason, '复审结论已记录。')}
+                  </div>
                   <div className="mt-1 text-[11px] text-foreground/40">
-                    {statusLabel(item.decision.status)} · {item.decision.decided_by} · {item.decision.decided_at}
+                    {statusLabel(item.decision.status)} · 已记录审核 · {sanitizeWikiVisibleText(item.decision.decided_at, '已记录时间')}
                   </div>
                 </div>
               ) : null}

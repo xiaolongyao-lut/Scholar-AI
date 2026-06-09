@@ -1,6 +1,6 @@
 /**
  * Writing Backend Service
- * HTTP client for consuming writing resources API (Phase 3)
+ * HTTP client for consuming writing resources API.
  *
  * Provides typed interface to backend resource layer:
  * - Projects: create, get, list, update status
@@ -9,12 +9,24 @@
  * - Revisions: get, list, restore
  */
 
-import axios, { AxiosInstance } from "axios";
+import type { AxiosInstance, AxiosRequestConfig } from "axios";
 import { getApiBaseUrl } from "./apiBaseUrl";
+import { createApiClient } from "./httpClient";
 import {
   WritingProject,
   WritingSection,
   WritingMaterialResource,
+  ProjectDocumentResource,
+  ProjectChunksResponse,
+  MaterialChunksResponse,
+  FigureTableCandidateResource,
+  FigureAssetResource,
+  CreateFigureAssetRequest,
+  UpdateFigureAssetRequest,
+  CitationSourceResource,
+  CitationSourceUpdate,
+  CitationSuggestionResource,
+  SuggestCitationsRequest,
   WritingDraft,
   WritingRevision,
   BuildAssociationRequest,
@@ -24,10 +36,14 @@ import {
   CreateMaterialRequest,
   CreateDraftRequest,
   SaveDraftRequest,
+  OutlineResource,
+  GenerateOutlineRequest,
   ProjectStatus,
   WritingActionResource,
   ProjectExportFormat,
-  ProjectExportResult,
+  ProjectExportResponseEnvelope,
+  SubmitForReviewRequest,
+  SubmissionResponseResource,
   ProjectStats,
   GlobalStats,
   VolumeSummary,
@@ -44,14 +60,136 @@ import {
   WritingJob,
 } from "../types/runtime";
 
+export const WRITING_EXPORT_FORMATS = [
+  "markdown",
+  "json",
+  "word",
+  "latex",
+  "pdf",
+] as const;
+
+export type WritingExportFormat = (typeof WRITING_EXPORT_FORMATS)[number];
+
+const EXPORT_MIME_BY_FORMAT: Record<WritingExportFormat, string> = {
+  markdown: "text/markdown;charset=utf-8",
+  json: "application/json;charset=utf-8",
+  word: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  latex: "application/x-tex;charset=utf-8",
+  pdf: "application/pdf",
+};
+
+const EXPORT_EXTENSION_BY_FORMAT: Record<WritingExportFormat, string> = {
+  markdown: "md",
+  json: "json",
+  word: "docx",
+  latex: "tex",
+  pdf: "pdf",
+};
+
+function isWritingExportFormat(value: string): value is WritingExportFormat {
+  return WRITING_EXPORT_FORMATS.includes(value as WritingExportFormat);
+}
+
+function decodeBase64ToBytes(value: string): Uint8Array {
+  if (!value.trim()) {
+    throw new Error("content_base64 is empty");
+  }
+  const binary = globalThis.atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+export function buildProjectExportBlob(
+  result: ProjectExportResponseEnvelope,
+  requestedFormat?: WritingExportFormat,
+): { blob: Blob; filename: string } {
+  const normalizedFormat = isWritingExportFormat(String(result.format))
+    ? result.format as WritingExportFormat
+    : requestedFormat;
+  if (!normalizedFormat) {
+    throw new Error(`Unsupported export format: ${String(result.format)}`);
+  }
+
+  const mediaType = result.media_type || EXPORT_MIME_BY_FORMAT[normalizedFormat];
+  const extension = EXPORT_EXTENSION_BY_FORMAT[normalizedFormat];
+  const filename = result.filename || `project-export.${extension}`;
+  if (result.content_base64) {
+    return {
+      blob: new Blob([decodeBase64ToBytes(result.content_base64)], { type: mediaType }),
+      filename,
+    };
+  }
+  const content = normalizedFormat === "json"
+    ? JSON.stringify(result, null, 2)
+    : result.content || "";
+  return {
+    blob: new Blob([content], { type: mediaType }),
+    filename,
+  };
+}
+
+export function downloadProjectExportBlob(
+  result: ProjectExportResponseEnvelope,
+  requestedFormat?: WritingExportFormat,
+): void {
+  const { blob, filename } = buildProjectExportBlob(result, requestedFormat);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
+export function buildFigureAssetFileUrl(projectId: string, assetPath: string): string {
+  const normalizedProjectId = projectId.trim();
+  const normalizedAssetPath = assetPath.trim();
+  if (!normalizedProjectId) {
+    throw new Error("projectId is required to build a figure asset URL");
+  }
+  if (!normalizedAssetPath) {
+    throw new Error("assetPath is required to build a figure asset URL");
+  }
+
+  const baseUrl = getApiBaseUrl();
+  const params = new URLSearchParams({
+    project_id: normalizedProjectId,
+    path: normalizedAssetPath,
+  });
+  return `${baseUrl}/api/writing/figures/file?${params.toString()}`;
+}
+
+export interface GenerateFigureAssetsRequest {
+  project_id: string;
+  candidate_ids?: string[];
+  max_items?: number;
+  kind?: "figure" | "table";
+  overwrite_existing?: boolean;
+}
+
+export interface GenerateFigureAssetsResponse {
+  project_id: string;
+  generated_count: number;
+  generated_assets: FigureAssetResource[];
+  skipped_candidate_ids: string[];
+  message: string;
+}
+
 export class WritingBackendService {
   private readonly client: AxiosInstance;
 
   constructor(baseURL: string = getApiBaseUrl()) {
-    this.client = axios.create({
+    this.client = createApiClient({
       baseURL,
-      headers: {
-        "Content-Type": "application/json",
+      retry: {
+        maxAttempts: 2,
+        statuses: [408, 425, 429, 500, 502, 503, 504],
+        methods: ["get", "head", "options"],
       },
     });
   }
@@ -65,7 +203,7 @@ export class WritingBackendService {
    */
   async createProject(request: CreateProjectRequest): Promise<WritingProject> {
     const response = await this.client.post<WritingProject>(
-      "/resources/project",
+      "/api/writing/projects",
       request
     );
     return response.data;
@@ -76,7 +214,7 @@ export class WritingBackendService {
    */
   async getProject(projectId: string): Promise<WritingProject> {
     const response = await this.client.get<WritingProject>(
-      `/resources/project/${projectId}`
+      `/api/writing/projects/${projectId}`
     );
     return response.data;
   }
@@ -87,7 +225,7 @@ export class WritingBackendService {
   async listProjects(userId?: string): Promise<WritingProject[]> {
     const params = userId ? { user_id: userId } : {};
     const response = await this.client.get<WritingProject[]>(
-      "/resources/projects",
+      "/api/writing/projects",
       { params }
     );
     return response.data;
@@ -101,7 +239,7 @@ export class WritingBackendService {
     status: ProjectStatus
   ): Promise<WritingProject> {
     const response = await this.client.put<WritingProject>(
-      `/resources/project/${projectId}/status`,
+      `/api/writing/projects/${projectId}/status`,
       null,
       { params: { status: status } }
     );
@@ -112,7 +250,7 @@ export class WritingBackendService {
    * Delete a project and all its associated resources.
    */
   async deleteProject(projectId: string): Promise<void> {
-    await this.client.delete(`/resources/project/${projectId}`);
+    await this.client.delete(`/api/writing/projects/${projectId}`);
   }
 
   /**
@@ -201,6 +339,54 @@ export class WritingBackendService {
       { params: { project_id: projectId } }
     );
     return response.data;
+  }
+
+  /**
+   * Get the section-backed outline for a project.
+   */
+  async getOutline(projectId: string): Promise<OutlineResource> {
+    const response = await this.client.get<OutlineResource>(
+      "/api/writing/outline",
+      { params: { project_id: projectId } }
+    );
+    return response.data;
+  }
+
+  /**
+   * Generate and persist outline sections for a project.
+   */
+  async generateOutline(
+    request: GenerateOutlineRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<OutlineResource> {
+    const response = await this.client.post<OutlineResource>(
+      "/api/writing/outline/generate",
+      request,
+      { signal: options.signal }
+    );
+    return response.data;
+  }
+
+  /**
+   * Persist the ordered section-backed outline for a project.
+   */
+  async updateOutline(
+    projectId: string,
+    items: OutlineResource["items"] = []
+  ): Promise<OutlineResource> {
+    const response = await this.client.put<OutlineResource>(
+      "/api/writing/outline",
+      items,
+      { params: { project_id: projectId } }
+    );
+    return response.data;
+  }
+
+  /**
+   * Delete an outline item by its item/section identifier.
+   */
+  async deleteOutlineItem(itemId: string): Promise<void> {
+    await this.client.delete(`/api/writing/outline/${encodeURIComponent(itemId)}`);
   }
 
   // =========================================================================
@@ -360,6 +546,134 @@ export class WritingBackendService {
     return response.data;
   }
 
+  async listDocuments(projectId: string): Promise<ProjectDocumentResource[]> {
+    const response = await this.client.get<ProjectDocumentResource[]>(
+      "/resources/documents",
+      { params: { project_id: projectId } }
+    );
+    return response.data;
+  }
+
+  async listProjectChunks(
+    projectId: string,
+    materialId?: string
+  ): Promise<ProjectChunksResponse> {
+    const response = await this.client.get<ProjectChunksResponse>(
+      "/resources/chunks",
+      {
+        params: {
+          project_id: projectId,
+          material_id: materialId,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  async listMaterialChunks(
+    projectId: string,
+    materialId: string
+  ): Promise<MaterialChunksResponse> {
+    const response = await this.client.get<MaterialChunksResponse>(
+      `/resources/material/${materialId}/chunks`,
+      { params: { project_id: projectId } }
+    );
+    return response.data;
+  }
+
+  async listFigureTableCandidates(
+    projectId: string,
+    limit: number = 96,
+    options: { pixelOnly?: boolean; renderPdfFallback?: boolean } = {},
+  ): Promise<FigureTableCandidateResource[]> {
+    const response = await this.client.get<FigureTableCandidateResource[]>(
+      "/api/writing/figures/candidates",
+      {
+        params: {
+          project_id: projectId,
+          limit,
+          pixel_only: options.pixelOnly,
+          render_pdf_fallback: options.renderPdfFallback,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  async listFigureAssets(projectId: string): Promise<FigureAssetResource[]> {
+    const response = await this.client.get<FigureAssetResource[]>(
+      "/api/writing/figures",
+      { params: { project_id: projectId } }
+    );
+    return response.data;
+  }
+
+  async createFigureAsset(
+    request: CreateFigureAssetRequest
+  ): Promise<FigureAssetResource> {
+    const response = await this.client.post<FigureAssetResource>(
+      "/api/writing/figures",
+      request
+    );
+    return response.data;
+  }
+
+  async updateFigureAsset(
+    assetId: string,
+    request: UpdateFigureAssetRequest
+  ): Promise<FigureAssetResource> {
+    const response = await this.client.put<FigureAssetResource>(
+      `/api/writing/figures/${assetId}`,
+      request
+    );
+    return response.data;
+  }
+
+  async deleteFigureAsset(assetId: string): Promise<void> {
+    await this.client.delete(`/api/writing/figures/${assetId}`);
+  }
+
+  async generateFigureAssets(
+    request: GenerateFigureAssetsRequest
+  ): Promise<GenerateFigureAssetsResponse> {
+    const response = await this.client.post<GenerateFigureAssetsResponse>(
+      "/api/writing/figures/generate",
+      request
+    );
+    return response.data;
+  }
+
+  async listCitationSources(projectId: string): Promise<CitationSourceResource[]> {
+    const response = await this.client.get<CitationSourceResource[]>(
+      "/api/writing/citations/sources",
+      { params: { project_id: projectId } }
+    );
+    return response.data;
+  }
+
+  async updateCitationSource(
+    sourceId: string,
+    update: CitationSourceUpdate,
+  ): Promise<CitationSourceResource> {
+    const response = await this.client.put<CitationSourceResource>(
+      `/api/writing/citations/sources/${encodeURIComponent(sourceId)}`,
+      update,
+    );
+    return response.data;
+  }
+
+  async suggestCitations(
+    request: SuggestCitationsRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CitationSuggestionResource[]> {
+    const response = await this.client.post<CitationSuggestionResource[]>(
+      "/api/writing/citations/suggest",
+      request,
+      { signal: options.signal }
+    );
+    return response.data;
+  }
+
   // =========================================================================
   // Delete Operations
   // =========================================================================
@@ -439,11 +753,33 @@ export class WritingBackendService {
    */
   async exportProject(
     projectId: string,
-    format: ProjectExportFormat = "markdown"
-  ): Promise<ProjectExportResult> {
-    const response = await this.client.get<ProjectExportResult>(
-      `/resources/project/${projectId}/export`,
-      { params: { format } }
+    format: ProjectExportFormat = "markdown",
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ProjectExportResponseEnvelope> {
+    const response = await this.client.post<ProjectExportResponseEnvelope>(
+      "/api/writing/export",
+      {
+        project_id: projectId,
+        format,
+        include_evidence: true,
+        include_citations: true,
+      },
+      { signal: options.signal },
+    );
+    return response.data;
+  }
+
+  /**
+   * Package the active writing project for reviewer handoff.
+   */
+  async submitForReview(
+    request: SubmitForReviewRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<SubmissionResponseResource> {
+    const response = await this.client.post<SubmissionResponseResource>(
+      "/api/writing/submit",
+      request,
+      { signal: options.signal },
     );
     return response.data;
   }
@@ -485,11 +821,12 @@ export class WritingBackendService {
 
   async getVolumeAnalysis(
     volumeKey: string,
-    refresh: boolean = false
+    refresh: boolean = false,
+    options: { signal?: AbortSignal } = {},
   ): Promise<VolumeAnalysisResult> {
     const response = await this.client.get<VolumeAnalysisResult>(
       `/volumes/${volumeKey}/analysis`,
-      { params: { refresh } }
+      { params: { refresh }, signal: options.signal }
     );
     return response.data;
   }
@@ -543,10 +880,11 @@ export class WritingBackendService {
     output_root: string;
     goal: string;
     batch_size?: number;
-  }): Promise<{ task_id: string; status: string }> {
+  }, options: { signal?: AbortSignal } = {}): Promise<{ task_id: string; status: string }> {
     const response = await this.client.post<{ task_id: string; status: string }>(
       "/pipeline/batch/submit",
-      request
+      request,
+      { signal: options.signal }
     );
     return response.data;
   }
@@ -570,6 +908,29 @@ export class WritingBackendService {
       result?: Record<string, unknown>;
       error?: string;
     }>(`/pipeline/task/${taskId}`);
+    return response.data;
+  }
+
+  /**
+   * Cancel a queued or running pipeline task.
+   */
+  async cancelPipelineTask(taskId: string): Promise<{
+    task_id: string;
+    status: string;
+    progress: number;
+    stage: string;
+    result?: Record<string, unknown>;
+    error?: string;
+  }> {
+    const config: AxiosRequestConfig = {};
+    const response = await this.client.post<{
+      task_id: string;
+      status: string;
+      progress: number;
+      stage: string;
+      result?: Record<string, unknown>;
+      error?: string;
+    }>(`/pipeline/task/${taskId}/cancel`, null, config);
     return response.data;
   }
 
@@ -605,11 +966,11 @@ export function getWritingBackendService(
 export default WritingBackendService;
 
 // =========================================================================
-// Session Persistence API re-export (conversation-persistence-mvp §S-3.3)
+// Session Persistence API re-export
 // =========================================================================
 // Keep a single import entry point for frontend callers. Session APIs live in
-// their own module (`sessionApi.ts`) so the persistence scope stays separately
-// revertable, but consumers can still resolve them through `writingBackend`.
+// their own module (`sessionApi.ts`) so the persistence scope stays separate,
+// but consumers can still resolve them through `writingBackend`.
 export {
   SessionApiService,
   getSessionApi,

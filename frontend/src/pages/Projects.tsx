@@ -22,6 +22,28 @@ interface ProjectSummary {
   description: string;
 }
 
+function sanitizeProjectVisibleError(value: string, fallback: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (!normalized) return fallback;
+  if (
+    /(?:\/(?:api|runtime|resources|pipeline|memory)\/|https?:\/\/|[A-Za-z]:[\\/]|api[_\s-]?key|base[_\s-]?url|authorization|bearer|token|secret|env=|env_refs|capability_[a-z0-9_]*|[{}[\]"`])/i.test(normalized)
+    || /^[a-z]+(?:_[a-z0-9]+){1,}$/i.test(normalized)
+  ) {
+    return fallback;
+  }
+  return normalized.length > 120 ? `${normalized.slice(0, 117)}…` : normalized;
+}
+
+export function formatProjectActionError(error: unknown, fallback = '操作失败，请稍后重试。'): string {
+  if (error instanceof Error) {
+    return sanitizeProjectVisibleError(error.message, fallback);
+  }
+  if (typeof error === 'string') {
+    return sanitizeProjectVisibleError(error, fallback);
+  }
+  return fallback;
+}
+
 function StatusBadge({ status }: { status: ProjectStatus }) {
   const { t } = useI18n();
   const styles: Record<ProjectStatus, string> = {
@@ -57,25 +79,19 @@ export function Projects() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [cleaning, setCleaning] = useState(false);
-  const [overviewProjectFilterId, setOverviewProjectFilterId] = useState<string>('');
 
   const batchMode = selectedIds.size > 0;
 
   const filtered = useMemo(() => {
     let list = projects;
     if (searchQuery) list = list.filter(p => p.title.toLowerCase().includes(searchQuery.toLowerCase()));
-    if (overviewProjectFilterId) list = list.filter(p => p.id === overviewProjectFilterId);
     if (filterStatus) list = list.filter(p => p.status === filterStatus);
     return list;
-  }, [searchQuery, overviewProjectFilterId, filterStatus, projects]);
+  }, [searchQuery, filterStatus, projects]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === activeProjectId) ?? null,
     [activeProjectId, projects],
-  );
-  const overviewProjectFilter = useMemo(
-    () => projects.find((project) => project.id === overviewProjectFilterId) ?? null,
-    [overviewProjectFilterId, projects],
   );
 
   const toggleSelect = (id: string, e: React.MouseEvent) => {
@@ -137,7 +153,7 @@ export function Projects() {
       await loadProjects();
       setSelectedIds(new Set());
     } catch (err: unknown) {
-      window.alert(`清理失败：${err instanceof Error ? err.message : String(err)}`);
+      window.alert(`清理失败：${formatProjectActionError(err, '项目清理失败，请稍后重试。')}`);
     } finally {
       setCleaning(false);
     }
@@ -164,16 +180,6 @@ export function Projects() {
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
-  useEffect(() => {
-    setOverviewProjectFilterId(activeProjectId);
-  }, [activeProjectId]);
-
-  useEffect(() => {
-    if (overviewProjectFilterId && projects.length > 0 && !projects.some((project) => project.id === overviewProjectFilterId)) {
-      setOverviewProjectFilterId('');
-    }
-  }, [overviewProjectFilterId, projects]);
-
   const handleCreateProject = async () => {
     if (!newTitle.trim() || creating) return;
     setCreating(true);
@@ -194,7 +200,7 @@ export function Projects() {
       await loadProjects();
       navigate('/knowledge');
     } catch (err: unknown) {
-      setLoadError(err instanceof Error ? err.message : String(err));
+      setLoadError(formatProjectActionError(err, '项目创建失败，请稍后重试。'));
     } finally {
       setCreating(false);
     }
@@ -327,7 +333,7 @@ export function Projects() {
                     id="new-project-folder"
                     value={newFolder}
                     onChange={e => setNewFolder(e.target.value)}
-                    placeholder="例：C:\Users\xiao\Documents\papers"
+                    placeholder="选择或粘贴本机文献文件夹"
                     aria-label="文献文件夹路径"
                     className="w-full bg-surface-high rounded-lg px-3 py-2.5 border border-outline-variant/50 text-sm font-label text-foreground focus:outline-none focus:border-primary/40 transition-colors font-mono"
                   />
@@ -373,19 +379,18 @@ export function Projects() {
             className="flex-1 bg-transparent text-sm font-label text-foreground placeholder:text-foreground/30 focus:outline-none"
           />
         </div>
-        {(overviewProjectFilter || selectedProject) && (
+        {selectedProject && (
           <button
             type="button"
             onClick={() => {
-              setOverviewProjectFilterId('');
               setActiveProjectId('');
             }}
             className="inline-flex max-w-[260px] items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs font-label text-primary transition-colors hover:bg-primary/12"
-            title={`当前筛选：${(overviewProjectFilter ?? selectedProject)?.title ?? ''}`}
+            title={`当前激活项目：${selectedProject.title}`}
           >
             <Folder size={13} />
-            <span className="shrink-0 text-primary/70">筛选</span>
-            <span className="truncate">{(overviewProjectFilter ?? selectedProject)?.title}</span>
+            <span className="shrink-0 text-primary/70">当前</span>
+            <span className="truncate">{selectedProject.title}</span>
             <X size={13} />
           </button>
         )}

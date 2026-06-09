@@ -1,4 +1,4 @@
-"""MCP tool-result formatter (Phase 2 / TASK-202).
+"""MCP tool-result formatter.
 
 Converts the manager's tool-call result (``{"is_error", "content"}``) into
 provider-native tool-result messages, plus a generic XML/text fallback.

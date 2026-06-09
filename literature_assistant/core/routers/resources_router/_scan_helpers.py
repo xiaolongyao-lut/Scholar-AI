@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Pure scan / Zotero / candidate-selection helpers (Phase 2).
+"""Pure scan / Zotero / candidate-selection helpers.
 
 These helpers do not touch any monkeypatched module-level state of the parent
 package. They depend only on the standard library plus two pure sibling modules.

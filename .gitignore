@@ -183,6 +183,17 @@ htmlcov/
 # explicitly under SOURCE_RELEASE_POLICY.md; generated evaluation data stays
 # local.
 /tests/
+!/tests/
+/tests/*
+# Public-source candidate tests stay path-explicit until the full tests tree is reviewed.
+!/tests/test_credentials_sampling.py
+!/tests/test_credentials_strategy_hint_mapping.py
+!/tests/test_discussion_mcp_per_agent_scope.py
+!/tests/test_discussion_runtime_credentials.py
+!/tests/test_skill_export.py
+!/tests/test_wiki_crud.py
+!/tests/test_wiki_export.py
+!/tests/test_wiki_permissions.py
 /workspace_tests/benchmarks/results/
 /workspace_tests/diagnostics/
 /workspace_tests/evaluation_data/BASELINE_METRICS.json
@@ -227,6 +238,18 @@ htmlcov/
 /scratch/
 /scoring_reports/
 /locks/
+
+# Skills runtime state (must NOT be committed)
+# These contain local approval decisions, audit logs, and rollback snapshots
+/skills/imported/user/.approval/
+/skills/imported/user/.audit/
+/skills/imported/user/.rollback_snapshots/
+/skills/imported/user/*/.install_meta.json
+/skills/imported/user/*/runtime_*.json
+
+# Historical empty directories (no source code, only __pycache__)
+/post_processors/
+/thesis_renderer/
 
 # Stray root build chunks.
 /main-*.js

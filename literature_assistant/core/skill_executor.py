@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Skill executor — routes skill types, executes with sandbox, audited."""
+"""Skill executor - routes skill types through audited guarded execution."""
 
 from __future__ import annotations
 
@@ -12,12 +12,51 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from literature_assistant.core.skills.registry import SkillRegistry
 from literature_assistant.core.skills.models import SkillDescriptor, SkillKind
 
 logger = logging.getLogger(__name__)
+
+_OUTPUT_CHAR_LIMIT: Final[int] = 10000
+_SCRIPT_TIMEOUT_SECONDS: Final[int] = 30
+_BLOCKED_ENV_NAME_PARTS: Final[tuple[str, ...]] = (
+    "API_KEY",
+    "AUTH",
+    "BEARER",
+    "CREDENTIAL",
+    "KEY_POOL",
+    "PASSWORD",
+    "SECRET",
+    "TOKEN",
+)
+_INHERITED_ENV_ALLOWLIST: Final[frozenset[str]] = frozenset(
+    {
+        "ALLUSERSPROFILE",
+        "APPDATA",
+        "COMSPEC",
+        "HOME",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "LANG",
+        "LC_ALL",
+        "LOCALAPPDATA",
+        "PATH",
+        "PATHEXT",
+        "PROGRAMDATA",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        "PROGRAMW6432",
+        "PYTHONPATH",
+        "SYSTEMDRIVE",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "WINDIR",
+    }
+)
 
 
 @dataclass
@@ -29,6 +68,19 @@ class SkillExecutionResult:
     duration_ms: float = 0
     audit_id: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class GuardedSubprocessPolicy:
+    """Bounded subprocess policy for trusted scripted skills.
+
+    The executor is not an OS sandbox. It supplies a minimal non-secret
+    environment, a fixed working directory, wall-clock timeout, and output caps
+    for scripts already marked safe by the Skill policy layer.
+    """
+
+    max_runtime_seconds: int = _SCRIPT_TIMEOUT_SECONDS
+    max_output_chars: int = _OUTPUT_CHAR_LIMIT
 
 
 def _generate_audit_id(skill_id: str) -> str:
@@ -61,17 +113,57 @@ def _audit_log(result: SkillExecutionResult, skill: SkillDescriptor) -> None:
         logger.warning("Failed to write skill audit log: %s", exc)
 
 
-def _build_sandbox_env() -> dict[str, Any]:
-    """Restricted environment for scripted skills — blocks dangerous operations."""
-    return {
-        "allowed_imports": {"json", "re", "math", "datetime", "collections", "itertools", "textwrap"},
-        "max_runtime_seconds": 30,
-        "max_output_chars": 10000,
-        "allow_filesystem_read": False,
-        "allow_filesystem_write": False,
-        "allow_network": False,
-        "allow_subprocess": False,
-    }
+def _is_blocked_env_name(name: str) -> bool:
+    """Return whether an environment key is likely to contain secret material."""
+    normalized = name.upper()
+    return any(part in normalized for part in _BLOCKED_ENV_NAME_PARTS)
+
+
+def _build_guarded_env(params_file: Path, audit_id: str, script_dir: Path) -> dict[str, str]:
+    """Build the child-process environment without inheriting parent secrets.
+
+    Args:
+        params_file: Absolute JSON path supplied to the child script.
+        audit_id: Stable audit id for the current execution.
+        script_dir: Directory containing the script and its sibling helpers.
+
+    Returns:
+        Environment variables safe enough for a same-user guarded subprocess.
+    """
+    if not isinstance(params_file, Path):
+        raise TypeError(f"params_file must be a pathlib.Path, got {type(params_file)!r}")
+    if not audit_id:
+        raise ValueError("audit_id must be non-empty")
+    if not isinstance(script_dir, Path):
+        raise TypeError(f"script_dir must be a pathlib.Path, got {type(script_dir)!r}")
+
+    env: dict[str, str] = {}
+    for name, value in os.environ.items():
+        normalized = name.upper()
+        if normalized not in _INHERITED_ENV_ALLOWLIST:
+            continue
+        if _is_blocked_env_name(normalized):
+            continue
+        env[name] = value
+
+    repo_root = Path(__file__).resolve().parents[2]
+    core_root = Path(__file__).resolve().parent
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    pythonpath_parts = [str(script_dir.resolve()), str(repo_root), str(core_root)]
+    if existing_pythonpath:
+        pythonpath_parts.append(existing_pythonpath)
+    env.update(
+        {
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONSAFEPATH": "1",
+            "PYTHONUTF8": "1",
+            "SKILL_GUARDED_SUBPROCESS": "1",
+            "SKILL_PARAMS_FILE": str(params_file),
+            "SKILL_AUDIT_ID": audit_id,
+            "PYTHONPATH": os.pathsep.join(pythonpath_parts),
+        }
+    )
+    return env
 
 
 def _execute_prompt_only(skill: SkillDescriptor) -> SkillExecutionResult:
@@ -97,64 +189,11 @@ def _execute_prompt_only(skill: SkillDescriptor) -> SkillExecutionResult:
     return result
 
 
-def _execute_tool_wrapper(skill: SkillDescriptor, params: dict[str, Any]) -> SkillExecutionResult:
-    """Execute a tool-wrapper skill by calling its declared Python function."""
-    audit_id = _generate_audit_id(skill.id)
-    started = time.perf_counter()
-
-    if not skill.script_refs:
-        err = SkillExecutionResult(
-            skill_id=skill.id, success=False, output="",
-            error="No script refs declared for tool-wrapper skill", audit_id=audit_id,
-        )
-        _audit_log(err, skill)
-        return err
-
-    try:
-        script_path = Path(skill.script_refs[0])
-        if not script_path.exists():
-            raise FileNotFoundError(f"Script not found: {script_path}")
-
-        # Import and call the script's main function
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(f"skill_{skill.id}", str(script_path))
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Cannot load skill module: {script_path}")
-
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-
-        # Call execute(params) or main(params) if defined, else default
-        func = getattr(mod, "execute", None) or getattr(mod, "main", None)
-        if func is None:
-            raise AttributeError(f"No execute() or main() found in {script_path}")
-
-        raw_output = str(func(params))
-        elapsed = (time.perf_counter() - started) * 1000
-
-        result = SkillExecutionResult(
-            skill_id=skill.id, success=True, output=raw_output,
-            duration_ms=elapsed, audit_id=audit_id,
-            metadata={"mode": "tool_wrapper", "script": str(script_path)},
-        )
-        _audit_log(result, skill)
-        return result
-
-    except Exception as exc:
-        elapsed = (time.perf_counter() - started) * 1000
-        err = SkillExecutionResult(
-            skill_id=skill.id, success=False, output="",
-            error=str(exc), duration_ms=elapsed, audit_id=audit_id,
-        )
-        _audit_log(err, skill)
-        return err
-
-
 def _execute_scripted(skill: SkillDescriptor, params: dict[str, Any]) -> SkillExecutionResult:
-    """Execute a scripted skill in a restricted sandbox."""
+    """Execute a scripted skill as a guarded subprocess."""
     audit_id = _generate_audit_id(skill.id)
     started = time.perf_counter()
-    sandbox = _build_sandbox_env()
+    policy = GuardedSubprocessPolicy()
 
     if not skill.script_refs:
         err = SkillExecutionResult(
@@ -169,36 +208,42 @@ def _execute_scripted(skill: SkillDescriptor, params: dict[str, Any]) -> SkillEx
         if not script_path.exists():
             raise FileNotFoundError(f"Script not found: {script_path}")
 
-        # Write params to temp JSON for subprocess communication
-        params_file = Path(tempfile.mktemp(suffix=".json"))
-        params_file.write_text(json.dumps(params), encoding="utf-8")
+        params_file_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=".json",
+                prefix="litassist_skill_params_",
+                delete=False,
+            ) as params_file:
+                json.dump(params, params_file, ensure_ascii=False)
+                params_file_path = Path(params_file.name)
 
-        # Run in subprocess with timeout and restricted env
-        env = os.environ.copy()
-        env["SKILL_SANDBOX"] = "1"
-        env["SKILL_PARAMS_FILE"] = str(params_file)
-        env["SKILL_AUDIT_ID"] = audit_id
+            env = _build_guarded_env(params_file_path, audit_id, script_path.parent)
 
-        proc = subprocess.run(
-            [sys.executable, str(script_path), "--params", str(params_file)],
-            capture_output=True, text=True, timeout=sandbox["max_runtime_seconds"],
-            env=env, cwd=str(script_path.parent),
-        )
-
-        params_file.unlink(missing_ok=True)
+            proc = subprocess.run(
+                [sys.executable, str(script_path), "--params", str(params_file_path)],
+                capture_output=True, text=True, timeout=policy.max_runtime_seconds,
+                env=env, cwd=str(script_path.parent),
+                check=False,
+            )
+        finally:
+            if params_file_path is not None:
+                params_file_path.unlink(missing_ok=True)
 
         if proc.returncode != 0:
             elapsed = (time.perf_counter() - started) * 1000
             err = SkillExecutionResult(
                 skill_id=skill.id, success=False,
-                output=proc.stdout[:sandbox["max_output_chars"]],
+                output=proc.stdout[:policy.max_output_chars],
                 error=proc.stderr[:500] or f"Exit code: {proc.returncode}",
                 duration_ms=elapsed, audit_id=audit_id,
             )
             _audit_log(err, skill)
             return err
 
-        output = proc.stdout[:sandbox["max_output_chars"]]
+        output = proc.stdout[:policy.max_output_chars]
         elapsed = (time.perf_counter() - started) * 1000
 
         result = SkillExecutionResult(
@@ -213,7 +258,7 @@ def _execute_scripted(skill: SkillDescriptor, params: dict[str, Any]) -> SkillEx
         elapsed = (time.perf_counter() - started) * 1000
         err = SkillExecutionResult(
             skill_id=skill.id, success=False, output="",
-            error=f"Skill execution timed out after {sandbox['max_runtime_seconds']}s",
+            error=f"Skill execution timed out after {policy.max_runtime_seconds}s",
             duration_ms=elapsed, audit_id=audit_id,
         )
         _audit_log(err, skill)
@@ -241,8 +286,6 @@ def execute_skill(skill: SkillDescriptor, params: dict[str, Any] | None = None) 
         )
     elif skill.script_refs:
         return _execute_scripted(skill, params)
-    elif skill.prompt_template_refs:
-        return _execute_tool_wrapper(skill, params)
     else:
         return _execute_prompt_only(skill)
 

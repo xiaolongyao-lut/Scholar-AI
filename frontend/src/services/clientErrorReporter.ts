@@ -21,6 +21,27 @@ interface ClientErrorPayload {
   userAgent?: string;
 }
 
+const CLIENT_ERROR_INTERNAL_TEXT_PATTERN =
+  /(?:env=|env_refs|capability_[a-z0-9_]*|api[_\s-]?key|base[_\s-]?url|authorization|bearer|token|secret|https?:\/\/|\/api\/[^\s"'<>，。；,;)]*|\/runtime\/[^\s"'<>，。；,;)]*|\/resources\/[^\s"'<>，。；,;)]*|[A-Za-z]:\\[^\s"'<>]*|[{}[\]"`]|[A-Za-z0-9+/]{32,}={0,2})/i;
+
+export function sanitizeClientErrorText(value: unknown, fallback: string): string {
+  const raw = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  if (!raw || raw.length > 240 || CLIENT_ERROR_INTERNAL_TEXT_PATTERN.test(raw)) {
+    return fallback;
+  }
+  return raw;
+}
+
+function sanitizeClientErrorPayload(payload: ClientErrorPayload): ClientErrorPayload {
+  return {
+    ...payload,
+    component: sanitizeClientErrorText(payload.component, '') || undefined,
+    message: sanitizeClientErrorText(payload.message, '客户端界面发生异常。'),
+    stack: payload.stack ? sanitizeClientErrorText(payload.stack.split('\n', 1)[0] ?? '', '') || undefined : undefined,
+    url: payload.url ? sanitizeClientErrorText(payload.url, '') || undefined : undefined,
+  };
+}
+
 // In-process dedup so a render loop or a noisy library does not flood
 // the backend log. Key = kind + first line of message + first line of
 // stack. TTL keeps us from leaking memory on long sessions.
@@ -48,15 +69,16 @@ const shouldSkip = (p: ClientErrorPayload): boolean => {
 };
 
 export const reportClientError = (payload: ClientErrorPayload): void => {
-  if (shouldSkip(payload)) return;
+  const safePayload = sanitizeClientErrorPayload(payload);
+  if (shouldSkip(safePayload)) return;
 
   const body = JSON.stringify({
-    kind: payload.kind,
-    component: payload.component,
-    message: payload.message,
-    stack: payload.stack,
-    url: payload.url ?? (typeof window !== 'undefined' ? window.location.href : undefined),
-    userAgent: payload.userAgent ?? (typeof navigator !== 'undefined' ? navigator.userAgent : undefined),
+    kind: safePayload.kind,
+    component: safePayload.component,
+    message: safePayload.message,
+    stack: safePayload.stack,
+    url: safePayload.url ?? (typeof window !== 'undefined' ? window.location.origin : undefined),
+    userAgent: safePayload.userAgent ?? (typeof navigator !== 'undefined' ? navigator.userAgent : undefined),
   });
 
   // sendBeacon survives page unload — the right primitive for

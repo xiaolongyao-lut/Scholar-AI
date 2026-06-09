@@ -35,7 +35,7 @@ export function PdfTabStrip({ onActivate, onEmpty }: PdfTabStripProps) {
     <div
       ref={scrollerRef}
       role="tablist"
-      aria-label="PDF tabs"
+      aria-label="PDF 标签页"
       className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-outline-variant/60 bg-surface-low px-1 [scrollbar-width:thin]"
     >
       {tabs.map(tab => {

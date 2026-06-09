@@ -1,4 +1,4 @@
-"""Discussion models (Slice D / DEC-003a / DEC-003b / DEC-003c / TASK-602).
+"""Discussion models.
 
 RAG-aware multi-agent discussion request/trace/synthesis types.
 """
@@ -16,7 +16,7 @@ DISCUSSION_MAX_TURNS_LIMIT = 20
 
 
 # =========================================================================
-# D10-D18: Discussion history models
+# Discussion history models
 # =========================================================================
 
 class DiscussionSessionListPayload(BaseModel):
@@ -47,6 +47,45 @@ class DiscussionSearchResultPayload(BaseModel):
     relevance_score: float
     created_at: str
     turn_count: int
+
+
+class DiscussionRunHistoryItemPayload(BaseModel):
+    """One run-scoped discussion history row."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    run_id: str = Field(min_length=1)
+    state: Literal["pending", "running", "completed", "cancelled", "error"]
+    query: str = ""
+    created_at: float
+    updated_at: float
+    turn_count: int = Field(ge=0)
+    agent_count: int = Field(ge=0)
+    archived: bool = False
+    archived_at: float | None = None
+    synthesis_preview: str = ""
+
+
+class DiscussionRunHistoryPagePayload(BaseModel):
+    """Paginated run-scoped discussion history response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=100)
+    total: int = Field(ge=0)
+    items: list[DiscussionRunHistoryItemPayload] = Field(default_factory=list)
+
+
+class DiscussionRunExportPayload(BaseModel):
+    """Run-scoped discussion export response."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    run_id: str = Field(min_length=1)
+    format: Literal["json", "markdown"]
+    content: str
+    filename: str
 
 
 # =========================================================================
@@ -88,59 +127,42 @@ class DiscussionLLMConfig(BaseModel):
 
 
 class McpScopeType(str, Enum):
-    """MCP authorization scope level (J8 decision 2026-05-26)."""
+    """How MCP access is scoped for a discussion run."""
     SURFACE = "surface"
     AGENT = "agent"
 
 
 class DiscussionMcpOverrides(BaseModel):
-    """Run-level MCP scope for a discussion (Phase 4 / TASK-401 + J8).
-
-    Per plan v0.3 §4.6 option (b): a sibling block on
-    ``DiscussionRunConfig`` — the shipped ``DiscussionAgentConfig`` is
-    intentionally not modified to keep Slice D's regression boundary.
-
-    J8 (2026-05-26): Added scope_type + per_agent + per_role enforcement.
-    When scope_type=agent, each agent gets isolated MCP server list from
-    per_agent[agent_id] or per_role[role]. When scope_type=surface,
-    server_ids applies to all agents (legacy behavior).
-    """
+    """Run-level MCP access settings for a discussion."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     scope_type: McpScopeType = Field(
         default=McpScopeType.SURFACE,
-        description="Authorization scope: surface (all agents share server_ids) or agent (per-agent isolation)",
+        description="Whether MCP access is shared by the discussion or separated by role.",
     )
     server_ids: list[str] = Field(
         default_factory=list,
         max_length=16,
-        description="Surface-level MCP servers (used when scope_type=surface or as fallback)",
+        description="MCP services shared by the discussion when no role-specific selection is used.",
     )
     allow_high_risk_tools: bool = Field(default=False)
     per_agent: dict[str, list[str]] = Field(
         default_factory=dict,
-        description="Agent-level MCP servers: {agent_id: [server_id, ...]}. Used when scope_type=agent.",
+        description="Role instance to MCP service selections for isolated access.",
     )
     per_role: dict[str, list[str]] = Field(
         default_factory=dict,
-        description="Role-level MCP servers: {role: [server_id, ...]}. Fallback when agent_id not in per_agent.",
+        description="Discussion role to MCP service selections used as isolated-access defaults.",
     )
 
 
 class DiscussionAgentConfig(BaseModel):
-    """One agent slot in a discussion.
+    """One role slot in a discussion.
 
-    Per DEC-003c: agents bind to capability/model policy by default;
-    ``credential_id`` is an explicit pin override only.
-
-    D1 (2026-05-26): Added ``strategy_hint`` + ``category`` for dynamic
-    credential sampling. Mutually exclusive with ``credential_id`` and ``llm``.
-
-    ``credential_id`` and ``llm`` are mutually exclusive but both optional —
-    when neither is set the orchestrator falls back to the runtime default
-    chat config (see ``_resolve_agent_endpoint``). This keeps the frontend
-    request shape secret-free.
+    A role can use default chat settings, a saved model setting, a direct
+    runtime override, or a cost/quality strategy hint. The model-selection
+    modes are mutually exclusive.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -154,12 +176,12 @@ class DiscussionAgentConfig(BaseModel):
     strategy_hint: str | None = Field(
         default=None,
         max_length=32,
-        description="Dynamic credential selection by strategy_hint (low/medium/high/xhigh/max). Mutually exclusive with credential_id/llm.",
+        description="Cost/quality tier for automatic saved-model selection.",
     )
     category: str | None = Field(
         default=None,
         max_length=32,
-        description="Credential category filter (generation/embedding/rerank). Used with strategy_hint.",
+        description="Model-use category for automatic saved-model selection.",
     )
     strict_pin: bool = False
     priority: int = Field(default=100, ge=0, le=10_000)
@@ -201,12 +223,15 @@ class DiscussionRunConfig(BaseModel):
     synthesis_strategy: DiscussionSynthesisStrategy = DiscussionSynthesisStrategy.SYNTHESIZE
     timeout_seconds: float = Field(default=60.0, gt=0.0, le=600.0)
     max_concurrency: int | None = Field(default=None, ge=1, le=16)
+    project_reasoning_bias_enabled: bool | None = Field(
+        default=None,
+        description="Per-request override. False disables project reasoning bias injection.",
+    )
     mcp_overrides: DiscussionMcpOverrides | None = Field(
         default=None,
         description=(
-            "Optional MCP scope for this run. When set AND env "
-            "LITERATURE_ENABLE_MCP_TOOLS=1, the discussion router wraps "
-            "invoke_agent with McpToolUseRunner. None = no MCP."
+            "Optional MCP service selection for this discussion run. When "
+            "omitted, the run uses no MCP services."
         ),
     )
     auto_stop: bool = False
@@ -300,6 +325,34 @@ class DiscussionConvergenceTrace(BaseModel):
     decision_turn_index: int | None = Field(default=None, ge=0)
 
 
+class AgentThoughtTraceStep(BaseModel):
+    """One public, evidence-grounded trace step for an agent answer."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    label: str = Field(default="", max_length=64)
+    summary: str = Field(default="", max_length=1200)
+    evidence_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
+class AgentThoughtTracePayload(BaseModel):
+    """Backward-compatible rich wrapper for visible agent reasoning summaries.
+
+    The payload summarizes observable reasoning signals only: role stance,
+    answer contribution, cited evidence ids, confidence, and public summary
+    steps. It intentionally does not expose raw hidden chain-of-thought.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    agent_stance: str = Field(default="", max_length=128)
+    contribution_type: str = Field(default="", max_length=64)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=50)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    trace_steps: list[AgentThoughtTraceStep] = Field(default_factory=list, max_length=12)
+    analysis_chain: AnalysisChainPayload | None = None
+
+
 class DiscussionAgentTrace(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -320,6 +373,14 @@ class DiscussionAgentTrace(BaseModel):
             "Optional 6-field reasoning chain attached to this agent's "
             "answer when feature flag ``analysis_chain_discussion`` is on. "
             "ACR-030 ~ ACR-034."
+        ),
+    )
+    thought_trace: AgentThoughtTracePayload | None = Field(
+        default=None,
+        description=(
+            "Optional rich visible trace wrapper. Preserves `analysis_chain` "
+            "while adding role stance, contribution type, evidence refs, "
+            "confidence, and public trace steps."
         ),
     )
 
@@ -359,6 +420,8 @@ class DiscussionRunResult(BaseModel):
 
 
 __all__ = [
+    "AgentThoughtTracePayload",
+    "AgentThoughtTraceStep",
     "DiscussionAgentConfig",
     "DiscussionAgentRole",
     "DiscussionAgentTrace",

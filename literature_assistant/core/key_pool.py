@@ -1,6 +1,6 @@
-"""Key pool: parse multi-credential .env and rotate on failure.
+"""Key pool: parse multi-credential local env catalogs and rotate on failure.
 
-Background: this repo's .env intentionally lists multiple credentials per
+Background: this repo's local env catalog intentionally lists multiple credentials per
 category (embedding / rerank / generation), but standard dotenv only keeps
 the *last* assignment to any given variable name. This module parses the
 file directly, accumulates per-section credentials, and offers a small
@@ -29,6 +29,7 @@ URLs.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 import time
@@ -64,6 +65,47 @@ _CATEGORY_HEADER_RE = re.compile(
 _PROVIDER_HEADER_RE = re.compile(r"^\s*#+\s*([^#=\n]+?)\s*#+\s*$")
 _AUTH_FAIL_HINTS = ("401", "403", "429", "404", "400", "unauthor", "invalid api key", "invalid_api_key")
 _NESTED_ENV_URL_VALUE_RE = re.compile(r"^(?:[A-Z][A-Z0-9_]*=)+(https?://.+)$")
+_EMPTY_POOLS: dict[Category, list[Credential]] = {"embedding": [], "rerank": [], "generation": []}
+
+
+def _dotenv_disabled() -> bool:
+    """Return whether default key-pool env catalog loading is disabled."""
+
+    return os.environ.get("RUNTIME_ENV_DISABLE_DOTENV", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "enabled",
+    }
+
+
+def _default_env_catalog_path() -> Path | None:
+    """Return the shared runtime env catalog path used by runtime_env.py."""
+
+    if _dotenv_disabled():
+        return None
+    cwd_dotenv = (Path.cwd() / ".env").resolve()
+    repo_root = Path(__file__).resolve().parents[2]
+    try:
+        cwd_dotenv.relative_to(repo_root)
+        cwd_inside_repo = True
+    except ValueError:
+        cwd_inside_repo = False
+    if cwd_dotenv.exists() and not cwd_inside_repo and cwd_dotenv != Path(__file__).resolve().with_name(".env"):
+        return cwd_dotenv
+    try:
+        from runtime_env import _runtime_env_path
+
+        return _runtime_env_path()
+    except Exception:
+        return Path("workspace_artifacts/runtime_state/local_env/literature_assistant.env")
+
+
+def _empty_pools() -> dict[Category, list[Credential]]:
+    """Return a fresh empty key-pool mapping."""
+
+    return {category: [] for category in _EMPTY_POOLS}
 
 
 def _normalize_url_value(value: str | None) -> str | None:
@@ -190,19 +232,25 @@ def _classify_var(name: str) -> tuple[str, Category | None]:
     return ("ignore", None)
 
 
-def parse_env_pools(path: str | Path = ".env") -> dict[Category, list[Credential]]:
-    """Parse a multi-credential .env into category → ordered credential list."""
-    p = Path(path)
+def parse_env_pools(path: str | Path | None = None) -> dict[Category, list[Credential]]:
+    """Parse a multi-credential env catalog into category → ordered credentials.
+
+    Args:
+        path: Explicit env file path. When omitted, the shared runtime env
+            catalog under ``workspace_artifacts/runtime_state/local_env`` is
+            used unless dotenv loading is disabled.
+    """
+
+    resolved_path = Path(path) if path is not None else _default_env_catalog_path()
+    if resolved_path is None:
+        return _empty_pools()
+    p = resolved_path
     if not p.exists():
-        logger.warning("key_pool: .env not found at %s", p)
-        return {"embedding": [], "rerank": [], "generation": []}
+        logger.warning("key_pool: env catalog not found at %s", p)
+        return _empty_pools()
 
     text = p.read_text(encoding="utf-8", errors="replace")
-    pools: dict[Category, list[Credential]] = {
-        "embedding": [],
-        "rerank": [],
-        "generation": [],
-    }
+    pools: dict[Category, list[Credential]] = _empty_pools()
 
     active_category: Category | None = None
     active_provider: str = "unknown"
@@ -309,7 +357,7 @@ class KeyPool:
         self._cooldown_seconds = cooldown_seconds
         self._cooldown: dict[tuple[str, str, str], float] = {}
         self._lock = threading.Lock()
-        # Plan v2 §13.1d.1 / §13.1d.2 — health-stat tracking.
+        # Health-stat tracking.
         # _exhausted_count: total times try_call/try_call_async raised because
         #   it ran out of usable credentials. Any value >0 in a single eval
         #   run is a release-gate warning signal.
@@ -382,7 +430,7 @@ class KeyPool:
         """
         return None
 
-    # --- Health stats (plan v2 §13.1d.1 / §13.1d.2) ---
+    # --- Health stats ---
 
     def stats(self, category: Category | None = None) -> dict[str, Any]:
         """Return a structured health snapshot for one category or all.
@@ -407,7 +455,7 @@ class KeyPool:
 
         When ``category`` is None, returns ``{"pools": [<per-cat snapshot>, ...]}``.
 
-        No secrets in the output — provider/model only.
+        No credential material in the output — provider/model only.
         """
         if category is not None:
             return self._stats_for_category(category)
@@ -602,10 +650,11 @@ def apply_to_env(
     return cred
 
 
-def get_pool(path: str | Path = ".env", *, refresh: bool = False) -> KeyPool:
+def get_pool(path: str | Path | None = None, *, refresh: bool = False) -> KeyPool:
     """Return a process-wide ``KeyPool`` parsed from ``path``."""
     global _singleton, _singleton_path
-    target = Path(path).resolve()
+    resolved_path = Path(path) if path is not None else _default_env_catalog_path()
+    target = resolved_path.resolve() if resolved_path is not None else None
     with _singleton_lock:
         if _singleton is None or refresh or _singleton_path != target:
             _singleton = KeyPool(parse_env_pools(target))

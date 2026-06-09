@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, Loader2, BookOpen, Diff } from 'lucide-react';
+import { Save, Loader2, BookOpen, Diff, Quote, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
 import { useWriting } from '@/contexts/WritingContext';
@@ -26,6 +26,7 @@ import {
   getCitationAnchorInstanceId,
   getCitationAnchorLabel,
 } from '@/lib/citationAnchors';
+import { ManuscriptEditor } from './ManuscriptEditor';
 
 interface WritingCanvasProps {
   activeSection: ManuscriptSection | undefined;
@@ -96,6 +97,9 @@ export function WritingCanvas({
   const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
   const handledInsertRequestRef = useRef<string | null>(null);
   const handledFocusRequestRef = useRef<string | null>(null);
+  // 'rich' = TipTap WYSIWYG with citation superscripts; 'source' = raw textarea
+  // (the manuscript true source + reliable fallback).
+  const [editorMode, setEditorMode] = useState<'rich' | 'source'>('rich');
 
   const materialLookup = useMemo(() => {
     return new Map(materials.map((material) => [material.id, material] as const));
@@ -110,7 +114,7 @@ export function WritingCanvas({
   useEffect(() => {
     const request = citationInsertRequest;
 
-    if (!draft || !request || handledInsertRequestRef.current === request.requestId) {
+    if (editorMode !== 'source' || !draft || !request || handledInsertRequestRef.current === request.requestId) {
       return;
     }
 
@@ -143,7 +147,7 @@ export function WritingCanvas({
     setSessionStatus('idle');
     setSessionMessage(t('writing.canvas.citation_inserted', { label: materialLabel }));
     onCitationInsertHandled(request.requestId, anchorInstanceId, request.materialId);
-  }, [citationInsertRequest, draft, materialLookup, onCitationInsertHandled, setDraft, setIsDirty, setSessionMessage, setSessionStatus]);
+  }, [citationInsertRequest, draft, editorMode, materialLookup, onCitationInsertHandled, setDraft, setIsDirty, setSessionMessage, setSessionStatus]);
 
   useEffect(() => {
     if (!pendingSelectionRef.current || !textareaRef.current) {
@@ -160,7 +164,7 @@ export function WritingCanvas({
   useEffect(() => {
     const request = citationFocusRequest;
 
-    if (!draft || !request || handledFocusRequestRef.current === request.requestId) {
+    if (editorMode !== 'source' || !draft || !request || handledFocusRequestRef.current === request.requestId) {
       return;
     }
 
@@ -183,7 +187,7 @@ export function WritingCanvas({
 
     setSessionMessage(request.materialId ? t('writing.canvas.citation_located') : t('writing.canvas.anchor_located'));
     onCitationFocusHandled(request.requestId);
-  }, [citationFocusRequest, draft, onCitationFocusHandled, setSessionMessage, setSessionStatus]);
+  }, [citationFocusRequest, draft, editorMode, onCitationFocusHandled, setSessionMessage, setSessionStatus]);
 
   const handleRequestCitationInsertion = () => {
     onRequestCitationInsertion(focusedMaterialId);
@@ -241,6 +245,36 @@ export function WritingCanvas({
           )}
         </div>
         <div className="flex items-center gap-2">
+           <div
+              role="group"
+              aria-label={t('writing.editor.mode_rich')}
+              className="flex items-center rounded-sm border border-outline-variant bg-surface-low p-0.5"
+           >
+              <button
+                 type="button"
+                 onClick={() => setEditorMode('rich')}
+                 aria-pressed={editorMode === 'rich'}
+                 title={t('writing.editor.mode_rich_hint')}
+                 className={cn(
+                   'px-2 py-1 rounded-sm font-label text-[10px] font-medium transition-all',
+                   editorMode === 'rich' ? 'bg-primary text-primary-foreground' : 'text-foreground/50 hover:text-foreground'
+                 )}
+              >
+                 {t('writing.editor.mode_rich')}
+              </button>
+              <button
+                 type="button"
+                 onClick={() => setEditorMode('source')}
+                 aria-pressed={editorMode === 'source'}
+                 title={t('writing.editor.mode_source_hint')}
+                 className={cn(
+                   'px-2 py-1 rounded-sm font-label text-[10px] font-medium transition-all',
+                   editorMode === 'source' ? 'bg-primary text-primary-foreground' : 'text-foreground/50 hover:text-foreground'
+                 )}
+              >
+                 {t('writing.editor.mode_source')}
+              </button>
+           </div>
            {showReferences ? (
            <button 
               onClick={() => setShowReferences(false)}
@@ -325,6 +359,44 @@ export function WritingCanvas({
            </button>
         </div>
       </motion.header>
+
+      {zenMode && (
+        <div className="absolute top-3 right-5 z-30 flex items-center gap-1 rounded-full border border-outline-variant bg-surface-lowest/90 px-1.5 py-1 shadow-lg backdrop-blur-sm fade-in">
+          <button
+            type="button"
+            onClick={() => setShowReferences(!showReferences)}
+            title={t('writing.materials_library')}
+            aria-label={t('writing.materials_library')}
+            className={cn(
+              "p-1.5 rounded-full transition-all",
+              showReferences ? "bg-primary text-primary-foreground" : "text-foreground/60 hover:bg-surface-container"
+            )}
+          >
+            <BookOpen size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={handleRequestCitationInsertion}
+            title={activeMaterial ? t('writing.canvas.insert_cite', { title: activeMaterial.titleZh }) : t('writing.canvas.insert_cite_generic')}
+            aria-label={activeMaterial ? t('writing.canvas.insert_cite', { title: activeMaterial.titleZh }) : t('writing.canvas.insert_cite_generic')}
+            className="p-1.5 rounded-full text-foreground/60 transition-all hover:bg-surface-container"
+          >
+            <Quote size={16} />
+          </button>
+          <span className="px-1.5 font-label text-[10px] font-medium tabular-nums text-foreground/50 whitespace-nowrap">
+            {draft?.content?.length ?? 0} {t('writing.words')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setZenMode(false)}
+            title={t('writing.canvas.zen_exit')}
+            aria-label={t('writing.canvas.zen_exit')}
+            className="p-1.5 rounded-full text-foreground/60 transition-all hover:bg-surface-container"
+          >
+            <Minimize2 size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Main Writing Area */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-10">
@@ -472,18 +544,38 @@ export function WritingCanvas({
                 className="w-full relative"
               >
                 <div className="rounded-sm border border-outline-variant/60 bg-white dark:bg-surface-lowest shadow-[0_2px_12px_0_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_0_rgba(0,0,0,0.25)] px-10 py-8 min-h-[80vh]">
-                  <textarea
-                    ref={textareaRef}
-                    value={draft?.content || ''}
-                    onChange={(e) => {
-                      setDraft(prev => prev ? {...prev, content: e.target.value} : null);
-                      setIsDirty(true);
-                      setSessionStatus('idle');
-                      setSessionMessage(null);
-                    }}
-                    className="w-full h-full min-h-[72vh] bg-transparent resize-none font-doc text-base leading-loose focus:outline-none placeholder:text-foreground/20 custom-scrollbar text-gray-800 dark:text-foreground"
-                    placeholder={t('writing.placeholder')}
-                  />
+                  {editorMode === 'source' ? (
+                    <textarea
+                      ref={textareaRef}
+                      value={draft?.content || ''}
+                      onChange={(e) => {
+                        setDraft(prev => prev ? {...prev, content: e.target.value} : null);
+                        setIsDirty(true);
+                        setSessionStatus('idle');
+                        setSessionMessage(null);
+                      }}
+                      className="w-full h-full min-h-[72vh] bg-transparent resize-none font-doc text-base leading-loose focus:outline-none placeholder:text-foreground/20 custom-scrollbar text-gray-800 dark:text-foreground"
+                      placeholder={t('writing.placeholder')}
+                    />
+                  ) : (
+                    <ManuscriptEditor
+                      content={draft?.content || ''}
+                      onChange={(next) => {
+                        setDraft(prev => prev ? { ...prev, content: next } : null);
+                        setIsDirty(true);
+                        setSessionStatus('idle');
+                        setSessionMessage(null);
+                      }}
+                      placeholder={t('writing.placeholder')}
+                      materials={materials}
+                      citationAnchors={citationAnchors}
+                      citationInsertRequest={citationInsertRequest}
+                      citationFocusRequest={citationFocusRequest}
+                      onCitationInsertHandled={onCitationInsertHandled}
+                      onCitationFocusHandled={onCitationFocusHandled}
+                      onRequestAnchorFocus={onRequestAnchorFocus}
+                    />
+                  )}
                 </div>
               </motion.div>
             )}

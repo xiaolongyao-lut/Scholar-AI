@@ -7,8 +7,7 @@ through this module to keep semantics aligned:
     same-directory tempfile  ->  fsync  ->  os.replace  ->  unlink stragglers
 
 Originally lived inside ``credential_store._atomic_write_json``; extracted
-in MCP integration Phase 1A to avoid copy-paste drift between stores
-(plan v0.3 §14 #5).
+to avoid copy-paste drift between stores.
 """
 
 from __future__ import annotations
@@ -17,7 +16,67 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from types import TracebackType
 from typing import Any
+
+
+class CrossProcessFileLock:
+    """Small cross-platform exclusive lock for runtime JSON stores.
+
+    Why:
+        Atomic replace prevents torn writes but not lost updates when two app
+        instances read-modify-write the same runtime document concurrently.
+        A sidecar lock serializes that critical section across processes.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self._path = Path(path)
+        self._handle: Any | None = None
+
+    def __enter__(self) -> "CrossProcessFileLock":
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(self._path, "a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                if handle.seek(0, os.SEEK_END) == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        except Exception:
+            handle.close()
+            raise
+        self._handle = handle
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        handle = self._handle
+        self._handle = None
+        if handle is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
 
 
 def atomic_write_json(path: Path, payload: Any, *, indent: int = 2) -> None:
@@ -48,4 +107,4 @@ def atomic_write_json(path: Path, payload: Any, *, indent: int = 2) -> None:
             pass
 
 
-__all__ = ["atomic_write_json"]
+__all__ = ["CrossProcessFileLock", "atomic_write_json"]

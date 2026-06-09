@@ -10,12 +10,17 @@ import type {
   WikiDoctorModel,
   WikiDoctorStructuredReportModel,
   WikiGraphEdgeModel,
+  WikiManualPageInputModel,
   WikiGraphModel,
   WikiGraphNodeModel,
   WikiGraphStructuredModel,
   WikiPageDetailModel,
   WikiPageListModel,
+  WikiPageMutationModel,
   WikiPageSummaryModel,
+  WikiSearchEvidenceRefModel,
+  WikiSearchModel,
+  WikiExportModel,
   WikiReviewDecisionModel,
   WikiReviewItemModel,
   WikiReviewListModel,
@@ -145,19 +150,67 @@ function readNullableString(record: Record<string, unknown>, key: string): strin
   return record[key] as string;
 }
 
-async function fetchWikiJson(path: string, timeoutMs: number, init?: RequestInit): Promise<unknown> {
+function buildAbortSignal(timeoutMs: number, signals: Array<AbortSignal | null | undefined>): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new WikiApiError('Wiki 请求超时时间配置无效。', 500);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const listeners: Array<{ signal: AbortSignal; listener: () => void }> = [];
+
+  for (const signal of signals) {
+    if (!signal) {
+      continue;
+    }
+    if (signal.aborted) {
+      controller.abort();
+      continue;
+    }
+    const listener = () => controller.abort();
+    signal.addEventListener('abort', listener, { once: true });
+    listeners.push({ signal, listener });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timeoutId);
+      for (const { signal, listener } of listeners) {
+        signal.removeEventListener('abort', listener);
+      }
+    },
+  };
+}
+
+async function fetchWikiJson(
+  path: string,
+  timeoutMs: number,
+  init?: RequestInit,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const headers = new Headers(init?.headers);
   headers.set('Accept', 'application/json');
   if (init?.body !== undefined && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${BASE}${path}`, {
-    method: 'GET',
-    ...init,
-    headers,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  const abort = buildAbortSignal(timeoutMs, [init?.signal, signal]);
+
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      method: 'GET',
+      ...init,
+      headers,
+      signal: abort.signal,
+    });
+  } finally {
+    abort.cleanup();
+  }
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -294,6 +347,21 @@ function parseStructuredGraph(graph: Record<string, unknown>): WikiGraphStructur
   }
 }
 
+function parseWikiSearchEvidenceRef(payload: unknown): WikiSearchEvidenceRefModel {
+  const record = asRecord(payload);
+  return {
+    ...record,
+    page_path: typeof record.page_path === 'string' ? record.page_path : undefined,
+    title: typeof record.title === 'string' ? record.title : undefined,
+    score: typeof record.score === 'number' ? record.score : undefined,
+    snippet: typeof record.snippet === 'string' ? record.snippet : undefined,
+    source: typeof record.source === 'string' ? record.source : undefined,
+    source_labels: Array.isArray(record.source_labels) && record.source_labels.every((item) => typeof item === 'string')
+      ? record.source_labels
+      : undefined,
+  };
+}
+
 function parseWikiCompileBudgetSummary(payload: unknown): WikiCompileBudgetSummaryModel {
   if (payload === undefined || payload === null) {
     return {
@@ -420,6 +488,36 @@ export function parseWikiCompileDryRun(payload: unknown): WikiCompileDryRunModel
   } satisfies WikiCompileDryRunModel;
 }
 
+export function parseWikiSearch(payload: unknown): WikiSearchModel {
+  const record = asRecord(payload);
+  return {
+    enabled: readBoolean(record, 'enabled'),
+    fallback_required: readBoolean(record, 'fallback_required'),
+    answer: typeof record.answer === 'string' ? record.answer : '',
+    evidence_refs: readArray(record, 'evidence_refs', parseWikiSearchEvidenceRef),
+    warnings: readOptionalStringArray(record, 'warnings'),
+  } satisfies WikiSearchModel;
+}
+
+export function parseWikiExport(payload: unknown): WikiExportModel {
+  const record = asRecord(payload);
+  return {
+    success: readBoolean(record, 'success'),
+    page_count: readNumber(record, 'page_count'),
+    output_path: readString(record, 'output_path'),
+    errors: readOptionalStringArray(record, 'errors'),
+  } satisfies WikiExportModel;
+}
+
+export function parseWikiPageMutation(payload: unknown): WikiPageMutationModel {
+  const record = asRecord(payload);
+  return {
+    success: readBoolean(record, 'success'),
+    slug: readString(record, 'slug'),
+    message: readString(record, 'message'),
+  } satisfies WikiPageMutationModel;
+}
+
 export async function getWikiStatus(timeoutMs: number = 15000): Promise<WikiStatusModel> {
   return parseWikiStatus(await fetchWikiJson('/api/wiki/status', timeoutMs));
 }
@@ -430,6 +528,19 @@ export async function getWikiPages(timeoutMs: number = 15000): Promise<WikiPageL
 
 export async function getWikiPageDetail(pagePath: string, timeoutMs: number = 15000): Promise<WikiPageDetailModel> {
   return parseWikiPageDetail(await fetchWikiJson(`/api/wiki/pages/${encodeWikiPagePath(pagePath)}`, timeoutMs));
+}
+
+export async function searchWiki(
+  query: string,
+  timeoutMs: number = 15000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiSearchModel> {
+  return parseWikiSearch(
+    await fetchWikiJson('/api/wiki/search', timeoutMs, {
+      method: 'POST',
+      body: JSON.stringify({ query }),
+    }, options.signal),
+  );
 }
 
 export async function getWikiDoctor(timeoutMs: number = 15000): Promise<WikiDoctorModel> {
@@ -447,9 +558,12 @@ export async function getWikiGraph(timeoutMs: number = 15000): Promise<WikiGraph
 export async function runWikiCompileDryRun(
   input: WikiCompileDryRunInputModel = {},
   timeoutMs: number = 15000,
+  options: { signal?: AbortSignal } = {},
 ): Promise<WikiCompileDryRunModel> {
+  const allowWrite = input.allow_write === true;
   const payload = {
-    dry_run: true,
+    dry_run: !allowWrite,
+    allow_write: allowWrite,
     ...(input.source_id ? { source_id: input.source_id } : {}),
     ...(input.project_id ? { project_id: input.project_id } : {}),
   };
@@ -458,7 +572,44 @@ export async function runWikiCompileDryRun(
     await fetchWikiJson('/api/wiki/compile', timeoutMs, {
       method: 'POST',
       body: JSON.stringify(payload),
-    })
+    }, options.signal)
+  );
+}
+
+export async function createWikiManualPage(
+  input: WikiManualPageInputModel,
+  timeoutMs: number = 15000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiPageMutationModel> {
+  const title = input.title.trim();
+  const body = input.body.trim();
+  if (!title || !body) {
+    throw new WikiApiError('标题和正文不能为空。', 400);
+  }
+  return parseWikiPageMutation(
+    await fetchWikiJson('/api/wiki/pages', timeoutMs, {
+      method: 'POST',
+      body: JSON.stringify({
+        title,
+        kind: input.kind,
+        body,
+        status: input.status,
+        evidence_refs: [],
+        source_hashes: [],
+        extra: { entry_source: 'manual_frontend' },
+      }),
+    }, options.signal),
+  );
+}
+
+export async function exportWikiMarkdown(
+  timeoutMs: number = 30000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiExportModel> {
+  return parseWikiExport(
+    await fetchWikiJson('/api/wiki/export', timeoutMs, {
+      method: 'POST',
+    }, options.signal),
   );
 }
 

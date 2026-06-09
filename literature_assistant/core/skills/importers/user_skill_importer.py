@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""User Skill import pipeline (TASK-185).
+"""User Skill import pipeline.
 
 Imports user skill packages from local directories into a managed root,
 validates manifests, records hash/origin/installed_at, and sets default
@@ -11,7 +11,9 @@ from __future__ import annotations
 from contextlib import contextmanager
 import hashlib
 import logging
+import re
 import shutil
+import stat
 import tempfile
 import zipfile
 from dataclasses import dataclass, field
@@ -31,6 +33,9 @@ from skills.user_manifest import (
 from skills.persistence import SkillInstallMetadata, write_install_metadata
 
 logger = logging.getLogger("UserSkillImporter")
+
+_CODEX_COMPAT_VERSION = "0.1.0"
+_SCRIPT_SUFFIXES = {".py", ".ps1", ".sh", ".js", ".mjs", ".ts", ".tsx", ".bat", ".cmd"}
 
 
 @dataclass
@@ -89,14 +94,215 @@ def _failure_result(
     )
 
 
+def _slugify_skill_id(value: str) -> str:
+    """Normalize a human/Codex skill name into the LA manifest id shape."""
+    lowered = value.strip().lower()
+    slug = re.sub(r"[^a-z0-9._-]+", "-", lowered)
+    slug = re.sub(r"[-_.]{2,}", "-", slug).strip("-_.")
+    if len(slug) < 2:
+        slug = f"{slug or 'skill'}-skill"
+    return slug[:128]
+
+
+def _has_script_files(source_dir: Path) -> bool:
+    """Return true when a package carries executable script-like assets."""
+    scripts_dir = source_dir / "scripts"
+    if not scripts_dir.exists() or not scripts_dir.is_dir():
+        return False
+    return any(
+        path.is_file() and path.suffix.lower() in _SCRIPT_SUFFIXES
+        for path in scripts_dir.rglob("*")
+    )
+
+
+def _yaml_scalar(value: str) -> str:
+    """Render a scalar conservatively for generated frontmatter."""
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _yaml_bool(value: bool) -> str:
+    """Render a Python bool as lowercase YAML."""
+    return "true" if value else "false"
+
+
+def _strip_frontmatter(content: str) -> str:
+    """Return markdown body after the first YAML frontmatter block."""
+    lines = content.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return content
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return "\n".join(lines[index + 1 :]).lstrip("\n")
+    return content
+
+
+def _render_skill_md_with_manifest(content: str, data: dict[str, Any]) -> str:
+    """Preserve the markdown body while replacing frontmatter with LA fields."""
+    permissions = data.get("permissions", {})
+    script_policy = data.get("script_policy", {})
+    model_policy = data.get("model_policy", {})
+    root_policy = data.get("root_policy", {})
+    tags = data.get("tags", [])
+    scopes = data.get("supported_scopes", [])
+    body = _strip_frontmatter(content)
+
+    lines = [
+        "---",
+        f"id: {_yaml_scalar(str(data['id']))}",
+        f"name: {_yaml_scalar(str(data['name']))}",
+        f"version: {_yaml_scalar(str(data['version']))}",
+        f"kind: {_yaml_scalar(str(data['kind']))}",
+        f"description: {_yaml_scalar(str(data['description']))}",
+        f"entry_mode: {_yaml_scalar(str(data['entry_mode']))}",
+        f"ui_visibility: {_yaml_scalar(str(data['ui_visibility']))}",
+        f"display_group: {_yaml_scalar(str(data['display_group']))}",
+        f"experimental: {_yaml_bool(bool(data['experimental']))}",
+        "supported_scopes:",
+    ]
+    for scope in scopes if isinstance(scopes, list) else ["full_draft"]:
+        lines.append(f"  - {_yaml_scalar(str(scope))}")
+    lines.append("tags:")
+    for tag in tags if isinstance(tags, list) else ["codex-compatible"]:
+        lines.append(f"  - {_yaml_scalar(str(tag))}")
+    lines.append("permissions:")
+    if isinstance(permissions, dict):
+        for key in sorted(permissions):
+            lines.append(f"  {key}: {_yaml_bool(bool(permissions[key]))}")
+    lines.append("script_policy:")
+    if isinstance(script_policy, dict):
+        lines.append(f"  has_scripts: {_yaml_bool(bool(script_policy.get('has_scripts', False)))}")
+        lines.append(f"  safe_to_execute: {_yaml_bool(bool(script_policy.get('safe_to_execute', False)))}")
+    lines.append("model_policy:")
+    if isinstance(model_policy, dict):
+        lines.append(f"  allow_llm: {_yaml_bool(bool(model_policy.get('allow_llm', False)))}")
+        lines.append(f"  allow_embedding: {_yaml_bool(bool(model_policy.get('allow_embedding', False)))}")
+    lines.append("root_policy:")
+    allowed_roots: list[str] = []
+    if isinstance(root_policy, dict) and isinstance(root_policy.get("allowed_roots"), list):
+        allowed_roots = [str(item) for item in root_policy["allowed_roots"]]
+    lines.append("  allowed_roots:")
+    for root in allowed_roots:
+        lines.append(f"    - {_yaml_scalar(root)}")
+    lines.extend(["---", "", body])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _normalize_lite_skill_manifest(
+    data: dict[str, Any],
+    source_dir: Path,
+) -> dict[str, Any]:
+    """Fill LA manifest defaults for Codex-style name/description skills."""
+    name = str(data.get("name") or source_dir.name).strip()
+    description = str(data.get("description") or "").strip()
+    has_scripts = _has_script_files(source_dir)
+    permissions: dict[str, bool] = {"model.llm": True}
+    if has_scripts:
+        permissions.update({
+            "files.read": True,
+            "files.write": True,
+            "script.execute": True,
+        })
+    return {
+        **data,
+        "id": str(data.get("id") or _slugify_skill_id(name or source_dir.name)),
+        "name": name or source_dir.name,
+        "version": str(data.get("version") or _CODEX_COMPAT_VERSION),
+        "kind": str(data.get("kind") or "workflow"),
+        "description": description or f"Imported Codex-compatible skill: {name or source_dir.name}",
+        "entry_mode": str(data.get("entry_mode") or "assistant"),
+        "ui_visibility": str(data.get("ui_visibility") or "skill_assisted"),
+        "supported_scopes": data.get("supported_scopes") or ["full_draft"],
+        "tags": data.get("tags") if isinstance(data.get("tags"), list) else ["codex-compatible"],
+        "display_group": str(data.get("display_group") or "imported"),
+        "experimental": bool(data.get("experimental", False)),
+        "permissions": data.get("permissions") if isinstance(data.get("permissions"), dict) else permissions,
+        "script_policy": data.get("script_policy") if isinstance(data.get("script_policy"), dict) else {
+            "has_scripts": has_scripts,
+            "safe_to_execute": False,
+        },
+        "model_policy": data.get("model_policy") if isinstance(data.get("model_policy"), dict) else {
+            "allow_llm": True,
+            "allow_embedding": False,
+        },
+        "root_policy": data.get("root_policy") if isinstance(data.get("root_policy"), dict) else {
+            "allowed_roots": ["skill_root", "project_root"] if has_scripts else ["skill_root"],
+        },
+    }
+
+
+def _should_try_lite_skill_compat(errors: list[str], data: dict[str, Any]) -> bool:
+    """Allow Codex-style SKILL.md imports without weakening invalid LA manifests."""
+    if not str(data.get("description") or "").strip():
+        return False
+    allowed_missing = {
+        "Missing required field: id",
+        "Missing required field: name",
+        "Missing required field: version",
+        "Missing required field: kind",
+    }
+    return bool(errors) and all(error in allowed_missing for error in errors)
+
+
+def _parse_manifest_for_import(
+    content: str,
+    source_dir: Path,
+) -> tuple[UserSkillManifest | None, str | None, list[str], str | None]:
+    """Parse an LA manifest, with a guarded Codex-style compatibility path."""
+    data = parse_skill_md_frontmatter(content)
+    if not data:
+        return None, None, ["SKILL.md has no valid frontmatter"], "INVALID_MANIFEST"
+    try:
+        return validate_manifest(data), None, [], None
+    except ManifestValidationError as exc:
+        if not _should_try_lite_skill_compat(exc.errors, data):
+            return None, None, exc.errors, "INVALID_MANIFEST"
+        normalized = _normalize_lite_skill_manifest(data, source_dir)
+        try:
+            manifest = validate_manifest(normalized)
+        except ManifestValidationError as normalized_exc:
+            return None, None, normalized_exc.errors, "INVALID_MANIFEST"
+        normalized_content = _render_skill_md_with_manifest(content, normalized)
+        warning = (
+            "Imported Codex-style SKILL.md with synthesized LA manifest "
+            f"fields (id={manifest.id}, version={manifest.version}, kind={manifest.kind})"
+        )
+        return manifest, normalized_content, [warning], None
+
+
 def compute_directory_hash(dir_path: Path) -> str:
     """Compute a deterministic SHA-256 hash of all files in a directory."""
     hasher = hashlib.sha256()
     for file_path in sorted(dir_path.rglob("*")):
         if file_path.is_file():
+            if file_path.is_symlink():
+                raise ValueError(f"Package contains symbolic link: {file_path}")
             hasher.update(str(file_path.relative_to(dir_path)).encode())
             hasher.update(file_path.read_bytes())
     return hasher.hexdigest()
+
+
+def validate_package_paths(source_dir: Path) -> list[str]:
+    """Check that all package entries are regular paths inside the package root."""
+    errors: list[str] = []
+    try:
+        source_root = source_dir.resolve(strict=True)
+    except OSError as exc:
+        return [f"Package root could not be resolved: {exc}"]
+
+    for file_path in source_dir.rglob("*"):
+        try:
+            is_junction = bool(getattr(file_path, "is_junction", lambda: False)())
+        except OSError:
+            is_junction = False
+        if file_path.is_symlink() or is_junction:
+            errors.append(f"Package contains symbolic link: {file_path.relative_to(source_dir)}")
+            continue
+        try:
+            file_path.resolve(strict=False).relative_to(source_root)
+        except (OSError, ValueError):
+            errors.append(f"Package path escapes root: {file_path.relative_to(source_dir)}")
+    return errors
 
 
 def validate_package_size(source_dir: Path) -> list[str]:
@@ -106,6 +312,9 @@ def validate_package_size(source_dir: Path) -> list[str]:
     total_bytes = 0
 
     for file_path in source_dir.rglob("*"):
+        if file_path.is_symlink():
+            errors.append(f"Package contains symbolic link: {file_path.relative_to(source_dir)}")
+            continue
         if not file_path.is_file():
             continue
         file_count += 1
@@ -167,6 +376,10 @@ def _validate_archive_members(archive: zipfile.ZipFile) -> tuple[list[tuple[zipf
 
     for info in archive.infolist():
         if info.is_dir():
+            continue
+        mode = info.external_attr >> 16
+        if stat.S_IFMT(mode) == stat.S_IFLNK:
+            errors.append(f"Archive symbolic link entry is not supported: {info.filename}")
             continue
         if info.flag_bits & 0x1:
             errors.append(f"Encrypted archive entry is not supported: {info.filename}")
@@ -286,20 +499,17 @@ def _import_prepared_user_skill(
 
     try:
         content = skill_md.read_text(encoding="utf-8")
-        data = parse_skill_md_frontmatter(content)
-        if not data:
-            return _failure_result(
-                error_code="INVALID_MANIFEST",
-                origin=origin,
-                errors=["SKILL.md has no valid frontmatter"],
-            )
-        manifest = validate_manifest(data)
-    except ManifestValidationError as exc:
-        return _failure_result(
-            error_code="INVALID_MANIFEST",
-            origin=origin,
-            errors=exc.errors,
+        manifest, normalized_content, parse_messages, error_code = _parse_manifest_for_import(
+            content,
+            source_dir,
         )
+        if manifest is None:
+            return _failure_result(
+                error_code=error_code or "INVALID_MANIFEST",
+                origin=origin,
+                errors=parse_messages,
+            )
+        warnings.extend(parse_messages)
     except Exception as exc:
         return _failure_result(
             error_code="INVALID_MANIFEST",
@@ -307,14 +517,19 @@ def _import_prepared_user_skill(
             errors=[f"Manifest parse error: {exc}"],
         )
 
-    size_errors = validate_package_size(source_dir)
-    if size_errors:
+    package_errors = validate_package_paths(source_dir) + validate_package_size(source_dir)
+    if package_errors:
+        error_code = (
+            "UNSAFE_PACKAGE_PATH"
+            if any("symbolic link" in error or "escapes root" in error for error in package_errors)
+            else "PACKAGE_LIMIT_EXCEEDED"
+        )
         return _failure_result(
-            error_code="PACKAGE_LIMIT_EXCEEDED",
+            error_code=error_code,
             skill_id=manifest.id,
             manifest=manifest,
             origin=origin,
-            errors=size_errors,
+            errors=package_errors,
         )
 
     if manifest.has_high_risk():
@@ -333,6 +548,8 @@ def _import_prepared_user_skill(
 
     managed_root.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source_dir, target_dir)
+    if normalized_content is not None:
+        (target_dir / "SKILL.md").write_text(normalized_content, encoding="utf-8")
 
     installed_at = datetime.now(timezone.utc).isoformat()
     meta = SkillInstallMetadata(
@@ -407,7 +624,13 @@ def import_user_skill(
         lowered = message.lower()
         if "valid zip archive" in lowered:
             error_code = "INVALID_ZIP_ARCHIVE"
-        elif "path traversal" in lowered or "absolute path entry" in lowered or "duplicate entry" in lowered or "encrypted archive entry" in lowered:
+        elif (
+            "path traversal" in lowered
+            or "absolute path entry" in lowered
+            or "duplicate entry" in lowered
+            or "encrypted archive entry" in lowered
+            or "symbolic link entry" in lowered
+        ):
             error_code = "UNSAFE_ARCHIVE_ENTRY"
         elif "skilL.md not found".lower() in lowered:
             error_code = "MISSING_SKILL_MD"

@@ -1,3 +1,6 @@
+import type { PdfBboxUnit } from '@/lib/pdfAnchor';
+import type { GraphPayloadV0 } from '@/components/graph/payloadToRf';
+
 export type WritingActionScope = 'selection' | 'section' | 'full_draft';
 export type OutputMode = 'latex' | 'markdown' | 'plain';
 
@@ -24,6 +27,8 @@ export interface EvidenceReference {
   label?: string;
   score?: number;
   page?: number | string;
+  bbox?: number[] | null;
+  bbox_unit?: PdfBboxUnit | null;
   source?: string;
   source_label?: string;
   source_labels?: string[];
@@ -107,6 +112,8 @@ export interface SparkEvidenceRef {
   material_id: string;
   page?: number | null;
   chunk_id?: string | null;
+  bbox?: number[] | null;
+  bbox_unit?: PdfBboxUnit | null;
   text?: string;
   score?: number | null;
 }
@@ -120,6 +127,8 @@ export interface InspirationSpark {
   related_point_ids: string[];
   actionable: boolean;
   analysis_chain?: AnalysisChain | null;
+  fincot_chain?: AnalysisChain | null;
+  frame?: 'auto' | 'irac' | 'fincot' | null;
   confidence_reason?: string;
   temporal_sensitivity?: number;
   /** Per-spark anchored evidence (Track B D-EVR-1..6). When the
@@ -127,6 +136,7 @@ export interface InspirationSpark {
    *  the frontend can render a clickable evidence pill. Empty for
    *  LLM-generated sparks (per D-EVR-4 never fabricate). */
   evidence_refs?: SparkEvidenceRef[];
+  causal_dag?: GraphPayloadV0 | null;
 }
 
 export interface ContinuationContext {

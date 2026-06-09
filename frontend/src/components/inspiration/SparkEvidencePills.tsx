@@ -15,7 +15,7 @@ interface SparkEvidencePillsProps {
 }
 
 /**
- * Spark-specific wrapper around the canonical `EvidencePill` (Slice 2).
+ * Spark-specific wrapper around the canonical `EvidencePill`.
  *
  * Kept as a named export because the call sites (Inspiration page,
  * Dialog page inspiration-mode panel, Writing/InspirationPanel) all
@@ -42,6 +42,8 @@ export function SparkEvidencePills({ refs, projectId, className }: SparkEvidence
             material_id: ref.material_id ?? null,
             chunk_id: ref.chunk_id ?? null,
             page: ref.page ?? null,
+            bbox: ref.bbox ?? null,
+            bbox_unit: ref.bbox_unit ?? null,
             text: ref.text ?? null,
           }}
           projectId={projectId ?? null}

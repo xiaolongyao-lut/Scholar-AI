@@ -32,14 +32,22 @@ Run lifecycle:
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+from project_paths import runtime_state_path
 
 # Defaults can be overridden via env if needed; conservative for desktop use.
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h
 DEFAULT_CAPACITY = 100
+DEFAULT_HISTORY_CAP = 100
+DEFAULT_ARCHIVE_CAPACITY = 100
+STORE_VERSION = 1
 
 
 class DiscussionTaskStoreError(Exception):
@@ -66,6 +74,7 @@ class _StoreEntry:
     # Event log so a resuming consumer can replay missed events from index N.
     # Each entry is the raw event dict as emitted to the SSE stream.
     event_log: list[dict[str, Any]] = field(default_factory=list)
+    event_log_start_index: int = 0
 
 
 class DiscussionTaskStore:
@@ -76,11 +85,27 @@ class DiscussionTaskStore:
         *,
         ttl_seconds: float = DEFAULT_TTL_SECONDS,
         capacity: int = DEFAULT_CAPACITY,
+        history_cap: int = DEFAULT_HISTORY_CAP,
+        archive_capacity: int = DEFAULT_ARCHIVE_CAPACITY,
+        persistence_path: Path | None = None,
     ) -> None:
+        if ttl_seconds <= 0:
+            raise ValueError("ttl_seconds must be positive")
+        if capacity <= 0:
+            raise ValueError("capacity must be positive")
+        if history_cap <= 0:
+            raise ValueError("history_cap must be positive")
+        if archive_capacity <= 0:
+            raise ValueError("archive_capacity must be positive")
         self._ttl = ttl_seconds
         self._capacity = capacity
+        self._history_cap = history_cap
+        self._archive_capacity = archive_capacity
+        self._persistence_path = persistence_path
         self._lock = threading.RLock()
         self._entries: dict[str, _StoreEntry] = {}
+        self._archived_entries: list[dict[str, Any]] = []
+        self._load_persisted_state()
 
     # ---------------------------------------------------------------------
     # Public API
@@ -91,9 +116,11 @@ class DiscussionTaskStore:
         with self._lock:
             self._sweep_locked()
             if len(self._entries) >= self._capacity:
-                raise DiscussionTaskStoreFull(
-                    f"discussion task store at capacity ({self._capacity})"
-                )
+                self._archive_oldest_terminal_locked()
+                if len(self._entries) >= self._capacity:
+                    raise DiscussionTaskStoreFull(
+                        f"discussion task store at capacity ({self._capacity})"
+                    )
             if run_id in self._entries:
                 raise DiscussionTaskStoreError(f"run_id already registered: {run_id}")
             now = time.time()
@@ -104,6 +131,7 @@ class DiscussionTaskStore:
                 updated_at=now,
                 config=config,
             )
+            self._persist_locked()
 
     def append_event(self, run_id: str, event: dict[str, Any]) -> None:
         """Record a raw event for replay AND apply derived state.
@@ -116,6 +144,7 @@ class DiscussionTaskStore:
             if entry is None:
                 return
             entry.event_log.append(event)
+            self._trim_event_log_locked(entry)
             entry.updated_at = time.time()
             kind = event.get("event")
             if kind == "started":
@@ -131,6 +160,7 @@ class DiscussionTaskStore:
                 trace = event.get("trace")
                 if isinstance(trace, dict):
                     entry.live_traces.append(trace)
+                    self._trim_live_traces_locked(entry)
                 turn_idx = event.get("turn_index")
                 if isinstance(turn_idx, int) and turn_idx > entry.current_turn_index:
                     entry.current_turn_index = turn_idx
@@ -152,6 +182,7 @@ class DiscussionTaskStore:
                 err = event.get("error")
                 if isinstance(err, str):
                     entry.error = err
+            self._persist_locked()
 
     def mark_terminal(self, run_id: str, state: str, error: str | None = None) -> None:
         """Force terminal state (e.g. on orchestrator exception that bypassed
@@ -167,6 +198,7 @@ class DiscussionTaskStore:
             entry.updated_at = time.time()
             if error and not entry.error:
                 entry.error = error
+            self._persist_locked()
 
     def get(self, run_id: str) -> dict[str, Any] | None:
         """Return a snapshot dict for the run, or None if absent / expired."""
@@ -177,6 +209,21 @@ class DiscussionTaskStore:
                 return None
             return self._snapshot(entry)
 
+    def get_any(self, run_id: str) -> dict[str, Any] | None:
+        """Return a run snapshot from active history or archive."""
+        if not run_id.strip():
+            raise ValueError("run_id must not be empty")
+        with self._lock:
+            self._sweep_locked()
+            entry = self._entries.get(run_id)
+            if entry is not None:
+                return self._snapshot(entry)
+            archived = next(
+                (dict(item) for item in self._archived_entries if item.get("run_id") == run_id),
+                None,
+            )
+            return archived
+
     def get_event_log(self, run_id: str, from_index: int = 0) -> list[dict[str, Any]]:
         """Return events ≥ from_index for replay; empty if absent / out of range."""
         with self._lock:
@@ -185,7 +232,10 @@ class DiscussionTaskStore:
                 return []
             if from_index <= 0:
                 return list(entry.event_log)
-            return list(entry.event_log[from_index:])
+            if from_index <= entry.event_log_start_index:
+                return list(entry.event_log)
+            offset = from_index - entry.event_log_start_index
+            return list(entry.event_log[offset:])
 
     def list_active(self) -> list[dict[str, Any]]:
         """Return snapshots of non-terminal runs (debugging / metrics)."""
@@ -197,13 +247,96 @@ class DiscussionTaskStore:
                 if e.state in ("pending", "running")
             ]
 
-    def delete(self, run_id: str) -> None:
+    def list_runs(self, *, include_archived: bool = False) -> list[dict[str, Any]]:
+        """Return run snapshots ordered by newest update time."""
         with self._lock:
-            self._entries.pop(run_id, None)
+            self._sweep_locked()
+            snapshots = [self._snapshot(entry) for entry in self._entries.values()]
+            if include_archived:
+                snapshots.extend(dict(entry) for entry in self._archived_entries)
+            snapshots.sort(
+                key=lambda item: (
+                    float(item.get("updated_at", 0.0) or 0.0),
+                    str(item.get("run_id", "")),
+                ),
+                reverse=True,
+            )
+            return snapshots
+
+    def list_archived(self) -> list[dict[str, Any]]:
+        """Return snapshots moved out by D11 capacity archiving."""
+        with self._lock:
+            return list(self._archived_entries)
+
+    def archive(self, run_id: str) -> dict[str, Any] | None:
+        """Move a run snapshot into the read-only archive."""
+        with self._lock:
+            entry = self._entries.pop(run_id, None)
+            if entry is None:
+                return None
+            archived = self._snapshot(entry)
+            archived["archived_at"] = time.time()
+            archived["archived"] = True
+            self._archived_entries.append(archived)
+            overflow = len(self._archived_entries) - self._archive_capacity
+            if overflow > 0:
+                del self._archived_entries[:overflow]
+            self._persist_locked()
+            return archived
+
+    def restore(self, run_id: str) -> dict[str, Any] | None:
+        """Move an archived snapshot back into active discussion history."""
+        if not run_id.strip():
+            raise ValueError("run_id must not be empty")
+        with self._lock:
+            self._sweep_locked()
+            existing = self._entries.get(run_id)
+            if existing is not None:
+                return self._snapshot(existing)
+            archived_index = next(
+                (
+                    index
+                    for index, item in enumerate(self._archived_entries)
+                    if item.get("run_id") == run_id
+                ),
+                None,
+            )
+            if archived_index is None:
+                return None
+            if len(self._entries) >= self._capacity:
+                self._archive_oldest_terminal_locked()
+                if len(self._entries) >= self._capacity:
+                    raise DiscussionTaskStoreFull(
+                        f"discussion task store full: capacity={self._capacity}"
+                    )
+            archived = dict(self._archived_entries.pop(archived_index))
+            archived.pop("archived", None)
+            archived.pop("archived_at", None)
+            archived["updated_at"] = time.time()
+            entry = self._entry_from_raw(archived)
+            if entry is None:
+                return None
+            self._entries[run_id] = entry
+            self._persist_locked()
+            return self._snapshot(entry)
+
+    def delete(self, run_id: str, *, include_archived: bool = True) -> bool:
+        with self._lock:
+            removed = self._entries.pop(run_id, None) is not None
+            if include_archived:
+                before = len(self._archived_entries)
+                self._archived_entries = [
+                    entry for entry in self._archived_entries if entry.get("run_id") != run_id
+                ]
+                removed = removed or len(self._archived_entries) != before
+            self._persist_locked()
+            return removed
 
     def clear(self) -> None:
         with self._lock:
             self._entries.clear()
+            self._archived_entries.clear()
+            self._persist_locked()
 
     # ---------------------------------------------------------------------
     # Internal
@@ -217,9 +350,138 @@ class DiscussionTaskStore:
         expired = [rid for rid, e in self._entries.items() if e.updated_at < cutoff]
         for rid in expired:
             del self._entries[rid]
+        if expired:
+            self._persist_locked()
+
+    def _trim_event_log_locked(self, entry: _StoreEntry) -> None:
+        """Keep newest replay events within the configured D10 history cap."""
+        overflow = len(entry.event_log) - self._history_cap
+        if overflow <= 0:
+            return
+        del entry.event_log[:overflow]
+        entry.event_log_start_index += overflow
+
+    def _trim_live_traces_locked(self, entry: _StoreEntry) -> None:
+        """Keep newest live traces within the configured D10 history cap."""
+        overflow = len(entry.live_traces) - self._history_cap
+        if overflow > 0:
+            del entry.live_traces[:overflow]
+
+    def _archive_oldest_terminal_locked(self) -> None:
+        """Move the oldest terminal run into the D11 archive when capacity is full."""
+        terminal_entries = [
+            entry
+            for entry in self._entries.values()
+            if entry.state in ("completed", "cancelled", "error")
+        ]
+        if not terminal_entries:
+            return
+        oldest = min(terminal_entries, key=lambda entry: (entry.updated_at, entry.created_at, entry.run_id))
+        archived = self._snapshot(oldest)
+        archived["archived_at"] = time.time()
+        archived["archived"] = True
+        self._archived_entries.append(archived)
+        overflow = len(self._archived_entries) - self._archive_capacity
+        if overflow > 0:
+            del self._archived_entries[:overflow]
+        self._entries.pop(oldest.run_id, None)
+
+    def _load_persisted_state(self) -> None:
+        """Load D17 persisted store state from disk when configured."""
+        path = self._persistence_path
+        if path is None or not path.exists():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+
+        raw_entries = payload.get("entries")
+        if isinstance(raw_entries, list):
+            for raw_entry in raw_entries:
+                entry = self._entry_from_raw(raw_entry)
+                if entry is not None:
+                    self._entries[entry.run_id] = entry
+
+        raw_archive = payload.get("archived_entries")
+        if isinstance(raw_archive, list):
+            self._archived_entries = [item for item in raw_archive if isinstance(item, dict)][-self._archive_capacity:]
+        self._sweep_locked()
+
+    def _persist_locked(self) -> None:
+        """Persist D17 store state with tmp+replace semantics when configured."""
+        path = self._persistence_path
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": STORE_VERSION,
+            "entries": [self._entry_to_raw(entry) for entry in self._entries.values()],
+            "archived_entries": list(self._archived_entries),
+        }
+        tmp_path = path.with_suffix(".json.tmp")
+        tmp_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(tmp_path, path)
 
     @staticmethod
-    def _snapshot(entry: _StoreEntry) -> dict[str, Any]:
+    def _entry_to_raw(entry: _StoreEntry) -> dict[str, Any]:
+        """Serialize one task-store entry for D17 runtime persistence."""
+        return {
+            "run_id": entry.run_id,
+            "state": entry.state,
+            "created_at": entry.created_at,
+            "updated_at": entry.updated_at,
+            "config": entry.config,
+            "current_stage": entry.current_stage,
+            "current_turn_index": entry.current_turn_index,
+            "live_traces": list(entry.live_traces),
+            "synthesis": entry.synthesis,
+            "final_result": entry.final_result,
+            "error": entry.error,
+            "event_log": list(entry.event_log),
+            "event_log_start_index": entry.event_log_start_index,
+        }
+
+    @staticmethod
+    def _entry_from_raw(raw_entry: Any) -> _StoreEntry | None:
+        """Parse one persisted D17 entry, skipping malformed artifacts."""
+        if not isinstance(raw_entry, dict):
+            return None
+        run_id = raw_entry.get("run_id")
+        state = raw_entry.get("state")
+        created_at = raw_entry.get("created_at")
+        updated_at = raw_entry.get("updated_at")
+        if not isinstance(run_id, str) or not run_id.strip():
+            return None
+        if state not in ("pending", "running", "completed", "cancelled", "error"):
+            return None
+        if not isinstance(created_at, (int, float)) or not isinstance(updated_at, (int, float)):
+            return None
+        config = raw_entry.get("config") if isinstance(raw_entry.get("config"), dict) else None
+        live_traces = raw_entry.get("live_traces") if isinstance(raw_entry.get("live_traces"), list) else []
+        event_log = raw_entry.get("event_log") if isinstance(raw_entry.get("event_log"), list) else []
+        return _StoreEntry(
+            run_id=run_id,
+            state=state,
+            created_at=float(created_at),
+            updated_at=float(updated_at),
+            config=config,
+            current_stage=raw_entry.get("current_stage") if isinstance(raw_entry.get("current_stage"), str) else None,
+            current_turn_index=raw_entry.get("current_turn_index") if isinstance(raw_entry.get("current_turn_index"), int) else 0,
+            live_traces=[item for item in live_traces if isinstance(item, dict)],
+            synthesis=raw_entry.get("synthesis") if isinstance(raw_entry.get("synthesis"), dict) else None,
+            final_result=raw_entry.get("final_result") if isinstance(raw_entry.get("final_result"), dict) else None,
+            error=raw_entry.get("error") if isinstance(raw_entry.get("error"), str) else None,
+            event_log=[item for item in event_log if isinstance(item, dict)],
+            event_log_start_index=raw_entry.get("event_log_start_index") if isinstance(raw_entry.get("event_log_start_index"), int) else 0,
+        )
+
+    def _snapshot(self, entry: _StoreEntry) -> dict[str, Any]:
         return {
             "run_id": entry.run_id,
             "state": entry.state,
@@ -231,7 +493,11 @@ class DiscussionTaskStore:
             "synthesis": entry.synthesis,
             "final_result": entry.final_result,
             "error": entry.error,
+            "config": entry.config,
             "event_log_length": len(entry.event_log),
+            "event_log_start_index": entry.event_log_start_index,
+            "history_cap": self._history_cap,
+            "archived": False,
         }
 
 
@@ -244,12 +510,17 @@ _singleton: DiscussionTaskStore | None = None
 _singleton_lock = threading.Lock()
 
 
+def discussion_task_store_path() -> Path:
+    """Return the D17 durable task-store path under runtime state."""
+    return runtime_state_path("discussion", "task_store.json")
+
+
 def get_discussion_task_store() -> DiscussionTaskStore:
     global _singleton
     if _singleton is None:
         with _singleton_lock:
             if _singleton is None:
-                _singleton = DiscussionTaskStore()
+                _singleton = DiscussionTaskStore(persistence_path=discussion_task_store_path())
     return _singleton
 
 

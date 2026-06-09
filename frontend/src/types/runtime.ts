@@ -1,5 +1,5 @@
 /**
- * WritingRuntime Protocol Types (Phase 2)
+ * Writing runtime protocol types.
  *
  * The core transport models are generated from the backend OpenAPI schema
  * so frontend runtime calls stay aligned with the adapter contract.
@@ -26,7 +26,11 @@ export type JobKind =
   | 'skill_action'
   | 'pipeline_run'
   | 'approval'
-  | 'artifact_export';
+  | 'artifact_export'
+  | 'smart_read'
+  | 'discussion'
+  | 'ai_review'
+  | 'figure_load';
 
 export type JobStatus =
   | 'created'
@@ -40,11 +44,20 @@ export type JobStatus =
   | 'failed'
   | 'cancelled';
 
-export type WritingJob = components["schemas"]["JobPayload"];
+type RuntimeMetadata = Record<string, unknown>;
 
-export type CreateJobRequest = components["schemas"]["CreateJobRequest"];
+export type WritingJob = components["schemas"]["JobPayload"] & {
+  tags?: string[];
+  metadata?: RuntimeMetadata;
+};
 
-export type JobStatusDetail = components["schemas"]["JobStatusPayload"];
+export type CreateJobRequest = components["schemas"]["CreateJobRequest"] & {
+  metadata?: RuntimeMetadata;
+};
+
+export type JobStatusDetail = components["schemas"]["JobStatusPayload"] & {
+  metadata?: RuntimeMetadata;
+};
 
 // ==========================================================================
 // Event Types
@@ -67,11 +80,32 @@ export type EventType =
   | 'job_failed'
   | 'job_cancelled';
 
-export type WritingEvent = components["schemas"]["EventPayload"];
+export type WritingEvent = components["schemas"]["EventPayload"] & {
+  sequence: number;
+  metadata?: RuntimeMetadata;
+};
 
 export interface JobEventQueryOptions {
   sinceTimestamp?: string | null;
   afterEventId?: string | null;
+  afterSequence?: number | null;
+  limit?: number;
+}
+
+export interface JobEventSnapshot {
+  job_id: string;
+  session_id: string;
+  job: WritingJob;
+  status: JobStatusDetail;
+  events: WritingEvent[];
+  next_after_sequence?: number | null;
+  latest_sequence: number;
+  has_more: boolean;
+}
+
+export interface ListJobsQuery {
+  sessionId?: string | null;
+  status?: JobStatus | null;
   limit?: number;
 }
 
@@ -119,9 +153,11 @@ export interface WritingRuntimeClient {
   
   // Job management
   createJob(request: CreateJobRequest): Promise<WritingJob>;
+  listJobs(query?: ListJobsQuery): Promise<WritingJob[]>;
   getJob(jobId: string): Promise<WritingJob>;
   getJobStatus(jobId: string): Promise<JobStatusDetail>;
   getJobEvents(jobId: string, options?: JobEventQueryOptions): Promise<WritingEvent[]>;
+  getJobEventSnapshot(jobId: string, options?: JobEventQueryOptions): Promise<JobEventSnapshot>;
   getJobArtifacts(jobId: string): Promise<WritingArtifact[]>;
   
   // Job lifecycle control
@@ -129,6 +165,7 @@ export interface WritingRuntimeClient {
   pauseJob(jobId: string): Promise<{ job_id: string; status: JobStatus }>;
   resumeJob(jobId: string): Promise<{ job_id: string; status: JobStatus }>;
   cancelJob(jobId: string): Promise<{ job_id: string; status: JobStatus }>;
+  deleteJob(jobId: string): Promise<{ job_id: string; deleted: boolean }>;
   
   // Event subscription
   subscribeToEvents(
@@ -138,15 +175,12 @@ export interface WritingRuntimeClient {
 }
 
 // ==========================================================================
-// Session Persistence (U2 / conversation-persistence-mvp)
+// Session Persistence
 // ==========================================================================
 //
 // These types mirror `models/runtime.py` Pydantic classes and stay in lockstep
-// with the backend contract until `frontend/src/generated/openapi.ts` is
-// regenerated. When that happens, replace hand-written types with:
-//   export type TimelineEvent = components["schemas"]["TimelineItemPayload"];
-//   ... etc.
-// Plan reference: docs/superpowers/plans/2026-04-20-conversation-persistence-mvp.md §S-3
+// with the backend contract until `frontend/src/generated/openapi.ts` covers
+// the session timeline schemas.
 
 /** Session summary used in list / drawer UI. */
 export interface SessionSummary {

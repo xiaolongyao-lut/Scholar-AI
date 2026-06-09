@@ -1,15 +1,15 @@
-"""MCP template installer (S3 / plan 2026-05-20 §A3).
+"""MCP template installer.
 
 Orchestrates scan → preview → install → probe → approval-advance, applying
-the Locked Revisions hard requirements:
+the local install safety contract:
 
-- **M5**: install request references launch candidate by content sha, not
-  index. Mismatched / stale sha → ``InstallCandidateMismatchError``.
-- **M6**: install record stores absolute cwd under
+- install request references launch candidate by content sha, not index.
+  Mismatched / stale sha → ``InstallCandidateMismatchError``.
+- install record stores absolute cwd under
   ``workspace_artifacts/mcp_installs/<install_id>/``. (For directory sources
   the cwd is the source dir itself — the install_id dir holds the install
   manifest sidecar for delete-time cleanup.)
-- **M7**: probing the package launches its process and would expose the
+- probing the package launches its process and would expose the
   bound credentials to the package code. Probe is GATED behind
   ``trust_to_probe`` — without it, server is created at ``registered`` only
   and never spawned.
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from credential_store import CredentialNotFoundError, RuntimeCredentialStore
+from extension_secret_policy import require_no_plaintext_secret_config
 from models.mcp import (
     McpApprovalState,
     McpProvenance,
@@ -67,8 +69,10 @@ logger = logging.getLogger("McpTemplateInstaller")
 INSTALL_RECORD_FILENAME = "install_record.json"
 """Per-install sidecar written into ``workspace_artifacts/mcp_installs/<id>/``
 with the absolute cwd, source_path, launch_candidate sha, and credential
-binding env names (no credential_ids; refs are in the MCP server config).
+binding env names (credential references stay in the MCP server config).
 Read by the installer at delete time to clean up the install dir."""
+
+_BARE_PYTHON_LAUNCHERS = frozenset({"python", "python.exe", "python3", "python3.exe", "py", "py.exe"})
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +104,10 @@ class InstallCredentialMissingError(InstallError):
 
 class InstallCredentialDisabledError(InstallError):
     code = "credential_disabled"
+
+
+class InstallPlaintextSecretConfigError(InstallError):
+    code = "plaintext_secret_config"
 
 
 class InstallTransportUnsupportedError(InstallError):
@@ -205,9 +213,9 @@ class McpTemplateInstaller:
         scan = self._lookup_scan(scan_id)
         candidate = self._lookup_candidate(scan, launch_candidate_sha)
 
-        # Only stdio is supported by the v1 installer. streamable_http
-        # packages are persisted but need a separate install flow (Phase
-        # 2+) because their "cwd" / sandbox semantics differ.
+        # Only stdio is supported by the current installer; streamable_http
+        # packages need a separate flow because their cwd / process semantics
+        # differ.
         if scan.transport != "stdio":
             raise InstallTransportUnsupportedError(
                 f"v1 installer supports stdio only; scan transport={scan.transport!r}"
@@ -215,8 +223,9 @@ class McpTemplateInstaller:
 
         # Validate credentials before creating any state.
         self._validate_credential_bindings(credential_bindings)
+        self._validate_plain_config_values(config_values)
 
-        # Allocate install directory (M6). For directory sources we keep
+        # Allocate install directory. For directory sources we keep
         # the source dir as the cwd and store an install_record sidecar
         # so delete-time cleanup can remove the marker without touching
         # the user's package.
@@ -248,10 +257,12 @@ class McpTemplateInstaller:
                 f"launch cwd does not exist or is not a directory: {candidate.cwd!r}"
             )
 
-        # Build the server config. env carries non-secret values; env_refs
-        # carries credential_id references (single source of truth, M3).
+        resolved_command = self._resolve_launch_command(candidate.command)
+
+        # Build the server config. env carries non-sensitive values; saved
+        # credential bindings are kept as references in the server config.
         stdio = McpStdioConfig(
-            command=candidate.command,
+            command=resolved_command,
             args=list(candidate.args),
             cwd=str(absolute_cwd),
             env=dict(config_values),
@@ -286,6 +297,8 @@ class McpTemplateInstaller:
             source_path=str(source_path),
             absolute_cwd=str(absolute_cwd),
             launch_candidate_sha=launch_candidate_sha,
+            original_command=candidate.command,
+            resolved_command=resolved_command,
             credential_env_names=sorted(credential_bindings.keys()),
         )
 
@@ -293,7 +306,7 @@ class McpTemplateInstaller:
         # immediately show this server in its "used by" list.
         self._rebuild_binding_index()
 
-        # M7: probing spawns the package and exposes bound secrets.
+        # Probing spawns the package and exposes bound credential material.
         # Only run when the user explicitly trusted the package.
         probe = InstallProbeResult(status="skipped_untrusted")
         if trust_to_probe:
@@ -360,8 +373,8 @@ class McpTemplateInstaller:
                     child.rmdir()
                 except OSError as exc:
                     logger.warning(
-                        "install_dir_cleanup_failed: server_id=%s dir=%s err=%s",
-                        server_id, child, exc,
+                        "install_dir_cleanup_failed: cleanup_error_type=%s",
+                        exc.__class__.__name__,
                     )
                     return False
                 self._rebuild_binding_index()
@@ -403,14 +416,20 @@ class McpTemplateInstaller:
                 cred = self._credentials.get_internal(cred_id)
             except CredentialNotFoundError as exc:
                 raise InstallCredentialMissingError(
-                    f"credential binding for {env_name!r} references "
-                    f"unknown credential_id {cred_id!r}"
+                    "credential binding references an unknown saved credential"
                 ) from exc
             if not cred.enabled:
                 raise InstallCredentialDisabledError(
-                    f"credential binding for {env_name!r} references "
-                    f"disabled credential {cred_id!r}"
+                    "credential binding references a disabled saved credential"
                 )
+
+    @staticmethod
+    def _validate_plain_config_values(values: dict[str, str]) -> None:
+        """Reject credential-shaped values before runtime state is created."""
+        try:
+            require_no_plaintext_secret_config(values)
+        except ValueError as exc:
+            raise InstallPlaintextSecretConfigError(str(exc)) from exc
 
     async def _probe(self, server_id: str) -> InstallProbeResult:
         config = self._servers.get_internal(server_id)
@@ -418,12 +437,13 @@ class McpTemplateInstaller:
             tools = await self._catalog.get_tools(config, refresh=True)
         except McpStreamableHttpDisabledError as exc:
             return InstallProbeResult(
-                status="probe_failed", reason=f"streamable_http_disabled: {exc}"
+                status="probe_failed",
+                reason="MCP streamable HTTP execution is disabled.",
             )
         except (McpServerLaunchError, McpClientManagerError) as exc:
             return InstallProbeResult(
                 status="probe_failed",
-                reason=f"{type(exc).__name__}: {exc}",
+                reason="MCP service probe failed. Check the service configuration.",
             )
         return InstallProbeResult(
             status="ok",
@@ -444,6 +464,8 @@ class McpTemplateInstaller:
         source_path: str,
         absolute_cwd: str,
         launch_candidate_sha: str,
+        original_command: str,
+        resolved_command: str,
         credential_env_names: list[str],
     ) -> None:
         record = {
@@ -454,6 +476,8 @@ class McpTemplateInstaller:
             "source_path": source_path,
             "absolute_cwd": absolute_cwd,
             "launch_candidate_sha": launch_candidate_sha,
+            "original_command": original_command,
+            "resolved_command": resolved_command,
             "credential_env_names": credential_env_names,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
@@ -468,9 +492,9 @@ class McpTemplateInstaller:
         Best-effort: failure is logged at warning, never raised, so the
         audit layer cannot break installs (mirror of audit.append).
 
-        Never logs credential_id values or raw secrets. Records env NAMES
-        only so an operator can later see "this install bound env X" but
-        not which credential answered.
+        Never logs saved credential identifiers or credential material.
+        Records env names only so an operator can later see which settings
+        were bound without revealing the saved credential that answered.
         """
         try:
             from mcp_runtime import audit as mcp_audit
@@ -487,6 +511,30 @@ class McpTemplateInstaller:
                 fh.write(line + "\n")
         except Exception as exc:  # noqa: BLE001
             logger.warning("mcp_install_audit_failed: %s", exc)
+
+    @staticmethod
+    def _resolve_launch_command(command: str) -> str:
+        """Resolve bare Python launchers to the active interpreter path.
+
+        Why:
+            A package manifest may reasonably say `python -m package.server`,
+            but persisting a bare executable lets PATH choose a different
+            interpreter at probe time. Absolute commands and non-Python
+            launchers are preserved for transparency.
+        """
+        cleaned = str(command or "").strip()
+        if not cleaned:
+            raise InstallTransportUnsupportedError("launch command must be non-empty")
+        if "/" in cleaned or "\\" in cleaned:
+            return cleaned
+        if cleaned.lower() not in _BARE_PYTHON_LAUNCHERS:
+            return cleaned
+        resolved = str(sys.executable or "").strip()
+        if not resolved:
+            raise InstallTransportUnsupportedError(
+                "current Python interpreter could not be resolved"
+            )
+        return resolved
 
     @staticmethod
     def _generate_install_id() -> str:
@@ -528,6 +576,7 @@ __all__ = [
     "InstallCandidateMismatchError",
     "InstallCredentialDisabledError",
     "InstallCredentialMissingError",
+    "InstallPlaintextSecretConfigError",
     "InstallError",
     "InstallProbeResult",
     "InstallResult",

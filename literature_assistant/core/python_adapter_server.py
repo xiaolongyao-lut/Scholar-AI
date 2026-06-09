@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 import asyncio
+import hmac
 import logging
+import mimetypes
 import os
+import secrets
 import sys
 import time
 import re
@@ -22,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
+from starlette.routing import Match
 try:
     import uvicorn
 except ImportError:
@@ -79,7 +83,71 @@ from recovery_telemetry import get_recovery_telemetry
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 _LOG_LEVEL_NAME = os.environ.get("LITASSIST_LOG_LEVEL", "INFO").upper()
 _LOG_LEVEL = getattr(logging, _LOG_LEVEL_NAME, logging.INFO)
+
+_SENSITIVE_LOG_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"(?i)\b((?:authorization|x-api-key|[A-Za-z0-9_.-]*"
+            r"(?:api[_-]?key|token|secret|password|passwd)[A-Za-z0-9_.-]*)"
+            r"\s*[:=]\s*)(?:Bearer\s+)?[^\s,;]+"
+        ),
+        r"\1***REDACTED***",
+    ),
+    (
+        re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-+/=]{8,}"),
+        "Bearer ***REDACTED***",
+    ),
+    (
+        re.compile(r"\bsk-[A-Za-z0-9][A-Za-z0-9_-]{10,}\b"),
+        "sk-***REDACTED***",
+    ),
+)
+
+
+def _redact_sensitive_log_text(value: object) -> str:
+    """Return log text with credential-shaped values removed.
+
+    Args:
+        value: Any object being formatted into a log record.
+
+    Returns:
+        A string safe for local rotating logs and terminal output.
+    """
+
+    text = str(value)
+    for pattern, replacement in _SENSITIVE_LOG_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+class SensitiveDataFilter(logging.Filter):
+    """Filter log records before they reach console or disk handlers.
+
+    Why:
+        Backend errors may include provider headers, env-style assignments, or
+        exception strings. Logs are durable runtime artifacts, so record
+        messages are normalized before any handler writes them.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = _redact_sensitive_log_text(record.getMessage())
+        record.args = ()
+        return True
+
+
+def _install_sensitive_log_filter() -> None:
+    """Install credential redaction on the root logger and current handlers."""
+
+    root_logger = logging.getLogger()
+    targets: list[Any] = [root_logger, *root_logger.handlers]
+    for target in targets:
+        filters = getattr(target, "filters", [])
+        if not any(isinstance(existing, SensitiveDataFilter) for existing in filters):
+            target.addFilter(SensitiveDataFilter())
+
+
 logging.basicConfig(level=_LOG_LEVEL, format=_LOG_FORMAT)
+_install_sensitive_log_filter()
 
 if os.environ.get("LITASSIST_DISABLE_FILE_LOG") != "1":
     from logging.handlers import RotatingFileHandler
@@ -100,12 +168,21 @@ if os.environ.get("LITASSIST_DISABLE_FILE_LOG") != "1":
             for h in _root_logger.handlers
         ):
             _root_logger.addHandler(_file_handler)
+        _install_sensitive_log_filter()
     except OSError as _log_exc:
         logging.getLogger(__name__).warning(
             "Disk log disabled — could not create log file: %s", _log_exc
         )
 
 logger = logging.getLogger("PipelineAdapter")
+
+mimetypes.add_type("text/javascript", ".mjs")
+
+_CAPABILITY_AUTH_ENV = "LITASSIST_API_CAPABILITY_AUTH"
+_CAPABILITY_TOKEN_ENV = "LITASSIST_API_CAPABILITY_TOKEN"
+LOCAL_API_CAPABILITY_HEADER = "X-LitAssist-Capability"
+_LOCAL_API_CAPABILITY_TOKEN = os.environ.get(_CAPABILITY_TOKEN_ENV, "").strip() or secrets.token_urlsafe(32)
+_LOCAL_API_CAPABILITY_FILE = runtime_state_path("api-capability.json")
 
 
 def _get_allowed_origins() -> list[str]:
@@ -117,7 +194,20 @@ def _get_allowed_origins() -> list[str]:
         answer preflight requests or the browser will block the workspace.
     """
     raw_origins = os.environ.get("FRONTEND_ALLOW_ORIGINS", "").strip()
-    if not raw_origins:
+    return _resolve_allowed_origins(raw_origins)
+
+
+def _resolve_allowed_origins(raw_origins: str) -> list[str]:
+    """Return explicit CORS origins for the local browser surface.
+
+    Why:
+        CORS is not authentication. Wildcard browser origins are only allowed
+        for deliberate debugging because mutating local APIs are protected by a
+        separate capability token.
+    """
+
+    normalized_origins = str(raw_origins or "").strip()
+    if not normalized_origins:
         return [
             "http://127.0.0.1:3000",
             "http://localhost:3000",
@@ -127,10 +217,175 @@ def _get_allowed_origins() -> list[str]:
             "http://localhost:5174",
         ]
 
-    if raw_origins == "*":
-        return ["*"]
+    if normalized_origins == "*":
+        if os.environ.get("LITASSIST_ALLOW_WILDCARD_CORS", "").strip() == "1":
+            logger.warning("Wildcard frontend CORS enabled by explicit debug override.")
+            return ["*"]
+        logger.warning("Ignoring FRONTEND_ALLOW_ORIGINS='*'; set LITASSIST_ALLOW_WILDCARD_CORS=1 for debug only.")
+        return _resolve_allowed_origins("")
 
-    return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return [origin.strip() for origin in normalized_origins.split(",") if origin.strip()]
+
+
+def _local_api_capability_auth_enabled() -> bool:
+    """Return whether local API capability checks are enabled."""
+
+    raw_value = os.environ.get(_CAPABILITY_AUTH_ENV, "1").strip().lower()
+    return raw_value not in {"0", "false", "off", "no", "disabled"}
+
+
+def get_local_api_capability_token() -> str:
+    """Return the current process-local API capability token."""
+
+    return _LOCAL_API_CAPABILITY_TOKEN
+
+
+def _write_local_api_capability_file() -> None:
+    """Persist the runtime-only capability token for trusted local launchers."""
+
+    import tempfile
+    from datetime import datetime, timezone
+
+    target = _LOCAL_API_CAPABILITY_FILE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "header": LOCAL_API_CAPABILITY_HEADER,
+        "token": get_local_api_capability_token(),
+        "pid": os.getpid(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=str(target.parent),
+        prefix=target.name + ".", suffix=".tmp", delete=False,
+    ) as fh:
+        import json
+        json.dump(payload, fh)
+        tmp = Path(fh.name)
+    os.replace(tmp, target)
+
+
+def _delete_local_api_capability_file() -> None:
+    """Remove the runtime-only capability token file on clean shutdown."""
+
+    try:
+        if _LOCAL_API_CAPABILITY_FILE.exists():
+            _LOCAL_API_CAPABILITY_FILE.unlink()
+    except OSError:
+        pass
+
+
+def _request_capability_token(request: Request) -> str:
+    """Return the user-supplied local API capability token, if present."""
+
+    header_value = request.headers.get(LOCAL_API_CAPABILITY_HEADER, "")
+    return str(header_value or "").strip()
+
+
+def _has_valid_local_api_capability(request: Request) -> bool:
+    """Return true when request carries the process-local capability token."""
+
+    supplied = _request_capability_token(request)
+    expected = get_local_api_capability_token()
+    if not supplied or not expected:
+        return False
+    return hmac.compare_digest(supplied, expected)
+
+
+def _is_frontend_static_path(path: str) -> bool:
+    """Return whether a path serves frontend shell/assets instead of API data."""
+
+    if path in {"", "/", "/index.html", "/favicon.ico"}:
+        return True
+    return path.startswith("/assets/")
+
+
+def _is_documentation_path(path: str) -> bool:
+    """Return whether a path serves generated API documentation.
+
+    Note: In production, docs/openapi are disabled by default (FastAPI
+    docs_url=None). This function still exists for defense-in-depth and
+    to handle the explicit LITASSIST_ENABLE_DOCS=1 debug case.
+    """
+
+    return path in {"/openapi.json", "/docs", "/docs/", "/redoc", "/redoc/"} or path.startswith("/docs/")
+
+
+def _route_path_format(route: Any) -> str:
+    """Return the route pattern used to separate backend routes from SPA routes."""
+
+    return str(getattr(route, "path_format", getattr(route, "path", "")) or "")
+
+
+def _is_capability_protected_route(route: Any) -> bool:
+    """Return whether a registered route represents backend behavior."""
+
+    path_format = _route_path_format(route)
+    if not path_format or path_format in {"/", "/{full_path}", "/{full_path:path}"}:
+        return False
+    if path_format.startswith("/assets") or path_format == "/health":
+        return False
+    if _is_documentation_path(path_format):
+        return False
+    return True
+
+
+def _matches_capability_protected_route(request: Request) -> bool:
+    """Return whether the incoming request maps to a real backend route.
+
+    Why:
+        Capability checks must fail closed for mounted APIs without relying on
+        a manually synchronized prefix list, while still allowing React Router
+        deep links to fall through to the frontend shell.
+    """
+
+    for route in request.app.routes:
+        if not _is_capability_protected_route(route):
+            continue
+        match_fn = getattr(route, "matches", None)
+        if match_fn is None:
+            continue
+        try:
+            match, _ = match_fn(request.scope)
+        except Exception:
+            continue
+        if match in {Match.FULL, Match.PARTIAL}:
+            return True
+    return False
+
+
+def _is_frontend_navigation_request(request: Request) -> bool:
+    """Return true for browser deep-link navigations served by the SPA shell."""
+
+    if request.method.upper() not in {"GET", "HEAD"}:
+        return False
+    return "text/html" in request.headers.get("accept", "").lower()
+
+
+def _is_capability_exempt_request(request: Request) -> bool:
+    """Return true for local routes intentionally reachable without a token."""
+
+    if request.method.upper() == "OPTIONS":
+        return True
+    path = request.url.path
+    if path == "/health" or _is_frontend_static_path(path) or _is_documentation_path(path):
+        return True
+    if _matches_capability_protected_route(request):
+        return False
+    return _is_frontend_navigation_request(request)
+
+
+def _capability_error_response() -> JSONResponse:
+    """Return a structured 403 without revealing capability material."""
+
+    return JSONResponse(
+        status_code=403,
+        content=ErrorResponse(
+            error=ErrorDetail(
+                code="LOCAL_API_CAPABILITY_REQUIRED",
+                message="缺少本地 API capability token",
+            )
+        ).model_dump(),
+    )
 
 
 def _stable_operation_id(route: Any) -> str:
@@ -201,15 +456,27 @@ async def _lifespan(app: FastAPI):
     except Exception as _port_exc:
         logger.warning("api_port_file write skipped: %s", _port_exc)
 
+    if _local_api_capability_auth_enabled():
+        try:
+            _write_local_api_capability_file()
+        except OSError as _capability_exc:
+            logger.warning("api_capability_file write skipped: %s", _capability_exc)
+
+    from evolution.scheduler import get_curator_scheduler
+    curator_scheduler = get_curator_scheduler()
+    curator_scheduler.start()
+
     try:
         yield
     finally:
+        await curator_scheduler.stop()
         try:
             _api_port_file = api_port_file_path()
             if _api_port_file.exists():
                 _api_port_file.unlink()
         except OSError:
             pass
+        _delete_local_api_capability_file()
 
 
 def _write_api_port_from_argv() -> None:
@@ -259,22 +526,51 @@ app = FastAPI(
     version="1.3.0",
     generate_unique_id_function=_stable_operation_id,
     openapi_tags=OPENAPI_TAGS,
+    separate_input_output_schemas=False,
     lifespan=_lifespan,
+    # Security: Disable OpenAPI/Docs in production unless explicitly enabled
+    docs_url="/docs" if os.environ.get("LITASSIST_ENABLE_DOCS") == "1" else None,
+    redoc_url="/redoc" if os.environ.get("LITASSIST_ENABLE_DOCS") == "1" else None,
+    openapi_url="/openapi.json" if os.environ.get("LITASSIST_ENABLE_DOCS") == "1" else None,
 )
 _allowed_origins = _get_allowed_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_origin_regex=r"^http://(127\.0\.0\.1|localhost):(3000|5[0-9]{3})$",
     allow_credentials="*" not in _allowed_origins,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-Id", LOCAL_API_CAPABILITY_HEADER],
 )
 
 
 # ---------------------------------------------------------------------------
 # Global Request Tracing Middleware (learned from open-webui X-Process-Time)
 # ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def local_api_capability_middleware(request: Request, call_next):
+    """Require a process-local token for backend API routes.
+
+    Why:
+        The app is local-first, but browser pages and same-user processes can
+        still drive localhost APIs. This boundary grants capability only to the
+        backend-served frontend shell or the trusted Vite proxy.
+    """
+
+    if (
+        _local_api_capability_auth_enabled()
+        and not _is_capability_exempt_request(request)
+        and not _has_valid_local_api_capability(request)
+    ):
+        logger.warning(
+            "local_api_capability_missing: method=%s path=%s origin=%s",
+            request.method,
+            request.url.path,
+            request.headers.get("origin", ""),
+        )
+        return _capability_error_response()
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def request_tracing_middleware(request: Request, call_next):
@@ -455,21 +751,25 @@ FRONTEND_DIST_DIR = FRONTEND_ROOT / "dist"
 FRONTEND_INDEX_FILE = FRONTEND_DIST_DIR / "index.html"
 FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
 _API_ROUTE_PREFIXES = (
-    "api",
-    "health",
-    "runtime",
-    "resources",
-    "skills",
-    "memory",
-    "recovery",
-    "pipeline",
     "actions",
-    "capabilities",
-    "inspiration",
     "agent",
+    "api",
     "autopilot",
+    "capabilities",
     "chat",
+    "evolution",
+    "inspiration",
     "llm",
+    "memory",
+    "pipeline",
+    "recovery",
+    "resources",
+    "run_action",
+    "runtime",
+    "sampling",
+    "skill_packs",
+    "skills",
+    "transform_result",
     "volumes",
 )
 _DOC_ROUTE_PREFIXES = ("openapi.json", "docs", "redoc")
@@ -505,6 +805,72 @@ def _resolve_frontend_file(path: str) -> Path | None:
         return candidate
 
     return None
+
+
+def _frontend_index_headers() -> dict[str, str]:
+    """Return cache-control headers for the SPA shell."""
+
+    return {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
+
+
+def _frontend_csp_header(nonce: str) -> str:
+    """Return a CSP for the local SPA shell.
+
+    Args:
+        nonce: Per-response script nonce injected into the inline bootstrap.
+
+    Returns:
+        A Content-Security-Policy header value that blocks third-party script
+        and font loads while preserving localhost API/WebSocket development.
+    """
+
+    safe_nonce = str(nonce or "").strip()
+    if not safe_nonce:
+        raise ValueError("nonce must be non-empty")
+    return (
+        "default-src 'self'; "
+        f"script-src 'self' 'nonce-{safe_nonce}'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self' data:; "
+        "connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; "
+        "worker-src 'self' blob:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none'"
+    )
+
+
+def _render_frontend_index_response() -> HTMLResponse:
+    """Return the SPA shell with a process-local API capability bootstrap."""
+
+    if not FRONTEND_INDEX_FILE.is_file():
+        raise HTTPException(status_code=404, detail="Frontend build not found")
+    html = FRONTEND_INDEX_FILE.read_text(encoding="utf-8")
+    nonce = secrets.token_urlsafe(16)
+    if _local_api_capability_auth_enabled():
+        import json
+        bootstrap = (
+            f'<script nonce="{nonce}">'
+            "window.__LITASSIST_API_CAPABILITY__="
+            + json.dumps(
+                {
+                    "header": LOCAL_API_CAPABILITY_HEADER,
+                    "token": get_local_api_capability_token(),
+                },
+                ensure_ascii=False,
+            )
+            + ";</script>"
+        )
+        if "</head>" in html:
+            html = html.replace("</head>", bootstrap + "</head>", 1)
+        else:
+            html = bootstrap + html
+    headers = _frontend_index_headers()
+    headers["Content-Security-Policy"] = _frontend_csp_header(nonce)
+    headers["X-Content-Type-Options"] = "nosniff"
+    headers["Referrer-Policy"] = "no-referrer"
+    return HTMLResponse(content=html, headers=headers)
 
 # ===
 # Shared Service Providers
@@ -591,7 +957,7 @@ async def health_check() -> dict[str, Any]:
             "statistics": ["/resources/project/{id}/stats", "/resources/stats/overview"],
             "pipeline": ["/pipeline/trigger", "/pipeline/submit", "/pipeline/task/{id}"],
             "runtime": ["/runtime/session", "/runtime/job", "/runtime/events"],
-            "memory": ["/memory/status", "/memory/search"],
+            "memory": ["/memory/status", "/memory/search", "/api/memory_palace/search"],
             "inspiration": ["/inspiration/generate"],
             "recovery": ["/recovery/events", "/recovery/recommendations"],
         },
@@ -603,6 +969,7 @@ async def health_check() -> dict[str, Any]:
 from routers.pipeline_router import router as pipeline_router
 from routers.skills_router import router as skills_router
 from routers.resources_router import router as resources_router
+from routers.memory_router import compat_router as memory_compat_router
 from routers.memory_router import router as memory_router
 # NOTE (2026-05-12): `from routers.semantic_causal_router import router as semantic_causal_router`
 # removed — the referenced module was never committed (lived only as untracked
@@ -630,9 +997,13 @@ from routers.export_router import router as export_router
 from routers.annotation_router import router as annotation_router
 from routers.discussion_router import router as discussion_router
 from routers.credentials_router import router as credentials_router
+from routers.settings_router import router as settings_router
+from routers.csl_styles_router import router as csl_styles_router
 from routers.discussion_advanced_router import router as discussion_advanced_router
 from routers.mcp_router import router as mcp_router
 from routers.mcp_installer_router import router as mcp_installer_router
+from routers.knowledge_router import router as knowledge_router
+from routers.graph_router import kg_router as kg_graph_router
 from routers.graph_router import router as graph_router
 from routers.evolution_router import router as evolution_router
 from routers.feature_flags_router import router as feature_flags_router
@@ -643,9 +1014,9 @@ from routers.evidence_router import router as evidence_router
 def _initialize_mcp_installer_runtime() -> None:
     """Wire local MCP package installation to shared runtime stores.
 
-    User-filled MCP configs, API keys, and installed-state records remain in
-    ignored runtime storage. The installer persists credential references, not
-    raw secret values.
+    User-filled MCP configs, credential material, and installed-state records
+    remain in ignored runtime storage. The installer persists credential
+    references, not sensitive plaintext values.
     """
     from credential_bindings import get_credential_binding_index
     from mcp_runtime.scan_registry import get_scan_registry
@@ -678,6 +1049,7 @@ app.include_router(skills_router)
 app.include_router(runtime_router)
 app.include_router(resources_router)
 app.include_router(memory_router)
+app.include_router(memory_compat_router)
 # NOTE (2026-05-12): app.include_router(semantic_causal_router) removed; see
 # matching note above the router imports for context.
 app.include_router(recovery_router)
@@ -696,10 +1068,14 @@ app.include_router(export_router)
 app.include_router(annotation_router)
 app.include_router(discussion_router)
 app.include_router(credentials_router)
+app.include_router(settings_router)
+app.include_router(csl_styles_router)
 app.include_router(discussion_advanced_router)
 app.include_router(mcp_router)
 app.include_router(mcp_installer_router)
+app.include_router(knowledge_router)
 app.include_router(graph_router)
+app.include_router(kg_graph_router)
 app.include_router(evolution_router)
 app.include_router(feature_flags_router)
 app.include_router(writing_router)
@@ -712,12 +1088,7 @@ if FRONTEND_ASSETS_DIR.is_dir():
 
 @app.get("/", include_in_schema=False)
 async def serve_frontend_root():
-    if not FRONTEND_INDEX_FILE.is_file():
-        raise HTTPException(status_code=404, detail="Frontend build not found")
-    return FileResponse(
-        FRONTEND_INDEX_FILE,
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
-    )
+    return _render_frontend_index_response()
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
@@ -734,10 +1105,7 @@ async def serve_frontend_spa(full_path: str) -> FileResponse:
         raise HTTPException(status_code=404, detail=f"Static asset not found: /{full_path}")
 
     if FRONTEND_INDEX_FILE.is_file():
-        return FileResponse(
-            FRONTEND_INDEX_FILE,
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
-        )
+        return _render_frontend_index_response()
 
     raise HTTPException(status_code=404, detail="Frontend build not found")
 

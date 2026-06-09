@@ -40,11 +40,14 @@ export interface ApiEndpointFormProps {
   onTest?: () => Promise<void> | void;
   testStatus?: ProbeStatus;
   testError?: string;
+  testElapsedSeconds?: number;
+  testTimeoutSeconds?: number;
   onSave?: () => Promise<void> | void;
   saveStatus?: SaveStatus;
   saveError?: string;
   saveLabel?: string;
   clearButton?: ReactNode;
+  manualEntryHint?: string;
   className?: string;
   disabled?: boolean;
 }
@@ -95,11 +98,14 @@ export function ApiEndpointForm({
   onTest,
   testStatus = 'idle',
   testError = '',
+  testElapsedSeconds = 0,
+  testTimeoutSeconds = 60,
   onSave,
   saveStatus = 'idle',
   saveError = '',
   saveLabel = '保存配置',
   clearButton,
+  manualEntryHint = '可选择已保存配置，也可手动填写任意兼容服务、服务地址和模型名称。',
   className,
   disabled = false,
 }: ApiEndpointFormProps) {
@@ -110,7 +116,7 @@ export function ApiEndpointForm({
   };
 
   const testLabel =
-    testStatus === 'testing' ? '测试中…' :
+    testStatus === 'testing' ? `测试中 ${testElapsedSeconds}s / ${testTimeoutSeconds}s` :
       testStatus === 'ok' ? '通过' :
         testStatus === 'fail' ? '失败' :
           '测试连接';
@@ -122,6 +128,10 @@ export function ApiEndpointForm({
 
   return (
     <div className={cn('space-y-4', className)}>
+      <p className="rounded-lg border border-outline-variant/45 bg-surface-high px-3 py-2 text-[11px] leading-relaxed text-foreground/55">
+        {manualEntryHint}
+      </p>
+
       {testStatus === 'fail' && testError ? (
         <div className="flex min-w-0 items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700/40 dark:bg-red-500/15">
           <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-500" />
@@ -160,7 +170,7 @@ export function ApiEndpointForm({
               type="button"
               onClick={() => setShowKey((current) => !current)}
               className="rounded-md p-2 text-foreground/35 transition-colors hover:bg-surface-high hover:text-foreground"
-              aria-label={showKey ? '隐藏 API Key' : '显示 API Key'}
+              aria-label={showKey ? '隐藏访问密钥' : '显示访问密钥'}
               title={showKey ? '隐藏' : '显示'}
             >
               {showKey ? <EyeOff size={14} /> : <Eye size={14} />}

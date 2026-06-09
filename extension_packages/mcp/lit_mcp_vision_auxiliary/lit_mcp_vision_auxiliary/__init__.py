@@ -1,5 +1,4 @@
-"""Vision Auxiliary MCP server package (dogfood for the literature-assistant
-local MCP installer wizard).
+"""Vision Auxiliary MCP server package for the Literature Assistant installer.
 
 Entry: ``python -m lit_mcp_vision_auxiliary.server``
 """

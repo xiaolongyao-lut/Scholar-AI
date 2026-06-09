@@ -125,6 +125,66 @@ _SECRET_SCAN_PATH_ALLOWLIST: tuple[str, ...] = (
 )
 
 
+_DETECT_SECRETS_LINE_ALLOWLIST: tuple[tuple[str, str, re.Pattern[str]], ...] = (
+    (
+        "_internal/keyring-*.dist-info/entry_points.txt",
+        "Secret Keyword",
+        re.compile(
+            r"^\s*(SecretService|libsecret)\s*=\s*keyring\.backends\.(SecretService|libsecret)\s*$"
+        ),
+    ),
+    (
+        "_internal/literature_assistant/core/credential_store.py",
+        "Secret Keyword",
+        re.compile(r'^\s*SECRET_REF_FIELD\s*=\s*"api_key_secret_ref"\s*$'),
+    ),
+    (
+        "_internal/literature_assistant/core/credential_store.py",
+        "Secret Keyword",
+        re.compile(
+            r'^\s*SECRET_BACKEND_ENV\s*=\s*"LITASSIST_CREDENTIAL_SECRET_BACKEND"\s*$'
+        ),
+    ),
+    (
+        "_internal/literature_assistant/core/credential_store.py",
+        "Secret Keyword",
+        re.compile(
+            r'^\s*"api_key_secret_ref":\s*"keyring:cred_\.\.\.:\.\.\.:api_key"\s*$'
+        ),
+    ),
+    (
+        "_internal/literature_assistant/core/model_config_store.py",
+        "Secret Keyword",
+        re.compile(r'^\s*MODEL_OVERRIDE_SECRET_REF_FIELD\s*=\s*"api_key_secret_ref"\s*$'),
+    ),
+    (
+        "_internal/_tcl_data/encoding/cp874.enc",
+        "Twilio API Key",
+        re.compile(r"^20AC008100820083008420260086008700880089008A008B008C008D008E008F$"),
+    ),
+    (
+        "_internal/_tcl_data/encoding/cp936.enc",
+        "Twilio API Key",
+        re.compile(r"^20AC000000000000000000000000000000000000000000000000000000000000$"),
+    ),
+    (
+        "_internal/_tcl_data/encoding/cp949.enc",
+        "AWS Access Key",
+        re.compile(r"^(0000CAA8CAA9CAAACAABCAACCAADCAAECAAFCAB0CAB1CAB2CAB3CAB4CAB5CAB6|CCA7CCAACCAECCAFCCB0CCB1CCB2CCB3CCB6CCB7CCB900000000000000000000)$"),
+    ),
+    (
+        "_internal/_tcl_data/encoding/cp950.enc",
+        "Twilio API Key",
+        re.compile(r"^000020AC00000000000000000000000000000000000000000000000000000000$"),
+    ),
+    (
+        "_internal/tcl8/8.6/http-*.tm",
+        "Basic Auth Credentials",
+        re.compile(r"^\s*#\s+http://jschmoe:xyzzy@www\.bogus\.net:8000/foo/bar\.tml\?q=foo#changes\s*$"),
+    ),
+)
+
+
 def is_path_allowlisted(rel_path_posix: str) -> bool:
     """Return True if `rel_path_posix` (POSIX-style relative path) matches any
     allowlist glob. fnmatch is used for portable glob semantics."""
@@ -169,6 +229,60 @@ def _to_rel_posix(filename: str, scan_root: Path) -> str:
         return filename.replace("\\", "/")
 
 
+def _read_rel_line(scan_root: Path, rel_path_posix: str, line_number: int) -> str:
+    """Return one text line from a root-bounded release payload path.
+
+    The line is used only to suppress reviewed detector false positives. Empty
+    output means the finding must remain blocking.
+    """
+    if not rel_path_posix or line_number < 1:
+        return ""
+
+    scan_root = scan_root.resolve()
+    candidate = (scan_root / Path(rel_path_posix)).resolve()
+    try:
+        candidate.relative_to(scan_root)
+    except ValueError:
+        return ""
+
+    try:
+        lines = candidate.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+
+    if line_number > len(lines):
+        return ""
+    return lines[line_number - 1]
+
+
+def is_detect_secrets_line_allowlisted(
+    rel_path_posix: str,
+    secret_type: str,
+    line_number: int,
+    scan_root: Path,
+) -> bool:
+    """Return True for reviewed detect-secrets keyword-only false positives.
+
+    The allowlist is deliberately path, detector, and exact-line constrained so
+    real secret-looking values elsewhere in the same file still block release.
+    """
+    if not rel_path_posix or not secret_type or line_number < 1:
+        return False
+
+    line = _read_rel_line(scan_root, rel_path_posix, line_number)
+    if not line:
+        return False
+
+    for path_glob, allowed_type, line_pattern in _DETECT_SECRETS_LINE_ALLOWLIST:
+        if secret_type != allowed_type:
+            continue
+        if not fnmatch.fnmatch(rel_path_posix, path_glob):
+            continue
+        if line_pattern.match(line):
+            return True
+    return False
+
+
 def run_detect_secrets(scan_root: Path) -> tuple[list[dict[str, Any]], str]:
     findings: list[dict[str, Any]] = []
     cmd = [
@@ -210,13 +324,25 @@ def run_detect_secrets(scan_root: Path) -> tuple[list[dict[str, Any]], str]:
         if is_path_allowlisted(rel_posix):
             continue
         for hit in hits or []:
+            secret_type = str(hit.get("type", "unknown"))
+            try:
+                line_number = int(hit.get("line_number", 0))
+            except (TypeError, ValueError):
+                line_number = 0
+            if is_detect_secrets_line_allowlisted(
+                rel_path_posix=rel_posix,
+                secret_type=secret_type,
+                line_number=line_number,
+                scan_root=scan_root,
+            ):
+                continue
             findings.append({
-                "rule_id": f"detect_secrets:{hit.get('type', 'unknown')}",
+                "rule_id": f"detect_secrets:{secret_type}",
                 "detector": "detect-secrets",
                 "matched_path": filename,
                 "masked_snippet": "<not_extracted>",
                 "file_sha256_prefix": "",
-                "line_number": hit.get("line_number", 0),
+                "line_number": line_number,
                 "is_verified": hit.get("is_verified", False),
                 "severity": "blocker",
             })

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { getSessionApi } from '@/services/sessionApi';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/contexts/I18nContext';
+import { formatChatVisibleError } from '@/components/chat/chatDisplay';
 import { CheckpointMeta, ResumeSessionResult } from '@/types/runtime';
 
 export function useSessionPersistence() {
@@ -17,7 +18,7 @@ export function useSessionPersistence() {
       toast(t('workbench.session_resumed'), 'success');
       return result;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Resume failed';
+      const msg = formatChatVisibleError(err, { fallback: '恢复会话失败，请稍后重试。' });
       toast(msg, 'error');
       throw err;
     } finally {
@@ -34,7 +35,7 @@ export function useSessionPersistence() {
       toast(t('workbench.session_forked'), 'success');
       return result;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Fork failed';
+      const msg = formatChatVisibleError(err, { fallback: '分叉会话失败，请稍后重试。' });
       toast(msg, 'error');
       throw err;
     } finally {
@@ -56,7 +57,7 @@ export function useSessionPersistence() {
       toast(t('workbench.session_rewound'), 'success');
       return result;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Rewind failed';
+      const msg = formatChatVisibleError(err, { fallback: '回退会话失败，请稍后重试。' });
       toast(msg, 'error');
       throw err;
     } finally {

@@ -26,12 +26,11 @@ _MMR_DEFAULT_LAMBDA = 0.7
 class AnalysisChain:
     """Inner reasoning chain attached to a spark.
 
-    Schema fixed by inspiration-rewrite-plan §2.1; field names mirror the
-    LLM JSON contract in §2.1.1. Every field is additive and defaults to
+    Field names mirror the LLM JSON contract. Every field is additive and defaults to
     empty so older code paths and persisted data continue to work.
 
     Anchored to IRAC (Issue / Rule / Application / Conclusion, arXiv
-    2406.13217) + Financial CoT (arXiv 2405.14767) — see plan §3.
+    2406.13217) + Financial CoT (arXiv 2405.14767).
     """
 
     observation: str = ""
@@ -63,9 +62,9 @@ class InspirationSpark:
     related_point_ids: list[str] = field(default_factory=list)
     causal_context: dict[str, Any] = field(default_factory=dict)
     actionable: bool = True                   # 是否可用于续写
-    analysis_chain: Optional["AnalysisChain"] = None  # B1 (plan §2.1)
+    analysis_chain: Optional["AnalysisChain"] = None
     confidence_reason: str = ""               # B1: why this confidence
-    temporal_sensitivity: float = 0.0         # B1: FinSearch [0,1] (plan §3.3)
+    temporal_sensitivity: float = 0.0         # FinSearch [0,1]
     # Track B (D-EVR-1..6): chunks the local spark generator already
     # touched. Carried as raw dicts so build_spark_evidence_refs in the
     # router can convert to SparkEvidenceRef without pulling the router
@@ -454,7 +453,7 @@ class InspirationEngine:
     # ------ 私有策略方法 ------
 
     # ---- B4: AnalysisChain builders for each local generator ----
-    # Plan §2.3 maps each generator to fixed observation/mechanism/
+    # Each generator maps to fixed observation/mechanism/
     # evidence/boundary/counter/next_action semantics. These helpers
     # keep the code below readable by pulling the chain construction
     # out of the spark-loop.

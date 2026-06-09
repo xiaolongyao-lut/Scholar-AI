@@ -1,6 +1,6 @@
 """GraphPayload v0 — single-question subgraph response shape.
 
-Plan §4.11 KG-1 ships a viewer-only subgraph that lives in front of the
+The viewer-only subgraph lives in front of the
 existing wiki-graph storage. This module defines the v0 envelope, the
 node/edge/source/evidence sub-shapes, and the adapter that maps an
 existing :class:`literature_assistant.core.wiki.graph.WikiGraphSnapshot`
@@ -10,10 +10,11 @@ into the new payload without touching the legacy
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Literal
+from typing import Any, Iterable, Literal, Mapping, Sequence
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
+from literature_assistant.core.models.evidence import PdfAnchorFields
 from literature_assistant.core.wiki.graph import (
     WikiGraphEdge,
     WikiGraphEdgeType,
@@ -48,16 +49,15 @@ EdgeRelation = Literal[
 ScopeKind = Literal["question", "material", "concept"]
 
 
-class SourceRef(BaseModel):
-    material_id: str
-    page: int | None = None
+class SourceRef(PdfAnchorFields):
+    material_id: str = Field(min_length=1)
+    page: int | None = Field(None, ge=1)
     chunk_id: str | None = None
-    bbox: list[float] | None = None
 
 
-class EvidenceRef(BaseModel):
-    material_id: str
-    page: int | None = None
+class EvidenceRef(PdfAnchorFields):
+    material_id: str = Field(min_length=1)
+    page: int | None = Field(None, ge=1)
     chunk_id: str | None = None
     text: str
     score: float | None = None
@@ -156,10 +156,83 @@ def _confidence_from_edge(edge: WikiGraphEdge) -> float | None:
     return round(value, 4)
 
 
+def _mapping(value: Any) -> Mapping[str, Any] | None:
+    return value if isinstance(value, Mapping) else None
+
+
+def _mapping_list(value: Any) -> list[Mapping[str, Any]]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+def _source_ref_from_mapping(value: Any) -> SourceRef | None:
+    raw = _mapping(value)
+    if raw is None:
+        return None
+    try:
+        return SourceRef.model_validate(dict(raw))
+    except ValidationError:
+        return None
+
+
+def _evidence_ref_from_mapping(value: Any) -> EvidenceRef | None:
+    raw = _mapping(value)
+    if raw is None:
+        return None
+    try:
+        return EvidenceRef.model_validate(dict(raw))
+    except ValidationError:
+        return None
+
+
+def _source_ref_from_evidence_ref(ref: EvidenceRef | None) -> SourceRef | None:
+    if ref is None:
+        return None
+    try:
+        return SourceRef.model_validate(
+            {
+                "material_id": ref.material_id,
+                "page": ref.page,
+                "chunk_id": ref.chunk_id,
+                "bbox": ref.bbox,
+                "bbox_unit": ref.bbox_unit,
+            }
+        )
+    except ValidationError:
+        return None
+
+
+def _metadata_evidence_refs(metadata: Mapping[str, Any]) -> list[EvidenceRef]:
+    refs: list[EvidenceRef] = []
+    for raw_ref in _mapping_list(metadata.get("evidence_refs")):
+        ref = _evidence_ref_from_mapping(raw_ref)
+        if ref is not None:
+            refs.append(ref)
+    return refs
+
+
+def _metadata_source_ref(metadata: Mapping[str, Any], evidence_refs: Sequence[EvidenceRef]) -> SourceRef | None:
+    source_ref = _source_ref_from_mapping(metadata.get("source_ref"))
+    if source_ref is not None:
+        return source_ref
+    for ref in evidence_refs:
+        source_ref = _source_ref_from_evidence_ref(ref)
+        if source_ref is not None:
+            return source_ref
+    return None
+
+
 def adapt_node(node: WikiGraphNode) -> GraphNode:
     node_type, extra_meta = _node_type_from_kind(node.kind)
     merged_meta: dict[str, Any] = dict(node.metadata or {})
     merged_meta.update(extra_meta)
+    evidence_refs = _metadata_evidence_refs(merged_meta)
+    source_ref = _metadata_source_ref(merged_meta, evidence_refs)
+    material_id = source_ref.material_id if source_ref is not None else None
+    if material_id is None:
+        raw_material_id = merged_meta.get("material_id")
+        material_id = raw_material_id.strip() if isinstance(raw_material_id, str) and raw_material_id.strip() else None
     # page_path is the canonical wiki path; keep it under metadata so the
     # frontend can build a wiki link without inventing a new field.
     merged_meta.setdefault("page_path", node.page_path)
@@ -171,6 +244,9 @@ def adapt_node(node: WikiGraphNode) -> GraphNode:
         id=node.node_id,
         label=node.title or node.node_id,
         type=node_type,
+        material_id=material_id,
+        source_ref=source_ref,
+        evidence_refs=evidence_refs or None,
         metadata=merged_meta or None,
     )
 
@@ -192,12 +268,20 @@ def adapt_edge(edge: WikiGraphEdge) -> GraphEdge:
     # at a material, and surface the wiki blurb via metadata instead.
     if edge.evidence:
         metadata.setdefault("evidence_text", edge.evidence)
+    evidence_refs = _metadata_evidence_refs(metadata)
+    source_ref = _metadata_source_ref(metadata, evidence_refs)
+    material_id = source_ref.material_id if source_ref is not None else None
+    if material_id is None:
+        raw_material_id = metadata.get("material_id")
+        material_id = raw_material_id.strip() if isinstance(raw_material_id, str) and raw_material_id.strip() else None
     return GraphEdge(
         id=edge.edge_id,
         source=edge.source_id,
         target=edge.target_id,
         relation=relation,
-        evidence_refs=None,
+        material_id=material_id,
+        source_ref=source_ref,
+        evidence_refs=evidence_refs or None,
         confidence=_confidence_from_edge(edge),
         metadata=metadata or None,
     )

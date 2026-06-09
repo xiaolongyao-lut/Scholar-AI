@@ -115,6 +115,8 @@ hiddenimports = [
     "routers.agent_router",
     "routers.chat_router",
     "routers.intelligent_chat_router",
+    "routers.rerank_config_router",
+    "routers.model_config_router",
     "routers.llm_cost_router",
     "routers.sampling_router",
     "routers.volume_router",
@@ -122,6 +124,18 @@ hiddenimports = [
     "routers.export_router",
     "routers.annotation_router",
     "routers.discussion_router",
+    "routers.credentials_router",
+    "routers.settings_router",
+    "routers.csl_styles_router",
+    "routers.discussion_advanced_router",
+    "routers.mcp_router",
+    "routers.mcp_installer_router",
+    "routers.knowledge_router",
+    "routers.graph_router",
+    "routers.evolution_router",
+    "routers.feature_flags_router",
+    "routers.writing_router",
+    "routers.evidence_router",
     "recovery_autopilot_router",
 ]
 
@@ -132,6 +146,19 @@ hiddenimports = [
 # servers (which run in their own Python environment, not inside this bundle).
 # Ref: https://pyinstaller.org/en/latest/hooks.html#collect-all
 _mcp_datas, _mcp_binaries, _mcp_hiddenimports = collect_all("mcp")
+
+_OPTIONAL_RAG_EXCLUDES = []
+if os.environ.get("LITASSIST_BUNDLE_RAG", "").strip() != "1":
+    _OPTIONAL_RAG_EXCLUDES = [
+        "chromadb",
+        "sentence_transformers",
+        "torch",
+        "tensorflow",
+        "umap",
+        "sklearn",
+        "numba",
+        "llvmlite",
+    ]
 
 
 a = Analysis(
@@ -149,7 +176,7 @@ a = Analysis(
         "tests",
         "workspace_tests",
         "pytest",
-    ],
+    ] + _OPTIONAL_RAG_EXCLUDES,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

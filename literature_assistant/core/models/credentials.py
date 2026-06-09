@@ -1,11 +1,10 @@
-"""Runtime credential models (Slice A1, plan v2 §3.2.7 / DEC-007).
+"""Runtime credential models.
 
-Two identity concepts coexist (DEC-007a):
+Two identity concepts coexist:
     - credential_id (UUID4): UI / CRUD / selection identity. Stable across
       renames or fingerprint version bumps.
     - credential_fingerprint: cooldown / health identity. Versioned sha256 of
-      provider + normalized base_url + model + sha256(api_key). Bumping the
-      version prefix intentionally resets cooldown state (DEC-007b).
+      provider + normalized base_url + model + sha256(api_key).
 """
 
 from __future__ import annotations
@@ -68,7 +67,7 @@ class CredentialStrategyHint(str, Enum):
 
 
 class CredentialTrustSource(str, Enum):
-    """plan v2 §4.4 — 4-tier trust hierarchy."""
+    """Trust source for deciding whether a provider endpoint may be probed."""
 
     OFFICIAL_PROVIDER = "official_provider"
     ENV_CONFIGURED_GATEWAY = "env_configured_gateway"
@@ -110,7 +109,7 @@ _SCHEME_HOST_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*)://([^/?#]+)(.*)$")
 
 
 def normalize_base_url(url: str) -> str:
-    """Normalize a base_url for fingerprint computation (DEC-007a).
+    """Normalize a base URL for fingerprint computation.
 
     - Lowercase scheme + host
     - Strip trailing slash on path
@@ -138,11 +137,11 @@ def compute_credential_fingerprint(
     model: str,
     api_key: str,
 ) -> str:
-    """Versioned sha256 fingerprint for cooldown / health identity (DEC-007a).
+    """Versioned sha256 fingerprint for cooldown and health identity.
 
     Identity sources: provider + normalized base_url + model + sha256(api_key).
     Bumping CREDENTIAL_FINGERPRINT_VERSION intentionally invalidates all
-    cooldown state (DEC-007b).
+    cooldown state.
     """
     norm_url = normalize_base_url(base_url)
     api_key_hash = hashlib.sha256((api_key or "").strip().encode("utf-8")).hexdigest()
@@ -250,13 +249,13 @@ class _CredentialBaseFields(BaseModel):
 
 
 class RuntimeCredentialCreate(_CredentialBaseFields):
-    """Body of POST /api/credentials. Carries the secret only on input."""
+    """Body of POST /api/credentials. Carries credential material only on input."""
 
     api_key: str = Field(min_length=1, max_length=512)
 
 
 class RuntimeCredentialUpdate(BaseModel):
-    """Body of PUT /api/credentials/{id}. All fields optional; api_key is
+    """Body of PUT /api/credentials/{id}. All fields optional; the credential is
     accepted only when explicitly rotating.
     """
 
@@ -284,7 +283,7 @@ class RuntimeCredentialUpdate(BaseModel):
 
 
 class RuntimeCredential(_CredentialBaseFields):
-    """Full domain model with secret. Persisted in the runtime store; never
+    """Full domain model with credential material. Persisted in the runtime store; never
     serialized to public API responses (use RuntimeCredentialPublic instead).
     """
 
@@ -367,7 +366,7 @@ class RuntimeCredential(_CredentialBaseFields):
 
 
 class RuntimeCredentialPublic(BaseModel):
-    """Safe-to-return shape. Never includes raw api_key."""
+    """Safe-to-return shape. Never includes credential material."""
 
     model_config = ConfigDict(extra="forbid")
 

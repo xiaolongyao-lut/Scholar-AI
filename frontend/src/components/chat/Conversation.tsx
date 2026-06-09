@@ -14,11 +14,24 @@ interface ConversationProps {
   /** Selection bus glue — focused evidence id (chunk_id / evidence_id). */
   selectedEvidenceId?: string | null;
   onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect?: boolean;
 
   /** Composer placeholder copy. */
   placeholder?: string;
+  /** Controlled composer draft; omit to let ChatInput manage it locally. */
+  inputValue?: string;
+  /** Controlled composer change callback. */
+  onInputValueChange?: (value: string) => void;
   /** Composer disabled state (e.g. while a request is in flight). */
   disabled?: boolean;
+  /** True while a model request is active. */
+  responding?: boolean;
+  /** Cancel the active model request. */
+  onStop?: () => void;
+  /** Edit a sent user message by branching from that point. */
+  onEditMessage?: (message: ChatMessageData) => void;
+  /** Fork the visible conversation from a message. */
+  onForkMessage?: (message: ChatMessageData) => void;
   /** Composer submit key behaviour. Inspector keeps `cmd-enter`; Dialog
    *  flips to `enter` for parity with its legacy composer. */
   submitKey?: 'enter' | 'cmd-enter';
@@ -28,11 +41,20 @@ interface ConversationProps {
   enableAttachments?: boolean;
   /** Composer textarea rows. */
   composerRows?: number;
+  /** Current-request project reasoning-bias toggle rendered above composer. */
+  projectReasoningBias?: {
+    enabled: boolean;
+    available: boolean;
+    loading?: boolean;
+    onChange: (enabled: boolean) => void;
+  };
 
   /** Idle-state block shown when `messages` is empty. */
   emptyState?: ReactNode;
   /** Optional row above the transcript (e.g. selected-text context chip). */
   contextChips?: ReactNode;
+  /** Optional controls rendered next to the composer, such as retrieval scope. */
+  composerContext?: ReactNode;
   /** Optional row beneath the transcript and above the composer
    *  (e.g. typing indicator, error banner). */
   transcriptFooter?: ReactNode;
@@ -44,13 +66,12 @@ interface ConversationProps {
 }
 
 /**
- * Canonical chat surface (M-Slice 1b).
+ * Canonical chat surface.
  *
  * Composition of `MessageRenderer` + `ChatInput`. Pages decide their own
- * outer chrome (mode toggle, history drawer, attachment-mode toggles)
- * around this component. Inspector smart-read uses the bare composition;
- * Dialog wraps it with its mode toolbar + inspiration drawer + history
- * sheet in M-Slice 1b.d.
+ * outer chrome (history drawer, context chips, attachment toggles) around
+ * this component. Inspector and Dialog both use it for the unified
+ * SmartRead surface.
  */
 export function Conversation({
   messages,
@@ -58,14 +79,23 @@ export function Conversation({
   projectId,
   selectedEvidenceId,
   onSelectEvidence,
+  navigateEvidenceAfterSelect = false,
   placeholder,
+  inputValue,
+  onInputValueChange,
   disabled,
+  responding,
+  onStop,
+  onEditMessage,
+  onForkMessage,
   submitKey,
   composerHint,
   enableAttachments,
   composerRows,
+  projectReasoningBias,
   emptyState,
   contextChips,
+  composerContext,
   transcriptFooter,
   inputRef,
   className,
@@ -86,21 +116,30 @@ export function Conversation({
                 projectId={projectId}
                 selectedEvidenceId={selectedEvidenceId}
                 onSelectEvidence={onSelectEvidence}
+                navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
+                onEditMessage={onEditMessage}
+                onForkMessage={onForkMessage}
               />
             ))}
         {transcriptFooter}
       </div>
 
       <div className="shrink-0 border-t border-outline-variant/60 bg-surface-low p-2">
+        {composerContext && <div className="mb-2">{composerContext}</div>}
         <ChatInput
           ref={inputRef}
           onSubmit={onSubmit}
+          value={inputValue}
+          onValueChange={onInputValueChange}
           placeholder={placeholder}
           disabled={disabled}
+          responding={responding}
+          onStop={onStop}
           submitKey={submitKey}
           rows={composerRows}
           enableAttachments={enableAttachments}
           hint={composerHint}
+          projectReasoningBias={projectReasoningBias}
         />
       </div>
     </div>

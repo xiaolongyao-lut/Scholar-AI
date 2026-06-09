@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AxiosError } from 'axios';
 import { getApiBaseUrl } from './apiBaseUrl.ts';
 
 // ---------------------------------------------------------------------------
@@ -16,10 +17,15 @@ export type CredentialProtocol =
   | 'rerank';
 
 export type CredentialStrategyHint =
+  | 'low'
+  | 'medium'
+  | 'high'
   | 'default'
   | 'cheap'
   | 'fast'
   | 'quality'
+  | 'xhigh'
+  | 'max'
   | 'discussion'
   | 'embedding'
   | 'rerank';
@@ -29,6 +35,13 @@ export type CredentialTrustSource =
   | 'env_configured_gateway'
   | 'runtime_user_confirmed'
   | 'runtime_untrusted_custom';
+
+export interface CredentialSamplingOverride {
+  temperature?: number | null;
+  top_p?: number | null;
+  max_tokens?: number | null;
+  system_prompt?: string | null;
+}
 
 export interface RuntimeCredentialPublic {
   credential_id: string;
@@ -43,6 +56,7 @@ export interface RuntimeCredentialPublic {
   strategy_hint: CredentialStrategyHint;
   trust_source: CredentialTrustSource;
   notes: string;
+  sampling_override: CredentialSamplingOverride | null;
   api_key_masked: string;
   has_api_key: boolean;
   fingerprint: string;
@@ -64,6 +78,7 @@ export interface RuntimeCredentialCreate {
   strategy_hint?: CredentialStrategyHint;
   trust_source?: CredentialTrustSource;
   notes?: string;
+  sampling_override?: CredentialSamplingOverride | null;
 }
 
 export interface RuntimeCredentialUpdate {
@@ -77,6 +92,7 @@ export interface RuntimeCredentialUpdate {
   strategy_hint?: CredentialStrategyHint;
   trust_source?: CredentialTrustSource;
   notes?: string;
+  sampling_override?: CredentialSamplingOverride | null;
   api_key?: string;
 }
 
@@ -113,11 +129,38 @@ export interface CredentialTestResponse {
   probed: boolean;
 }
 
+export interface AppliedCredentialConfig {
+  provider: string;
+  base_url: string;
+  model: string;
+  has_api_key: boolean;
+  api_key_masked: string;
+  updated_at: string;
+}
+
+interface ApiErrorBody {
+  detail?: unknown;
+  error?: {
+    message?: unknown;
+  };
+  message?: unknown;
+}
+
+interface ApiErrorDetail {
+  code?: unknown;
+  message?: unknown;
+}
+
+function isApiErrorDetail(value: unknown): value is ApiErrorDetail {
+  return typeof value === 'object' && value !== null;
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
 
 const PATH = '/api/credentials';
+const CREDENTIAL_TEST_TIMEOUT_MS = 60_000;
 
 const client = () => axios.create({
   baseURL: getApiBaseUrl(),
@@ -162,19 +205,72 @@ export async function updateCredential(
   return resp.data;
 }
 
+/**
+ * Returns true when a credential write failed because the selected id is gone.
+ *
+ * The credentials UI uses this to clear stale edit state after another tab or
+ * component deleted the same credential.
+ */
+export function isCredentialNotFoundError(error: unknown): boolean {
+  if (!axios.isAxiosError<ApiErrorBody>(error)) {
+    return false;
+  }
+  if (error.response?.status !== 404) {
+    return false;
+  }
+  const detail = error.response.data?.detail;
+  if (isApiErrorDetail(detail) && detail.code === 'credential_not_found') {
+    return true;
+  }
+  return getApiErrorMessage(error).includes('凭证不存在');
+}
+
+function getApiErrorMessage(error: AxiosError<ApiErrorBody>): string {
+  const data = error.response?.data;
+  const detail = data?.detail;
+  if (typeof detail === 'string') {
+    return detail;
+  }
+  if (isApiErrorDetail(detail) && typeof detail.message === 'string') {
+    return detail.message;
+  }
+  const errorMessage = data?.error?.message;
+  if (typeof errorMessage === 'string') {
+    return errorMessage;
+  }
+  const message = data?.message;
+  if (typeof message === 'string') {
+    return message;
+  }
+  return error.message;
+}
+
 export async function deleteCredential(credentialId: string): Promise<void> {
   await client().delete(`${PATH}/${encodeURIComponent(credentialId)}`);
 }
 
 export async function testCredential(
   credentialId: string,
-  opts?: { trustSourceOverride?: CredentialTrustSource },
+  opts?: { trustSourceOverride?: CredentialTrustSource; timeoutMs?: number },
 ): Promise<CredentialTestResponse> {
   const body: Record<string, string> = {};
   if (opts?.trustSourceOverride) body.trust_source_override = opts.trustSourceOverride;
   const resp = await client().post<CredentialTestResponse>(
     `${PATH}/${encodeURIComponent(credentialId)}/test`,
     body,
+    { timeout: opts?.timeoutMs ?? CREDENTIAL_TEST_TIMEOUT_MS },
+  );
+  return resp.data;
+}
+
+export async function applyCredentialToSubsystem(
+  subsystem: CredentialCategory,
+  credentialId: string,
+): Promise<AppliedCredentialConfig> {
+  const pathSubsystem = subsystem === 'generation' ? 'chat' : subsystem;
+  const resp = await client().post<AppliedCredentialConfig>(
+    `/api/${pathSubsystem}/config/apply-credential`,
+    { credential_id: credentialId },
   );
   return resp.data;
 }

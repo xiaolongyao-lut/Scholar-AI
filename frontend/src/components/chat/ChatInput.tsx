@@ -8,7 +8,8 @@ import {
   type CompositionEvent,
   type KeyboardEvent,
 } from 'react';
-import { Paperclip, Send, X, Loader2 } from 'lucide-react';
+import { Loader2, Paperclip, Send, Square, X } from 'lucide-react';
+import { ProjectBiasSurfaceToggle } from '@/components/knowledge/ProjectBiasSurfaceToggle';
 import { cn } from '@/lib/utils';
 
 /**
@@ -18,11 +19,11 @@ import { cn } from '@/lib/utils';
  *   - max 6 images
  *   - 4 MB per image
  *   - PNG / JPEG / WebP / GIF
- *   - frontend preview/echo only; not yet sent through any vision provider
+ *   - sent with the chat request for optional SmartRead vision assistance
  *
  * Shape matches the legacy `ImageAttachment` from intelligentChatApi so
- * Dialog's submit payload can keep its current `images` field once
- * Conversation/ChatInput is wired in M-Slice 1b.d.
+ * Dialog's submit payload forwards the same `images` field consumed by the
+ * backend vision-auxiliary path.
  */
 export interface ChatAttachment {
   /** MIME type, e.g. `image/png`. */
@@ -39,6 +40,7 @@ export interface ChatInputSubmitPayload {
   text: string;
   attachments: ChatAttachment[];
   attachmentsEnabled: boolean;
+  projectReasoningBiasEnabled?: boolean;
 }
 
 export interface ChatInputHandle {
@@ -53,10 +55,18 @@ interface ChatInputProps {
    *  that mirrors the `enableAttachments` prop so callers can decide
    *  whether to forward the attachment array to the backend. */
   onSubmit(payload: ChatInputSubmitPayload): void;
+  /** Optional controlled draft value for pages that persist composer text. */
+  value?: string;
+  /** Optional controlled draft change callback. */
+  onValueChange?: (value: string) => void;
   /** Placeholder copy. Defaults to a Chinese-friendly generic prompt. */
   placeholder?: string;
   /** Disable the composer while a response is streaming. */
   disabled?: boolean;
+  /** True while a model request is active; shows an interrupt control. */
+  responding?: boolean;
+  /** Cancel the active model request. */
+  onStop?: () => void;
   /** Which key combination submits the message.
    *  - `enter` — Enter sends, Shift+Enter newline (Dialog legacy)
    *  - `cmd-enter` — Ctrl/Cmd+Enter sends, Enter newline (Inspector legacy) */
@@ -71,6 +81,13 @@ interface ChatInputProps {
   hint?: string;
   /** Extra classes for the outer wrapper. */
   className?: string;
+  /** Optional current-request project reasoning-bias toggle. */
+  projectReasoningBias?: {
+    enabled: boolean;
+    available: boolean;
+    loading?: boolean;
+    onChange: (enabled: boolean) => void;
+  };
 }
 
 const VISION_MAX_IMAGES = 6;
@@ -96,36 +113,47 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Canonical chat composer (M-Slice 1b/4).
+ * Canonical chat composer.
  *
  * Single textarea + send button shared by Inspector smart-read and Dialog.
  * Attachments are opt-in via `enableAttachments`; the tray sits above the
  * textarea, the paperclip lives on the bottom-left, send on the right —
  * matches Slack / Stream Chat composer conventions. Submit payload includes
- * `attachments` + `attachmentsEnabled` so future vision provider wiring
- * (OpenAI vision content array, etc.) can flow through one place instead
- * of being grafted onto Dialog only.
+ * `attachments` + `attachmentsEnabled` so Dialog and Inspector can share the
+ * same backend image-handling contract.
  */
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
   {
     onSubmit,
+    value,
+    onValueChange,
     placeholder = '输入你的问题…',
     disabled = false,
+    responding = false,
+    onStop,
     submitKey = 'cmd-enter',
     rows = 2,
     enableAttachments = false,
     hint,
     className,
+    projectReasoningBias,
   },
   ref,
 ) {
-  const [text, setText] = useState('');
+  const [uncontrolledText, setUncontrolledText] = useState('');
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [readingCount, setReadingCount] = useState(0);
   const [limitWarning, setLimitWarning] = useState<string | null>(null);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const text = value ?? uncontrolledText;
+  const setText = useCallback((next: string) => {
+    if (value === undefined) {
+      setUncontrolledText(next);
+    }
+    onValueChange?.(next);
+  }, [onValueChange, value]);
 
   useImperativeHandle(ref, () => ({
     focus() {
@@ -141,11 +169,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
       text: trimmed,
       attachments: enableAttachments ? attachments : [],
       attachmentsEnabled: enableAttachments,
+      projectReasoningBiasEnabled: projectReasoningBias?.available ? projectReasoningBias.enabled : undefined,
     });
     setText('');
     setAttachments([]);
     setLimitWarning(null);
-  }, [text, attachments, disabled, onSubmit, enableAttachments]);
+  }, [text, attachments, disabled, onSubmit, enableAttachments, setText, projectReasoningBias]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -249,13 +278,27 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             </div>
           )}
           <span className="font-label text-[10px] text-foreground/45">
-            {attachments.length}/{VISION_MAX_IMAGES} · 视觉辅助暂未启用，图片随消息上传但不会被分析
+            {attachments.length}/{VISION_MAX_IMAGES} · 图片会随本次提问发送；配置视觉辅助后会自动生成图片上下文
           </span>
         </div>
       )}
 
       {enableAttachments && limitWarning && (
         <p className="font-label text-[11px] text-amber-700 dark:text-amber-300">⚠ {limitWarning}</p>
+      )}
+
+      {projectReasoningBias && (
+        <div className="flex flex-wrap items-center gap-2">
+          <ProjectBiasSurfaceToggle
+            enabled={projectReasoningBias.enabled && projectReasoningBias.available}
+            label={projectReasoningBias.enabled && projectReasoningBias.available ? '项目偏置已启用' : '项目偏置已关闭'}
+            disabled={!projectReasoningBias.available || projectReasoningBias.loading || disabled}
+            onChange={projectReasoningBias.onChange}
+          />
+          <span className="text-[10px] text-foreground/40">
+            {projectReasoningBias.available ? '仅影响本次发送' : '当前项目未启用聊天偏置'}
+          </span>
+        </div>
       )}
 
       <div className="flex items-end gap-2">
@@ -294,19 +337,31 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           disabled={disabled}
           rows={rows}
           placeholder={placeholder}
-          className="min-h-[44px] flex-1 resize-none rounded-md border border-outline-variant/60 bg-surface-lowest px-3 py-2 text-sm text-foreground placeholder:text-foreground/35 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:bg-surface-low"
+          className="min-h-[44px] max-h-48 flex-1 resize-y rounded-md border border-outline-variant/60 bg-surface-lowest px-3 py-2 text-sm text-foreground placeholder:text-foreground/35 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:bg-surface-low"
         />
 
-        <button
-          type="button"
-          onClick={send}
-          disabled={submitDisabled}
-          aria-label="发送"
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Send className="h-3.5 w-3.5" />
-          发送
-        </button>
+        {responding && onStop ? (
+          <button
+            type="button"
+            onClick={onStop}
+            aria-label="停止生成"
+            title="停止生成"
+            className="shrink-0 inline-flex items-center justify-center rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+          >
+            <Square className="h-3.5 w-3.5 fill-current" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={send}
+            disabled={submitDisabled}
+            aria-label="发送"
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Send className="h-3.5 w-3.5" />
+            发送
+          </button>
+        )}
       </div>
 
       {hint && <p className="font-label text-[10px] text-foreground/40">{hint}</p>}

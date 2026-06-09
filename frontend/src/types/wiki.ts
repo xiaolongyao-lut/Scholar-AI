@@ -43,6 +43,24 @@ export interface WikiPageDetailModel {
   body: string;
 }
 
+export interface WikiSearchEvidenceRefModel {
+  page_path?: string;
+  title?: string;
+  score?: number;
+  snippet?: string;
+  source?: string;
+  source_labels?: string[];
+  [key: string]: unknown;
+}
+
+export interface WikiSearchModel {
+  enabled: boolean;
+  fallback_required: boolean;
+  answer: string;
+  evidence_refs: WikiSearchEvidenceRefModel[];
+  warnings: string[];
+}
+
 export interface WikiDoctorActionModel {
   command: string;
   description: string;
@@ -140,6 +158,7 @@ export interface WikiGraphModel extends WikiGraphResponse {
 export interface WikiCompileDryRunInputModel {
   source_id?: string | null;
   project_id?: string | null;
+  allow_write?: boolean;
 }
 
 export interface WikiCompileBudgetSummaryModel {
@@ -175,6 +194,30 @@ export interface WikiCompileDryRunModel {
   budget_checks: WikiCompileBudgetCheckModel[];
   errors: string[];
   warnings: string[];
+}
+
+export interface WikiExportModel {
+  success: boolean;
+  page_count: number;
+  output_path: string;
+  errors: string[];
+}
+
+export type WikiManualPageKind = 'synthesis' | 'exploration' | 'concept' | 'paper' | 'experiment' | 'question';
+
+export type WikiManualPageStatus = 'draft' | 'review' | 'final';
+
+export interface WikiManualPageInputModel {
+  title: string;
+  kind: WikiManualPageKind;
+  body: string;
+  status: WikiManualPageStatus;
+}
+
+export interface WikiPageMutationModel {
+  success: boolean;
+  slug: string;
+  message: string;
 }
 
 export interface WikiStatusPanelDraft {

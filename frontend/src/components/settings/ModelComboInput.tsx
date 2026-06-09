@@ -28,7 +28,7 @@ export function ModelComboInput({
   onDiscover,
   discoverStatus,
   discoverError,
-  placeholder = '模型 ID',
+  placeholder = '模型名称',
   ariaLabel,
 }: ModelComboInputProps) {
   const [open, setOpen] = useState(false);

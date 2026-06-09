@@ -1,5 +1,5 @@
 """
-Pure-function candidate extraction for skill execution results (Slice 4b).
+Pure-function candidate extraction for skill execution results.
 
 Maps `SkillRunResult` (literature_assistant.core.skills.runtime.SkillRunResult)
 to the kwargs `EvolutionService.capture()` needs. Called from
@@ -10,16 +10,15 @@ state.
 Two candidate types:
     SUCCESS / PARTIAL → memory_type=SKILL_DRAFT
         Captures the skill+input+output as a candidate that could later be
-        promoted into a managed disabled skill draft (Slice 6).
+        promoted into a managed disabled skill draft.
     FAILED / TIMEOUT / CANCELLED → memory_type=TOOL_RELIABILITY
         Captures the failure so future runs of the same skill can be
         compared against this reliability lesson.
 
-Per plan §Eligibility "Skill draft" rule "Repeated success or explicit user
-request" — v1 captures every success; reviewers decide which to promote.
+For skill drafts, v1 captures every success; reviewers decide which to promote.
 Deduplication (skill_id + normalized input) keeps the queue clean.
 
-Slice 6 owns actual promotion. This slice only captures the draft proposal.
+Promotion is handled by the promoter. This module only captures the draft proposal.
 """
 
 from __future__ import annotations

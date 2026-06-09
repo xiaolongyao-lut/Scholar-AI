@@ -1,5 +1,5 @@
 """
-Pure-function candidate extraction for /discussion/runs (Slice 4a).
+Pure-function candidate extraction for /discussion/runs.
 
 Maps `DiscussionRunResult` (the full trace returned by the orchestrator) to
 the kwargs `EvolutionService.capture()` needs. Eligibility rules below are

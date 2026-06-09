@@ -2,7 +2,7 @@
   "schema_version": 1,
   "package_id": "lit-mcp-vision-auxiliary",
   "display_name": "视觉辅助",
-  "description": "让纯文本聊天模型能处理图片输入。该 MCP 包接收主程序传入的 base64 图片 + 用户问题，通过你配置的视觉模型生成结构化中文笔记，再以 <vision-context> 块的形式注入回主对话。",
+  "description": "让智能研读能理解你上传的图片。它会把图片内容整理成中文说明，再交给主对话参考。",
   "transport": "stdio",
   "launch": {
     "command": "python",
@@ -12,54 +12,68 @@
   "config_fields": [
     {
       "id": "vision_provider",
-      "label": "视觉模型提供方",
+      "label": "视觉服务",
       "env": "VISION_PROVIDER",
       "type": "select",
       "required": true,
       "default": "siliconflow",
-      "description": "选择负责看图的服务方。所选提供方必须与下面绑定的 API Key 一致。",
+      "description": "选择负责分析图片的服务。也可以选择自定义，用任何兼容的服务地址和模型名称。",
       "options": [
         { "value": "siliconflow", "label": "硅基流动" },
         { "value": "openai", "label": "OpenAI" },
         { "value": "anthropic", "label": "Anthropic" },
-        { "value": "gemini", "label": "Google Gemini" }
+        { "value": "gemini", "label": "Google Gemini" },
+        { "value": "custom", "label": "自定义 / 手动填写" }
       ]
     },
     {
+      "id": "vision_base_url",
+      "label": "自定义服务地址（可选）",
+      "env": "VISION_BASE_URL",
+      "type": "text",
+      "required": false,
+      "default": "",
+      "description": "使用自定义服务、代理网关或非默认地址时填写；留空则使用所选服务的默认地址。"
+    },
+    {
       "id": "vision_model",
-      "label": "视觉模型",
+      "label": "图片理解模型",
       "env": "VISION_MODEL",
       "type": "text",
       "required": true,
       "default": "Qwen2-VL-7B-Instruct",
-      "description": "具体使用的视觉模型 ID。请确保所选模型在所选提供方下支持图片输入。"
+      "description": "填写支持图片输入的模型名称。不同服务的模型名称可能不同，可以按服务商文档手动填写。"
     },
     {
       "id": "max_note_chars",
-      "label": "笔记长度上限",
+      "label": "单张图片说明长度上限",
       "env": "MAX_NOTE_CHARS",
-      "type": "text",
+      "type": "number",
       "required": false,
       "default": "3200",
-      "description": "单张图片注入主对话的笔记最大字符数。过大会增加主模型上下文消耗。"
+      "min": 400,
+      "max": 12000,
+      "step": 100,
+      "description": "限制每张图片生成说明的最多字符数。默认 3200 适合较详细说明；图片很多或回答变慢时调小，想保留更多细节时调大。"
     }
   ],
   "required_credentials": [
     {
       "id": "vision_api_key",
-      "label": "视觉模型 API Key",
+      "label": "视觉服务访问凭证",
       "env": "VISION_API_KEY",
       "kind": "api_key",
-      "provider_hints": ["siliconflow", "openai", "anthropic", "gemini"],
+      "provider_hints": ["siliconflow", "openai", "anthropic", "gemini", "custom"],
       "required": true,
-      "description": "用于调用视觉模型的 API Key。从凭证管理选择一项已配置的同提供方凭证。"
+      "description": "选择已保存的视觉服务凭证。也可以先到凭证管理新增任意兼容服务，再回到这里绑定。"
     }
   ],
   "expected_tools": [
+    "analyze_images_batch",
     "vision.describe_image",
     "vision.extract_text"
   ],
   "capabilities": ["read"],
-  "homepage": "https://github.com/anthropics/literature-assistant/tree/main/workspace_references/vision_auxiliary",
+  "homepage": "https://github.com/anthropics/literature-assistant",
   "version": "0.1.0"
 }

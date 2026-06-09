@@ -1,19 +1,19 @@
-"""Credential binding index (S1 / plan 2026-05-20 §Locked Revisions M3 + A).
+"""Credential binding index.
 
 In-memory reverse index of credential references made by MCP servers and
 Skills. Source-of-truth lives in:
 
-- ``McpStdioConfig.env_refs`` (env var name -> credential_id)
-- ``McpStreamableHttpConfig.header_refs`` (header name -> credential_id)
-- ``UserSkillManifest.required_credentials`` (future S5)
+- the MCP stdio credential-reference map
+- the MCP streamable HTTP header-reference map
+- ``UserSkillManifest.required_credentials``
 
 This module **does not persist** bindings. It rebuilds the reverse index by
 scanning those stores at startup or on demand. Single source of truth = the
 owner config; this index just answers "who uses this credential" cheaply
 without scanning everything on every read.
 
-Why no second store: avoids drift between env_refs and a parallel binding
-table. Per Locked Revisions Decision #1 (env_refs 单存).
+Why no second store: avoids drift between owner configs and a parallel
+binding table.
 
 Thread-safe: rebuild / list operations acquire an internal RLock.
 """
@@ -64,7 +64,7 @@ class CredentialBindingIndex:
         """Replace all MCP-owned bindings by scanning the supplied configs.
 
         Skill bindings are preserved. The iterable yields the *internal*
-        McpServerConfig (env_refs / header_refs accessible), never the
+        McpServerConfig (credential-reference maps accessible), never the
         public masked shape.
         """
         from models.mcp import McpTransport

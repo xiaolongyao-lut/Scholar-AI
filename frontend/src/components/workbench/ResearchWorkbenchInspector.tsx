@@ -24,11 +24,27 @@ interface SmartReadInspectorProps {
   starters?: SmartReadStarter[];
   /** Called when user sends a message. */
   onSend: (text: string) => void;
-  /** Called when an evidence pill is selected (Slice 3 selection-bus glue). */
+  /** True while the active smart-read request is streaming. */
+  responding?: boolean;
+  /** Cancels the active smart-read request for the current scope. */
+  onStop?: () => void;
+  /** Branches locally by editing a previous user message. */
+  onEditMessage?: (message: ChatMessageData) => void;
+  /** Keeps messages through the selected point and starts a fresh branch. */
+  onForkMessage?: (message: ChatMessageData) => void;
+  /** Called when an evidence pill is selected. */
   selectedEvidenceId?: string | null;
   onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect?: boolean;
   /** Optional context chip strip (e.g. "Selected text" after K1). */
   contextChips?: React.ReactNode;
+  /** Optional current-request project reasoning-bias toggle. */
+  projectReasoningBias?: {
+    enabled: boolean;
+    available: boolean;
+    loading?: boolean;
+    onChange: (enabled: boolean) => void;
+  };
 }
 
 type InspectorTab = 'smart-read' | 'multi-agent';
@@ -46,37 +62,40 @@ interface InspectorProps extends SmartReadInspectorProps {
  * a blank prompt; if backend starter endpoint is unavailable, callers
  * pass static `starters`.
  *
- * Multi-Agent tab in v1 is a context-preview placeholder (Slice 3);
- * Slice 4 wires real Discussion-object-derived controls. Per L10 G1,
- * no human-in-the-loop composer is rendered here in v1.
+ * Multi-Agent tab defaults to the full discussion workflow. The feature
+ * flag remains as a local rollback switch, not as an experimental gate.
  */
 export function ResearchWorkbenchInspector({
   projectId,
   messages,
   starters,
   onSend,
+  responding = false,
+  onStop,
+  onEditMessage,
+  onForkMessage,
   selectedEvidenceId,
   onSelectEvidence,
+  navigateEvidenceAfterSelect = false,
   contextChips,
+  projectReasoningBias,
   multiAgentContext,
 }: InspectorProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<InspectorTab>('smart-read');
-  // DSE Slice 3: when inspector_embed_unified flag is on, the multi-agent
-  // tab embeds the full DiscussionPanel instead of the Bug-A placeholder.
-  // Best-effort fetch on mount; flag-fetch failure falls back to placeholder.
-  const [embedUnified, setEmbedUnified] = useState(false);
+  const [embedUnified, setEmbedUnified] = useState(true);
+  const [draft, setDraft] = useState('');
   useEffect(() => {
     let cancelled = false;
     listFeatureFlags()
       .then((flags) => {
         if (cancelled) return;
         const entry = flags.find((f) => f.name === 'inspector_embed_unified');
-        setEmbedUnified(Boolean(entry?.current));
+        setEmbedUnified(entry ? Boolean(entry.current) : true);
       })
       .catch(() => {
-        // Network or backend unavailable — keep placeholder. Logging would be
-        // noise on every Inspector mount, so we silently degrade.
+        if (cancelled) return;
+        setEmbedUnified(true);
       });
     return () => {
       cancelled = true;
@@ -87,6 +106,12 @@ export function ResearchWorkbenchInspector({
     const query = projectId ? `?project=${encodeURIComponent(projectId)}` : '';
     navigate(`/discussion${query}`);
   }, [navigate, projectId]);
+
+  const handleEditMessage = useCallback((message: ChatMessageData) => {
+    if (message.role !== 'user') return;
+    onEditMessage?.(message);
+    setDraft(message.content);
+  }, [onEditMessage]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -103,12 +128,24 @@ export function ResearchWorkbenchInspector({
       {tab === 'smart-read' ? (
         <Conversation
           messages={messages}
-          onSubmit={({ text }) => onSend(text)}
+          onSubmit={({ text }) => {
+            onSend(text);
+            setDraft('');
+          }}
           projectId={projectId}
+          inputValue={draft}
+          onInputValueChange={setDraft}
+          disabled={responding}
+          responding={responding}
+          onStop={onStop}
+          onEditMessage={handleEditMessage}
+          onForkMessage={onForkMessage}
           selectedEvidenceId={selectedEvidenceId}
           onSelectEvidence={onSelectEvidence}
+          navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
           placeholder="提出关于本文的问题或高亮一段文字"
           composerHint="提示：按 Ctrl/Cmd + Enter 快速发送"
+          projectReasoningBias={projectReasoningBias}
           contextChips={contextChips}
           emptyState={
             <SmartReadEmpty
@@ -119,32 +156,55 @@ export function ResearchWorkbenchInspector({
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 text-sm">
-          {multiAgentContext ? (
-            multiAgentContext
-          ) : embedUnified ? (
-            <DiscussionPanel />
+          {embedUnified ? (
+            <>
+              {multiAgentContext ? <div className="shrink-0">{multiAgentContext}</div> : null}
+              <div className="min-h-[560px] flex-1">
+                <DiscussionPanel defaults={INSPECTOR_DISCUSSION_DEFAULTS} />
+              </div>
+            </>
           ) : (
-            <div className="rounded-md border border-dashed border-outline-variant bg-surface-low p-4 text-xs text-foreground/55">
-              <p className="mb-2 font-medium text-foreground/75">还没有多智能体讨论</p>
-              <p className="mb-3 leading-relaxed">这里会显示围绕当前 PDF 上下文的多智能体讨论。开始一轮新讨论的方式：</p>
-              <ul className="mb-3 ml-4 list-disc space-y-1 leading-relaxed">
-                <li>选中 PDF 文段后，在弹出的工具条上点「多智能体」（推荐，自动携带选区作为讨论上下文）</li>
-                <li>或前往多智能体讨论页，手动设置角色与证据</li>
-                <li>或在设置 → 实验性功能里打开「工作台 Inspector 嵌入完整功能」，在此就地启动讨论</li>
-              </ul>
-              <button
-                type="button"
-                onClick={goToDiscussionPage}
-                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                前往多智能体讨论页
-                <ArrowRight size={12} />
-              </button>
-            </div>
+            <InspectorDiscussionFallback
+              context={multiAgentContext}
+              onGoToDiscussionPage={goToDiscussionPage}
+            />
           )}
         </div>
       )}
     </div>
+  );
+}
+
+const INSPECTOR_DISCUSSION_DEFAULTS = {
+  auto_stop: true,
+  min_turns: 2,
+} as const;
+
+function InspectorDiscussionFallback({
+  context,
+  onGoToDiscussionPage,
+}: {
+  context?: React.ReactNode;
+  onGoToDiscussionPage: () => void;
+}) {
+  return (
+    <>
+      {context ? <div className="shrink-0">{context}</div> : null}
+      <div className="rounded-md border border-dashed border-outline-variant bg-surface-low p-4 text-xs text-foreground/55">
+        <p className="mb-2 font-medium text-foreground/75">多智能体讨论已切换到回退入口</p>
+        <p className="mb-3 leading-relaxed">
+          当前本机功能开关关闭了工作台内嵌讨论。仍可前往多智能体讨论页继续运行同一套讨论流程。
+        </p>
+        <button
+          type="button"
+          onClick={onGoToDiscussionPage}
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          前往多智能体讨论页
+          <ArrowRight size={12} />
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -199,11 +259,13 @@ export function ResearchWorkbenchEvidenceDrawer({
   projectId,
   selectedEvidenceId,
   onSelectEvidence,
+  navigateEvidenceAfterSelect = false,
 }: {
   evidence: EvidenceRefLike[];
   projectId?: string | null;
   selectedEvidenceId?: string | null;
   onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect?: boolean;
 }) {
   if (!evidence || evidence.length === 0) {
     return (
@@ -225,6 +287,7 @@ export function ResearchWorkbenchEvidenceDrawer({
             (ev.evidence_id === selectedEvidenceId || ev.chunk_id === selectedEvidenceId)
           }
           onActivate={onSelectEvidence}
+          navigateAfterActivate={navigateEvidenceAfterSelect}
         />
       ))}
     </div>

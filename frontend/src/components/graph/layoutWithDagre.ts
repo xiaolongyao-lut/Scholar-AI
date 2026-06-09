@@ -9,15 +9,73 @@ export interface LayoutOptions {
   rankdir?: 'TB' | 'LR' | 'BT' | 'RL';
   ranksep?: number;
   nodesep?: number;
+  staggerRankSiblings?: boolean;
 }
 
 const DEFAULTS: Required<LayoutOptions> = {
   nodeWidth: 160,
   nodeHeight: 48,
   rankdir: 'LR',
-  ranksep: 80,
-  nodesep: 28,
+  ranksep: 110,
+  nodesep: 44,
+  staggerRankSiblings: true,
 };
+
+interface NodeBox {
+  width: number;
+  height: number;
+}
+
+function readCssSize(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return fallback;
+}
+
+function nodeBox(node: Node, options: Required<LayoutOptions>): NodeBox {
+  const width = readCssSize(node.style?.width, options.nodeWidth);
+  const height = readCssSize(node.style?.height, readCssSize(node.style?.minHeight, options.nodeHeight));
+  return { width, height };
+}
+
+function staggerOffset(index: number): number {
+  const lane = index % 3;
+  if (lane === 0) return -28;
+  if (lane === 2) return 28;
+  return 0;
+}
+
+function applyRankStagger(nodes: Node[], rankdir: Required<LayoutOptions>['rankdir']): Node[] {
+  const rankKey = (node: Node): string => {
+    const axis = rankdir === 'LR' || rankdir === 'RL' ? node.position.x : node.position.y;
+    return String(Math.round(axis / 10) * 10);
+  };
+  const groups = new Map<string, Node[]>();
+  for (const node of nodes) {
+    const key = rankKey(node);
+    const group = groups.get(key) ?? [];
+    group.push(node);
+    groups.set(key, group);
+  }
+  const offsets = new Map<string, number>();
+  for (const group of groups.values()) {
+    if (group.length < 4) continue;
+    group.forEach((node, index) => offsets.set(node.id, staggerOffset(index)));
+  }
+  return nodes.map((node) => {
+    const offset = offsets.get(node.id);
+    if (offset === undefined) return node;
+    return {
+      ...node,
+      position: rankdir === 'LR' || rankdir === 'RL'
+        ? { x: node.position.x + offset, y: node.position.y }
+        : { x: node.position.x, y: node.position.y + offset },
+    };
+  });
+}
 
 /**
  * Run dagre over a set of React Flow nodes + edges and return new nodes
@@ -36,9 +94,12 @@ export function layoutWithDagre(
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: opts.rankdir, ranksep: opts.ranksep, nodesep: opts.nodesep });
   g.setDefaultEdgeLabel(() => ({}));
+  const boxes = new Map<string, NodeBox>();
 
   for (const node of nodes) {
-    g.setNode(node.id, { width: opts.nodeWidth, height: opts.nodeHeight });
+    const box = nodeBox(node, opts);
+    boxes.set(node.id, box);
+    g.setNode(node.id, { width: box.width, height: box.height });
   }
   for (const edge of edges) {
     // dagre rejects edges with unknown endpoints; the GraphPayload adapter
@@ -53,12 +114,13 @@ export function layoutWithDagre(
   const positioned = nodes.map((node) => {
     const laid = g.node(node.id);
     if (!laid) return node;
+    const box = boxes.get(node.id) ?? { width: opts.nodeWidth, height: opts.nodeHeight };
     return {
       ...node,
       // dagre gives the centre of the box; React Flow positions by top-left.
-      position: { x: laid.x - opts.nodeWidth / 2, y: laid.y - opts.nodeHeight / 2 },
+      position: { x: laid.x - box.width / 2, y: laid.y - box.height / 2 },
     };
   });
 
-  return { nodes: positioned, edges };
+  return { nodes: opts.staggerRankSiblings ? applyRankStagger(positioned, opts.rankdir) : positioned, edges };
 }

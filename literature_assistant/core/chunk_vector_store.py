@@ -1,8 +1,8 @@
 """Lightweight in-memory vector store with SiliconFlow embedding API.
 
-Provides dense retrieval for the eval pipeline (Phase 2).
+Provides dense retrieval for the eval pipeline.
 Embeddings are cached to disk to avoid redundant API calls.
-Gracefully degrades when no API key is available.
+Gracefully degrades when no embedding credential is available.
 """
 
 from __future__ import annotations
@@ -21,7 +21,8 @@ import numpy as np
 
 import provider_rate_limit
 from chunk_size_guard import inspect_text
-from model_call_gateway import CHUNKING_VERSION, gated_call
+from llm.gateway import invoke as invoke_model_gateway
+from model_call_gateway import CHUNKING_VERSION
 from runtime_env import (
     build_embedding_request_payload,
     env_value,
@@ -493,7 +494,7 @@ async def _batch_embed(
                 return _invoke_embedding_http(normalized[0], api_key, base_url, model)
 
             vector = await asyncio.to_thread(
-                gated_call,
+                invoke_model_gateway,
                 kind="embedding",
                 cache_key_parts={
                     "model": model,
@@ -506,7 +507,7 @@ async def _batch_embed(
                     "encoding_format": "float",
                     "dimensions": EMBEDDING_DIM,
                 },
-                invoke=_invoke_single,
+                invoke_fn=_invoke_single,
                 validate_result=lambda value: isinstance(value, list) and len(value) >= EMBEDDING_DIM,
                 stage=stage,
             )
@@ -583,7 +584,7 @@ async def batch_embed_texts(
         probe_candidates=False,
     )
     if not resolved_key:
-        raise EmbeddingAPIError("No embedding API key available")
+        raise EmbeddingAPIError("No embedding credential available")
 
     embedding_pool = _make_embedding_failover_pool(
         api_key=api_key,
@@ -752,7 +753,7 @@ class ChunkVectorStore:
         # 3. Compute via API
         if not resolved_key:
             logger.warning(
-                "No embedding API key available; dense retrieval disabled for %d chunks",
+                "No embedding credential available; dense retrieval disabled for %d chunks",
                 n,
             )
             return cls(
@@ -780,7 +781,7 @@ class ChunkVectorStore:
                 f"Embedding shape mismatch: expected ({n}, {EMBEDDING_DIM}), got {embeddings.shape}"
             )
 
-        # Hard guard: no all-zero rows allowed when an API key was available.
+        # Hard guard: no all-zero rows allowed when an embedding credential was available.
         zero_rows = int(np.sum((embeddings == 0).all(axis=1)))
         if zero_rows > 0:
             raise ValueError(
@@ -799,7 +800,7 @@ class ChunkVectorStore:
         )
 
     async def embed_query(self, query_text: str) -> np.ndarray | None:
-        """Embed a single query. Returns None if no API key."""
+        """Embed a single query. Returns None if no embedding credential."""
         if not self._api_key or not self.has_embeddings:
             return None
         results = await _batch_embed(

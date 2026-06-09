@@ -7,53 +7,104 @@ name = "scholar-ai-workbench"
 version = "0.1.8.2"
 description = "Local-first academic literature research workbench with RAG, wiki, MCP, and operator review UI"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "Source-Available Non-Commercial"}
 
 dependencies = [
-    "pydantic>=1.9.0",
-    "python-dateutil>=2.8.0",
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.30.0,<1.0.0",
+    "pydantic>=2.8.0,<3.0.0",
+    "httpx>=0.27.0,<1.0.0",
+    "requests>=2.31.0,<3.0.0",
+    "PyYAML>=6.0.0,<7.0.0",
+    "numpy>=1.26.0,<3.0.0",
+    "networkx>=3.0.0,<4.0.0",
+    "scipy>=1.10.0,<2.0.0",
+    "python-dateutil>=2.8.0,<3.0.0",
+    "python-docx>=1.1.0,<2.0.0",
+    "Pillow>=10.0.0,<13.0.0",
+    "PyMuPDF>=1.24.0,<2.0.0",
+    "python-multipart>=0.0.9,<1.0.0",
+    "keyring>=25.0.0,<26.0.0",
+    "mcp>=1.13.0,<2.0.0",
+    "fastmcp>=2.12.0,<4.0.0",
 ]
 
+[project.scripts]
+literature-assistant = "literature_assistant.__main__:main"
+
 [project.optional-dependencies]
+rag = [
+    "chromadb>=0.4.0,<2.0.0",
+    "pandas>=2.0.0,<4.0.0",
+    "pyarrow>=15.0.0,<25.0.0",
+    "sentence-transformers>=2.2,<6.0",
+    "umap-learn>=0.5.0,<0.6.0",
+]
+
+desktop = [
+    "pywebview>=5.0,<7.0; sys_platform == 'win32'",
+    "pythonnet>=3.0,<4.0; sys_platform == 'win32'",
+    "pywin32>=306,<400; sys_platform == 'win32'",
+]
+
+packaging = [
+    "build>=1.0,<2.0",
+    "pyinstaller>=6.0,<7.0; sys_platform == 'win32'",
+    "pyinstaller-hooks-contrib>=2024.0,<2027.0; sys_platform == 'win32'",
+    "pefile>=2023.2.7,<2025.0; sys_platform == 'win32'",
+]
+
 dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "pytest-xdist>=3.0",
-    "mypy>=0.990",
-    "black>=23.0",
-    "isort>=5.11",
-    "flake8>=5.0",
+    "pytest>=7.0,<10.0",
+    "pytest-asyncio>=0.23,<2.0",
+    "pytest-cov>=4.0,<8.0",
+    "pytest-mock>=3.12,<4.0",
+    "pytest-xdist>=3.0,<4.0",
+    "mypy>=1.8,<2.0",
+    "black>=24.0,<27.0",
+    "isort>=5.13,<6.0",
+    "flake8>=7.0,<8.0",
 ]
 
 dev-advanced = [
-    "plotly>=5.0",
-    "scipy>=1.8",
-    "scikit-learn>=1.0",
-    "sentence-transformers>=2.2",
+    "chromadb>=0.4.0,<2.0.0",
+    "pandas>=2.0.0,<4.0.0",
+    "pyarrow>=15.0.0,<25.0.0",
+    "plotly>=5.0,<7.0",
+    "scipy>=1.8,<2.0",
+    "scikit-learn>=1.0,<2.0",
+    "sentence-transformers>=2.2,<6.0",
+    "umap-learn>=0.5.0,<0.6.0",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-addopts = "-v --strict-markers --tb=short --cov=modules --cov-report=html --cov-report=term-missing"
-markers = [
-    "unit: Unit tests for individual components",
-    "integration: Integration tests for the full pipeline",
-    "slow: Tests that take >1 second",
-    "performance: Performance and benchmarking tests",
-    "edge_case: Edge case and boundary tests",
+[tool.setuptools.packages.find]
+include = ["literature_assistant*"]
+exclude = [
+    "docs*",
+    "extension_packages*",
+    "frontend*",
+    "github*",
+    "legacy_archive*",
+    "scripts*",
+    "tests*",
+    "tools*",
+    "workspace_artifacts*",
+    "workspace_references*",
+    "workspace_tests*",
 ]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
+check_untyped_defs = true
+no_implicit_optional = true
 ignore_missing_imports = true
-files = ["modules"]
+files = ["literature_assistant", "run_literature_assistant.py", "sitecustomize.py"]
 exclude = [
     "tests/",
     ".venv",
@@ -62,6 +113,12 @@ exclude = [
 
 [[tool.mypy.overrides]]
 module = [
+    "literature_assistant.core._atomic_io",
+    "literature_assistant.core.credential_store",
+    "literature_assistant.core.feature_flags",
+    "literature_assistant.core.model_config_store",
+    "literature_assistant.core.routers.credentials_router",
+    "literature_assistant.core.routers.settings_router",
     "plotly.*",
     "scipy.*",
     "sklearn.*",
@@ -71,7 +128,7 @@ ignore_missing_imports = true
 
 [tool.black]
 line-length = 100
-target-version = ["py38", "py39", "py310"]
+target-version = ["py311"]
 exclude = [
     ".venv",
     "__pycache__",
@@ -82,17 +139,64 @@ exclude = [
 profile = "black"
 line_length = 100
 skip_gitignore = true
-known_first_party = ["modules"]
+known_first_party = ["literature_assistant"]
 
 [tool.coverage.run]
-source = ["modules"]
+source = ["literature_assistant"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
     ".venv/*",
+    "*/literature_assistant/core/__head_eval_runtime.py",
+    "*/literature_assistant/core/agent_orchestrator.py",
+    "*/literature_assistant/core/agent_roles.py",
+    "*/literature_assistant/core/audit_eval_dataset.py",
+    "*/literature_assistant/core/bootstrap_mempalace_repo.py",
+    "*/literature_assistant/core/chunking_pipeline.py",
+    "*/literature_assistant/core/extract_pdfs.py",
+    "*/literature_assistant/core/extract_pdfs2.py",
+    "*/literature_assistant/core/extractor_full.py",
+    "*/literature_assistant/core/gateb_*.py",
+    "*/literature_assistant/core/harness_*.py",
+    "*/literature_assistant/core/image_cropper.py",
+    "*/literature_assistant/core/integrated_pipeline.py",
+    "*/literature_assistant/core/layers/a_layer_agent_coordinator.py",
+    "*/literature_assistant/core/layers/adaptive_*.py",
+    "*/literature_assistant/core/layers/conflict_resolver.py",
+    "*/literature_assistant/core/layers/e_layer_multimodal.py",
+    "*/literature_assistant/core/layers/focus_extractor.py",
+    "*/literature_assistant/core/layers/g_layer_academic_generator.py",
+    "*/literature_assistant/core/layers/g_synthesis_graphrag_bridge.py",
+    "*/literature_assistant/core/layers/p1_*.py",
+    "*/literature_assistant/core/layers/p2_*.py",
+    "*/literature_assistant/core/layers/p3_causal_engine.py",
+    "*/literature_assistant/core/layers/p3_triangulator.py",
+    "*/literature_assistant/core/layers/p_layer_presentation_word.py",
+    "*/literature_assistant/core/layers/pipeline_orchestrator.py",
+    "*/literature_assistant/core/layers/semantic_router.py",
+    "*/literature_assistant/core/layers/v_*.py",
+    "*/literature_assistant/core/list_*skills.py",
+    "*/literature_assistant/core/load_skill_in_vscode.py",
+    "*/literature_assistant/core/main_system_production.py",
+    "*/literature_assistant/core/manifest_builder.py",
+    "*/literature_assistant/core/material_bundler.py",
+    "*/literature_assistant/core/media_binder.py",
+    "*/literature_assistant/core/models/association_models.py",
+    "*/literature_assistant/core/modules/*",
+    "*/literature_assistant/core/packager_delivery.py",
+    "*/literature_assistant/core/poc_async_event_store.py",
+    "*/literature_assistant/core/rag_integration_entry.py",
+    "*/literature_assistant/core/recovery_*.py",
+    "*/literature_assistant/core/scoring_engine.py",
+    "*/literature_assistant/core/scratch_generate.py",
+    "*/literature_assistant/core/tier2_estimate.py",
+    "*/literature_assistant/core/volume_indexer.py",
+    "*/literature_assistant/core/volume_merger.py",
+    "*/literature_assistant/core/wiki/cost_estimator.py",
 ]
 
 [tool.coverage.report]
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

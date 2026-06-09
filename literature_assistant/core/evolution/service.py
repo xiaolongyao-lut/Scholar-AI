@@ -4,12 +4,11 @@ High-level orchestration for the evolution candidate layer.
 Wires store + secret scan + state machine into a small API that routers and
 in-process callers can use without touching SQLite directly.
 
-Backend remains authoritative for risk, dedupe, eligibility, and promotion
-(plan §Backend Reliability). Secret scan and dedupe gates fire before any row
+Backend remains authoritative for risk, dedupe, eligibility, and promotion.
+Secret scan and dedupe gates fire before any row
 write; status transitions are validated by state_machine.evaluate_transition.
 
-Promotion to MemPalace and skill drafts is the responsibility of plan §Slice 6
-and is intentionally out of scope for Slice 2; this service exposes only the
+Promotion to MemPalace and skill drafts is handled by the promoter; this service exposes only the
 candidate-store-level state transitions (accept / reject / snooze / rollback).
 """
 
@@ -116,7 +115,7 @@ class EvolutionService:
         and surface the reason via decision_reason; the row is still persisted
         so reviewers can see why it was blocked.
 
-        S8.1 hotfix (review-queue input contract): non-blocked candidates land
+        Review-queue input contract: non-blocked candidates land
         directly in PENDING so the /evolution/candidates?status=pending inbox
         is immediately useful for the S5 review UI. CAPTURED remains a valid
         state in the state machine for internal-only / backfill flows.
@@ -228,7 +227,7 @@ class EvolutionService:
         rollback_ref: Optional[str] = None,
         decision_reason: Optional[str] = None,
     ) -> StoreWriteResult:
-        """Mark a promoted candidate as rolled back (tombstone-first per D-EVO-P0-6)."""
+        """Mark a promoted candidate as rolled back using tombstone-first semantics."""
 
         return self.store.transition(
             candidate_id,
@@ -241,12 +240,11 @@ class EvolutionService:
     def promote(self, candidate_id: str) -> "PromotionOutcome":
         """Promote an ACCEPTED candidate to MemPalace memory or skill draft.
 
-        Slice 6 contract (plan §Slice 6 + §D-EVO-P0-6 + §D-EVO-P0-8):
+        Promotion contract:
           - candidate must be in ACCEPTED status; otherwise PromotionOutcome
             reports promoted=False and the row is untouched
           - memory_type=SKILL_DRAFT routes to skill-draft proposal path
-            (records intent; managed skill manifest creation deferred to
-            Slice 6.5)
+            (records intent; managed skill manifest creation is optional)
           - everything else routes to MemPalace add_memory(); on success
             the candidate transitions to PROMOTED_TO_MEMORY with the
             drawer_id stored as rollback_ref
@@ -344,7 +342,7 @@ class EvolutionService:
             adapter = get_memory_adapter()
         except Exception:
             adapter = None
-        # Lazy resolve shared WritingSkillService for Slice 6.5 managed-skill
+        # Lazy resolve shared WritingSkillService for managed-skill
         # promotion path. Failures degrade silently to the pre-6.5 proposal-only
         # fallback so the rest of promotion still works in minimal envs / tests.
         try:
@@ -369,6 +367,7 @@ class EvolutionService:
         project_id: Optional[str] = None,
         status: Optional[CandidateStatus] = None,
         memory_type: Optional[str] = None,
+        sort_by: str = "updated_at",
         limit: int = 50,
         offset: int = 0,
     ) -> List[ExperienceCandidate]:
@@ -377,6 +376,7 @@ class EvolutionService:
             project_id=project_id,
             status=status,
             memory_type=memory_type,
+            sort_by=sort_by,
             limit=limit,
             offset=offset,
         )
@@ -407,7 +407,7 @@ class EvolutionService:
         workspace_id: Optional[str] = None,
         recent_decision_limit: int = 10,
     ) -> Dict[str, Any]:
-        """Opt §6: read-only roll-up for /evolution/audit."""
+        """Read-only roll-up for /evolution/audit."""
 
         return self.store.audit_summary(
             workspace_id=workspace_id,

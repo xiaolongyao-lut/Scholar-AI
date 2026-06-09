@@ -25,6 +25,7 @@ router = APIRouter(tags=["Pipeline"], prefix="/pipeline")
 
 # Global task cache (moved from main adapter)
 TASKS: dict[str, dict[str, Any]] = {}
+BACKGROUND_TASKS: dict[str, Any] = {}
 TASKS_LOCK = asyncio.Lock()
 TASK_RETENTION_SECONDS = int(os.environ.get("PIPELINE_TASK_RETENTION_SECONDS", "1800"))
 TASK_MAX_CACHE = int(os.environ.get("PIPELINE_TASK_MAX_CACHE", "200"))
@@ -37,7 +38,19 @@ def _now_ts() -> float:
 
 def _task_terminal(status: str) -> bool:
     """Return True when a task is no longer running."""
-    return status in (TaskState.succeeded.value, TaskState.failed.value)
+    return status in (TaskState.succeeded.value, TaskState.failed.value, TaskState.cancelled.value)
+
+
+def _task_status_response(task_id: str, task: Mapping[str, Any]) -> PipelineTaskStatusResponse:
+    """Build the public task status envelope from an in-memory task record."""
+    return PipelineTaskStatusResponse(
+        task_id=task_id,
+        status=str(task.get("status", TaskState.failed.value)),
+        progress=float(task.get("progress", 0.0) or 0.0),
+        stage=str(task.get("stage", "queued")),
+        result=task.get("result"),
+        error=task.get("error"),
+    )
 
 
 async def _cleanup_tasks_locked() -> None:
@@ -53,6 +66,7 @@ async def _cleanup_tasks_locked() -> None:
 
     for task_id in removable:
         TASKS.pop(task_id, None)
+        BACKGROUND_TASKS.pop(task_id, None)
 
     if len(TASKS) <= TASK_MAX_CACHE:
         return
@@ -68,6 +82,7 @@ async def _cleanup_tasks_locked() -> None:
     overflow = len(TASKS) - TASK_MAX_CACHE
     for task_id, _ in terminal_items[:overflow]:
         TASKS.pop(task_id, None)
+        BACKGROUND_TASKS.pop(task_id, None)
 
 
 def _run_pipeline_sync(request: PipelineRequest) -> dict[str, Any]:
@@ -478,6 +493,8 @@ def _augment_pipeline_result(pipeline_result: dict[str, Any], request: PipelineR
 async def _run_pipeline_async(task_id: str, request: PipelineRequest) -> None:
     """Execute the pipeline in the background and persist terminal result."""
     async with TASKS_LOCK:
+        if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+            return
         TASKS[task_id]["status"] = TaskState.running.value
         TASKS[task_id]["progress"] = 0.1
         TASKS[task_id]["stage"] = "running"
@@ -486,39 +503,59 @@ async def _run_pipeline_async(task_id: str, request: PipelineRequest) -> None:
     try:
         result = await asyncio.to_thread(_run_pipeline_sync, request)
         async with TASKS_LOCK:
+            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+                BACKGROUND_TASKS.pop(task_id, None)
+                return
             TASKS[task_id]["status"] = TaskState.succeeded.value
             TASKS[task_id]["progress"] = 1.0
             TASKS[task_id]["stage"] = "completed"
             TASKS[task_id]["result"] = result
             TASKS[task_id]["error"] = None
             TASKS[task_id]["updated_at"] = _now_ts()
+            BACKGROUND_TASKS.pop(task_id, None)
             await _cleanup_tasks_locked()
+    except asyncio.CancelledError:
+        async with TASKS_LOCK:
+            task = TASKS.get(task_id)
+            if task is not None and not _task_terminal(str(task.get("status", ""))):
+                task["status"] = TaskState.cancelled.value
+                task["stage"] = "cancelled"
+                task["updated_at"] = _now_ts()
+            BACKGROUND_TASKS.pop(task_id, None)
+        raise
     except HTTPException as exc:
         logger.error("Async pipeline task failed with HTTPException: %s", exc, exc_info=True)
         async with TASKS_LOCK:
+            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+                BACKGROUND_TASKS.pop(task_id, None)
+                return
             TASKS[task_id]["status"] = TaskState.failed.value
             TASKS[task_id]["progress"] = 1.0
             TASKS[task_id]["stage"] = "failed"
             TASKS[task_id]["result"] = None
             TASKS[task_id]["error"] = str(exc.detail)
             TASKS[task_id]["updated_at"] = _now_ts()
+            BACKGROUND_TASKS.pop(task_id, None)
             await _cleanup_tasks_locked()
     except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.error("Async pipeline task failed: %s", exc, exc_info=True)
         async with TASKS_LOCK:
+            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+                BACKGROUND_TASKS.pop(task_id, None)
+                return
             TASKS[task_id]["status"] = TaskState.failed.value
             TASKS[task_id]["progress"] = 1.0
             TASKS[task_id]["stage"] = "failed"
             TASKS[task_id]["result"] = None
             TASKS[task_id]["error"] = str(exc)
             TASKS[task_id]["updated_at"] = _now_ts()
+            BACKGROUND_TASKS.pop(task_id, None)
             await _cleanup_tasks_locked()
 
 
 # ---------------------------------------------------------------------------
-# Plan v2 §13.1d.1 / §13.1d.2 — keypool health snapshot endpoint.
-# Read-only; never returns api_key. Returns disabled marker when KeyPool is
-# disabled via LITERATURE_DISABLE_KEY_POOL=1 (orthogonal disable flag).
+# Key-pool health snapshot endpoint. Read-only; never returns credential material.
+# Returns a disabled marker when the key pool is disabled.
 
 def _safe_get_pool_stats() -> dict[str, Any]:
     """Return ``key_pool.get_pool().stats()`` if the pool is reachable,
@@ -539,22 +576,8 @@ def _safe_get_pool_stats() -> dict[str, Any]:
 async def get_pipeline_status() -> dict[str, Any]:
     """Read-only health snapshot for pipeline-adjacent state.
 
-    Plan v2 §13.1d.1: exposes generation pool's ``primary_key_active``,
-    ``credentials_in_cooldown``, ``last_failure_class`` so a release gate
-    or monitoring view can flag a degraded run without reading log files.
-
-    Plan v2 §13.1d.2: includes ``exhausted_count`` per category — any
-    value >0 in a single eval run is a release-blocker signal upstream.
-
-    Response shape::
-
-        {
-          "keypool": {"pools": [{"category": "generation", ...}, ...]},
-          "task_cache": {"size": N, "retention_seconds": ..., "max_cache": ...}
-        }
-
-    No secrets in the response. Endpoint never raises; failure to read
-    the pool is encoded as ``keypool.disabled`` with a reason field.
+    No credential material is returned. Endpoint never raises; failure to read the pool is
+    encoded as ``keypool.disabled`` with a reason field.
     """
     async with TASKS_LOCK:
         task_cache_size = len(TASKS)
@@ -594,7 +617,7 @@ async def run_pipeline_async_endpoint(request: PipelineRequest) -> PipelineTaskS
             "error": None,
             "updated_at": _now_ts(),
         }
-    asyncio.create_task(_run_pipeline_async(task_id, request))
+    BACKGROUND_TASKS[task_id] = asyncio.create_task(_run_pipeline_async(task_id, request))
     return PipelineTaskSubmitResponse(task_id=task_id, status=TaskState.queued.value)
 
 
@@ -607,14 +630,31 @@ async def get_pipeline_task_status(task_id: str) -> PipelineTaskStatusResponse:
         if task is None:
             raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
         task["updated_at"] = _now_ts()
-        return PipelineTaskStatusResponse(
-            task_id=task_id,
-            status=str(task.get("status", TaskState.failed.value)),
-            progress=float(task.get("progress", 0.0) or 0.0),
-            stage=str(task.get("stage", "queued")),
-            result=task.get("result"),
-            error=task.get("error"),
-        )
+        return _task_status_response(task_id, task)
+
+
+@router.post("/task/{task_id}/cancel", response_model=PipelineTaskStatusResponse)
+async def cancel_pipeline_task(task_id: str) -> PipelineTaskStatusResponse:
+    """Mark a queued/running pipeline task as cancelled and stop its async wrapper."""
+    background_task: Any | None = None
+    async with TASKS_LOCK:
+        await _cleanup_tasks_locked()
+        task = TASKS.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+
+        status = str(task.get("status", TaskState.failed.value))
+        if not _task_terminal(status):
+            task["status"] = TaskState.cancelled.value
+            task["stage"] = "cancelled"
+            task["error"] = None
+            task["updated_at"] = _now_ts()
+            background_task = BACKGROUND_TASKS.pop(task_id, None)
+        response = _task_status_response(task_id, task)
+
+    if background_task is not None and hasattr(background_task, "cancel"):
+        background_task.cancel()
+    return response
 
 
 async def _update_batch_task_progress(task_id: str, progress: float, stage: str) -> None:
@@ -636,6 +676,9 @@ async def _run_batch_processing_task(task_id: str, pdf_folder: str, output_root:
     """Execute batch processing in async context and update task state."""
     try:
         async with TASKS_LOCK:
+            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+                BACKGROUND_TASKS.pop(task_id, None)
+                return
             TASKS[task_id]["status"] = TaskState.running.value
             TASKS[task_id]["stage"] = "Processing PDFs"
             TASKS[task_id]["progress"] = 0.0
@@ -670,6 +713,9 @@ async def _run_batch_processing_task(task_id: str, pdf_folder: str, output_root:
         report = await asyncio.to_thread(_batch_sync)
         
         async with TASKS_LOCK:
+            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+                BACKGROUND_TASKS.pop(task_id, None)
+                return
             TASKS[task_id]["status"] = TaskState.succeeded.value
             TASKS[task_id]["stage"] = "Completed"
             TASKS[task_id]["progress"] = 100.0
@@ -678,14 +724,28 @@ async def _run_batch_processing_task(task_id: str, pdf_folder: str, output_root:
                 "message": "Batch processing completed successfully"
             }
             TASKS[task_id]["updated_at"] = _now_ts()
+            BACKGROUND_TASKS.pop(task_id, None)
             await _cleanup_tasks_locked()
+    except asyncio.CancelledError:
+        async with TASKS_LOCK:
+            task = TASKS.get(task_id)
+            if task is not None and not _task_terminal(str(task.get("status", ""))):
+                task["status"] = TaskState.cancelled.value
+                task["stage"] = "cancelled"
+                task["updated_at"] = _now_ts()
+            BACKGROUND_TASKS.pop(task_id, None)
+        raise
     except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.error("Batch processing task %s failed: %s", task_id, exc, exc_info=True)
         async with TASKS_LOCK:
+            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+                BACKGROUND_TASKS.pop(task_id, None)
+                return
             TASKS[task_id]["status"] = TaskState.failed.value
             TASKS[task_id]["stage"] = "Failed"
             TASKS[task_id]["error"] = str(exc)
             TASKS[task_id]["updated_at"] = _now_ts()
+            BACKGROUND_TASKS.pop(task_id, None)
             await _cleanup_tasks_locked()
 
 
@@ -707,6 +767,8 @@ async def submit_batch_processing(request: BatchProcessRequest) -> PipelineTaskS
             "pdf_folder": request.pdf_folder,
             "output_root": request.output_root,
         }
-    asyncio.create_task(_run_batch_processing_task(task_id, request.pdf_folder, request.output_root, request.goal, request.batch_size))
+    BACKGROUND_TASKS[task_id] = asyncio.create_task(
+        _run_batch_processing_task(task_id, request.pdf_folder, request.output_root, request.goal, request.batch_size)
+    )
     return PipelineTaskSubmitResponse(task_id=task_id, status=TaskState.queued.value)
 

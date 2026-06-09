@@ -1,19 +1,18 @@
-"""MCP tool dispatcher (Phase 2 / TASK-203).
+"""MCP tool dispatcher.
 
 Routes one provider tool call to the right MCP server, enforces approval +
 capability gates, invokes via the client manager, and returns an audit-
 ready ``ToolResultRecord``. Never raises on tool-side errors — embeds them
 so the LLM round trip can continue.
 
-Approval gate (plan v0.3 §4.3):
+Approval gate:
   - Server must be in ``approval_state == enabled_for_session``.
   - Otherwise the dispatcher returns an error record with reason
     ``approval_blocked``; the LLM sees a tool_result with is_error=True.
 
-Capability gate (plan v0.3 §4.5):
+Capability gate:
   - Tools tagged ``destructive``, ``write``, ``filesystem`` need a
-    per-call elevation flag (``allow_high_risk_tools``). Phase 2 just
-    enforces the flag; richer per-tool elevation lands in Phase 5.
+    per-call elevation flag (``allow_high_risk_tools``).
 """
 
 from __future__ import annotations
@@ -70,7 +69,7 @@ class DispatchInput:
     Claude blocks and OpenAI tool_calls have different shapes; the
     runner normalizes them before handing to the dispatcher.
 
-    Phase 3.5: ``allow_high_risk`` is a per-call elevation flag set by
+    ``allow_high_risk`` is a per-call elevation flag set by
     the runner's pending-call gate after the operator approves an
     ``ask``-classified tool. OR-combined with the dispatcher-level
     ``allow_high_risk_tools`` constructor flag.
@@ -141,9 +140,9 @@ class McpToolDispatcher:
         self._servers = {s.server_id: s for s in servers}
         self._slug_to_id = {s.server_slug: s.server_id for s in servers}
         self._allow_high_risk = allow_high_risk_tools
-        # Phase 3.6 / ACC-9: RunCaps.per_call_timeout flows through here so
+        # RunCaps.per_call_timeout flows through here so
         # a single tool call can't hang the whole tool-use loop. None means
-        # no timeout (preserves Phase 2 behavior for callers that construct
+        # no timeout (preserves legacy behavior for callers that construct
         # the dispatcher directly without caps).
         self._per_call_timeout = per_call_timeout
 

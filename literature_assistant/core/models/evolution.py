@@ -1,9 +1,7 @@
 """
 Pydantic models for the Literature Evolution Layer.
 
-Source of truth for the candidate record contract defined in
-docs/plans/active/2026-05-17-literature-evolution-agent-incremental-upgrade-plan.md
-§Experience Candidate Contract.
+Source of truth for the candidate record contract.
 
 These models are used by:
   - literature_assistant/core/evolution/store.py (SQLite persistence)
@@ -11,7 +9,7 @@ These models are used by:
   - literature_assistant/core/routers/evolution_router.py (FastAPI contracts)
 
 Backend remains authoritative for risk, dedupe, eligibility, and promotion;
-the frontend must not be trusted to decide safety (plan §Backend Reliability).
+the frontend must not be trusted to decide safety.
 """
 
 from __future__ import annotations
@@ -67,7 +65,7 @@ class CandidateRiskLevel(str, Enum):
 class ExperienceCandidate(BaseModel):
     """A single experience candidate produced by the evolution capture layer.
 
-    Mirrors plan §Experience Candidate Contract. All fields are validated at
+    Mirrors the experience candidate contract. All fields are validated at
     write time; status transitions are enforced by
     literature_assistant.core.evolution.state_machine.
     """
@@ -158,7 +156,7 @@ class CandidatePromotionPayload(BaseModel):
 
 
 class CuratorRunPayload(BaseModel):
-    """Response shape for `/evolution/curate/run` (Slice 7)."""
+    """Response shape for one curator pass."""
 
     enabled: bool
     workspace_id: Optional[str] = None
@@ -172,12 +170,10 @@ class CuratorRunPayload(BaseModel):
 
 
 class EvolutionAuditPayload(BaseModel):
-    """Operator-facing audit roll-up for `/evolution/audit` (Opt §6).
+    """Read-only experience review summary for the audit panel.
 
-    All fields are derived from COUNT(*) / GROUP BY queries plus a small
-    bounded list of recent decision_reason strings; no raw candidate
-    claim / title / future_use / source_summary text is ever surfaced
-    through this endpoint.
+    Counts and recent decisions are bounded so the panel can explain review
+    activity without exposing full candidate text.
     """
 
     workspace_id: Optional[str] = None

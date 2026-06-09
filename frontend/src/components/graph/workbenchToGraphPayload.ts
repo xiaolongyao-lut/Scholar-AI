@@ -1,7 +1,7 @@
 /**
  * Convert a Workbench chat answer into a GraphPayload v0 subgraph.
  *
- * KG-1 step 5a (frontend-only). Per remaining-work plan §4.11 the default
+ * Frontend-only default graph panel for Workbench answers. The default
  * UX is a collapsible evidence graph panel embedded in the Workbench
  * answer view, reusing the existing React Flow GraphPayloadViewer.
  *
@@ -27,6 +27,7 @@ export interface WorkbenchSource {
   page: string;
   material_id?: string;
   chunk_id?: string;
+  excerpt?: string;
 }
 
 function pickString(v: unknown): string | undefined {
@@ -112,6 +113,9 @@ export function workbenchToGraphPayload(
 
     const metadata: Record<string, unknown> = {};
     if (source.page) metadata.page_label = source.page;
+    if (source.excerpt && source.excerpt.trim()) {
+      metadata.evidence_text = source.excerpt.trim();
+    }
 
     evidenceNodes.push({
       id,
@@ -124,7 +128,15 @@ export function workbenchToGraphPayload(
       source_ref: materialId
         ? { material_id: materialId, page: null, chunk_id: chunkId ?? null, bbox: null }
         : null,
-      evidence_refs: null,
+      evidence_refs: materialId && source.excerpt
+        ? [{
+            material_id: materialId,
+            page: null,
+            chunk_id: chunkId ?? null,
+            text: source.excerpt,
+            score: null,
+          }]
+        : null,
       confidence: null,
       metadata: Object.keys(metadata).length > 0 ? metadata : null,
     });

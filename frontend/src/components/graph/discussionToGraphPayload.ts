@@ -1,7 +1,7 @@
 /**
  * Convert a Discussion run result into a GraphPayload v0 subgraph.
  *
- * L1 scope (per plan §4.11):
+ * Scope:
  *   - agent node per unique agent_id (success or failed; failed gets
  *     metadata.status = "failed")
  *   - evidence node per unique snippet, deduped by material_id +

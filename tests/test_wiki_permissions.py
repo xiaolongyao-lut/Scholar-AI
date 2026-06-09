@@ -40,6 +40,45 @@ def mock_wiki_enabled():
         yield
 
 
+def _write_wiki_page(
+    wiki_root: Path,
+    relative_path: str,
+    *,
+    title: str,
+    body: str,
+    owner: str,
+    visibility: str,
+) -> None:
+    """Write a rendered test wiki page with explicit ACL metadata."""
+    from wiki.page_store import WikiPageStore, render_page
+
+    store = WikiPageStore(wiki_root, create=True)
+    page_path = Path(relative_path)
+    frontmatter = {
+        "id": page_path.with_suffix("").as_posix(),
+        "stable_slug": page_path.stem,
+        "kind": page_path.parts[0] if len(page_path.parts) > 1 else "synthesis",
+        "title": title,
+        "status": "draft",
+        "extra": {
+            "permissions": {
+                "owner": owner,
+                "visibility": visibility,
+                "shared_with": [],
+            }
+        },
+    }
+    store.write_rendered(render_page(page_path, frontmatter, body), allow_overwrite=True)
+
+
+def _patch_router_page_store(wiki_root: Path):
+    """Patch the wiki router to use a test page store rooted at wiki_root."""
+    from wiki.page_store import WikiPageStore
+
+    store = WikiPageStore(wiki_root, create=False)
+    return patch("routers.wiki_router._page_store", return_value=store)
+
+
 class TestGetWikiPagePermissions:
     """G14: GET /api/wiki/pages/{slug}/permissions endpoint."""
 
@@ -338,15 +377,163 @@ class TestWikiPermissionsHelpers:
         assert can_write(page_extra, "other_user") is False
 
     def test_permissions_backward_compat(self):
-        """Pages without permissions are public by default."""
+        """Pages without permissions fail closed to the local workspace owner."""
         from wiki.permissions import can_read, can_write
 
         page_extra = {}
 
-        # No permissions = public read
-        assert can_read(page_extra, None) is True
-        assert can_read(page_extra, "any_user") is True
+        assert can_read(page_extra, None) is False
+        assert can_read(page_extra, "local-user") is True
+        assert can_read(page_extra, "other_user") is False
 
-        # No permissions = writable (backward compat)
-        assert can_write(page_extra, None) is True
-        assert can_write(page_extra, "any_user") is True
+        assert can_write(page_extra, None) is False
+        assert can_write(page_extra, "local-user") is True
+        assert can_write(page_extra, "other_user") is False
+
+
+class TestWikiPermissionEnforcement:
+    """G14: Wiki ACL is enforced on read/list/search/export/graph paths."""
+
+    def test_page_read_blocks_private_page_for_non_owner(self, client, mock_wiki_enabled, tmp_path):
+        """Private page reads require the owner user id."""
+        wiki_root = tmp_path / "wiki"
+        _write_wiki_page(
+            wiki_root,
+            "synthesis/private-page.md",
+            title="Private Page",
+            body="private laser notes",
+            owner="owner123",
+            visibility="private",
+        )
+
+        with _patch_router_page_store(wiki_root):
+            denied = client.get("/api/wiki/pages/synthesis/private-page?user_id=other_user")
+            allowed = client.get("/api/wiki/pages/synthesis/private-page?user_id=owner123")
+
+        assert denied.status_code == 403
+        assert allowed.status_code == 200
+        assert allowed.json()["frontmatter"]["title"] == "Private Page"
+
+    def test_pages_list_filters_unreadable_pages(self, client, mock_wiki_enabled, tmp_path):
+        """List responses never expose page titles outside the caller ACL."""
+        wiki_root = tmp_path / "wiki"
+        _write_wiki_page(
+            wiki_root,
+            "synthesis/public-page.md",
+            title="Public Page",
+            body="public body",
+            owner="owner123",
+            visibility="public",
+        )
+        _write_wiki_page(
+            wiki_root,
+            "synthesis/private-page.md",
+            title="Private Page",
+            body="private body",
+            owner="owner123",
+            visibility="private",
+        )
+
+        with _patch_router_page_store(wiki_root):
+            response = client.get("/api/wiki/pages?user_id=other_user")
+
+        assert response.status_code == 200
+        titles = {page["title"] for page in response.json()["pages"]}
+        assert titles == {"Public Page"}
+
+    def test_query_filters_unreadable_fts_hits(self, client, mock_wiki_enabled, tmp_path):
+        """FTS hits are filtered against the current wiki ACL before return."""
+        from wiki.page_store import WikiPageStore
+        from wiki.query import WikiQueryIndex, build_wiki_index
+
+        wiki_root = tmp_path / "wiki"
+        index_path = tmp_path / "runtime" / "wiki_query_index.db"
+        _write_wiki_page(
+            wiki_root,
+            "synthesis/public-page.md",
+            title="Public Laser",
+            body="laser welding public notes",
+            owner="owner123",
+            visibility="public",
+        )
+        _write_wiki_page(
+            wiki_root,
+            "synthesis/private-page.md",
+            title="Private Laser",
+            body="laser welding private notes",
+            owner="owner123",
+            visibility="private",
+        )
+        store = WikiPageStore(wiki_root, create=False)
+        index = WikiQueryIndex(index_path)
+        build_wiki_index(store, index)
+        index.close()
+
+        with _patch_router_page_store(wiki_root), patch("routers.wiki_router.wiki_query_index_path", return_value=index_path):
+            response = client.post("/api/wiki/search?user_id=other_user", json={"query": "laser"})
+
+        assert response.status_code == 200
+        refs = response.json()["evidence_refs"]
+        assert [ref["title"] for ref in refs] == ["Public Laser"]
+
+    def test_export_filters_unreadable_pages(self, client, mock_wiki_enabled, tmp_path):
+        """Export archives include only pages readable by the caller."""
+        import zipfile
+
+        wiki_root = tmp_path / "wiki"
+        output_path = tmp_path / "exports" / "wiki_exports" / "public-export.zip"
+        _write_wiki_page(
+            wiki_root,
+            "synthesis/public-page.md",
+            title="Public Page",
+            body="public body",
+            owner="owner123",
+            visibility="public",
+        )
+        _write_wiki_page(
+            wiki_root,
+            "synthesis/private-page.md",
+            title="Private Page",
+            body="private body",
+            owner="owner123",
+            visibility="private",
+        )
+
+        with _patch_router_page_store(wiki_root), patch(
+            "routers.wiki_router.WORKSPACE_ARTIFACTS_ROOT",
+            tmp_path / "exports",
+        ):
+            response = client.post("/api/wiki/export?user_id=other_user&output_path=public-export.zip")
+
+        assert response.status_code == 200
+        assert response.json()["page_count"] == 1
+        with zipfile.ZipFile(output_path, "r") as archive:
+            assert archive.namelist() == ["synthesis/public-page.md"]
+
+    def test_graph_filters_unreadable_nodes(self, client, mock_wiki_enabled, tmp_path):
+        """Graph responses are built from the caller's readable page subset."""
+        wiki_root = tmp_path / "wiki"
+        _write_wiki_page(
+            wiki_root,
+            "synthesis/public-page.md",
+            title="Public Page",
+            body="public body",
+            owner="owner123",
+            visibility="public",
+        )
+        _write_wiki_page(
+            wiki_root,
+            "synthesis/private-page.md",
+            title="Private Page",
+            body="private body",
+            owner="owner123",
+            visibility="private",
+        )
+
+        with _patch_router_page_store(wiki_root):
+            response = client.get("/api/wiki/graph?user_id=other_user")
+
+        assert response.status_code == 200
+        graph = response.json()["graph"]
+        assert graph["node_count"] == 1
+        assert graph["nodes"][0]["title"] == "Public Page"

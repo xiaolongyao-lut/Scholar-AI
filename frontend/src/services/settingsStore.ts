@@ -14,6 +14,8 @@
  * `clearLegacyCredentialBlob()`.
  */
 
+import type { SmartReadCostTier } from '@/services/smartReadTiers';
+
 export interface LLMConfig {
   temperature: number;
   topP: number;
@@ -30,10 +32,11 @@ export interface WorkspaceConfig {
   autoIndex: boolean;
   retrievalTopK: number;
   aiCostProfile?: 'balanced' | 'aggressive' | 'quality';
+  smartReadCostTier?: SmartReadCostTier;
   /** Workbench(知识库智能研读)入库模式 — none / query / full。
    *  Persisted so reopening the page keeps the user's last choice. */
   ingestMode?: 'none' | 'query' | 'full';
-  /** Workbench 选中的 MCP server ids,跨刷新保留(plan §五 设置持久化)。 */
+  /** Workbench 选中的 MCP server ids，跨刷新保留。 */
   mcpServerIds?: string[];
 }
 
@@ -69,7 +72,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     dimension: 1536,
   },
   workspace: {
-    localStoragePath: './output',
+    localStoragePath: './workspace_artifacts/generated/output',
     autoIndex: true,
     retrievalTopK: 6,
   },

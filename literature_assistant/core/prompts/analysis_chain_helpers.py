@@ -6,7 +6,7 @@ Source of truth for the AnalysisChain 6-field schema:
 This module is the single rendering point for AnalysisChain prompts and
 prior-step carry-over blocks, so RAG QA, Multi-agent Discussion, and any
 future surface use one shared format. See
-``docs/plans/specs/analysis-chain-cross-pipeline-spec.md`` Slice 0 for the
+``docs/plans/specs/analysis-chain-cross-pipeline-spec.md`` for the
 rationale (ACR-013) — the inspiration pipeline keeps its full sparks-list
 templates intact; this module produces a leaner single-chain prompt block
 that downstream pipelines can embed in their own task prompt without

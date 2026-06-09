@@ -1,18 +1,8 @@
-/**
- * Migrate-to-refs modal (S6 frontend / plan 2026-05-20 §6).
- *
- * Renders one CredentialPicker per detected legacy raw secret on a
- * server. The user picks a credential for each entry, ticks the
- * explicit "确认删除原始值" checkbox (mirrors backend confirm_remove_raw),
- * then submits. Backend writes env_refs and removes raw values.
- *
- * Never displays raw secret values — only the masked preview returned
- * by GET /api/mcp/servers/{id}/legacy-env.
- */
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Loader2, X, Zap } from 'lucide-react';
 import CredentialPicker from '@/components/settings/credentials/CredentialPicker';
+import { formatMcpActionError, sanitizeMcpVisibleText } from '@/components/settings/mcpDisplay';
 import {
   fetchLegacyEnv,
   migrateEnvToRefs,
@@ -59,7 +49,7 @@ export function McpLegacyEnvMigrationModal(
         setEntries(data.entries);
       } catch (exc) {
         if (cancelled) return;
-        setError(exc instanceof Error ? exc.message : String(exc));
+        setError(formatMcpActionError(exc, '扫描失败，请稍后重试。'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -88,8 +78,7 @@ export function McpLegacyEnvMigrationModal(
       });
       onMigrated?.();
     } catch (exc) {
-      const msg = exc instanceof Error ? exc.message : String(exc);
-      setError(msg);
+      setError(formatMcpActionError(exc, '迁移失败，请检查凭证绑定后重试。'));
     } finally {
       setBusy(false);
     }
@@ -108,7 +97,7 @@ export function McpLegacyEnvMigrationModal(
             id="mcp-legacy-modal-title"
             className="font-display text-sm font-semibold text-foreground"
           >
-            迁移到凭证引用 · {serverName}
+            迁移到凭证引用 · {sanitizeMcpVisibleText(serverName, '当前服务器')}
           </h3>
           <button
             type="button"
@@ -129,11 +118,11 @@ export function McpLegacyEnvMigrationModal(
                 <AlertTriangle size={14} className="text-amber-600 dark:text-amber-300 mt-0.5 flex-shrink-0" />
                 <div className="space-y-1">
                   <p className="font-label text-[11px] text-amber-700 dark:text-amber-200 font-medium">
-                    这一步会移除服务器配置里的明文 API key
+                    这一步会把敏感配置迁移到凭证管理
                   </p>
                   <p className="font-label text-[11px] text-amber-700/80 dark:text-amber-200/80">
-                    迁移后,raw 值会被替换为对凭证 (credential_id) 的引用;原值在 MCP 配置文件中删除,
-                    实际密钥仍保存在「凭证管理」中。请确认绑定无误后再勾选下方确认。
+                    迁移后，服务器只保留凭证引用；实际访问凭证保存在「凭证管理」中。
+                    请确认绑定无误后再勾选下方确认。
                   </p>
                 </div>
               </div>
@@ -141,35 +130,35 @@ export function McpLegacyEnvMigrationModal(
               {loading && (
                 <div className="flex items-center gap-2 text-foreground/55 font-label text-[12px]">
                   <Loader2 size={14} className="animate-spin" />
-                  正在扫描该服务器的 legacy env...
+                  正在扫描该服务器的旧式敏感配置...
                 </div>
               )}
 
               {!loading && entries.length === 0 && (
                 <p className="font-label text-[12px] text-foreground/55">
-                  未检测到 legacy 明文密钥。这个服务器已经完全使用凭证引用了。
+                  未检测到旧式敏感配置。这个服务器已经使用凭证引用。
                 </p>
               )}
 
               {entries.length > 0 && (
                 <div className="space-y-5">
-                  {entries.map((e) => (
+                  {entries.map((e, index) => (
                     <div key={`${e.transport_field}:${e.target_env}`} className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[11px] text-foreground font-medium">
-                          {e.target_env}
+                        <span className="font-label text-[11px] text-foreground font-medium">
+                          敏感配置 {index + 1}
                         </span>
-                        <span className="font-mono text-[10px] text-foreground/40">
-                          {e.transport_field}
+                        <span className="font-label text-[10px] text-foreground/40">
+                          {formatLegacySource(e.transport_field)}
                         </span>
-                        <span className="font-mono text-[10px] text-foreground/40">
-                          原值 (masked): {e.value_masked}
+                        <span className="font-label text-[10px] text-foreground/40">
+                          原值已脱敏确认
                         </span>
                       </div>
                       <CredentialPicker
                         requirement={{
                           id: e.target_env,
-                          label: `绑定凭证: ${e.target_env}`,
+                          label: `绑定凭证：敏感配置 ${index + 1}`,
                           env: e.target_env,
                           kind: 'api_key',
                           provider_hints: [],
@@ -224,7 +213,7 @@ export function McpLegacyEnvMigrationModal(
                   onChange={(e) => setConfirm(e.target.checked)}
                   disabled={!allBound}
                 />
-                我确认删除原始明文值,改为凭证引用
+                我确认改为凭证引用
               </label>
               <div className="flex items-center gap-2">
                 <button
@@ -240,7 +229,7 @@ export function McpLegacyEnvMigrationModal(
                   disabled={!canSubmit}
                   title={
                     !allBound
-                      ? '请为每个 env 绑定凭证'
+                      ? '请为每个敏感配置绑定凭证'
                       : !confirm
                       ? '请勾选确认'
                       : '执行迁移'
@@ -248,7 +237,7 @@ export function McpLegacyEnvMigrationModal(
                   className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 font-label text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
                   {busy ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-                  迁移并删除原值
+                  迁移
                 </button>
               </div>
             </>
@@ -266,22 +255,26 @@ function DoneView(props: { summary: { stdio: string[]; http: string[] } }): JSX.
       <h4 className="font-display text-sm font-semibold text-emerald-700 dark:text-emerald-300">
         迁移完成
       </h4>
-      <div className="rounded-md border border-outline-variant bg-surface-low p-3 font-mono text-[11px] text-foreground/70 space-y-1">
+      <div className="rounded-md border border-outline-variant bg-surface-low p-3 font-label text-[11px] text-foreground/70 space-y-1">
         {summary.stdio.length > 0 && (
-          <div>stdio.env 已迁移: {summary.stdio.join(', ')}</div>
+          <div>本地进程配置已迁移 {summary.stdio.length} 项</div>
         )}
         {summary.http.length > 0 && (
-          <div>http.headers 已迁移: {summary.http.join(', ')}</div>
+          <div>网络连接配置已迁移 {summary.http.length} 项</div>
         )}
         {summary.stdio.length === 0 && summary.http.length === 0 && (
           <div className="text-foreground/40">(无变化)</div>
         )}
       </div>
       <p className="font-label text-[11px] text-foreground/55">
-        提示:刷新「已安装」列表,server 卡片现在应显示绑定的凭证 env;原 raw 字段已从 MCP 配置文件中移除。
+        提示：刷新「已安装」列表后，服务器卡片会显示已绑定的凭证数量。
       </p>
     </div>
   );
+}
+
+function formatLegacySource(value: LegacyEnvEntry['transport_field']): string {
+  return value === 'http.headers' ? '网络连接配置' : '本地进程配置';
 }
 
 export default McpLegacyEnvMigrationModal;

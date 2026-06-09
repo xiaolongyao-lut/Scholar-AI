@@ -9,15 +9,13 @@
  * - D-MCPUX-2: server-reported tool annotations are advisory; the modal
  *   shows the backend classification (capability tag) as the source of
  *   truth.
- * - Stop condition: this is a UI-render skeleton. The backend pending-
- *   call protocol does not exist yet; this component renders its props
- *   and reports the user's choice via `onApprove` / `onCancel`. The
- *   chat / discussion runtimes do not yet drive it. Wiring is gated on
- *   Phase 2 backend work in MCP v0.4.
+ * The root poller now wires this modal to the backend pending-call
+ * protocol; this component remains presentation-only.
  */
 import React, { useState } from 'react';
 import { ShieldAlert, ShieldCheck, X } from 'lucide-react';
 import type { McpToolCapability } from '@/services/mcpApi';
+import { sanitizeMcpDisplayLabel } from '@/components/settings/mcpDisplay';
 
 export interface McpPendingToolCall {
   call_id: string;
@@ -43,10 +41,22 @@ const CAPABILITY_DESCRIPTION: Record<McpToolCapability, string> = {
   unknown: '未知：后端无法分类。需要明确确认。',
 };
 
+const CAPABILITY_LABEL: Record<McpToolCapability, string> = {
+  read: '读取',
+  write: '写入',
+  network: '网络请求',
+  filesystem: '文件访问',
+  destructive: '高风险操作',
+  unknown: '待确认操作',
+};
+
 export function McpToolApprovalModal({ pending, onApprove, onCancel }: McpToolApprovalModalProps) {
   const [remember, setRemember] = useState(false);
   if (!pending) return null;
   const isBlocked = pending.capability === 'destructive';
+  const serviceLabel = sanitizeMcpDisplayLabel(pending.server_label, '当前 MCP 服务');
+  const toolLabel = sanitizeMcpDisplayLabel(pending.tool_name, '待确认工具');
+  const argsSummary = pending.args_preview ? '调用参数已脱敏，详情请到审计日志中查看。' : null;
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -71,32 +81,32 @@ export function McpToolApprovalModal({ pending, onApprove, onCancel }: McpToolAp
             type="button"
             onClick={() => onCancel(pending.call_id)}
             className="text-foreground/40 hover:text-foreground/70"
-            aria-label="cancel"
+            aria-label="关闭确认窗口"
           >
             <X size={16} />
           </button>
         </div>
         <div className="px-4 py-3 space-y-2 text-xs">
           <dl className="grid grid-cols-[6em_1fr] gap-y-1">
-            <dt className="text-foreground/50">Server</dt>
-            <dd className="font-mono">{pending.server_label}</dd>
-            <dt className="text-foreground/50">Tool</dt>
-            <dd className="font-mono">{pending.tool_name}</dd>
-            <dt className="text-foreground/50">Capability</dt>
-            <dd className="font-mono" data-testid="mcp-approval-capability">
-              {pending.capability}
+            <dt className="text-foreground/50">服务</dt>
+            <dd>{serviceLabel}</dd>
+            <dt className="text-foreground/50">工具</dt>
+            <dd>{toolLabel}</dd>
+            <dt className="text-foreground/50">操作类型</dt>
+            <dd data-testid="mcp-approval-capability">
+              {CAPABILITY_LABEL[pending.capability]}
             </dd>
           </dl>
           <p className="text-[11px] text-foreground/70">
             {CAPABILITY_DESCRIPTION[pending.capability]}
           </p>
-          {pending.args_preview && (
-            <pre
-              className="text-[11px] bg-surface-low rounded p-2 overflow-auto max-h-32 whitespace-pre-wrap break-all"
+          {argsSummary && (
+            <p
+              className="text-[11px] bg-surface-low rounded p-2 text-foreground/70"
               data-testid="mcp-approval-args-preview"
             >
-              {pending.args_preview}
-            </pre>
+              {argsSummary}
+            </p>
           )}
           {!isBlocked && (
             <label className="flex items-center gap-2 text-[11px] text-foreground/70 select-none">
@@ -129,7 +139,7 @@ export function McpToolApprovalModal({ pending, onApprove, onCancel }: McpToolAp
             }
             data-testid="mcp-approval-approve"
           >
-            {isBlocked ? '该 capability 默认阻止' : '允许调用'}
+            {isBlocked ? '高风险操作默认阻止' : '允许调用'}
           </button>
         </div>
       </div>

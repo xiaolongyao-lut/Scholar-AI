@@ -71,6 +71,7 @@ export interface DiscussionLLMConfig {
   api_key: string;
   protocol?: string;
   temperature?: number;
+  top_p?: number;
   max_tokens?: number;
 }
 
@@ -81,6 +82,8 @@ export interface DiscussionAgentConfig {
   system_prompt?: string;
   credential_id?: string | null;
   llm?: DiscussionLLMConfig | null;
+  strategy_hint?: string | null;
+  category?: string | null;
   strict_pin?: boolean;
   priority?: number;
   metadata?: JsonObject;
@@ -89,8 +92,9 @@ export interface DiscussionAgentConfig {
 export interface DiscussionMcpOverrides {
   server_ids: string[];
   allow_high_risk_tools?: boolean;
-  // per_agent intentionally omitted from the TS surface in v1 — backend
-  // accepts it but the UI hides per-agent scoping per D-MCPUX-5.
+  scope_type?: 'surface' | 'agent';
+  per_agent?: Record<string, string[]>;
+  per_role?: Record<string, string[]>;
 }
 
 export interface DiscussionRunConfig {
@@ -110,6 +114,7 @@ export interface DiscussionRunConfig {
   min_turns?: number;
   convergence_threshold?: number;
   convergence_judge_agent_id?: string | null;
+  project_reasoning_bias_enabled?: boolean | null;
   mcp_overrides?: DiscussionMcpOverrides | null;
 }
 
@@ -132,6 +137,21 @@ export interface AnalysisChainPayload {
   next_action?: string;
 }
 
+export interface AgentThoughtTraceStep {
+  label: string;
+  summary: string;
+  evidence_ids?: string[];
+}
+
+export interface AgentThoughtTracePayload {
+  agent_stance?: string;
+  contribution_type?: string;
+  evidence_refs?: string[];
+  confidence?: number | null;
+  trace_steps?: AgentThoughtTraceStep[];
+  analysis_chain?: AnalysisChainPayload | null;
+}
+
 export interface DiscussionAgentTrace {
   agent_id: string;
   role: string;
@@ -145,6 +165,7 @@ export interface DiscussionAgentTrace {
   error: JsonObject | null;
   cited_evidence_ids?: string[];
   analysis_chain?: AnalysisChainPayload | null;
+  thought_trace?: AgentThoughtTracePayload | null;
 }
 
 export interface DiscussionTurnTrace {
@@ -197,6 +218,33 @@ export interface DiscussionRunResult {
   stopped_early?: boolean;
   stop_reason?: DiscussionStopReason;
   convergence?: DiscussionConvergenceTrace | null;
+}
+
+export interface DiscussionHistoryItem {
+  run_id: string;
+  state: 'pending' | 'running' | 'completed' | 'cancelled' | 'error';
+  query: string;
+  created_at: number;
+  updated_at: number;
+  turn_count: number;
+  agent_count: number;
+  archived: boolean;
+  archived_at: number | null;
+  synthesis_preview: string;
+}
+
+export interface DiscussionHistoryPage {
+  page: number;
+  page_size: number;
+  total: number;
+  items: DiscussionHistoryItem[];
+}
+
+export interface DiscussionRunExportPayload {
+  run_id: string;
+  format: 'json' | 'markdown';
+  content: string;
+  filename: string;
 }
 
 const client = () => axios.create({
@@ -276,6 +324,65 @@ export const discussionApi = {
     const url = `${getApiBaseUrl()}${API_BASE}/runs/${encodeURIComponent(runId)}/stream/resume`;
     await consumeDiscussionSseStream(url, 'POST', undefined, opts);
   },
+
+  async listHistory(params?: {
+    page?: number;
+    page_size?: number;
+    q?: string;
+    include_archived?: boolean;
+  }): Promise<DiscussionHistoryPage> {
+    const response = await client().get<DiscussionHistoryPage>(`${API_BASE}/history`, { params });
+    return response.data;
+  },
+
+  async listArchived(params?: {
+    page?: number;
+    page_size?: number;
+    q?: string;
+  }): Promise<DiscussionHistoryPage> {
+    const response = await client().get<DiscussionHistoryPage>(`${API_BASE}/archived`, { params });
+    return response.data;
+  },
+
+  async searchHistory(params: {
+    q: string;
+    page?: number;
+    page_size?: number;
+    archived_only?: boolean;
+  }): Promise<DiscussionHistoryPage> {
+    const response = await client().get<DiscussionHistoryPage>(`${API_BASE}/history/search`, { params });
+    return response.data;
+  },
+
+  async archiveRun(runId: string): Promise<DiscussionHistoryItem> {
+    const response = await client().put<DiscussionHistoryItem>(
+      `${API_BASE}/runs/${encodeURIComponent(runId)}/archive`,
+    );
+    return response.data;
+  },
+
+  async restoreRun(runId: string): Promise<DiscussionHistoryItem> {
+    const response = await client().put<DiscussionHistoryItem>(
+      `${API_BASE}/runs/${encodeURIComponent(runId)}/restore`,
+    );
+    return response.data;
+  },
+
+  async exportRun(runId: string, format: 'json' | 'markdown' = 'json'): Promise<DiscussionRunExportPayload> {
+    const response = await client().post<DiscussionRunExportPayload>(
+      `${API_BASE}/runs/${encodeURIComponent(runId)}/export`,
+      null,
+      { params: { format } },
+    );
+    return response.data;
+  },
+
+  async deleteRun(runId: string): Promise<{ status: 'deleted'; run_id: string }> {
+    const response = await client().delete<{ status: 'deleted'; run_id: string }>(
+      `${API_BASE}/runs/${encodeURIComponent(runId)}`,
+    );
+    return response.data;
+  },
 };
 
 // Shared SSE consumer used by both runDiscussionStream and resumeDiscussionStream.
@@ -352,6 +459,8 @@ export interface DiscussionRunSnapshot {
   final_result: DiscussionRunResult | null;
   error: string | null;
   event_log_length: number;
+  archived?: boolean;
+  archived_at?: number | null;
 }
 
 export class DiscussionStreamError extends Error {

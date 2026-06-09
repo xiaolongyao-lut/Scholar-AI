@@ -3,6 +3,7 @@
 
 import asyncio
 import concurrent.futures as futures
+import hashlib
 import json
 import logging
 import os
@@ -11,6 +12,7 @@ import shutil
 import sqlite3
 import tempfile
 import threading
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Callable
@@ -42,6 +44,40 @@ from models import (
 logger = logging.getLogger("ResourcesRouter")
 router = APIRouter(prefix="/resources", tags=["Resources"])
 _ai_adapter_instance: Any | None = None
+_ASYNC_UPLOAD_EXTENSIONS = {".pdf"}
+_DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+_MAX_UPLOAD_BYTES_ENV = "LITASSIST_MAX_UPLOAD_BYTES"
+_UPLOAD_READ_CHUNK_BYTES = 1024 * 1024
+_UPLOAD_MAGIC_PREFIX_BYTES = 4096
+_ALLOWED_UPLOAD_EXTENSIONS = {
+    ".bib",
+    ".csv",
+    ".docx",
+    ".enw",
+    ".ipynb",
+    ".json",
+    ".md",
+    ".pdf",
+    ".ris",
+    ".txt",
+}
+_GENERIC_UPLOAD_MIME_TYPES = {
+    "",
+    "application/octet-stream",
+    "binary/octet-stream",
+}
+_ALLOWED_UPLOAD_MIME_TYPES_BY_EXTENSION = {
+    ".bib": {"application/x-bibtex", "text/plain", "text/x-bibtex"},
+    ".csv": {"application/csv", "application/vnd.ms-excel", "text/csv", "text/plain"},
+    ".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/zip"},
+    ".enw": {"application/x-endnote-refer", "text/plain"},
+    ".ipynb": {"application/json", "application/x-ipynb+json", "text/plain"},
+    ".json": {"application/json", "text/json", "text/plain"},
+    ".md": {"text/markdown", "text/plain", "text/x-markdown"},
+    ".pdf": {"application/pdf", "application/x-pdf"},
+    ".ris": {"application/x-research-info-systems", "text/plain"},
+    ".txt": {"text/plain"},
+}
 
 # Document content store — default location (overridden when project has source_folder)
 _DOC_STORE_DIR = output_path("doc_store")
@@ -187,6 +223,7 @@ from ._chunk_text import (
 )
 from ._document_extraction import (
     _extract_document_content,
+    _extract_document_content_from_path,
     _truncate_document_content,
 )
 from ._scan_helpers import (
@@ -620,6 +657,385 @@ def _analyze_cleanup_candidates(store: Any) -> tuple[list[dict[str, Any]], list[
     return duplicate_projects, empty_materials
 
 
+@dataclass(frozen=True)
+class _UploadedSourceFile:
+    path: Path
+    fingerprint: str
+    size: int
+
+
+def _safe_upload_filename(filename: str) -> str:
+    """Return a storage-safe upload filename while preserving display intent."""
+
+    safe_name = Path(str(filename or "unnamed")).name.strip()
+    return safe_name or "unnamed"
+
+
+def _max_upload_bytes() -> int:
+    """Return the per-file upload cap in bytes.
+
+    The optional environment override is intended for local tests and tightly
+    controlled desktop deployments; invalid values fall back to the product
+    default so the boundary cannot be accidentally disabled.
+    """
+
+    raw_limit = os.environ.get(_MAX_UPLOAD_BYTES_ENV, "").strip()
+    if not raw_limit:
+        return _DEFAULT_MAX_UPLOAD_BYTES
+    try:
+        parsed = int(raw_limit)
+    except ValueError:
+        logger.warning("invalid_upload_size_limit: env=%s value=%r", _MAX_UPLOAD_BYTES_ENV, raw_limit)
+        return _DEFAULT_MAX_UPLOAD_BYTES
+    if parsed < 1:
+        logger.warning("invalid_upload_size_limit: env=%s value=%r", _MAX_UPLOAD_BYTES_ENV, raw_limit)
+        return _DEFAULT_MAX_UPLOAD_BYTES
+    return parsed
+
+
+def _format_upload_size_limit(limit_bytes: int) -> str:
+    """Return a compact size label for upload validation messages."""
+
+    if limit_bytes < 1024 * 1024:
+        return f"{limit_bytes} bytes"
+    mib = limit_bytes / (1024 * 1024)
+    return f"{mib:.0f} MiB" if mib.is_integer() else f"{mib:.1f} MiB"
+
+
+def _upload_extension(filename: str) -> str:
+    """Return a normalized supported-document suffix for an upload name."""
+
+    suffix = Path(filename).suffix.lower().strip()
+    if not suffix:
+        raise ValueError("上传文件必须包含受支持的扩展名")
+    if suffix not in _ALLOWED_UPLOAD_EXTENSIONS:
+        supported = ", ".join(sorted(_ALLOWED_UPLOAD_EXTENSIONS))
+        raise ValueError(f"不支持的上传文件类型：{suffix}。支持类型：{supported}")
+    return suffix
+
+
+def _validate_upload_content_type(filename: str, content_type: str | None) -> None:
+    """Validate best-effort MIME metadata without trusting it as authority."""
+
+    suffix = _upload_extension(filename)
+    normalized = str(content_type or "").split(";", 1)[0].strip().lower()
+    if normalized in _GENERIC_UPLOAD_MIME_TYPES:
+        return
+    allowed = _ALLOWED_UPLOAD_MIME_TYPES_BY_EXTENSION.get(suffix, set())
+    if normalized not in allowed:
+        raise ValueError(f"文件“{filename}”的 Content-Type 与扩展名不匹配：{normalized}")
+
+
+def _validate_upload_magic(filename: str, raw: bytes) -> None:
+    """Validate cheap file signatures for binary formats with known parsers."""
+
+    suffix = _upload_extension(filename)
+    if suffix == ".pdf" and not raw.lstrip().startswith(b"%PDF-"):
+        raise ValueError(f"文件“{filename}”不是有效的 PDF 文件")
+    if suffix == ".docx" and not raw.startswith(b"PK\x03\x04"):
+        raise ValueError(f"文件“{filename}”不是有效的 DOCX 文件")
+
+
+async def _persist_upload_to_source_file(
+    project_id: str,
+    filename: str,
+    upload: UploadFile,
+) -> _UploadedSourceFile:
+    """Stream one upload into the project source-file store.
+
+    Args:
+        project_id: Existing project id that owns the uploaded source file.
+        filename: Storage-safe filename already chosen by the caller.
+        upload: FastAPI upload stream.
+
+    Returns:
+        Persisted source path, SHA-256 fingerprint, and byte count.
+
+    Raises:
+        ValueError: If the filename/type is unsupported, the stream is empty,
+            or the actual byte count exceeds the configured limit.
+        OSError: If the source file cannot be written atomically.
+    """
+
+    if upload is None:
+        raise ValueError("上传文件不能为空")
+    safe_filename = _safe_upload_filename(filename)
+    max_bytes = _max_upload_bytes()
+    _validate_upload_content_type(safe_filename, getattr(upload, "content_type", None))
+
+    source_files_dir = project_data_path(project_id, "source_files")
+    source_files_dir.mkdir(parents=True, exist_ok=True)
+    target = source_files_dir / safe_filename
+    digest = hashlib.sha256()
+    total_bytes = 0
+    magic_prefix = bytearray()
+    temp_path: Path | None = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            delete=False,
+            dir=source_files_dir,
+            prefix=".upload-",
+            suffix=".part",
+        ) as tmp:
+            temp_path = Path(tmp.name)
+            while True:
+                chunk = await upload.read(_UPLOAD_READ_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > max_bytes:
+                    raise ValueError(f"文件“{safe_filename}”超过大小上限 {_format_upload_size_limit(max_bytes)}")
+                digest.update(chunk)
+                if len(magic_prefix) < _UPLOAD_MAGIC_PREFIX_BYTES:
+                    remaining = _UPLOAD_MAGIC_PREFIX_BYTES - len(magic_prefix)
+                    magic_prefix.extend(chunk[:remaining])
+                tmp.write(chunk)
+
+        if total_bytes == 0:
+            raise ValueError(f"文件“{safe_filename}”为空")
+        _validate_upload_magic(safe_filename, bytes(magic_prefix))
+        os.replace(temp_path, target)
+        temp_path = None
+        return _UploadedSourceFile(
+            path=target,
+            fingerprint=f"sha256:{digest.hexdigest()}",
+            size=total_bytes,
+        )
+    finally:
+        if temp_path is not None and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                logger.warning("upload_temp_cleanup_failed: path=%s", temp_path)
+
+
+def _known_extraction_failure(content: str) -> bool:
+    """Return true for placeholder text emitted by lightweight extractors."""
+
+    normalized = str(content or "").strip()
+    if not normalized:
+        return True
+    known_extract_failures = (
+        normalized.startswith("[PDF 文件:"),
+        normalized.startswith("[PDF 解析失败:"),
+        normalized.startswith("[DOCX 文件:"),
+        normalized.startswith("[DOCX 解析失败:"),
+        normalized.startswith("[未知格式文件:"),
+    )
+    return any(known_extract_failures)
+
+
+def _ensure_extracted_text(filename: str, content: str) -> str:
+    """Return non-empty extracted text or raise a user-safe failure."""
+
+    normalized = str(content or "").strip()
+    if _known_extraction_failure(normalized):
+        raise ValueError(
+            f"文件“{filename}”未提取到可检索文本。可能是扫描版 PDF、加密文件或解析依赖缺失（建议安装 pymupdf / PyPDF2 / python-docx）"
+        )
+    return normalized
+
+
+def _write_material_document_content(
+    project_id: str,
+    material_id: str,
+    filename: str,
+    content: str,
+    *,
+    source_relative_path: str | None = None,
+    source_fingerprint: str | None = None,
+    source_size: int | None = None,
+    source_mtime: float | None = None,
+) -> dict[str, Any]:
+    """Persist extracted text and chunks for an existing material."""
+
+    if not str(project_id or "").strip():
+        raise ValueError("project_id must be non-empty")
+    if not str(material_id or "").strip():
+        raise ValueError("material_id must be non-empty")
+    extracted = _ensure_extracted_text(filename, content)
+
+    doc_store = _load_doc_store(project_id)
+    previous = doc_store.get(material_id, {}) if isinstance(doc_store.get(material_id), dict) else {}
+    doc_store[material_id] = {
+        **previous,
+        "title": filename,
+        "content": extracted,
+        "source_relative_path": source_relative_path or previous.get("source_relative_path") or filename,
+        "source_fingerprint": source_fingerprint or previous.get("source_fingerprint") or "",
+        "source_size": int(source_size or previous.get("source_size") or 0),
+        "source_mtime": float(source_mtime or previous.get("source_mtime") or 0.0),
+        "extraction_status": "succeeded",
+        "extraction_error": "",
+    }
+    _save_doc_store(project_id, doc_store)
+
+    chunks = _chunk_document(material_id, filename, extracted)
+    chunk_store = _load_chunk_store(project_id)
+    chunk_store[material_id] = chunks
+    _save_chunk_store(project_id, chunk_store)
+
+    return {
+        "material_id": material_id,
+        "title": filename,
+        "content_length": len(extracted),
+        "chunks": len(chunks),
+        "status": "ok",
+    }
+
+
+def _create_pending_uploaded_document(
+    project_id: str,
+    filename: str,
+    *,
+    store: Any,
+    source_fingerprint: str,
+    source_size: int,
+) -> dict[str, Any]:
+    """Create a readable material shell before expensive extraction starts."""
+
+    if not str(project_id or "").strip():
+        raise ValueError("project_id must be non-empty")
+    safe_filename = _safe_upload_filename(filename)
+    material = store.create_material(
+        project_id=project_id,
+        title=safe_filename,
+        title_en=safe_filename,
+        summary=f"PDF 已导入，正在后台提取文本：{safe_filename}",
+        summary_en="",
+        material_type="reference",
+    )
+    doc_store = _load_doc_store(project_id)
+    doc_store[material.material_id] = {
+        "title": safe_filename,
+        "content": "",
+        "source_relative_path": safe_filename,
+        "source_fingerprint": source_fingerprint,
+        "source_size": int(source_size),
+        "source_mtime": 0.0,
+        "extraction_status": "queued",
+        "extraction_error": "",
+    }
+    _save_doc_store(project_id, doc_store)
+    chunk_store = _load_chunk_store(project_id)
+    chunk_store[material.material_id] = []
+    _save_chunk_store(project_id, chunk_store)
+    return {
+        "material_id": material.material_id,
+        "title": safe_filename,
+        "content_length": 0,
+        "chunks": 0,
+        "status": "queued",
+    }
+
+
+def _mark_uploaded_document_extraction_failed(
+    project_id: str,
+    material_id: str,
+    error: str,
+) -> None:
+    """Record recoverable extraction failure state on the material sidecar."""
+
+    doc_store = _load_doc_store(project_id)
+    record = doc_store.get(material_id, {}) if isinstance(doc_store.get(material_id), dict) else {}
+    record.update({
+        "extraction_status": "failed",
+        "extraction_error": str(error or "extraction failed")[:1000],
+    })
+    doc_store[material_id] = record
+    _save_doc_store(project_id, doc_store)
+
+
+async def _start_uploaded_document_extraction_job(
+    project_id: str,
+    material_id: str,
+    filename: str,
+    source_path: Path,
+    *,
+    source_fingerprint: str,
+    source_size: int,
+) -> tuple[str, str]:
+    """Start a runtime-visible extraction/indexing job for one uploaded PDF."""
+
+    from harness_protocols import JobKind, SessionMode
+    from writing_runtime import get_writing_runtime
+
+    runtime = get_writing_runtime()
+    safe_filename = _safe_upload_filename(filename)
+    session = runtime.create_session(
+        mode=SessionMode.PROMPT,
+        tags=["resource_ingest", "pdf"],
+        metadata={
+            "source": "resource_ingest",
+            "title": "PDF 后台提取",
+            "project_id": project_id,
+            "material_id": material_id,
+        },
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.PIPELINE_RUN,
+        input_text=f"提取 {safe_filename}",
+        tags=["resource_ingest", "pdf"],
+        metadata={
+            "source": "resource_ingest",
+            "project_id": project_id,
+            "material_id": material_id,
+            "filename": safe_filename,
+            "route": f"/workbench/paper/{material_id}",
+            "progress_stage": "queued",
+            "progress_message": "PDF 已可阅读，文本提取正在排队",
+            "progress": 1,
+        },
+    )
+
+    async def _executor(current_job: Any) -> dict[str, Any]:
+        target_job = current_job or job
+        runtime.emit_job_progress(target_job.job_id, stage="read_source", message="正在读取已保存的 PDF", progress=12)
+
+        def _extract_and_persist() -> dict[str, Any]:
+            content = _truncate_document_content(_extract_document_content_from_path(safe_filename, source_path))
+            return _write_material_document_content(
+                project_id,
+                material_id,
+                safe_filename,
+                content,
+                source_relative_path=safe_filename,
+                source_fingerprint=source_fingerprint,
+                source_size=source_size,
+            )
+
+        try:
+            runtime.emit_job_progress(target_job.job_id, stage="extract", message="正在后台提取 PDF 文本", progress=35)
+            result = await asyncio.to_thread(_extract_and_persist)
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            _mark_uploaded_document_extraction_failed(project_id, material_id, str(exc))
+            raise
+
+        runtime.emit_job_progress(
+            target_job.job_id,
+            stage="index",
+            message="正在写入检索切块",
+            progress=86,
+            data={"chunks": int(result.get("chunks") or 0)},
+        )
+        return {
+            "status": "completed",
+            "kind": "resource_ingest",
+            "project_id": project_id,
+            "material_id": material_id,
+            "title": safe_filename,
+            "chunks": int(result.get("chunks") or 0),
+            "content_length": int(result.get("content_length") or 0),
+            "route": f"/workbench/paper/{material_id}",
+        }
+
+    await runtime.start_job(job.job_id, executor=_executor)
+    return session.session_id, job.job_id
+
+
 def _persist_uploaded_document(
     project_id: str,
     filename: str,
@@ -632,39 +1048,28 @@ def _persist_uploaded_document(
     source_mtime: float | None = None,
 ) -> dict[str, Any]:
     """Create a material entry and persist its document/chunk payload."""
-    summary = content[:200].replace("\n", " ").strip() if content else f"从文件 {filename} 导入"
+    safe_filename = _safe_upload_filename(filename)
+    extracted = _ensure_extracted_text(safe_filename, content)
+    summary = extracted[:200].replace("\n", " ").strip() if extracted else f"从文件 {safe_filename} 导入"
     material = store.create_material(
         project_id=project_id,
-        title=filename,
-        title_en=filename,
+        title=safe_filename,
+        title_en=safe_filename,
         summary=summary,
         summary_en="",
         material_type="reference",
     )
 
-    doc_store = _load_doc_store(project_id)
-    doc_store[material.material_id] = {
-        "title": filename,
-        "content": content,
-        "source_relative_path": source_relative_path or filename,
-        "source_fingerprint": source_fingerprint or "",
-        "source_size": int(source_size or 0),
-        "source_mtime": float(source_mtime or 0.0),
-    }
-    _save_doc_store(project_id, doc_store)
-
-    chunks = _chunk_document(material.material_id, filename, content)
-    chunk_store = _load_chunk_store(project_id)
-    chunk_store[material.material_id] = chunks
-    _save_chunk_store(project_id, chunk_store)
-
-    return {
-        "material_id": material.material_id,
-        "title": filename,
-        "content_length": len(content),
-        "chunks": len(chunks),
-        "status": "ok",
-    }
+    return _write_material_document_content(
+        project_id,
+        material.material_id,
+        safe_filename,
+        extracted,
+        source_relative_path=source_relative_path or safe_filename,
+        source_fingerprint=source_fingerprint,
+        source_size=source_size,
+        source_mtime=source_mtime,
+    )
 
 
 async def _ingest_uploaded_document(
@@ -674,18 +1079,22 @@ async def _ingest_uploaded_document(
     store: Any,
 ) -> dict[str, Any]:
     """Read one uploaded file and persist it into the project knowledge base."""
-    filename = upload.filename or "unnamed"
-    raw = await upload.read()
+    filename = _safe_upload_filename(upload.filename or "unnamed")
+    uploaded = await _persist_upload_to_source_file(project_id, filename, upload)
+    content_fingerprint = uploaded.fingerprint
 
     # Content-hash dedup: a paper uploaded twice (whether under the same or a
     # different filename) collapses into one material. Cheaper than re-running
     # extraction + chunking, and prevents the symptom where a batch upload
     # creates two rows for the same PDF.
-    import hashlib as _hashlib
-    content_fingerprint = f"sha256:{_hashlib.sha256(raw).hexdigest()}"
     existing_doc_store = _load_doc_store(project_id)
     for existing_mid, existing_doc in existing_doc_store.items():
         if str(existing_doc.get("source_fingerprint") or "") == content_fingerprint:
+            if not str(existing_doc.get("source_relative_path") or "").strip():
+                existing_doc["source_relative_path"] = filename
+                existing_doc["source_size"] = int(existing_doc.get("source_size") or uploaded.size)
+                existing_doc_store[existing_mid] = existing_doc
+                _save_doc_store(project_id, existing_doc_store)
             return {
                 "material_id": existing_mid,
                 "title": str(existing_doc.get("title") or filename),
@@ -694,48 +1103,38 @@ async def _ingest_uploaded_document(
                 "status": "duplicate",
             }
 
-    content = _truncate_document_content(_extract_document_content(filename, raw))
-
-    normalized = str(content or "").strip()
-    known_extract_failures = (
-        normalized.startswith("[PDF 文件:"),
-        normalized.startswith("[PDF 解析失败:"),
-        normalized.startswith("[DOCX 文件:"),
-        normalized.startswith("[DOCX 解析失败:"),
-        normalized.startswith("[未知格式文件:"),
-    )
-    if (not normalized) or any(known_extract_failures):
-        raise ValueError(
-            f"文件“{filename}”未提取到可检索文本。可能是扫描版 PDF、加密文件或解析依赖缺失（建议安装 pymupdf / PyPDF2 / python-docx）"
+    if Path(filename).suffix.lower() in _ASYNC_UPLOAD_EXTENSIONS:
+        pending = _create_pending_uploaded_document(
+            project_id,
+            filename,
+            store=store,
+            source_fingerprint=content_fingerprint,
+            source_size=uploaded.size,
         )
-
-    # 0.1.8.1 hotfix: before this, the upload path discarded the original bytes
-    # after text extraction, so the in-app PDF reader could never serve the
-    # source file — only files reached through a configured source_folder scan
-    # could be opened. Now we always persist the original under
-    # <user_root>/projects/{id}/source_files/ so serve_document_file has a
-    # canonical location to fall back to when the project has no source_folder.
-    try:
-        source_files_dir = project_data_path(project_id, "source_files")
-        source_files_dir.mkdir(parents=True, exist_ok=True)
-        target = source_files_dir / filename
-        target.write_bytes(raw)
-    except OSError as exc:
-        # Don't block ingestion if disk persistence fails — text/chunks still
-        # land in the store and degraded-but-useful behaviour is preferable to
-        # a hard error. The user just won't be able to open the PDF in-app.
-        logger.warning(
-            "upload_source_persist_failed: project_id=%s filename=%s err=%s",
-            project_id, filename, exc,
+        session_id, job_id = await _start_uploaded_document_extraction_job(
+            project_id,
+            str(pending["material_id"]),
+            filename,
+            uploaded.path,
+            source_fingerprint=content_fingerprint,
+            source_size=uploaded.size,
         )
+        return {
+            **pending,
+            "job_id": job_id,
+            "session_id": session_id,
+            "open_url": f"/workbench/paper/{pending['material_id']}",
+            "message": "PDF 已可阅读，文本提取将在后台完成。",
+        }
 
+    content = _truncate_document_content(_extract_document_content_from_path(filename, uploaded.path))
     return _persist_uploaded_document(
         project_id,
         filename,
         content,
         store=store,
         source_fingerprint=content_fingerprint,
-        source_size=len(raw),
+        source_size=uploaded.size,
     )
 
 

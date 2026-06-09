@@ -1,5 +1,5 @@
 """
-Pure-function candidate extraction for terminal-state runtime jobs (Slice 4a).
+Pure-function candidate extraction for terminal-state runtime jobs.
 
 Maps a WritingJob in COMPLETED / FAILED state to the kwargs
 EvolutionService.capture() needs. CANCELLED jobs produce no candidate

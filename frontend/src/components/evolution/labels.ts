@@ -16,7 +16,7 @@ import type { StatusTone } from '../common/StatusPill';
 export const SOURCE_LABELS: Record<CandidateSourceType, string> = {
   inspiration: '灵感',
   discussion: '多专家讨论',
-  rag_answer: '文献问答',
+  rag_answer: '智能研读',
   runtime_job: '写作任务',
   skill_run: '流程执行',
   pdf_annotation: 'PDF 笔记',
@@ -74,7 +74,76 @@ export const RISK_TONES: Record<CandidateRiskLevel, StatusTone> = {
   high: 'danger',
 };
 
-// Evidence state derived per plan §Product Framing Copy:
+const INTERNAL_REASON_PATTERN =
+  /(?:[a-z]+_[a-z0-9_]+|[A-Z][A-Z0-9_]{2,}|[=:{}[\]"'`]|\/[a-z0-9._/-]+|sha256:|wing_evolution)/;
+
+const INTERNAL_VISIBLE_TEXT_PATTERN =
+  /(?:env=|env_refs|candidate_id|source_id|workspace_id|project_id|dedupe_hash|rollback_ref|api[_\s-]?key|base[_\s-]?url|authorization|bearer|token|secret|https?:\/\/|\/api\/[^\s"'<>，。；,;)]*|\/runtime\/[^\s"'<>，。；,;)]*|[A-Za-z]:\\[^\s"'<>]*|sha256:|\b[a-z]+(?:_[a-z0-9]+){1,}\b|[{}[\]"`]|[A-Za-z0-9+/]{32,}={0,2})/i;
+
+export function sanitizeEvolutionUserText(value: unknown, fallback: string): string {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw || raw.length > 220 || INTERNAL_VISIBLE_TEXT_PATTERN.test(raw)) {
+    return fallback;
+  }
+  return raw;
+}
+
+const SENSITIVE_DETAIL_TEXT_PATTERN =
+  /(?:api[_\s-]?key|base[_\s-]?url|authorization|bearer|token|secret|https?:\/\/|\/api\/[^\s"'<>，。；,;)]*|[A-Za-z]:\\[^\s"'<>]*|sha256:)/i;
+
+export function sanitizeEvolutionDetailText(value: unknown, fallback: string, maxChars = 1800): string {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) {
+    return fallback;
+  }
+  const normalized = raw.replace(/\u0000/g, '').replace(/\r\n/g, '\n');
+  if (SENSITIVE_DETAIL_TEXT_PATTERN.test(normalized)) {
+    return fallback;
+  }
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
+
+export function formatEvolutionError(value: unknown, fallback = '操作失败，请稍后重试。'): string {
+  const raw = value instanceof Error ? value.message : typeof value === 'string' ? value : '';
+  return sanitizeEvolutionUserText(raw, fallback);
+}
+
+export const SOURCE_TRIGGER_DESCRIPTIONS: Record<CandidateSourceType, string> = {
+  inspiration: '灵感生成时发现可复用的偏好、事实或写作方法。',
+  discussion: '多专家讨论产出结论后，系统提取可复用的角色经验或项目事实。',
+  rag_answer: '智能研读回答问题时，系统从可靠证据和你的反馈中提取候选经验。',
+  runtime_job: '写作、导出、分析等任务运行完成后，系统记录可复用的流程经验。',
+  skill_run: 'Skill 执行后，系统记录可复用的步骤、约束或失败经验。',
+  pdf_annotation: 'PDF 批注或笔记沉淀后，系统提取可复用的阅读经验。',
+  mcp_tool_use: 'MCP 工具调用完成后，系统记录工具可靠性或使用边界。',
+  manual: '由用户手动录入，等待复审后保存。',
+  curator: '系统整理已有候选时生成，需要人工复审。',
+};
+
+export function friendlyDecisionReason(raw: string | null | undefined): string {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return '（无说明）';
+  if (trimmed === 'ui_reject_permanent') return '用户标记为永久忽略';
+  if (trimmed === 'ui_snooze_7d') return '用户稍后再看（7 天）';
+  if (trimmed.startsWith('secret_scan:')) return '被密钥扫描拦截';
+  if (trimmed.startsWith('dedupe:')) return '重复候选，已合并';
+  if (trimmed.startsWith('curator:')) return '系统整理后标记为需要复审';
+  if (trimmed.startsWith('promoted:')) {
+    const lower = trimmed.toLowerCase();
+    if (lower.includes('skill')) return '已生成流程草稿';
+    if (lower.includes('memory')) return '已应用到长期记忆';
+    return '已完成应用';
+  }
+  if (INTERNAL_REASON_PATTERN.test(trimmed)) {
+    return '系统记录了一条处置说明，原始诊断信息已隐藏';
+  }
+  return trimmed;
+}
+
+// Evidence state labels used by product-facing copy:
 // "有证据 / 证据不足 / 重复 / 风险较高"
 export type EvidenceState = 'has_evidence' | 'no_evidence' | 'duplicate' | 'high_risk';
 

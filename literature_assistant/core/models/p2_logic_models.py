@@ -30,7 +30,7 @@ class SourceMeta(BaseModel):
     doi: Optional[str] = None
 
 class Claim(BaseModel):
-    """结构化语义声明 (Task Phase 2.1)"""
+    """结构化语义声明。"""
     claim_id: str
     subject: str                   # 主体 (如: 激光功率)
     predicate: str                 # 谓词 (如: 增加, 影响)

@@ -34,7 +34,7 @@ def load_builtin_prompt_skills(prompt_manager: PromptManagerProtocol | None) -> 
         SkillDescriptor(
             id="grammar_checker",
             name="Grammar Checker",
-            description="Check and improve grammar in the selected text",
+            description="检查并改进所选文本的语法",
             kind=SkillKind.VALIDATOR,
             source=SkillSource.BUILTIN,
             entry_mode="manual",
@@ -48,13 +48,13 @@ def load_builtin_prompt_skills(prompt_manager: PromptManagerProtocol | None) -> 
             tags=["grammar", "validation", "builtin"],
         )
     )
-    
+
     # Example: Rewrite/Paraphrase skill
     skills.append(
         SkillDescriptor(
             id="paraphrase",
             name="Paraphrase",
-            description="Rewrite selected text with alternative phrasing",
+            description="用不同措辞重写所选文本",
             kind=SkillKind.TRANSFORM,
             source=SkillSource.BUILTIN,
             entry_mode="manual",
@@ -68,13 +68,13 @@ def load_builtin_prompt_skills(prompt_manager: PromptManagerProtocol | None) -> 
             tags=["rewrite", "transform", "builtin"],
         )
     )
-    
+
     # Example: Tone adjustment skill
     skills.append(
         SkillDescriptor(
             id="tone_adjuster",
             name="Tone Adjuster",
-            description="Adjust the tone of selected text (formal, casual, etc)",
+            description="调整所选文本的语气（正式、随意等）",
             kind=SkillKind.TRANSFORM,
             source=SkillSource.BUILTIN,
             entry_mode="manual",
@@ -89,13 +89,13 @@ def load_builtin_prompt_skills(prompt_manager: PromptManagerProtocol | None) -> 
             tags=["tone", "style", "builtin"],
         )
     )
-    
+
     # Example: Summarize skill
     skills.append(
         SkillDescriptor(
             id="summarize",
             name="Summarize",
-            description="Generate a concise summary of the selected text",
+            description="生成所选文本的简明摘要",
             kind=SkillKind.TRANSFORM,
             source=SkillSource.BUILTIN,
             entry_mode="assistant",
@@ -109,13 +109,13 @@ def load_builtin_prompt_skills(prompt_manager: PromptManagerProtocol | None) -> 
             tags=["summary", "compression", "builtin"],
         )
     )
-    
+
     # Example: Expand with details
     skills.append(
         SkillDescriptor(
             id="expand_details",
             name="Expand with Details",
-            description="Expand selected text with additional context and examples",
+            description="用额外的上下文和示例扩展所选文本",
             kind=SkillKind.TRANSFORM,
             source=SkillSource.BUILTIN,
             entry_mode="assistant",
@@ -129,13 +129,13 @@ def load_builtin_prompt_skills(prompt_manager: PromptManagerProtocol | None) -> 
             tags=["expansion", "detail", "builtin"],
         )
     )
-    
+
     # Example: Translation skill
     skills.append(
         SkillDescriptor(
             id="translate",
             name="Translate",
-            description="Translate selected text to another language",
+            description="将所选文本翻译为另一种语言",
             kind=SkillKind.TRANSFORM,
             source=SkillSource.BUILTIN,
             entry_mode="manual",

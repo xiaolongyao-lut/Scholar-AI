@@ -16,6 +16,7 @@ class TaskState(str, Enum):
     running = "running"
     succeeded = "succeeded"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 class CreateSessionRequest(BaseModel):
@@ -54,6 +55,7 @@ class CreateJobRequest(BaseModel):
     scope: Optional[str] = None
     output_mode: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class JobPayload(BaseModel):
@@ -70,6 +72,8 @@ class JobPayload(BaseModel):
     action_id: Optional[str] = None
     skill_id: Optional[str] = None
     error: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class JobStatusPayload(BaseModel):
@@ -85,6 +89,7 @@ class JobStatusPayload(BaseModel):
     is_paused: bool
     is_cancelled: bool
     error: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class EventPayload(BaseModel):
@@ -95,7 +100,22 @@ class EventPayload(BaseModel):
     session_id: str
     event_type: str
     timestamp: str
+    sequence: int = Field(ge=0)
     data: Dict[str, Any]
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class JobEventSnapshotPayload(BaseModel):
+    """Refresh-safe job snapshot plus cursor-paginated event page."""
+
+    job_id: str
+    session_id: str
+    job: JobPayload
+    status: JobStatusPayload
+    events: List[EventPayload] = Field(default_factory=list)
+    next_after_sequence: Optional[int] = None
+    latest_sequence: int = Field(ge=0)
+    has_more: bool = False
 
 
 class ArtifactPayload(BaseModel):

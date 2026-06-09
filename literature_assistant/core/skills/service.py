@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 import dataclasses
+import re
 import shutil
 
 from datetime_utils import utc_now_iso_z
+from project_paths import WORKSPACE_ARTIFACTS_ROOT
 
 from .models import (
     SkillDescriptor,
@@ -36,9 +38,65 @@ from .persistence import (
     load_user_skill_manifest,
     record_install_run_state,
     read_install_metadata,
+    set_install_runtime_settings,
     set_install_enabled,
 )
 from .user_manifest import UserSkillManifest
+
+
+_SAFE_SKILL_EXPORT_ARCHIVE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.zip$")
+
+
+def _safe_skill_export_stem(value: str, fallback: str = "skill") -> str:
+    """Return a bounded ASCII-ish stem for Skill export archives.
+
+    Args:
+        value: Skill id or user-provided filename stem.
+        fallback: Stem used when value has no safe characters.
+
+    Returns:
+        Filename stem safe to place under the Skill export directory.
+    """
+    normalized = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip()).strip("._-")
+    if not normalized:
+        normalized = fallback
+    return normalized[:96]
+
+
+def _resolve_skill_export_path(skill_id: str, output_path: str | Path | None) -> Path:
+    """Return a zip export path under the canonical Skill export root.
+
+    Args:
+        skill_id: Stable Skill id used for the default archive name.
+        output_path: Optional filename only. Absolute paths and directory
+            components are rejected to keep exports under workspace artifacts.
+
+    Returns:
+        Resolved path inside ``workspace_artifacts/skill_exports``.
+    """
+    safe_stem = _safe_skill_export_stem(skill_id)
+    if output_path is None:
+        filename = f"{safe_stem}.zip"
+    else:
+        filename = str(output_path or "").strip()
+        if not filename:
+            raise ValueError("output_path must be a non-empty zip filename")
+        candidate = Path(filename)
+        if candidate.is_absolute() or filename != candidate.name or "/" in filename or "\\" in filename:
+            raise ValueError("output_path must be a filename under skill_exports")
+        if not filename.lower().endswith(".zip"):
+            filename = f"{filename}.zip"
+        if not _SAFE_SKILL_EXPORT_ARCHIVE_RE.fullmatch(filename):
+            raise ValueError("output_path must be a safe .zip filename")
+
+    export_root = (WORKSPACE_ARTIFACTS_ROOT / "skill_exports").resolve()
+    export_root.mkdir(parents=True, exist_ok=True)
+    resolved = (export_root / filename).resolve()
+    try:
+        resolved.relative_to(export_root)
+    except ValueError as exc:
+        raise ValueError("output_path escapes skill export root") from exc
+    return resolved
 
 
 class WritingSkillService:
@@ -140,6 +198,8 @@ class WritingSkillService:
                         "last_run_at": metadata.last_run_at,
                         "last_status": metadata.last_status,
                         "last_warnings": metadata.last_warnings,
+                        "config_values": dict(metadata.config_values),
+                        "credential_bindings": dict(metadata.credential_bindings),
                     },
                 )
                 self._registry.register(descriptor)
@@ -351,12 +411,68 @@ class WritingSkillService:
         """Run a skill directly by skill ID."""
         return self._run_skill(skill_id=skill_id, input_text=input_text, scope=scope, output_mode=output_mode)
 
+    def update_skill_runtime_settings(
+        self,
+        skill_id: str,
+        *,
+        config_values: dict[str, str],
+        credential_bindings: dict[str, str],
+    ) -> dict[str, Any]:
+        """Persist user-editable config and credential references for a Skill."""
+        if not isinstance(skill_id, str) or not skill_id.strip():
+            raise ValueError("skill_id must be a non-empty string")
+        if not isinstance(config_values, dict):
+            raise TypeError("config_values must be a dictionary")
+        if not isinstance(credential_bindings, dict):
+            raise TypeError("credential_bindings must be a dictionary")
+
+        skill = self._registry.get(skill_id)
+        if skill is None:
+            raise ValueError(f"Skill not found: {skill_id}")
+        if skill.source != SkillSource.IMPORTED:
+            raise ValueError("Builtin skills do not have user-editable runtime settings")
+
+        skill_dir = self._resolve_managed_skill_root(skill)
+        if skill_dir is None:
+            raise ValueError(f"Skill {skill_id} is not installed under the managed root")
+
+        metadata = set_install_runtime_settings(
+            skill_dir,
+            config_values=config_values,
+            credential_bindings=credential_bindings,
+        )
+
+        updated = dataclasses.replace(
+            skill,
+            default_parameters={
+                **skill.default_parameters,
+                "config_values": dict(metadata.config_values),
+                "credential_bindings": dict(metadata.credential_bindings),
+            },
+        )
+        self._registry.register(updated)
+        self._audit_log.log_event(
+            AuditEventType.CAPABILITY_RESOLVED.value,
+            capability_id=skill_id,
+            description="Skill runtime settings updated",
+            context={
+                "config_field_count": len(metadata.config_values),
+                "credential_binding_count": len(metadata.credential_bindings),
+            },
+        )
+        return {
+            "skill_id": skill_id,
+            "config_values": dict(metadata.config_values),
+            "credential_bindings": dict(metadata.credential_bindings),
+        }
+
     def import_user_skill(self, source_path: str | Path, managed_root: str | Path | None = None, origin: str = "user_import") -> dict[str, Any]:
         """Import a manifest-backed user skill from a directory or zip archive.
 
         Args:
             source_path: Local directory or `.zip` archive that contains `SKILL.md`.
-            managed_root: Optional managed install root. Defaults to `skills/imported/user`.
+            managed_root: DEPRECATED. Install root is now fixed server-side. This parameter
+                          is ignored for security (path traversal prevention).
             origin: Human-readable import origin stored in metadata.
 
         Returns:
@@ -364,6 +480,12 @@ class WritingSkillService:
 
         Raises:
             ValueError: If paths are malformed or validation fails.
+
+        Security:
+            The install root is hardcoded to `skills/imported/user` to prevent
+            clients from controlling the installation directory via API calls.
+            Previous versions allowed `managed_root` in the request, which created
+            a path traversal vulnerability.
         """
         source = Path(source_path).expanduser().resolve()
         if not source.exists():
@@ -371,7 +493,8 @@ class WritingSkillService:
         if not source.is_dir() and not source.is_file():
             raise ValueError(f"Source path is not a file or directory: {source}")
 
-        root = Path(managed_root).expanduser().resolve() if managed_root else Path("skills/imported/user").resolve()
+        # Security: Fixed installation root, ignoring any client-provided value
+        root = Path("skills/imported/user").resolve()
         from .importers.user_skill_importer import import_user_skill as import_user_skill_package
 
         result = import_user_skill_package(source, root, origin=origin)
@@ -563,7 +686,7 @@ class WritingSkillService:
 
         Args:
             skill_id: Skill ID to export.
-            output_path: Optional output zip path. Defaults to workspace_artifacts/skill_exports/{skill_id}.zip.
+            output_path: Optional output zip filename under workspace_artifacts/skill_exports.
 
         Returns:
             Export result dict with success/export_path/errors.
@@ -589,14 +712,7 @@ class WritingSkillService:
         if not skill_dir.exists() or not skill_dir.is_dir():
             raise ValueError(f"Skill directory not found: {skill_dir}")
 
-        # Resolve output path
-        if output_path is None:
-            export_root = Path("workspace_artifacts/skill_exports").resolve()
-            export_root.mkdir(parents=True, exist_ok=True)
-            output_path = export_root / f"{skill_id}.zip"
-        else:
-            output_path = Path(output_path).expanduser().resolve()
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path = _resolve_skill_export_path(skill_id, output_path)
 
         # Create zip archive
         try:
@@ -837,8 +953,10 @@ class WritingSkillService:
                 "root_policy": manifest.root_policy,
                 "content_hash": content_hash,
                 "installed_path": str(installed_path),
-                # S5 / plan 2026-05-20 §C1: surface manifest extension fields
-                # to the frontend through the existing descriptor channel,
+                "config_values": {},
+                "credential_bindings": {},
+                # Surface manifest extension fields to the frontend through
+                # the existing descriptor channel,
                 # so the SkillManager can render the credential-binding
                 # wizard without adding a separate endpoint or modifying
                 # SkillDescriptor's frozen schema.
@@ -864,6 +982,9 @@ class WritingSkillService:
                         "required": cf.required,
                         "description": cf.description,
                         "options": cf.options,
+                        "min": cf.min,
+                        "max": cf.max,
+                        "step": cf.step,
                     }
                     for cf in manifest.config_fields
                 ],

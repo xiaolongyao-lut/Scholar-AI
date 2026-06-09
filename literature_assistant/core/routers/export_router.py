@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import tempfile
+import re
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any
@@ -11,8 +13,47 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 router = APIRouter(prefix="/api/export", tags=["Export"])
+
+
+def _safe_docx_filename_stem(value: str, fallback: str = "export") -> str:
+    """Return a bounded filename stem for generated DOCX downloads.
+
+    Args:
+        value: User-facing title text, not a filesystem path.
+        fallback: ASCII stem used when the title has no safe characters.
+
+    Returns:
+        A Windows-safe filename stem without path separators or control chars.
+    """
+    normalized = re.sub(r"\s+", " ", str(value or "").strip())
+    safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", normalized).strip(" ._")
+    if not safe:
+        safe = fallback
+    return safe[:96]
+
+
+def _cleanup_export_tmp_dir(tmp_dir: Path) -> None:
+    """Remove a generated DOCX temp directory after the response is sent.
+
+    Args:
+        tmp_dir: Directory returned by ``tempfile.mkdtemp(prefix="export_docx_")``.
+
+    Returns:
+        None. Paths outside the expected temp root are left untouched.
+    """
+
+    if not isinstance(tmp_dir, Path):
+        raise TypeError("tmp_dir must be a pathlib.Path")
+
+    resolved = tmp_dir.resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if resolved.parent != temp_root or not resolved.name.startswith("export_docx_"):
+        return
+    if resolved.is_dir():
+        shutil.rmtree(resolved)
 
 
 class ExportDocxRequest(BaseModel):
@@ -159,17 +200,18 @@ def _html_to_docx(html: str, title: str, output_path: Path, style_profile: str |
 async def export_docx(req: ExportDocxRequest):
     """Export TipTap content as formatted DOCX."""
     tmp_dir = Path(tempfile.mkdtemp(prefix="export_docx_"))
-    filename = f"{req.title.replace(' ', '_')}_{uuid.uuid4().hex[:8]}.docx"
+    filename = f"{_safe_docx_filename_stem(req.title)}_{uuid.uuid4().hex[:8]}.docx"
     output_path = tmp_dir / filename
 
     try:
         _html_to_docx(req.html, req.title, output_path, req.style_profile)
     except Exception as e:
+        _cleanup_export_tmp_dir(tmp_dir)
         raise HTTPException(status_code=500, detail=str(e))
 
     return FileResponse(
         path=str(output_path),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=filename,
-        background=lambda: None,  # let FastAPI handle cleanup after response
+        background=BackgroundTask(_cleanup_export_tmp_dir, tmp_dir),
     )

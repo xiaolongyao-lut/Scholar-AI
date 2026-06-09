@@ -1,9 +1,8 @@
 /**
- * MCP local installer API client (S4 / plan 2026-05-20 §A4).
+ * MCP local installer API client.
  *
- * Mirrors the backend's mcp_installer_router.py endpoints. Lives separate
- * from the existing mcpApi.ts (which handles registry CRUD + audit +
- * pending-calls) so the installer flow can be reasoned about in isolation.
+ * Mirrors the backend installer endpoints. Lives separate from the existing
+ * registry client so the installer flow can be reasoned about in isolation.
  */
 import axios from 'axios';
 import { getApiBaseUrl } from './apiBaseUrl';
@@ -36,10 +35,13 @@ export interface McpInstallConfigField {
   id: string;
   label: string;
   env: string;
-  type: 'text' | 'select';
+  type: 'text' | 'select' | 'number' | 'boolean';
   required: boolean;
   default: string | null;
   options: Array<{ value: string; label: string }> | null;
+  min?: number | null;
+  max?: number | null;
+  step?: number | null;
   description: string;
 }
 
@@ -62,6 +64,7 @@ export interface McpPackageScanResult {
   scan_id: string;
   source_path: string;
   package_id: string;
+  server_slug?: string;
   display_name: string;
   description: string;
   version: string;
@@ -106,9 +109,8 @@ export interface McpInstallationInstallRequest {
   config_values: Record<string, string>;
   credential_bindings: Record<string, string>;
   /**
-   * Locked Revisions M7: only `true` triggers a probe that spawns the
-   * server process. UI MUST surface this as an explicit checkbox with
-   * copy that mentions the risk of starting the package's process.
+   * Only `true` triggers a probe that spawns the server process. UI copy must
+   * mention the risk of starting package code before this flag is submitted.
    */
   trust_to_probe: boolean;
   enable_for_session?: boolean;

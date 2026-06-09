@@ -3,23 +3,69 @@
  * without a React renderer; the existing lightweight `node:test` coverage for
  * these helpers remains useful even after the frontend gained Vitest-based
  * component tests.
- *
- * Plan: docs/superpowers/plans/2026-04-20-conversation-persistence-mvp.md §S-4
  */
 
 import type {
   SessionSummary,
   TimelineEvent,
 } from "../../types/runtime";
+import { sanitizeRuntimeVisibleText } from "./writingRuntimeDisplay";
+
+const SESSION_DRAWER_FALLBACK_ERROR = "操作失败，请稍后重试。";
+const SESSION_DRAWER_EMPTY_EVENT = "没有可显示的事件详情。";
 
 export interface WorkbenchMessage {
   id: number;
   role: 'user' | 'assistant';
   content: string;
-  sources?: { title: string; page: string; material_id?: string; chunk_id?: string; page_number?: number }[];
+  sources?: WorkbenchSource[];
   error?: boolean;
   usage?: Record<string, number>;
   model?: string;
+}
+
+export interface WorkbenchSource {
+  title: string;
+  page: string;
+  material_id?: string;
+  chunk_id?: string;
+  page_number?: number;
+  excerpt?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNumberRecord(value: unknown): value is Record<string, number> {
+  return (
+    isRecord(value) &&
+    Object.values(value).every((entry) => typeof entry === "number" && Number.isFinite(entry))
+  );
+}
+
+function toWorkbenchSource(value: unknown): WorkbenchSource | null {
+  if (!isRecord(value)) return null;
+  const title = value.title;
+  const page = value.page;
+  if (typeof title !== "string" || typeof page !== "string") return null;
+
+  const source: WorkbenchSource = { title, page };
+  if (typeof value.material_id === "string") source.material_id = value.material_id;
+  if (typeof value.chunk_id === "string") source.chunk_id = value.chunk_id;
+  if (typeof value.page_number === "number" && Number.isFinite(value.page_number)) {
+    source.page_number = value.page_number;
+  }
+  if (typeof value.excerpt === "string" && value.excerpt.trim().length > 0) {
+    source.excerpt = value.excerpt;
+  }
+  return source;
+}
+
+function toWorkbenchSources(value: unknown): WorkbenchSource[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const sources = value.map(toWorkbenchSource).filter((source): source is WorkbenchSource => source !== null);
+  return sources.length > 0 ? sources : undefined;
 }
 
 export function mapTimelineToMessages(timeline: TimelineEvent[]): WorkbenchMessage[] {
@@ -39,8 +85,8 @@ export function mapTimelineToMessages(timeline: TimelineEvent[]): WorkbenchMessa
         id,
         role: event.event_kind,
         content,
-        usage: payload.usage as Record<string, number> | undefined,
-        sources: Array.isArray(payload.sources) ? payload.sources as any : undefined,
+        usage: isNumberRecord(payload.usage) ? payload.usage : undefined,
+        sources: toWorkbenchSources(payload.sources),
         model: typeof payload.model === 'string' ? payload.model : undefined,
       });
     }
@@ -89,7 +135,9 @@ export function sessionPreviewText(
     typeof session.metadata?.first_user_prompt === "string"
       ? (session.metadata.first_user_prompt as string)
       : null;
-  const raw = title ?? firstPrompt ?? "";
+  const titleIsPlaceholder =
+    title === null || title.trim() === "" || title.trim().toLowerCase() === "untitled session";
+  const raw = titleIsPlaceholder ? firstPrompt ?? "" : title;
   const trimmed = raw.trim();
   if (!trimmed) return "(empty session)";
   if (trimmed.length <= maxChars) return trimmed;
@@ -125,6 +173,53 @@ export function classifyTimelineEvent(
     default:
       return "other";
   }
+}
+
+export function formatTimelineEventLabel(event: TimelineEvent): string {
+  const kind = classifyTimelineEvent(event);
+  const labels: Record<TimelineDisplayKind, string> = {
+    user: "用户",
+    assistant: "AI",
+    tool_call: "工具调用",
+    tool_result: "工具结果",
+    checkpoint: "检查点",
+    other: "记录",
+  };
+  return labels[kind] ?? labels.other;
+}
+
+function compactPreview(value: string): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  return text.length > 140 ? `${text.slice(0, 139)}…` : text;
+}
+
+function safePayloadText(value: unknown, fallback: string): string {
+  return sanitizeRuntimeVisibleText(value, fallback);
+}
+
+/** Compact preview of an event payload with internal paths/ids hidden. */
+export function formatTimelineEventPreview(event: TimelineEvent): string {
+  const payload = event.payload ?? {};
+  const fallback = `(${formatTimelineEventLabel(event)})`;
+
+  for (const key of ["text", "content", "summary"] as const) {
+    const visible = safePayloadText(payload[key], fallback);
+    if (visible !== fallback) return compactPreview(visible);
+  }
+
+  if (typeof payload.tool_name === "string") {
+    const toolName = safePayloadText(payload.tool_name, "");
+    return toolName ? compactPreview(`工具调用：${toolName}`) : "工具调用";
+  }
+
+  return fallback === "(记录)" ? SESSION_DRAWER_EMPTY_EVENT : fallback;
+}
+
+export function formatSessionDrawerError(value: unknown, fallback = SESSION_DRAWER_FALLBACK_ERROR): string {
+  if (value instanceof Error) {
+    return sanitizeRuntimeVisibleText(value.message, fallback);
+  }
+  return sanitizeRuntimeVisibleText(value, fallback);
 }
 
 /**

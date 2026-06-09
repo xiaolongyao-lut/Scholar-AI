@@ -1,11 +1,23 @@
 import json
 import asyncio
 import logging
+import os
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from models.p2_logic_models import Claim, ConflictResult, ConflictType
 import numpy as np
 
 logger = logging.getLogger("P2_ConflictDetector")
+_TRUTHY_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
+_ENABLE_LOCAL_BGE_ENV = "LITASSIST_ENABLE_LOCAL_BGE"
+_ALLOW_BGE_DOWNLOAD_ENV = "LITASSIST_BGE_ALLOW_DOWNLOAD"
+_BGE_MODEL_ENV = "LITASSIST_BGE_MODEL"
+_DEFAULT_BGE_MODEL = "BAAI/bge-m3"
+
+
+def _env_truthy(name: str) -> bool:
+    """Return true when an env flag explicitly opts into optional model use."""
+
+    return os.environ.get(name, "").strip().lower() in _TRUTHY_ENV_VALUES
 
 class ConflictDetector:
     """
@@ -20,15 +32,38 @@ class ConflictDetector:
         self.opposition_pairs = [
             ("增加", "减少"), ("提升", "降低"), ("优化", "恶化"), ("加快", "减慢")
         ]
-        
-        # 优化 2: BGE Embedding 模型集成
+
+        self.embedding_model = self._load_embedding_model()
+
+    def _load_embedding_model(self) -> Any | None:
+        """Load the optional local BGE model only after an explicit opt-in.
+
+        Returns:
+            A SentenceTransformer-compatible model, or None when local model
+            inference is disabled or unavailable.
+        """
+
+        if not _env_truthy(_ENABLE_LOCAL_BGE_ENV):
+            logger.info("BGE 模型未启用；设置 %s=1 后才会尝试加载本地模型", _ENABLE_LOCAL_BGE_ENV)
+            return None
+
+        model_name = os.environ.get(_BGE_MODEL_ENV, _DEFAULT_BGE_MODEL).strip() or _DEFAULT_BGE_MODEL
+        allow_download = _env_truthy(_ALLOW_BGE_DOWNLOAD_ENV)
         try:
             from sentence_transformers import SentenceTransformer
-            self.embedding_model = SentenceTransformer('BAAI/bge-m3')
-            logger.info("BGE-m3 Embedding 模型加载成功")
+
+            try:
+                model = SentenceTransformer(model_name, local_files_only=not allow_download)
+            except TypeError:
+                if not allow_download:
+                    logger.warning("当前 sentence-transformers 不支持 local_files_only；跳过 BGE 模型加载")
+                    return None
+                model = SentenceTransformer(model_name)
+            logger.info("BGE Embedding 模型加载成功: %s", model_name)
+            return model
         except Exception as e:
             logger.warning(f"BGE 模型加载失败: {e}，将使用字符相似度")
-            self.embedding_model = None
+            return None
 
     def _load_synonyms(self) -> Dict[str, str]:
         """加载本地同义词词典"""

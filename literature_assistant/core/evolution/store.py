@@ -2,7 +2,7 @@
 SQLite persistence for the evolution candidate store.
 
 Path: workspace_artifacts/runtime_state/evolution_candidates.sqlite3
-       (fixed by plan §D-EVO-P0-1; do not change without a new ADR)
+       (fixed runtime-state location; do not change without a new ADR)
 
 Style mirrors literature_assistant.core.canonical_event_store.CanonicalEventStore
 (open fresh connection per public method; explicit close in finally; CREATE
@@ -11,15 +11,15 @@ TABLE IF NOT EXISTS in _init_schema).
 Idempotency:
     - dedupe_hash is UNIQUE; insert_or_merge uses INSERT ... ON CONFLICT to
       merge new state onto the existing row without creating a duplicate
-      (plan §Fail-closed: "Duplicate dedupe hash: merge or update existing
-      candidate; do not create another visible card").
+      (duplicate dedupe hash: merge or update existing candidate; do not
+      create another visible card).
     - Status transitions are gated by state_machine.evaluate_transition; the
       store refuses to write a forbidden transition (returns the prior row
       unchanged) so callers cannot bypass the rules by hitting the store
       directly.
 
 Online backup:
-    - backup_to() uses sqlite3.Connection.backup() per plan §D-EVO-P0-5;
+    - backup_to() uses sqlite3.Connection.backup();
       raw file copy is never used while the app may have the database open.
 """
 
@@ -42,7 +42,7 @@ DEFAULT_DB_FILENAME = "evolution_candidates.sqlite3"
 
 
 def default_db_path() -> Path:
-    """Return the fixed candidate-store path per plan §D-EVO-P0-1."""
+    """Return the fixed candidate-store path."""
 
     path = runtime_state_path(DEFAULT_DB_FILENAME)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,7 +67,7 @@ class EvolutionCandidateStore:
         self._init_schema()
 
     def _open(self) -> sqlite3.Connection:
-        """Open a connection with Opt §3 concurrency PRAGMAs applied.
+        """Open a connection with concurrency PRAGMAs applied.
 
         - `journal_mode=WAL`: readers no longer block writers and vice-versa.
           WAL state is per-database-file and persists once set; opening with
@@ -152,16 +152,16 @@ class EvolutionCandidateStore:
               the writer of new content)
             - bump updated_at to the new candidate's updated_at
 
-        Security gate (S8.1 hotfix for the secret-dedupe-bypass finding):
+        Security gate for secret-dedupe-bypass prevention:
             - If the incoming candidate is BLOCKED (secret_scan flagged) and a
               dedupe peer already exists, refuse the merge entirely. Otherwise
               an attacker could write a clean candidate first, then write a
-              second one with the same claim but a secret in title / future_use,
+              second one with the same claim but sensitive text in title / future_use,
               and the merge path would overwrite the clean row's fields with
-              secret-bearing text while preserving the clean status.
-            - Refusal returns the EXISTING row unchanged with reason
-              "blocked-secret payload refused at merge time". The blocked
-              incoming row is not persisted, so secret text never lands.
+              sensitive text while preserving the clean status.
+            - Refusal returns the EXISTING row unchanged with a blocked-payload
+              reason. The blocked incoming row is not persisted, so sensitive
+              text never lands.
         """
 
         existing = self._get_by_dedupe_hash(candidate.dedupe_hash)
@@ -298,6 +298,7 @@ class EvolutionCandidateStore:
         project_id: Optional[str] = None,
         status: Optional[CandidateStatus] = None,
         memory_type: Optional[str] = None,
+        sort_by: str = "updated_at",
         limit: int = 50,
         offset: int = 0,
     ) -> List[ExperienceCandidate]:
@@ -314,9 +315,10 @@ class EvolutionCandidateStore:
         conn = self._open()
         try:
             cursor = conn.cursor()
+            order_by = _candidate_order_by(sort_by)
             cursor.execute(
                 f"SELECT {_COLUMNS} FROM candidates{where} "
-                "ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                f"ORDER BY {order_by} LIMIT ? OFFSET ?",
                 tuple(params),
             )
             rows = cursor.fetchall()
@@ -408,7 +410,7 @@ class EvolutionCandidateStore:
         workspace_id: Optional[str] = None,
         recent_decision_limit: int = 10,
     ) -> Dict[str, Any]:
-        """Operator-facing snapshot for Opt §6 /evolution/audit.
+        """Operator-facing snapshot for /evolution/audit.
 
         Read-only roll-up over the candidate table. No raw candidate fields
         (claim / title / future_use / source_summary) leave the store — only
@@ -416,7 +418,7 @@ class EvolutionCandidateStore:
         non-empty decision_reason strings. The decision_reason column is
         free-text but it's only ever written by service / curator /
         promoter code paths (never by user-typed input), so surfacing it
-        does not leak user content; secret-bearing rows have status=BLOCKED
+        does not leak user content; sensitive rows have status=BLOCKED
         and their decision_reason is the scanner's own message.
         """
 
@@ -502,7 +504,7 @@ class EvolutionCandidateStore:
             conn.close()
 
     def backup_to(self, target_path: str | Path) -> Path:
-        """Online backup via sqlite3.Connection.backup() per D-EVO-P0-5."""
+        """Online backup via sqlite3.Connection.backup()."""
 
         dst = Path(target_path)
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -574,6 +576,17 @@ _COLUMNS = (
     "decision_reason, rollback_ref, created_at, updated_at, decided_at, promoted_at"
 )
 _PLACEHOLDERS = ", ".join(["?"] * 23)
+
+
+def _candidate_order_by(sort_by: str) -> str:
+    """Return an allowlisted ORDER BY clause for candidate ranking."""
+    if sort_by == "confidence":
+        return "confidence DESC, updated_at DESC, candidate_id ASC"
+    if sort_by == "created_at":
+        return "created_at DESC, candidate_id ASC"
+    if sort_by != "updated_at":
+        raise ValueError(f"unsupported candidate sort_by: {sort_by}")
+    return "updated_at DESC, candidate_id ASC"
 
 
 def _candidate_to_row(candidate: ExperienceCandidate) -> tuple:

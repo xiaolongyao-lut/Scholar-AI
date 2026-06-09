@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { reportClientError } from '@/services/clientErrorReporter';
+import { reportClientError, sanitizeClientErrorText } from '@/services/clientErrorReporter';
 
 interface ErrorBoundaryProps {
   /** Friendly Chinese message shown to the user. Default works for any pane. */
@@ -16,7 +16,7 @@ interface ErrorBoundaryState {
 }
 
 /**
- * Slice 7 — pane-level error boundary.
+ * Pane-level error boundary.
  *
  * Catches unhandled render errors in Workbench panes / canvas surfaces
  * and renders a friendly Chinese fallback. Per R5 / R5.1, the default
@@ -36,24 +36,29 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
-    // Log to console for developer visibility, but do NOT surface to
-    // the user. Production telemetry hook can plug in later via
-    // a `WorkbenchEvent` (§ 20) subscriber.
-    if (typeof console !== 'undefined' && typeof console.error === 'function') {
-      console.error('[Workbench ErrorBoundary]', error, info);
-    }
-    // Forward to backend.log so server-side grep covers render crashes
-    // too. componentStack is the first line of info — sufficient to
-    // locate the failing pane without leaking the whole tree.
     const componentStack = (info.componentStack || '')
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)[0];
+    const safeMessage = sanitizeClientErrorText(error?.message, '客户端界面发生异常。');
+    const safeStack = sanitizeClientErrorText(error?.stack?.split('\n', 1)[0], '');
+    // Log to console for developer visibility, but do NOT surface to
+    // the user. Production telemetry hook can plug in later via
+    // a `WorkbenchEvent` (§ 20) subscriber.
+    if (typeof console !== 'undefined' && typeof console.error === 'function') {
+      console.error('[Workbench ErrorBoundary]', {
+        component: sanitizeClientErrorText(componentStack, '') || this.props.fallbackTitle,
+        message: safeMessage,
+      });
+    }
+    // Forward to backend.log so server-side grep covers render crashes
+    // too. componentStack is the first line of info — sufficient to
+    // locate the failing pane without leaking the whole tree.
     reportClientError({
       kind: 'render',
-      component: componentStack || this.props.fallbackTitle,
-      message: error?.message ?? String(error),
-      stack: error?.stack,
+      component: sanitizeClientErrorText(componentStack, '') || this.props.fallbackTitle,
+      message: safeMessage,
+      stack: safeStack || undefined,
     });
   }
 

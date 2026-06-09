@@ -1,10 +1,9 @@
-"""EvidencePack interface (Slice B / DEC-003a / DEC-003b / Hard Constraint #16).
+"""EvidencePack interface.
 
 A pure data-shaping layer over the existing project chunk retriever. Returns a
-versioned, deterministic ``EvidencePack`` artifact for downstream consumers
-(Slice C dispatcher, Slice D discussion orchestrator).
+versioned, deterministic ``EvidencePack`` artifact for downstream consumers.
 
-Hard guarantees (plan v2 §13.2 #16):
+Hard guarantees:
     - No LLM call inside this module.
     - No persistent reuse cache. Each ``build_evidence_pack`` call re-runs
       retrieval. ``dump_evidence_pack`` writes a debug/replay artifact only,

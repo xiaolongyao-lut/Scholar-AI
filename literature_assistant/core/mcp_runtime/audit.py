@@ -1,4 +1,4 @@
-"""MCP audit logger (Phase 5 / TASK-502).
+"""MCP audit logger.
 
 Append-only JSONL of tool-call records (one line per dispatch). The
 dispatcher writes here regardless of success / failure so the dashboard
@@ -79,10 +79,10 @@ def append(
     """Append one record to the audit JSONL. Best-effort: failures are
     logged, never raised — audit must not break tool dispatch.
 
-    Phase 3 / TASK-301: ``decision`` and ``decision_user`` are optional
+    ``decision`` and ``decision_user`` are optional
     pending-call protocol fields. When set they are embedded in the
     written record so the audit panel can surface operator decisions
-    alongside dispatch outcomes. Phase 2-and-earlier callers omit them
+    alongside dispatch outcomes. Legacy callers omit them
     and the field is absent in the JSONL line (no migration needed).
     """
     try:

@@ -167,7 +167,7 @@ class CitationAuditReport:
 
 @dataclass(frozen=True)
 class SecretScanFinding:
-    """Public-safe finding for a possible secret or private path."""
+    """Public-safe finding for possible sensitive material or a private path."""
 
     source: str
     line: int
@@ -175,7 +175,7 @@ class SecretScanFinding:
     message: str
 
     def to_dict(self) -> dict[str, object]:
-        """Return a JSON-serializable finding without raw secret snippets."""
+        """Return a JSON-serializable finding without sensitive snippets."""
 
         return {
             "source": self.source,
@@ -224,7 +224,7 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
     (
         "openai_style_key",
         re.compile(r"\bsk-[A-Za-z0-9][A-Za-z0-9_-]{18,}\b"),
-        "API key-like value must not be stored in eval artifacts",
+        "Credential-like value must not be stored in eval artifacts",
     ),
     (
         "aws_access_key",
@@ -437,7 +437,7 @@ def audit_wiki_pages(page_root: Path, page_paths: Sequence[Path] | None = None) 
 
 
 def scan_text_for_secrets(text: str, *, source: str = "<memory>") -> SecretScanReport:
-    """Scan text for raw secrets and private paths without echoing matches."""
+    """Scan text for sensitive values and private paths without echoing matches."""
 
     if not isinstance(text, str):
         raise TypeError("text must be a string")
@@ -460,7 +460,7 @@ def scan_text_for_secrets(text: str, *, source: str = "<memory>") -> SecretScanR
 
 
 def scan_paths_for_secrets(paths: Sequence[Path]) -> SecretScanReport:
-    """Scan files for raw secrets and private paths without writing output."""
+    """Scan files for sensitive values and private paths without writing output."""
 
     if not isinstance(paths, Sequence):
         raise TypeError("paths must be a sequence of Path values")

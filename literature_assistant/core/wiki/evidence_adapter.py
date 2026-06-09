@@ -4,6 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from literature_assistant.core.models.evidence import (
+    PDF_URL_BBOX_UNIT,
+    PdfBboxUnit,
+    coerce_pdf_bbox,
+    pdf_bbox_matches_unit,
+)
 from literature_assistant.core.wiki.source_registry import WikiRegistry
 
 
@@ -12,11 +18,52 @@ class NormalizedEvidence:
     chunk_id: str | None
     source_id: str | None
     text: str
+    material_id: str | None = None
     quote: str | None = None
-    page: str | None = None
+    page: str | int | None = None
     rank: int | None = None
     source_labels: list[str] | None = None
     query_overlap_tokens: int | None = None
+    bbox: list[float] | None = None
+    bbox_unit: str | None = None
+
+
+def _read_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _read_text_or_number(value: Any) -> str | int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    return _read_text(value)
+
+
+def _read_text_list(value: Any) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    labels: list[str] = []
+    for item in value:
+        label = _read_text(item)
+        if label and label not in labels:
+            labels.append(label)
+    return labels or None
+
+
+def _read_bbox_unit(value: Any, bbox: list[float] | None) -> str | None:
+    if bbox is None:
+        return None
+    if value is None:
+        return PDF_URL_BBOX_UNIT.value if pdf_bbox_matches_unit(bbox, PDF_URL_BBOX_UNIT) else None
+    try:
+        unit = PdfBboxUnit(str(value))
+    except ValueError:
+        return None
+    return unit.value if pdf_bbox_matches_unit(bbox, unit) else None
 
 
 def coerce_evidence_reference(raw: Any) -> dict[str, Any]:
@@ -31,23 +78,29 @@ def coerce_evidence_reference(raw: Any) -> dict[str, Any]:
 
 def normalize_evidence(raw: Any) -> NormalizedEvidence:
     evidence = coerce_evidence_reference(raw)
-    chunk_id = evidence.get("chunk_id") or evidence.get("material_id")
-    source_id = evidence.get("source_id")
-    text = evidence.get("text") or evidence.get("compressed") or ""
-    quote = evidence.get("quote")
-    page = evidence.get("page")
+    chunk_id = _read_text(evidence.get("chunk_id"))
+    material_id = _read_text(evidence.get("material_id"))
+    source_id = _read_text(evidence.get("source_id"))
+    text = _read_text(evidence.get("text")) or _read_text(evidence.get("compressed_text")) or _read_text(evidence.get("compressed")) or ""
+    quote = _read_text(evidence.get("quote"))
+    page = _read_text_or_number(evidence.get("page"))
     rank = evidence.get("rank")
-    source_labels = evidence.get("source_labels")
+    source_labels = _read_text_list(evidence.get("source_labels"))
     query_overlap_tokens = evidence.get("query_overlap_tokens")
+    bbox = coerce_pdf_bbox(evidence.get("bbox"))
+    bbox_unit = _read_bbox_unit(evidence.get("bbox_unit"), bbox)
     return NormalizedEvidence(
         chunk_id=chunk_id,
         source_id=source_id,
         text=text,
+        material_id=material_id,
         quote=quote,
         page=page,
         rank=rank,
         source_labels=source_labels,
         query_overlap_tokens=query_overlap_tokens,
+        bbox=bbox if bbox_unit is not None else None,
+        bbox_unit=bbox_unit,
     )
 
 
@@ -61,6 +114,10 @@ def lookup_source_for_evidence(
         source = registry.get_source(evidence.source_id)
         if source:
             return evidence.source_id
+    if evidence.material_id:
+        source = registry.get_source(evidence.material_id)
+        if source:
+            return evidence.material_id
     return None
 
 
@@ -71,6 +128,10 @@ def render_citation(evidence: NormalizedEvidence) -> str:
         if evidence.page:
             return f"[[{evidence.source_id}#page-{evidence.page}]]"
         return f"[[{evidence.source_id}]]"
+    if evidence.material_id:
+        if evidence.page:
+            return f"[[{evidence.material_id}#page-{evidence.page}]]"
+        return f"[[{evidence.material_id}]]"
     return ""
 
 
@@ -156,7 +217,10 @@ def evidence_ref_to_markdown(ref: dict[str, Any]) -> str:
         raise ValueError("evidence reference has no quotable text")
 
     # Build citation target: prefer source_id, fallback to chunk_id
-    target = ref.get("source_id") or ref.get("chunk_id") or "unknown"
+    target = ref.get("source_id") or ref.get("chunk_id") or ref.get("material_id") or "unknown"
+    page = ref.get("page")
+    if page and not ref.get("chunk_id"):
+        target = f"{target}#page-{page}"
     return f"{str(quote).strip()} [[{target}]]"
 
 

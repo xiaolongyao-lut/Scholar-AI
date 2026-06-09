@@ -20,10 +20,14 @@ import { cn } from '@/lib/utils';
 import { StatusPill } from '../common/StatusPill';
 import type { ExperienceCandidate } from '../../services/evolutionTypes';
 import {
+  friendlyDecisionReason,
   MEMORY_TYPE_LABELS,
   RISK_LABELS,
   RISK_TONES,
+  sanitizeEvolutionDetailText,
+  sanitizeEvolutionUserText,
   SOURCE_LABELS,
+  SOURCE_TRIGGER_DESCRIPTIONS,
   STATUS_LABELS,
   STATUS_TONES,
 } from './labels';
@@ -43,6 +47,11 @@ function MetaRow({ label, value, mono = false }: { label: string; value: string 
       </dd>
     </div>
   );
+}
+
+function formatEvidenceSummary(count: number): string {
+  if (count <= 0) return '暂未关联证据';
+  return `${count} 条关联证据`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -105,14 +114,22 @@ export function CandidateDetailDrawer({ candidate, open, onClose }: CandidateDet
 
   if (!open || !candidate) return null;
 
-  const evidenceJson = JSON.stringify(candidate.evidence_refs, null, 2);
+  const decisionReason = friendlyDecisionReason(candidate.decision_reason);
+  const title = sanitizeEvolutionUserText(candidate.title, '待复审经验');
+  const knowledgeClaim = sanitizeEvolutionDetailText(candidate.claim, '这条候选没有返回可展示的知识正文。');
+  const futureUse = sanitizeEvolutionDetailText(candidate.future_use, '保存后可作为后续任务的参考。', 900);
+  const sourceSummary = sanitizeEvolutionUserText(
+    candidate.source_summary,
+    '来源摘要包含内部诊断信息，已在界面隐藏。',
+  );
 
   return (
     <div
       role="presentation"
       className="fixed inset-0 z-50 flex justify-end"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        event.stopPropagation();
+        onClose();
       }}
     >
       {/* backdrop */}
@@ -135,9 +152,9 @@ export function CandidateDetailDrawer({ candidate, open, onClose }: CandidateDet
             <h2
               id={headingId}
               className="mt-1 truncate font-headline text-sm font-semibold text-foreground"
-              title={candidate.title}
+              title={title}
             >
-              {candidate.title}
+              {title}
             </h2>
           </div>
           <button
@@ -152,33 +169,37 @@ export function CandidateDetailDrawer({ candidate, open, onClose }: CandidateDet
         </header>
 
         <div className="flex-1 overflow-y-auto">
-          <Section title="来源记录">
-            <MetaRow label="来源类型" value={SOURCE_LABELS[candidate.source_type]} />
-            <MetaRow label="经验类型" value={MEMORY_TYPE_LABELS[candidate.memory_type]} />
-            <MetaRow label="路由" value={candidate.source_route} mono />
-            <MetaRow label="来源 ID" value={candidate.source_id} mono />
-            <div className="mt-2">
-              <p className="font-label text-[11px] text-foreground/45">来源摘要</p>
-              <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-foreground/75">
-                {candidate.source_summary}
+          <Section title="知识内容">
+            <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-3">
+              <p className="font-label text-[11px] text-primary/80">这条经验具体说了什么</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                {knowledgeClaim}
+              </p>
+            </div>
+            <div className="mt-3 rounded-md border border-outline-variant/40 bg-surface-low px-3 py-3">
+              <p className="font-label text-[11px] text-foreground/45">以后怎么用</p>
+              <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-foreground/75">
+                {futureUse}
               </p>
             </div>
           </Section>
 
-          <Section title={`证据引用（${candidate.evidence_refs.length}）`}>
-            {candidate.evidence_refs.length === 0 ? (
-              <p className="text-xs text-foreground/40">无证据引用</p>
-            ) : (
-              <pre className="max-h-48 overflow-auto rounded-md border border-outline-variant/30 bg-surface-low p-2 font-mono text-[11px] leading-4 text-foreground/70">
-                {evidenceJson}
-              </pre>
-            )}
+          <Section title="经验来源">
+            <MetaRow label="来源类型" value={SOURCE_LABELS[candidate.source_type]} />
+            <MetaRow label="经验类型" value={MEMORY_TYPE_LABELS[candidate.memory_type]} />
+            <MetaRow label="触发方式" value={SOURCE_TRIGGER_DESCRIPTIONS[candidate.source_type]} />
+            <div className="mt-2">
+              <p className="font-label text-[11px] text-foreground/45">来源摘要</p>
+              <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-foreground/75">
+                {sourceSummary}
+              </p>
+            </div>
           </Section>
 
-          <Section title="去重哈希">
-            <code className="break-all font-mono text-[11px] text-foreground/65">
-              {candidate.dedupe_hash}
-            </code>
+          <Section title="证据状态">
+            <p className="text-xs text-foreground/60">
+              {formatEvidenceSummary(candidate.evidence_refs.length)}
+            </p>
           </Section>
 
           <Section title="风险等级">
@@ -192,20 +213,14 @@ export function CandidateDetailDrawer({ candidate, open, onClose }: CandidateDet
               {STATUS_LABELS[candidate.status]}
             </StatusPill>
             {candidate.decision_reason && (
-              <p className="mt-2 text-xs text-foreground/60">{candidate.decision_reason}</p>
+              <p className="mt-2 text-xs text-foreground/60">{decisionReason}</p>
             )}
           </Section>
 
-          <Section title="回滚句柄">
-            <code className="break-all font-mono text-[11px] text-foreground/65">
-              {candidate.rollback_ref ?? '—'}
-            </code>
-          </Section>
-
-          <Section title="候选 ID">
-            <code className="break-all font-mono text-[11px] text-foreground/65">
-              {candidate.candidate_id}
-            </code>
+          <Section title="复审规则">
+            <div className="rounded-md border border-outline-variant/40 bg-surface-low px-3 py-2 text-xs leading-5 text-foreground/60">
+              这里只展示可读来源、风险、证据状态和处置说明。原始诊断、本地路径、接口地址和内部标识不会在界面直接显示；需要排查时请使用后台日志。
+            </div>
           </Section>
         </div>
       </div>

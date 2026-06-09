@@ -15,7 +15,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 const Workbench = React.lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
 const Projects = React.lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
 const KnowledgeBase = React.lazy(() => import('./pages/KnowledgeBase').then(m => ({ default: m.KnowledgeBase })));
-const WikiWorkbench = React.lazy(() => import('./pages/WikiWorkbench').then(m => ({ default: m.WikiWorkbench })));
+const KnowledgeDeposits = React.lazy(() => import('./pages/KnowledgeDeposits').then(m => ({ default: m.KnowledgeDeposits })));
 const SettingsPage = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.SettingsPage })));
 const VolumeAnalysis = React.lazy(() => import('./pages/VolumeAnalysis').then(m => ({ default: m.VolumeAnalysis })));
 const Jobs = React.lazy(() => import('./pages/Jobs').then(m => ({ default: m.Jobs })));
@@ -28,7 +28,6 @@ const OutlineManager = React.lazy(() => import('./pages/writing/OutlineManager')
 const SourcesCitations = React.lazy(() => import('./pages/writing/SourcesCitations').then(m => ({ default: m.SourcesCitations })));
 const FiguresTables = React.lazy(() => import('./pages/writing/FiguresTables').then(m => ({ default: m.FiguresTables })));
 const ReviewerSubmission = React.lazy(() => import('./pages/writing/ReviewerSubmission').then(m => ({ default: m.ReviewerSubmission })));
-const EvolutionInbox = React.lazy(() => import('./pages/EvolutionInbox'));
 
 const LazyFallback = () => (
   <div className="h-full flex items-center justify-center bg-background">
@@ -66,7 +65,7 @@ const App = () => {
                       {/* Standalone pages */}
                       <Route path="/knowledge" element={<KnowledgeBase />} />
                       <Route path="/library" element={<Workbench />} />
-                      <Route path="/wiki" element={<WikiWorkbench />} />
+                      <Route path="/wiki" element={<KnowledgeDeposits />} />
                       <Route path="/projects" element={<Projects />} />
                       <Route path="/volume" element={<VolumeAnalysis />} />
                       <Route path="/inspiration" element={<Navigate to="/dialog" replace />} />
@@ -81,7 +80,7 @@ const App = () => {
                       <Route path="/workbench/wiki" element={<WorkbenchWiki />} />
                       <Route path="/workbench/inspiration" element={<Navigate to="/dialog" replace />} />
                       <Route path="/jobs" element={<Jobs />} />
-                      <Route path="/evolution" element={<EvolutionInbox />} />
+                      <Route path="/evolution" element={<KnowledgeDeposits />} />
                       <Route path="/settings" element={<SettingsPage />} />
 
                       {/* Fallback */}

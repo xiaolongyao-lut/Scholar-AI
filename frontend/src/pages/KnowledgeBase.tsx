@@ -58,8 +58,12 @@ interface UploadBatchItem {
   title: string;
   content_length?: number;
   chunks?: number;
-  status: 'ok' | 'error' | 'duplicate';
+  status: 'ok' | 'error' | 'duplicate' | 'queued';
   error?: string;
+  job_id?: string;
+  session_id?: string;
+  open_url?: string;
+  message?: string;
 }
 
 interface UploadBatchResult {
@@ -67,6 +71,7 @@ interface UploadBatchResult {
   total_files: number;
   successful_files: number;
   duplicate_files?: number;
+  queued_files?: number;
   failed_files: number;
   total_chunks: number;
   results: UploadBatchItem[];
@@ -474,6 +479,7 @@ export function KnowledgeBase() {
   const indexedCount = docs.filter(doc => doc.status === 'indexed').length;
   const noTextCount = docs.filter(doc => doc.status === 'no_text').length;
   const recentSucceeded = (uploadSummary?.results ?? []).filter(item => item.status === 'ok').slice(0, 4);
+  const recentQueued = (uploadSummary?.results ?? []).filter(item => item.status === 'queued').slice(0, 4);
   const recentFailed = (uploadSummary?.results ?? []).filter(item => item.status === 'error').slice(0, 4);
 
   // Library index view based on
@@ -530,6 +536,10 @@ export function KnowledgeBase() {
               className="w-full bg-transparent text-xs font-label text-foreground placeholder:text-foreground/35 focus:outline-none"
             />
           </div>
+        </div>
+        <div className="border-b border-outline-variant/30 px-3 py-2 text-[11px] leading-5 text-foreground/55">
+          <p className="font-medium text-foreground/70">触发说明</p>
+          <p className="mt-1">文献、智能研读、讨论和写作编译完成后，会把可复用内容写入 Wiki 或经验队列；没有变化时先看任务中心，再确认设置里的开关。</p>
         </div>
         <nav className="flex-1 overflow-auto p-2 text-xs text-foreground/75">
           <ul className="space-y-0.5">
@@ -788,6 +798,11 @@ export function KnowledgeBase() {
                   {(uploadSummary.duplicate_files ?? 0) > 0 && (
                     <StatusPill tone="primary">
                       {t('kb.upload_summary_duplicate', { count: uploadSummary.duplicate_files ?? 0 })}
+                    </StatusPill>
+                  )}
+                  {(uploadSummary.queued_files ?? 0) > 0 && (
+                    <StatusPill tone="warning">
+                      后台提取 {uploadSummary.queued_files ?? 0}
                     </StatusPill>
                   )}
                 </div>

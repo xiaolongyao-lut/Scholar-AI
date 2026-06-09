@@ -343,7 +343,7 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
         print(f"   ├─ State Changes: (would be rolled back after preview)")
         print(f"   └─ Estimated Completion: (timing estimate)\n")
         
-        # Step 3: Generate rollback plan
+        # Step 3: Generate rollback preview
         rollback_summary = {
             "action_id": args.action_id,
             "rollback_type": "full_revert",
@@ -352,7 +352,7 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
             "safe_to_execute": True,
         }
         
-        print(f"   📜 Rollback Plan:")
+        print(f"   📜 Rollback Preview:")
         print(json.dumps(rollback_summary, indent=6))
         print()
         

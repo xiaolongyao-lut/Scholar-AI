@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ZoomIn, ZoomOut, Sparkles, Highlighter, PanelRight, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Maximize2, Printer, Search, ZoomIn, ZoomOut, Sparkles, Highlighter, PanelRight, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -33,7 +33,7 @@ interface PdfViewerProps {
    *  parent persist scale per tab. */
   scale?: number;
   onScaleChange?: (scale: number) => void;
-  onAnalyzeText?: (text: string, page: number) => void;
+  onAnalyzeText?: (text: string, page: number, anchor?: PdfSelectionAnchor) => void;
   onAddHighlight?: (highlight: { page: number; text: string; color: string; rects?: Array<{ x: number; y: number; w: number; h: number }> }) => void;
   onDeleteHighlight?: (index: number) => void;
   highlights?: Array<{ page: number; text: string; color: string; rects?: Array<{ x: number; y: number; w: number; h: number }> }>;
@@ -62,6 +62,79 @@ export interface PdfOutlineEntry {
   title: string;
   page?: number;
   children?: PdfOutlineEntry[];
+}
+
+export interface PdfSelectionAnchor {
+  page: number;
+  rects: Array<{ x: number; y: number; w: number; h: number }>;
+}
+
+type SearchStatus = 'idle' | 'searching' | 'done' | 'error';
+
+interface PdfSearchResult {
+  page: number;
+}
+
+interface SelectionRangeRect {
+  right: number;
+  top: number;
+}
+
+interface SelectionToolbarPosition {
+  x: number;
+  y: number;
+}
+
+const PDF_LOAD_DETAIL_FALLBACK = 'PDF 文件读取失败，请稍后重试。';
+const PDF_LOAD_INTERNAL_DETAIL_PATTERN =
+  /(?:env=|env_refs|capability_[a-z0-9_]*|api[_\s-]?key|base[_\s-]?url|authorization|bearer|token|secret|https?:\/\/|\/api\/[^\s"'<>，。；,;)]*|\/runtime\/[^\s"'<>，。；,;)]*|\/resources\/[^\s"'<>，。；,;)]*|[A-Za-z]:\\[^\s"'<>]*|[{}[\]"`]|[A-Za-z0-9+/]{32,}={0,2})/i;
+const SELECTION_TOOLBAR_MARGIN_PX = 8;
+const SELECTION_TOOLBAR_ESTIMATED_WIDTH_PX = 336;
+const SELECTION_TOOLBAR_ESTIMATED_HEIGHT_PX = 40;
+const PDF_VIRTUALIZATION_THRESHOLD = 12;
+const PDF_PAGE_OVERSCAN = 3;
+const PDF_DEFAULT_PAGE_HEIGHT_PX = 1120;
+const PDF_RENDER_OPTIONS = {
+  isEvalSupported: false,
+} as const;
+
+function sanitizePdfLoadDetail(detail: unknown): string {
+  const raw = typeof detail === 'string' ? detail.replace(/\s+/g, ' ').trim() : '';
+  if (!raw || raw.length > 180 || PDF_LOAD_INTERNAL_DETAIL_PATTERN.test(raw)) {
+    return PDF_LOAD_DETAIL_FALLBACK;
+  }
+  return raw;
+}
+
+export function formatPdfLoadError(status: number | null, detail: unknown): string {
+  const prefix = status ? `PDF 加载失败（HTTP ${status}）` : 'PDF 加载失败';
+  return `${prefix}：${sanitizePdfLoadDetail(detail)}`;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  if (max < min) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function resolveSelectionToolbarPosition(
+  rangeRect: SelectionRangeRect,
+  viewportWidth: number,
+  viewportHeight: number,
+): SelectionToolbarPosition {
+  const maxLeft = viewportWidth - SELECTION_TOOLBAR_ESTIMATED_WIDTH_PX - SELECTION_TOOLBAR_MARGIN_PX;
+  const maxTop = viewportHeight - SELECTION_TOOLBAR_ESTIMATED_HEIGHT_PX - SELECTION_TOOLBAR_MARGIN_PX;
+  return {
+    x: clampNumber(rangeRect.right + SELECTION_TOOLBAR_MARGIN_PX, SELECTION_TOOLBAR_MARGIN_PX, maxLeft),
+    y: clampNumber(rangeRect.top - 32, SELECTION_TOOLBAR_MARGIN_PX, maxTop),
+  };
+}
+
+function selectionAnchorElement(selection: Selection): Element | null {
+  const node = selection.anchorNode ?? selection.focusNode;
+  if (!node) return null;
+  if (node.nodeType === Node.ELEMENT_NODE) return node as Element;
+  return node.parentElement;
 }
 
 export function PdfViewer({
@@ -97,6 +170,19 @@ export function PdfViewer({
   const [showPanel, setShowPanel] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle');
+  const [searchResults, setSearchResults] = useState<PdfSearchResult[]>([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const [visiblePageWindow, setVisiblePageWindow] = useState<{ first: number; last: number }>(() => {
+    const initialWindowPage = initialPage ?? 1;
+    return { first: initialWindowPage, last: initialWindowPage };
+  });
+  const [measuredPageHeights, setMeasuredPageHeights] = useState<Record<number, number>>({});
+  const viewerRootRef = useRef<HTMLDivElement | null>(null);
+  const onPageChangeRef = useRef(onPageChange);
+  const [fullscreenAvailable, setFullscreenAvailable] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   // 0.1.8.1: fetch the PDF bytes ourselves and feed them to <Document>
   // instead of letting react-pdf / pdf.js fetch the URL. pdf.js's internal
   // fetch path was misreading CORS preflight responses ("Unexpected server
@@ -111,17 +197,45 @@ export function PdfViewer({
   // takes its current page from the IntersectionObserver, not from a
   // single rendered <Page>.
 
-  // Track C F6: notify parent on every confirmed page change so the
-  // shell can debounce read-progress writes.
   useEffect(() => {
-    if (onPageChange) onPageChange(pageNumber);
-  }, [pageNumber, onPageChange]);
+    onPageChangeRef.current = onPageChange;
+  }, [onPageChange]);
+
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      const root = viewerRootRef.current;
+      const canRequestFullscreen = Boolean(
+        root
+        && document.fullscreenEnabled
+        && typeof root.requestFullscreen === 'function'
+        && typeof document.exitFullscreen === 'function',
+      );
+      setFullscreenAvailable(canRequestFullscreen);
+      setIsFullscreen(Boolean(root && document.fullscreenElement === root));
+    };
+
+    syncFullscreenState();
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    document.addEventListener('fullscreenerror', syncFullscreenState);
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState);
+      document.removeEventListener('fullscreenerror', syncFullscreenState);
+    };
+  }, []);
+
+  // Track C F6: notify parent on confirmed page-number changes only.
+  useEffect(() => {
+    onPageChangeRef.current?.(pageNumber);
+  }, [pageNumber]);
 
   const onDocumentLoadSuccess = useCallback(async (pdf: PdfDocumentLike) => {
     setLoadError(null);
     setNumPages(pdf.numPages);
     // Stash the doc so internal-link clicks can resolve named dests.
     pdfDocRef.current = pdf;
+    setSearchStatus('idle');
+    setSearchResults([]);
+    setActiveSearchIndex(-1);
     if (!onOutlineLoaded) return;
     if (typeof pdf.getOutline !== 'function') {
       onOutlineLoaded(null);
@@ -141,14 +255,15 @@ export function PdfViewer({
   // "无原始文件路径记录" vs network) and so devs can grep the browser
   // console.
   const handleLoadError = useCallback((err: Error, status: number | null, detail: string) => {
+    const visibleMessage = formatPdfLoadError(status, detail || err?.message);
     if (typeof console !== 'undefined' && typeof console.error === 'function') {
       console.error('[PdfViewer] document load failed', {
-        materialId, url, status, detail, errorName: err?.name, errorMessage: err?.message,
+        status,
+        errorName: err?.name,
       });
     }
-    const prefix = status ? `PDF 加载失败（HTTP ${status}）` : 'PDF 加载失败';
-    setLoadError(`${prefix}：${detail}`);
-  }, [url, materialId]);
+    setLoadError(visibleMessage);
+  }, []);
 
   // Own the bytes fetch so pdf.js doesn't (see comment on pdfData state).
   useEffect(() => {
@@ -164,16 +279,11 @@ export function PdfViewer({
     setPdfData(null);
     (async () => {
       try {
-        // 0.1.8.1: fetch a base64-encoded JSON envelope instead of the raw
-        // binary stream. System-level download managers (FlashGet / 网际快车,
-        // IDM, 迅雷, etc.) hook the browser network layer and steal any
-        // binary-looking response, returning 204 to the page. JSON looks
-        // like an API call to them and gets through untouched.
-        const fetchUrl = url.replace(/\/file(\?|$)/, '/file_b64$1');
+        const fetchUrl = url.includes('?') ? `${url}&as=bin` : `${url}?as=bin`;
         const resp = await fetch(fetchUrl, {
           method: 'GET',
           cache: 'no-store',
-          headers: { Accept: 'application/json' },
+          headers: { Accept: 'application/octet-stream,application/pdf;q=0.9,*/*;q=0.1' },
         });
         if (typeof console !== 'undefined') {
           console.info('[PdfViewer] fetch resp', {
@@ -199,19 +309,12 @@ export function PdfViewer({
           if (!cancelled) handleLoadError(new Error(detail), resp.status, detail);
           return;
         }
-        const payload = await resp.json() as { data?: string; size?: number };
-        const b64 = payload?.data;
-        if (typeof b64 !== 'string' || b64.length === 0) {
-          const detail = '响应体为空（base64 字段缺失）。';
+        const decoded = new Uint8Array(await resp.arrayBuffer());
+        if (decoded.byteLength === 0) {
+          const detail = '响应体为空。';
           if (!cancelled) handleLoadError(new Error(detail), resp.status, detail);
           return;
         }
-        // atob → Uint8Array. For ~30 MB this stays under 1 s in modern
-        // browsers; if it ever becomes a bottleneck, swap in a streaming
-        // base64 decoder.
-        const bin = atob(b64);
-        const decoded = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) decoded[i] = bin.charCodeAt(i);
         if (typeof console !== 'undefined') {
           console.info('[PdfViewer] decoded bytes', decoded.byteLength);
         }
@@ -244,15 +347,84 @@ export function PdfViewer({
     () => (pdfData ? { data: pdfData.slice() } : null),
     [pdfData],
   );
+  const pdfFileName = useMemo(() => {
+    const safeName = materialId
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const baseName = safeName.length > 0 ? safeName : 'document';
+    return baseName.toLowerCase().endsWith('.pdf') ? baseName : `${baseName}.pdf`;
+  }, [materialId]);
+  const createPdfBlob = useCallback((): Blob | null => {
+    if (!pdfData || pdfData.byteLength === 0) return null;
+    return new Blob([pdfData.slice()], { type: 'application/pdf' });
+  }, [pdfData]);
+  const handleDownloadPdf = useCallback(() => {
+    const blob = createPdfBlob();
+    if (!blob) return;
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = pdfFileName;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }, [createPdfBlob, pdfFileName]);
+  const handlePrintPdf = useCallback(() => {
+    const blob = createPdfBlob();
+    if (!blob) {
+      window.print();
+      return;
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    const printWindow = window.open(objectUrl, '_blank', 'noopener,noreferrer');
+    if (!printWindow) {
+      URL.revokeObjectURL(objectUrl);
+      window.print();
+      return;
+    }
+    let printed = false;
+    const printNow = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } finally {
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      }
+    };
+    printWindow.addEventListener('load', printNow, { once: true });
+    window.setTimeout(printNow, 400);
+  }, [createPdfBlob]);
+  const handleToggleFullscreen = useCallback(() => {
+    const root = viewerRootRef.current;
+    if (!root || !fullscreenAvailable) return;
+    if (document.fullscreenElement === root) {
+      void document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+    void root.requestFullscreen().catch(() => undefined);
+  }, [fullscreenAvailable]);
 
   const handleMouseUp = useCallback(() => {
     const sel = window.getSelection();
     const text = sel?.toString().trim() || '';
-    if (text.length > 2) {
+    if (text.length > 2 && sel && sel.rangeCount > 0) {
+      const anchorEl = selectionAnchorElement(sel);
+      const pageEl = anchorEl?.closest('.react-pdf__Page') ?? null;
+      if (!pageEl || !scrollContainerRef.current?.contains(pageEl)) {
+        setShowAIBtn(false);
+        setSelectedText('');
+        return;
+      }
       setSelectedText(text);
-      const range = sel!.getRangeAt(0);
+      const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
-      setBtnPos({ x: rect.right, y: rect.top });
+      setBtnPos(resolveSelectionToolbarPosition(rect, window.innerWidth, window.innerHeight));
       setShowAIBtn(true);
     } else {
       setShowAIBtn(false);
@@ -260,23 +432,107 @@ export function PdfViewer({
     }
   }, []);
 
+  const computeSelectionRectsAndPage = useCallback((): PdfSelectionAnchor => {
+    const sel = window.getSelection();
+    const empty = { rects: [], page: pageNumber };
+    if (!sel || sel.rangeCount === 0) return empty;
+    const range = sel.getRangeAt(0);
+    const anchorNode = range.startContainer as Node | null;
+    const anchorEl = (anchorNode && anchorNode.nodeType === 1
+      ? (anchorNode as Element)
+      : anchorNode?.parentElement) ?? null;
+    const pageEl = anchorEl?.closest('.react-pdf__Page') as HTMLElement | null;
+    if (!pageEl) return empty;
+    const pageAttr = pageEl.dataset.pageNumber;
+    const page = pageAttr ? Number(pageAttr) : pageNumber;
+    const pageRect = pageEl.getBoundingClientRect();
+    if (pageRect.width <= 0 || pageRect.height <= 0) return { rects: [], page };
+    const raw = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
+    const rects = raw.map(r => ({
+      x: Math.max(0, Math.min(1, (r.left - pageRect.left) / pageRect.width)),
+      y: Math.max(0, Math.min(1, (r.top - pageRect.top) / pageRect.height)),
+      w: Math.max(0, Math.min(1, r.width / pageRect.width)),
+      h: Math.max(0, Math.min(1, r.height / pageRect.height)),
+    }));
+    return { rects, page };
+  }, [pageNumber]);
+
   const handleAnalyze = useCallback(() => {
     if (selectedText && onAnalyzeText) {
-      onAnalyzeText(selectedText, pageNumber);
+      const anchor = computeSelectionRectsAndPage();
+      onAnalyzeText(selectedText, anchor.page, anchor);
     }
     setShowAIBtn(false);
     window.getSelection()?.removeAllRanges();
-  }, [selectedText, pageNumber, onAnalyzeText]);
+  }, [computeSelectionRectsAndPage, selectedText, onAnalyzeText]);
 
   const goToPage = useCallback((target: number) => {
     if (!numPages || numPages <= 0) return;
     const clamped = Math.max(1, Math.min(numPages, Math.floor(target)));
     const el = pageRefsRef.current[clamped - 1];
-    if (el) {
+    if (el && typeof el.scrollIntoView === 'function') {
       el.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
     setPageNumber(clamped);
   }, [numPages]);
+  const canGoPrevious = numPages > 0 && pageNumber > 1;
+  const canGoNext = numPages > 0 && pageNumber < numPages;
+  const canSearchPdf = searchQuery.trim().length > 0 && searchStatus !== 'searching' && numPages > 0;
+  const jumpByPage = useCallback((delta: -1 | 1) => {
+    goToPage(pageNumber + delta);
+  }, [goToPage, pageNumber]);
+  const activateSearchResult = useCallback((index: number) => {
+    if (searchResults.length === 0) return;
+    const normalizedIndex = ((index % searchResults.length) + searchResults.length) % searchResults.length;
+    const result = searchResults[normalizedIndex];
+    if (!result) return;
+    setActiveSearchIndex(normalizedIndex);
+    goToPage(result.page);
+    setFlashPage(result.page);
+  }, [goToPage, searchResults]);
+  const runPdfSearch = useCallback(async () => {
+    const query = searchQuery.trim();
+    const pdf = pdfDocRef.current;
+    if (!query) {
+      setSearchStatus('idle');
+      setSearchResults([]);
+      setActiveSearchIndex(-1);
+      return;
+    }
+    if (!pdf || typeof pdf.getPage !== 'function' || !numPages || numPages <= 0) {
+      setSearchStatus('error');
+      setSearchResults([]);
+      setActiveSearchIndex(-1);
+      return;
+    }
+
+    setSearchStatus('searching');
+    const needle = query.toLocaleLowerCase();
+    const nextResults: PdfSearchResult[] = [];
+    try {
+      for (let page = 1; page <= numPages; page += 1) {
+        const pdfPage = await pdf.getPage(page);
+        if (!pdfPage || typeof pdfPage.getTextContent !== 'function') continue;
+        const text = extractPdfTextContent(await pdfPage.getTextContent());
+        if (text.toLocaleLowerCase().includes(needle)) {
+          nextResults.push({ page });
+        }
+      }
+      setSearchResults(nextResults);
+      setSearchStatus('done');
+      if (nextResults.length > 0) {
+        setActiveSearchIndex(0);
+        goToPage(nextResults[0].page);
+        setFlashPage(nextResults[0].page);
+      } else {
+        setActiveSearchIndex(-1);
+      }
+    } catch {
+      setSearchResults([]);
+      setActiveSearchIndex(-1);
+      setSearchStatus('error');
+    }
+  }, [goToPage, numPages, searchQuery]);
 
   // Wraps each rendered <Page> so we can read its bounding rect for the
   // highlight overlay and so IntersectionObserver can track which page
@@ -295,6 +551,14 @@ export function PdfViewer({
   // notices the scroll actually moved.
   const [flashPage, setFlashPage] = useState<number | null>(null);
 
+  useEffect(() => {
+    const handleDocumentMouseUp = () => {
+      window.setTimeout(handleMouseUp, 0);
+    };
+    document.addEventListener('mouseup', handleDocumentMouseUp);
+    return () => document.removeEventListener('mouseup', handleDocumentMouseUp);
+  }, [handleMouseUp]);
+
   // When the external initialPage / pendingPage changes, scroll to it.
   // Wait for the pages to mount (numPages > 0) before issuing the scroll.
   useEffect(() => {
@@ -311,6 +575,7 @@ export function PdfViewer({
   // signal — robust under fast scroll and zoom.
   useEffect(() => {
     if (!numPages || !scrollContainerRef.current) return;
+    if (typeof IntersectionObserver === 'undefined') return;
     const root = scrollContainerRef.current;
     const observer = new IntersectionObserver(
       (entries) => {
@@ -318,15 +583,23 @@ export function PdfViewer({
         // visible area. This handles edge cases where two pages straddle
         // the viewport boundary equally — the larger half wins.
         let best: { page: number; ratio: number } | null = null;
+        const visiblePages: number[] = [];
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
           const pageAttr = (entry.target as HTMLElement).dataset.pageNumber;
           if (!pageAttr) continue;
           const page = Number(pageAttr);
           if (!Number.isFinite(page) || page < 1) continue;
+          visiblePages.push(page);
           if (!best || entry.intersectionRatio > best.ratio) {
             best = { page, ratio: entry.intersectionRatio };
           }
+        }
+        if (visiblePages.length > 0) {
+          setVisiblePageWindow({
+            first: Math.min(...visiblePages),
+            last: Math.max(...visiblePages),
+          });
         }
         if (best) {
           // Don't override a programmatic scroll target mid-flight; the
@@ -450,39 +723,6 @@ export function PdfViewer({
     return () => clearTimeout(t);
   }, [flashPage]);
 
-  // Compute normalized rects (relative to the page box that contains
-  // the selection) for the current selection, plus the page number that
-  // selection lives on. Continuous-scroll layout: the selection can land
-  // on any of the rendered pages, so we walk up from the anchor node to
-  // find its enclosing .react-pdf__Page rather than assuming page 1.
-  const computeSelectionRectsAndPage = useCallback((): {
-    rects: Array<{ x: number; y: number; w: number; h: number }>;
-    page: number;
-  } => {
-    const sel = window.getSelection();
-    const empty = { rects: [], page: pageNumber };
-    if (!sel || sel.rangeCount === 0) return empty;
-    const range = sel.getRangeAt(0);
-    const anchorNode = range.startContainer as Node | null;
-    const anchorEl = (anchorNode && anchorNode.nodeType === 1
-      ? (anchorNode as Element)
-      : anchorNode?.parentElement) ?? null;
-    const pageEl = anchorEl?.closest('.react-pdf__Page') as HTMLElement | null;
-    if (!pageEl) return empty;
-    const pageAttr = pageEl.dataset.pageNumber;
-    const page = pageAttr ? Number(pageAttr) : pageNumber;
-    const pageRect = pageEl.getBoundingClientRect();
-    if (pageRect.width <= 0 || pageRect.height <= 0) return { rects: [], page };
-    const raw = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
-    const rects = raw.map(r => ({
-      x: Math.max(0, Math.min(1, (r.left - pageRect.left) / pageRect.width)),
-      y: Math.max(0, Math.min(1, (r.top - pageRect.top) / pageRect.height)),
-      w: Math.max(0, Math.min(1, r.width / pageRect.width)),
-      h: Math.max(0, Math.min(1, r.height / pageRect.height)),
-    }));
-    return { rects, page };
-  }, [pageNumber]);
-
   // Group highlights by page once so each page's overlay only sees its
   // own rects — O(N) instead of O(N*pages).
   const highlightsByPage = useMemo(() => {
@@ -494,12 +734,73 @@ export function PdfViewer({
     }
     return m;
   }, [highlights]);
+  const heavyPageWindow = useMemo(() => {
+    if (!numPages || numPages <= 0) {
+      return { first: 1, last: 0 };
+    }
+    if (numPages <= PDF_VIRTUALIZATION_THRESHOLD) {
+      return { first: 1, last: numPages };
+    }
+    const pageOutsideVisibleWindow = (
+      pageNumber < visiblePageWindow.first - PDF_PAGE_OVERSCAN
+      || pageNumber > visiblePageWindow.last + PDF_PAGE_OVERSCAN
+    );
+    const baseFirst = pageOutsideVisibleWindow ? pageNumber : Math.min(pageNumber, visiblePageWindow.first);
+    const baseLast = pageOutsideVisibleWindow ? pageNumber : Math.max(pageNumber, visiblePageWindow.last);
+    const first = clampNumber(baseFirst - PDF_PAGE_OVERSCAN, 1, numPages);
+    const last = clampNumber(baseLast + PDF_PAGE_OVERSCAN, 1, numPages);
+    return { first, last };
+  }, [numPages, pageNumber, visiblePageWindow.first, visiblePageWindow.last]);
+  const forcedHeavyPages = useMemo(() => {
+    const pages = new Set<number>();
+    if (numPages > 0) {
+      pages.add(clampNumber(pageNumber, 1, numPages));
+      if (flashPage !== null) pages.add(clampNumber(flashPage, 1, numPages));
+      for (const page of highlightsByPage.keys()) {
+        if (page >= 1 && page <= numPages) pages.add(page);
+      }
+    }
+    return pages;
+  }, [flashPage, highlightsByPage, numPages, pageNumber]);
+  const shouldRenderPdfPage = useCallback((pageNo: number): boolean => {
+    if (!numPages || numPages <= PDF_VIRTUALIZATION_THRESHOLD) return true;
+    return (
+      forcedHeavyPages.has(pageNo)
+      || (pageNo >= heavyPageWindow.first && pageNo <= heavyPageWindow.last)
+    );
+  }, [forcedHeavyPages, heavyPageWindow.first, heavyPageWindow.last, numPages]);
+  const updateMeasuredPageHeight = useCallback((pageNo: number, element: HTMLDivElement | null): void => {
+    if (!element) return;
+    const nextHeight = Math.ceil(element.getBoundingClientRect().height);
+    if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+    setMeasuredPageHeights((current) => {
+      if (current[pageNo] === nextHeight) return current;
+      return { ...current, [pageNo]: nextHeight };
+    });
+  }, []);
 
   return (
-    <div className={cn('pdf-canvas flex flex-col h-full bg-gray-100 dark:bg-neutral-900', className)}>
+    <div
+      ref={viewerRootRef}
+      className={cn(
+        'pdf-canvas flex flex-col h-full bg-gray-100 dark:bg-neutral-900',
+        isFullscreen && 'h-screen w-screen',
+        className,
+      )}
+    >
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-outline-variant/60 bg-surface-low">
         <div className="flex items-center gap-1.5 text-xs font-label text-foreground/80">
+          <button
+            type="button"
+            onClick={() => jumpByPage(-1)}
+            disabled={!canGoPrevious}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-foreground/75 transition-colors hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label="上一页"
+            title="上一页"
+          >
+            <ChevronLeft size={14} aria-hidden />
+          </button>
           <PageJumpInput
             page={pageNumber}
             numPages={numPages}
@@ -507,8 +808,107 @@ export function PdfViewer({
           />
           <span className="text-foreground/55">/</span>
           <span className="text-foreground/80">{numPages || '—'}</span>
+          <button
+            type="button"
+            onClick={() => jumpByPage(1)}
+            disabled={!canGoNext}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-foreground/75 transition-colors hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label="下一页"
+            title="下一页"
+          >
+            <ChevronRight size={14} aria-hidden />
+          </button>
         </div>
+        <form
+          className="mx-2 hidden min-w-[190px] max-w-[320px] flex-1 items-center justify-center gap-1 sm:flex"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void runPdfSearch();
+          }}
+        >
+          <div className="flex min-w-0 flex-1 items-center rounded border border-outline-variant/50 bg-surface-lowest px-1.5 py-0.5 focus-within:border-primary/45">
+            <Search size={12} className="mr-1 shrink-0 text-foreground/40" aria-hidden />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-foreground/35"
+              aria-label="搜索 PDF 文本"
+              placeholder="搜索 PDF 文本"
+            />
+            <button
+              type="submit"
+              disabled={!canSearchPdf}
+              className="ml-1 rounded px-1.5 py-0.5 text-[10px] font-label text-foreground/70 hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+              aria-label="搜索 PDF"
+              title="搜索 PDF"
+            >
+              搜索
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => activateSearchResult(activeSearchIndex - 1)}
+            disabled={searchResults.length <= 1 || activeSearchIndex < 0}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-foreground/70 hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label="上一个搜索结果"
+            title="上一个搜索结果"
+          >
+            <ChevronLeft size={13} aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => activateSearchResult(activeSearchIndex + 1)}
+            disabled={searchResults.length <= 1 || activeSearchIndex < 0}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-foreground/70 hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label="下一个搜索结果"
+            title="下一个搜索结果"
+          >
+            <ChevronRight size={13} aria-hidden />
+          </button>
+          <span
+            className="w-10 text-center text-[10px] font-label text-foreground/55"
+            aria-live="polite"
+            title={searchStatus === 'error' ? 'PDF 文本搜索失败' : undefined}
+          >
+            {searchStatus === 'searching'
+              ? '...'
+              : searchStatus === 'done'
+                ? `${activeSearchIndex >= 0 ? activeSearchIndex + 1 : 0}/${searchResults.length}`
+                : searchStatus === 'error'
+                  ? '错误'
+                  : ''}
+          </span>
+        </form>
         <div className="flex items-center gap-1">
+          <button
+            onClick={handleDownloadPdf}
+            disabled={!pdfData}
+            className="p-1 rounded text-foreground/80 hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label="下载 PDF"
+            title="下载 PDF"
+          >
+            <Download size={14} aria-hidden />
+          </button>
+          <button
+            onClick={handlePrintPdf}
+            disabled={!pdfData}
+            className="p-1 rounded text-foreground/80 hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label="打印 PDF"
+            title="打印 PDF"
+          >
+            <Printer size={14} aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={handleToggleFullscreen}
+            disabled={!fullscreenAvailable}
+            className="p-1 rounded text-foreground/80 hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label={isFullscreen ? '退出全屏' : '全屏阅读'}
+            title={fullscreenAvailable ? (isFullscreen ? '退出全屏' : '全屏阅读') : '当前浏览器不支持全屏'}
+          >
+            <Maximize2 size={14} aria-hidden className={cn(isFullscreen && 'rotate-180')} />
+          </button>
           <button
             onClick={() => setScale(s => Math.max(0.5, s - 0.2))}
             className="p-1 rounded text-foreground/80 hover:bg-surface-high hover:text-foreground"
@@ -563,6 +963,7 @@ export function PdfViewer({
             <Document
               key={loadAttempt}
               file={documentFile}
+              options={PDF_RENDER_OPTIONS}
               onLoadSuccess={onDocumentLoadSuccess}
               onLoadError={(err) => handleLoadError(err, null, err?.message || 'PDF 解析失败')}
               loading={<div className="text-sm text-foreground/60 py-8">加载 PDF 中...</div>}
@@ -574,17 +975,33 @@ export function PdfViewer({
                   const pageNo = i + 1;
                   const pageHighlights = highlightsByPage.get(pageNo) ?? [];
                   const isFlashing = flashPage === pageNo;
+                  const renderPage = shouldRenderPdfPage(pageNo);
+                  const placeholderHeight = measuredPageHeights[pageNo] ?? Math.round(PDF_DEFAULT_PAGE_HEIGHT_PX * scale);
                   return (
                     <div
                       key={`page-${pageNo}`}
-                      ref={(el) => { pageRefsRef.current[i] = el; }}
+                      ref={(el) => {
+                        pageRefsRef.current[i] = el;
+                        updateMeasuredPageHeight(pageNo, el);
+                      }}
                       data-page-number={pageNo}
                       className={cn(
                         'relative inline-block shadow-sm transition-shadow',
                         isFlashing && 'ring-2 ring-primary/60 shadow-lg',
                       )}
+                      style={renderPage ? undefined : { minHeight: placeholderHeight }}
+                      aria-label={`PDF 第 ${pageNo} 页`}
                     >
-                      <Page pageNumber={pageNo} scale={scale} />
+                      {renderPage ? (
+                        <Page pageNumber={pageNo} scale={scale} />
+                      ) : (
+                        <div
+                          className="flex w-[min(72vw,760px)] items-center justify-center rounded border border-dashed border-outline-variant/50 bg-surface-lowest text-[11px] text-foreground/45"
+                          style={{ height: placeholderHeight }}
+                        >
+                          第 {pageNo} 页
+                        </div>
+                      )}
                       {pageHighlights.length > 0 && (
                         <div className="pointer-events-none absolute inset-0" aria-hidden>
                           {pageHighlights.flatMap((h, hi) =>
@@ -671,7 +1088,7 @@ export function PdfViewer({
       {showAIBtn && selectedText && (
         <div
           className="fixed z-50 flex gap-1"
-          style={{ left: btnPos.x + 8, top: btnPos.y - 32 }}
+          style={{ left: btnPos.x, top: btnPos.y }}
         >
           <button
             onClick={handleAnalyze}
@@ -729,9 +1146,9 @@ export function PdfViewer({
 }
 
 // ---------------------------------------------------------------------------
-// Inline page-jump input. Click to edit, Enter to jump. Lives in the
-// toolbar in place of prev/next buttons (continuous scroll makes
-// page-stepper buttons redundant — the scroll wheel does the same job).
+// Inline page-jump input. Click to edit, Enter to jump. Continuous scroll
+// still owns reading position; the adjacent step buttons provide explicit
+// keyboard/screen-reader discoverability.
 // ---------------------------------------------------------------------------
 
 function PageJumpInput({
@@ -786,6 +1203,7 @@ function PageJumpInput({
       type="button"
       onClick={() => setEditing(true)}
       className="min-w-[2ch] rounded px-1 py-0.5 text-foreground/85 hover:bg-surface-high hover:text-foreground"
+      aria-label={`当前页 ${page}，点击跳转`}
       title="跳转到指定页"
     >
       {page || '—'}
@@ -799,6 +1217,18 @@ function PageJumpInput({
 
 interface PdfRef { num: number; gen: number }
 
+interface PdfTextItemLike {
+  str?: unknown;
+}
+
+interface PdfTextContentLike {
+  items?: unknown;
+}
+
+interface PdfPageLike {
+  getTextContent?: () => Promise<PdfTextContentLike>;
+}
+
 interface RawOutlineItem {
   title?: string;
   dest?: string | unknown[] | null;
@@ -810,6 +1240,18 @@ interface PdfDocumentLike {
   getOutline?: () => Promise<RawOutlineItem[] | null | undefined>;
   getDestination?: (name: string) => Promise<unknown[] | null>;
   getPageIndex?: (ref: PdfRef) => Promise<number>;
+  getPage?: (pageNumber: number) => Promise<PdfPageLike>;
+}
+
+function extractPdfTextContent(content: PdfTextContentLike): string {
+  if (!content || !Array.isArray(content.items)) return '';
+  return content.items
+    .map((item: unknown) => {
+      const textItem = item as PdfTextItemLike | null;
+      return typeof textItem?.str === 'string' ? textItem.str : '';
+    })
+    .filter((text) => text.length > 0)
+    .join(' ');
 }
 
 async function resolveDestPage(pdf: PdfDocumentLike, dest: string | unknown[] | null | undefined): Promise<number | undefined> {

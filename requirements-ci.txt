@@ -11,19 +11,20 @@ pytest-cov==7.1.0
 pytest-mock==3.15.1
 
 # Data processing and ML
-requests
-urllib3
-chromadb>=0.4.0
-numpy
-pandas
-pyarrow
+requests==2.33.1
+urllib3==2.6.3
+chromadb==1.5.8
+numpy==2.4.4
+pandas==3.0.2
+pyarrow==23.0.1
 networkx==3.6.1
 
 # Document and configuration
-pyyaml
-python-docx
-Pillow
+pyyaml==6.0.3
+python-docx==1.2.0
+Pillow==12.1.1
 PyMuPDF==1.27.1
+keyring==25.7.0
 
 # MCP (Model Context Protocol) — required for MCP integration tests + runtime
 # Mirror of requirements-pin.txt; both must move together when bumping.

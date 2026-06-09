@@ -2,7 +2,7 @@
 """
 Writing Resources - First-class backend models for writing project structure.
 
-Phase 3 of harness upgrade: Real project/section/draft/revision resources.
+Real project/section/draft/revision resources.
 Replaces fabricated success payloads with persistent resource layer.
 """
 
@@ -14,7 +14,7 @@ import os
 import re
 import sqlite3
 from collections import Counter
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from functools import lru_cache
 from enum import Enum
 from pathlib import Path
@@ -25,7 +25,7 @@ from uuid import uuid4
 from datetime_utils import utc_now_iso_z
 from db import resolve_sqlite_path
 from project_paths import output_path
-from repositories.writing_resource_repository import WritingResourceRepository
+from repositories.writing_resource_repository import WritingResourceRepository, normalize_writing_resource_state
 
 
 CITATION_ANCHORS_METADATA_KEY = "citation_anchors"
@@ -341,6 +341,182 @@ class WritingMaterial:
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict."""
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class WritingFigureAsset:
+    """
+    Project-scoped figure/table asset registered by the writing workflow.
+
+    Why:
+        Text-derived figure candidates and real extracted/uploaded assets need
+        distinct persisted records so the frontend can refresh without losing
+        the user's asset registration state.
+    """
+
+    asset_id: str
+    project_id: str
+    kind: str
+    caption: str
+    numbering: str
+    asset_path: str
+    material_id: str | None = None
+    source_page: int | None = None
+    bbox: list[float] | None = None
+    width: int | None = None
+    height: int | None = None
+    format: str | None = None
+    created_at: str = field(default_factory=utc_now_iso_z)
+    updated_at: str = field(default_factory=utc_now_iso_z)
+
+    @staticmethod
+    def create(
+        project_id: str,
+        kind: str,
+        caption: str,
+        numbering: str,
+        asset_path: str,
+        material_id: str | None = None,
+        source_page: int | None = None,
+        bbox: Sequence[float] | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        format: str | None = None,
+    ) -> "WritingFigureAsset":
+        """Create and validate one figure/table asset.
+
+        Args:
+            project_id: Non-empty owning project id.
+            kind: Either ``figure`` or ``table``.
+            caption: Human-readable caption or extraction note.
+            numbering: Stable manuscript number, for example ``图 1``.
+            asset_path: Local or virtual asset reference; secrets are not stored.
+            material_id: Optional source material id.
+            source_page: Optional one-based source page.
+            bbox: Optional four-number source bounding box.
+            width: Optional positive pixel width.
+            height: Optional positive pixel height.
+            format: Optional file format label.
+
+        Returns:
+            A validated immutable asset record.
+
+        Raises:
+            ValueError: If required ids/strings are blank or numeric fields are invalid.
+        """
+        normalized_project_id = _non_empty_text(project_id, "project_id")
+        normalized_kind = _normalize_figure_kind(kind)
+        normalized_caption = _non_empty_text(caption, "caption")
+        normalized_numbering = _non_empty_text(numbering, "numbering")
+        normalized_asset_path = _non_empty_text(asset_path, "asset_path")
+        return WritingFigureAsset(
+            asset_id=f"fig_{uuid4().hex[:12]}",
+            project_id=normalized_project_id,
+            kind=normalized_kind,
+            caption=normalized_caption,
+            numbering=normalized_numbering,
+            material_id=_optional_non_empty_text(material_id),
+            source_page=_optional_positive_int(source_page, "source_page"),
+            bbox=_normalize_optional_bbox(bbox),
+            asset_path=normalized_asset_path,
+            width=_optional_positive_int(width, "width"),
+            height=_optional_positive_int(height, "height"),
+            format=_optional_non_empty_text(format),
+        )
+
+    def with_updates(
+        self,
+        *,
+        kind: str | None = None,
+        caption: str | None = None,
+        numbering: str | None = None,
+        material_id: str | None = None,
+        source_page: int | None = None,
+        bbox: Sequence[float] | None = None,
+        asset_path: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        format: str | None = None,
+    ) -> "WritingFigureAsset":
+        """Return an updated asset while preserving immutable identity."""
+        data = self.to_dict()
+        if kind is not None:
+            data["kind"] = _normalize_figure_kind(kind)
+        if caption is not None:
+            data["caption"] = _non_empty_text(caption, "caption")
+        if numbering is not None:
+            data["numbering"] = _non_empty_text(numbering, "numbering")
+        if material_id is not None:
+            data["material_id"] = _optional_non_empty_text(material_id)
+        if source_page is not None:
+            data["source_page"] = _optional_positive_int(source_page, "source_page")
+        if bbox is not None:
+            data["bbox"] = _normalize_optional_bbox(bbox)
+        if asset_path is not None:
+            data["asset_path"] = _non_empty_text(asset_path, "asset_path")
+        if width is not None:
+            data["width"] = _optional_positive_int(width, "width")
+        if height is not None:
+            data["height"] = _optional_positive_int(height, "height")
+        if format is not None:
+            data["format"] = _optional_non_empty_text(format)
+        data["updated_at"] = utc_now_iso_z()
+        return WritingFigureAsset(**data)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-safe dictionary."""
+        return asdict(self)
+
+
+def _non_empty_text(value: str, field_name: str) -> str:
+    """Return a trimmed non-empty string for persisted resource ids and labels."""
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return normalized
+
+
+def _optional_non_empty_text(value: str | None) -> str | None:
+    """Normalize optional text fields without preserving blank strings."""
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _normalize_figure_kind(kind: str) -> str:
+    """Normalize a public figure asset kind."""
+    normalized = _non_empty_text(kind, "kind").lower()
+    if normalized not in {"figure", "table"}:
+        raise ValueError("kind must be either 'figure' or 'table'")
+    return normalized
+
+
+def _optional_positive_int(value: int | None, field_name: str) -> int | None:
+    """Accept only optional positive integers for persisted dimensions/pages."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field_name} must be a positive integer")
+    if value <= 0:
+        raise ValueError(f"{field_name} must be a positive integer")
+    return value
+
+
+def _normalize_optional_bbox(value: Sequence[float] | None) -> list[float] | None:
+    """Return a four-number bbox or None without inferring coordinate systems."""
+    if value is None:
+        return None
+    if isinstance(value, (str, bytes)) or len(value) != 4:
+        raise ValueError("bbox must contain exactly four numbers")
+    bbox: list[float] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise ValueError("bbox must contain exactly four numbers")
+        bbox.append(float(item))
+    return bbox
 
 
 @dataclass(frozen=True)
@@ -1649,7 +1825,7 @@ def build_association_bundle_from_runtime_context(
 
 class WritingResourceStore:
     """
-    Resource store for writing projects, sections, materials, drafts, and revisions.
+    Resource store for writing projects, sections, materials, figure assets, drafts, and revisions.
     
     The store keeps an in-memory cache for fast reads, but the singleton path
     now persists to SQLite and keeps the existing JSON snapshot as a backup.
@@ -1665,6 +1841,7 @@ class WritingResourceStore:
         self._projects: dict[str, WritingProject] = {}
         self._sections: dict[str, WritingSection] = {}
         self._materials: dict[str, WritingMaterial] = {}
+        self._figure_assets: dict[str, WritingFigureAsset] = {}
         self._drafts: dict[str, WritingDraft] = {}
         self._revisions: dict[str, WritingRevision] = {}
         self._draft_revisions: dict[str, list[str]] = {}  # draft_id -> [revision_ids]
@@ -1772,6 +1949,9 @@ class WritingResourceStore:
             material_ids = [mid for mid, m in self._materials.items() if m.project_id == project_id]
             for mid in material_ids:
                 del self._materials[mid]
+            figure_asset_ids = [aid for aid, a in self._figure_assets.items() if a.project_id == project_id]
+            for asset_id in figure_asset_ids:
+                del self._figure_assets[asset_id]
             # Remove associated drafts and their revisions
             draft_ids = [did for did, d in self._drafts.items() if d.project_id == project_id]
             for did in draft_ids:
@@ -1889,6 +2069,130 @@ class WritingResourceStore:
             if material_id not in self._materials:
                 return False
             del self._materials[material_id]
+            self._autosave_if_enabled()
+            return True
+
+    def update_material(
+        self,
+        material_id: str,
+        *,
+        title: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> WritingMaterial | None:
+        """Update a material's title and/or merge bibliographic metadata.
+
+        ``metadata`` is shallow-merged into the existing material metadata so
+        partial citation-field updates (authors, year, venue, doi, ...) do not
+        drop previously stored keys. Returns the updated material, or ``None``
+        when the id is unknown.
+        """
+        with self._lock:
+            material = self._materials.get(material_id)
+            if material is None:
+                return None
+            new_metadata = material.metadata
+            if metadata is not None:
+                merged = dict(material.metadata)
+                merged.update(metadata)
+                new_metadata = merged
+            updated = replace(
+                material,
+                title=title if title is not None else material.title,
+                metadata=new_metadata,
+                updated_at=utc_now_iso_z(),
+            )
+            self._materials[material_id] = updated
+            self._autosave_if_enabled()
+            return updated
+
+    # ==========================================================================
+    # Figure Asset Operations
+    # ==========================================================================
+
+    def create_figure_asset(
+        self,
+        project_id: str,
+        kind: str,
+        caption: str,
+        numbering: str,
+        asset_path: str,
+        material_id: str | None = None,
+        source_page: int | None = None,
+        bbox: Sequence[float] | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        format: str | None = None,
+    ) -> WritingFigureAsset:
+        """Create a persistent figure/table asset."""
+        with self._lock:
+            asset = WritingFigureAsset.create(
+                project_id=project_id,
+                kind=kind,
+                caption=caption,
+                numbering=numbering,
+                asset_path=asset_path,
+                material_id=material_id,
+                source_page=source_page,
+                bbox=bbox,
+                width=width,
+                height=height,
+                format=format,
+            )
+            self._figure_assets[asset.asset_id] = asset
+            self._autosave_if_enabled()
+            return asset
+
+    def get_figure_asset(self, asset_id: str) -> WritingFigureAsset | None:
+        """Get a figure/table asset by ID."""
+        return self._figure_assets.get(asset_id)
+
+    def list_figure_assets(self, project_id: str) -> list[WritingFigureAsset]:
+        """List all figure/table assets in a project."""
+        assets = [asset for asset in self._figure_assets.values() if asset.project_id == project_id]
+        return sorted(assets, key=lambda asset: asset.created_at, reverse=True)
+
+    def update_figure_asset(
+        self,
+        asset_id: str,
+        *,
+        kind: str | None = None,
+        caption: str | None = None,
+        numbering: str | None = None,
+        material_id: str | None = None,
+        source_page: int | None = None,
+        bbox: Sequence[float] | None = None,
+        asset_path: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        format: str | None = None,
+    ) -> WritingFigureAsset | None:
+        """Update persisted figure/table asset metadata."""
+        with self._lock:
+            asset = self._figure_assets.get(asset_id)
+            if asset is None:
+                return None
+            updated = asset.with_updates(
+                kind=kind,
+                caption=caption,
+                numbering=numbering,
+                material_id=material_id,
+                source_page=source_page,
+                bbox=bbox,
+                asset_path=asset_path,
+                width=width,
+                height=height,
+                format=format,
+            )
+            self._figure_assets[asset_id] = updated
+            self._autosave_if_enabled()
+            return updated
+
+    def delete_figure_asset(self, asset_id: str) -> bool:
+        """Delete a figure/table asset by ID."""
+        with self._lock:
+            if asset_id not in self._figure_assets:
+                return False
+            del self._figure_assets[asset_id]
             self._autosave_if_enabled()
             return True
 
@@ -2525,10 +2829,29 @@ class WritingResourceStore:
                 "projects": {pid: p.to_dict() for pid, p in self._projects.items()},
                 "sections": {sid: s.to_dict() for sid, s in self._sections.items()},
                 "materials": {mid: m.to_dict() for mid, m in self._materials.items()},
+                "figure_assets": {aid: a.to_dict() for aid, a in self._figure_assets.items()},
                 "drafts": {did: d.to_dict() for did, d in self._drafts.items()},
                 "revisions": {rid: r.to_dict() for rid, r in self._revisions.items()},
                 "draft_revisions": dict(self._draft_revisions),
             }
+
+    def _normalized_export_state(self) -> dict[str, Any]:
+        """
+        Export a referentially consistent state snapshot for persistence.
+
+        Why:
+            The durable repository rewrites the whole aggregate. The in-memory
+            store must therefore apply the same child-reference semantics that
+            SQLite would apply for incremental deletes.
+        """
+        state, repairs = normalize_writing_resource_state(self.export_state())
+        if repairs:
+            self._logger.warning(
+                "Repaired writing resource state before persistence: %s",
+                "; ".join(repairs[:12]),
+            )
+            self.import_state(state)
+        return state
 
     def import_state(self, state: Mapping[str, Any]) -> None:
         """
@@ -2545,6 +2868,7 @@ class WritingResourceStore:
             projects_raw = state.get("projects", {})
             sections_raw = state.get("sections", {})
             materials_raw = state.get("materials", {})
+            figure_assets_raw = state.get("figure_assets", {})
             drafts_raw = state.get("drafts", {})
             revisions_raw = state.get("revisions", {})
             draft_revisions_raw = state.get("draft_revisions", {})
@@ -2555,6 +2879,7 @@ class WritingResourceStore:
                     projects_raw,
                     sections_raw,
                     materials_raw,
+                    figure_assets_raw,
                     drafts_raw,
                     revisions_raw,
                     draft_revisions_raw,
@@ -2613,6 +2938,27 @@ class WritingResourceStore:
                     metadata=dict(payload.get("metadata") or {}),
                 )
 
+            figure_assets: dict[str, WritingFigureAsset] = {}
+            for asset_id, payload in figure_assets_raw.items():
+                if not isinstance(payload, Mapping):
+                    raise TypeError("figure asset payload must be a mapping")
+                figure_assets[str(asset_id)] = WritingFigureAsset(
+                    asset_id=str(payload["asset_id"]),
+                    project_id=str(payload["project_id"]),
+                    kind=_normalize_figure_kind(str(payload.get("kind", "figure"))),
+                    caption=str(payload.get("caption", "")),
+                    numbering=str(payload.get("numbering", "")),
+                    material_id=None if payload.get("material_id") in (None, "") else str(payload.get("material_id")),
+                    source_page=_optional_positive_int(payload.get("source_page"), "source_page"),
+                    bbox=_normalize_optional_bbox(payload.get("bbox")) if payload.get("bbox") is not None else None,
+                    asset_path=str(payload.get("asset_path", "")),
+                    width=_optional_positive_int(payload.get("width"), "width"),
+                    height=_optional_positive_int(payload.get("height"), "height"),
+                    format=None if payload.get("format") in (None, "") else str(payload.get("format")),
+                    created_at=str(payload.get("created_at", utc_now_iso_z())),
+                    updated_at=str(payload.get("updated_at", utc_now_iso_z())),
+                )
+
             drafts: dict[str, WritingDraft] = {}
             for draft_id, payload in drafts_raw.items():
                 if not isinstance(payload, Mapping):
@@ -2661,6 +3007,7 @@ class WritingResourceStore:
             self._projects = projects
             self._sections = sections
             self._materials = materials
+            self._figure_assets = figure_assets
             self._drafts = drafts
             self._revisions = revisions
             self._draft_revisions = draft_revisions
@@ -2676,7 +3023,7 @@ class WritingResourceStore:
         if self._persistence_path is None:
             return None
 
-        state = self.export_state()
+        state = self._normalized_export_state()
         snapshot_path = self._persistence_path
         snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = snapshot_path.with_suffix(snapshot_path.suffix + ".tmp")
@@ -2696,8 +3043,44 @@ class WritingResourceStore:
         if self._repository is None:
             return None
 
-        self._repository.replace_state(self.export_state())
+        self._repository.replace_state(self._normalized_export_state())
         return self._repository.db_path
+
+    def _restore_from_durable_state_after_autosave_failure(self) -> bool:
+        """
+        Restore memory from the last durable snapshot after primary persistence fails.
+
+        Returns:
+            True when a durable state was loaded; False when no durable state
+            exists and the in-memory aggregate was reset to an empty state.
+        """
+        empty_state = {
+            "projects": {},
+            "sections": {},
+            "materials": {},
+            "figure_assets": {},
+            "drafts": {},
+            "revisions": {},
+            "draft_revisions": {},
+        }
+
+        if self._repository is not None and self._repository.is_healthy() and self._repository.has_data():
+            self.import_state(self._repository.load_state())
+            return True
+
+        if self._persistence_path is not None and self._persistence_path.exists():
+            raw_state = json.loads(self._persistence_path.read_text(encoding="utf-8"))
+            state, repairs = normalize_writing_resource_state(raw_state)
+            if repairs:
+                self._logger.warning(
+                    "Repaired writing resource disk snapshot during autosave recovery: %s",
+                    "; ".join(repairs[:12]),
+                )
+            self.import_state(state)
+            return True
+
+        self.import_state(empty_state)
+        return False
 
     def load_from_disk(self) -> bool:
         """
@@ -2741,8 +3124,27 @@ class WritingResourceStore:
     def _autosave_if_enabled(self) -> None:
         """Persist state after mutating operations when autosave is enabled."""
         if self._autosave:
-            self.persist_to_database()
-            self.persist_to_disk()
+            try:
+                if self._repository is not None:
+                    self.persist_to_database()
+                elif self._persistence_path is not None:
+                    self.persist_to_disk()
+                    return
+            except Exception as exc:
+                restored = self._restore_from_durable_state_after_autosave_failure()
+                self._logger.exception(
+                    "Writing resource primary persistence failed; restored_durable_state=%s",
+                    restored,
+                )
+                raise RuntimeError(
+                    "Writing resource persistence failed; in-memory state was restored from durable storage"
+                ) from exc
+
+            if self._persistence_path is not None:
+                try:
+                    self.persist_to_disk()
+                except Exception:
+                    self._logger.warning("Writing resource JSON snapshot backup failed after SQLite save", exc_info=True)
 
 
 @lru_cache(maxsize=1)

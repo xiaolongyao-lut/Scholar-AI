@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Runtime Credentials API Router (Slice A3 / DEC-001b / DEC-002b).
+"""Runtime Credentials API router.
 
-Endpoints (plan v2 §5 Phase 3):
+Endpoints:
     GET    /api/credentials                       — list, masked
     POST   /api/credentials                       — create
     GET    /api/credentials/{credential_id}       — get one, masked
@@ -9,23 +9,25 @@ Endpoints (plan v2 §5 Phase 3):
     DELETE /api/credentials/{credential_id}       — delete
     POST   /api/credentials/{credential_id}/test  — endpoint trust + reachability
 
-Test endpoint contract (DEC-002b):
+Test endpoint contract:
     1. Resolve credential by id (404 if missing)
-    2. Run provider_endpoint_policy.validate_endpoint(...) BEFORE any
-       Authorization header is constructed
-    3. If decision.skipped_network → 200 with status="skipped"
+    2. Validate endpoint trust before any provider request is built
+    3. If network probing is skipped, return status="skipped"
     4. If not decision.allowed → 400 with masked decision dict
-    5. If allowed → minimal HTTPS probe (HEAD with auth, no body, no redirects,
-       short timeout). Response body NEVER echoed; only status_code + masked
+    5. If allowed, run a minimal HTTPS probe. Response body is never echoed;
+       only status_code and masked
        diagnostic.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+import threading
+import time
+from collections import deque
+from typing import Any, Deque
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from credential_store import (
     CredentialNotFoundError,
@@ -45,6 +47,10 @@ from provider_endpoint_policy import TrustSource, validate_endpoint
 
 logger = logging.getLogger("CredentialsRouter")
 router = APIRouter(prefix="/api/credentials", tags=["Credentials"])
+_TEST_RATE_LIMIT_WINDOW_SECONDS = 60.0
+_TEST_RATE_LIMIT_MAX_CALLS = 5
+_TEST_RATE_LIMIT_LOCK = threading.Lock()
+_TEST_RATE_LIMIT_BUCKETS: dict[str, Deque[float]] = {}
 
 
 # Module-level store singleton, reset-able for tests.
@@ -58,10 +64,53 @@ def get_credential_store() -> RuntimeCredentialStore:
     return _store
 
 
+def _credential_not_found_error() -> HTTPException:
+    """Build a bounded 404 error without echoing local credential ids."""
+    return HTTPException(
+        status_code=404,
+        detail={
+            "code": "credential_not_found",
+            "message": "凭证不存在或已被删除。",
+        },
+    )
+
+
 def set_credential_store(store: RuntimeCredentialStore | None) -> None:
     """Test hook: inject a tmp-path-backed store, or reset to default."""
     global _store
     _store = store
+
+
+def _check_credential_test_rate_limit(request: Request, credential_id: str) -> None:
+    """Limit credential probes by local caller and credential id.
+
+    Args:
+        request: FastAPI request used only for client host metadata.
+        credential_id: Stable local credential id being probed.
+
+    Raises:
+        HTTPException: 429 when the caller exceeds the small probe budget.
+    """
+
+    if not isinstance(credential_id, str) or not credential_id.strip():
+        raise HTTPException(status_code=400, detail="credential_id is required")
+    host = request.client.host if request.client else "local"
+    key = f"{host}:{credential_id.strip()}"
+    now = time.monotonic()
+    cutoff = now - _TEST_RATE_LIMIT_WINDOW_SECONDS
+    with _TEST_RATE_LIMIT_LOCK:
+        bucket = _TEST_RATE_LIMIT_BUCKETS.setdefault(key, deque())
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= _TEST_RATE_LIMIT_MAX_CALLS:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "credential_test_rate_limited",
+                    "message": "凭证测试过于频繁，请稍后再试。",
+                },
+            )
+        bucket.append(now)
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +124,7 @@ async def list_credentials(
     enabled_only: bool = False,
     store: RuntimeCredentialStore = Depends(get_credential_store),
 ) -> list[RuntimeCredentialPublic]:
-    """List credentials with masked api_key. Optionally filter by category /
+    """List credentials with masked access state. Optionally filter by category /
     enabled.
     """
     try:
@@ -89,7 +138,7 @@ async def create_credential(
     body: RuntimeCredentialCreate,
     store: RuntimeCredentialStore = Depends(get_credential_store),
 ) -> RuntimeCredentialPublic:
-    """Create a new runtime credential. Body carries the secret on input only;
+    """Create a new runtime credential. Body carries credential material only on input;
     response is masked.
     """
     return store.create(body)
@@ -103,7 +152,7 @@ async def get_credential(
     try:
         return store.get_public(credential_id)
     except CredentialNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"credential not found: {credential_id}") from exc
+        raise _credential_not_found_error() from exc
 
 
 @router.put("/{credential_id}", response_model=RuntimeCredentialPublic)
@@ -115,7 +164,7 @@ async def update_credential(
     try:
         return store.update(credential_id, body)
     except CredentialNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"credential not found: {credential_id}") from exc
+        raise _credential_not_found_error() from exc
 
 
 @router.delete("/{credential_id}")
@@ -125,17 +174,17 @@ async def delete_credential(
 ) -> dict[str, Any]:
     deleted = store.delete(credential_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail=f"credential not found: {credential_id}")
+        raise _credential_not_found_error()
     return {"credential_id": credential_id, "deleted": True}
 
 
 # ---------------------------------------------------------------------------
-# Endpoint test (DEC-002b)
+# Endpoint test helpers
 # ---------------------------------------------------------------------------
 
 
 def _mask_decision(decision: Any) -> dict[str, Any]:
-    """Return PolicyDecision.as_log_dict() — already secret-free by contract."""
+    """Return PolicyDecision.as_log_dict() with sensitive values omitted."""
     return decision.as_log_dict()
 
 
@@ -189,9 +238,9 @@ def _probe_https_endpoint(base_url: str, api_key: str, protocol: str) -> dict[st
 
 
 def _build_auth_header(api_key: str, protocol: str) -> dict[str, str]:
-    """Map protocol -> auth header shape (DEC-002b).
+    """Map protocol to provider auth header shape.
 
-    Per plan v2: header is constructed only after policy.allowed.
+    Callers run endpoint trust checks before constructing these headers.
     """
     proto = (protocol or "").lower()
     if proto == CredentialProtocol.ANTHROPIC_MESSAGES.value:
@@ -208,7 +257,7 @@ def _build_auth_header(api_key: str, protocol: str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Sampling (I5/D2: select credential by strategy_hint + category)
+# Credential sampling by category and strategy hint
 # ---------------------------------------------------------------------------
 
 
@@ -219,8 +268,6 @@ async def sample_credential(
     store: RuntimeCredentialStore = Depends(get_credential_store),
 ) -> RuntimeCredentialPublic:
     """Sample a credential by category and strategy_hint.
-
-    I5/D2 decision 2026-05-26: Discussion/SmartRead runtime credential selection.
 
     Query params:
         category: "generation" | "embedding" | "rerank" (optional, defaults to "generation")
@@ -233,7 +280,7 @@ async def sample_credential(
         4. Fall back to highest priority credential in category
         5. 404 if no enabled credentials in category
 
-    Returns: RuntimeCredentialPublic (masked api_key)
+    Returns: RuntimeCredentialPublic with masked credential state.
     """
 
     # Normalize inputs
@@ -266,22 +313,21 @@ async def sample_credential(
 @router.post("/{credential_id}/test")
 async def test_credential(
     credential_id: str,
+    request: Request,
     body: dict[str, Any] | None = Body(default=None),
     store: RuntimeCredentialStore = Depends(get_credential_store),
 ) -> dict[str, Any]:
     """Validate endpoint trust and (if allowed) probe reachability.
 
-    Per DEC-002b: the policy ALWAYS runs before any auth header is constructed.
-    Per DEC-002c: untrusted_custom returns skipped_network=true unless caller
-    overrides with body={"trust_source_override": "runtime_user_confirmed"}.
-    The override is intentionally NOT persisted — it is a one-shot test mode.
+    The endpoint trust policy runs before any provider request is built. A
+    one-shot trust override may allow a probe for this test call only; it is
+    never persisted.
     """
     try:
         cred = store.get_internal(credential_id)
     except CredentialNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail=f"credential not found: {credential_id}"
-        ) from exc
+        raise _credential_not_found_error() from exc
+    _check_credential_test_rate_limit(request, credential_id)
 
     # Optional one-shot trust upgrade for the test only (does NOT touch the store).
     trust_override = (body or {}).get("trust_source_override")
@@ -289,7 +335,10 @@ async def test_credential(
     if effective_trust not in {t.value for t in TrustSource}:
         raise HTTPException(
             status_code=400,
-            detail=f"unknown trust_source_override: {trust_override}",
+            detail={
+                "code": "trust_override_invalid",
+                "message": "测试覆盖值无效，请重新选择。",
+            },
         )
 
     decision = validate_endpoint(cred.base_url, trust_source=effective_trust)

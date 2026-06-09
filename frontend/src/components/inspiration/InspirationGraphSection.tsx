@@ -3,11 +3,13 @@ import { ChevronDown, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GraphPayloadViewer } from '@/components/graph/GraphPayloadViewer';
 import { inspirationToGraphPayload } from '@/components/graph/inspirationToGraphPayload';
+import type { GraphPayloadV0 } from '@/components/graph/payloadToRf';
 import type { InspirationSpark } from '@/types/writing';
 
 interface InspirationGraphSectionProps {
   query: string;
   sparks: ReadonlyArray<InspirationSpark>;
+  projectId?: string | null;
   /** Optional fixed height for the viewer; defaults to 280 px to match
    *  the Workbench EvidenceGraphPanel cadence. */
   height?: number;
@@ -31,25 +33,34 @@ interface InspirationGraphSectionProps {
 export function InspirationGraphSection({
   query,
   sparks,
+  projectId,
   height = 280,
   defaultOpen = false,
   className,
 }: InspirationGraphSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
 
+  const causalPayload = useMemo<GraphPayloadV0 | null>(() => {
+    const payload = sparks.find((spark) => (
+      spark.causal_dag
+      && Array.isArray(spark.causal_dag.nodes)
+      && spark.causal_dag.nodes.length > 0
+    ))?.causal_dag;
+    return payload ?? null;
+  }, [sparks]);
+
   // Always-on memo keeps payload identity stable across collapse/expand
   // cycles so React Flow doesn't tear down nodes on every toggle.
-  const payload = useMemo(
+  const fallbackPayload = useMemo(
     () => inspirationToGraphPayload(query, sparks),
     [query, sparks],
   );
+  const payload = causalPayload ?? fallbackPayload;
+  const evidenceCount = payload.nodes.filter((n) => n.type === 'evidence').length;
+  const nodeCount = payload.nodes.length;
+  const edgeCount = payload.edges.length;
 
-  const evidenceCount = useMemo(
-    () => payload.nodes.filter((n) => n.type === 'evidence').length,
-    [payload.nodes],
-  );
-
-  if (evidenceCount === 0) return null;
+  if (!causalPayload && evidenceCount === 0) return null;
 
   return (
     <div className={cn('mt-3 pt-3 border-t border-outline-variant/30', className)}>
@@ -61,7 +72,11 @@ export function InspirationGraphSection({
         aria-controls="inspiration-evidence-graph"
       >
         <Network size={12} />
-        <span>图谱视图（{evidenceCount} 条证据 · {sparks.length} 个灵感）</span>
+        <span>
+          {causalPayload
+            ? `图谱视图（${nodeCount} 个节点 · ${edgeCount} 条关系）`
+            : `图谱视图（${evidenceCount} 条证据 · ${sparks.length} 个灵感）`}
+        </span>
         <ChevronDown
           size={11}
           className={cn('transition-transform', open && 'rotate-180')}
@@ -73,7 +88,7 @@ export function InspirationGraphSection({
           className="mt-2 rounded border border-outline-variant/40 bg-surface-lowest"
           style={{ height }}
         >
-          <GraphPayloadViewer payload={payload} />
+          <GraphPayloadViewer payload={payload} projectId={projectId} />
         </div>
       )}
     </div>

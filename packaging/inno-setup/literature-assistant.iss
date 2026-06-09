@@ -26,6 +26,13 @@
   #define ReleaseRoot "..\..\workspace_artifacts\releases\" + AppVersion
 #endif
 
+; Optional signing:
+;   ISCC.exe /SScholarAISignTool="<signtool command> $f" /DSignToolName=ScholarAISignTool ...
+; The build script wires these switches only when a signing command is provided.
+#ifdef SignToolName
+  #define ActiveSignTool SignToolName
+#endif
+
 [Setup]
 ; AppId is the permanent identity for upgrade detection. NEVER change this
 ; after any user has installed the app — Inno uses it to find the existing
@@ -54,6 +61,10 @@ DisableProgramGroupPage=yes
 DisableDirPage=no
 UninstallDisplayName=Scholar AI {#AppVersion}
 SetupIconFile=..\assets\icon.ico
+#ifdef ActiveSignTool
+SignTool={#ActiveSignTool}
+SignedUninstaller=yes
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

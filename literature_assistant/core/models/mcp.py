@@ -1,12 +1,7 @@
-"""MCP server config + tool descriptor models (Phase 1A / TASK-101).
+"""MCP server config and tool descriptor models.
 
-Two-field trust model per plan v0.3 §4.3:
-  - provenance: where the server config came from (LLM-credentials enum)
-  - approval_state: where it sits in the local approval lifecycle
-                    (registered -> catalog_reviewed -> enabled_for_session)
-
-Tool capability tags per plan v0.3 §4.5: read / write / network / filesystem
-/ destructive / unknown. unknown defaults to approval-required.
+Runtime configs are local state. Public responses mask direct sensitive values
+and keep saved-credential references as opaque identifiers for client actions.
 """
 
 from __future__ import annotations
@@ -46,9 +41,7 @@ class McpProvenance(str, Enum):
 
 
 class McpApprovalState(str, Enum):
-    """Approval lifecycle. Forward-only; downgrade requires explicit reset
-    back to ``registered`` (Phase 1B will enforce the state machine).
-    """
+    """Approval lifecycle for using a local MCP service."""
 
     REGISTERED = "registered"
     CATALOG_REVIEWED = "catalog_reviewed"
@@ -105,32 +98,27 @@ class McpStdioConfig(BaseModel):
 
     This is runtime-local configuration, not package metadata. Do not commit
     persisted MCP server configs; they may reveal local paths even though they
-    must not contain raw secrets.
+    must not contain credential material.
     """
     env: dict[str, str] = Field(default_factory=dict)
-    """Server-specific env vars (e.g. SERPAPI_KEY). Public dumps mask values.
+    """Server-specific plain environment entries. Public dumps mask values.
 
-    Prefer ``env_refs`` for secrets — values here are stored in plaintext
-    on disk and must be masked in public responses. Suitable for non-secret
-    config like ``DEBUG=1`` or ``LOG_LEVEL=info``.
+    Use saved-credential references for credential material so sensitive values do not
+    live in the MCP store.
     """
     env_refs: dict[str, str] = Field(default_factory=dict)
-    """Env var name -> RuntimeCredential ``credential_id`` reference
-    (plan 2026-05-20 §Locked Revisions M3, single-source-of-truth model).
+    """Saved-credential references resolved when launching the service.
 
-    Resolved at process spawn by
-    ``mcp_runtime.credential_env_resolver`` and merged with ``env`` before
-    ``prepare_subprocess_env``. Refs themselves are non-sensitive
-    (``credential_id`` is an opaque UUID); public dumps return them verbatim.
+    References are opaque local identifiers; public dumps never include the
+    referenced credential values.
     """
     cwd_relative: str | None = Field(default=None, max_length=128)
-    """Optional sub-path inside the per-server sandbox cwd. None = sandbox root."""
+    """Optional sub-path inside the per-server guarded workdir. None = root."""
 
     @field_validator("command")
     @classmethod
     def _no_shell_metachars(cls, v: str) -> str:
-        # Phase 1A: reject obvious shell metacharacters in the command itself.
-        # Full command-risk lint lives in Phase 1B security_policy.
+        # Reject obvious shell metacharacters in the command itself.
         forbidden = set("|;&`$<>()\n\r")
         if any(ch in v for ch in forbidden):
             raise ValueError(
@@ -150,25 +138,20 @@ class McpStdioConfig(BaseModel):
 
 
 class McpStreamableHttpConfig(BaseModel):
-    """HTTP transport config. Persisted from day 1; execution is feature-flagged
-    off until later slice (plan v0.3 §4.4).
-    """
+    """HTTP transport config for MCP services."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     url: str = Field(min_length=1, max_length=512)
     headers: dict[str, str] = Field(default_factory=dict)
-    """Auth/custom headers. Values masked in public dump.
+    """Plain HTTP headers. Values are masked in public dumps.
 
-    Prefer ``header_refs`` for ``Authorization``/``X-API-Key``-style secrets
-    so raw values never touch disk in the MCP store.
+    Use saved-credential references for credential-bearing headers.
     """
     header_refs: dict[str, str] = Field(default_factory=dict)
-    """Header name -> RuntimeCredential ``credential_id`` reference
-    (plan 2026-05-20 §Locked Revisions M3, single-source-of-truth model).
+    """Saved-credential references for HTTP headers.
 
-    Resolved at HTTP request build time and merged with ``headers``
-    before the request leaves the client.
+    References are resolved only when the client builds an outbound request.
     """
     timeout_seconds: float = Field(default=30.0, gt=0.0, le=300.0)
 
@@ -193,7 +176,7 @@ class McpToolDescriptor(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Pending-call protocol (Phase 3 / TASK-301)
+# Pending-call protocol
 # ---------------------------------------------------------------------------
 
 
@@ -300,7 +283,7 @@ class McpServerConfigUpdate(BaseModel):
 class McpServerConfig(_McpServerBaseFields):
     """Full domain model. Persisted in the runtime store; never serialized
     to public API responses (use ``McpServerConfigPublic`` instead) because
-    ``stdio.env`` and ``http.headers`` carry secrets in plaintext.
+    ``stdio.env`` and ``http.headers`` may carry sensitive plaintext.
     """
 
     server_id: str
@@ -346,7 +329,7 @@ class McpServerConfig(_McpServerBaseFields):
 
 class McpServerConfigPublic(BaseModel):
     """Safe-to-return shape. ``stdio.env`` and ``http.headers`` values are
-    masked. Never carries raw secrets.
+    masked. Never carries credential material.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -398,11 +381,10 @@ def _compute_server_fingerprint(body: _McpServerBaseFields) -> str:
     """Versioned sha256 fingerprint over identity fields (analog of
     credentials.compute_credential_fingerprint).
 
-    v2 (plan 2026-05-20 §Locked Revisions M4): includes env_refs / header_refs
-    key names so adding a credential reference advances the fingerprint and
-    invalidates any cached tool catalog. Values (credential_ids) are NOT
-    part of the fingerprint — rotating which credential a ref points to
-    must not advance the fingerprint, matching env-value rotation semantics.
+    Credential reference key names participate in identity so adding a
+    reference advances the fingerprint and invalidates any cached tool
+    catalog. Values are not part of the fingerprint, so rotating which
+    credential a ref points to does not advance the fingerprint.
     """
     import hashlib
 
@@ -426,9 +408,8 @@ def _compute_server_fingerprint(body: _McpServerBaseFields) -> str:
         # change identity), env values do not — matches credential rotation
         # semantics.
         parts.extend(sorted(body.stdio.env.keys()))
-        # env_refs participate the same way (v2). Key set change = identity
-        # change; pointing the same env to a different credential_id is a
-        # value-only change and does NOT bump fingerprint.
+        # Reference key set changes identity; pointing the same env to a
+        # different saved credential is a value-only change.
         if body.stdio.env_refs:
             parts.append("env_refs")
             parts.extend(sorted(body.stdio.env_refs.keys()))

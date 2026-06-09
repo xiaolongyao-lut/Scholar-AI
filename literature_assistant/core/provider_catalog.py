@@ -1,23 +1,9 @@
-"""Provider + model catalog (extracted from chat_router.py per S6).
+"""Provider and model catalog shared by chat configuration routes.
 
-S6 (`docs/plans/active/2026-05-13-settings-unified-api-config-plan.md`)
-moves the static MODEL_CATALOG out of the chat router so the router
-itself stays focused on request handling. The catalog still ships the
-same data and the same `/chat/providers` + `/chat/models` endpoints in
-chat_router.py keep returning it (with an RFC 9745 `Deprecation` HTTP
-header to signal that those endpoints are compatibility-only and the
-canonical config flow is now `/api/chat/config` + Settings-driven
-backend resolution).
-
-Per `2026-05-15-post-discussion-carryover-plan.md` D-CO-9:
-- `MODEL_CATALOG` lives here (active backend module, importable from
-  the runtime path) so the runtime never depends on
-  `workspace_references/`.
-- `workspace_references/provider_catalog_archive.py` carries the same
-  data as a non-runtime archive for documentation / future "quick
-  fill" UX, but is **not** imported by any runtime code.
-- No `Sunset` HTTP header is added because no removal date is set
-  yet (RFC 8594).
+The static catalog is isolated from route handlers so request handling
+stays small while compatibility endpoints can keep returning the same
+provider data. No `Sunset` HTTP header is added because no removal date
+is set yet (RFC 8594).
 
 Public surface (kept stable for chat_router import):
 - `ModelInfo` Pydantic model

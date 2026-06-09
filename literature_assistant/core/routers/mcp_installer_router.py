@@ -1,4 +1,4 @@
-"""MCP local installer HTTP API (S3 / plan 2026-05-20 §A2-A3).
+"""MCP local installer HTTP API.
 
 Three endpoints driving the wizard:
 
@@ -16,6 +16,7 @@ Errors → HTTP mapping:
 - ``InstallCandidateMismatchError``   → 400 ``candidate_mismatch``
 - ``InstallCredentialMissingError``   → 400 ``credential_not_found``
 - ``InstallCredentialDisabledError``  → 400 ``credential_disabled``
+- ``InstallPlaintextSecretConfigError``→ 400 ``plaintext_secret_config``
 - ``InstallTransportUnsupportedError``→ 400 ``transport_unsupported``
 - ``InstallSlugConflictError``        → 409 ``server_slug_conflict``
 - ``McpPackageScanError``             → 400 ``scan_rejected``
@@ -44,6 +45,7 @@ from mcp_runtime.template_installer import (
     InstallCandidateMismatchError,
     InstallCredentialDisabledError,
     InstallCredentialMissingError,
+    InstallPlaintextSecretConfigError,
     InstallError,
     InstallResult,
     InstallScanExpiredError,
@@ -117,11 +119,11 @@ class InstallationInstallRequest(BaseModel):
     server_slug: str = Field(min_length=1, max_length=64)
     display_name: str = Field(min_length=1, max_length=128)
     config_values: dict[str, str] = Field(default_factory=dict)
-    """Non-secret env values resolved from McpInstallConfigField inputs."""
+    """Non-sensitive env values resolved from McpInstallConfigField inputs."""
     credential_bindings: dict[str, str] = Field(default_factory=dict)
-    """Map env_name -> credential_id from McpRequiredCredential picker."""
+    """Map env_name to the selected saved credential binding."""
     trust_to_probe: bool = False
-    """Locked Revisions M7: True triggers list_tools probe + spawns process."""
+    """True triggers list_tools probe and spawns the local process."""
     enable_for_session: bool = False
     """Only honored when trust_to_probe=True AND probe succeeds; advances
     approval from catalog_reviewed to enabled_for_session in one shot."""
@@ -129,7 +131,7 @@ class InstallationInstallRequest(BaseModel):
 
 
 class InstallationInstallResponse(BaseModel):
-    """Public-facing shape; no raw secrets."""
+    """Public-facing shape without credential material."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -241,6 +243,7 @@ async def install_package(
         InstallCandidateMismatchError,
         InstallCredentialMissingError,
         InstallCredentialDisabledError,
+        InstallPlaintextSecretConfigError,
         InstallTransportUnsupportedError,
     ) as exc:
         raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)}) from exc

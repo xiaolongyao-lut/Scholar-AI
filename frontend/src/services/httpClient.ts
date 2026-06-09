@@ -41,7 +41,7 @@ export interface ApiClientErrorShape {
  *
  * Why:
  * Axios errors include transport, config, and response details in provider-
- * specific fields. Service consumers need one stable, non-secret shape while
+ * specific fields. Service consumers need one stable, non-sensitive shape while
  * still preserving the original cause for diagnostics.
  */
 export class ApiClientError extends Error {
@@ -143,6 +143,78 @@ const getUrl = (error: unknown): string | null => {
   return typeof url === 'string' && url.trim() ? url : null;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const readStringField = (
+  value: Record<string, unknown>,
+  fieldName: string,
+): string | null => {
+  const fieldValue = value[fieldName];
+  return typeof fieldValue === 'string' && fieldValue.trim() ? fieldValue.trim() : null;
+};
+
+const formatValidationDetail = (detail: readonly unknown[]): string | null => {
+  const messages = detail
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return typeof entry === 'string' && entry.trim() ? entry.trim() : null;
+      }
+      const message = readStringField(entry, 'msg') ?? readStringField(entry, 'message');
+      const location = entry.loc;
+      if (!message) {
+        return null;
+      }
+      if (!Array.isArray(location) || location.length === 0) {
+        return message;
+      }
+      const path = location
+        .map((part) => String(part))
+        .filter((part) => part.trim())
+        .join('.');
+      return path ? `${path}: ${message}` : message;
+    })
+    .filter((message): message is string => message !== null);
+
+  if (messages.length === 0) {
+    return null;
+  }
+  return messages.slice(0, 3).join('; ');
+};
+
+const getResponseMessage = (data: unknown): string | null => {
+  if (typeof data === 'string' && data.trim()) {
+    return data.trim();
+  }
+  if (Array.isArray(data)) {
+    return formatValidationDetail(data);
+  }
+  if (!isRecord(data)) {
+    return null;
+  }
+
+  const directMessage = readStringField(data, 'message') ?? readStringField(data, 'error');
+  if (directMessage) {
+    return directMessage;
+  }
+
+  const detail = data.detail;
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail.trim();
+  }
+  if (Array.isArray(detail)) {
+    return formatValidationDetail(detail);
+  }
+  if (isRecord(detail)) {
+    return readStringField(detail, 'message')
+      ?? readStringField(detail, 'error')
+      ?? readStringField(detail, 'reason')
+      ?? null;
+  }
+  return null;
+};
+
 const isRetryableStatus = (
   status: number | null,
   retry: NormalizedRetryOptions | null,
@@ -165,7 +237,8 @@ const toApiClientError = (
 ): ApiClientError => {
   const axiosError = getAxiosError(error);
   const status = axiosError?.response?.status ?? null;
-  const message = axiosError?.message
+  const message = getResponseMessage(axiosError?.response?.data)
+    ?? axiosError?.message
     ?? (error instanceof Error ? error.message : 'API request failed.');
 
   return new ApiClientError(

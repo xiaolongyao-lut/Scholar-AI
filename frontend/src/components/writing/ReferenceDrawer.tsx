@@ -1,12 +1,18 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, X, ExternalLink, ArrowRight, Link2, Target, FileText, AlertTriangle, CheckCircle2, Download, Copy, Loader2 } from 'lucide-react';
+import { BookOpen, X, ExternalLink, ArrowRight, Link2, Target, FileText, AlertTriangle, CheckCircle2, Download, Copy, Square } from 'lucide-react';
 import { useI18n } from '@/contexts/I18nContext';
 import { WritingMaterial, CitationAnchor, DraftContent } from '@/types/writing';
 import { cn } from '@/lib/utils';
 import { useWriting } from '@/contexts/WritingContext';
-import { getWritingBackendService } from '@/services/writingBackend';
-import type { ProjectExportResult } from '@/types/resources';
+import {
+  downloadProjectExportBlob,
+  getWritingBackendService,
+  WRITING_EXPORT_FORMATS,
+  type WritingExportFormat,
+} from '@/services/writingBackend';
+import type { ProjectExportResponseEnvelope } from '@/types/resources';
+import { sanitizeRuntimeVisibleText } from './writingRuntimeDisplay';
 
 type ReferenceDrawerTab = 'evidence' | 'chain' | 'review' | 'export';
 
@@ -96,48 +102,104 @@ const getEvidenceStatusLabel = (status: MaterialEvidenceStatus) => {
   }
 };
 
+function formatReferenceDrawerError(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    return sanitizeRuntimeVisibleText(error.message, fallback);
+  }
+  return sanitizeRuntimeVisibleText(error, fallback);
+}
+
+function materialTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    paper: '论文',
+    note: '笔记',
+    book: '书籍',
+    report: '报告',
+    dataset: '数据',
+  };
+  return labels[type] ?? '资料';
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  if (typeof error !== 'object' || error === null) return false;
+  const record = error as { name?: unknown; code?: unknown };
+  return record.name === 'AbortError' || record.name === 'CanceledError' || record.code === 'ERR_CANCELED';
+}
+
+function exportFormatLabel(format: WritingExportFormat): string {
+  const labels: Record<WritingExportFormat, string> = {
+    markdown: '文稿预览',
+    json: '结构化文件',
+    word: 'Word 文档',
+    latex: '排版工程',
+    pdf: 'PDF 文件',
+  };
+  return labels[format] ?? '导出文件';
+}
+
 function ExportPanel() {
   const { t } = useI18n();
   const { activeProjectId } = useWriting();
-  const [exportData, setExportData] = React.useState<ProjectExportResult | null>(null);
+  const [exportData, setExportData] = React.useState<ProjectExportResponseEnvelope | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
+  const [selectedFormat, setSelectedFormat] = React.useState<WritingExportFormat>('markdown');
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
-  const handleFetchExport = React.useCallback(async (format: 'json' | 'markdown') => {
+  const handleStopExport = React.useCallback((showNotice: boolean = true) => {
+    const controller = abortControllerRef.current;
+    if (!controller) return;
+    controller.abort();
+    abortControllerRef.current = null;
+    setLoading(false);
+    if (showNotice) {
+      setError('已停止生成导出预览。');
+    }
+  }, []);
+
+  const handleFetchExport = React.useCallback(async (format: WritingExportFormat) => {
     if (!activeProjectId) return;
+    handleStopExport(false);
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     setLoading(true);
     setError(null);
     try {
       const svc = getWritingBackendService();
-      const data = await svc.exportProject(activeProjectId, format);
+      const data = await svc.exportProject(activeProjectId, format, {
+        signal: abortController.signal,
+      });
+      if (abortController.signal.aborted) return;
       setExportData(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('ref.export_failed'));
+      if (isAbortError(err) || abortController.signal.aborted) return;
+      setError(formatReferenceDrawerError(err, t('ref.export_failed')));
       setExportData(null);
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+        setLoading(false);
+      }
     }
-  }, [activeProjectId, t]);
+  }, [activeProjectId, handleStopExport, t]);
 
-  const handleDownload = React.useCallback((format: 'json' | 'markdown') => {
+  React.useEffect(() => {
+    return () => {
+      handleStopExport(false);
+    };
+  }, [handleStopExport]);
+
+  const handleDownload = React.useCallback((format: WritingExportFormat) => {
     if (!exportData) return;
-    const content = format === 'json'
-      ? JSON.stringify(exportData, null, 2)
-      : (exportData as Record<string, unknown>).content as string || JSON.stringify(exportData, null, 2);
-    const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `export-${activeProjectId?.slice(0, 8) || 'project'}.${format === 'json' ? 'json' : 'md'}`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadProjectExportBlob(exportData, format);
   }, [activeProjectId, exportData]);
 
   const handleCopy = React.useCallback(async () => {
-    if (!exportData) return;
+    if (!exportData?.content) return;
     try {
-      await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
+      await navigator.clipboard.writeText(exportData.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -145,9 +207,11 @@ function ExportPanel() {
     }
   }, [exportData]);
 
-  const evidenceRows = (exportData as Record<string, unknown>)?.evidence_rows as Array<Record<string, unknown>> | undefined;
-  const citationChain = (exportData as Record<string, unknown>)?.citation_chain as Array<Record<string, unknown>> | undefined;
-  const reviewFindings = (exportData as Record<string, unknown>)?.review_findings as Array<Record<string, unknown>> | undefined;
+  const evidenceRows = exportData?.evidence_rows;
+  const citationChain = exportData?.citation_chain;
+  const reviewFindings = exportData?.review_findings;
+  const previewText = exportData?.content ?? '';
+  const canCopyPreview = previewText.trim().length > 0;
 
   return (
     <div className="space-y-4">
@@ -159,23 +223,23 @@ function ExportPanel() {
       ) : (
         <>
           <div className="flex gap-2">
+            <select
+              aria-label="导出格式"
+              value={selectedFormat}
+              onChange={(event) => setSelectedFormat(event.target.value as WritingExportFormat)}
+              className="min-w-0 flex-1 rounded-sm border border-outline-variant bg-surface-low px-3 py-2 font-label text-[11px] font-medium text-foreground/70"
+            >
+              {WRITING_EXPORT_FORMATS.map((format) => (
+                <option key={format} value={format}>{exportFormatLabel(format)}</option>
+              ))}
+            </select>
             <button
               type="button"
-              onClick={() => void handleFetchExport('json')}
-              disabled={loading}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm border border-primary/30 bg-primary/10 px-3 py-2 font-label text-[11px] font-medium text-primary transition-all hover:bg-primary/20 disabled:opacity-50"
+              onClick={() => loading ? handleStopExport() : void handleFetchExport(selectedFormat)}
+              className="min-w-[120px] inline-flex items-center justify-center gap-1.5 rounded-sm border border-primary/30 bg-primary/10 px-3 py-2 font-label text-[11px] font-medium text-primary transition-all hover:bg-primary/20 disabled:opacity-50"
             >
-              {loading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-              {t('ref.export_fetch_json')}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleFetchExport('markdown')}
-              disabled={loading}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm border border-outline-variant bg-surface-low px-3 py-2 font-label text-[11px] font-medium text-foreground/60 transition-all hover:text-foreground hover:border-primary/20 disabled:opacity-50"
-            >
-              {loading ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
-              {t('ref.export_fetch_md')}
+              {loading ? <Square size={12} /> : <Download size={12} />}
+              {loading ? '停止' : `获取${exportFormatLabel(selectedFormat)}`}
             </button>
           </div>
 
@@ -202,21 +266,31 @@ function ExportPanel() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDownload('markdown')}
+                  onClick={() => handleDownload(selectedFormat)}
                   className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm border border-emerald-200/70 bg-emerald-50/60 px-3 py-1.5 font-label text-[10px] font-medium text-emerald-700 transition-all hover:bg-emerald-100 dark:border-emerald-700/40 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
                 >
                   <Download size={10} />
-                  {t('ref.export_download_md')}
+                  {selectedFormat === 'json' ? t('ref.export_download_json') : `下载${exportFormatLabel(selectedFormat)}`}
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleCopy()}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-sm border border-outline-variant bg-surface-low px-3 py-1.5 font-label text-[10px] font-medium text-foreground/60 transition-all hover:text-foreground"
+                  disabled={!canCopyPreview}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-sm border border-outline-variant bg-surface-low px-3 py-1.5 font-label text-[10px] font-medium text-foreground/60 transition-all hover:text-foreground disabled:opacity-40"
                 >
                   {copied ? <CheckCircle2 size={10} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={10} />}
-                  {copied ? t('ref.export_copied') : t('ref.export_copy')}
+                  {copied ? t('ref.export_copied') : canCopyPreview ? t('ref.export_copy') : '无文本可复制'}
                 </button>
               </div>
+
+              {previewText && (
+                <div className="rounded-sm border border-outline-variant bg-surface-low p-4">
+                  <div className="font-headline text-xs font-semibold text-foreground mb-2">{exportFormatLabel(exportData.format)}</div>
+                  <div className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-body text-[11px] text-foreground/75 custom-scrollbar">
+                    {previewText}
+                  </div>
+                </div>
+              )}
 
               {Array.isArray(evidenceRows) && evidenceRows.length > 0 && (
                 <div className="rounded-sm border border-outline-variant bg-surface-low p-4">
@@ -227,8 +301,8 @@ function ExportPanel() {
                   <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                     {evidenceRows.slice(0, 10).map((row, i) => (
                       <div key={`ev-${i}`} className="rounded-sm border border-outline-variant bg-surface-lowest px-3 py-2">
-                        <div className="font-headline text-[11px] font-semibold text-foreground truncate">{String(row.material_title || row.title || '')}</div>
-                        <p className="font-body text-[10px] text-foreground/55 mt-0.5 line-clamp-2">{String(row.excerpt || row.summary || '')}</p>
+                        <div className="font-headline text-[11px] font-semibold text-foreground truncate">{row.provenance.material_title}</div>
+                        <p className="font-body text-[10px] text-foreground/55 mt-0.5 line-clamp-2">{row.excerpt}</p>
                       </div>
                     ))}
                   </div>
@@ -244,8 +318,8 @@ function ExportPanel() {
                   <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                     {citationChain.slice(0, 10).map((row, i) => (
                       <div key={`cc-${i}`} className="rounded-sm border border-outline-variant bg-surface-lowest px-3 py-2 flex items-center gap-2">
-                        <span className="font-label text-[9px] text-primary bg-primary/10 px-1.5 py-0.5 rounded-sm">#{String(row.anchor_ordinal || i + 1)}</span>
-                        <span className="font-body text-[10px] text-foreground/60 truncate flex-1">{String(row.claim_excerpt || row.paragraph_excerpt || '')}</span>
+                        <span className="font-label text-[9px] text-primary bg-primary/10 px-1.5 py-0.5 rounded-sm">#{String(row.paragraph_index || i + 1)}</span>
+                        <span className="font-body text-[10px] text-foreground/60 truncate flex-1">{row.claim_excerpt}</span>
                       </div>
                     ))}
                   </div>
@@ -262,10 +336,10 @@ function ExportPanel() {
                     {reviewFindings.map((row, i) => (
                       <div key={`rf-${i}`} className={cn(
                         'rounded-sm border px-3 py-2',
-                        String(row.severity || row.tone) === 'warn' ? 'border-amber-200/70 bg-amber-50/60 dark:border-amber-700/40 dark:bg-amber-500/10' : 'border-emerald-200/70 bg-emerald-50/60 dark:border-emerald-700/40 dark:bg-emerald-500/10'
+                        row.severity === 'warning' ? 'border-amber-200/70 bg-amber-50/60 dark:border-amber-700/40 dark:bg-amber-500/10' : 'border-emerald-200/70 bg-emerald-50/60 dark:border-emerald-700/40 dark:bg-emerald-500/10'
                       )}>
-                        <div className="font-headline text-[11px] font-semibold text-foreground">{String(row.title || row.finding || '')}</div>
-                        <p className="font-body text-[10px] text-foreground/55 mt-0.5">{String(row.description || row.detail || '')}</p>
+                        <div className="font-headline text-[11px] font-semibold text-foreground">{row.severity}</div>
+                        <p className="font-body text-[10px] text-foreground/55 mt-0.5">{row.message}</p>
                       </div>
                     ))}
                   </div>
@@ -421,7 +495,7 @@ export function ReferenceDrawer({
         id: 'uncited-paragraphs',
         tone: 'warn',
         title: '存在无引长段落',
-        description: `检测到 ${uncitedParagraphs.length} 个长度较长且没有 source anchor 的段落，建议先补证据再扩写。`,
+        description: `检测到 ${uncitedParagraphs.length} 个长度较长且没有引用点的段落，建议先补证据再扩写。`,
       });
     }
 
@@ -429,8 +503,8 @@ export function ReferenceDrawer({
       findings.push({
         id: 'unbound-anchors',
         tone: 'warn',
-        title: '存在未绑定资料的 anchor',
-        description: `当前有 ${unboundAnchors.length} 个引用锚点没有绑定 material，导出时容易失去来源链。`,
+        title: '存在未绑定资料的引用点',
+        description: `当前有 ${unboundAnchors.length} 个引用点没有绑定资料，导出时容易失去来源链。`,
       });
     }
 
@@ -439,7 +513,7 @@ export function ReferenceDrawer({
         id: 'dangling-material-anchors',
         tone: 'warn',
         title: '存在悬挂引用',
-        description: `当前有 ${danglingMaterialAnchors.length} 个 anchor 指向已不在 materials 列表中的 material，建议先修复资料映射再导出。`,
+        description: `当前有 ${danglingMaterialAnchors.length} 个引用点指向已经不存在的资料，建议先修复资料映射再导出。`,
       });
     }
 
@@ -448,7 +522,7 @@ export function ReferenceDrawer({
         id: 'weak-materials',
         tone: 'warn',
         title: '部分证据条目摘要较弱',
-        description: `${weakMaterials.length} 个已被引用的 material 缺少摘要或焦点提示，建议补 summary / focus point 以增强 evidence table 可读性。`,
+        description: `${weakMaterials.length} 个已被引用的资料缺少摘要或焦点提示，建议补充摘要和焦点，提升证据表可读性。`,
       });
     }
 
@@ -457,7 +531,7 @@ export function ReferenceDrawer({
         id: 'dominant-material',
         tone: 'warn',
         title: '引用过度集中',
-        description: `当前最多被引用的是「${dominantMaterial.material.titleZh}」，占 ${dominantMaterial.count}/${citationAnchors.length} 个 anchors；建议补充第二证据源以降低单源依赖。`,
+        description: `当前最多被引用的是「${dominantMaterial.material.titleZh}」，占 ${dominantMaterial.count}/${citationAnchors.length} 个引用点；建议补充第二证据源以降低单源依赖。`,
       });
     }
 
@@ -466,7 +540,7 @@ export function ReferenceDrawer({
         id: 'healthy',
         tone: 'ok',
         title: '当前 section 的证据面板健康',
-        description: '未检测到明显的无引长段落、未绑定 anchor 或单源过度集中问题，可以继续扩写。',
+        description: '未检测到明显的无引长段落、未绑定引用点或单源过度集中问题，可以继续扩写。',
       });
     }
 
@@ -563,7 +637,7 @@ export function ReferenceDrawer({
                   <div className="flex items-center justify-between mb-4 gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-label text-[8px] font-medium uppercase px-2 py-0.5 bg-primary/10 text-primary rounded-sm tracking-wider">
-                        {material.type}
+                        {materialTypeLabel(material.type)}
                       </span>
                       <span className={cn('font-label text-[8px] font-medium uppercase px-2 py-0.5 rounded-sm tracking-wider border', getEvidenceStatusTone(status))}>
                         {getEvidenceStatusLabel(status)}
@@ -589,7 +663,7 @@ export function ReferenceDrawer({
 
                   <div className="grid grid-cols-3 gap-2 mb-4">
                     <div className="rounded-sm border border-outline-variant bg-surface-low px-3 py-2">
-                      <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">anchors</div>
+                      <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">引用点</div>
                       <div className="font-headline text-sm font-semibold mt-1 text-foreground">{citationCount}</div>
                     </div>
                     <div className="rounded-sm border border-outline-variant bg-surface-low px-3 py-2">
@@ -638,7 +712,7 @@ export function ReferenceDrawer({
                       </span>
                     )) : (
                       <span className="font-label text-[9px] font-medium px-2 py-0.5 bg-amber-50 text-amber-700 rounded-sm border border-amber-200/70 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-700/40">
-                        缺少 focus points
+                        缺少焦点摘要
                       </span>
                     )}
                   </div>
@@ -682,7 +756,7 @@ export function ReferenceDrawer({
             {activeTab === 'chain' && (
               citationChain.length > 0 ? citationChain.map(({ anchor, material, paragraphIndex, claimExcerpt }) => {
                 const isActive = activeCitationAnchorInstanceId === anchor.instanceId;
-                const materialTitle = material?.titleZh || anchor.materialId || '未绑定资料';
+                const materialTitle = material?.titleZh || (anchor.materialId ? '缺失资料' : '未绑定资料');
 
                 return (
                   <button
@@ -700,7 +774,7 @@ export function ReferenceDrawer({
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="inline-flex items-center gap-1 rounded-sm bg-primary/10 text-primary px-2 py-0.5 font-label text-[9px] font-medium uppercase tracking-wider">
                           <Link2 size={10} />
-                          Anchor #{anchor.ordinal}
+                          引用点 #{anchor.ordinal}
                         </span>
                         <span className="font-label text-[10px] text-foreground/45 truncate">
                           {paragraphIndex ? `P${paragraphIndex}` : '未定位段落'}
@@ -713,19 +787,19 @@ export function ReferenceDrawer({
                     <p className="font-body text-[11px] leading-5 text-foreground/60 mb-3">{claimExcerpt}</p>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="rounded-sm border border-outline-variant bg-surface-lowest px-2 py-0.5 font-label text-[9px] text-foreground/50">
-                        token: {anchor.token}
+                        引用标记已记录
                       </span>
                       {anchor.materialId && !material ? (
                         <span className="rounded-sm border border-amber-200/70 bg-amber-50 px-2 py-0.5 font-label text-[9px] text-amber-700 dark:border-amber-700/40 dark:bg-amber-500/10 dark:text-amber-300">
-                          missing material
+                          资料缺失
                         </span>
                       ) : anchor.materialId ? (
                         <span className="rounded-sm border border-emerald-200/70 bg-emerald-50 px-2 py-0.5 font-label text-[9px] text-emerald-700 dark:border-emerald-700/40 dark:bg-emerald-500/10 dark:text-emerald-300">
-                          bound material
+                          已绑定资料
                         </span>
                       ) : (
                         <span className="rounded-sm border border-amber-200/70 bg-amber-50 px-2 py-0.5 font-label text-[9px] text-amber-700 dark:border-amber-700/40 dark:bg-amber-500/10 dark:text-amber-300">
-                          unbound anchor
+                          未绑定资料
                         </span>
                       )}
                     </div>
@@ -735,7 +809,7 @@ export function ReferenceDrawer({
                 <div className="rounded-sm border border-dashed border-outline-variant bg-surface-low px-5 py-6 text-center">
                   <p className="font-headline text-sm font-semibold text-foreground">还没有引用链</p>
                   <p className="mt-2 font-body text-[11px] leading-5 text-foreground/50">
-                    先在草稿里插入 source anchor，这里就会显示“段落 → anchor → material”的追踪链。
+                    先在草稿里插入引用点，这里就会显示“段落 → 引用点 → 资料”的追踪链。
                   </p>
                 </div>
               )
@@ -745,19 +819,19 @@ export function ReferenceDrawer({
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-sm border border-outline-variant bg-surface-low px-4 py-3">
-                    <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">anchors</div>
+                    <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">引用点</div>
                     <div className="font-headline text-lg font-semibold text-foreground mt-1">{citationAnchors.length}</div>
                   </div>
                   <div className="rounded-sm border border-outline-variant bg-surface-low px-4 py-3">
-                    <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">uncited paragraphs</div>
+                    <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">无引段落</div>
                     <div className="font-headline text-lg font-semibold text-foreground mt-1">{uncitedParagraphs.length}</div>
                   </div>
                   <div className="rounded-sm border border-outline-variant bg-surface-low px-4 py-3">
-                    <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">unused materials</div>
+                    <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">未用资料</div>
                     <div className="font-headline text-lg font-semibold text-foreground mt-1">{unusedMaterials.length}</div>
                   </div>
                   <div className="rounded-sm border border-outline-variant bg-surface-low px-4 py-3">
-                    <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">unbound anchors</div>
+                    <div className="font-label text-[9px] uppercase tracking-wider text-foreground/40">未绑定引用</div>
                     <div className="font-headline text-lg font-semibold text-foreground mt-1">{unboundAnchors.length}</div>
                   </div>
                 </div>

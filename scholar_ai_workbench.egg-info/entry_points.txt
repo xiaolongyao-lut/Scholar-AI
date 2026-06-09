@@ -1,0 +1,2 @@
+[console_scripts]
+literature-assistant = literature_assistant.__main__:main

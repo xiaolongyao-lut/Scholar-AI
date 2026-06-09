@@ -1,51 +1,55 @@
-import { ContextTier } from '@/services/intelligentChatApi';
+import {
+  SMART_READ_TIER_CONFIG,
+  SMART_READ_TIERS,
+  type SmartReadCostTier,
+} from '@/services/smartReadTiers';
 import { clsx } from 'clsx';
 
 interface TierSelectorProps {
-  selectedTier: ContextTier;
-  onTierChange: (tier: ContextTier) => void;
+  selectedTier: SmartReadCostTier;
+  onTierChange: (tier: SmartReadCostTier) => void;
   disabled?: boolean;
+  compact?: boolean;
+  label?: string;
 }
 
-const TIER_CONFIG: Record<ContextTier, { label: string; tooltip: string }> = {
-  fast: {
-    label: 'Fast',
-    tooltip: 'Top 5 papers, ~2K tokens. Quick response but less context.',
-  },
-  balanced: {
-    label: 'Balanced',
-    tooltip: 'Top 10 papers, ~6K tokens. Good tradeoff for most questions.',
-  },
-  thorough: {
-    label: 'Thorough',
-    tooltip: 'Top 15 papers, ~12K tokens. Comprehensive but slower and higher cost.',
-  },
-};
-
-export function TierSelector({ selectedTier, onTierChange, disabled }: TierSelectorProps) {
-  const tiers: ContextTier[] = ['fast', 'balanced', 'thorough'];
-
+export function TierSelector({
+  selectedTier,
+  onTierChange,
+  disabled,
+  compact = false,
+  label = '成本模式',
+}: TierSelectorProps) {
   return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm font-medium text-gray-700">Context Tier:</label>
-      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1" role="group">
-        {tiers.map((tier) => (
+    <div className={clsx('flex min-w-0 flex-col gap-1.5', compact && 'gap-1')}>
+      <label className={clsx('font-medium text-foreground/65', compact ? 'text-[11px]' : 'text-xs')}>
+        {label}
+      </label>
+      <div
+        className={clsx(
+          'inline-flex w-fit max-w-full flex-wrap rounded-lg border border-outline-variant/70 bg-surface-lowest p-1',
+          compact && 'rounded-md p-0.5',
+        )}
+        role="group"
+        aria-label={label}
+      >
+        {SMART_READ_TIERS.map((tier) => (
           <button
             key={tier}
             type="button"
             onClick={() => onTierChange(tier)}
             disabled={disabled}
-            title={TIER_CONFIG[tier].tooltip}
+            title={SMART_READ_TIER_CONFIG[tier].tooltip}
             className={clsx(
-              'px-4 py-2 text-sm font-medium rounded-md transition-all',
-              'focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500',
+              'font-label font-medium transition-all focus:outline-none focus:ring-2 focus:ring-primary/30',
+              compact ? 'rounded px-2 py-1 text-[11px]' : 'rounded-md px-3 py-1.5 text-xs',
               selectedTier === tier
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-gray-700 hover:bg-gray-50',
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-foreground/60 hover:bg-surface-high hover:text-foreground',
               disabled && 'opacity-50 cursor-not-allowed'
             )}
           >
-            {TIER_CONFIG[tier].label}
+            {compact ? SMART_READ_TIER_CONFIG[tier].shortLabel : SMART_READ_TIER_CONFIG[tier].label}
           </button>
         ))}
       </div>

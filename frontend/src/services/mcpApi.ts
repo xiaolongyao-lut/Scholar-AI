@@ -3,7 +3,7 @@ import { getApiBaseUrl } from './apiBaseUrl.ts';
 
 // ---------------------------------------------------------------------------
 // Backend types — mirror models/mcp.py + routers/mcp_router.py.
-// Kept in sync manually until OpenAPI regen.
+// Kept in sync manually until OpenAPI regeneration.
 // ---------------------------------------------------------------------------
 
 export type McpTransport = 'stdio' | 'streamable_http';
@@ -63,7 +63,7 @@ export interface McpStdioConfigCreate {
   command: string;
   args?: string[];
   cwd?: string | null;
-  env?: Record<string, string>; // raw secrets; backend stores; UI never re-displays
+  env?: Record<string, string>; // sensitive values; backend stores; UI never re-displays
   env_refs?: Record<string, string>;
   cwd_relative?: string | null;
 }
@@ -121,6 +121,7 @@ export interface McpAuditRecord {
   ts: string;
   tool_call_id: string;
   server_id: string;
+  server_label?: string;
   server_slug: string;
   tool_name: string;
   is_error: boolean;
@@ -138,9 +139,35 @@ export interface McpAuditResponse {
   records: McpAuditRecord[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isMcpServerConfigPublic(value: unknown): value is McpServerConfigPublic {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.server_id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.server_slug === 'string' &&
+    (value.transport === 'stdio' || value.transport === 'streamable_http') &&
+    (value.approval_state === 'registered' ||
+      value.approval_state === 'catalog_reviewed' ||
+      value.approval_state === 'enabled_for_session')
+  );
+}
+
+function assertMcpServerList(value: unknown): McpServerConfigPublic[] {
+  if (!Array.isArray(value)) {
+    throw new Error('Invalid MCP server list response: expected array');
+  }
+  if (!value.every(isMcpServerConfigPublic)) {
+    throw new Error('Invalid MCP server list response: malformed server item');
+  }
+  return value;
+}
+
 // ---------------------------------------------------------------------------
-// Phase 3 pending-call protocol (mirrors mcp_runtime/pending_calls.py +
-// routers/mcp_router.py).
+// Pending-call protocol (mirrors mcp_runtime/pending_calls.py + routers/mcp_router.py).
 // ---------------------------------------------------------------------------
 
 /** Server-shaped pending tool call awaiting operator approval. */
@@ -176,8 +203,8 @@ export async function listMcpServers(opts?: {
 }): Promise<McpServerConfigPublic[]> {
   const params: Record<string, string> = {};
   if (opts?.approvalState) params.approval_state = opts.approvalState;
-  const resp = await client().get<McpServerConfigPublic[]>(PATH, { params });
-  return resp.data;
+  const resp = await client().get<unknown>(PATH, { params });
+  return assertMcpServerList(resp.data);
 }
 
 export async function createMcpServer(
@@ -225,8 +252,8 @@ export async function listMcpServerTools(serverId: string): Promise<McpToolDescr
 
 /**
  * Tail the MCP tool-call audit log. Backend records are already redacted.
- * Frontend filters apply on top of the response (per D-MCPUX-7: filtering
- * is frontend-only in v1; backend query API is a Phase 3 follow-up).
+ * Frontend filters apply on top of the response; backend query support can
+ * follow later if the product needs server-side filtering.
  *
  * Default `limit=500` matches the locked v1 contract.
  */
@@ -240,8 +267,12 @@ export async function listMcpAuditRecords(opts?: {
   return resp.data;
 }
 
+export async function clearMcpAuditRecords(): Promise<void> {
+  await client().delete('/api/mcp/audit');
+}
+
 // ---------------------------------------------------------------------------
-// Phase 3 pending-call endpoints
+// Pending-call endpoints
 // ---------------------------------------------------------------------------
 
 const PENDING_PATH = '/api/mcp/pending-calls';

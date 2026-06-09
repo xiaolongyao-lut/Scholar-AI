@@ -6,6 +6,8 @@ of the package) so that pytest ``monkeypatch.setattr(rr, "X", ...)`` keeps
 affecting the live endpoint behaviour.
 """
 
+import asyncio
+import inspect
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -13,11 +15,23 @@ import os
 
 from fastapi import HTTPException, Query
 
+from datetime_utils import utc_now_iso_z
 from models import (
     ProjectPayload,
+    ProjectReasoningBiasOptimizeRequest,
+    ProjectReasoningBiasOptimizeResponse,
+    ProjectReasoningBiasOptimizeScope,
+    ProjectReasoningBiasPayload,
+    ProjectReasoningBiasUpdateRequest,
     SectionPayload,
     CreateProjectRequest,
     CreateSectionRequest,
+)
+from prompts.reasoning_bias_optimizer import (
+    build_reasoning_bias_optimizer_prompt,
+    deterministic_reasoning_bias_optimization,
+    parse_reasoning_bias_optimizer_response,
+    resolve_optimizer_language,
 )
 
 import routers.resources_router as _rr
@@ -26,6 +40,98 @@ import routers.resources_router as _rr
 # =========================================================================
 # Project CRUD
 # =========================================================================
+
+def _project_payload_from_resource(project: Any) -> ProjectPayload:
+    """Return a public project payload while preserving metadata extension keys."""
+    if project is None:
+        raise ValueError("project must not be None")
+    metadata = getattr(project, "metadata", None)
+    if metadata is not None and not isinstance(metadata, dict):
+        raise HTTPException(status_code=500, detail="Project metadata must be an object")
+    metadata_dict = dict(metadata or {})
+    d = project.to_dict()
+    d["source_folder"] = str(metadata_dict.get("source_folder", ""))
+    raw_bias = metadata_dict.get("project_reasoning_bias")
+    d["project_reasoning_bias"] = (
+        ProjectReasoningBiasPayload.model_validate(raw_bias)
+        if isinstance(raw_bias, dict)
+        else None
+    )
+    return ProjectPayload(**d)
+
+
+def _default_project_reasoning_bias() -> ProjectReasoningBiasPayload:
+    """Return the API default for projects that have no saved reasoning bias."""
+    return ProjectReasoningBiasPayload()
+
+
+def _bias_scopes_to_optimizer_scopes(
+    bias: ProjectReasoningBiasPayload | None,
+) -> list[ProjectReasoningBiasOptimizeScope]:
+    """Map stored bias scopes into optimizer target scope names."""
+    if bias is None:
+        return []
+    scopes: list[ProjectReasoningBiasOptimizeScope] = []
+    if bias.scopes.analysis_chain:
+        scopes.append("analysis_chain")
+    if bias.scopes.chat_generation:
+        scopes.append("chat_generation")
+    if bias.scopes.discussion_agent_ids:
+        scopes.append("discussion_agent")
+    if bias.scopes.project_wide:
+        scopes.append("project_wide")
+    return scopes
+
+
+def _extract_ai_text(response: Any) -> str:
+    """Read text content from common OpenAI-compatible response shapes."""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        choices = response.get("choices")
+        if isinstance(choices, list) and choices:
+            first_choice = choices[0]
+            if isinstance(first_choice, dict):
+                message = first_choice.get("message")
+                if isinstance(message, dict):
+                    return str(message.get("content") or "")
+                return str(first_choice.get("text") or "")
+        return str(response.get("content") or response.get("text") or "")
+    choices = getattr(response, "choices", None)
+    if isinstance(choices, list) and choices:
+        first_choice = choices[0]
+        message = getattr(first_choice, "message", None)
+        if message is not None:
+            return str(getattr(message, "content", "") or "")
+        return str(getattr(first_choice, "text", "") or "")
+    return ""
+
+
+async def _generate_reasoning_bias_optimization_text(adapter: Any, prompt: str) -> str:
+    """Call the configured AI adapter when it exposes a supported generation API."""
+    if adapter is None:
+        return ""
+
+    generate_text = getattr(adapter, "generate_text", None)
+    if callable(generate_text):
+        response = generate_text(prompt=prompt, max_tokens=1200, temperature=0.2)
+        if inspect.isawaitable(response):
+            response = await response
+        return _extract_ai_text(response)
+
+    if getattr(adapter, "enabled", False):
+        chat = getattr(adapter, "_chat", None)
+        if callable(chat):
+            response = await asyncio.to_thread(
+                chat,
+                prompt,
+                task="generation",
+                overrides={"temperature": 0.2, "max_tokens": 1200},
+                response_format={"type": "json_object"},
+            )
+            return _extract_ai_text(response)
+    return ""
+
 
 @_rr.router.post("/project", response_model=ProjectPayload)
 async def create_project(request: CreateProjectRequest) -> ProjectPayload:
@@ -45,14 +151,12 @@ async def create_project(request: CreateProjectRequest) -> ProjectPayload:
         tags=request.tags,
         metadata={"source_folder": request.source_folder} if request.source_folder else {},
     )
-    d = project.to_dict()
-    d["source_folder"] = str(project.metadata.get("source_folder", ""))
     if request.source_folder and os.environ.get("LITASSIST_USE_SOURCE_FOLDER_INDEX", "").strip() == "1":
         try:
             (Path(request.source_folder).expanduser().resolve() / _rr._SCHOLAR_SUBDIR).mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             _rr.logger.warning("Could not create .scholarai dir in source_folder: %s", exc)
-    return ProjectPayload(**d)
+    return _project_payload_from_resource(project)
 
 
 @_rr.router.get("/project/{project_id}", response_model=ProjectPayload)
@@ -62,9 +166,7 @@ async def get_project(project_id: str) -> ProjectPayload:
     project = store.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-    d = project.to_dict()
-    d["source_folder"] = str(project.metadata.get("source_folder", ""))
-    return ProjectPayload(**d)
+    return _project_payload_from_resource(project)
 
 
 @_rr.router.get("/projects", response_model=list[ProjectPayload])
@@ -78,9 +180,7 @@ async def list_projects(
     projects = store.list_projects(user_id=user_id)
     all_payloads = []
     for p in projects:
-        d = p.to_dict()
-        d["source_folder"] = str(p.metadata.get("source_folder", ""))
-        all_payloads.append(ProjectPayload(**d))
+        all_payloads.append(_project_payload_from_resource(p))
     return all_payloads
 
 
@@ -100,9 +200,7 @@ async def update_project_status(
     project = store.update_project_status(project_id, project_status)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-    d = project.to_dict()
-    d["source_folder"] = str(project.metadata.get("source_folder", ""))
-    return ProjectPayload(**d)
+    return _project_payload_from_resource(project)
 
 
 @_rr.router.put("/project/{project_id}/source-folder")
@@ -129,9 +227,100 @@ async def update_project_source_folder(
             (Path(source_folder.strip()).expanduser().resolve() / _rr._SCHOLAR_SUBDIR).mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             _rr.logger.warning("Could not create .scholarai dir: %s", exc)
-    d = updated.to_dict()
-    d["source_folder"] = str(updated.metadata.get("source_folder", ""))
-    return ProjectPayload(**d)
+    return _project_payload_from_resource(updated)
+
+
+@_rr.router.get("/project/{project_id}/reasoning-bias", response_model=ProjectReasoningBiasPayload)
+async def get_project_reasoning_bias(project_id: str) -> ProjectReasoningBiasPayload:
+    """Return the project-level user reasoning bias or the empty default."""
+    store = _rr.get_writing_resource_store()
+    project = store.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    metadata = project.metadata
+    if metadata is not None and not isinstance(metadata, dict):
+        raise HTTPException(status_code=500, detail="Project metadata must be an object")
+    raw_bias = dict(metadata or {}).get("project_reasoning_bias")
+    if raw_bias is None:
+        return _default_project_reasoning_bias()
+    if not isinstance(raw_bias, dict):
+        raise HTTPException(status_code=500, detail="Stored project_reasoning_bias must be an object")
+    return ProjectReasoningBiasPayload.model_validate(raw_bias)
+
+
+@_rr.router.put("/project/{project_id}/reasoning-bias", response_model=ProjectReasoningBiasPayload)
+async def update_project_reasoning_bias(
+    project_id: str,
+    request: ProjectReasoningBiasUpdateRequest,
+) -> ProjectReasoningBiasPayload:
+    """Replace only the project_reasoning_bias key inside project metadata."""
+    store = _rr.get_writing_resource_store()
+    project = store.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    if project.metadata is not None and not isinstance(project.metadata, dict):
+        raise HTTPException(status_code=500, detail="Project metadata must be an object")
+
+    payload = ProjectReasoningBiasPayload(
+        human_bias=request.human_bias,
+        scopes=request.scopes,
+        language=request.language,
+        updated_at=utc_now_iso_z(),
+        updated_by="user",
+    )
+    new_metadata = dict(project.metadata or {})
+    new_metadata["project_reasoning_bias"] = payload.model_dump(mode="json")
+    updated = store.update_project(project_id, metadata=new_metadata)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update project metadata")
+    return payload
+
+
+@_rr.router.post("/project/{project_id}/reasoning-bias/optimize", response_model=ProjectReasoningBiasOptimizeResponse)
+async def optimize_project_reasoning_bias(
+    project_id: str,
+    request: ProjectReasoningBiasOptimizeRequest,
+) -> ProjectReasoningBiasOptimizeResponse:
+    """Return a structured optimization suggestion without persisting anything."""
+    store = _rr.get_writing_resource_store()
+    project = store.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    if project.metadata is not None and not isinstance(project.metadata, dict):
+        raise HTTPException(status_code=500, detail="Project metadata must be an object")
+
+    metadata = dict(project.metadata or {})
+    stored_raw_bias = metadata.get("project_reasoning_bias")
+    stored_bias = ProjectReasoningBiasPayload.model_validate(stored_raw_bias) if isinstance(stored_raw_bias, dict) else None
+
+    source_bias = str(request.human_bias or "").strip() or str(stored_bias.human_bias if stored_bias else "").strip()
+    target_scopes = list(request.target_scopes) or _bias_scopes_to_optimizer_scopes(stored_bias)
+    language = resolve_optimizer_language(source_bias, request.language)
+    prompt = build_reasoning_bias_optimizer_prompt(
+        human_bias=source_bias,
+        language=language,
+        target_scopes=target_scopes,
+    )
+
+    adapter = _rr.get_ai_adapter()
+    try:
+        raw_text = await _generate_reasoning_bias_optimization_text(adapter, prompt)
+    except Exception as exc:  # pragma: no cover - adapter failures are environment-specific
+        _rr.logger.warning("Reasoning bias optimizer unavailable; using deterministic fallback: %s", exc)
+        raw_text = ""
+
+    if raw_text.strip():
+        return parse_reasoning_bias_optimizer_response(
+            original_bias=source_bias,
+            raw_text=raw_text,
+            language=language,
+            target_scopes=target_scopes,
+        )
+    return deterministic_reasoning_bias_optimization(
+        human_bias=source_bias,
+        language=language,
+        target_scopes=target_scopes,
+    )
 
 
 @_rr.router.delete("/project/{project_id}")
@@ -153,6 +342,10 @@ async def delete_project(project_id: str) -> dict[str, str]:
             chunk_store_path.unlink()
         except OSError:
             _rr.logger.warning("Failed to remove chunk_store file: %s", chunk_store_path)
+    try:
+        _rr._remove_project_workspace_dir(project_id)
+    except OSError as exc:
+        _rr.logger.warning("Failed to remove project workspace dir: project=%s err=%s", project_id, exc)
     return {"status": "deleted", "project_id": project_id}
 
 
@@ -391,9 +584,9 @@ async def update_project(project_id: str, request: UpdateProjectRequest) -> Proj
     if updates:
         updated = store.update_project(project_id, **updates)
         if updated:
-            return ProjectPayload(**updated.to_dict())
+            return _project_payload_from_resource(updated)
 
-    return ProjectPayload(**project.to_dict())
+    return _project_payload_from_resource(project)
 
 
 # =========================================================================

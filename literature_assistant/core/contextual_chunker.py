@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from model_call_gateway import gated_call
+from llm.gateway import invoke as invoke_llm_gateway
 from project_paths import output_path
 from runtime_env import resolve_llm_config
 
@@ -311,7 +311,7 @@ async def summarize_document_json_async(
 
     try:
         raw_summary = await asyncio.to_thread(
-            gated_call,
+            invoke_llm_gateway,
             kind="llm",
             cache_key_parts={
                 "model": resolved_model,
@@ -320,7 +320,7 @@ async def summarize_document_json_async(
                 "task": "contextual_summary",
             },
             payload={"prompt": prompt},
-            invoke=lambda: _call_summary_once(
+            invoke_fn=lambda: _call_summary_once(
                 prompt,
                 resolved_api_key,
                 model=resolved_model,
@@ -352,7 +352,7 @@ async def summarize_document_async(
 ) -> str:
     """Generate a short document-level summary for one material group.
 
-    Returns empty string when API key is unavailable or API call fails.
+    Returns empty string when service credential is unavailable or the API call fails.
     """
     if not chunks:
         return ""
@@ -387,7 +387,7 @@ async def summarize_document_async(
     try:
         summary = _normalize_text(
             await asyncio.to_thread(
-                gated_call,
+                invoke_llm_gateway,
                 kind="llm",
                 cache_key_parts={
                     "model": resolved_model,
@@ -396,7 +396,7 @@ async def summarize_document_async(
                     "task": "contextual_summary",
                 },
                 payload={"prompt": prompt},
-                invoke=lambda: _call_summary_once(
+                invoke_fn=lambda: _call_summary_once(
                     prompt,
                     resolved_api_key,
                     model=resolved_model,

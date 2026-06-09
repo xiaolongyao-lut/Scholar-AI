@@ -8,7 +8,7 @@ internal representation. Lookup is by slug, the stable identifier that
 catalog descriptors and integration plans (e.g. the Vision Auxiliary
 P0 plan, which calls `has_enabled_server("vision-auxiliary")`) use.
 
-Per D-VIS-P0-9 (vision plan §Locked P0 Decisions): "enabled" is defined
+For vision integrations, "enabled" is defined
 strictly as `approval_state == ENABLED_FOR_SESSION`. Registered and
 catalog-reviewed servers are treated as DISABLED — the helper must not
 accept them as "good enough" because tool execution requires the full

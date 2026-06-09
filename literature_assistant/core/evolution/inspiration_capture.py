@@ -1,5 +1,5 @@
 """
-Pure-function candidate extraction for `/inspiration/generate` (Slice 3).
+Pure-function candidate extraction for `/inspiration/generate`.
 
 Maps `SparkResponse` rows (the gated public spark payload returned by
 `literature_assistant/core/routers/inspiration_router.py:_gate_sparks`) to
@@ -7,7 +7,7 @@ the kwargs `EvolutionService.capture()` needs. Eligibility rules below are
 intentionally conservative — most sparks will *not* yield a candidate so
 the review queue does not fill with low-signal noise on day one.
 
-Eligibility (Slice 3 v1):
+Eligibility:
     - spark has at least one evidence_ref → eligible (project_fact or
       domain_knowledge depending on spark_type)
     - spark_type == "memory_association" → eligible (user_preference)
@@ -88,8 +88,7 @@ def extract_from_spark(
         spark_type, CandidateMemoryType.PROJECT_FACT
     )
 
-    # Domain knowledge / synthesis without evidence is blocked entirely per
-    # plan §"Fail-closed Rules": Domain knowledge without evidence refs:
+    # Domain knowledge / synthesis without evidence is blocked entirely:
     # block. We translate "block" to "do not enqueue" here so the review
     # queue stays free of unreviewable items.
     if memory_type in (CandidateMemoryType.DOMAIN_KNOWLEDGE,) and not has_evidence:

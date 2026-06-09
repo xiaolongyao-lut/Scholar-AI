@@ -1,5 +1,5 @@
 /**
- * Skill management API service (TASK-189).
+ * Skill management API service.
  *
  * Consumes the backend /skills/* endpoints for user skill CRUD.
  */
@@ -15,6 +15,8 @@ import type {
   SkillRollbackResult,
   SkillSecurityAssessment,
   SkillUninstallResult,
+  SkillExportResult,
+  SkillRuntimeSettings,
 } from '@/types/skills';
 import { getApiBaseUrl } from './apiBaseUrl';
 
@@ -171,6 +173,19 @@ export async function getSkill(skillId: string): Promise<SkillDescriptor> {
   return handleResponse(res);
 }
 
+/** Persist manifest-driven runtime settings for an imported skill */
+export async function updateSkillRuntimeSettings(
+  skillId: string,
+  settings: SkillRuntimeSettings,
+): Promise<SkillRuntimeSettings & { skill_id: string }> {
+  const res = await fetch(`${BASE}/skills/${encodeURIComponent(skillId)}/runtime-settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  return handleResponse(res);
+}
+
 /** Get the current runtime safety policy for one skill */
 export async function getSkillSecurity(skillId: string): Promise<SkillSecurityAssessment> {
   const res = await fetch(`${BASE}/skills/${encodeURIComponent(skillId)}/security`);
@@ -264,5 +279,16 @@ export async function rollbackSkill(skillId: string, backupPath?: string): Promi
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  return handleResponse(res);
+}
+
+/** Export a managed user skill to a backend-local zip archive. */
+export async function exportSkill(skillId: string, outputPath?: string): Promise<SkillExportResult> {
+  const qs = new URLSearchParams();
+  if (outputPath && outputPath.trim().length > 0) {
+    qs.set('output_path', outputPath.trim());
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await fetch(`${BASE}/skills/${encodeURIComponent(skillId)}/export${suffix}`, { method: 'POST' });
   return handleResponse(res);
 }

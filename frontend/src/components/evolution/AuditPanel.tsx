@@ -1,20 +1,14 @@
-// AuditPanel — operator roll-up for `/evolution/audit` (Opt §6).
+// AuditPanel — operator roll-up for `/evolution/audit`.
 //
 // Renders aggregate counts (total + by status / memory_type / source_type +
 // promotion outcomes) plus a collapsed "advanced" tray with the last few
-// decision_reason strings. All values come from the backend Opt §6 endpoint;
-// no raw candidate text (claim / title / future_use / source_summary) is ever
-// surfaced through this panel because the endpoint itself does not expose it.
+// decision_reason strings. The endpoint intentionally exposes aggregate and
+// recent-decision metadata only, so candidate content stays out of this panel.
 //
 // Default-on, kill-switch-gated by `review_ui_enabled` (handled by the parent
 // `EvolutionInbox` page). When the panel itself encounters an error or has
 // zero data it surfaces a friendly Chinese message and a Refresh button.
 //
-// Reference:
-//   - docs/plans/runbooks/evolution-opt6-audit-endpoint-20260519.md
-//   - docs/plans/runbooks/evolution-round1-audit-panel-20260519.md
-//   - frontend/src/components/settings/McpAuditPanel.tsx (in-repo precedent)
-
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, BookOpenCheck, RefreshCw } from 'lucide-react';
 
@@ -24,7 +18,10 @@ import {
   type EvolutionAuditPayload,
 } from '../../services/evolutionApi';
 import {
+  friendlyDecisionReason,
+  formatEvolutionError,
   MEMORY_TYPE_LABELS,
+  sanitizeEvolutionUserText,
   SOURCE_LABELS,
   STATUS_LABELS,
   STATUS_TONES,
@@ -45,25 +42,7 @@ const PROMOTION_LABELS: Record<
   rolled_back: '已撤销',
 };
 
-/** Translate the common backend-written decision_reason prefixes into a
- *  one-line Chinese phrase. The raw string is always available in the
- *  advanced collapsed view; this translator is only for the human-readable
- *  one-liner. */
-function friendlyDecisionReason(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return '（无说明）';
-  if (trimmed === 'ui_reject_permanent') return '用户标记为永久忽略';
-  if (trimmed === 'ui_snooze_7d') return '用户稍后再看（7 天）';
-  if (trimmed.startsWith('curator:')) return `系统整理：${trimmed.slice('curator:'.length).trim()}`;
-  if (trimmed.startsWith('promoted:')) return `已应用：${trimmed.slice('promoted:'.length).trim()}`;
-  if (trimmed.startsWith('secret_scan:')) return '被密钥扫描拦截';
-  if (trimmed.startsWith('dedupe:')) return '重复候选，已合并';
-  return trimmed;
-}
-
-/** Format an ISO timestamp into a short local time string. Returns the raw
- *  input on parse failure so the panel never silently swallows an unexpected
- *  format. */
+/** Format an ISO timestamp into a short local time string. */
 function formatDecidedAt(iso: string | null): string {
   if (!iso) return '—';
   const t = Date.parse(iso);
@@ -155,7 +134,7 @@ export function AuditPanel({
       const payload = await getEvolutionAudit({ workspaceId, recentDecisionLimit });
       setData(payload);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatEvolutionError(err, '收纳总览加载失败，请稍后重试。'));
     } finally {
       setIsLoading(false);
     }
@@ -164,6 +143,10 @@ export function AuditPanel({
   useEffect(() => {
     void fetchAudit();
   }, [fetchAudit]);
+
+  const workspaceLabel = workspaceId
+    ? ` · 范围 ${sanitizeEvolutionUserText(workspaceId, '当前工作区')}`
+    : '';
 
   return (
     <section
@@ -178,7 +161,7 @@ export function AuditPanel({
             收纳总览
             <span className="ml-1 text-foreground/40">
               · 共 {data?.total ?? 0} 条候选
-              {workspaceId ? ` · 工作区 ${workspaceId}` : ''}
+              {workspaceLabel}
             </span>
           </span>
         </div>
@@ -211,7 +194,7 @@ export function AuditPanel({
           className="rounded border border-dashed border-outline-variant/50 px-3 py-4 text-center text-xs text-foreground/50"
           data-testid="evolution-audit-empty"
         >
-          还没有任何候选经验被收纳，等系统从你的写作流程里学到内容后再来看看。
+          还没有任何候选经验被收纳。开启经验候选收纳后，完成智能研读、讨论、写作任务、Skill 或 MCP 工具运行，系统才会把可复用经验送到这里复审。
         </div>
       )}
 
@@ -256,11 +239,11 @@ export function AuditPanel({
                 </span>
               </summary>
               <ul className="mt-2 space-y-1.5">
-                {data.recent_decisions.map((row) => (
+                {data.recent_decisions.map((row, index) => (
                   <li
                     key={`${row.candidate_id}-${row.decided_at ?? 'na'}`}
                     className="flex items-start justify-between gap-2 rounded border border-outline-variant/30 bg-surface-low px-2 py-1.5 text-[11px]"
-                    data-testid={`evolution-audit-recent-row-${row.candidate_id}`}
+                    data-testid={`evolution-audit-recent-row-${index}`}
                   >
                     <div className="min-w-0 space-y-0.5">
                       <div className="flex items-center gap-1.5">
@@ -271,17 +254,9 @@ export function AuditPanel({
                           {friendlyDecisionReason(row.decision_reason)}
                         </span>
                       </div>
-                      <details className="ml-1 text-foreground/50">
-                        <summary className="cursor-pointer list-none text-[10px] hover:text-foreground/70">
-                          查看原始记录
-                        </summary>
-                        <div className="mt-1 space-y-0.5 rounded bg-surface-lowest px-1.5 py-1 font-mono text-[10px] text-foreground/65">
-                          <div>id: {row.candidate_id}</div>
-                          <div className="break-words whitespace-pre-wrap">
-                            reason: {row.decision_reason}
-                          </div>
-                        </div>
-                      </details>
+                      <p className="text-[10px] text-foreground/45">
+                        原始诊断和本地标识只保留在后台记录，界面仅显示处置结果。
+                      </p>
                     </div>
                     <span className="flex-shrink-0 whitespace-nowrap text-[10px] text-foreground/45">
                       {formatDecidedAt(row.decided_at)}

@@ -12,12 +12,14 @@ uvicorn 跑在 daemon 线程内，pywebview 占主线程。
 """
 
 import os
+import shutil
 import socket
 import subprocess
 import sys
 import threading
 import time
 import urllib.request
+from typing import Final
 from pathlib import Path
 
 from literature_assistant.bootstrap import configure_runtime_paths
@@ -32,6 +34,91 @@ DEFAULT_PORT = 8000
 WINDOW_TITLE = "文献助手"
 WINDOW_WIDTH = 1440
 WINDOW_HEIGHT = 900
+LIGHT_APP_BACKGROUND: Final[str] = "#F7F9FB"
+LIGHT_TITLE_TEXT: Final[str] = "#2A3245"
+DARK_APP_BACKGROUND: Final[str] = "#111827"
+DARK_TITLE_TEXT: Final[str] = "#F8FAFC"
+
+
+def _show_startup_error(title: str, message: str) -> None:
+    """Show a startup failure without blocking double-click launches."""
+
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError("title must be non-empty")
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError("message must be non-empty")
+    print(f"[启动器] {title}: {message}")
+    if sys.platform != "win32":
+        return
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(title, message)
+        root.destroy()
+    except Exception:
+        return
+
+
+def _windows_colorref(hex_color: str) -> int:
+    value = hex_color.strip()
+    if not (len(value) == 7 and value.startswith("#")):
+        raise ValueError(f"Expected #RRGGBB color, got {hex_color!r}")
+    red = int(value[1:3], 16)
+    green = int(value[3:5], 16)
+    blue = int(value[5:7], 16)
+    return red | (green << 8) | (blue << 16)
+
+
+def _is_windows_apps_dark_theme() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        ) as key:
+            apps_use_light_theme, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return apps_use_light_theme == 0
+    except OSError:
+        return False
+
+
+def _apply_windows_titlebar_colors(window: object) -> None:
+    if sys.platform != "win32":
+        return
+
+    try:
+        import ctypes
+
+        native = getattr(window, "native", None)
+        handle = getattr(native, "Handle", None)
+        if handle is None:
+            return
+
+        hwnd = int(handle.ToInt32())
+        if hwnd <= 0:
+            return
+
+        dark = _is_windows_apps_dark_theme()
+        caption = DARK_APP_BACKGROUND if dark else LIGHT_APP_BACKGROUND
+        text = DARK_TITLE_TEXT if dark else LIGHT_TITLE_TEXT
+        border = caption
+        dwm = ctypes.windll.dwmapi
+
+        for attribute, color in (
+            (35, caption),  # DWMWA_CAPTION_COLOR
+            (34, border),   # DWMWA_BORDER_COLOR
+            (36, text),     # DWMWA_TEXT_COLOR
+        ):
+            value = ctypes.c_int(_windows_colorref(color))
+            dwm.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(value), ctypes.sizeof(value))
+    except (AttributeError, OSError, ValueError):
+        return
 
 
 def _find_free_port() -> int:
@@ -59,10 +146,14 @@ def _build_frontend() -> bool:
     if not (frontend_dir / "package.json").exists():
         print("[启动器] 前端构建失败: 找不到 frontend/package.json")
         return False
+    npm_name = "npm.cmd" if sys.platform == "win32" else "npm"
+    npm_path = shutil.which(npm_name) or shutil.which("npm")
+    if not npm_path:
+        print("[启动器] 前端构建失败: 找不到 npm，请先安装 Node.js")
+        return False
     result = subprocess.run(
-        ["npm", "run", "build"],
+        [npm_path, "run", "build"],
         cwd=str(frontend_dir),
-        shell=True,
         capture_output=True,
         text=True,
         check=False,
@@ -125,7 +216,7 @@ def main() -> None:
     if not _check_frontend_build():
         if not _build_frontend():
             print("[启动器] 无法启动：前端构建失败")
-            input("按回车键退出...")
+            _show_startup_error("启动失败", "前端构建失败，请检查 Node.js/npm 和 frontend 构建日志。")
             sys.exit(1)
     print("[启动器] 前端已就绪")
 
@@ -152,7 +243,7 @@ def main() -> None:
 
     if not _wait_for_http(host, port, timeout=30):
         print("[启动器] 后端未在 30 秒内就绪，启动失败")
-        input("按回车键退出...")
+        _show_startup_error("启动失败", "后端未在 30 秒内就绪，请检查 runtime_state/logs/backend.log。")
         sys.exit(1)
 
     url = f"http://{host}:{port}"
@@ -160,11 +251,13 @@ def main() -> None:
 
     # Open pywebview native window (blocks main thread)
     api = NativeApi()
-    webview.create_window(
+    window = webview.create_window(
         WINDOW_TITLE, url=url,
         width=WINDOW_WIDTH, height=WINDOW_HEIGHT,
-        text_select=True, js_api=api, background_color="#FFFFFF",
+        text_select=True, js_api=api, background_color=LIGHT_APP_BACKGROUND,
     )
+    if window is not None:
+        window.events.shown += _apply_windows_titlebar_colors
     print("[启动器] 桌面窗口已打开，关闭窗口将退出程序")
     webview.start(debug=bool(os.environ.get("LITERATURE_ASSISTANT_DEBUG")))
 

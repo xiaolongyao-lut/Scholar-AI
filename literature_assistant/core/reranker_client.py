@@ -706,7 +706,7 @@ def _ordered_rerank_candidates(
         )
         return candidates
 
-    logger.error("No rerank API key found in any known env var.")
+    logger.error("No rerank credential found in configured environment variables.")
     return []
 
 
@@ -1064,7 +1064,7 @@ def _normalize_text(text: str) -> str:
 
 
 def _extract_document(item: dict[str, Any]) -> str:
-    # raw_content 优先：Phase 6 会在 content 里注入上下文摘要前缀，
+    # raw_content 优先：content 可能注入上下文摘要前缀，
     # rerank 应看无前缀原文，避免 Qwen3-Reranker 输入被稀释。
     return _normalize_text(
         str(

@@ -141,7 +141,7 @@ class ChunkingPipeline:
                 char_count=len(content)
             ))
 
-        # 3. LLM 上下文增强 (Phase 6 contextual)
+        # 3. LLM 上下文增强
         if self.enable_contextual:
             logger.info("执行 LLM 上下文增强...")
             # batch_contextualize 会为每个 chunk 添加 document-level context

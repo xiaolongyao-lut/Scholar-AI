@@ -8,12 +8,28 @@ from __future__ import annotations
 
 import os
 import sys
+import warnings
 from pathlib import Path
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = PACKAGE_ROOT.parent
 CORE_ROOT = PACKAGE_ROOT / "core"
+
+
+def _warn_or_raise_bootstrap_failure(context: str, exc: BaseException) -> None:
+    """Surface bootstrap failures without breaking ordinary Python startup.
+
+    Args:
+        context: Short label for the failed bootstrap phase.
+        exc: Original exception raised by the phase.
+    """
+    if not context:
+        raise ValueError("context must be non-empty")
+    message = f"Literature Assistant bootstrap warning: {context}: {exc.__class__.__name__}: {exc}"
+    if os.environ.get("LITASSIST_BOOTSTRAP_STRICT", "").strip() == "1":
+        raise RuntimeError(message) from exc
+    warnings.warn(message, RuntimeWarning, stacklevel=2)
 
 
 def configure_runtime_paths() -> None:
@@ -33,7 +49,8 @@ def configure_runtime_paths() -> None:
             WORKSPACE_RUNTIME_STATE_ROOT,
             ensure_project_directories,
         )
-    except Exception:
+    except Exception as exc:
+        _warn_or_raise_bootstrap_failure("project path initialization failed", exc)
         return
 
     ensure_project_directories()

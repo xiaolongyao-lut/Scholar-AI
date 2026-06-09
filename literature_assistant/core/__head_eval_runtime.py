@@ -238,7 +238,7 @@ def run_eval(
     queries = _load_queries(Path(queries_path))
     corpus = _load_retrieval_corpus()
 
-    # Pre-build keyword graph once (Phase 3 perf fix)
+    # Pre-build keyword graph once.
     keyword_graph: dict[str, Any] | None = None
     if build_keyword_graph:
         chunks = corpus.get("chunks", []) if isinstance(corpus.get("chunks"), list) else []
@@ -281,7 +281,7 @@ async def _run_eval_async(
 ) -> list[dict[str, Any]]:
     """Async eval loop — single event-loop, batch query embedding."""
 
-    # Pre-build vector store (Phase 2 dense retrieval)
+    # Pre-build vector store for dense retrieval.
     vector_store = None
     if ChunkVectorStore is not None:
         chunks = corpus.get("chunks", []) if isinstance(corpus.get("chunks"), list) else []

@@ -12,22 +12,38 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from inspiration_store import InspirationStore, InspirationStoreError
+from literature_assistant.core.graph_payload import GraphPayloadV0
 from llm_cost_logger import log_llm_call
 from llm_defaults import resolve_llm_params
 from llm_pricing import usage_from_response
+from models.project_reasoning_bias import ProjectReasoningBiasPayload
+from prompts.project_reasoning_bias import (
+    ProjectReasoningBiasContext,
+    apply_project_reasoning_bias,
+    load_project_reasoning_bias,
+    render_project_reasoning_bias_block,
+    should_apply_project_reasoning_bias,
+)
 from prompts.identity_renderer import render_identity_header  # 2026-05-18 identity injection plan
 from project_paths import output_path
 from sampling_storage import load_user_sampling
 
-from routers.chat_router import LLMConfig, _build_chat_request, _extract_chat_response
+from routers.chat_router import (
+    LLMConfig,
+    _build_chat_request,
+    _extract_chat_response,
+    _validate_outbound_llm_base_url,
+)
 
 logger = logging.getLogger("InspirationRouter")
 router = APIRouter(prefix="/inspiration", tags=["Inspiration"])
 
 # Lazy singleton
 _engine_instance = None
+_inspiration_store_instance: InspirationStore | None = None
 
 InspirationFrame = Literal["auto", "irac", "fincot"]
 VALID_SPARK_TYPES = frozenset({
@@ -97,6 +113,10 @@ class GenerateSparksRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500, description="查询/主题")
     limit: int = Field(10, ge=1, le=50, description="最大返回数")
     project_id: str | None = Field(None, description="项目ID，用于从知识库生成启发点")
+    project_reasoning_bias_enabled: bool | None = Field(
+        default=None,
+        description="Per-request toggle for applying saved project reasoning bias to inspiration prompts",
+    )
     llm: LLMConfig | None = Field(None, description="Optional LLM config for real inspiration generation")
     sampling: dict[str, float | int] | None = Field(default=None, description="Per-task sampling overrides")
     frame: InspirationFrame = Field(
@@ -106,7 +126,7 @@ class GenerateSparksRequest(BaseModel):
 
 
 class AnalysisChainPayload(BaseModel):
-    """LLM-emitted inner reasoning chain (plan §2.1.1).
+    """LLM-emitted inner reasoning chain.
 
     Optional + tolerant: missing / wrong-shape fields fall back to empty
     strings or empty lists so the surrounding spark is preserved.
@@ -150,6 +170,7 @@ class SparkResponse(BaseModel):
     confidence_reason: str = ""
     temporal_sensitivity: float = 0.0
     evidence_refs: list[SparkEvidenceRef] = Field(default_factory=list)
+    causal_dag: GraphPayloadV0 | None = None
 
 
 def build_spark_evidence_refs(
@@ -249,6 +270,147 @@ class ContinuationResponse(BaseModel):
     causal_chain_summary: str = ""
     suggested_angles: list[str] = []
     related_figures: list[str] = []
+
+
+InspirationStoreSource = Literal["generated", "manual", "imported"]
+
+
+class SavedInspirationCreateRequest(BaseModel):
+    """Request body for saving one generated or manually curated spark."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    spark: SparkResponse
+    project_id: str | None = Field(default=None, max_length=160)
+    query: str = Field(default="", max_length=500)
+    notes: str = Field(default="", max_length=2000)
+    source: InspirationStoreSource = "generated"
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("project_id")
+    @classmethod
+    def _trim_project_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("query", "notes")
+    @classmethod
+    def _trim_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("tags")
+    @classmethod
+    def _normalize_tags(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for tag in value:
+            if not isinstance(tag, str):
+                raise ValueError("tags must contain only strings")
+            clean = tag.strip()
+            if not clean:
+                continue
+            if len(clean) > 80:
+                raise ValueError("tags must be at most 80 characters each")
+            if clean not in seen:
+                normalized.append(clean)
+                seen.add(clean)
+        return normalized
+
+
+class SavedInspirationUpdateRequest(BaseModel):
+    """Request body for updating one saved Inspiration spark."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    spark: SparkResponse | None = None
+    project_id: str | None = Field(default=None, max_length=160)
+    clear_project_id: bool = False
+    query: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
+    source: InspirationStoreSource | None = None
+    tags: list[str] | None = Field(default=None, max_length=20)
+    metadata: dict[str, Any] | None = None
+
+    @field_validator("project_id")
+    @classmethod
+    def _trim_optional_project_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("query", "notes")
+    @classmethod
+    def _trim_optional_text(cls, value: str | None) -> str | None:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("tags")
+    @classmethod
+    def _normalize_optional_tags(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return SavedInspirationCreateRequest._normalize_tags(value)
+
+
+class SavedInspirationResponse(BaseModel):
+    """Public payload for one saved Inspiration spark."""
+
+    saved_id: str
+    project_id: str | None = None
+    query: str
+    spark: SparkResponse
+    notes: str
+    source: InspirationStoreSource
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
+    version: int
+
+
+class SavedInspirationListResponse(BaseModel):
+    """Paginated saved Inspiration list response."""
+
+    items: list[SavedInspirationResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class DeleteSavedInspirationResponse(BaseModel):
+    """Delete result for a saved Inspiration row."""
+
+    saved_id: str
+    deleted: bool
+
+
+def get_inspiration_store() -> InspirationStore:
+    """Return the process-local Inspiration store singleton."""
+
+    global _inspiration_store_instance
+    if _inspiration_store_instance is None:
+        _inspiration_store_instance = InspirationStore()
+    return _inspiration_store_instance
+
+
+def reset_inspiration_store_for_tests(store: InspirationStore | None = None) -> None:
+    """Replace the store singleton for deterministic local tests."""
+
+    global _inspiration_store_instance
+    _inspiration_store_instance = store
+
+
+def _saved_record_response(record: Any) -> SavedInspirationResponse:
+    payload = record.to_dict()
+    return SavedInspirationResponse(**payload)
+
+
+def _store_http_error(exc: Exception) -> HTTPException:
+    status_code = 400 if isinstance(exc, ValueError) else 500
+    return HTTPException(status_code=status_code, detail=str(exc))
 
 
 def _resolve_inspiration_llm_config(
@@ -364,6 +526,7 @@ def _build_inspiration_prompt(
     query: str,
     limit: int,
     frame: InspirationFrame = "auto",
+    project_reasoning_bias: ProjectReasoningBiasPayload | None = None,
 ) -> str:
     selected = _select_inspiration_frame(query, frame)
     try:
@@ -378,7 +541,15 @@ def _build_inspiration_prompt(
         body = _inline_inspiration_prompt(query, limit)
 
     identity_header = render_identity_header(f"inspiration_{selected}")
-    return f"{identity_header}\n\n{body}" if identity_header else body
+    if project_reasoning_bias is None:
+        return f"{identity_header}\n\n{body}" if identity_header else body
+
+    bias_block = render_project_reasoning_bias_block(
+        project_reasoning_bias,
+        locale=project_reasoning_bias.language,
+    )
+    body_with_bias = apply_project_reasoning_bias(body, bias_block)
+    return f"{identity_header}\n\n{body_with_bias}" if identity_header else body_with_bias
 
 
 
@@ -501,7 +672,7 @@ def _clamp01(value: Any, default: float = 0.0) -> float:
 def _coerce_analysis_chain(raw: Any) -> AnalysisChainPayload | None:
     """Parse the analysis_chain JSON block tolerantly.
 
-    Plan §2.1.1: missing / wrong-shape fields → set the chain to None,
+    Missing / wrong-shape fields set the chain to None,
     do NOT drop the surrounding spark. evidence + counter_evidence
     truncated to 3 items each and 200 chars per item.
     """
@@ -604,6 +775,30 @@ def _generate_local_sparks(req: GenerateSparksRequest, engine) -> list[Any]:
     return sparks
 
 
+def _resolve_inspiration_project_reasoning_bias(req: GenerateSparksRequest) -> ProjectReasoningBiasPayload | None:
+    """Return project bias for inspiration LLM prompts when analysis-chain scope applies."""
+    normalized_project_id = str(req.project_id or "").strip()
+    if not normalized_project_id:
+        return None
+    if req.project_reasoning_bias_enabled is False:
+        return None
+    selected_frame = _select_inspiration_frame(req.query, req.frame)
+    try:
+        bias = load_project_reasoning_bias(normalized_project_id)
+        if should_apply_project_reasoning_bias(
+            bias,
+            ProjectReasoningBiasContext(surface=f"inspiration_{selected_frame}"),
+        ):
+            return bias
+    except Exception as exc:  # noqa: BLE001 - local inspiration fallback must remain available.
+        logger.warning(
+            "project_reasoning_bias resolution skipped for inspiration: project=%s err=%s",
+            normalized_project_id,
+            exc,
+        )
+    return None
+
+
 async def _generate_llm_sparks(req: GenerateSparksRequest) -> list[SparkResponse] | None:
     from routers.chat_router import _resolve_chat_llm
 
@@ -619,18 +814,28 @@ async def _generate_llm_sparks(req: GenerateSparksRequest) -> list[SparkResponse
         return None
 
     llm = _resolve_inspiration_llm_config(resolved_llm, req.sampling)
-    prompt = _build_inspiration_prompt(req.query, req.limit, req.frame)
-    response_format = _response_format_for_llm(llm)
-    url, headers, payload = _build_chat_request(
-        prompt,
-        [],
-        llm,
-        response_format=response_format,
+    prompt = _build_inspiration_prompt(
+        req.query,
+        req.limit,
+        req.frame,
+        project_reasoning_bias=_resolve_inspiration_project_reasoning_bias(req),
     )
+    response_format = _response_format_for_llm(llm)
+    try:
+        _validate_outbound_llm_base_url(llm.base_url, llm.provider)
+        url, headers, payload = _build_chat_request(
+            prompt,
+            [],
+            llm,
+            response_format=response_format,
+        )
+    except ValueError as exc:
+        logger.warning("Unsafe inspiration LLM endpoint rejected; falling back to local engine: %s", exc)
+        return None
     telemetry_model = str(payload.get("model", llm.model))
     started_at = time.perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=False) as client:
             try:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
@@ -667,7 +872,7 @@ async def _generate_llm_sparks(req: GenerateSparksRequest) -> list[SparkResponse
         return None
 
 
-# --- Validation gates (plan §3.9, B3) ---
+# --- Validation gates ---
 
 
 def _has_year_token(text: str) -> bool:
@@ -685,10 +890,9 @@ def _validation_strict() -> bool:
 
 
 def _apply_validation_gates(spark: SparkResponse) -> SparkResponse:
-    """Run the three weak validation gates from plan §3.9.
+    """Run the three weak validation gates.
 
-    Phase 1 of the inspiration rewrite — chunk_id / page anchors are
-    still out of scope (P3). Gates here only check field shape and
+    Chunk_id / page anchors are still out of scope. Gates here only check field shape and
     obvious signals; failure subtracts 0.10..0.15 from confidence and
     records why in ``confidence_reason``. Returns a NEW SparkResponse;
     never mutates the input.
@@ -770,11 +974,110 @@ async def generate_inspirations(req: GenerateSparksRequest):
     )
 
 
+@router.post("/store", response_model=SavedInspirationResponse, status_code=201)
+async def create_saved_inspiration(req: SavedInspirationCreateRequest) -> SavedInspirationResponse:
+    """Persist one Inspiration spark for local reuse."""
+
+    try:
+        record = get_inspiration_store().create(
+            spark=req.spark.model_dump(mode="json"),
+            project_id=req.project_id,
+            query=req.query,
+            notes=req.notes,
+            source=req.source,
+            tags=req.tags,
+            metadata=req.metadata,
+        )
+    except (ValueError, InspirationStoreError) as exc:
+        raise _store_http_error(exc) from exc
+    return _saved_record_response(record)
+
+
+@router.get("/store", response_model=SavedInspirationListResponse)
+async def list_saved_inspirations(
+    project_id: str | None = Query(default=None, max_length=160),
+    source: InspirationStoreSource | None = Query(default=None),
+    tag: str | None = Query(default=None, max_length=80),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+) -> SavedInspirationListResponse:
+    """List saved Inspiration sparks from the local store."""
+
+    try:
+        result = get_inspiration_store().list(
+            project_id=project_id,
+            source=source,
+            tag=tag,
+            page=page,
+            page_size=page_size,
+        )
+    except (ValueError, InspirationStoreError) as exc:
+        raise _store_http_error(exc) from exc
+    return SavedInspirationListResponse(
+        items=[_saved_record_response(item) for item in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+    )
+
+
+@router.get("/store/{saved_id}", response_model=SavedInspirationResponse)
+async def get_saved_inspiration(saved_id: str) -> SavedInspirationResponse:
+    """Read one saved Inspiration spark."""
+
+    try:
+        record = get_inspiration_store().get(saved_id)
+    except (ValueError, InspirationStoreError) as exc:
+        raise _store_http_error(exc) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"saved inspiration not found: {saved_id}")
+    return _saved_record_response(record)
+
+
+@router.put("/store/{saved_id}", response_model=SavedInspirationResponse)
+async def update_saved_inspiration(
+    saved_id: str,
+    req: SavedInspirationUpdateRequest,
+) -> SavedInspirationResponse:
+    """Update one saved Inspiration spark."""
+
+    try:
+        record = get_inspiration_store().update(
+            saved_id,
+            spark=req.spark.model_dump(mode="json") if req.spark is not None else None,
+            project_id=req.project_id,
+            clear_project_id=req.clear_project_id,
+            query=req.query,
+            notes=req.notes,
+            source=req.source,
+            tags=req.tags,
+            metadata=req.metadata,
+        )
+    except (ValueError, InspirationStoreError) as exc:
+        raise _store_http_error(exc) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"saved inspiration not found: {saved_id}")
+    return _saved_record_response(record)
+
+
+@router.delete("/store/{saved_id}", response_model=DeleteSavedInspirationResponse)
+async def delete_saved_inspiration(saved_id: str) -> DeleteSavedInspirationResponse:
+    """Delete one saved Inspiration spark."""
+
+    try:
+        deleted = get_inspiration_store().delete(saved_id)
+    except (ValueError, InspirationStoreError) as exc:
+        raise _store_http_error(exc) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"saved inspiration not found: {saved_id}")
+    return DeleteSavedInspirationResponse(saved_id=saved_id, deleted=True)
+
+
 def _schedule_inspiration_capture(
     req: "GenerateSparksRequest",
     gated: list["SparkResponse"],
 ) -> None:
-    """Opt §1: fire capture off the request path. See evolution/background.py."""
+    """Fire capture off the request path. See evolution/background.py."""
 
     try:
         from evolution import run_capture_in_background
@@ -792,7 +1095,7 @@ def _capture_inspiration_candidates(
 ) -> None:
     """Best-effort write of evolution candidates from gated sparks.
 
-    Slice 3 contract:
+    Capture contract:
       - never raises; capture failures degrade to a warning log
       - skipped entirely when evolution.candidate_capture_enabled = false
       - response shape unchanged regardless of outcome

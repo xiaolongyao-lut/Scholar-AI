@@ -2,14 +2,8 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
-  readonly VITE_GEMINI_PROVIDER?: string;
-  readonly VITE_GEMINI_BASE_URL?: string;
-  readonly VITE_GEMINI_API_KEY?: string;
-  readonly VITE_GEMINI_MODEL?: string;
-  readonly VITE_COPILOT_PROVIDER?: string;
-  readonly VITE_COPILOT_BASE_URL?: string;
-  readonly VITE_COPILOT_API_KEY?: string;
-  readonly VITE_COPILOT_MODEL?: string;
+  readonly VITE_FLAG_RESEARCH_WORKBENCH?: string;
+  readonly VITE_SMART_READ_DEBUG?: string;
 }
 
 interface ImportMeta {

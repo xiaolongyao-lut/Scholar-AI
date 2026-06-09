@@ -29,15 +29,43 @@ Write-Host "[smoke] pid=$($proc.Id), waiting ${BootSeconds}s for boot..."
 Start-Sleep -Seconds $BootSeconds
 
 try {
-    # 1. /health
+    # Read capability token for authenticated API calls
+    $capabilityFile = Join-Path $env:LOCALAPPDATA "LiteratureAssistant\runtime_state\api-capability.json"
+    $capabilityHeader = $null
+    $capabilityToken = $null
+
+    if (Test-Path $capabilityFile) {
+        try {
+            $capabilityData = Get-Content $capabilityFile -Raw | ConvertFrom-Json
+            $capabilityHeader = $capabilityData.header
+            $capabilityToken = $capabilityData.token
+            Write-Host "[smoke] capability token loaded from $capabilityFile"
+        }
+        catch {
+            Write-Warning "[smoke] failed to read capability file: $_"
+        }
+    }
+    else {
+        Write-Warning "[smoke] capability file not found at $capabilityFile (may need more boot time)"
+    }
+
+    # 1. /health (no auth required)
     $health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 5
     if ($health.status -ne 'ok') {
         throw "health check failed: $($health | ConvertTo-Json -Compress)"
     }
     Write-Host "[smoke] /health PASS"
 
-    # 2. /api/wiki/status
-    $wiki = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/wiki/status" -TimeoutSec 10
+    # 2. /api/wiki/status (requires capability token)
+    $wikiHeaders = @{}
+    if ($capabilityHeader -and $capabilityToken) {
+        $wikiHeaders[$capabilityHeader] = $capabilityToken
+    }
+    else {
+        throw "/api/wiki/status requires capability token but none available"
+    }
+
+    $wiki = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/wiki/status" -TimeoutSec 10 -Headers $wikiHeaders
     if (-not $wiki) { throw "/api/wiki/status returned empty" }
     Write-Host "[smoke] /api/wiki/status PASS"
 

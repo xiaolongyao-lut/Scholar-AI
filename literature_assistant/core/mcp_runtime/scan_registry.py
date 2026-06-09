@@ -1,9 +1,8 @@
 """In-memory ``scan_id`` → ``McpPackageScanResult`` registry with TTL.
 
-The installer (S3) looks up a scan by id, so the scanner output must outlive
+The installer looks up a scan by id, so the scanner output must outlive
 the HTTP request that produced it. We hold the result for ``SCAN_ID_TTL_SECONDS``
-(plan Locked Revisions M5; default 5 min) and reject installs whose scan has
-expired with ``ScanExpiredError`` → router maps to ``scan_expired``.
+and reject installs whose scan has expired with ``ScanExpiredError``.
 
 Not persisted: scans are ephemeral by design. A process restart invalidates
 all in-flight installs, which the frontend recovers by re-running the scanner.

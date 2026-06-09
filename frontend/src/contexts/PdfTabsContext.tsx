@@ -46,7 +46,7 @@ export interface PdfViewState {
   sidebarTab?: 'highlights' | 'notes' | 'outline';
 }
 
-interface PersistedState {
+export interface PersistedPdfTabsState {
   tabs: PdfTab[];
   activeId: string | null;
   views: Record<string, PdfViewState>;
@@ -69,25 +69,95 @@ interface PdfTabsContextValue {
 
 const PdfTabsContext = createContext<PdfTabsContextValue | null>(null);
 
-function loadPersisted(): PersistedState {
+const DEFAULT_VIEW_STATE: PdfViewState = { page: 1, scale: 1.2, scrollTop: 0 };
+const MIN_READER_SCALE = 0.5;
+const MAX_READER_SCALE = 3;
+const MAX_RESTORED_PAGE = 100_000;
+const MAX_RESTORED_SCROLL_TOP = 20_000_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readNonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, numeric));
+}
+
+function readPositiveInteger(value: unknown, fallback: number, max: number): number {
+  return Math.floor(clampNumber(value, fallback, 1, max));
+}
+
+function normalizeSidebarTab(value: unknown): PdfViewState['sidebarTab'] | undefined {
+  return value === 'highlights' || value === 'notes' || value === 'outline'
+    ? value
+    : undefined;
+}
+
+function normalizePdfViewState(value: unknown): PdfViewState | null {
+  if (!isRecord(value)) return null;
+  const sidebarOpen = typeof value.sidebarOpen === 'boolean' ? value.sidebarOpen : undefined;
+  const sidebarTab = normalizeSidebarTab(value.sidebarTab);
+  return {
+    page: readPositiveInteger(value.page, DEFAULT_VIEW_STATE.page, MAX_RESTORED_PAGE),
+    scale: clampNumber(value.scale, DEFAULT_VIEW_STATE.scale, MIN_READER_SCALE, MAX_READER_SCALE),
+    scrollTop: clampNumber(value.scrollTop, DEFAULT_VIEW_STATE.scrollTop, 0, MAX_RESTORED_SCROLL_TOP),
+    ...(sidebarOpen === undefined ? {} : { sidebarOpen }),
+    ...(sidebarTab === undefined ? {} : { sidebarTab }),
+  };
+}
+
+export function normalizePersistedPdfTabsState(value: unknown): PersistedPdfTabsState {
+  if (!isRecord(value)) return { tabs: [], activeId: null, views: {} };
+  const seen = new Set<string>();
+  const tabs = Array.isArray(value.tabs)
+    ? value.tabs.flatMap((item): PdfTab[] => {
+      if (!isRecord(item)) return [];
+      const materialId = readNonEmptyString(item.materialId);
+      if (!materialId || seen.has(materialId)) return [];
+      seen.add(materialId);
+      const title = readNonEmptyString(item.title) ?? materialId;
+      return [{ materialId, title }];
+    })
+    : [];
+  const tabIds = new Set(tabs.map((tab) => tab.materialId));
+  const activeCandidate = readNonEmptyString(value.activeId);
+  const activeId = activeCandidate && tabIds.has(activeCandidate)
+    ? activeCandidate
+    : tabs[0]?.materialId ?? null;
+  const views: Record<string, PdfViewState> = {};
+  if (isRecord(value.views)) {
+    for (const [materialId, rawView] of Object.entries(value.views)) {
+      if (!tabIds.has(materialId)) continue;
+      const view = normalizePdfViewState(rawView);
+      if (view) views[materialId] = view;
+    }
+  }
+  return { tabs, activeId, views };
+}
+
+function loadPersisted(): PersistedPdfTabsState {
   if (typeof window === 'undefined') {
     return { tabs: [], activeId: null, views: {} };
   }
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return { tabs: [], activeId: null, views: {} };
-    const parsed = JSON.parse(raw) as Partial<PersistedState>;
-    return {
-      tabs: Array.isArray(parsed.tabs) ? parsed.tabs.filter(t => t && typeof t.materialId === 'string') : [],
-      activeId: typeof parsed.activeId === 'string' ? parsed.activeId : null,
-      views: (parsed.views && typeof parsed.views === 'object') ? parsed.views as Record<string, PdfViewState> : {},
-    };
+    const parsed: unknown = JSON.parse(raw);
+    return normalizePersistedPdfTabsState(parsed);
   } catch {
     return { tabs: [], activeId: null, views: {} };
   }
 }
 
-function persist(state: PersistedState): void {
+function persist(state: PersistedPdfTabsState): void {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -100,6 +170,7 @@ export function PdfTabsProvider({ children }: { children: React.ReactNode }) {
   const initial = useMemo(loadPersisted, []);
   const [tabs, setTabs] = useState<PdfTab[]>(initial.tabs);
   const [activeId, setActiveId] = useState<string | null>(initial.activeId);
+  const [viewRevision, setViewRevision] = useState(0);
   const viewsRef = useRef<Record<string, PdfViewState>>(initial.views);
 
   // bytesCache is intentionally outside React state. Eviction must not
@@ -158,6 +229,7 @@ export function PdfTabsProvider({ children }: { children: React.ReactNode }) {
       const { [materialId]: _removed, ...rest } = viewsRef.current;
       void _removed;
       viewsRef.current = rest;
+      setViewRevision((revision) => revision + 1);
       persist({ tabs, activeId: nextActive, views: viewsRef.current });
     }
 
@@ -177,9 +249,10 @@ export function PdfTabsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateView = useCallback<PdfTabsContextValue['updateView']>((materialId, patch) => {
-    const prev = viewsRef.current[materialId] ?? { page: 1, scale: 1.2, scrollTop: 0 };
-    const next = { ...prev, ...patch };
+    const prev = viewsRef.current[materialId] ?? DEFAULT_VIEW_STATE;
+    const next = normalizePdfViewState({ ...prev, ...patch }) ?? prev;
     viewsRef.current = { ...viewsRef.current, [materialId]: next };
+    setViewRevision((revision) => revision + 1);
     // Persist view snapshot in the same blob — cheap, low-frequency since
     // page/scale only change on user action.
     persist({ tabs, activeId, views: viewsRef.current });
@@ -221,7 +294,7 @@ export function PdfTabsProvider({ children }: { children: React.ReactNode }) {
     updateView,
     getCachedBytes,
     setCachedBytes,
-  }), [tabs, activeId, openTab, closeTab, setActive, setTitle, getView, updateView, getCachedBytes, setCachedBytes]);
+  }), [tabs, activeId, viewRevision, openTab, closeTab, setActive, setTitle, getView, updateView, getCachedBytes, setCachedBytes]);
 
   return <PdfTabsContext.Provider value={value}>{children}</PdfTabsContext.Provider>;
 }

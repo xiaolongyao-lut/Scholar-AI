@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from ai_cost_profile import is_aggressive_cost_save
-from model_call_gateway import gated_call
+from llm.gateway import invoke as invoke_llm_gateway
 from runtime_env import resolve_llm_config
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ async def _call_ark_async(
 ) -> str:
     async def _invoke() -> str:
         return await asyncio.to_thread(
-            gated_call,
+            invoke_llm_gateway,
             kind="llm",
             cache_key_parts={
                 "model": model,
@@ -133,7 +133,7 @@ async def _call_ark_async(
                 "task": task,
             },
             payload={"prompt": prompt},
-            invoke=lambda: _call_ark_once(prompt, api_key, model=model, base_url=base_url),
+            invoke_fn=lambda: _call_ark_once(prompt, api_key, model=model, base_url=base_url),
             validate_result=lambda value: isinstance(value, str),
         )
 

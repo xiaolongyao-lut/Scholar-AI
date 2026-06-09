@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from llm_cost_logger import log_llm_call
 from llm_defaults import resolve_llm_params
 from llm_pricing import usage_from_response
-from model_call_gateway import gated_call
+from llm.gateway import invoke as invoke_llm_gateway
 from runtime_env import env_value
 from layers.robust_parser import RobustJSONParser
 
@@ -216,7 +216,7 @@ class AIAdapter:
         gateway cache key (self.model) stays meaningful. If pool members
         diverge widely, set LLM_GENERATION_CACHE_ENABLED=0 to bypass cache.
 
-        **Plan v2 §13.1c step 2 — internal dispatcher migration.**
+        Internal dispatcher migration.
         By default this walks the pool via ``model_dispatcher.invoke_failover``
         + ``generation_dispatch_adapter`` (same pattern as
         ``with_generation_pool_failover``). Behaviour is byte-equivalent —
@@ -333,7 +333,7 @@ class AIAdapter:
                 cache_status = next_cache_status
                 decision = next_decision
 
-            response = gated_call(
+            response = invoke_llm_gateway(
                 kind="llm",
                 cache_key_parts={
                     "model": self.model,
@@ -342,7 +342,7 @@ class AIAdapter:
                     "task": task,
                 },
                 payload=kwargs,
-                invoke=lambda: self._invoke_chat(kwargs),
+                invoke_fn=lambda: self._invoke_chat(kwargs),
                 on_decision=_record_decision,
                 stage="query",
             )

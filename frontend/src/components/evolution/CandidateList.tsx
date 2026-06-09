@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { EmptyState } from '../common/EmptyState';
 import { CandidateCard, type CardPendingAction } from './CandidateCard';
 import type { ExperienceCandidate } from '../../services/evolutionTypes';
+import { formatEvolutionError } from './labels';
 
 export interface CandidateListProps {
   items: ExperienceCandidate[];
@@ -47,6 +48,7 @@ function LoadingSkeleton() {
 }
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const visibleMessage = formatEvolutionError(message, '读取失败，请稍后重试。');
   return (
     <div
       role="alert"
@@ -54,7 +56,7 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => vo
     >
       <div className="flex items-start gap-2">
         <AlertCircle size={16} className="mt-0.5 shrink-0" />
-        <span>读取失败：{message}。点击右上角刷新重试。</span>
+        <span>{visibleMessage} 点击右上角刷新重试。</span>
       </div>
       {onRetry && (
         <button
@@ -92,7 +94,7 @@ export function CandidateList({
     return (
       <EmptyState
         title="还没有可保存的经验"
-        description="继续完成日常任务，这里会逐渐积累。"
+        description="先在设置的功能开关中开启经验候选收纳和复审入口；之后完成智能研读、讨论、写作任务、Skill 或 MCP 工具运行，这里才会出现待复审经验。"
       />
     );
   }

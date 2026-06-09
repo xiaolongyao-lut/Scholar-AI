@@ -59,6 +59,20 @@ FORBIDDEN_RULES = [
     ("chunk_store/", lambda p: "chunk_store" in p.parts),
     ("_rejected/ inside payload", lambda p: "_rejected" in p.parts),
     (".secrets.baseline", lambda p: p.name == ".secrets.baseline"),
+    # Skills runtime state (added 2026-06-09, security audit #5)
+    ("skills/.approval/ (runtime approval db)",
+     lambda p: ".approval" in p.parts and "skills" in p.parts),
+    ("skills/.audit/ (runtime audit logs)",
+     lambda p: ".audit" in p.parts and "skills" in p.parts),
+    ("skills/.rollback_snapshots/ (runtime backups)",
+     lambda p: ".rollback_snapshots" in p.parts and "skills" in p.parts),
+    ("skills/.install_meta.json (runtime metadata)",
+     lambda p: p.name == ".install_meta.json" and "skills" in p.parts),
+    # Historical empty directories (no source, only __pycache__)
+    ("post_processors/ (historical empty dir)",
+     lambda p: "post_processors" in p.parts),
+    ("thesis_renderer/ (historical empty dir)",
+     lambda p: "thesis_renderer" in p.parts),
 ]
 
 

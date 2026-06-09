@@ -1,4 +1,4 @@
-"""Bounded MCP tool-use loop (Phase 2 / TASK-204).
+"""Bounded MCP tool-use loop.
 
 Drives the multi-round tool_use → tool_result → tool_use cycle between an
 LLM provider and a set of MCP servers. The runner is provider-aware just
@@ -6,7 +6,7 @@ enough to assemble assistant + tool-result messages in the right shape;
 all provider HTTP/auth lives in the chat_router via the ``chat_call``
 callable handed in by the caller.
 
-Caps (plan v0.3 §3.2 Q7 — conservative defaults):
+Caps:
   - MCP_MAX_TOOL_ROUNDS=4
   - MCP_MAX_TOTAL_TOOL_SECONDS=45
   - MCP_MAX_PARALLEL_TOOLS=2
@@ -259,12 +259,12 @@ class McpToolUseRunner:
             per_call_timeout=(caps or RunCaps()).per_call_timeout,
         )
         self._slug_to_id = build_slug_to_server_id(catalog_snapshot)
-        # Phase 3 / TASK-301: pending-call protocol resolver. None preserves
-        # Phase 2 immediate-dispatch path; non-None enables ask flow (Phase
-        # 3.5). When None, ask-classified tools auto-reject (safe default).
+        # Pending-call protocol resolver. None preserves the immediate-dispatch
+        # path; non-None enables ask flow. When None, ask-classified tools
+        # auto-reject (safe default).
         self._pending_call_resolver = pending_call_resolver
         self._pending_call_store = pending_call_store or get_pending_call_store()
-        # Phase 3.5: per-run remember_for_run cache. Cleared at run() entry.
+        # Per-run remember_for_run cache. Cleared at run() entry.
         # Key: (server_id, tool_name). Value: "approve" | "reject".
         self._remember_decisions: dict[tuple[str, str], str] = {}
 
@@ -321,8 +321,7 @@ class McpToolUseRunner:
     ) -> dict[str, Any]:
         """Await the operator decision via the configured resolver.
 
-        Respects RunCaps.per_call_timeout (Phase 3.6 alignment with
-        ACC-9: the same cap that bounds tool execution also bounds the
+        Respects RunCaps.per_call_timeout. The same cap that bounds tool execution also bounds the
         human-in-the-loop wait — both protect the chat round trip).
         Raises asyncio.TimeoutError on cap breach.
 
@@ -493,7 +492,7 @@ class McpToolUseRunner:
             # Append assistant message before tool results.
             messages.append(_build_assistant_message(data, provider_key))
 
-            # Phase 3.5: pending-call gate before dispatch.
+            # Pending-call gate before dispatch.
             to_dispatch, short_circuits = await self._gate_calls(calls)
             dispatched = await self._dispatcher.dispatch_many(
                 to_dispatch, max_parallel=self._caps.max_parallel

@@ -188,6 +188,17 @@ class LastPageRequest(BaseModel):
     page: int | None = Field(default=None, ge=1)
 
 
+def _dump_highlight_for_storage(highlight: Highlight) -> dict[str, Any]:
+    """Serialize highlights without null-only overlay fields.
+
+    Older clients compare the L1 highlight shape exactly. Omitting unset
+    optional geometry preserves that contract while still allowing rects when
+    the PDF overlay sends them.
+    """
+
+    return highlight.model_dump(exclude_none=True)
+
+
 def _utc_now_iso() -> str:
     """ISO-8601 UTC timestamp without microseconds."""
     from datetime import datetime, timezone
@@ -216,7 +227,7 @@ async def get_annotations(material_id: str):
 @router.post("/{material_id}")
 async def add_highlight(material_id: str, req: AddHighlightRequest):
     data = _read_annotation_data(material_id)
-    data["highlights"] = list(data["highlights"]) + [req.highlight.model_dump()]
+    data["highlights"] = list(data["highlights"]) + [_dump_highlight_for_storage(req.highlight)]
     return _persist(material_id, data)
 
 
@@ -224,7 +235,7 @@ async def add_highlight(material_id: str, req: AddHighlightRequest):
 async def replace_highlights(material_id: str, req: ReplaceHighlightsRequest):
     """Replace the full highlight list. Preserves notes + last_page."""
     data = _read_annotation_data(material_id)
-    data["highlights"] = [h.model_dump() for h in req.highlights]
+    data["highlights"] = [_dump_highlight_for_storage(h) for h in req.highlights]
     return _persist(material_id, data)
 
 

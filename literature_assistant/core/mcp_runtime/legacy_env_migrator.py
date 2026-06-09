@@ -1,8 +1,8 @@
-"""Legacy raw-secret detector + env→ref migration (S6 / plan 2026-05-20 §6).
+"""Legacy credential-material detector and migration helper.
 
 Heuristic-based detector for ``McpStdioConfig.env`` and
-``McpStreamableHttpConfig.headers`` entries that look like API keys but
-predate the env_refs / header_refs design. Used by the frontend's
+``McpStreamableHttpConfig.headers`` entries that look like credential
+material but predate reference-based bindings. Used by the frontend's
 installed-view legacy banner and the migration endpoint.
 
 Rules (intentionally conservative — false positives push the user toward
@@ -31,7 +31,7 @@ _TINY_PLACEHOLDER = frozenset({"", "1", "0", "true", "false", "yes", "no", "on",
 
 @dataclass(frozen=True, slots=True)
 class LegacyRawSecret:
-    """One env / header entry that looks like a raw secret.
+    """One env / header entry that looks like credential material.
 
     Used by the migration UI to render the per-key picker. ``value_masked``
     is the same masking applied by the public API so the UI never receives
@@ -50,7 +50,7 @@ def detect_legacy_secrets(
     http_headers: dict[str, str] | None,
     http_header_refs: dict[str, str] | None,
 ) -> list[LegacyRawSecret]:
-    """Return raw-secret-shaped entries that are NOT already covered by refs.
+    """Return credential-material-shaped entries not already covered by refs.
 
     Callers pass the *internal* MCP config view (raw values) because we
     apply masking in this module — the result never carries the raw

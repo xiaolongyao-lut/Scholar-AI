@@ -34,8 +34,17 @@ async def export_project(
     sections = store.list_sections(project_id)
     drafts = store.list_drafts(project_id)
     materials = store.list_materials(project_id)
+    figure_assets = store.list_figure_assets(project_id) if hasattr(store, "list_figure_assets") else []
     doc_store = _rr._load_doc_store(project_id)
-    academic_export = _rr._build_project_academic_export(sections, drafts, materials)
+    chunk_store = _rr._load_chunk_store(project_id)
+    academic_export = _rr._build_project_academic_export(
+        sections,
+        drafts,
+        materials,
+        project_id=project_id,
+        chunk_store=chunk_store,
+        figure_assets=figure_assets,
+    )
 
     if format == _rr.ProjectExportFormat.JSON:
         return {

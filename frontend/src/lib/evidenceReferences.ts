@@ -1,4 +1,5 @@
 import type { EvidenceReference } from '@/types/writing';
+import { PDF_URL_BBOX_UNIT, isPdfBboxUnit, readPdfBbox } from '@/lib/pdfAnchor';
 
 const KNOWN_EVIDENCE_KEYS = new Set([
   'chunk_id',
@@ -12,6 +13,8 @@ const KNOWN_EVIDENCE_KEYS = new Set([
   'label',
   'score',
   'page',
+  'bbox',
+  'bbox_unit',
   'source',
   'source_label',
   'source_labels',
@@ -173,6 +176,18 @@ export function normalizeEvidenceReference(value: unknown): EvidenceReference | 
   const page = readPage(value.page);
   if (page !== null) {
     normalized.page = page;
+  }
+
+  const bbox = readPdfBbox(value.bbox);
+  const rawBboxUnit = value.bbox_unit;
+  const bboxUnit = rawBboxUnit === undefined || rawBboxUnit === null
+    ? PDF_URL_BBOX_UNIT
+    : isPdfBboxUnit(rawBboxUnit)
+      ? rawBboxUnit
+      : null;
+  if (bbox && bboxUnit) {
+    normalized.bbox = [...bbox];
+    normalized.bbox_unit = bboxUnit;
   }
 
   const source = readNonEmptyString(value.source);

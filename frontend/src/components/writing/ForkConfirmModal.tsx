@@ -50,11 +50,7 @@ export function ForkConfirmModal({
                     从检查点分叉
                   </h3>
                   <p className="mt-1 font-body text-[11px] text-foreground/60">
-                    即将从 checkpoint{" "}
-                    <code className="px-1 bg-surface-high rounded text-[10px]">
-                      {checkpoint.checkpoint_id.slice(0, 12)}
-                    </code>{" "}
-                    分叉出一个全新的并行会话。
+                    即将从所选检查点创建一个新的并行会话。
                   </p>
                 </div>
               </div>

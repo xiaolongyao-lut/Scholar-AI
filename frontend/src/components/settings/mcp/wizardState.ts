@@ -1,5 +1,5 @@
 /**
- * Wizard state persistence (S4b / plan 2026-05-20 Decision #8).
+ * Wizard state persistence.
  *
  * When the user needs to leave the install wizard to create a new
  * credential (which lives on a different settings tab), the wizard
@@ -17,7 +17,7 @@ export type WizardStep =
   | 'source'        // user pasting / picking a local path
   | 'scanning'      // scan API in flight
   | 'candidate'     // pick a launch candidate (skipped if exactly one)
-  | 'config'        // fill non-secret config_fields
+  | 'config'        // fill non-sensitive config_fields
   | 'credentials'   // bind required_credentials
   | 'review'        // confirm + trust checkbox + install
   | 'installing'    // install API in flight
@@ -44,16 +44,23 @@ export interface WizardState {
 
 export const WIZARD_STORAGE_KEY = 'mcp.installer.wizard.v1';
 
-export function defaultWizardState(): WizardState {
+export interface WizardStateDefaults {
+  sourcePath?: string;
+  templateHint?: string;
+  serverSlug?: string;
+  displayName?: string;
+}
+
+export function defaultWizardState(defaults: WizardStateDefaults = {}): WizardState {
   return {
     version: 1,
     step: 'source',
-    source_path: '',
-    template_hint: undefined,
+    source_path: defaults.sourcePath ?? '',
+    template_hint: defaults.templateHint,
     scan_result: undefined,
     selected_candidate_sha: undefined,
-    server_slug: '',
-    display_name: '',
+    server_slug: defaults.serverSlug ?? '',
+    display_name: defaults.displayName ?? '',
     config_values: {},
     credential_bindings: {},
     trust_to_probe: false,

@@ -1,6 +1,6 @@
-"""Discussion citation marker parser (Slice DET / G1).
+"""Discussion citation marker parser.
 
-Per `docs/plans/active/2026-05-15-discussion-evidence-trace-plan.md` D-DET-1
+Per the discussion evidence trace contract,
 (marker syntax `[E:E<n>]`) and D-DET-4 (silently drop unknown ids).
 
 Best-effort parser: failure is silent. Never raises. Caller treats an empty

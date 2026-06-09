@@ -1,7 +1,7 @@
-"""Tool catalog cache (Phase 1B / TASK-105).
+"""Tool catalog cache.
 
 Per-server cache of ``list_tools()`` results with content-fingerprint
-invalidation. Phase 1B exposes:
+invalidation. Exposes:
 
   - ``get_tools(config, refresh=False)`` → cached list[McpToolDescriptor]
   - ``invalidate(server_id)`` → drop cache entry (called on config edit)
@@ -9,8 +9,8 @@ invalidation. Phase 1B exposes:
   - cached entries carry a sha256 fingerprint over (name, description,
     input_schema) so a diff audit can detect tool churn between refreshes
 
-Phase 2+ may add:
-  - TTL-based auto-refresh (plan v0.3 §3.2 Q8a+ — 10 min)
+Future enhancements may add:
+  - TTL-based auto-refresh
   - ``tools/list_changed`` notification subscription via mcp SDK
 """
 
@@ -58,7 +58,7 @@ class McpToolCatalog:
     """Per-server tool descriptor cache.
 
     The fetcher takes a full ``McpServerConfig`` (not just server_id)
-    because Phase 1B uses per-operation sessions — the catalog hands the
+    because runtime uses per-operation sessions — the catalog hands the
     config to the manager, the manager opens a fresh session for the
     list_tools call.
     """

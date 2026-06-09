@@ -21,15 +21,28 @@ interface PageHeaderProps {
  */
 export function PageHeader({ title, subtitle, icon, actions, className }: PageHeaderProps) {
   return (
-    <div className={cn('mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between', className)}>
-      <div className="min-w-0">
-        <h1 className="flex items-center gap-2 font-display text-2xl font-semibold text-foreground">
+    <div
+      className={cn(
+        'mb-6 flex min-w-0 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between',
+        className,
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <h1 className="flex min-w-0 items-center gap-2 font-display text-2xl font-semibold text-foreground">
           {icon && <span className="shrink-0 text-primary/70">{icon}</span>}
           <span className="truncate">{title}</span>
         </h1>
-        {subtitle && <p className="mt-1 font-label text-sm text-foreground/55">{subtitle}</p>}
+        {subtitle && (
+          <p className="mt-1 max-w-4xl break-words font-label text-sm leading-5 text-foreground/55">
+            {subtitle}
+          </p>
+        )}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex max-w-full shrink-0 flex-wrap items-center justify-start gap-2 lg:justify-end">
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

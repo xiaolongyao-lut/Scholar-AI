@@ -3,9 +3,9 @@ Literature Evolution Layer — incremental self-evolution capability around the
 existing literature assistant. See:
   docs/plans/active/2026-05-17-literature-evolution-agent-incremental-upgrade-plan.md
 
-Slice 2 (this module) provides:
+This package provides:
   - models.evolution.ExperienceCandidate (single source of truth contract)
-  - evolution.state_machine (pure-function transition rules + D-EVO-P0-8 guards)
+  - evolution.state_machine (pure-function transition rules + idempotency guards)
   - evolution.secret_scan (fail-closed wrapper over wiki.evaluation scanner)
   - evolution.store.EvolutionCandidateStore (SQLite, dedupe, online backup)
   - evolution.service.EvolutionService (orchestration facade + singleton)
@@ -23,6 +23,7 @@ from evolution.config import (
     is_curator_llm_judge_enabled,
     is_promotion_enabled,
     is_recall_enabled,
+    is_review_ui_enabled,
     load_evolution_config,
 )
 from evolution.curator import CuratorRunResult, EvolutionCurator
@@ -39,6 +40,11 @@ from evolution.inspiration_capture import (
 from evolution.promotion import EvolutionPromoter, PromotionResult
 from evolution.rag_capture import extract_from_rag_result
 from evolution.runtime_capture import extract_from_job
+from evolution.scheduler import (
+    CuratorSchedulerStatus,
+    EvolutionCuratorScheduler,
+    get_curator_scheduler,
+)
 from evolution.skill_capture import extract_from_skill_run
 from evolution.service import (
     EvolutionService,
@@ -86,6 +92,7 @@ __all__ = [
     "is_curator_llm_judge_enabled",
     "is_promotion_enabled",
     "is_recall_enabled",
+    "is_review_ui_enabled",
     "load_evolution_config",
     "CuratorRunResult",
     "EvolutionCurator",
@@ -94,6 +101,9 @@ __all__ = [
     "call_curator_llm_judge",
     "CaptureCandidateArgs",
     "run_capture_in_background",
+    "CuratorSchedulerStatus",
+    "EvolutionCuratorScheduler",
+    "get_curator_scheduler",
     "extract_from_spark",
     "extract_from_sparks",
     "extract_from_discussion_result",

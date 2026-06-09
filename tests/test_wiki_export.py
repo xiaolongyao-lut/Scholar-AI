@@ -41,7 +41,7 @@ class TestWikiExportEndpoint:
             mock_store = mock_store_fn.return_value
             mock_store.list_pages.return_value = []
 
-            with patch("project_paths.WORKSPACE_ARTIFACTS_ROOT", tmp_path):
+            with patch("routers.wiki_router.WORKSPACE_ARTIFACTS_ROOT", tmp_path):
                 resp = client.post("/api/wiki/export")
                 assert resp.status_code == 200
                 data = resp.json()
@@ -51,18 +51,30 @@ class TestWikiExportEndpoint:
                 assert data["errors"] == []
 
     def test_export_success_custom_path(self, client, mock_wiki_enabled, tmp_path):
-        """Successful export with custom path."""
-        custom_path = tmp_path / "custom_export.zip"
+        """Successful export with custom filename under wiki_exports."""
+        custom_path = tmp_path / "wiki_exports" / "custom_export.zip"
 
         with patch("routers.wiki_router._page_store") as mock_store_fn:
             mock_store = mock_store_fn.return_value
             mock_store.list_pages.return_value = []
 
-            resp = client.post(f"/api/wiki/export?output_path={custom_path}")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["success"] is True
-            assert data["output_path"] == str(custom_path)
+            with patch("routers.wiki_router.WORKSPACE_ARTIFACTS_ROOT", tmp_path):
+                resp = client.post("/api/wiki/export?output_path=custom_export.zip")
+                assert resp.status_code == 200
+                data = resp.json()
+                assert data["success"] is True
+                assert data["output_path"] == str(custom_path)
+
+    def test_export_rejects_path_traversal_output_path(self, client, mock_wiki_enabled, tmp_path):
+        """Endpoint output_path is a filename only, not an arbitrary write path."""
+        with patch("routers.wiki_router._page_store") as mock_store_fn:
+            mock_store = mock_store_fn.return_value
+            mock_store.list_pages.return_value = []
+
+            with patch("routers.wiki_router.WORKSPACE_ARTIFACTS_ROOT", tmp_path):
+                resp = client.post("/api/wiki/export?output_path=../escape.zip")
+
+        assert resp.status_code == 400
 
     def test_export_wiki_disabled(self, client):
         """Export when wiki disabled returns 404."""
