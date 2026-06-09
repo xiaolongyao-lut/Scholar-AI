@@ -471,8 +471,9 @@ class WritingSkillService:
 
         Args:
             source_path: Local directory or `.zip` archive that contains `SKILL.md`.
-            managed_root: DEPRECATED. Install root is now fixed server-side. This parameter
-                          is ignored for security (path traversal prevention).
+            managed_root: DEPRECATED for API calls (security). Internal/test code may still
+                          pass it to override the instance's managed root. API router must
+                          pass None.
             origin: Human-readable import origin stored in metadata.
 
         Returns:
@@ -482,10 +483,9 @@ class WritingSkillService:
             ValueError: If paths are malformed or validation fails.
 
         Security:
-            The install root is hardcoded to `skills/imported/user` to prevent
-            clients from controlling the installation directory via API calls.
-            Previous versions allowed `managed_root` in the request, which created
-            a path traversal vulnerability.
+            API router must pass managed_root=None to prevent path traversal.
+            When None, uses instance-level self._managed_root (supports test isolation).
+            Direct callers (tests, internal tools) may pass explicit root for temp directories.
         """
         source = Path(source_path).expanduser().resolve()
         if not source.exists():
@@ -493,8 +493,9 @@ class WritingSkillService:
         if not source.is_dir() and not source.is_file():
             raise ValueError(f"Source path is not a file or directory: {source}")
 
-        # Security: Fixed installation root, ignoring any client-provided value
-        root = Path("skills/imported/user").resolve()
+        # Security: Use instance root when managed_root is None (API calls).
+        # Tests/internal code may pass explicit root for temp directories.
+        root = Path(managed_root).expanduser().resolve() if managed_root else self._managed_root
         from .importers.user_skill_importer import import_user_skill as import_user_skill_package
 
         result = import_user_skill_package(source, root, origin=origin)

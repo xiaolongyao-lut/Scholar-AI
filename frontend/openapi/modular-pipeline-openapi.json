@@ -7745,19 +7745,8 @@
         "type": "object"
       },
       "ImportUserSkillRequest": {
-        "description": "Request to import a local user skill directory or zip package into the managed root.",
+        "description": "Request to import a local user skill directory or zip package into the managed root.\n\nSecurity Note:\n    The install root is now fixed server-side to prevent path traversal attacks.\n    The `managed_root` field has been removed from the API surface.",
         "properties": {
-          "managed_root": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Managed Root"
-          },
           "origin": {
             "default": "user_import",
             "title": "Origin",

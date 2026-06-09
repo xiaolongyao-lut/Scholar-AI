@@ -8839,10 +8839,12 @@ export interface components {
         /**
          * ImportUserSkillRequest
          * @description Request to import a local user skill directory or zip package into the managed root.
+         *
+         *     Security Note:
+         *         The install root is now fixed server-side to prevent path traversal attacks.
+         *         The `managed_root` field has been removed from the API surface.
          */
         ImportUserSkillRequest: {
-            /** Managed Root */
-            managed_root?: string | null;
             /**
              * Origin
              * @default user_import

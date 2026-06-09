@@ -30,7 +30,8 @@ Start-Sleep -Seconds $BootSeconds
 
 try {
     # Read capability token for authenticated API calls
-    $capabilityFile = Join-Path $env:LOCALAPPDATA "LiteratureAssistant\runtime_state\api-capability.json"
+    # Note: frozen runtime uses %APPDATA%, not %LOCALAPPDATA%
+    $capabilityFile = Join-Path $env:APPDATA "LiteratureAssistant\runtime_state\api-capability.json"
     $capabilityHeader = $null
     $capabilityToken = $null
 
