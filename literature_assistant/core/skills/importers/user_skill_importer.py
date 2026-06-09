@@ -540,8 +540,17 @@ def _import_prepared_user_skill(
     content_hash = compute_directory_hash(source_dir)
     target_dir = managed_root / manifest.id
     if target_dir.exists():
-        backup_dir = managed_root / ".rollback_snapshots" / f"{manifest.id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        # Generate unique backup name with microseconds to avoid collisions
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')  # Added %f for microseconds
+        backup_dir = managed_root / ".rollback_snapshots" / f"{manifest.id}-{timestamp}"
         backup_dir.parent.mkdir(parents=True, exist_ok=True)
+
+        # Ensure uniqueness even with microsecond precision (rare edge case)
+        counter = 0
+        while backup_dir.exists():
+            counter += 1
+            backup_dir = managed_root / ".rollback_snapshots" / f"{manifest.id}-{timestamp}-{counter}"
+
         shutil.copytree(target_dir, backup_dir)
         shutil.rmtree(target_dir)
         warnings.append(f"Existing skill backed up to {backup_dir.name}")
