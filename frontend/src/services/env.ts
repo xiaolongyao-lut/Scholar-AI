@@ -1,17 +1,13 @@
-const readProcessEnv = (key: string): string => {
-  if (typeof process === 'undefined' || !process.env) {
-    return '';
-  }
-
-  const value = process.env[key];
-  return typeof value === 'string' ? value.trim() : '';
-};
+const ALLOWED_ENV_KEYS: ReadonlySet<keyof ImportMetaEnv> = new Set([
+  'VITE_API_BASE_URL',
+  'VITE_ENABLE_CONTEXTUAL',
+  'VITE_ENABLE_SAMPLING_PANEL',
+]);
 
 export const readEnv = (key: keyof ImportMetaEnv): string => {
-  const viteEnv = import.meta.env?.[key];
-  if (typeof viteEnv === 'string') {
-    return viteEnv.trim();
+  if (!ALLOWED_ENV_KEYS.has(key)) {
+    return '';
   }
-
-  return readProcessEnv(String(key));
+  const viteEnv = import.meta.env?.[key];
+  return typeof viteEnv === 'string' ? viteEnv.trim() : '';
 };

@@ -328,11 +328,30 @@ export async function getBudgetStatus(): Promise<BudgetStatus> {
   return data;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isChatSessionListResponse(data: unknown): data is ChatSessionListResponse {
+  if (!isRecord(data)) return false;
+  return Array.isArray(data.sessions);
+}
+
+function isChatHistorySearchResponse(data: unknown): data is ChatHistorySearchResponse {
+  if (!isRecord(data)) return false;
+  return Array.isArray(data.results);
+}
+
+function isChatSessionAgentsResponse(data: unknown): data is ChatAgentsResponse {
+  if (!isRecord(data)) return false;
+  return Array.isArray(data.agents);
+}
+
 export async function listChatSessions(
   timeoutMs: number = 15000,
   options: { includeArchived?: boolean; archivedOnly?: boolean } = {},
 ): Promise<ChatSessionSummary[]> {
-  const { data } = await axios.get<ChatSessionListResponse>(
+  const { data } = await axios.get<unknown>(
     `${getApiBaseUrl()}/api/chat/sessions`,
     {
       params: {
@@ -342,7 +361,10 @@ export async function listChatSessions(
       timeout: timeoutMs,
     }
   );
-  return Array.isArray(data.sessions) ? data.sessions : [];
+  if (!isChatSessionListResponse(data)) {
+    throw new Error('Invalid response shape from /api/chat/sessions');
+  }
+  return data.sessions;
 }
 
 export async function archiveChatSession(
@@ -433,14 +455,17 @@ export async function searchChatHistory(
   if (!normalized) {
     return [];
   }
-  const { data } = await axios.get<ChatHistorySearchResponse>(
+  const { data } = await axios.get<unknown>(
     `${getApiBaseUrl()}/api/chat/history/search`,
     {
       params: { q: normalized, limit },
       timeout: timeoutMs,
     },
   );
-  return Array.isArray(data.results) ? data.results : [];
+  if (!isChatHistorySearchResponse(data)) {
+    throw new Error('Invalid response shape from /api/chat/history/search');
+  }
+  return data.results;
 }
 
 export async function forkChatHistoryConversation(
@@ -622,10 +647,6 @@ export async function streamIntelligentChatMessage(
       }
     }
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function coerceStringList(value: unknown): string[] | undefined {

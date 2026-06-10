@@ -265,6 +265,11 @@ const toApiClientError = (
  * Returns:
  *   Axios instance with consistent base URL, timeout, auth injection, optional
  *   idempotent retry, and normalized error wrapping.
+ *
+ * Why shared:
+ *   All API modules should use this factory to ensure consistent retry logic,
+ *   error normalization, and timeout handling. Direct axios.create() or bare
+ *   axios.get/post bypasses these guarantees.
  */
 export function createApiClient(options: ApiClientOptions = {}): AxiosInstance {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -310,4 +315,28 @@ export function createApiClient(options: ApiClientOptions = {}): AxiosInstance {
   );
 
   return client;
+}
+
+/**
+ * Create a default API client with standard retry policy for idempotent requests.
+ *
+ * Why:
+ * Most service modules need the same base configuration. This avoids repeating
+ * createApiClient({ retry: { maxAttempts: 3 } }) in every file.
+ *
+ * Usage:
+ *   import { createDefaultApiClient } from './httpClient';
+ *   const client = createDefaultApiClient();
+ *   const { data } = await client.get('/endpoint');
+ */
+export function createDefaultApiClient(options: Omit<ApiClientOptions, 'retry'> = {}): AxiosInstance {
+  return createApiClient({
+    ...options,
+    retry: {
+      maxAttempts: 3,
+      baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
+      statuses: Array.from(DEFAULT_RETRY_STATUSES),
+      methods: Array.from(DEFAULT_RETRY_METHODS),
+    },
+  });
 }

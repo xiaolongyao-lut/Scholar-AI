@@ -574,7 +574,7 @@ export function SourcesCitations() {
                       </button>
                       {(ref.doi || ref.url) ? (
                         <a
-                          href={ref.doi ? `https://doi.org/${ref.doi}` : ref.url ?? undefined}
+                          href={ref.doi ? `https://doi.org/${ref.doi}` : (ref.url?.match(/^https?:\/\//i) ? ref.url : undefined)}
                           target="_blank"
                           rel="noopener noreferrer"
                           title={ref.doi ? `DOI: ${ref.doi}` : ref.url ?? ''}

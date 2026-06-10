@@ -34,6 +34,12 @@ export default [
     },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
+      'no-console': ['warn', { allow: ['error'] }],
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+      }],
     },
   },
 ];

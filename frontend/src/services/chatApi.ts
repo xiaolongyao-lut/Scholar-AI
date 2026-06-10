@@ -1,5 +1,6 @@
-import axios from 'axios';
+import { createDefaultApiClient } from './httpClient.ts';
 import { getApiBaseUrl } from './apiBaseUrl.ts';
+import type { AxiosInstance } from 'axios';
 import type { LLMConfig } from './settingsStore.ts';
 
 export interface ChatAskResponse {
@@ -13,13 +14,22 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
+let client: AxiosInstance | null = null;
+
+function getChatClient(): AxiosInstance {
+  if (client === null) {
+    client = createDefaultApiClient({ baseURL: getApiBaseUrl() });
+  }
+  return client;
+}
+
 const askWithPayload = async (
   body: Record<string, unknown>,
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<ChatAskResponse> => {
-  const { data } = await axios.post<ChatAskResponse>(
-    `${getApiBaseUrl()}/chat/ask`,
+  const { data } = await getChatClient().post<ChatAskResponse>(
+    '/chat/ask',
     body,
     { timeout: timeoutMs, signal },
   );
@@ -89,7 +99,7 @@ export async function discoverModels(baseUrl: string, apiKey: string, subsystem:
     return { ok: false, models: [], error: '请先填写服务地址' };
   }
   try {
-    const resp = await axios.post(`${getApiBaseUrl()}/api/${subsystem}/models/discover`, {
+    const resp = await getChatClient().post(`/api/${subsystem}/models/discover`, {
       base_url: baseUrl,
       api_key: apiKey,
     }, { timeout: 15000 });
@@ -104,25 +114,15 @@ export async function discoverModels(baseUrl: string, apiKey: string, subsystem:
     // request itself failed (4xx/5xx from our backend, not from upstream).
     // The user reported "连接失败" with no reason, which made debugging
     // third-party gateways painful.
-    if (axios.isAxiosError(err) && err.response) {
-      const status = err.response.status;
-      const statusText = err.response.statusText || '';
-      const data = err.response.data;
-      let detail = '';
-      if (typeof data === 'string') {
-        detail = data;
-      } else if (data && typeof data === 'object') {
-        const rec = data as Record<string, unknown>;
-        const candidate = rec.error ?? rec.detail ?? rec.message;
-        if (typeof candidate === 'string') {
-          detail = candidate;
-        } else if (candidate && typeof candidate === 'object') {
-          try { detail = JSON.stringify(candidate); } catch { detail = String(candidate); }
-        } else {
-          try { detail = JSON.stringify(data).slice(0, 400); } catch { detail = ''; }
-        }
-      }
-      const compound = [`HTTP ${status}`, statusText, detail].filter(Boolean).join(' · ');
+    const candidate = err as { status?: number; message?: string; details?: unknown };
+    if (candidate.status && candidate.message) {
+      // ApiClientError from httpClient
+      const detailStr = typeof candidate.details === 'string'
+        ? candidate.details
+        : candidate.details && typeof candidate.details === 'object'
+        ? JSON.stringify(candidate.details).slice(0, 400)
+        : '';
+      const compound = [`HTTP ${candidate.status}`, candidate.message, detailStr].filter(Boolean).join(' · ');
       return { ok: false, models: [], error: compound };
     }
     const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
@@ -131,7 +131,7 @@ export async function discoverModels(baseUrl: string, apiKey: string, subsystem:
 }
 
 export async function testChatConnectionWithConfig(_llm: LLMConfig): Promise<void> {
-  const resp = await axios.post(`${getApiBaseUrl()}/api/chat/test`, {}, { timeout: 20000 });
+  const resp = await getChatClient().post('/api/chat/test', {}, { timeout: 20000 });
   if (!resp.data?.ok) {
     throw new Error(resp.data?.error || `HTTP ${resp.data?.status || 'unknown'}`);
   }
