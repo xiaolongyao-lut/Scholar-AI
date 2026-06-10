@@ -25,8 +25,15 @@ import runtime_env as rte
 def mock_endpoint_policy_dns(monkeypatch: pytest.MonkeyPatch):
     """Mock DNS resolution in endpoint policy to avoid real network calls in CI/offline."""
     def fake_resolve_host(host: str):
-        # Return fake public IP for all hosts to pass DNS check
-        return ["203.0.113.1"]  # TEST-NET-3 (documentation IP)
+        # Return fake public IP that passes classify_ip() checks
+        # Must NOT be private/loopback/reserved
+        # Use public DNS IPs: 8.8.8.8 (Google), 1.1.1.1 (Cloudflare)
+        if "siliconflow" in host.lower():
+            return ["8.8.8.8"]
+        elif "dashscope" in host.lower() or "aliyun" in host.lower():
+            return ["1.1.1.1"]
+        else:
+            return ["8.8.4.4"]  # Google Public DNS alternate
 
     try:
         import provider_endpoint_policy as policy

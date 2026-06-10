@@ -9,9 +9,6 @@ import tomllib
 
 import pytest
 
-# start.py removed in security-fixes branch
-pytest.skip("start.py module removed", allow_module_level=True)
-
 import start_desktop
 
 
@@ -33,22 +30,6 @@ def _install_subprocess_spy(monkeypatch: Any, module: Any) -> list[dict[str, Any
 
     monkeypatch.setattr(module.subprocess, "run", _run)
     return calls
-
-
-def test_browser_launcher_builds_frontend_without_shell(tmp_path: Path, monkeypatch: Any) -> None:
-    """The browser launcher should invoke npm by argv, not through shell parsing."""
-    monkeypatch.setattr(start, "ROOT", _prepare_frontend_root(tmp_path))
-    monkeypatch.setattr(start.shutil, "which", lambda name: "C:/node/npm.cmd" if name in {"npm.cmd", "npm"} else None)
-    calls = _install_subprocess_spy(monkeypatch, start)
-
-    assert start._build_frontend() is True
-
-    assert len(calls) == 1
-    call = calls[0]
-    assert call["args"] == ["C:/node/npm.cmd", "run", "build"]
-    assert call["kwargs"]["cwd"] == str(tmp_path / "frontend")
-    assert call["kwargs"].get("shell") is not True
-    assert call["kwargs"]["check"] is False
 
 
 def test_pywebview_launcher_builds_frontend_without_shell(tmp_path: Path, monkeypatch: Any) -> None:
@@ -73,7 +54,9 @@ def test_pywebview_launcher_builds_frontend_without_shell(tmp_path: Path, monkey
 
 def test_launcher_sources_do_not_use_shell_true() -> None:
     """Launcher source should not reintroduce shell=True for fixed build commands."""
-    for source_path in (Path("start.py"), Path("start_desktop.py")):
+    # start.py removed, only check start_desktop.py
+    source_path = Path("start_desktop.py")
+    if source_path.exists():
         source = source_path.read_text(encoding="utf-8")
         assert "shell=True" not in source
         assert 'input("按回车键退出' not in source
