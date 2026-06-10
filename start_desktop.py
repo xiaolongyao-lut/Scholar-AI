@@ -34,6 +34,7 @@ DEFAULT_PORT = 8000
 WINDOW_TITLE = "文献助手"
 WINDOW_WIDTH = 1440
 WINDOW_HEIGHT = 900
+BROWSER_CACHE_VERSION_FILE: Final[str] = ".frontend_cache_version"
 LIGHT_APP_BACKGROUND: Final[str] = "#F7F9FB"
 LIGHT_TITLE_TEXT: Final[str] = "#2A3245"
 DARK_APP_BACKGROUND: Final[str] = "#111827"
@@ -138,6 +139,64 @@ def _port_available(port: int) -> bool:
 
 def _check_frontend_build() -> bool:
     return FRONTEND_DIST.exists()
+
+
+def _remove_profile_cache_dir(cache_dir: Path, profile_root: Path) -> None:
+    """Delete a browser cache directory only when it is inside the app profile.
+
+    Args:
+        cache_dir: Candidate cache directory below the browser profile.
+        profile_root: Dedicated browser profile root used by the launcher.
+
+    Raises:
+        RuntimeError: If the candidate would delete the profile root itself or
+            any path outside the profile boundary.
+    """
+
+    if not isinstance(cache_dir, Path):
+        raise TypeError("cache_dir must be a pathlib.Path")
+    if not isinstance(profile_root, Path):
+        raise TypeError("profile_root must be a pathlib.Path")
+
+    resolved_cache = cache_dir.resolve()
+    resolved_profile = profile_root.resolve()
+    if resolved_cache == resolved_profile or resolved_profile not in resolved_cache.parents:
+        raise RuntimeError(f"Refusing to delete cache outside app profile: {cache_dir}")
+    if resolved_cache.is_dir():
+        shutil.rmtree(resolved_cache)
+
+
+def _clear_stale_browser_cache(profile_root: Path, cache_version: str) -> None:
+    """Clear embedded-browser cache only after the frontend build version changes.
+
+    Args:
+        profile_root: Dedicated browser profile root owned by this app.
+        cache_version: Non-empty identifier for the current frontend build.
+
+    Raises:
+        TypeError: If ``profile_root`` is not a ``Path``.
+        ValueError: If ``cache_version`` is empty.
+    """
+
+    if not isinstance(profile_root, Path):
+        raise TypeError("profile_root must be a pathlib.Path")
+    normalized_version = str(cache_version or "").strip()
+    if not normalized_version:
+        raise ValueError("cache_version must be non-empty")
+
+    marker = profile_root / BROWSER_CACHE_VERSION_FILE
+    if marker.is_file() and marker.read_text(encoding="utf-8").strip() == normalized_version:
+        return
+
+    for relative in (("Default", "Cache"), ("Default", "Code Cache")):
+        cache_dir = profile_root.joinpath(*relative)
+        try:
+            _remove_profile_cache_dir(cache_dir, profile_root)
+        except OSError as exc:
+            print(f"[启动器] 浏览器缓存清理跳过: {cache_dir.name}: {exc}")
+
+    profile_root.mkdir(parents=True, exist_ok=True)
+    marker.write_text(normalized_version, encoding="utf-8")
 
 
 def _build_frontend() -> bool:
