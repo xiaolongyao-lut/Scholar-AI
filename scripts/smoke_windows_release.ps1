@@ -2,7 +2,7 @@
 # Reference: docs/plans/runbooks/windows-exe-release-standard.md
 #
 # Usage:
-#   .\scripts\smoke_windows_release.ps1 -ExePath "<path-to-LiteratureAssistant.exe>"
+#   .\scripts\smoke_windows_release.ps1 -ExePath "<path-to-Scholar-AI.exe>"
 #
 # Verifies:
 #   1. Process launches.

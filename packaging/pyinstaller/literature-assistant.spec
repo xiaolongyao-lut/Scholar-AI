@@ -13,16 +13,82 @@ from PyInstaller.utils.hooks import collect_all
 # Resolve repo root from spec file location: packaging/pyinstaller/<spec>.
 REPO_ROOT = Path(SPECPATH).resolve().parent.parent  # type: ignore[name-defined]
 
+# Read version from pyproject.toml (single source of truth).
+def _read_version() -> str:
+    pyproject_path = REPO_ROOT / "pyproject.toml"
+    if not pyproject_path.exists():
+        return "0.0.0"
+    with open(pyproject_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip().startswith("version"):
+                # Extract version = "x.y.z"
+                parts = line.split("=", 1)
+                if len(parts) == 2:
+                    version_str = parts[1].strip().strip('"').strip("'")
+                    return version_str
+    return "0.0.0"
+
+APP_VERSION = _read_version()
+
 block_cipher = None
+
+_SOURCE_DATA_DIR_EXCLUDES = frozenset({
+    "__pycache__",
+    ".claude",
+    ".audit",
+    ".approval",
+    ".rollback_snapshots",
+    "chunk_store",
+    "logs",
+    "mcp_servers",
+})
+
+_SOURCE_DATA_FILE_EXCLUDES = frozenset({
+    ".env",
+    ".install_meta.json",
+    ".secrets.baseline",
+    "credentials.json",
+    "id_ed25519",
+    "id_rsa",
+    "key.txt",
+    "runtime_credentials.json",
+    "runtime_mcp_servers.json",
+})
+
+_SOURCE_DATA_SUFFIX_EXCLUDES = frozenset({
+    ".key",
+    ".pem",
+    ".pyc",
+    ".pyo",
+})
+
+
+def _should_exclude_literature_assistant_data_path(path: Path, is_dir: bool) -> bool:
+    """Return True for source-tree files that must never enter release datas.
+
+    The PyInstaller `datas` list is assembled before the release forbidden-path
+    scan runs. Mirroring the release gate here prevents local runtime logs,
+    approvals, credentials, and private keys from being copied into the frozen
+    app when a developer builds from a used workspace.
+    """
+    if not path.name:
+        raise ValueError("path must include a file or directory name")
+    if is_dir:
+        return path.name in _SOURCE_DATA_DIR_EXCLUDES
+    if path.name in _SOURCE_DATA_FILE_EXCLUDES:
+        return True
+    if path.name.startswith(".env.") and path.name != ".env.example":
+        return True
+    return path.suffix in _SOURCE_DATA_SUFFIX_EXCLUDES
 
 
 def _collect_literature_assistant_datas(root: Path, dest_prefix: str) -> list[tuple[str, str]]:
     """Build (src, dest) tuples for literature_assistant/ contents, excluding
     .env / .env.<x> (keeping .env.example) and Python bytecode cache.
 
-    Aligns with the policy enforced by scripts/release_forbidden_path_scan.py
-    rule '.env.* (not .env.example)'. PyInstaller `datas=[(src, dest)]` tuple
-    form does not support excludes; expanding here gives explicit control.
+    Aligns with the policy enforced by scripts/release_forbidden_path_scan.py.
+    PyInstaller `datas=[(src, dest)]` tuple form does not support excludes;
+    expanding here gives explicit control.
 
     Reference:
       - PyInstaller spec datas: https://pyinstaller.org/en/latest/spec-files.html
@@ -56,15 +122,14 @@ def _collect_literature_assistant_datas(root: Path, dest_prefix: str) -> list[tu
         #   the Windows MAX_PATH (260) limit during Inno Setup compress at Step 8
         #   (alpha-prep attempt5, 2026-05-12). Pruning brings longest in-tree
         #   path back to ~124 chars (all source .py).
-        dirs[:] = [d for d in dirs if d not in ("__pycache__", ".claude")]
+        dirs[:] = [
+            d for d in dirs
+            if not _should_exclude_literature_assistant_data_path(Path(src_dir) / d, is_dir=True)
+        ]
         for fname in files:
-            if fname == ".env":
-                continue
-            if fname.startswith(".env.") and fname != ".env.example":
-                continue
-            if fname.endswith(".pyc") or fname.endswith(".pyo"):
-                continue
             full_src = Path(src_dir) / fname
+            if _should_exclude_literature_assistant_data_path(full_src, is_dir=False):
+                continue
             rel_parent = full_src.parent.relative_to(root)
             dest = dest_prefix if str(rel_parent) == "." else f"{dest_prefix}/{rel_parent.as_posix()}"
             out.append((str(full_src), dest))
@@ -190,7 +255,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="LiteratureAssistant",
+    name="Scholar-AI",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -202,6 +267,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(REPO_ROOT / "packaging" / "assets" / "icon.ico") if (REPO_ROOT / "packaging" / "assets" / "icon.ico").exists() else None,
+    version=APP_VERSION,
 )
 
 coll = COLLECT(
@@ -212,5 +278,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="LiteratureAssistant",
+    name="Scholar-AI",
 )

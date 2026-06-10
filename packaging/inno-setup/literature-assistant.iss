@@ -7,7 +7,10 @@
 ; Output: workspace_artifacts\releases\<version>\Scholar-AI-Setup-<version>-windows-x64.exe
 
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion GetEnv("LITASSIST_BUILD_VERSION")
+  #if AppVersion == ""
+    #define AppVersion "0.1.0"
+  #endif
 #endif
 
 ; ReleaseRoot is the absolute path to workspace_artifacts/releases/<AppVersion>.
@@ -58,7 +61,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
-DisableDirPage=no
+DisableDirPage=yes
 UninstallDisplayName=Scholar AI {#AppVersion}
 SetupIconFile=..\assets\icon.ico
 #ifdef ActiveSignTool
@@ -86,15 +89,27 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#ReleaseRoot}\onedir\LiteratureAssistant\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#ReleaseRoot}\onedir\Scholar-AI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[InstallDelete]
+Type: files; Name: "{app}\LiteratureAssistant.exe"
 
 [Icons]
-Name: "{group}\Scholar AI"; Filename: "{app}\LiteratureAssistant.exe"
+Name: "{group}\Scholar AI"; Filename: "{app}\Scholar-AI.exe"
 Name: "{group}\{cm:UninstallProgram,Scholar AI}"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\Scholar AI"; Filename: "{app}\LiteratureAssistant.exe"; Tasks: desktopicon
+Name: "{commondesktop}\Scholar AI"; Filename: "{app}\Scholar-AI.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\LiteratureAssistant.exe"; Description: "{cm:LaunchProgram,Scholar AI}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Scholar-AI.exe"; Description: "{cm:LaunchProgram,Scholar AI}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}"
+; C-5 mitigation: explicit known payload list instead of filesandordirs wildcard.
+; filesandordirs on {app} with DisableDirPage=no risks deleting user data if
+; they chose a non-empty directory during install.
+Type: files; Name: "{app}\Scholar-AI.exe"
+Type: files; Name: "{app}\*.dll"
+Type: files; Name: "{app}\*.pyd"
+Type: files; Name: "{app}\*.manifest"
+Type: filesandordirs; Name: "{app}\_internal"
+Type: filesandordirs; Name: "{app}\literature_assistant"
+Type: filesandordirs; Name: "{app}\frontend"
