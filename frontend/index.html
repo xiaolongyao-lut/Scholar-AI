@@ -2,6 +2,13 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!-- Security: Content Security Policy for static builds -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' http://localhost:* http://127.0.0.1:* https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" href="/app-icon-180.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,20 +16,7 @@
     <meta name="theme-color" content="#F7F9FB" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" />
     <title>Scholar AI | 学术研究智能体</title>
-    <!-- Theme FOUC guard: apply persisted theme before React mounts. -->
-    <script>
-      (function () {
-        try {
-          var k = 'scholar-ai.theme';
-          var saved = localStorage.getItem(k);
-          var mode = (saved === 'light' || saved === 'dark' || saved === 'system') ? saved : 'system';
-          var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-          var root = document.documentElement;
-          if (dark) root.classList.add('dark'); else root.classList.remove('dark');
-          root.dataset.theme = dark ? 'dark' : 'light';
-        } catch (e) { /* localStorage unavailable */ }
-      })();
-    </script>
+    <script src="/theme-boot.js"></script>
   </head>
   <body class="antialiased selection:bg-primary/20 selection:text-primary">
     <div id="root"></div>
