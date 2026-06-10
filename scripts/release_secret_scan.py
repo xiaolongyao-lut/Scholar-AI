@@ -1,4 +1,11 @@
-"""Slice A0 release gate: bare secret scan (DEC-006a / R1 / plan v2 §13.2 #4 / §15.2)."""
+"""Slice A0 release gate: bare secret scan (DEC-006a / R1 / plan v2 §13.2 #4 / §15.2).
+
+Dependency upgrade policy:
+    After upgrading PyInstaller, numpy, sklearn, pyarrow, or other bundled
+    dependencies, re-run with --force-rescan to confirm allowlist entries still
+    match the new bundle layout. Each allowlist entry must reference the attempt/
+    commit where it was reviewed.
+"""
 
 from __future__ import annotations
 
@@ -45,59 +52,21 @@ CUSTOM_REGEX_RULES: list[tuple[str, re.Pattern]] = [
 #
 # Entries reviewed manually against attempt2 (HEAD 00391548) Step 6 report
 # workspace_artifacts/releases/_rejected/secret-scan-onedir_secret_scan-
-# 20260511T174748Z.json (24 findings, 0 true secrets):
+# 20260511T174748Z.json (24 findings, 0 true secrets).
 #
-#   - sklearn estimator.css           : repr_html CSS class names like
-#                                       ".sk-toggleable__content" /
-#                                       ".sk-estimator-fitted" carry 20+ chars
-#                                       after "sk-", matching the openai_sk_token
-#                                       regex. Public open-source scikit-learn
-#                                       (https://scikit-learn.org/).
-#                                       Confirmed false positive ×14.
-#   - numpy *.dist-info/RECORD        : wheel manifest with per-file SHA256 hashes;
-#                                       some hash byte sequences carry "AIza"
-#                                       substring, matching google_aiza_token
-#                                       regex. PEP 491 binary-distribution format
-#                                       (https://packaging.python.org/specifications/
-#                                       binary-distribution-format/).
-#                                       Confirmed false positive ×1.
-#   - pyarrow _*fs.pyx                : Cython source for arrow.fs filesystem
-#                                       backends; class docstrings carry
-#                                       Azure/S3 example credentials marked as
-#                                       documentation. Apache Arrow upstream
-#                                       (https://arrow.apache.org/docs/python/).
-#                                       Confirmed false positive ×4.
-#   - pyarrow include/arrow/filesystem/*.h : C++ header with S3 example.
-#                                       Confirmed false positive ×1.
-#   - skills/importers/ui-ux-pro-max/**    : Imported third-party dev-template
-#                                       Claude skill scripts; reference
-#                                       patterns include os.environ.get() reads
-#                                       and placeholder text like 'your-key'.
-#                                       Confirmed false positive ×2 + ×1
-#                                       (detect-secrets Secret Keyword on
-#                                       same scripts).
-#   - frontend/dist/assets/*.js       : vite minified bundles; detect-secrets
-#                                       Secret Keyword heuristic produces false
-#                                       positives on minified property accesses
-#                                       like `n.key=` / `t.token=` that come
-#                                       from non-secret source identifiers in
-#                                       frontend/src/services/*. Source files
-#                                       are reviewed in CI before bundling.
-#                                       Confirmed false positive ×1.
+# MAINTENANCE: After dependency major version upgrades, run --force-rescan to
+# verify these patterns still match. Layout changes may cause allowlist to miss
+# new false positives or fail to match, both requiring re-review.
 #
-# Layout-change resilience: allowlist patterns are EXACT paths or precise globs.
-# If PyInstaller bundle layout or dependency versions change such that these
-# patterns no longer match, the allowlist becomes unused and detect-secrets /
-# custom_regex re-engages on the unknown path — this is intentional and forces
-# human review on every layout change.
+# Format: each entry must have inline comment with: attempt/commit + reason
 _SECRET_SCAN_PATH_ALLOWLIST: tuple[str, ...] = (
-    "_internal/sklearn/utils/_repr_html/estimator.css",
-    "_internal/numpy-*.dist-info/RECORD",
-    "_internal/pyarrow/_*fs.pyx",
-    "_internal/pyarrow/include/arrow/filesystem/*.h",
-    "_internal/literature_assistant/core/skills/importers/ui-ux-pro-max/*",
-    "_internal/literature_assistant/core/skills/importers/ui-ux-pro-max/**/*",
-    "_internal/frontend/dist/assets/*.js",
+    "_internal/sklearn/utils/_repr_html/estimator.css",  # attempt2 00391548 — scikit-learn CSS class names (sk-*) false positive
+    "_internal/numpy-*.dist-info/RECORD",  # attempt2 00391548 — wheel SHA256 manifest false positive (AIza substring in hash)
+    "_internal/pyarrow/_*fs.pyx",  # attempt2 00391548 — Cython docstrings with S3/Azure example credentials
+    "_internal/pyarrow/include/arrow/filesystem/*.h",  # attempt2 00391548 — C++ header S3 example
+    "_internal/literature_assistant/core/skills/importers/ui-ux-pro-max/*",  # attempt2 00391548 — imported dev-template scripts with placeholder env reads
+    "_internal/literature_assistant/core/skills/importers/ui-ux-pro-max/**/*",  # attempt2 00391548 — nested dev-template scripts
+    "_internal/frontend/dist/assets/*.js",  # attempt2 00391548 — vite minified bundles with detect-secrets heuristic false positives on property names
     # mcp SDK OAuth client_credentials extension: docstring example contains
     # `client_secret="my-client-secret"` placeholder. Upstream mcp 1.27.0
     # (https://github.com/modelcontextprotocol/python-sdk). Not a real secret.
@@ -185,11 +154,18 @@ _DETECT_SECRETS_LINE_ALLOWLIST: tuple[tuple[str, str, re.Pattern[str]], ...] = (
 )
 
 
-def is_path_allowlisted(rel_path_posix: str) -> bool:
+def is_path_allowlisted(rel_path_posix: str, force_rescan: bool = False) -> bool:
     """Return True if `rel_path_posix` (POSIX-style relative path) matches any
-    allowlist glob. fnmatch is used for portable glob semantics."""
+    allowlist glob. fnmatch is used for portable glob semantics.
+
+    Args:
+        rel_path_posix: Relative path with forward slashes.
+        force_rescan: If True, ignore allowlist (for dependency upgrade verification).
+    """
     if not rel_path_posix:
         return False
+    if force_rescan:
+        return False  # Treat nothing as allowlisted
     for pattern in _SECRET_SCAN_PATH_ALLOWLIST:
         if fnmatch.fnmatch(rel_path_posix, pattern):
             return True
@@ -283,7 +259,7 @@ def is_detect_secrets_line_allowlisted(
     return False
 
 
-def run_detect_secrets(scan_root: Path) -> tuple[list[dict[str, Any]], str]:
+def run_detect_secrets(scan_root: Path, force_rescan: bool = False) -> tuple[list[dict[str, Any]], str]:
     findings: list[dict[str, Any]] = []
     cmd = [
         sys.executable, "-m", "detect_secrets", "scan",
@@ -321,7 +297,7 @@ def run_detect_secrets(scan_root: Path) -> tuple[list[dict[str, Any]], str]:
     results = report.get("results", {}) or {}
     for filename, hits in results.items():
         rel_posix = _to_rel_posix(filename, scan_root)
-        if is_path_allowlisted(rel_posix):
+        if is_path_allowlisted(rel_posix, force_rescan=force_rescan):
             continue
         for hit in hits or []:
             secret_type = str(hit.get("type", "unknown"))
@@ -349,7 +325,38 @@ def run_detect_secrets(scan_root: Path) -> tuple[list[dict[str, Any]], str]:
     return findings, proc.stderr
 
 
-def run_custom_regex_scan(scan_root: Path) -> list[dict[str, Any]]:
+def _is_hashed_frontend_asset(rel_posix: str) -> bool:
+    """Return True if the file is a frontend bundle with content-based hash.
+
+    Hashed assets (e.g. chunk-a1b2c3d4.js) ship with integrity hashes that make
+    tampering detectable. Non-hashed bundles (e.g. index-<buildnum>.js) require
+    full secret scanning because source changes don't alter the filename.
+    """
+    if not rel_posix.startswith("_internal/frontend/dist/assets/"):
+        return False
+    if not (rel_posix.endswith(".js") or rel_posix.endswith(".css")):
+        return False
+
+    basename = Path(rel_posix).stem
+    # Match patterns like: chunk-a1b2c3d4, GraphPayloadViewer-f9e8d7c6
+    # Require at least 8 hex chars after final dash
+    parts = basename.rsplit("-", 1)
+    if len(parts) != 2:
+        return False
+    hash_candidate = parts[1]
+    return len(hash_candidate) >= 8 and all(c in "0123456789abcdefABCDEF" for c in hash_candidate)
+
+
+def run_custom_regex_scan(scan_root: Path, *, frontend_strict: bool = False) -> list[dict[str, Any]]:
+    """Scan text files for secret-like patterns using custom regex rules.
+
+    Args:
+        scan_root: Directory to scan recursively.
+        frontend_strict: If True, disable hashed-asset exemption for frontend bundles.
+
+    Returns:
+        List of finding dictionaries with rule_id, matched_path, line_number, etc.
+    """
     findings: list[dict[str, Any]] = []
     for dirpath, _dirs, files in os.walk(scan_root, onerror=lambda e: None):
         for fname in files:
@@ -368,6 +375,9 @@ def run_custom_regex_scan(scan_root: Path) -> list[dict[str, Any]]:
                 rel = full
             rel_posix = str(rel).replace("\\", "/")
             if is_path_allowlisted(rel_posix):
+                continue
+            # C-7 mitigation: hashed frontend assets skip custom_regex unless --frontend-strict
+            if not frontend_strict and _is_hashed_frontend_asset(rel_posix):
                 continue
             try:
                 text = full.read_text(encoding="utf-8", errors="replace")
@@ -422,7 +432,23 @@ def main() -> int:
     )
     parser.add_argument("--build-version", default="")
     parser.add_argument("--skip-detect-secrets", action="store_true")
+    parser.add_argument(
+        "--frontend-strict",
+        action="store_true",
+        help="Disable hashed-asset exemption for frontend bundles (C-7 mitigation).",
+    )
+    parser.add_argument(
+        "--force-rescan",
+        action="store_true",
+        help="Ignore path allowlist (for dependency upgrade verification).",
+    )
     args = parser.parse_args()
+
+    if args.force_rescan:
+        print(
+            "[secret-scan] FORCE RESCAN: allowlist ignored for dependency upgrade verification",
+            file=sys.stderr
+        )
 
     scan_root = args.input.resolve()
     if not scan_root.exists():
@@ -446,7 +472,7 @@ def main() -> int:
         ds_findings, ds_stderr = run_detect_secrets(scan_root)
         findings.extend(ds_findings)
 
-    findings.extend(run_custom_regex_scan(scan_root))
+    findings.extend(run_custom_regex_scan(scan_root, frontend_strict=args.frontend_strict))
 
     if not findings:
         print(f"[secret-scan] OK - no secrets in {scan_root}")

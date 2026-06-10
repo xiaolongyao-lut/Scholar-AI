@@ -462,6 +462,24 @@ async def _lifespan(app: FastAPI):
         except OSError as _capability_exc:
             logger.warning("api_capability_file write skipped: %s", _capability_exc)
 
+    # Security: verify keyring backend availability in frozen builds
+    import sys
+    if getattr(sys, "frozen", False):
+        try:
+            import keyring
+            backend = keyring.get_keyring()
+            backend_name = f"{type(backend).__module__}.{type(backend).__name__}".lower()
+            if "fail" in backend_name or "null" in backend_name:
+                logger.warning(
+                    "冻结应用凭证后端不可用（keyring 后端为 %s），凭证功能受限。",
+                    backend_name
+                )
+        except Exception as _keyring_exc:
+            logger.warning(
+                "冻结应用凭证后端检测失败：%s。凭证功能可能受限。",
+                _keyring_exc
+            )
+
     from evolution.scheduler import get_curator_scheduler
     curator_scheduler = get_curator_scheduler()
     curator_scheduler.start()
@@ -866,6 +884,11 @@ def _render_frontend_index_response() -> HTMLResponse:
             html = html.replace("</head>", bootstrap + "</head>", 1)
         else:
             html = bootstrap + html
+
+    # Inject nonce into theme-boot.js script tag for CSP compliance
+    html = html.replace('<script src="/theme-boot.js"></script>',
+                       f'<script src="/theme-boot.js" nonce="{nonce}"></script>')
+
     headers = _frontend_index_headers()
     headers["Content-Security-Policy"] = _frontend_csp_header(nonce)
     headers["X-Content-Type-Options"] = "nosniff"
@@ -1084,6 +1107,15 @@ app.include_router(evidence_router)
 
 if FRONTEND_ASSETS_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="frontend-assets")
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def serve_openapi_schema_when_enabled() -> JSONResponse:
+    """Return OpenAPI only for explicit debug/contract-test sessions."""
+
+    if os.environ.get("LITASSIST_ENABLE_DOCS") != "1":
+        raise HTTPException(status_code=404, detail="Route not found: /openapi.json")
+    return JSONResponse(app.openapi())
 
 
 @app.get("/", include_in_schema=False)

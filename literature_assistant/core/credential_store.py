@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import threading
 import uuid
 from dataclasses import dataclass
@@ -119,6 +120,11 @@ def _is_default_credentials_path(path: Path) -> bool:
     """Return whether a store path is the production runtime metadata path."""
 
     return _path_equals(path, default_credentials_path())
+
+
+def _is_frozen() -> bool:
+    """Return True when running as a frozen PyInstaller bundle."""
+    return getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
 
 
 class PlaintextFileCredentialSecretBackend:
@@ -303,9 +309,21 @@ def _select_secret_backend(path: Path) -> CredentialSecretBackend:
         A custom metadata path is not proof that plaintext secret storage is
         acceptable. Plaintext files remain available only through explicit
         local opt-in for tests and emergency recovery.
+
+    Security:
+        Frozen applications (PyInstaller bundles) must never use plaintext_file
+        backend to prevent API key leakage in %APPDATA%.
     """
 
     raw = os.environ.get(SECRET_BACKEND_ENV, "").strip().lower()
+
+    # Frozen application security gate: refuse plaintext backend
+    if _is_frozen() and raw in {"plaintext_file", "file", "local_file"}:
+        raise CredentialSecretStorageError(
+            f"Plaintext credential storage is disabled in packaged applications. "
+            f"Remove {SECRET_BACKEND_ENV}={raw} or set it to 'keyring'."
+        )
+
     if raw in {"plaintext_file", "file", "local_file"}:
         return PlaintextFileCredentialSecretBackend(_secret_file_path_for_credentials_path(path))
     if raw in {"keyring", "os_keyring"}:

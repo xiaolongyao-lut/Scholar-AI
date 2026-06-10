@@ -18,7 +18,7 @@
 #     $env:LITERATURE_ASSISTANT_INNO_SIGNTOOL_COMMAND = 'signtool sign ... $f'
 #     .\scripts\build_windows_exe.ps1 -Version 1.0.0
 #
-# Output: workspace_artifacts\releases\<version>\onedir\LiteratureAssistant\
+# Output: workspace_artifacts\releases\<version>\onedir\Scholar-AI\
 
 param(
     [string]$Version = "1.0.0",
@@ -28,6 +28,11 @@ param(
     [string]$InnoSignToolName = $env:LITERATURE_ASSISTANT_INNO_SIGNTOOL_NAME,
     [string]$InnoSignToolCommand = $env:LITERATURE_ASSISTANT_INNO_SIGNTOOL_COMMAND
 )
+
+# Validate version format
+if ($Version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
+    throw "Invalid version format: $Version (expected: x.y.z or x.y.z.w)"
+}
 
 $ErrorActionPreference = 'Stop'
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -41,6 +46,46 @@ $DumpScript = Join-Path $Repo 'scripts\dump_pyinstaller_analysis.py'
 $PathScanScript = Join-Path $Repo 'scripts\release_forbidden_path_scan.py'
 $SecretScanScript = Join-Path $Repo 'scripts\release_secret_scan.py'
 $FrozenSmokeScript = Join-Path $Repo 'scripts\smoke_frozen_first_launch.py'
+
+function Get-ReleaseFileSha256 {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        throw "Hash path cannot be empty"
+    }
+
+    $ResolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    if (-not (Test-Path -LiteralPath $ResolvedPath -PathType Leaf)) {
+        throw "Hash path is not a file: $ResolvedPath"
+    }
+
+    $Stream = [System.IO.File]::Open(
+        $ResolvedPath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::Read
+    )
+    try {
+        $Sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $Bytes = $Sha256.ComputeHash($Stream)
+        }
+        finally {
+            if ($null -ne $Sha256) {
+                $Sha256.Dispose()
+            }
+        }
+    }
+    finally {
+        $Stream.Dispose()
+    }
+
+    $Hex = -join ($Bytes | ForEach-Object { $_.ToString('x2') })
+    return $Hex.ToUpperInvariant()
+}
 
 if (-not (Test-Path $VenvPython)) {
     throw "venv python missing: $VenvPython"
@@ -74,6 +119,14 @@ Write-Host "[build:2] pyinstaller analysis manifest dump"
 & $VenvPython $DumpScript --spec $Spec --out $ManifestPath
 if ($LASTEXITCODE -ne 0) { throw "Analysis manifest dump failed (exit $LASTEXITCODE)" }
 
+# Step 2.5. Audit hiddenimports completeness
+$HiddenimportsAuditScript = Join-Path $Repo 'scripts\audit_pyinstaller_hiddenimports.py'
+Write-Host "[build:2.5] audit hiddenimports vs registered routers"
+& $VenvPython $HiddenimportsAuditScript --spec $Spec
+if ($LASTEXITCODE -ne 0) {
+    throw "Hiddenimports audit failed — missing router modules in spec hiddenimports list"
+}
+
 # Step 3. Forbidden-path scan on manifest (early intent gate)
 Write-Host "[build:3] forbidden-path scan: manifest"
 & $VenvPython $PathScanScript --mode manifest --input $ManifestPath `
@@ -82,7 +135,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "Manifest forbidden-path scan failed — see $RejectedDir for redacted report"
 }
 
-# Step 4. Clean prior onedir, then PyInstaller full build
+# Step 4. Clean prior PyInstaller outputs, then PyInstaller full build
+if (Test-Path $BuildDir) { Remove-Item -Recurse -Force $BuildDir }
 if (Test-Path $OnedirDir) { Remove-Item -Recurse -Force $OnedirDir }
 New-Item -ItemType Directory -Force -Path $OnedirDir | Out-Null
 
@@ -92,10 +146,10 @@ if (-not (Test-Path $PyInstaller)) {
 }
 
 Write-Host "[build:4] pyinstaller full build: $Spec"
-& $PyInstaller --workpath $BuildDir --distpath $OnedirDir --noconfirm $Spec
+& $PyInstaller --clean --workpath $BuildDir --distpath $OnedirDir --noconfirm $Spec
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit $LASTEXITCODE)" }
 
-$OnedirPayload = Join-Path $OnedirDir 'LiteratureAssistant'
+$OnedirPayload = Join-Path $OnedirDir 'Scholar-AI'
 if (-not (Test-Path $OnedirPayload)) {
     throw "Expected onedir payload missing: $OnedirPayload"
 }
@@ -117,33 +171,60 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # SHA256 of the produced exe
-$ExePath = Join-Path $OnedirPayload 'LiteratureAssistant.exe'
+$ExePath = Join-Path $OnedirPayload 'Scholar-AI.exe'
 if (-not (Test-Path $ExePath)) { throw "Expected exe missing: $ExePath" }
-$Sha = (Get-FileHash $ExePath -Algorithm SHA256).Hash
+$Sha = Get-ReleaseFileSha256 -Path $ExePath
 $ShaFile = Join-Path $ReleaseDir 'SHA256SUMS.txt'
-"$Sha *LiteratureAssistant.exe" | Out-File $ShaFile -Encoding ASCII
+"$Sha *Scholar-AI.exe" | Out-File $ShaFile -Encoding ASCII
 Write-Host "[build] sha256: $Sha"
 
 # Step 7+8. Inno source-clause check + Inno build installer
 if (-not $SkipInno) {
     $Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
     $Iss = Join-Path $Repo 'packaging\inno-setup\literature-assistant.iss'
+
+    # L-10 mitigation: hard-fail if ISCC.exe missing (no silent SKIP)
+    if (-not (Test-Path $Iscc)) {
+        throw "ISCC.exe not found at $Iscc — install Inno Setup 6 or pass -SkipInno to bypass"
+    }
+    if (-not (Test-Path $Iss)) {
+        throw "Inno script not found: $Iss"
+    }
+
     if ((Test-Path $Iscc) -and (Test-Path $Iss)) {
         Write-Host "[build:7] inno source-clause check: $Iss"
-        # Lightweight: scan .iss for Source: clauses pointing OUTSIDE the onedir payload root
+        # C-6 mitigation: whitelist-based Source validation.
+        # All [Files] Source clauses must start with {#ReleaseRoot}\onedir\Scholar-AI\
+        # or be in the known safe external assets list.
         $IssText = Get-Content $Iss -Raw
-        $SourceMatches = [regex]::Matches($IssText, 'Source:\s*"([^"]+)"', 'IgnoreCase')
+        $SourceMatches = [regex]::Matches($IssText, '(?m)^\s*Source:\s*"([^"]+)"', 'IgnoreCase')
+        $SafeExternalPrefixes = @('..\assets\')
         $BadSources = @()
-        foreach ($m in $SourceMatches) {
-            $src = $m.Groups[1].Value
-            # Allow templated {#OnedirRoot}, {app}, etc., and anything literally under the onedir.
-            if ($src -match 'runtime_state|\.env|credentials\.json|key\.txt|chunk_store|logs|_rejected') {
-                $BadSources += $src
+        $LineNumber = 1
+        foreach ($line in (Get-Content $Iss)) {
+            if ($line -match '^\s*Source:\s*"([^"]+)"') {
+                $src = $Matches[1]
+                $isWhitelisted = $false
+                # Check if it's the main payload
+                if ($src -match '^\{#ReleaseRoot\}\\onedir\\Scholar-AI\\') {
+                    $isWhitelisted = $true
+                }
+                # Check if it's in safe external assets
+                foreach ($prefix in $SafeExternalPrefixes) {
+                    if ($src.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $isWhitelisted = $true
+                        break
+                    }
+                }
+                if (-not $isWhitelisted) {
+                    $BadSources += "Line $LineNumber : $src"
+                }
             }
+            $LineNumber++
         }
         if ($BadSources.Count -gt 0) {
             $BadList = $BadSources -join "`n  - "
-            throw "Inno .iss declares forbidden source paths:`n  - $BadList"
+            throw "Inno .iss contains non-whitelisted Source paths (must start with {#ReleaseRoot}\onedir\Scholar-AI\ or ..\assets\):`n  - $BadList"
         }
 
         Write-Host "[build:8] inno setup: $Iss"
@@ -152,6 +233,7 @@ if (-not $SkipInno) {
         # blew MAX_PATH for ui-ux-pro-max\src\ui-ux-pro-max\data\stacks\*.csv
         # at alpha-prep attempt 6, 2026-05-12). $ReleaseDir is already absolute
         # via Resolve-Path on $Repo above.
+        $env:LITASSIST_BUILD_VERSION = $Version
         $IsccArgs = @("/DAppVersion=$Version", "/DReleaseRoot=$ReleaseDir")
         $ResolvedSignToolName = $InnoSignToolName
         if ([string]::IsNullOrWhiteSpace($ResolvedSignToolName)) {
@@ -175,17 +257,19 @@ if (-not $SkipInno) {
         if (-not (Test-Path $InstallerPath)) {
             throw "Expected installer missing: $InstallerPath"
         }
-        $InstallerSha = (Get-FileHash $InstallerPath -Algorithm SHA256).Hash
+        $InstallerSha = Get-ReleaseFileSha256 -Path $InstallerPath
         "$InstallerSha *$InstallerFileName" | `
             Add-Content $ShaFile -Encoding ASCII
         Write-Host "[build] installer sha256: $InstallerSha"
-    } else {
-        Write-Host "[build:7-8] inno setup: SKIPPED (ISCC.exe or .iss missing)"
     }
 }
 
 # Step 9. Frozen first-launch storage smoke (A0.6, DEC-001b)
-if (-not $SkipFrozenSmoke -and (Test-Path $FrozenSmokeScript)) {
+if (-not $SkipFrozenSmoke) {
+    # L-10 mitigation: hard-fail if smoke script missing (no silent SKIP)
+    if (-not (Test-Path $FrozenSmokeScript)) {
+        throw "Frozen smoke script not found: $FrozenSmokeScript — cannot verify first-launch behavior (pass -SkipFrozenSmoke to bypass)"
+    }
     Write-Host "[build:9] frozen first-launch storage check"
     & $VenvPython $FrozenSmokeScript --exe $ExePath --rejected-dir $RejectedDir --build-version $Version
     if ($LASTEXITCODE -ne 0) {
