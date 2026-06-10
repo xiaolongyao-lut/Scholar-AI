@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.8.3 - 2026-06-10
+
+发布加固补丁：
+
+- 默认关闭生产环境 OpenAPI schema 暴露，只有 `LITASSIST_ENABLE_DOCS=1` 时才返回 `/openapi.json`。
+- PyInstaller 打包前过滤运行时目录、日志、审批/审计/回档目录、私钥和凭证类文件，降低从开发工作区误带敏感数据的风险。
+- Windows 发布脚本改用 .NET SHA256 计算发布件哈希，避免依赖当前 PowerShell 环境中不可用的 `Get-FileHash`。
+- 发布门禁测试加入显式源码白名单，避免回归测试被 `/tests/*` ignore 规则静默排除。
+- Windows 主程序文件名统一为 `Scholar-AI.exe`，和安装包、快捷方式品牌名保持一致。
+
 ## 0.1.8.2 - 2026-05-23
 
 新增「实验性功能」设置分区，把后端实验能力的开关搬到 UI。本版本第一个加入的是 TOLF 检索切换。
