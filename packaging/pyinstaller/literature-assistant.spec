@@ -7,6 +7,7 @@ Layer 2 (Inno Setup) wraps the onedir output into a single .exe installer.
 Reference: docs/plans/runbooks/windows-exe-release-standard.md
 """
 import os
+import tempfile
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
@@ -29,6 +30,51 @@ def _read_version() -> str:
     return "0.0.0"
 
 APP_VERSION = _read_version()
+
+
+def _make_version_info_path(version_str: str) -> str:
+    """Generate a Windows VS_VERSION_INFO resource file; return its path.
+
+    PyInstaller's EXE(version=...) requires a path to a text file holding a
+    VSVersionInfo(...) expression (it is read via load_version_info_from_text_file),
+    NOT a bare version string. Passing the raw "x.y.z" string makes PyInstaller
+    try to open a file literally named after the version and fail with
+    FileNotFoundError. The dotted version is normalized to a 4-int tuple because
+    Win32 filevers/prodvers require exactly four 16-bit fields.
+    """
+    parts = [int(p) for p in version_str.split(".") if p.isdigit()]
+    while len(parts) < 4:
+        parts.append(0)
+    vers = tuple(parts[:4])
+    content = (
+        "VSVersionInfo(\n"
+        "  ffi=FixedFileInfo(\n"
+        f"    filevers={vers}, prodvers={vers},\n"
+        "    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)\n"
+        "  ),\n"
+        "  kids=[\n"
+        "    StringFileInfo([\n"
+        "      StringTable('040904B0', [\n"
+        "        StringStruct('CompanyName', 'Scholar AI'),\n"
+        "        StringStruct('FileDescription', 'Scholar AI'),\n"
+        f"        StringStruct('FileVersion', '{version_str}'),\n"
+        "        StringStruct('InternalName', 'Scholar-AI'),\n"
+        "        StringStruct('OriginalFilename', 'Scholar-AI.exe'),\n"
+        "        StringStruct('ProductName', 'Scholar AI'),\n"
+        f"        StringStruct('ProductVersion', '{version_str}')\n"
+        "      ])\n"
+        "    ]),\n"
+        "    VarFileInfo([VarStruct('Translation', [1033, 1200])])\n"
+        "  ]\n"
+        ")\n"
+    )
+    fd, tmp_path = tempfile.mkstemp(prefix="scholarai_versioninfo_", suffix=".txt")
+    os.close(fd)
+    Path(tmp_path).write_text(content, encoding="utf-8")
+    return tmp_path
+
+
+_VERSION_INFO_PATH = _make_version_info_path(APP_VERSION)
 
 block_cipher = None
 
@@ -267,7 +313,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(REPO_ROOT / "packaging" / "assets" / "icon.ico") if (REPO_ROOT / "packaging" / "assets" / "icon.ico").exists() else None,
-    version=APP_VERSION,
+    version=_VERSION_INFO_PATH,
 )
 
 coll = COLLECT(
