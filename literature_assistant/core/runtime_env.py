@@ -213,11 +213,44 @@ def resolve_llm_config(
     default_base_url: str,
     default_model: str,
 ) -> tuple[str | None, str, str]:
-    return (
-        _clean(api_key) or env_value("ARK_API_KEY", "VOLCANO_API_KEY", "OPENAI_API_KEY", "API_KEY"),
-        _clean_urlish(base_url) or env_value("ARK_BASE_URL", "OPENAI_BASE_URL", "BASE_URL", default=default_base_url) or default_base_url,
-        _clean(model) or env_value("ARK_MODEL", "OPENAI_MODEL", "MODEL", default=default_model) or default_model,
-    )
+    """Resolve LLM configuration from explicit args or environment.
+
+    Security: validates base_url endpoint before returning.
+    """
+    resolved_key = _clean(api_key) or env_value("ARK_API_KEY", "VOLCANO_API_KEY", "OPENAI_API_KEY", "API_KEY")
+    resolved_url = _clean_urlish(base_url) or env_value("ARK_BASE_URL", "OPENAI_BASE_URL", "BASE_URL", default=default_base_url) or default_base_url
+    resolved_model = _clean(model) or env_value("ARK_MODEL", "OPENAI_MODEL", "MODEL", default=default_model) or default_model
+
+    # Security gate: validate endpoint when returning config with credentials
+    if resolved_key and resolved_url:
+        try:
+            from provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
+
+            decision = validate_endpoint(
+                resolved_url,
+                trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+                allow_loopback_http=True,
+            )
+            if not decision.allowed:
+                logger.error(
+                    "LLM endpoint rejected by security policy: %s (reason: %s)",
+                    resolved_url,
+                    decision.reason,
+                )
+                # Return None key to signal failure
+                return None, resolved_url, resolved_model
+        except Exception as policy_exc:
+            logger.error(
+                "LLM endpoint policy check failed for %s: %s",
+                resolved_url,
+                policy_exc,
+            )
+            return None, resolved_url, resolved_model
+
+    return (resolved_key, resolved_url, resolved_model)
 
 
 DEFAULT_JINA_EMBEDDING_BASE_URL = "https://api.jina.ai/v1/embeddings"

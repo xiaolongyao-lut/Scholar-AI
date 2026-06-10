@@ -92,6 +92,33 @@ def _probe_rerank_key(
     if not api_key or not base_url or not model:
         return False
 
+    # Security gate: validate endpoint before sending credentials
+    try:
+        from provider_endpoint_policy import (
+            TrustSource,
+            validate_endpoint,
+        )
+
+        decision = validate_endpoint(
+            base_url,
+            trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+            allow_loopback_http=True,
+        )
+        if not decision.allowed:
+            logger.warning(
+                "Rerank endpoint rejected by security policy: %s (reason: %s)",
+                base_url,
+                decision.reason,
+            )
+            return False
+    except Exception as policy_exc:
+        logger.warning(
+            "Rerank endpoint policy check failed for %s: %s",
+            base_url,
+            policy_exc,
+        )
+        return False
+
     cache_key = (base_url, model, api_key)
     cached = _KEY_PROBE_CACHE.get(cache_key)
     if cached is not None:
@@ -1421,6 +1448,31 @@ async def rerank_async(
                     token_count=_rerank_request_token_count(query, [doc for _, doc in _truncated_pairs]),
                 )
                 t_api = time.perf_counter()
+
+                # Security gate: validate endpoint before POST
+                try:
+                    from provider_endpoint_policy import (
+                        TrustSource,
+                        validate_endpoint,
+                    )
+
+                    decision = validate_endpoint(
+                        _candidate_base_url,
+                        trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+                        allow_loopback_http=True,
+                    )
+                    if not decision.allowed:
+                        raise RuntimeError(
+                            f"Rerank endpoint rejected by security policy: {_candidate_base_url} "
+                            f"(reason: {decision.reason})"
+                        )
+                except RuntimeError:
+                    raise
+                except Exception as policy_exc:
+                    raise RuntimeError(
+                        f"Rerank endpoint policy check failed for {_candidate_base_url}: {policy_exc}"
+                    ) from policy_exc
+
                 try:
                     client = _shared_rerank_async_client()
                     response = await client.post(_candidate_base_url, headers=_headers, json=_payload)
