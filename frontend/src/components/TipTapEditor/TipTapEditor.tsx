@@ -192,8 +192,49 @@ function MenuBar({ editor }: { editor: ReturnType<typeof useEditor> }) {
   };
   const handleImageInsert = () => {
     const url = window.prompt('请输入图片地址：');
-    if (url?.trim()) {
-      editor.chain().focus().setImage({ src: url.trim() }).run();
+    if (!url?.trim()) return;
+
+    const trimmedUrl = url.trim();
+
+    // Security: validate image URL scheme
+    try {
+      const parsed = new URL(trimmedUrl);
+      const allowedSchemes = ['https:', 'http:', 'blob:', 'data:'];
+
+      if (!allowedSchemes.includes(parsed.protocol)) {
+        window.alert(
+          `不支持的图片协议：${parsed.protocol}\n` +
+          `仅允许：https、http、blob、data`
+        );
+        return;
+      }
+
+      // Additional validation for data: URLs
+      if (parsed.protocol === 'data:') {
+        const MAX_DATA_URL_SIZE = 5 * 1024 * 1024; // 5 MB
+        if (trimmedUrl.length > MAX_DATA_URL_SIZE) {
+          window.alert(
+            `data: URL 过大 (${(trimmedUrl.length / 1024 / 1024).toFixed(1)} MB)\n` +
+            `最大限制：5 MB`
+          );
+          return;
+        }
+
+        // Validate data: URL format (data:image/...;base64,...)
+        if (!trimmedUrl.startsWith('data:image/')) {
+          window.alert('data: URL 必须是图片类型（data:image/...）');
+          return;
+        }
+      }
+
+      editor.chain().focus().setImage({ src: trimmedUrl }).run();
+    } catch (err) {
+      // Not a valid URL, allow relative paths
+      if (!trimmedUrl.includes('://')) {
+        editor.chain().focus().setImage({ src: trimmedUrl }).run();
+      } else {
+        window.alert(`无效的图片地址：${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   };
   const clearFormatting = () => {
@@ -382,7 +423,10 @@ export function TipTapEditor({ content, onChange, placeholder, className }: TipT
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Placeholder.configure({ placeholder: placeholder || '开始写作…' }),
-      Image.configure({ inline: false, allowBase64: true }),
+      Image.configure({
+        inline: false,
+        allowBase64: true, // Allow but validate in handleImageInsert
+      }),
       Table.configure({ resizable: true }),
       TableRow,
       TableCell,
