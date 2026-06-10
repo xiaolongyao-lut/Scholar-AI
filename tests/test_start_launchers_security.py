@@ -81,7 +81,7 @@ def test_frontend_csp_header_blocks_external_fonts() -> None:
 
 
 def test_browser_cache_cleanup_is_versioned_and_profile_scoped(tmp_path: Path) -> None:
-    """Browser app mode should not delete cache directories on every launch."""
+    """Launcher cache cleanup should not delete cache directories on every launch."""
     profile = tmp_path / "profile"
     cache = profile / "Default" / "Cache"
     code_cache = profile / "Default" / "Code Cache"
@@ -90,15 +90,15 @@ def test_browser_cache_cleanup_is_versioned_and_profile_scoped(tmp_path: Path) -
     (cache / "entry").write_text("cached", encoding="utf-8")
     (code_cache / "entry").write_text("compiled", encoding="utf-8")
 
-    start._clear_stale_browser_cache(profile, "v1")
+    start_desktop._clear_stale_browser_cache(profile, "v1")
 
     assert not cache.exists()
     assert not code_cache.exists()
-    assert (profile / start.BROWSER_CACHE_VERSION_FILE).read_text(encoding="utf-8") == "v1"
+    assert (profile / start_desktop.BROWSER_CACHE_VERSION_FILE).read_text(encoding="utf-8") == "v1"
 
     cache.mkdir(parents=True)
     (cache / "entry").write_text("fresh", encoding="utf-8")
-    start._clear_stale_browser_cache(profile, "v1")
+    start_desktop._clear_stale_browser_cache(profile, "v1")
 
     assert cache.exists()
     assert (cache / "entry").read_text(encoding="utf-8") == "fresh"

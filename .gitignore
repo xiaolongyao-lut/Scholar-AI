@@ -186,11 +186,17 @@ htmlcov/
 !/tests/
 /tests/*
 # Public-source candidate tests stay path-explicit until the full tests tree is reviewed.
+!/tests/test_build_windows_exe_script.py
 !/tests/test_credentials_sampling.py
 !/tests/test_credentials_strategy_hint_mapping.py
 !/tests/test_discussion_mcp_per_agent_scope.py
 !/tests/test_discussion_runtime_credentials.py
+!/tests/test_evolution_release_hardening.py
+!/tests/test_pyinstaller_hiddenimports.py
+!/tests/test_pyproject_runtime_metadata.py
+!/tests/test_release_secret_scan.py
 !/tests/test_skill_export.py
+!/tests/test_smoke_frozen_host_appdata.py
 !/tests/test_wiki_crud.py
 !/tests/test_wiki_export.py
 !/tests/test_wiki_permissions.py
