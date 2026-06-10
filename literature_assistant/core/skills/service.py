@@ -104,14 +104,18 @@ class WritingSkillService:
 
     def __init__(self, external_roots=None, approval_store=None, audit_log=None, managed_root=None):
         """Initialize the service."""
+        from project_paths import REPO_ROOT
         self._registry = SkillRegistry()
-        self._managed_root = Path(managed_root).expanduser().resolve() if managed_root else Path("skills/imported/user").resolve()
+        self._managed_root = (
+            Path(managed_root).expanduser().resolve() if managed_root
+            else (REPO_ROOT / "skills" / "imported" / "user").resolve()
+        )
         self._approval_store = approval_store or ApprovalStore(get_approval_sqlite_path(self._managed_root))
         self._audit_log = audit_log or AuditLog(get_audit_jsonl_path(self._managed_root))
         self._warnings = []
         self._last_results_by_job = {}
         self._request_params_by_job = {}
-        
+
         self._load_builtin_skills()
         self._load_managed_user_skills()
         roots = external_roots or []

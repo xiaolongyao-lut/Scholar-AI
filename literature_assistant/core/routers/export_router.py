@@ -50,7 +50,11 @@ def _cleanup_export_tmp_dir(tmp_dir: Path) -> None:
 
     resolved = tmp_dir.resolve()
     temp_root = Path(tempfile.gettempdir()).resolve()
+    # First guard: parent must be temp_root and name must match expected prefix
     if resolved.parent != temp_root or not resolved.name.startswith("export_docx_"):
+        return
+    # Second guard: prevent directory traversal via symlinks or race conditions
+    if not resolved.is_relative_to(temp_root):
         return
     if resolved.is_dir():
         shutil.rmtree(resolved)

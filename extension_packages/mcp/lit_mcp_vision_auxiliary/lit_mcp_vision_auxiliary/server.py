@@ -165,6 +165,21 @@ def _resolve_endpoint_hosts(host: str) -> list[str]:
 
 
 def _validate_provider_request_url(url: str) -> None:
+    """
+    Validates user-supplied vision provider URLs against SSRF attacks.
+
+    Defenses: HTTPS-only, no userinfo/query/fragment, getaddrinfo pre-flight
+    to reject private-network IPs, follow_redirects=False in httpx calls.
+
+    Residual risk: DNS rebinding TOCTOU window. The check-time DNS resolution
+    happens here via getaddrinfo, but the actual httpx request may re-resolve
+    DNS (use-time). An attacker controlling the domain's authoritative DNS
+    could return a safe IP during validation and a private IP during request.
+
+    Mitigation: Attack requires user to enter attacker-controlled domain and
+    attacker to operate malicious DNS with precise timing. Risk is low for
+    typical usage where users configure trusted provider endpoints.
+    """
     if not isinstance(url, str) or not url.strip():
         raise _VisionProviderError(code="VISION_BASE_URL_MISSING", message_zh="视觉服务地址为空。")
     parsed = urlsplit(url.strip())
