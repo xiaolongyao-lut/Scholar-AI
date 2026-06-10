@@ -25,6 +25,7 @@ param(
     [switch]$SkipFrontend,
     [switch]$SkipInno,
     [switch]$SkipFrozenSmoke,
+    [switch]$AllowUnsigned,  # Allow unsigned builds for development (production must be signed)
     [string]$InnoSignToolName = $env:LITERATURE_ASSISTANT_INNO_SIGNTOOL_NAME,
     [string]$InnoSignToolCommand = $env:LITERATURE_ASSISTANT_INNO_SIGNTOOL_COMMAND
 )
@@ -247,7 +248,11 @@ if (-not $SkipInno) {
             $IsccArgs += "/S$ResolvedSignToolName=$InnoSignToolCommand"
             Write-Host "[build:8] inno signing: enabled ($ResolvedSignToolName)"
         } else {
-            Write-Host "[build:8] inno signing: unsigned (set LITERATURE_ASSISTANT_INNO_SIGNTOOL_COMMAND to enable)"
+            # Security: production releases must be signed
+            if (-not $AllowUnsigned) {
+                throw "Production release requires code signing. Set LITERATURE_ASSISTANT_INNO_SIGNTOOL_COMMAND or pass -AllowUnsigned for development builds."
+            }
+            Write-Host "[build:8] inno signing: unsigned (development build, -AllowUnsigned specified)"
         }
         $IsccArgs += $Iss
         & $Iscc @IsccArgs
