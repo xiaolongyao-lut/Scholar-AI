@@ -264,6 +264,30 @@ def _embedding_request_token_count(texts: list[str]) -> int:
 
 
 def _invoke_embedding_http(text: str, api_key: str, base_url: str, model: str) -> list[float]:
+    # Security gate: validate endpoint before sending credentials
+    try:
+        from provider_endpoint_policy import (
+            TrustSource,
+            validate_endpoint,
+        )
+
+        decision = validate_endpoint(
+            base_url,
+            trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+            allow_loopback_http=True,
+        )
+        if not decision.allowed:
+            raise EmbeddingAPIError(
+                f"Embedding endpoint rejected by security policy: {base_url} "
+                f"(reason: {decision.reason})"
+            )
+    except EmbeddingAPIError:
+        raise
+    except Exception as policy_exc:
+        raise EmbeddingAPIError(
+            f"Endpoint policy check failed for {base_url}: {policy_exc}"
+        ) from policy_exc
+
     payload = build_embedding_request_payload(
         [text],
         base_url=base_url,

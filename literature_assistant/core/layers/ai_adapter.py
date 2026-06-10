@@ -168,6 +168,37 @@ class AIAdapter:
         self.enabled = False
 
         if self.api_key:
+            # Security gate: validate endpoint before creating client
+            try:
+                from provider_endpoint_policy import (
+                    TrustSource,
+                    validate_endpoint,
+                )
+
+                decision = validate_endpoint(
+                    self.base_url,
+                    trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+                    allow_loopback_http=True,
+                )
+                if not decision.allowed:
+                    logger.error(
+                        "AIAdapter endpoint rejected by security policy: %s (reason: %s)",
+                        self.base_url,
+                        decision.reason,
+                    )
+                    self.client = None
+                    self.llm_status = "disabled_endpoint_rejected"
+                    return
+            except Exception as policy_exc:
+                logger.error(
+                    "AIAdapter endpoint policy check failed for %s: %s",
+                    self.base_url,
+                    policy_exc,
+                )
+                self.client = None
+                self.llm_status = "disabled_endpoint_policy_error"
+                return
+
             self.client = openai.OpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url,
@@ -200,6 +231,35 @@ class AIAdapter:
         )
         cached = self._client_cache.get(cache_key)
         if cached is None:
+            # Security gate: validate endpoint before creating client
+            base_url = getattr(cred, "base_url", None)
+            if base_url:
+                try:
+                    from provider_endpoint_policy import (
+                        TrustSource,
+                        validate_endpoint,
+                    )
+
+                    decision = validate_endpoint(
+                        base_url,
+                        trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+                        allow_loopback_http=True,
+                    )
+                    if not decision.allowed:
+                        logger.error(
+                            "Pool credential endpoint rejected by security policy: %s (reason: %s)",
+                            base_url,
+                            decision.reason,
+                        )
+                        return None
+                except Exception as policy_exc:
+                    logger.error(
+                        "Pool credential endpoint policy check failed for %s: %s",
+                        base_url,
+                        policy_exc,
+                    )
+                    return None
+
             cached = openai.OpenAI(
                 api_key=cred.api_key,
                 base_url=cred.base_url,

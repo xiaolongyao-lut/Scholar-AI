@@ -233,6 +233,30 @@ def _call_summary_once(
     model: str,
     base_url: str,
 ) -> str:
+    # Security gate: validate endpoint before sending credentials
+    try:
+        from provider_endpoint_policy import (
+            TrustSource,
+            validate_endpoint,
+        )
+
+        decision = validate_endpoint(
+            base_url,
+            trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+            allow_loopback_http=True,
+        )
+        if not decision.allowed:
+            raise RuntimeError(
+                f"Contextual chunker endpoint rejected by security policy: {base_url} "
+                f"(reason: {decision.reason})"
+            )
+    except RuntimeError:
+        raise
+    except Exception as policy_exc:
+        raise RuntimeError(
+            f"Endpoint policy check failed for {base_url}: {policy_exc}"
+        ) from policy_exc
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",

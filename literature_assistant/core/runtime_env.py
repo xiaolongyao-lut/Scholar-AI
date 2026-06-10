@@ -369,8 +369,37 @@ def _probe_embedding_key(
 
     Returns True only when the endpoint accepts the key *and* the response
     looks like an embedding payload. Cached per process. Never raises.
+
+    Security: validates endpoint before attaching credentials.
     """
     if not api_key or not base_url or not model:
+        return False
+
+    # Security gate: validate endpoint before sending credentials
+    try:
+        from provider_endpoint_policy import (
+            TrustSource,
+            validate_endpoint,
+        )
+
+        decision = validate_endpoint(
+            base_url,
+            trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+            allow_loopback_http=True,  # Allow local self-hosted models
+        )
+        if not decision.allowed:
+            logger.warning(
+                "Embedding endpoint rejected by security policy: %s (reason: %s)",
+                base_url,
+                decision.reason,
+            )
+            return False
+    except Exception as policy_exc:
+        logger.warning(
+            "Endpoint policy check failed for %s: %s",
+            base_url,
+            policy_exc,
+        )
         return False
 
     cache_key = (base_url, model, api_key)
