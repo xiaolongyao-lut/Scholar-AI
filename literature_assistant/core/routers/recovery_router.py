@@ -65,7 +65,7 @@ async def get_recovery_events(
         )
     except Exception as exc:
         logger.error("Failed to fetch recovery events: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Failed to fetch recovery events")
 
 
 @router.get("/memory", response_model=MemorySnapshotPayload)
@@ -106,7 +106,7 @@ async def get_recovery_memory(
         )
     except Exception as exc:
         logger.error("Failed to fetch memory snapshot: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Failed to fetch memory snapshot")
 
 
 @router.post("/facts/invalidate", response_model=FactInvalidationPayload)
@@ -133,7 +133,7 @@ async def invalidate_fact(request: InvalidFactRequest) -> FactInvalidationPayloa
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.error("Failed to invalidate fact: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Failed to invalidate fact")
 
 
 def _to_recommendation_payload(rec) -> RecoveryRecommendationPayload:
@@ -206,7 +206,7 @@ async def get_recovery_recommendations(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.error("Failed to generate recommendations: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Failed to generate recovery recommendations")
 
 
 @router.get("/health")

@@ -3,6 +3,20 @@
 Permissions are stored in ``WikiPage.extra["permissions"]`` to avoid a
 storage migration while the product is still local-first.  Missing permission
 metadata is treated as private to the local workspace owner.
+
+Security note (local-first single-owner mode):
+    The product runs as a single-user local-first application. The
+    ``user_id`` query/body parameter accepted by wiki routes is
+    self-declared by the client and NOT backend-authenticated; the
+    capability token only certifies "same machine, same OS user", not
+    a specific wiki identity. As a result, any process holding the
+    capability token can read/write any wiki page by forging an
+    arbitrary ``user_id``. This is acceptable for local-first single
+    user but is incompatible with future multi-device sync — if
+    multi-user semantics are needed, replace the client-supplied
+    ``user_id`` with an authenticated session identity in
+    ``_current_wiki_user`` before treating ACLs as a real boundary.
+    Tracked in ``OPEN_THREADS.md`` A14.
 """
 
 from __future__ import annotations

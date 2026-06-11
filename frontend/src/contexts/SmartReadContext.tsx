@@ -28,6 +28,9 @@ import type {
 } from '@/components/chat/MessageRenderer';
 import { formatChatVisibleError } from '@/components/chat/chatDisplay';
 import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
+import { readEnv } from '@/services/env';
+
+const SMART_READ_DEBUG_ENABLED = readEnv('VITE_SMART_READ_DEBUG') === '1';
 
 /**
  * Cross-route + cross-reload persistent state for the smart-read (RAG QA)
@@ -606,13 +609,13 @@ function loadPersisted(): Record<string, PersistedConversation> {
       // B7+ (0.1.8.2 hotfix v3): visible trace so users debugging
       // "持久化又丢了" can confirm whether localStorage simply had no
       // entry (fresh install / cleared) vs. a parse / quota issue.
-      if (typeof console !== 'undefined' && import.meta.env.VITE_SMART_READ_DEBUG === '1') {
+      if (typeof console !== 'undefined' && SMART_READ_DEBUG_ENABLED) {
         console.info('[SmartReadContext] localStorage empty on mount; starting fresh.');
       }
       return migratedStore;
     }
     const parsed = readPersistedStore(window.localStorage);
-    if (typeof console !== 'undefined' && import.meta.env.VITE_SMART_READ_DEBUG === '1') {
+    if (typeof console !== 'undefined' && SMART_READ_DEBUG_ENABLED) {
       console.info(
         '[SmartReadContext] localStorage restored: %d scopes, keys=%o',
         Object.keys(parsed).length,

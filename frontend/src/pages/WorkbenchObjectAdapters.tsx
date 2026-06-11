@@ -3,11 +3,14 @@ import { ArrowLeft, BookMarked, Sparkles } from 'lucide-react';
 import { WorkbenchShell } from '@/components/workbench/WorkbenchShell';
 import { WikiWorkbench } from '@/pages/WikiWorkbench';
 import { Inspiration } from '@/pages/Inspiration';
+import { readEnv } from '@/services/env';
+
+function researchWorkbenchFlagEnabled(): boolean {
+  return readEnv('VITE_FLAG_RESEARCH_WORKBENCH').toLowerCase() === 'true';
+}
 
 export function WorkbenchWiki() {
-  const flagEnabled =
-    String(import.meta.env.VITE_FLAG_RESEARCH_WORKBENCH ?? '').toLowerCase() === 'true';
-  if (!flagEnabled) return <Navigate to="/wiki" replace />;
+  if (!researchWorkbenchFlagEnabled()) return <Navigate to="/wiki" replace />;
   return <WorkbenchWikiInner />;
 }
 
@@ -54,9 +57,7 @@ function WorkbenchWikiInner() {
 }
 
 export function WorkbenchInspiration() {
-  const flagEnabled =
-    String(import.meta.env.VITE_FLAG_RESEARCH_WORKBENCH ?? '').toLowerCase() === 'true';
-  if (!flagEnabled) return <Navigate to="/inspiration" replace />;
+  if (!researchWorkbenchFlagEnabled()) return <Navigate to="/inspiration" replace />;
   return <WorkbenchInspirationInner />;
 }
 

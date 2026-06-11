@@ -35,7 +35,13 @@ from models import (
     coerce_pdf_bbox,
     pdf_bbox_matches_unit,
 )
-from project_paths import REPO_ROOT, runtime_state_path
+from project_paths import (
+    REPO_ROOT,
+    WORKSPACE_ARTIFACTS_ROOT,
+    WORKSPACE_REFERENCES_ROOT,
+    project_data_path,
+    runtime_state_path,
+)
 from model_config_store import chat_context_compression_store, chat_store
 from pre_llm_call_hooks import (
     PreLlmCallContext,
@@ -611,18 +617,97 @@ def _split_source_paths(raw_value: str) -> list[str]:
     return [item.strip() for item in normalized.split(";") if item.strip()]
 
 
-def _resolve_source_paths(request_paths: list[str] | None) -> list[Path]:
-    raw_paths = request_paths or _split_source_paths(os.getenv("LITERATURE_SOURCE_PATHS", ""))
-    resolved: list[Path] = []
-    for raw_path in raw_paths:
-        path = Path(raw_path).expanduser()
-        if not path.is_absolute():
-            path = REPO_ROOT / path
+def _source_path_allowed_roots(project_id: str | None = None) -> tuple[Path, ...]:
+    """Whitelist roots for chat source_paths.
+
+    本地任意路径会让后端读 /etc/passwd 之类敏感文件并塞 LLM context 回显,
+    必须把可读范围收敛到工作区根 + 当前项目数据目录。
+    """
+    roots: list[Path] = [
+        WORKSPACE_REFERENCES_ROOT.resolve(),
+        WORKSPACE_ARTIFACTS_ROOT.resolve(),
+    ]
+    if project_id:
         try:
-            candidate = path.resolve()
-        except OSError:
-            continue
-        if candidate.exists():
+            project_root = project_data_path(project_id).resolve()
+        except (OSError, ValueError):
+            project_root = None
+        if project_root is not None:
+            roots.append(project_root)
+    return tuple(roots)
+
+
+def _source_path_forbidden_roots() -> tuple[Path, ...]:
+    return (
+        (REPO_ROOT / ".git").resolve(),
+        (REPO_ROOT / ".rollback_snapshots").resolve(),
+        (REPO_ROOT / "github").resolve(),
+        (REPO_ROOT / ".env").resolve(),
+    )
+
+
+def _path_is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_one_source_path(raw_path: str, strict: bool, allowed_roots: tuple[Path, ...], forbidden_roots: tuple[Path, ...]) -> Path | None:
+    """Resolve a single source path entry, applying allowlist only in strict mode.
+
+    ``strict=True`` 用于 request body 传入的 source_paths(攻击面);
+    ``strict=False`` 用于 env LITERATURE_SOURCE_PATHS(进程级配置,等同
+    capability,可信)。
+    """
+    try:
+        path = Path(str(raw_path)).expanduser()
+    except (TypeError, ValueError):
+        return None
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    try:
+        candidate = path.resolve()
+    except OSError:
+        return None
+    if not candidate.exists():
+        return None
+    if strict:
+        if any(_path_is_relative_to(candidate, root) for root in forbidden_roots):
+            return None
+        if not any(_path_is_relative_to(candidate, root) for root in allowed_roots):
+            return None
+    return candidate
+
+
+def _resolve_source_paths(
+    request_paths: list[str] | None,
+    project_id: str | None = None,
+) -> list[Path]:
+    allowed_roots = _source_path_allowed_roots(project_id)
+    forbidden_roots = _source_path_forbidden_roots()
+    resolved: list[Path] = []
+
+    # 来自 request body 的路径必须经过严格白名单检查(防止 capability 持有者
+    # 让后端读 /etc/passwd 之类敏感文件并塞 LLM context 回显)。
+    if request_paths:
+        for raw_path in request_paths:
+            candidate = _resolve_one_source_path(raw_path, strict=True,
+                                                 allowed_roots=allowed_roots,
+                                                 forbidden_roots=forbidden_roots)
+            if candidate is not None:
+                resolved.append(candidate)
+        return resolved
+
+    # env LITERATURE_SOURCE_PATHS 由部署/测试侧设置,等同 capability,走宽松
+    # 路径(仅 resolve + exists),与历史行为一致。
+    env_raw = os.getenv("LITERATURE_SOURCE_PATHS", "")
+    for raw_path in _split_source_paths(env_raw):
+        candidate = _resolve_one_source_path(raw_path, strict=False,
+                                             allowed_roots=allowed_roots,
+                                             forbidden_roots=forbidden_roots)
+        if candidate is not None:
             resolved.append(candidate)
     return resolved
 
@@ -2213,7 +2298,7 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                     chunks = _prepend_current_pdf_context(req, chunks)
                     evidence_refs = _build_evidence_refs_from_context_chunks(chunks)
                 else:
-                    source_paths = _resolve_source_paths(req.source_paths)
+                    source_paths = _resolve_source_paths(req.source_paths, project_id=project_id)
                     if not source_paths:
                         raise HTTPException(status_code=400, detail="No literature source paths configured")
                     chunks, truncated = _build_context_chunks(req.query, source_paths, req.tier)
@@ -2517,7 +2602,7 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
         chunks = _prepend_current_pdf_context(req, chunks)
         evidence_refs = _build_evidence_refs_from_context_chunks(chunks)
     else:
-        source_paths = _resolve_source_paths(req.source_paths)
+        source_paths = _resolve_source_paths(req.source_paths, project_id=project_id)
         if not source_paths:
             raise HTTPException(status_code=400, detail="No literature source paths configured")
         chunks, truncated = _build_context_chunks(req.query, source_paths, req.tier)

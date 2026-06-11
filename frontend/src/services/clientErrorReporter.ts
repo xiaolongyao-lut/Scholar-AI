@@ -81,16 +81,12 @@ export const reportClientError = (payload: ClientErrorPayload): void => {
     userAgent: safePayload.userAgent ?? (typeof navigator !== 'undefined' ? navigator.userAgent : undefined),
   });
 
-  // sendBeacon survives page unload — the right primitive for
-  // unhandledrejection on a closing tab. fetch+keepalive is the
-  // fallback for browsers/contexts that reject Beacon (e.g. when the
-  // dev server is on a different origin).
+  // 必须走 fetch+keepalive。sendBeacon 不允许自定义请求头,无法附带
+  // `X-LitAssist-Capability`,后端 capability 中间件会直接 403 — 等价于
+  // 一条永远失败的死路径。fetch 经 installLocalApiCapabilityPropagation
+  // 注入的 monkey-patch 会自动带上 capability header。
   const url = `${getApiBaseUrl()}/api/client-error`;
   try {
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      const blob = new Blob([body], { type: 'application/json' });
-      if (navigator.sendBeacon(url, blob)) return;
-    }
     void fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

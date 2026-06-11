@@ -199,11 +199,26 @@ def resolve_host(host: str) -> list[str]:
 
 
 def classify_ip(ip_str: str) -> str | None:
-    """Return a human-readable rejection reason if ip is unsafe, else None."""
+    """Return a human-readable rejection reason if ip is unsafe, else None.
+
+    与 ip_guard.classify_unsafe_ip 保持一致(同款不安全集合 + RFC 6598 CGN
+    100.64.0.0/10 经 ``not is_global`` 覆盖),避免 dispatcher / 凭据测试链路
+    被 CGN DNS 应答绕过 SSRF 防御。
+    """
     try:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return f"invalid_ip:{ip_str}"
+    try:
+        from ip_guard import classify_unsafe_ip
+    except ImportError:
+        classify_unsafe_ip = None  # type: ignore[assignment]
+    if classify_unsafe_ip is not None:
+        unsafe, reason = classify_unsafe_ip(ip)
+        if unsafe:
+            return reason or "unsafe_ip"
+        return None
+    # Fallback if ip_guard unreachable (frozen edge case): inline same checks.
     if ip.is_loopback:
         return "loopback"
     if ip.is_link_local:
@@ -216,6 +231,8 @@ def classify_ip(ip_str: str) -> str | None:
         return "reserved"
     if ip.is_private:
         return "private"
+    if not ip.is_global:
+        return "non_global"
     return None
 
 

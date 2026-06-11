@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import tempfile
 import re
 import shutil
@@ -14,6 +15,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
+
+logger = logging.getLogger("ExportRouter")
 
 router = APIRouter(prefix="/api/export", tags=["Export"])
 
@@ -211,7 +214,8 @@ async def export_docx(req: ExportDocxRequest):
         _html_to_docx(req.html, req.title, output_path, req.style_profile)
     except Exception as e:
         _cleanup_export_tmp_dir(tmp_dir)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to render export DOCX: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to render export DOCX")
 
     return FileResponse(
         path=str(output_path),
