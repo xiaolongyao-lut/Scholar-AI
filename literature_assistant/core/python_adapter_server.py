@@ -292,11 +292,23 @@ def _has_valid_local_api_capability(request: Request) -> bool:
 
 
 def _is_frontend_static_path(path: str) -> bool:
-    """Return whether a path serves frontend shell/assets instead of API data."""
+    """Return whether a path serves frontend shell/assets instead of API data.
+
+    Beyond the SPA shell and hashed ``/assets/`` bundle, the built frontend
+    ships root-level public files (the ``theme-boot.js`` CSP/FOUC guard,
+    ``app-icon*.png`` launcher icons, ``favicon.ico``). These are non-sensitive
+    client assets and must be reachable without the local API capability token,
+    otherwise the embedded WebView gets 403 on them (logo/icon missing, dark
+    FOUC guard never runs). ``_resolve_frontend_file`` is path-traversal safe
+    and only matches files that actually exist inside the built dist, so this
+    cannot expose API routes or files outside the frontend output.
+    """
 
     if path in {"", "/", "/index.html", "/favicon.ico"}:
         return True
-    return path.startswith("/assets/")
+    if path.startswith("/assets/"):
+        return True
+    return _resolve_frontend_file(path) is not None
 
 
 def _is_documentation_path(path: str) -> bool:
