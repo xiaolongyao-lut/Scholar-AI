@@ -30,6 +30,7 @@ import {
 } from '@/services/credentialsApi';
 import { ApiEndpointForm, type ApiEndpointFormValue } from '@/components/settings/ApiEndpointForm';
 import CredentialPicker from '@/components/settings/credentials/CredentialPicker';
+import { PDFBackendStatusCard } from '@/components/settings/PDFBackendStatusCard';
 import { TierSelector } from '@/components/chat/TierSelector';
 import { useSmartReadCostTier } from '@/hooks/useSmartReadCostTier';
 import {
@@ -2808,6 +2809,10 @@ function formatSavedCredentialLabel(credential: RuntimeCredentialPublic): string
 /* ------------------------------------------------------------------ */
 
 const FEATURE_FLAG_DISPLAY_COPY: Record<string, { label?: string; description: string }> = {
+  pdf_parser_marker: {
+    label: 'PDF 结构化解析(marker)',
+    description: '用 marker 替代默认 PyMuPDF 解析新上传的 PDF;能识别标题层级、表格、公式与图片,RAG 检索质量更好。需先在终端 `pip install marker-pdf`(~2GB,含模型权重),首次解析每篇约 5-15 分钟。已入库的旧 PDF 不会自动重做,可在项目工作台点「重新解析以获取结构化索引」按 marker 重建。关闭后新上传 PDF 走 PyMuPDF 默认链路,已抽取的结构化数据保留。',
+  },
   tolf_context: {
     label: '深度证据检索',
     description: '把问题拆成多面查询，在文献图上扩散，并按硬证据筛选结果。比默认检索更慢，但更适合综述、找数据和深度调研。',
@@ -2932,9 +2937,14 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
         const displayCopy = FEATURE_FLAG_DISPLAY_COPY[flag.name];
         const displayLabel = displayCopy?.label ?? flag.label;
         const displayDescription = displayCopy?.description ?? flag.description;
+        const isMarkerFlag = flag.name === 'pdf_parser_marker';
         return (
         <div key={flag.name} className="border border-outline-variant rounded-lg p-4 bg-surface">
-          <div className="flex items-start justify-between gap-4">
+          {isMarkerFlag && (
+            <div className="mb-3">
+              <PDFBackendStatusCard />
+            </div>
+          )}          <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="font-semibold text-sm text-foreground">{displayLabel}</h3>

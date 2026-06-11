@@ -145,25 +145,41 @@ def _normalize_env_choice(raw: str | None) -> str:
 
 
 def get_pdf_backend(env: str | None = None) -> PDFParserBackend:
-    """Factory — pick backend instance from env var or explicit argument.
+    """Factory — pick backend instance from env var or feature flag.
+
+    Resolution order(env 显式设值时尊重它,不再 fall back 到 feature flag):
+      1. ``env`` argument(testing override)
+      2. ``LITASSIST_PDF_PARSER`` env var(任何非空值 → 完全决定 backend)
+      3. feature flag ``pdf_parser_marker``(Settings UI 持久化,仅在 env 未设/空时生效)
+      4. default → PyMuPDFBackend
 
     Args:
-        env: Override for testing. If None, reads ``os.environ[ENV_VAR]``.
+        env: Explicit override for testing. If None, reads from env var
+             and feature flag in that order.
 
     Returns:
         A backend instance ready to ``.parse(path)``.
-
-    Notes:
-        Default ``LITASSIST_PDF_PARSER`` unset / empty / "auto" / "pymupdf"
-        all return ``PyMuPDFBackend()`` — byte-level identical to today.
-        Only literal "marker" returns ``MarkerBackend()``.
     """
-    # Local imports to avoid eager dependency on submodules at package load
-    # time (subpackages each import this __init__'s Protocol/dataclass).
     raw = env if env is not None else os.environ.get(ENV_VAR)
-    choice = _normalize_env_choice(raw)
-    if choice == "marker":
-        from .marker_backend import MarkerBackend
-        return MarkerBackend()
+    if raw is not None and raw.strip():
+        # env var is explicitly set — it fully decides the backend, even when
+        # the value points to PyMuPDF. Feature flag is ignored in this branch
+        # so that ops can hard-pin backend via env without UI drift.
+        choice = _normalize_env_choice(raw)
+        if choice == "marker":
+            from .marker_backend import MarkerBackend
+            return MarkerBackend()
+        from .pymupdf_backend import PyMuPDFBackend
+        return PyMuPDFBackend()
+    # env var not set → fall back to feature flag (Settings UI 持久化的开关).
+    # Defensive import so packages with broken feature_flags loading still
+    # get PyMuPDF fallback.
+    try:
+        from feature_flags import is_enabled
+        if is_enabled("pdf_parser_marker"):
+            from .marker_backend import MarkerBackend
+            return MarkerBackend()
+    except (ImportError, KeyError):
+        pass
     from .pymupdf_backend import PyMuPDFBackend
     return PyMuPDFBackend()

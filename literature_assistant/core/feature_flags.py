@@ -55,6 +55,33 @@ class FeatureFlagSpec:
 
 
 FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
+    "pdf_parser_marker": FeatureFlagSpec(
+        name="pdf_parser_marker",
+        default=False,
+        env_var=None,  # Coexist with the LITASSIST_PDF_PARSER string env var
+                       # in get_pdf_backend() — either path opts into marker.
+        label="PDF 结构化解析(marker)",
+        description=(
+            "用 marker-pdf 替代默认 PyMuPDF 解析新上传的 PDF;能识别标题层级、表格、"
+            "公式与图片,RAG 检索质量更好。需先 `pip install marker-pdf`(~2GB 含模型);"
+            "首次解析每篇约 5-15 分钟。已入库的旧 PDF 不会自动重做,可在项目工作台点 "
+            "「重新解析以获取结构化索引」按 marker 重建。关闭后新上传 PDF 走 PyMuPDF "
+            "默认链路,旧结构化数据保留。"
+        ),
+    ),
+    "rag_chunk_type_weighting": FeatureFlagSpec(
+        name="rag_chunk_type_weighting",
+        default=False,
+        env_var="RAG_CHUNK_TYPE_WEIGHTING_ENABLED",
+        label="RAG 按 chunk 类型加权(实验)",
+        description=(
+            "检索时按 chunk_type(narrative / table / formula / heading / "
+            "figure_caption / list / code 等)对得分加权,让表格 / 公式 / 标题命中"
+            "更易进 top-k。需要 chunks 已带 chunk_type 元数据(marker 重新解析的"
+            "项目自带,纯 PyMuPDF chunks 也有最基础的类型)。当前权重值为基线 1.0,"
+            "等真实 RAG 评测后再校准 — 启用本开关只激活加权代码路径,不一定立刻提升答案质量。"
+        ),
+    ),
     "tolf_context": FeatureFlagSpec(
         name="tolf_context",
         default=False,
