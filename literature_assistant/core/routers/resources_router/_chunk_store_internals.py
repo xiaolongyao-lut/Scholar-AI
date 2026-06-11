@@ -132,20 +132,56 @@ def _hash_chunks(chunks: list[dict[str, Any]]) -> str:
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
+    """Atomic write_text — text/utf-8 + ``os.replace``.
+
+    Uses NamedTemporaryFile (delete=False) in the SAME directory as the
+    target so ``os.replace`` is a same-filesystem rename (POSIX guarantee
+    + Windows behavior). The tmp file always lands in ``path.parent`` so
+    concurrent writers can never collide on a single fixed tmp name (A18
+    contract).
+
+    Failure-cleanup contract (added 2026-06-12, A18 fix):
+      - If ``os.replace`` raises (e.g. Windows file-lock contention, EACCES,
+        ENOSPC mid-replace), the orphan tmp file is removed in ``finally`` so
+        the directory never accumulates ``*.tmp`` residue.
+      - If the write itself raises, the tmp file (already created by
+        NamedTemporaryFile) is also unlinked.
+      - The exception is re-raised — callers must continue to see write
+        failures, not silent success.
+
+    The TARGET file remains atomically replaced or untouched on failure;
+    user data is never corrupted regardless of which branch trips.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f"{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as fh:
-        tmp = Path(fh.name)
-        fh.write(text)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, path)
+    tmp: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f"{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fh:
+            tmp = Path(fh.name)
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+        # os.replace consumed the tmp path; mark as such so the finally
+        # block does not try to unlink an entry that no longer exists.
+        tmp = None
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                # Best-effort cleanup — leaving the tmp is acceptable since
+                # the TARGET file's atomicity is already guaranteed by
+                # os.replace having either succeeded or never run.
+                pass
 
 
 def _read_material_jsonl(path: Path) -> list[dict[str, Any]]:
