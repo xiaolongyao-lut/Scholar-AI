@@ -18,18 +18,11 @@ from typing import Any, Optional, List
 from datetime_utils import ensure_utc, utc_now
 from canonical_event_store import CanonicalEventStore, CanonicalEvent
 from memory_fact_store import MemoryFactStore, TemporalFact
+from models.recovery import RecoveryActionType
 from recovery_metrics_exporter import get_recovery_metrics_collector
 from recovery_telemetry import get_recovery_telemetry
 
 logger = logging.getLogger(__name__)
-
-class RecoveryActionType(Enum):
-    REPLAY_JOB = "replay_job"
-    REBUILD_STATE = "rebuild_state"
-    RECREATE_WAKEUP = "recreate_wakeup"
-    REHYDRATE_RUNTIME = "rehydrate_runtime"
-    INVALIDATE_FACT = "invalidate_fact"
-    RECOVER_FROM_SNAPSHOT = "recover_from_snapshot"
 
 class ApprovalLevel(Enum):
     NONE = 0

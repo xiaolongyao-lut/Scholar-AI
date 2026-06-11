@@ -261,13 +261,24 @@ class AutopilotExecutor:
                 "context_id": context.session_id,
             })
             
-            # Execute the action (simplified; real impl would call executor methods)
-            logger.info(f"Executing action {recommendation.action_type.value} via executor")
-            
+            # NOTE(audit-2026-06-11): execute_autonomous 仍为 Phase H4 桩 ——
+            # authorize 通过后只追加 audit log,不真正调 self.executor.execute_action。
+            # operator 不应把"success=True"等同于"恢复已实际发生"。真正接入
+            # RecoveryExecutionEngine 需独立设计:dispatch / 失败回填 /
+            # rollback / 与 legacy 测试契约迁移,均超出审计 fix 范围。
+            logger.warning(
+                "Autopilot execute_autonomous is a stub (Phase H4): action %s "
+                "for recommendation %s will not be dispatched to "
+                "RecoveryExecutionEngine. audit log only.",
+                recommendation.action_type.value,
+                recommendation.recommendation_id,
+            )
+
             execution_log.append({
                 "timestamp": utc_now_iso_z(),
                 "event": "execution_started",
                 "action_type": recommendation.action_type.value,
+                "stub": True,
             })
             
             # Record success
@@ -367,11 +378,17 @@ class AutopilotExecutor:
             logger.warning(f"Execution was not successful; nothing to rollback: {execution_id}")
             return True
         
-        # Attempt rollback via executor
+        # NOTE(audit-2026-06-11): rollback_execution 同样为桩 ——
+        # RecoveryExecutionEngine 当前未暴露 rollback 接口
+        # (ActionExecutionStatus 有 ROLLED_BACK 状态但 execute_action 内部没
+        # 有 rollback 分支)。返回 True 仅满足 legacy 测试契约,operator 不
+        # 应据此断定回滚已发生。
         try:
-            logger.info(f"Initiating rollback via executor for {execution_id}")
-            # Real impl would call executor.rollback() method
-            logger.info(f"Rollback completed for {execution_id}")
+            logger.warning(
+                "Autopilot rollback is a stub for %s: downstream "
+                "RecoveryExecutionEngine does not expose a rollback path.",
+                execution_id,
+            )
             return True
         except Exception as e:
             logger.error(f"Rollback failed for {execution_id}: {e}")

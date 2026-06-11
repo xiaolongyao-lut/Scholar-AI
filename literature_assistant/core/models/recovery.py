@@ -4,8 +4,28 @@ Recovery Console-related Pydantic models for REST API.
 Includes models for event timeline, memory snapshots, and recovery operations.
 """
 
+from enum import Enum
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
+
+
+class RecoveryActionType(str, Enum):
+    """Canonical recovery action types.
+
+    早期 recovery_console / recovery_recommendation_engine 各自定义同名枚举
+    导致 router 序列化 ``rec.action_type.value`` 时,客户端拿到的 value 取决
+    于哪个 module 创建的实例。这里把两侧并集合并为唯一源,两侧 ``from
+    models.recovery import RecoveryActionType``。
+    """
+    REPLAY_JOB = "replay_job"
+    REBUILD_STATE = "rebuild_state"
+    RECREATE_WAKEUP = "recreate_wakeup"
+    REHYDRATE_RUNTIME = "rehydrate_runtime"
+    INVALIDATE_FACT = "invalidate_fact"
+    RECOVER_FROM_SNAPSHOT = "recover_from_snapshot"
+    INSPECT_EVENTS = "inspect_events"
+    INSPECT_MEMORY = "inspect_memory"
+    REBUILD_WAKEUP = "rebuild_wakeup"
 
 
 class RecoveryEventPayload(BaseModel):

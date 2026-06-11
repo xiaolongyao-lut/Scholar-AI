@@ -19,22 +19,13 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
 from canonical_event_store import CanonicalEventStore, CanonicalEvent
 from memory_fact_store import MemoryFactStore, TemporalFact
-
-
-class RecoveryActionType(Enum):
-    """Types of recovery actions."""
-    REPLAY_JOB = "replay_job"
-    INSPECT_EVENTS = "inspect_events"
-    INSPECT_MEMORY = "inspect_memory"
-    INVALIDATE_FACT = "invalidate_fact"
-    REBUILD_WAKEUP = "rebuild_wakeup"
-    REHYDRATE_RUNTIME = "rehydrate_runtime"
+from models.recovery import RecoveryActionType
 
 
 class EventFilter(str, Enum):
@@ -160,24 +151,16 @@ class RecoveryConsole:
         if context.start_time or context.end_time:
             filtered = []
             for event in events:
-                # Robust timestamp parsing for mix of mock objects and real strings
                 raw_time = event.timestamp
-                
-                # Check for MagicMock objects from unit tests
-                if hasattr(raw_time, '__class__') and 'Mock' in raw_time.__class__.__name__:
-                    # Try to get value if it's a mock
-                    try:
-                        event_time = raw_time() if callable(raw_time) else raw_time
-                        if not isinstance(event_time, datetime):
-                            event_time = datetime.fromisoformat(event_time)
-                    except:
-                        # Fallback to current time if mock is uncooperative
-                        event_time = datetime.now()
-                elif isinstance(raw_time, datetime):
+                if isinstance(raw_time, datetime):
                     event_time = raw_time
+                elif isinstance(raw_time, str):
+                    try:
+                        event_time = datetime.fromisoformat(raw_time)
+                    except ValueError:
+                        continue
                 else:
-                    event_time = datetime.fromisoformat(raw_time)
-                
+                    continue
                 if context.start_time and event_time < context.start_time:
                     continue
                 if context.end_time and event_time > context.end_time:
@@ -198,8 +181,8 @@ class RecoveryConsole:
                 session_id=context.session_id,
                 events=[],
                 event_count=0,
-                earliest_timestamp=datetime.now(),
-                latest_timestamp=datetime.now(),
+                earliest_timestamp=datetime.now(timezone.utc),
+                latest_timestamp=datetime.now(timezone.utc),
                 aggregate_types=[],
                 event_types=[],
             )
@@ -235,8 +218,8 @@ class RecoveryConsole:
         """
         if not context or not context.session_id:
             raise ValueError("InspectionContext with session_id is required")
-        
-        now = datetime.now()
+
+        now = datetime.now(timezone.utc)
 
         # Query current facts from all available namespaces
         current_facts = []
@@ -301,8 +284,8 @@ class RecoveryConsole:
                 break
 
         # Invalidate by setting valid_to to now
-        now = datetime.now()
-        
+        now = datetime.now(timezone.utc)
+
         # Create invalidation record
         invalidation = FactInvalidation(
             invalidation_id=f"inv_{fact_id}_{int(now.timestamp())}",
@@ -358,7 +341,7 @@ class RecoveryConsole:
         Returns:
             RecoveryAction ready for execution
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         return RecoveryAction(
             action_id=f"recover_{action_type.value}_{int(now.timestamp())}",
             action_type=action_type,

@@ -14,7 +14,6 @@ This router is designed to be included in the main FastAPI adapter application.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Dict, List, Optional
 from argparse import Namespace
 
@@ -45,6 +44,8 @@ from datetime_utils import utc_now_iso_z
 
 logger = logging.getLogger("RecoveryAutopilotRouter")
 
+_API_OPERATOR_ID = "api-client"
+
 # ---
 # Create APIRouter
 # ---
@@ -74,13 +75,17 @@ async def get_autopilot_status():
         cp = get_autopilot_control_plane()
         policy = cp.get_current_policy() if cp.is_enabled() else None
 
-        # Get state from control plane
-        state_val = cp._state.value if hasattr(cp._state, "value") else str(cp._state)
+        # Prefer public accessor when available (legacy callers may still rely
+        # on ``_state``); fall back to the underscored attribute for backwards
+        # compatibility but coerce to its ``value`` for the response payload.
+        raw_state = getattr(cp, "state", None) or getattr(cp, "_state", None)
+        state_val = raw_state.value if hasattr(raw_state, "value") else str(raw_state)
+        is_emergency = raw_state == ControlPlaneState.EMERGENCY_STOPPED
 
         return AutopilotStatusResponse(
             state=state_val,
             is_enabled=cp.is_enabled(),
-            is_emergency_stopped=(cp._state == ControlPlaneState.EMERGENCY_STOPPED),
+            is_emergency_stopped=is_emergency,
             current_policy=(
                 {
                     "name": policy.policy_name,
@@ -117,12 +122,12 @@ async def enable_autopilot(req: AutopilotEnableRequest):
             get_autopilot_control_plane,
         )
 
-        # Set operator ID from environment or default
-        os.environ["RECOVERY_OPERATOR_ID"] = "api-client"
-
+        # Operator id passed via Namespace so concurrent requests don't race on
+        # a process-wide env var (RECOVERY_OPERATOR_ID).
         args = Namespace(
             policy=req.policy,
             reason=req.reason or f"Enabled via REST API at {utc_now_iso_z()}",
+            operator_id=_API_OPERATOR_ID,
         )
 
         result = cmd_autopilot_enable(args)
@@ -158,10 +163,8 @@ async def disable_autopilot(req: Dict[str, Any] = None):
     try:
         from recovery_autopilot_cli import cmd_autopilot_disable
 
-        os.environ["RECOVERY_OPERATOR_ID"] = "api-client"
-
         reason = req.get("reason") if req else None
-        args = Namespace(reason=reason or "Disabled via REST API")
+        args = Namespace(reason=reason or "Disabled via REST API", operator_id=_API_OPERATOR_ID)
 
         result = cmd_autopilot_disable(args)
 
@@ -193,9 +196,7 @@ async def emergency_stop(req: AutopilotEmergencyActionRequest):
     try:
         from recovery_autopilot_cli import cmd_autopilot_emergency_stop
 
-        os.environ["RECOVERY_OPERATOR_ID"] = "api-client"
-
-        args = Namespace(reason=req.reason)
+        args = Namespace(reason=req.reason, operator_id=_API_OPERATOR_ID)
         result = cmd_autopilot_emergency_stop(args)
 
         if result != 0:
@@ -227,10 +228,8 @@ async def emergency_resume(req: Dict[str, Any] = None):
     try:
         from recovery_autopilot_cli import cmd_autopilot_emergency_resume
 
-        os.environ["RECOVERY_OPERATOR_ID"] = "api-client"
-
         reason = req.get("reason") if req else None
-        args = Namespace(reason=reason or "Resumed via REST API")
+        args = Namespace(reason=reason or "Resumed via REST API", operator_id=_API_OPERATOR_ID)
 
         result = cmd_autopilot_emergency_resume(args)
 
@@ -297,10 +296,10 @@ async def set_policy(req: AutopilotPolicySetRequest):
     try:
         from recovery_autopilot_cli import cmd_autopilot_policy_set
 
-        os.environ["RECOVERY_OPERATOR_ID"] = "api-client"
-
         args = Namespace(
-            policy=req.policy, reason=req.reason or f"Changed via REST API to {req.policy}"
+            policy=req.policy,
+            reason=req.reason or f"Changed via REST API to {req.policy}",
+            operator_id=_API_OPERATOR_ID,
         )
 
         result = cmd_autopilot_policy_set(args)

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -46,15 +46,10 @@ class DurableJob:
     updated_at: str
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
-    payload: dict[str, Any] = None
-    result: dict[str, Any] = None
-
-    def __post_init__(self):
-        """Validate payload fields."""
-        if self.payload is None:
-            object.__setattr__(self, 'payload', {})
-        if self.result is None:
-            object.__setattr__(self, 'result', {})
+    # frozen dataclass 默认值用 field(default_factory=dict) 即可,无需在
+    # __post_init__ 里用 object.__setattr__ 绕过 frozen 写入。
+    payload: dict[str, Any] = field(default_factory=dict)
+    result: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""

@@ -65,9 +65,17 @@ def get_autopilot_control_plane() -> AutopilotControlPlane:
     return _control_plane_instance
 
 
-def _get_operator_id() -> str:
-    """Get current operator ID from environment."""
+def _get_operator_id(args: Any = None) -> str:
+    """Get current operator ID.
+
+    优先级:args.operator_id(REST 入口显式传入,避免并发线程互相覆盖
+    进程级环境变量) → ``RECOVERY_OPERATOR_ID`` env → ``"unknown-operator"``.
+    """
     import os
+    if args is not None:
+        candidate = getattr(args, "operator_id", None)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
     return os.environ.get("RECOVERY_OPERATOR_ID", "unknown-operator")
 
 
@@ -144,7 +152,7 @@ def cmd_autopilot_enable(args: Any) -> int:
         
         # Get control plane and enable
         control_plane = get_autopilot_control_plane()
-        operator_id = _get_operator_id()
+        operator_id = _get_operator_id(args)
         
         # Check if already enabled
         if control_plane.is_enabled():
@@ -183,7 +191,7 @@ def cmd_autopilot_disable(args: Any) -> int:
         reason = getattr(args, "reason", None) or f"Disabled via CLI at {utc_now_iso_z()}"
         
         control_plane = get_autopilot_control_plane()
-        operator_id = _get_operator_id()
+        operator_id = _get_operator_id(args)
         
         # Check if already disabled
         if not control_plane.is_enabled() and not control_plane.is_emergency_stopped():
@@ -226,7 +234,7 @@ def cmd_autopilot_emergency_stop(args: Any) -> int:
             return 1
         
         control_plane = get_autopilot_control_plane()
-        operator_id = _get_operator_id()
+        operator_id = _get_operator_id(args)
         
         # Check if already in emergency stop
         if control_plane.is_emergency_stopped():
@@ -267,7 +275,7 @@ def cmd_autopilot_emergency_resume(args: Any) -> int:
         reason = getattr(args, "reason", None) or f"Resumed via CLI at {utc_now_iso_z()}"
         
         control_plane = get_autopilot_control_plane()
-        operator_id = _get_operator_id()
+        operator_id = _get_operator_id(args)
         
         # Check if in emergency stop
         if not control_plane.is_emergency_stopped():
@@ -357,7 +365,7 @@ def cmd_autopilot_policy_set(args: Any) -> int:
         reason = getattr(args, "reason", None) or f"Policy changed via CLI to {policy_name}"
         
         control_plane = get_autopilot_control_plane()
-        operator_id = _get_operator_id()
+        operator_id = _get_operator_id(args)
         
         # Check if enabled
         if not control_plane.is_enabled():

@@ -807,30 +807,38 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             )
             return [TextContent(type="text", text=note)]
         except _VisionProviderError as exc:
-            logger.debug("single-image vision provider unavailable: %s", exc.code)
-        question_suffix = f"\n关注问题：{question}" if question else ""
-        return [TextContent(
-            type="text",
-            text=(
-                "[视觉辅助已接收图片]\n"
-                "状态：图片已进入视觉辅助流程。\n"
-                f"服务地址: {'已填写' if cfg['base_url'] else '使用默认地址'}\n"
-                f"模型：{cfg['model']}\n"
-                f"图片大小：{len(image_b64)} 个编码字符"
-                f"{question_suffix}\n"
-                "触发方式：在智能研读对话中上传图片并提问，系统会把图片内容整理成中文上下文。"
-            ),
-        )]
+            logger.warning("single-image vision provider unavailable: %s", exc.code)
+            # 不再返回带"已接收"字样的占位"成功"文本 —— 那样会让上游误以为
+            # 已经拿到描述结果。明确返回失败,让客户端看到 provider 状态。
+            return [TextContent(
+                type="text",
+                text=(
+                    "[视觉辅助失败] 视觉提供商不可用,无法生成图片描述。\n"
+                    f"原因: {exc.code}\n"
+                    "请在设置中配置 vision provider 凭据后重试。"
+                ),
+            )]
     if name == EXTRACT_TEXT_TOOL:
-        return [TextContent(
-            type="text",
-            text=(
-                "[视觉辅助已接收图片]\n"
-                f"服务地址：{'已填写' if cfg['base_url'] else '使用默认地址'}\n"
-                f"模型：{cfg['model']}\n"
-                "触发方式：在智能研读对话中上传含文字的图片并提问，系统会优先提取可读文字。"
-            ),
-        )]
+        # extract_text 本就没有独立 extract 实现,沿用 describe 链路并要求重点
+        # 抽取可读文字;provider 失败时同样显式报告,而不是返回"已接收"占位。
+        try:
+            note = await _describe_single_image(
+                cfg=cfg,
+                image_b64=str(image_b64),
+                mime_type=str(arguments.get("mime_type") or "image/png"),
+                question="请优先提取图片中所有可识别的文字内容,逐行列出原文,不要总结。",
+            )
+            return [TextContent(type="text", text=note)]
+        except _VisionProviderError as exc:
+            logger.warning("extract-text vision provider unavailable: %s", exc.code)
+            return [TextContent(
+                type="text",
+                text=(
+                    "[视觉辅助失败] 视觉提供商不可用,无法提取图片文字。\n"
+                    f"原因: {exc.code}\n"
+                    "请在设置中配置 vision provider 凭据后重试。"
+                ),
+            )]
     return [TextContent(
         type="text",
         text="未知视觉辅助操作。请回到文献助手界面重新选择图片分析功能。",

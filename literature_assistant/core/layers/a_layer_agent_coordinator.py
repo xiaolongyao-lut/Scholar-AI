@@ -241,8 +241,11 @@ class AIEngine:
                             call_record["error"] = str(e)
                         response.tool_calls.append(call_record)
             response.summary = f"LLM 模式: 调用了 {len(response.tool_calls)} 个工具"
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning("LLM 调度失败，降级到关键词模式: %s", e)
+        except json.JSONDecodeError as e:
+            logger.warning("LLM 输出 JSON 解析失败,降级到关键词模式: %s", e)
+            return self._dispatch_keyword(query, response)
+        except Exception as e:
+            logger.warning("LLM 调度异常,降级到关键词模式: %s", e)
             return self._dispatch_keyword(query, response)
 
         return response
