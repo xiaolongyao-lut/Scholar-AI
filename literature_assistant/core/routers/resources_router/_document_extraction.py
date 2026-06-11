@@ -4,14 +4,55 @@
 from __future__ import annotations
 
 import json
+import logging
+from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    from pdf_backends import (
+        ENV_VAR as _PDF_BACKEND_ENV_VAR,
+        MarkerUnavailable,
+        StructuredBlock,
+        get_pdf_backend,
+    )
+    from pdf_backends.pymupdf_backend import PyMuPDFBackend
+except ImportError:  # pragma: no cover — only triggered in misconfigured envs
+    _PDF_BACKEND_ENV_VAR = "LITASSIST_PDF_PARSER"
+    MarkerUnavailable = RuntimeError  # type: ignore[misc,assignment]
+    StructuredBlock = None  # type: ignore[assignment]
+    get_pdf_backend = None  # type: ignore[assignment]
+    PyMuPDFBackend = None  # type: ignore[assignment]
 
 
 __all__ = [
     "_extract_document_content",
     "_extract_document_content_from_path",
+    "_extract_document_payload_from_path",
     "_truncate_document_content",
+    "ExtractedDocumentPayload",
 ]
+
+
+_LOGGER = logging.getLogger("DocumentExtraction")
+
+
+@dataclass(frozen=True)
+class ExtractedDocumentPayload:
+    """Structured result of document extraction (plan §1.3).
+
+    Default PyMuPDF path returns ``ExtractedDocumentPayload(content=text)``
+    with ``blocks`` and ``markdown_full`` both None — same caller-visible
+    information as the legacy ``_extract_document_content_from_path``
+    return value (a plain string).
+
+    marker path adds ``blocks`` (structured PDF blocks) and
+    ``markdown_full`` (full-document markdown for sidecar writing). Upload
+    layer routes these to the chunker (`blocks=`) and the sidecar writer.
+    """
+
+    content: str
+    blocks: list[StructuredBlock] | None = None  # type: ignore[valid-type]
+    markdown_full: str | None = None
 
 
 def _extract_document_content(filename: str, raw: bytes) -> str:
@@ -134,8 +175,111 @@ def _extract_document_content(filename: str, raw: bytes) -> str:
     return content
 
 
+def _extract_document_payload_from_path(
+    filename: str,
+    source_path: Path,
+) -> ExtractedDocumentPayload:
+    """Extract content + optional structured blocks + optional markdown_full.
+
+    Plan §1.3 — replaces the legacy content-only return with a structured
+    payload. For PDFs, the active backend is picked by
+    ``LITASSIST_PDF_PARSER`` env var (see ``pdf_backends.get_pdf_backend``):
+
+      - Default (env unset / "pymupdf" / "auto"): ``PyMuPDFBackend`` —
+        byte-level identical to legacy behavior; ``blocks`` and
+        ``markdown_full`` are always None.
+      - ``LITASSIST_PDF_PARSER=marker``: ``MarkerBackend`` — populates
+        ``blocks`` (structured) and ``markdown_full`` (sidecar source).
+        If marker-pdf is not installed, falls back to PyMuPDFBackend with
+        a warning log; ``blocks`` / ``markdown_full`` remain None.
+
+    Non-PDF formats (DOCX, plaintext, etc.) go through the legacy text-only
+    paths; ``blocks`` / ``markdown_full`` are None for those.
+
+    Args:
+        filename: Display filename used to choose parser behavior.
+        source_path: Existing local file path containing the uploaded bytes.
+
+    Returns:
+        ``ExtractedDocumentPayload`` — never raises for the PDF/DOCX branches
+        (placeholders are returned as content instead).
+
+    Raises:
+        TypeError / ValueError: If ``source_path`` is not a Path / not a file.
+    """
+
+    if not isinstance(source_path, Path):
+        raise TypeError("source_path must be a pathlib.Path")
+    if not source_path.is_file():
+        raise ValueError(f"source_path is not a file: {source_path}")
+
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    # PDF: route through backend abstraction
+    if ext == "pdf" and get_pdf_backend is not None:
+        backend = get_pdf_backend()
+        try:
+            text, blocks, markdown_full = backend.parse(source_path)
+            return ExtractedDocumentPayload(
+                content=text,
+                blocks=blocks,
+                markdown_full=markdown_full,
+            )
+        except MarkerUnavailable as exc:
+            # marker selected but not installed → log + fall back to PyMuPDF
+            _LOGGER.warning(
+                "marker backend selected but unavailable; "
+                "falling back to PyMuPDF (filename=%s, reason=%s)",
+                filename,
+                exc,
+            )
+            if PyMuPDFBackend is not None:
+                fallback_text, _, _ = PyMuPDFBackend().parse(source_path)
+                return ExtractedDocumentPayload(content=fallback_text)
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            # marker may raise non-MarkerUnavailable errors during actual
+            # parsing (model load issues, etc). Fall back to PyMuPDF rather
+            # than propagate, mirroring legacy graceful-degrade behavior.
+            _LOGGER.warning(
+                "PDF backend %r failed parsing %s: %s; "
+                "falling back to PyMuPDF",
+                getattr(backend, "name", "?"),
+                filename,
+                exc,
+            )
+            if PyMuPDFBackend is not None and not isinstance(
+                backend, PyMuPDFBackend  # avoid re-entering same failing backend
+            ):
+                fallback_text, _, _ = PyMuPDFBackend().parse(source_path)
+                return ExtractedDocumentPayload(content=fallback_text)
+            return ExtractedDocumentPayload(content=f"[PDF 解析失败: {exc}]")
+
+    # DOCX: legacy path, no structured output
+    if ext == "docx":
+        try:
+            from docx import Document as DocxDocument
+            doc = DocxDocument(str(source_path))
+            text = "\n".join(para.text for para in doc.paragraphs if para.text.strip())
+            return ExtractedDocumentPayload(content=text)
+        except ImportError:
+            return ExtractedDocumentPayload(
+                content=f"[DOCX 文件: {filename}，需安装 python-docx 才能提取文本]"
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            return ExtractedDocumentPayload(content=f"[DOCX 解析失败: {exc}]")
+
+    # Other formats: delegate to byte-based helper
+    return ExtractedDocumentPayload(
+        content=_extract_document_content(filename, source_path.read_bytes())
+    )
+
+
 def _extract_document_content_from_path(filename: str, source_path: Path) -> str:
     """Extract textual content from a bounded local source file.
+
+    LEGACY SIGNATURE — kept verbatim for all existing callers. New code
+    should use ``_extract_document_payload_from_path`` to access the
+    structured blocks and markdown_full produced by the marker backend.
 
     Args:
         filename: Display filename used to choose parser behavior.
@@ -149,44 +293,7 @@ def _extract_document_content_from_path(filename: str, source_path: Path) -> str
         ValueError: If ``source_path`` is not an existing file.
     """
 
-    if not isinstance(source_path, Path):
-        raise TypeError("source_path must be a pathlib.Path")
-    if not source_path.is_file():
-        raise ValueError(f"source_path is not a file: {source_path}")
-
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if ext == "pdf":
-        try:
-            try:
-                import pymupdf  # PyMuPDF (fitz)
-                doc = pymupdf.open(str(source_path))
-                try:
-                    pages = [page.get_text() for page in doc]
-                finally:
-                    doc.close()
-                return "\n\n".join(pages)
-            except ImportError:
-                try:
-                    from PyPDF2 import PdfReader
-                    with source_path.open("rb") as fh:
-                        reader = PdfReader(fh)
-                        pages = [page.extract_text() or "" for page in reader.pages]
-                    return "\n\n".join(pages)
-                except ImportError:
-                    return f"[PDF 文件: {filename}，需安装 pymupdf 或 PyPDF2 才能提取文本]"
-        except (OSError, RuntimeError, TypeError, ValueError) as exc:
-            return f"[PDF 解析失败: {exc}]"
-    if ext == "docx":
-        try:
-            from docx import Document as DocxDocument
-            doc = DocxDocument(str(source_path))
-            return "\n".join(para.text for para in doc.paragraphs if para.text.strip())
-        except ImportError:
-            return f"[DOCX 文件: {filename}，需安装 python-docx 才能提取文本]"
-        except (OSError, RuntimeError, TypeError, ValueError) as exc:
-            return f"[DOCX 解析失败: {exc}]"
-
-    return _extract_document_content(filename, source_path.read_bytes())
+    return _extract_document_payload_from_path(filename, source_path).content
 
 
 def _truncate_document_content(content: str) -> str:
