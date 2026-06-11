@@ -245,6 +245,7 @@ hiddenimports = [
     "routers.graph_router",
     "routers.evolution_router",
     "routers.feature_flags_router",
+    "routers.pdf_backend_router",
     "routers.writing_router",
     "routers.evidence_router",
     "recovery_autopilot_router",
