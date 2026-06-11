@@ -256,6 +256,18 @@ class NativeApi:
             return result[0]
         return None
 
+    def minimize_window(self) -> None:
+        import webview
+        webview.windows[0].minimize()
+
+    def maximize_window(self) -> None:
+        import webview
+        webview.windows[0].toggle_fullscreen()
+
+    def close_window(self) -> None:
+        import webview
+        webview.windows[0].destroy()
+
 
 def main() -> None:
     import webview
@@ -313,6 +325,7 @@ def main() -> None:
     window = webview.create_window(
         WINDOW_TITLE, url=url,
         width=WINDOW_WIDTH, height=WINDOW_HEIGHT,
+        frameless=True,
         text_select=True, js_api=api, background_color=LIGHT_APP_BACKGROUND,
     )
     if window is not None:

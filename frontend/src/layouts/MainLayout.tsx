@@ -341,7 +341,7 @@ function ConfigPopover({ open, onClose }: { open: boolean; onClose: () => void }
 }
 
 /* ─── MainLayout ─── */
-export const MainLayout = ({ children }: { children: React.ReactNode }) => {
+export const MainLayout = ({ children, className }: { children: React.ReactNode; className?: string }) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { activeProjectId, setActiveProjectId, leftNavCollapsed, setLeftNavCollapsed, zenMode } = useWriting();
@@ -535,7 +535,7 @@ export const MainLayout = ({ children }: { children: React.ReactNode }) => {
   ), [t]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-surface selection:bg-primary/20">
+    <div className={`flex h-screen w-full overflow-hidden bg-surface selection:bg-primary/20 ${className || ''}`}>
       <button
         type="button"
         onClick={() => setIsMobileNavOpen(true)}

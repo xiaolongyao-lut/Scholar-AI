@@ -10,6 +10,7 @@ import { ToastProvider } from './components/ui/Toast';
 import { CommandPalette } from './components/ui/CommandPalette';
 import { McpPendingCallPoller } from './components/mcp/McpPendingCallPoller';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { CustomTitleBar } from './components/CustomTitleBar';
 
 // Route-level lazy imports keep the initial shell small.
 const Workbench = React.lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
@@ -39,6 +40,12 @@ const LazyFallback = () => (
 );
 
 const App = () => {
+  const [isDesktopApp, setIsDesktopApp] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsDesktopApp(typeof window !== 'undefined' && 'pywebview' in window);
+  }, []);
+
   return (
     <ErrorBoundary fallbackTitle="应用发生异常，请刷新页面或返回首页">
       <ThemeProvider>
@@ -48,7 +55,8 @@ const App = () => {
               <SmartReadProvider>
               <ToastProvider>
               <Router>
-                <MainLayout>
+                {isDesktopApp && <CustomTitleBar />}
+                <MainLayout className={isDesktopApp ? 'pt-8' : undefined}>
                   <Suspense fallback={<LazyFallback />}>
                     <Routes>
                       {/* Home */}

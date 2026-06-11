@@ -9,3 +9,15 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  pywebview?: {
+    api?: {
+      minimize_window?: () => void;
+      maximize_window?: () => void;
+      close_window?: () => void;
+      save_dialog?: (defaultName?: string) => Promise<string | null>;
+      open_dialog?: (fileTypes?: string[]) => Promise<string | null>;
+    };
+  };
+}
