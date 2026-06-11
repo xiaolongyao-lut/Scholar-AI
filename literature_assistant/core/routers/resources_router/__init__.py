@@ -222,8 +222,10 @@ from ._chunk_text import (
     _chunk_document,
 )
 from ._document_extraction import (
+    ExtractedDocumentPayload,
     _extract_document_content,
     _extract_document_content_from_path,
+    _extract_document_payload_from_path,
     _truncate_document_content,
 )
 from ._scan_helpers import (
@@ -838,6 +840,49 @@ def _ensure_extracted_text(filename: str, content: str) -> str:
     return normalized
 
 
+def _safe_sidecar_filename(material_id: str) -> str:
+    """Safe filename for markdown sidecar (plan §1.7).
+
+    Sanitizes ``material_id`` to ``[A-Za-z0-9_-]`` only, truncates to 48
+    chars, then appends ``_<sha1(material_id)[:12]>.md`` so future
+    material_id schemes that share a 48-char prefix do not collide.
+
+    Current material_id format ``mat_<12hex>`` is already safe; this is
+    defensive for future material_id changes (GPT #5).
+    """
+    safe_stem = re.sub(r"[^A-Za-z0-9_\-]", "_", material_id)[:48] or "material"
+    digest = hashlib.sha1(material_id.encode("utf-8")).hexdigest()[:12]
+    return f"{safe_stem}_{digest}.md"
+
+
+def _markdown_sidecar_path(project_id: str, material_id: str) -> Path:
+    """Return the canonical sidecar path for a project/material combo."""
+    _, chunk_dir = _resolve_data_dir(project_id)
+    return chunk_dir / _safe_project_id(project_id) / "markdown" / _safe_sidecar_filename(material_id)
+
+
+def _write_markdown_sidecar(
+    project_id: str,
+    material_id: str,
+    markdown: str | None,
+) -> Path | None:
+    """Persist marker's full markdown for a material as a sidecar file.
+
+    Atomic write (project's ``_atomic_write_text`` helper — NamedTemporaryFile
+    + os.replace, plan §1.7). Concurrent writes are safe: each writer creates
+    a unique tmp file under the same directory and atomically replaces the
+    target. There is NO race that can leave a half-written file.
+
+    Returns None when ``markdown`` is empty / None (default PyMuPDF path
+    never produces markdown, so this is the common case).
+    """
+    if not markdown:
+        return None
+    target = _markdown_sidecar_path(project_id, material_id)
+    _atomic_write_text(target, markdown)
+    return target
+
+
 def _write_material_document_content(
     project_id: str,
     material_id: str,
@@ -848,8 +893,23 @@ def _write_material_document_content(
     source_fingerprint: str | None = None,
     source_size: int | None = None,
     source_mtime: float | None = None,
+    blocks: list[Any] | None = None,
+    markdown_full: str | None = None,
 ) -> dict[str, Any]:
-    """Persist extracted text and chunks for an existing material."""
+    """Persist extracted text, optional sidecar markdown, and chunks.
+
+    Plan §1.7 — when called from a payload-aware caller (see L999/L1063/L1130
+    via the new ``_extract_document_payload_from_path``), the marker backend's
+    ``blocks`` and ``markdown_full`` are forwarded here so that:
+      - The markdown sidecar is written (atomic, sha1-suffixed filename)
+      - The chunker receives ``blocks=...`` and produces structure-aware
+        chunks with the 5 new metadata keys.
+
+    When ``blocks`` / ``markdown_full`` are both None (default PyMuPDF path
+    AND all legacy callers), behavior is byte-level identical to the
+    pre-marker implementation: doc_store row identical, chunk_store entries
+    identical, no sidecar written.
+    """
 
     if not str(project_id or "").strip():
         raise ValueError("project_id must be non-empty")
@@ -872,18 +932,27 @@ def _write_material_document_content(
     }
     _save_doc_store(project_id, doc_store)
 
-    chunks = _chunk_document(material_id, filename, extracted)
+    # Sidecar: only when caller passed markdown_full (marker path); default
+    # path leaves it None and we skip the write entirely.
+    sidecar_path = _write_markdown_sidecar(project_id, material_id, markdown_full)
+
+    # Chunker dispatch: blocks=None routes to legacy text chunker
+    # (byte-level identical); blocks=[...] routes to marker chunker.
+    chunks = _chunk_document(material_id, filename, extracted, blocks=blocks)
     chunk_store = _load_chunk_store(project_id)
     chunk_store[material_id] = chunks
     _save_chunk_store(project_id, chunk_store)
 
-    return {
+    result: dict[str, Any] = {
         "material_id": material_id,
         "title": filename,
         "content_length": len(extracted),
         "chunks": len(chunks),
         "status": "ok",
     }
+    if sidecar_path is not None:
+        result["sidecar_markdown_path"] = str(sidecar_path)
+    return result
 
 
 def _create_pending_uploaded_document(
@@ -996,7 +1065,8 @@ async def _start_uploaded_document_extraction_job(
         runtime.emit_job_progress(target_job.job_id, stage="read_source", message="正在读取已保存的 PDF", progress=12)
 
         def _extract_and_persist() -> dict[str, Any]:
-            content = _truncate_document_content(_extract_document_content_from_path(safe_filename, source_path))
+            payload = _extract_document_payload_from_path(safe_filename, source_path)
+            content = _truncate_document_content(payload.content)
             return _write_material_document_content(
                 project_id,
                 material_id,
@@ -1005,6 +1075,8 @@ async def _start_uploaded_document_extraction_job(
                 source_relative_path=safe_filename,
                 source_fingerprint=source_fingerprint,
                 source_size=source_size,
+                blocks=payload.blocks,
+                markdown_full=payload.markdown_full,
             )
 
         try:
@@ -1046,8 +1118,17 @@ def _persist_uploaded_document(
     source_fingerprint: str | None = None,
     source_size: int | None = None,
     source_mtime: float | None = None,
+    blocks: list[Any] | None = None,
+    markdown_full: str | None = None,
 ) -> dict[str, Any]:
-    """Create a material entry and persist its document/chunk payload."""
+    """Create a material entry and persist its document/chunk payload.
+
+    ``blocks`` / ``markdown_full`` are forwarded to
+    ``_write_material_document_content`` so the marker-backend structured
+    output (when enabled) reaches the chunker and the sidecar writer. Both
+    default to None — legacy callers that have not adopted the payload
+    helper still trigger the legacy PyMuPDF chunking path verbatim.
+    """
     safe_filename = _safe_upload_filename(filename)
     extracted = _ensure_extracted_text(safe_filename, content)
     summary = extracted[:200].replace("\n", " ").strip() if extracted else f"从文件 {safe_filename} 导入"
@@ -1069,6 +1150,8 @@ def _persist_uploaded_document(
         source_fingerprint=source_fingerprint,
         source_size=source_size,
         source_mtime=source_mtime,
+        blocks=blocks,
+        markdown_full=markdown_full,
     )
 
 
@@ -1127,7 +1210,8 @@ async def _ingest_uploaded_document(
             "message": "PDF 已可阅读，文本提取将在后台完成。",
         }
 
-    content = _truncate_document_content(_extract_document_content_from_path(filename, uploaded.path))
+    payload = _extract_document_payload_from_path(filename, uploaded.path)
+    content = _truncate_document_content(payload.content)
     return _persist_uploaded_document(
         project_id,
         filename,
@@ -1135,6 +1219,8 @@ async def _ingest_uploaded_document(
         store=store,
         source_fingerprint=content_fingerprint,
         source_size=uploaded.size,
+        blocks=payload.blocks,
+        markdown_full=payload.markdown_full,
     )
 
 
