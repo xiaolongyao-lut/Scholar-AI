@@ -35,6 +35,7 @@ import { StatusPill } from '@/components/common/StatusPill';
 import { SectionCard } from '@/components/common/SectionCard';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ReasoningBiasBar } from '@/components/knowledge/ReasoningBiasBar';
+import { ReparseWithMarkerButton } from '@/components/workbench/ReparseWithMarkerButton';
 
 type KBDocumentType = 'pdf' | 'docx' | 'bib' | 'txt' | 'other';
 type KBDocumentStatus = 'indexed' | 'no_text';
@@ -693,6 +694,17 @@ export function KnowledgeBase() {
           ) : (
             <>
               <ReasoningBiasBar projectId={activeProjectId} />
+
+              {/* A16b: 项目级 PDF 重新解析(marker / pymupdf 都可用,见 Settings → 实验性功能) */}
+              <div className="mb-3 rounded-md border border-outline-variant/40 bg-surface-low/40 p-3">
+                <div className="mb-1.5 text-xs font-medium text-foreground/70">
+                  PDF 结构化索引维护
+                </div>
+                <ReparseWithMarkerButton
+                  projectId={activeProjectId}
+                  onComplete={() => void loadMaterials()}
+                />
+              </div>
 
               {/* Filter chip row */}
               <div className="mb-3 flex flex-wrap items-center gap-1.5">
