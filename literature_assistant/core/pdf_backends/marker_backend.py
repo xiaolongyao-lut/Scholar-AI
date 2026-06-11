@@ -126,15 +126,28 @@ class MarkerBackend:
                 "to enable structured PDF parsing. Falling back to PyMuPDF."
             ) from exc
 
-        # marker's PdfConverter takes a model dict (lazy-loaded weights on
-        # first use, then cached). The first call after install may take
-        # ~30s while ~1.5GB of weights download — documented in plan §8.
+        # marker 1.10.2: PdfConverter accepts ``renderer`` as a fully-qualified
+        # class path (resolved via ``strings_to_classes``). The default is
+        # ``MarkdownRenderer`` which returns a ``MarkdownOutput`` pydantic
+        # model — we want ``ChunkRenderer`` which returns ``ChunkOutput`` with
+        # a ``blocks`` list of ``FlatBlockOutput`` (id/block_type/html/page/
+        # bbox/section_hierarchy/images). The model dict is lazy-loaded on
+        # first use (~30s while ~1.5GB of weights download — documented in
+        # plan §8).
+        # Also fetch a markdown-rendered version separately for the sidecar
+        # (chunks renderer outputs HTML per block but no full markdown).
         try:
-            converter = PdfConverter(
+            chunk_converter = PdfConverter(
                 artifact_dict=create_model_dict(),
-                config={"output_format": "chunks"},
+                renderer="marker.renderers.chunk.ChunkRenderer",
             )
-            rendered = converter(str(source_path))
+            chunk_rendered = chunk_converter(str(source_path))
+
+            md_converter = PdfConverter(
+                artifact_dict=create_model_dict(),
+                # MarkdownRenderer is the default — passing None preserves it
+            )
+            md_rendered = md_converter(str(source_path))
         except (OSError, RuntimeError, ValueError, TypeError, ImportError) as exc:
             # Mirror PyMuPDFBackend's exception envelope — upload layer
             # treats marker failures the same as PyMuPDF failures (it
@@ -143,10 +156,14 @@ class MarkerBackend:
             logger.error("marker_parse_failed path=%s err=%s", source_path, exc)
             raise
 
-        # marker's chunks output: each chunk is a dict with id/page/bbox/
-        # block_type/html/markdown/metadata. Schema is checked defensively
-        # so a future marker API change does not silently degrade.
-        chunks_raw = self._extract_chunks(rendered)
+        # marker's chunks output: ChunkOutput.blocks is a list of
+        # FlatBlockOutput pydantic models with fields
+        # ``id / block_type / html / page / polygon / bbox /
+        # section_hierarchy / images``. There is no per-block markdown —
+        # we derive it from html via a light bs4-free strip for now.
+        # Future slice may render block markdown via marker's renderer
+        # registry when blocks are needed for downstream LLM context.
+        chunks_raw = self._extract_chunks(chunk_rendered)
         blocks: list[StructuredBlock] = []
         current_section: str | None = None
         for chunk in chunks_raw:
@@ -158,10 +175,9 @@ class MarkerBackend:
         # Plain text projection — joined chunk markdowns, light cleanup.
         text = "\n\n".join(b.markdown.strip() for b in blocks if b.markdown and b.markdown.strip())
 
-        # Full markdown for sidecar — try marker's text_from_rendered helper
-        # first, fall back to text projection if it raises.
+        # Full markdown for sidecar — from the MarkdownRenderer-driven pass.
         try:
-            markdown_full = text_from_rendered(rendered)[0]
+            markdown_full = text_from_rendered(md_rendered)[0]
         except (TypeError, ValueError, IndexError):
             markdown_full = text
 
@@ -171,18 +187,22 @@ class MarkerBackend:
     # Internal helpers — defensive against marker upstream schema changes
     # ------------------------------------------------------------------ #
 
-    def _extract_chunks(self, rendered: Any) -> list[dict[str, Any]]:
-        """Extract the chunks list from marker's rendered output.
+    def _extract_chunks(self, rendered: Any) -> list[Any]:
+        """Extract the per-block list from marker's ChunkRenderer output.
 
-        marker upstream returns either a dict {"chunks": [...]} or a custom
-        Pydantic model with .chunks. We tolerate both shapes.
+        marker 1.10.2 returns ``ChunkOutput(blocks=List[FlatBlockOutput],
+        page_info, metadata)``. We tolerate both:
+          - the Pydantic ``ChunkOutput`` (preferred — has ``.blocks``)
+          - a raw dict with ``"blocks"`` key
+          - a raw list of blocks (defensive)
+        Falls back to empty list with a warning if shape is unexpected so a
+        future upstream rename does not silently degrade downstream chunking.
         """
-        if isinstance(rendered, dict) and "chunks" in rendered:
-            return list(rendered["chunks"])
-        chunks = getattr(rendered, "chunks", None)
-        if chunks is not None:
-            return list(chunks)
-        # Fallback: rendered itself may be the list
+        blocks_attr = getattr(rendered, "blocks", None)
+        if blocks_attr is not None:
+            return list(blocks_attr)
+        if isinstance(rendered, dict) and "blocks" in rendered:
+            return list(rendered["blocks"])
         if isinstance(rendered, list):
             return rendered
         logger.warning(
@@ -196,47 +216,92 @@ class MarkerBackend:
         chunk: Any,
         current_section: str | None,
     ) -> StructuredBlock:
-        """Project one marker chunk dict to our StructuredBlock."""
+        """Project one marker FlatBlockOutput to our StructuredBlock.
+
+        marker 1.10.2 ``FlatBlockOutput`` fields:
+          - id: str (e.g. "/page/0/Block/12")
+          - block_type: str (e.g. "Text", "Heading", "Table", "Equation", ...)
+          - html: str (HTML for the block; for blocks with children it's
+            the recursively-assembled HTML)
+          - page: int
+          - polygon: List[List[float]] (4 corner points)
+          - bbox: List[float] ([x0,y0,x1,y1])
+          - section_hierarchy: Dict[int, str] | None
+          - images: dict | None
+
+        Since FlatBlockOutput has no ``markdown`` field, we derive a markdown-
+        ish text from html (strip tags). For richer markdown semantics
+        downstream callers should consult ``markdown_full`` (sidecar).
+        """
+        # Pydantic models: use getattr; dicts: use .get
         if isinstance(chunk, dict):
             getter = chunk.get
         else:
-            # Pydantic model — wrap getattr
             def getter(key: str, default: Any = None) -> Any:
                 return getattr(chunk, key, default)
 
-        block_id = str(getter("id") or getter("block_id") or "")
-        page_raw = getter("page") or getter("page_number") or 0
+        block_id = str(getter("id") or "")
+        page_raw = getter("page") or 0
         try:
             page = int(page_raw)
         except (TypeError, ValueError):
             page = 0
-        bbox_raw = getter("bbox") or getter("polygon")
-        bbox = self._coerce_bbox(bbox_raw)
-        block_type = str(getter("block_type") or getter("type") or "Text")
-        markdown = str(getter("markdown") or getter("text") or "")
-        html = getter("html")
-        if html is not None:
-            html = str(html)
-        image_paths = self._coerce_image_paths(getter("images") or getter("image_paths"))
-        table_csv = getter("table_csv") or getter("csv")
-        if table_csv is not None:
-            table_csv = str(table_csv)
-        equation_latex = getter("latex") or getter("equation_latex")
-        if equation_latex is not None:
-            equation_latex = str(equation_latex)
+        bbox = self._coerce_bbox(getter("bbox") or getter("polygon"))
+        block_type = str(getter("block_type") or "Text")
+        html_str = getter("html") or ""
+        if html_str is not None:
+            html_str = str(html_str)
+        # Derive plain markdown from html (light strip — preserves text but
+        # drops tag noise). Full structural markdown is in markdown_full.
+        markdown_text = self._html_to_markdown_lite(html_str)
+        image_paths = self._coerce_image_paths(getter("images"))
+        # section_hierarchy is dict[int, str] of (level → heading). Pick the
+        # most-recent-level heading as the running section name.
+        section_hierarchy = getter("section_hierarchy")
+        if isinstance(section_hierarchy, dict) and section_hierarchy:
+            try:
+                highest_level = max(section_hierarchy.keys())
+                section_heading = str(section_hierarchy[highest_level])
+            except (ValueError, TypeError):
+                section_heading = current_section
+        else:
+            section_heading = current_section
 
         return StructuredBlock(
             block_id=block_id,
             page=page,
             bbox=bbox,
             block_type=block_type,
-            markdown=markdown,
-            html=html,
+            markdown=markdown_text,
+            html=html_str,
             image_paths=image_paths,
-            table_csv=table_csv,
-            equation_latex=equation_latex,
-            section_heading=current_section,
+            table_csv=None,  # FlatBlockOutput has no table_csv field
+            equation_latex=None,  # FlatBlockOutput has no equation_latex field
+            section_heading=section_heading,
         )
+
+    @staticmethod
+    def _html_to_markdown_lite(html_str: str) -> str:
+        """Light HTML → markdown-ish text strip.
+
+        Not a full HTML→MD converter — strips tags and preserves text. For
+        full markdown (with table/equation formatting) the upload layer
+        falls back to ``markdown_full`` (from MarkdownRenderer).
+        """
+        if not html_str:
+            return ""
+        import re
+
+        # Preserve heading marker, line breaks, list bullets — minimal.
+        text = re.sub(r"<br\s*/?>", "\n", html_str)
+        text = re.sub(r"</p>", "\n\n", text)
+        text = re.sub(r"</li>", "\n", text)
+        text = re.sub(r"<li[^>]*>", "- ", text)
+        text = re.sub(r"<[^>]+>", "", text)
+        # Unescape common HTML entities
+        text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+        text = text.replace("&nbsp;", " ").replace("&quot;", '"').replace("&#39;", "'")
+        return text.strip()
 
     @staticmethod
     def _coerce_bbox(value: Any) -> list[float] | None:
