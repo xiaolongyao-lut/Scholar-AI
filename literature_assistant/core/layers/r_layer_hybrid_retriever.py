@@ -393,6 +393,17 @@ class HybridRetrieverWithRerank:
                 logger.info(f"✨ 触发智能截断: score_gap={score_gap:.3f}, top1={top1_score:.3f}. 压缩检索窗口至极简模式。")
                 filtered_results = filtered_results[:3]
 
+        # Step 4: chunk-type 加权 (A15) — 默认 flag off 时是 no-op,
+        # 返回 list(filtered_results) 原样,byte-level 零行为变化。
+        # flag on 时按 chunk_type 加权 rerank_score 重新排序;空 retriever
+        # 行为 (top_k 截断 + cache commit) 与今天完全一致。
+        from rag_chunk_type_weighting import apply_chunk_type_weights
+        filtered_results = apply_chunk_type_weights(
+            filtered_results,
+            score_key="rerank_score",
+            chunk_type_key="chunk_type",
+        )
+
         final_results = filtered_results[:top_k]
 
         if self.cache_manager and final_results:
