@@ -35,9 +35,9 @@ function readBackendTarget(): string {
 
 const initialTarget = readBackendTarget();
 if (initialTarget !== FALLBACK_TARGET) {
-  console.log(`[vite] backend proxy → ${initialTarget} (from api-port.json)`);
+  console.info(`[vite] backend proxy → ${initialTarget} (from api-port.json)`);
 } else {
-  console.log(
+  console.info(
     `[vite] backend proxy → ${FALLBACK_TARGET} (no api-port.json yet; ` +
     `will retry per-request once the backend starts)`,
   );

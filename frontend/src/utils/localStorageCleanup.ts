@@ -91,7 +91,7 @@ export function clearLocalStorage(options: LocalStorageClearOptions): void {
     }
   }
 
-  console.log(`Cleared ${keysToRemove.length} localStorage keys`);
+  console.info(`Cleared ${keysToRemove.length} localStorage keys`);
 }
 
 /**
