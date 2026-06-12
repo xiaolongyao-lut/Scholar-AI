@@ -190,6 +190,7 @@ export function MessageRenderer({
                 }
                 onActivate={onSelectEvidence}
                 navigateAfterActivate={navigateEvidenceAfterSelect}
+                showSourceLabels
               />
             ))}
           </div>

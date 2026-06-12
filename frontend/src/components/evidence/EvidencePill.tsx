@@ -54,6 +54,13 @@ export interface EvidenceRefLike {
    * results (🔧). Default 'local' when absent (older payloads).
    */
   source_kind?: 'local' | 'web' | 'mcp' | null;
+  /**
+   * 召回路径标签 — 后端给每条 evidence 打的"这条是怎么被选中的"标签
+   * (e.g. `sibling` / `dense` / `bm25` / `tolf_text_selector`)。
+   * 用于在 chat 里告诉用户这条引用是结构化兄弟召回拉进来的, 还是语义
+   * 匹配 / 关键词 / 深度检索得到的。多个标签时取首个有意义的。
+   */
+  source_labels?: string[] | null;
 }
 
 interface EvidencePillProps {
@@ -74,6 +81,51 @@ interface EvidencePillProps {
   className?: string;
   /** Tooltip override; defaults to evidence.text. */
   title?: string;
+  /** 是否在 pill 后追加召回路径小 chip (sibling/语义/关键词/深度检索)。
+   *  Chat 场景默认开, 其他场景默认关以避免视觉过载。 */
+  showSourceLabels?: boolean;
+}
+
+/**
+ * Friendly Chinese label for each retrieval-path source_label the backend emits.
+ * Returns null for labels that are not user-facing (e.g. `project_chunks`,
+ * `local_context` — these are container types, not retrieval methods).
+ */
+function friendlySourceLabel(label: string): string | null {
+  switch (label) {
+    case 'sibling':
+      return '上下文兄弟';
+    case 'dense':
+      return '语义匹配';
+    case 'bm25':
+      return '关键词';
+    case 'tolf_text_selector':
+      return '深度检索';
+    case 'rerank':
+      return '精排';
+    case 'web_search':
+      return '网络';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Pick the most informative source_label to display.
+ * Priority: sibling > tolf > dense > bm25 > rerank > others.
+ * Falls back to the first label with a Chinese mapping.
+ */
+function pickPrimarySourceLabel(labels: string[] | null | undefined): string | null {
+  if (!labels || labels.length === 0) return null;
+  const priority = ['sibling', 'tolf_text_selector', 'dense', 'bm25', 'rerank'];
+  for (const key of priority) {
+    if (labels.includes(key)) return friendlySourceLabel(key);
+  }
+  for (const raw of labels) {
+    const friendly = friendlySourceLabel(raw);
+    if (friendly) return friendly;
+  }
+  return null;
 }
 
 /**
@@ -97,6 +149,7 @@ export function EvidencePill({
   navigateAfterActivate = false,
   className,
   title,
+  showSourceLabels = false,
 }: EvidencePillProps) {
   const navigate = useNavigate();
 
@@ -141,7 +194,25 @@ export function EvidencePill({
   const KindIcon = kind === 'web' ? Globe : kind === 'mcp' ? Wrench : FileText;
   const kindHint =
     kind === 'web' ? '（网络搜索）' : kind === 'mcp' ? '（MCP 工具）' : '';
-  const tooltip = (title ?? evidence.text ?? '在文献中打开此证据') + kindHint;
+  // 召回路径: 当 showSourceLabels=true 时挑首个用户可懂的标签作为 inline 小 chip,
+  // 同时把全部 labels (中文版) 拼进 tooltip 让用户能看到完整链路。
+  const primarySourceLabel = showSourceLabels
+    ? pickPrimarySourceLabel(evidence.source_labels)
+    : null;
+  const sourceLabelTooltipSuffix = (() => {
+    if (!showSourceLabels) return '';
+    const labels = evidence.source_labels ?? [];
+    if (labels.length === 0) return '';
+    const friendly = labels
+      .map(friendlySourceLabel)
+      .filter((s): s is string => !!s);
+    if (friendly.length === 0) return '';
+    return ` · 来源: ${friendly.join(' / ')}`;
+  })();
+  const tooltip =
+    (title ?? evidence.text ?? '在文献中打开此证据') +
+    kindHint +
+    sourceLabelTooltipSuffix;
 
   return (
     <button
@@ -168,6 +239,18 @@ export function EvidencePill({
     >
       <KindIcon size={11} className="flex-shrink-0 opacity-70" aria-hidden />
       <span className="max-w-[180px] truncate">{label}</span>
+      {primarySourceLabel && (
+        <span
+          className={cn(
+            'ml-0.5 inline-flex items-center rounded px-1 py-px text-[10px] font-normal leading-none',
+            'border border-outline-variant/60 bg-surface-low/60 text-foreground/55',
+          )}
+          aria-label={`召回路径: ${primarySourceLabel}`}
+          data-source-label={primarySourceLabel}
+        >
+          {primarySourceLabel}
+        </span>
+      )}
     </button>
   );
 }
