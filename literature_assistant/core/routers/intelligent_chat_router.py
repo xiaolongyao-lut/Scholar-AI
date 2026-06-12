@@ -630,6 +630,69 @@ def _tolf_fusion_mode_enabled() -> bool:
     return is_enabled("tolf_fusion_mode")
 
 
+def _hybrid_retrieval_enabled() -> bool:
+    """Route chat-router RAG candidates through ContextAwareRetriever.
+
+    Off by default. When on, ``_build_project_context_chunks`` calls
+    ``ContextAwareRetriever.hybrid_search`` (BM25 + dense cosine + optional
+    rerank) instead of the legacy ``search_project_chunks_for_query``
+    (keyword overlap). Requires chunks to carry ``embedding`` populated by
+    ``scripts/embedding_backfill.py``; chunks without embedding silently
+    degrade to BM25-only inside the retriever, so the flag is safe to flip
+    on even when only some projects have been backfilled.
+    """
+    try:
+        from feature_flags import is_enabled
+    except ImportError:
+        val = os.getenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED")
+        return _truthy(val) if val else False
+    return is_enabled("hybrid_retrieval")
+
+
+async def _hybrid_search_project(
+    project_id: str,
+    query: str,
+    *,
+    top_k: int,
+    boost_keywords: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Run real BM25 + dense + rerank against a project's chunks.
+
+    Loads the project's chunk store (sync; cheap once warm), then calls
+    ``ContextAwareRetriever.hybrid_search`` with the full chunk set as the
+    ``claim_index`` so the retriever can pick up ``embedding`` fields and
+    score via cosine. Returns the standard chunk dicts with
+    ``hybrid_score`` / ``source_labels`` attached. On any failure (no
+    chunks, retriever import error, embedding API down) returns an empty
+    list — callers must fall back to the legacy keyword-overlap path.
+
+    Why a thin wrapper rather than inlining: keeps the chat-router branch
+    tiny and lets test code mock this one symbol.
+    """
+    if not project_id or not (query or "").strip():
+        return []
+
+    try:
+        from layers.r_layer_hybrid_retriever import ContextAwareRetriever
+    except ImportError:
+        return []
+
+    chunks = await asyncio.to_thread(load_project_chunks_for_rag, project_id)
+    if not chunks:
+        return []
+
+    retriever = ContextAwareRetriever()
+    try:
+        return await retriever.hybrid_search(
+            {"chunks": chunks},
+            query=query,
+            top_k=top_k,
+            focus_keywords=boost_keywords or None,
+        )
+    except Exception:
+        return []
+
+
 def _rrf_merge(
     *ranked_lists: list[dict[str, Any]],
     k: int = 60,
@@ -929,7 +992,7 @@ def _build_context_chunks(query: str, source_paths: list[Path], tier: ContextTie
     return chunks, truncated
 
 
-def _build_project_context_chunks(
+async def _build_project_context_chunks(
     query: str,
     project_id: str,
     tier: ContextTier,
@@ -942,9 +1005,31 @@ def _build_project_context_chunks(
     Workbench), prefer chunks from that material so the assistant can answer
     about "the paper I'm currently looking at" instead of project-wide RAG.
     Falls back to project-wide retrieval if the material has no chunks.
+
+    The function is async because the optional ``hybrid_retrieval`` flag
+    runs ``ContextAwareRetriever.hybrid_search`` (true BM25 + dense cosine
+    + rerank), which is async. When the flag is off, the legacy sync
+    helpers (``search_project_chunks_for_query``, TOLF text selector) are
+    invoked directly — they return immediately, so the ``async def``
+    signature is essentially free for callers that already ``await`` it.
     """
     max_chunks, max_chars = _TIER_LIMITS[tier]
     cleaned_material_id = (material_id or "").strip() or None
+
+    hybrid_on = _hybrid_retrieval_enabled()
+
+    async def _rag_search(top_k: int) -> list[dict[str, Any]]:
+        """Dispatch between hybrid_search (async) and legacy keyword (sync)."""
+        if hybrid_on:
+            hits = await _hybrid_search_project(
+                project_id, query, top_k=top_k, boost_keywords=boost_keywords
+            )
+            if hits:
+                return hits
+            # Hybrid failed (no chunks / import / API): fall back to legacy.
+        return search_project_chunks_for_query(
+            project_id=project_id, query=query, top_k=top_k
+        )
 
     if cleaned_material_id:
         # Material-scoped path: load the project's chunks, keep only those
@@ -960,9 +1045,7 @@ def _build_project_context_chunks(
         if material_chunks:
             results: list[dict[str, Any]] = material_chunks[:max_chunks]
         else:
-            results = search_project_chunks_for_query(
-                project_id=project_id, query=query, top_k=max_chunks
-            )
+            results = await _rag_search(max_chunks)
     elif _tolf_context_enabled():
         # TOLF needs full corpus — it has its own cosine prefilter internally.
         # Keyword-search top-k is too small for SA-RAG diffusion to work.
@@ -982,9 +1065,7 @@ def _build_project_context_chunks(
                 # TOLF as a binary replacement. Both arms run independently;
                 # the merged list is truncated to max_chunks at the boundary.
                 try:
-                    rag_hits = search_project_chunks_for_query(
-                        project_id=project_id, query=query, top_k=max_chunks
-                    )
+                    rag_hits = await _rag_search(max_chunks)
                 except (RuntimeError, TypeError, ValueError):
                     rag_hits = []
                 merged = _rrf_merge(tolfs, rag_hits)
@@ -999,11 +1080,11 @@ def _build_project_context_chunks(
             elif tolfs:
                 results = tolfs
             else:
-                results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
+                results = await _rag_search(max_chunks)
         else:
-            results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
+            results = await _rag_search(max_chunks)
     else:
-        results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
+        results = await _rag_search(max_chunks)
     chunks: list[ContextChunkPayload] = []
     used_chars = 0
     truncated = False
@@ -2382,7 +2463,7 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                     return
 
                 if project_id is not None:
-                    chunks, truncated = _build_project_context_chunks(
+                    chunks, truncated = await _build_project_context_chunks(
                         req.query,
                         project_id,
                         req.tier,
@@ -2686,7 +2767,7 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
             tier=req.tier,
         )
     elif project_id is not None:
-        chunks, truncated = _build_project_context_chunks(
+        chunks, truncated = await _build_project_context_chunks(
             req.query,
             project_id,
             req.tier,

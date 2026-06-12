@@ -13,6 +13,7 @@ These tests pin two invariants:
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -124,6 +125,7 @@ def test_build_context_chunks_fusion_off_does_not_call_search(
     this test guards against accidentally turning that on by default.
     """
     monkeypatch.delenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", raising=False)
+    monkeypatch.delenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", raising=False)
     monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "1")
 
     import feature_flags
@@ -140,8 +142,10 @@ def test_build_context_chunks_fusion_off_does_not_call_search(
         patch.object(router, "select_tolf_context_chunks", return_value=fake_tolfs),
         patch.object(router, "search_project_chunks_for_query") as mock_search,
     ):
-        chunks, _truncated = router._build_project_context_chunks(
-            query="anything", project_id="proj_test", tier="fast"
+        chunks, _truncated = asyncio.run(
+            router._build_project_context_chunks(
+                query="anything", project_id="proj_test", tier="fast"
+            )
         )
         # TOLF returned non-empty + fusion off → RAG search should NOT be called.
         mock_search.assert_not_called()
@@ -154,6 +158,7 @@ def test_build_context_chunks_fusion_on_calls_both_arms(
 ) -> None:
     monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "1")
     monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", "1")
+    monkeypatch.delenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", raising=False)
 
     import feature_flags
     if hasattr(feature_flags, "_FLAG_CACHE"):
@@ -170,8 +175,10 @@ def test_build_context_chunks_fusion_on_calls_both_arms(
         patch.object(router, "select_tolf_context_chunks", return_value=fake_tolfs),
         patch.object(router, "search_project_chunks_for_query", return_value=fake_rag) as mock_search,
     ):
-        chunks, _ = router._build_project_context_chunks(
-            query="anything", project_id="proj_test", tier="fast"
+        chunks, _ = asyncio.run(
+            router._build_project_context_chunks(
+                query="anything", project_id="proj_test", tier="fast"
+            )
         )
         # Fusion on → RAG search must be called exactly once in addition to TOLF.
         mock_search.assert_called_once()

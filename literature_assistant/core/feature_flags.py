@@ -105,6 +105,20 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
             "默认 off, 保持历史 fallback 行为不变; 适合调研型问题想要更广覆盖时打开。"
         ),
     ),
+    "hybrid_retrieval": FeatureFlagSpec(
+        name="hybrid_retrieval",
+        default=False,
+        env_var="INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED",
+        label="Chat 真 hybrid 检索 (BM25+dense+rerank)",
+        description=(
+            "开启后 chat 路径的 RAG 召回从「关键词重叠」升级为 ContextAwareRetriever 真"
+            " hybrid_search: BM25 词面分 + chunk.embedding 余弦 dense 分 +(若 rerank 服务"
+            "可用)再过 reranker_client。需要项目 chunk 已有 embedding(scripts/"
+            "embedding_backfill.py 回填), 没 embedding 的 chunk 会自动退化为 BM25-only,"
+            "因此对未回填项目也安全; 与 tolf_fusion_mode 组合时, RAG 这一侧候选改走"
+            "hybrid_search 的真分数。默认 off, 实验稳定后再考虑切换默认值。"
+        ),
+    ),
     "local_rerank": FeatureFlagSpec(
         name="local_rerank",
         default=True,
