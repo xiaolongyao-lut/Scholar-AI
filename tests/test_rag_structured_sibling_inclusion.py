@@ -15,6 +15,7 @@ Two contracts are pinned here:
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -39,6 +40,16 @@ def _reset_flag_cache() -> None:
 
     if hasattr(feature_flags, "_FLAG_CACHE"):
         feature_flags._FLAG_CACHE = {}
+
+
+def _isolate_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Point feature_flags at an empty override file so bus defaults decide
+    the test, not whatever runtime_state/feature_flags_override.json says."""
+    empty = tmp_path / "feature_flags_override.json"
+    empty.write_text(json.dumps({"flags": {}, "updated_at": "test"}), encoding="utf-8")
+    import feature_flags
+    monkeypatch.setattr(feature_flags, "_OVERRIDE_PATH", empty)
+    _reset_flag_cache()
 
 
 # ---------- Module-level: select_structured_siblings ----------
@@ -489,13 +500,15 @@ def test_merge_validates_total_cap() -> None:
 
 # ---------- Feature flag wiring ----------
 
-def test_sibling_flag_defaults_off(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sibling_flag_defaults_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Bus default after A15+ stable verification: sibling inclusion ON."""
     monkeypatch.delenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", raising=False)
-    _reset_flag_cache()
-    assert is_sibling_inclusion_enabled() is False
+    _isolate_overrides(monkeypatch, tmp_path)
+    assert is_sibling_inclusion_enabled() is True
 
 
-def test_sibling_flag_respects_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sibling_flag_respects_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _isolate_overrides(monkeypatch, tmp_path)
     monkeypatch.setenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", "1")
     _reset_flag_cache()
     assert is_sibling_inclusion_enabled() is True
@@ -508,12 +521,13 @@ def test_sibling_flag_respects_env(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------- Chat-router integration ----------
 
 def test_router_flag_off_does_not_call_select_siblings(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
-    monkeypatch.delenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", raising=False)
-    monkeypatch.delenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", raising=False)
-    monkeypatch.delenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", raising=False)
-    monkeypatch.delenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", raising=False)
+    _isolate_overrides(monkeypatch, tmp_path)
+    monkeypatch.setenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", "0")
+    monkeypatch.setenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", "0")
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "0")
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", "0")
     _reset_flag_cache()
 
     from routers import intelligent_chat_router as router

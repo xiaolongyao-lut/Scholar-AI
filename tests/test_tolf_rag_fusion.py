@@ -6,14 +6,15 @@ These tests pin two invariants:
    appears at rank 1 in two lists beats a chunk that appears only at rank 1
    in one list, regardless of TOLF activation score vs RAG keyword overlap
    score scale.
-2. Backwards compatibility: when ``tolf_fusion_mode`` is off (default),
-   ``_build_project_context_chunks`` MUST behave exactly as the historical
-   "TOLF or RAG fallback" branch — no new RAG call, no candidate blending.
+2. Bus-default behaviour: tolf_fusion_mode is now ON by default. When the
+   user explicitly turns it OFF (env=0 + cleared override) the historical
+   "TOLF replaces RAG on a hit" fallback must come back exactly as before.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -28,6 +29,20 @@ from routers.intelligent_chat_router import (  # noqa: E402
     _rrf_merge,
     _tolf_fusion_mode_enabled,
 )
+
+
+def _reset_flag_cache() -> None:
+    import feature_flags
+    if hasattr(feature_flags, "_FLAG_CACHE"):
+        feature_flags._FLAG_CACHE = {}
+
+
+def _isolate_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    empty = tmp_path / "feature_flags_override.json"
+    empty.write_text(json.dumps({"flags": {}, "updated_at": "test"}), encoding="utf-8")
+    import feature_flags
+    monkeypatch.setattr(feature_flags, "_OVERRIDE_PATH", empty)
+    _reset_flag_cache()
 
 
 # ---------- RRF unit tests ----------
@@ -88,49 +103,43 @@ def test_rrf_k_parameter_affects_score_decay() -> None:
     assert tight[0]["rrf_score"] > loose[0]["rrf_score"]
 
 
-# ---------- Feature flag default OFF ----------
+# ---------- Feature flag default ON (bus) ----------
 
-def test_fusion_mode_flag_defaults_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Drop the env var so the flag falls back to its default in the spec.
+def test_fusion_mode_flag_defaults_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # Bus default after stable verification.
     monkeypatch.delenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", raising=False)
-    # Reset feature_flags cache if it has one.
-    import feature_flags
-    if hasattr(feature_flags, "_FLAG_CACHE"):
-        feature_flags._FLAG_CACHE = {}
-    assert _tolf_fusion_mode_enabled() is False
+    _isolate_overrides(monkeypatch, tmp_path)
+    assert _tolf_fusion_mode_enabled() is True
 
 
-def test_fusion_mode_flag_respects_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fusion_mode_flag_respects_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _isolate_overrides(monkeypatch, tmp_path)
     monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", "1")
-    import feature_flags
-    if hasattr(feature_flags, "_FLAG_CACHE"):
-        feature_flags._FLAG_CACHE = {}
+    _reset_flag_cache()
     assert _tolf_fusion_mode_enabled() is True
 
     monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", "0")
-    if hasattr(feature_flags, "_FLAG_CACHE"):
-        feature_flags._FLAG_CACHE = {}
+    _reset_flag_cache()
     assert _tolf_fusion_mode_enabled() is False
 
 
 # ---------- Behavioural lock: fusion-off branch unchanged ----------
 
 def test_build_context_chunks_fusion_off_does_not_call_search(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     """When fusion flag is off, the TOLF branch must NOT also call RAG search.
 
     The historical branch is: TOLF non-empty → use TOLF; TOLF empty → call
-    ``search_project_chunks_for_query``. Fusion mode adds a second RAG call;
-    this test guards against accidentally turning that on by default.
+    ``search_project_chunks_for_query``. Bus default is now fusion ON, so
+    we have to explicitly turn it OFF here AND clear the override.
     """
-    monkeypatch.delenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", raising=False)
-    monkeypatch.delenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", raising=False)
+    _isolate_overrides(monkeypatch, tmp_path)
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", "0")
+    monkeypatch.setenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", "0")
     monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "1")
-
-    import feature_flags
-    if hasattr(feature_flags, "_FLAG_CACHE"):
-        feature_flags._FLAG_CACHE = {}
+    monkeypatch.setenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", "0")
+    _reset_flag_cache()
 
     from routers import intelligent_chat_router as router
 
@@ -154,15 +163,14 @@ def test_build_context_chunks_fusion_off_does_not_call_search(
 
 
 def test_build_context_chunks_fusion_on_calls_both_arms(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
+    _isolate_overrides(monkeypatch, tmp_path)
     monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "1")
     monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", "1")
-    monkeypatch.delenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", raising=False)
-
-    import feature_flags
-    if hasattr(feature_flags, "_FLAG_CACHE"):
-        feature_flags._FLAG_CACHE = {}
+    monkeypatch.setenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", "0")
+    monkeypatch.setenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", "0")
+    _reset_flag_cache()
 
     from routers import intelligent_chat_router as router
 

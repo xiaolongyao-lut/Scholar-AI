@@ -71,66 +71,65 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
     ),
     "rag_chunk_type_weighting": FeatureFlagSpec(
         name="rag_chunk_type_weighting",
-        default=False,
+        default=True,
         env_var="RAG_CHUNK_TYPE_WEIGHTING_ENABLED",
-        label="RAG 按 chunk 类型加权(实验)",
+        label="RAG 按 chunk 类型加权",
         description=(
             "检索时按 chunk_type(narrative / table / formula / heading / "
-            "figure_caption / list / code 等)对得分加权,让表格 / 公式 / 标题命中"
-            "更易进 top-k。需要 chunks 已带 chunk_type 元数据(marker 重新解析的"
-            "项目自带,纯 PyMuPDF chunks 也有最基础的类型)。当前权重值为基线 1.0,"
-            "等真实 RAG 评测后再校准 — 启用本开关只激活加权代码路径,不一定立刻提升答案质量。"
+            "figure_caption / list / code 等)对 hybrid 得分加权, 让表格 / 公式 / 标题命中"
+            "更容易进 rerank 候选池。Reis 实测把 chunk_31 (Table 2) 从 hybrid #37 "
+            "送进 rerank top-30, A15 全套链路的基础。默认 ON, 关掉 (False) 时退回到等权检索。"
         ),
     ),
     "tolf_context": FeatureFlagSpec(
         name="tolf_context",
-        default=False,
+        default=True,
         env_var="INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED",
         label="TOLF 目标导向检索",
         description=(
             "把问题拆成多面查询，在文献图上扩散，并按硬证据筛选结果。"
-            "比默认 RAG 更慢，但找间接证据、归因清晰、抗弱化措辞。"
-            "适合综述、找数据、深度调研。同一问题分别开/关跑一次可直观对比。"
+            "比纯 RAG 更慢, 找间接证据、归因清晰、抗弱化措辞。"
+            "默认 ON 且与 RAG 候选用 RRF 融合 (见「TOLF 融合 RAG」), 不会替代 RAG 命中。"
         ),
     ),
     "tolf_fusion_mode": FeatureFlagSpec(
         name="tolf_fusion_mode",
-        default=False,
+        default=True,
         env_var="INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED",
         label="TOLF 融合 RAG (RRF)",
         description=(
-            "需要同时打开「TOLF 目标导向检索」。开启后 TOLF 不再替代 RAG,"
-            "改为与 RAG 候选池通过 Reciprocal Rank Fusion 合并: TOLF 给目标侧候选,"
-            "RAG 给词面侧候选, 各自独立排序后用 RRF 融合 (k=60), 再截到 max_chunks。"
-            "默认 off, 保持历史 fallback 行为不变; 适合调研型问题想要更广覆盖时打开。"
+            "需要同时打开「TOLF 目标导向检索」。TOLF 不替代 RAG,"
+            "改为与 RAG 候选池通过 Reciprocal Rank Fusion 合并 (k=60), TOLF 给目标侧候选,"
+            "RAG 给词面侧候选, 各自独立排序后用 RRF 融合, 再截到 max_chunks。"
+            "默认 ON, 关掉则 TOLF 命中后 RAG 候选会被丢弃 (历史 fallback 行为)。"
         ),
     ),
     "hybrid_retrieval": FeatureFlagSpec(
         name="hybrid_retrieval",
-        default=False,
+        default=True,
         env_var="INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED",
         label="Chat 真 hybrid 检索 (BM25+dense+rerank)",
         description=(
-            "开启后 chat 路径的 RAG 召回从「关键词重叠」升级为 ContextAwareRetriever 真"
-            " hybrid_search: BM25 词面分 + chunk.embedding 余弦 dense 分 +(若 rerank 服务"
-            "可用)再过 reranker_client。需要项目 chunk 已有 embedding(scripts/"
-            "embedding_backfill.py 回填), 没 embedding 的 chunk 会自动退化为 BM25-only,"
-            "因此对未回填项目也安全; 与 tolf_fusion_mode 组合时, RAG 这一侧候选改走"
-            "hybrid_search 的真分数。默认 off, 实验稳定后再考虑切换默认值。"
+            "chat 路径的 RAG 召回走 ContextAwareRetriever 真 hybrid_search: "
+            "BM25 词面分 + chunk.embedding 余弦 dense 分 + (若 rerank 服务可用) 再过 "
+            "reranker_client。需要项目 chunk 已有 embedding (scripts/"
+            "embedding_backfill.py 回填), 没 embedding 的 chunk 自动退化为 BM25-only,"
+            "因此对未回填项目也安全。默认 ON, 关掉则退回到 keyword overlap (resources_router._score_chunks_for_query)。"
         ),
     ),
     "rag_structured_sibling_inclusion": FeatureFlagSpec(
         name="rag_structured_sibling_inclusion",
-        default=False,
+        default=True,
         env_var="RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED",
-        label="同 section 结构化邻居补全",
+        label="同 section 结构化邻居补全 (A15+)",
         description=(
-            "答完最终 top-K 后, 看 narrative 命中的 chunk 所在 section_path / page,"
-            "把同 section 的 table / formula / figure_caption 邻居自动补进上下文。"
-            "解决 A15 (chunk-type 加权) 把表格送进 rerank 候选池后, 仍可能被 reranker"
-            "压在 narrative summary 下的痛点 — 比如答案里说\"Table 2 给出 creep 速率\","
-            "Table 2 chunk 本身却没进 top-K。默认 off, 每个 query 最多补 2 个邻居,"
-            "且只在 narrative chunk 已 earn 进 top-K 时才触发, 不抢已有 rerank 排名。"
+            "rerank 出 top-K 后, narrative chunk 所在 section_path / section_title / page 的"
+            "table / formula / figure_caption 邻居自动补进上下文。Reis 实测让 LLM 引用 "
+            "Table 2 的真实 creep rate 数值 (0.4990 → 0.0357 h⁻¹), 解决 A15 加权后 reranker 仍"
+            "优先 narrative summary 的问题。content-aware ranking (Table N 字面引用优先) + "
+            "section_title fallback (兼容 PyMuPDF chunks) + char budget reservation (tier=fast "
+            "也保留 table 完整内容) 已全部内置。默认 ON, 关掉则 LLM 只看到 narrative 提到 "
+            "「具体数值见 Table 2」但 Table 2 本身不在 prompt。"
         ),
     ),
     "local_rerank": FeatureFlagSpec(
