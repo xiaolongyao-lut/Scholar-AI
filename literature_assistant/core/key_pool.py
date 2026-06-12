@@ -52,10 +52,26 @@ class Credential:
     base_url: str
     model: str
     line_no: int = 0
+    # GPT rule 3(b) — env var name that introduced this credential's key,
+    # used by KeyPool.sort_provider_specific_first() to prioritize
+    # SILICONFLOW_RERANK_API_KEY over generic RERANK_API_KEY.
+    key_var_name: str = ""
 
     @property
     def cred_id(self) -> tuple[str, str, str]:
         return (self.api_key[:12], self.base_url, self.model)
+
+    @property
+    def is_provider_specific_key(self) -> bool:
+        """True if key came from a provider-specific env var like
+        ``SILICONFLOW_RERANK_API_KEY``,not generic ``RERANK_API_KEY``."""
+        name_upper = (self.key_var_name or "").upper()
+        # Generic forms have no provider prefix.
+        return name_upper not in (
+            "API_KEY", "KEY",
+            "RERANK_API_KEY", "EMBEDDING_API_KEY",
+            "BASE_URL", "URL",
+        ) and bool(self.key_var_name)
 
 
 _CATEGORY_HEADER_RE = re.compile(
@@ -285,21 +301,47 @@ def parse_env_pools(path: str | Path | None = None) -> dict[Category, list[Crede
                         base_url=str(url),
                         model=model_name,
                         line_no=line_no,
+                        key_var_name=str(pending.get("key_var_name") or ""),
                     )
                 )
         if reset_key:
             pending = {}
         else:
-            pending = {"key": pending.get("key")}
+            # Keep key + key_var_name across URL changes (single key reused
+            # for multiple URLs in the legacy layout).
+            pending = {
+                "key": pending.get("key"),
+                "key_var_name": pending.get("key_var_name", ""),
+            }
+
+    # GPT review rule 3(a) — DISABLED_ARCHIVE block skip.
+    # A header like ``## [STATUS:DISABLED_ARCHIVE_2026-04-30] ...`` puts the
+    # parser into "archive mode" until the next non-archive top-level header
+    # (``## …`` without DISABLED_ARCHIVE in it, OR a category header like
+    # ``##embedding##``). All ``KEY=value`` lines inside an archive block are
+    # ignored, even if someone unwraps a ``# RERANK_API_KEY=`` by removing the
+    # ``#`` comment marker. Belt-and-suspenders against accidental revival.
+    archive_mode = False
 
     for idx, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
         if not line:
             continue
 
+        # GPT rule 3(a) — detect archive header
+        if "DISABLED_ARCHIVE" in line and line.startswith("#"):
+            archive_mode = True
+            logger.debug("key_pool: entering DISABLED_ARCHIVE block at line %d", idx)
+            continue
+
         # Category header (single or multiple #'s, e.g., "##embeding##")
         m_cat = _CATEGORY_HEADER_RE.match(line)
         if m_cat and "=" not in line:
+            # any top-level category header ends archive mode
+            if archive_mode:
+                logger.debug("key_pool: exiting DISABLED_ARCHIVE block at line %d "
+                             "(category header)", idx)
+                archive_mode = False
             # don't emit here — wait until URL/key actually changes
             active_category = _normalise_category(m_cat.group(1))
             continue
@@ -308,10 +350,20 @@ def parse_env_pools(path: str | Path | None = None) -> dict[Category, list[Crede
         if line.startswith("#") and "=" not in line:
             m_prov = _PROVIDER_HEADER_RE.match(line)
             if m_prov:
+                # a fresh provider header (not archive) also exits archive mode
+                if archive_mode:
+                    logger.debug("key_pool: exiting DISABLED_ARCHIVE block at line %d "
+                                 "(provider header)", idx)
+                    archive_mode = False
                 active_provider = m_prov.group(1).strip()
             continue
 
         if "=" not in line:
+            continue
+
+        # GPT rule 3(a) — inside DISABLED_ARCHIVE block: skip all KEY=value
+        # lines, even if someone unwraps "# RERANK_API_KEY=..." by removing #.
+        if archive_mode:
             continue
 
         name, _, value_part = line.partition("=")
@@ -332,6 +384,7 @@ def parse_env_pools(path: str | Path | None = None) -> dict[Category, list[Crede
             if forced:
                 active_category = forced
             pending["key"] = value
+            pending["key_var_name"] = name  # GPT rule 3(b)
         elif var_kind == "url":
             # URL change → emit any models accumulated under the previous URL,
             # but keep the key (legacy section reuses one key for emb+rerank).
@@ -346,6 +399,14 @@ def parse_env_pools(path: str | Path | None = None) -> dict[Category, list[Crede
             pending.setdefault("models", []).append((value, idx, forced))  # type: ignore[union-attr]
 
     emit_pending(reset_key=True)
+    # GPT rule 3(b) — stable sort: provider-specific keys before generic.
+    # Within each group (specific vs generic), preserve .env file order
+    # (line_no), so legacy ordering is unchanged for fully-generic pools.
+    for cat in pools:
+        pools[cat].sort(key=lambda c: (
+            0 if c.is_provider_specific_key else 1,
+            c.line_no,
+        ))
     return pools
 
 
