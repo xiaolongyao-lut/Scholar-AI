@@ -7,11 +7,18 @@ the safe side: if the guard says "fits", it almost surely fits downstream.
 
 Falls back to `len(text) * 0.75` when the HF tokenizer can't be loaded (offline
 first-run, firewalled runners, etc.) — a measured CJK char→token ratio.
+
+Offline override:
+    Set ``LITASSIST_TOKEN_UTILS_OFFLINE=1`` to skip the HF tokenizer load entirely
+    and go straight to the char-ratio fallback. Useful in offline / airgapped /
+    CI environments where the HuggingFace HTTP retry hang is unacceptable.
+    Default is unset = original online-first behavior preserved.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Iterable
 
@@ -19,9 +26,20 @@ logger = logging.getLogger(__name__)
 
 _TOKENIZER_MODEL = "BAAI/bge-m3"
 _CJK_CHAR_RATIO = 0.75  # conservative lower bound for Chinese-heavy text
+_OFFLINE_ENV_VAR = "LITASSIST_TOKEN_UTILS_OFFLINE"
 
 _tokenizer = None
 _tokenizer_loaded = False
+
+
+def _is_offline_forced() -> bool:
+    """Return True iff the user explicitly forced offline mode via env var.
+
+    Accepts "1" / "true" / "yes" (case-insensitive) as truthy. Any other value
+    (including "0" / "false" / unset) keeps the original online-first behavior.
+    """
+    val = os.environ.get(_OFFLINE_ENV_VAR, "").strip().lower()
+    return val in ("1", "true", "yes")
 
 
 def _get_tokenizer():
@@ -29,6 +47,15 @@ def _get_tokenizer():
     if _tokenizer_loaded:
         return _tokenizer
     _tokenizer_loaded = True
+    # Offline override: skip HF tokenizer load entirely. char-ratio fallback.
+    # Logged once at INFO so operators can confirm it's intentional.
+    if _is_offline_forced():
+        logger.info(
+            "token_utils: %s=1 set; skipping HF tokenizer load, using char-ratio estimator",
+            _OFFLINE_ENV_VAR,
+        )
+        _tokenizer = None
+        return _tokenizer
     try:
         from transformers import AutoTokenizer
 

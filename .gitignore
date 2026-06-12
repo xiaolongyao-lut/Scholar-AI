@@ -202,6 +202,7 @@ htmlcov/
 !/tests/test_wiki_permissions.py
 !/tests/test_pdf_backends.py
 !/tests/test_rag_ablation_evaluator.py
+!/tests/test_token_utils_offline.py
 /workspace_tests/benchmarks/results/
 /workspace_tests/diagnostics/
 /workspace_tests/evaluation_data/BASELINE_METRICS.json
