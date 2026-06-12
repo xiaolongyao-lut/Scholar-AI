@@ -248,6 +248,7 @@ hiddenimports = [
     "routers.pdf_backend_router",
     "routers.writing_router",
     "routers.evidence_router",
+    "routers.diagnostics_router",
     "recovery_autopilot_router",
 ]
 
