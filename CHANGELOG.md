@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+本版本核心是把 RAG 检索链做强、把"实验性功能"开关默认打开，并补上后端日志查看器和本地推理回退。
+
+### 检索质量（RAG）
+
+- **结构化兄弟块召回（A15 链）**：rerank 之前先按 chunk 类型加权（表 ×3 / 公式 ×2 / 段落 ×1 / 标题 ×0.5），让真正含数值和方程的块更容易进 cross-encoder 池。命中之后会把同一章节里相邻的表/公式作为"兄弟块"一起送进 LLM 上下文，保证答案里能引用真实表格数值而不是泛泛复述（例如 "0.4990→0.0357 h⁻¹ 降低 14 倍" 真表数据）。
+- **段落标题缺失时的兜底**：旧的 PyMuPDF 入库结果里章节标题字段可能是空的，新增 `section_title` fallback 让兄弟块召回链对这部分老文献依然有效。
+- **TOLF × RAG 融合（RRF）**：把"目标导向检索（TOLF）"和传统 hybrid_search 用 RRF（k=60）融合，替代原来的"TOLF 命中就用 TOLF、否则退回 RAG"二选一。两条检索路径互补、互不替代。
+- **5 个 RAG 实验开关默认打开**：`hybrid_retrieval`、`rag_chunk_type_weighting`、`rag_structured_sibling_inclusion`、`tolf_context`、`tolf_fusion_mode` 出厂全部 ON，原有用户的 `feature_flags_override.json` 仍生效。设置 → 实验性功能里能看到产品语言文案（不暴露 BM25 / RRF 等内部术语）。
+
+### 设置 → 后端日志
+
+- **新增「后端日志」分区**：直接在设置里查看 `backend.log`，支持按级别（INFO / WARNING / ERROR / CRITICAL）阈值过滤、关键字搜索、行数选择、5 秒自动刷新、一键复制。终端配色，连续行（如堆栈）正确归到上一条日志。
+- **凭据二次脱敏**：API key（`sk-*`）和 Bearer token 进入查看器前被强制脱敏一次，即使早期启动阶段日志过滤器漏挂也兜得住。
+- **路径越权保护**：日志路径解析只允许读 `runtime_state/logs/` 下的 `backend.log` 系列文件，禁止任意路径读取。
+
+### 本地推理回退
+
+- **rerank 自动用 GPU**：如果本地装了 CUDA 版 PyTorch（例如 cu126 + RTX 系列），rerank 回退会自动选 cuda 设备，否则用 CPU。`LOCAL_RERANK_DEVICE` 环境变量可强制覆盖（`cpu` / `cuda` / `cuda:0`）。
+- **回退链**：远端 API → 本地 GPU/CPU 模型 → hybrid_score 兜底，任一环节失败都不会让对话挂掉。
+- **状态可视化**：设置 → Rerank 卡片头部新增 4 色 chip，显示当前回退链路状态（API OK / 本地 OK / 仅兜底 / 全挂）。换模型操作手册见 `docs/local-rerank-fallback-models.md`。
+
+### 工程基础设施
+
+- **PyInstaller 打包修复**：补 `routers.diagnostics_router` 到 hiddenimports；该路由是新加的日志查看器后端，缺失会让 onedir 安装版启动时 ImportError。
+- **前端代码质量**：ESLint `--max-warnings 0` 现在零错零警告通过，CI 流水线打通。`@typescript-eslint/no-unused-vars` 跨 22 个文件清理（lucide 未用图标真删、业务 WIP 占位变量加 `_` 前缀保留）。`no-console` 允许 `error`/`warn`/`info`，仍禁 `console.log`。`@typescript-eslint/no-explicit-any` 收紧到产品代码，测试文件的 mock fixture 在 lint 层归 ignore。
+- **测试覆盖**：后端 3872 单元 + 集成测试全过；新增端到端 redact 回归测试覆盖"日志过滤器漏挂时日志查看器二层兜底"场景。前端 vitest 119 测试文件 / 725 个 case 全过。
+
 ## 0.1.8.3 - 2026-06-10
 
 发布加固补丁：
