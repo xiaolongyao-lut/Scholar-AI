@@ -181,6 +181,23 @@ def select_structured_siblings(
             sib = dict(chunk)
             sib["sibling_anchor"] = anchor_id
             sib["sibling_reason"] = "section_path" if section_match else "same_page"
+            # Tag the chunk with a source label the chat layer's
+            # ContextChunkPayload constructor copies through to the LLM
+            # context payload. Lets the UI / prompt builder / answer
+            # judge see "this chunk is a sibling, not a rerank hit".
+            existing_labels = sib.get("source_labels")
+            if isinstance(existing_labels, list):
+                labels = list(existing_labels)
+            else:
+                labels = []
+            if "structured_sibling" not in labels:
+                labels.append("structured_sibling")
+            sib["source_labels"] = labels
+            # Source hint string for legacy single-string consumers.
+            hint = str(sib.get("source_hint") or "").strip()
+            sib["source_hint"] = (
+                f"{hint}+structured_sibling" if hint else "structured_sibling"
+            )
             selected.append(sib)
             seen.add(cid)
             if len(selected) >= max_siblings:
@@ -196,18 +213,32 @@ def merge_with_siblings(
     *,
     total_cap: int,
 ) -> list[dict[str, Any]]:
-    """Append siblings after rerank-decided results, capped at ``total_cap``.
+    """Insert siblings IMMEDIATELY AFTER their anchor narrative.
 
-    Siblings replace the lowest-ranked narrative entries when capacity is
-    tight, but never displace structured chunks already in the result
-    set (those are presumed earned via rerank). When ``total_cap`` is
-    larger than ``len(final_results) + len(siblings)``, the merged list
-    contains everything in original order followed by all siblings.
+    Why insert (not append):
+        The downstream chat-router truncate loop walks ``results`` in
+        order and stops when either ``max_chunks`` or ``max_chars`` is
+        exhausted. If we appended siblings at the tail, they would be
+        the first things dropped whenever narrative chunks ate the
+        budget — which is the failure mode the e2e probe exposed
+        (chunk_29 / chunk_31 lost their content to the char budget every
+        single time). Inserting after the anchor guarantees the table /
+        formula sibling sits next to the prose that motivated it, and
+        gives the LLM a fighting chance of seeing the numerical row
+        before the budget runs out.
+
+    Capacity rules:
+        - When ``len(base) + len(sibs) <= total_cap``: every sibling is
+          inserted after its anchor; original order preserved otherwise.
+        - When tight: the lowest-ranked NARRATIVE from the tail is
+          dropped to make room for each sibling. Structured chunks
+          already in ``base`` (presumed earned via rerank) are NEVER
+          dropped.
 
     Returns:
         A new list of dict shallow copies. Length is at most
         ``total_cap``. Sibling dicts retain the ``sibling_anchor`` /
-        ``sibling_reason`` keys added by ``select_structured_siblings``.
+        ``sibling_reason`` fields added by ``select_structured_siblings``.
 
     Raises:
         ValueError: If ``total_cap`` is not a positive integer.
@@ -220,25 +251,46 @@ def merge_with_siblings(
     if not sibs:
         return base[:total_cap]
 
-    if len(base) + len(sibs) <= total_cap:
-        return base + sibs
+    # Index base chunks by chunk_id so we can locate each sibling's anchor.
+    base_index_by_id: dict[str, int] = {}
+    for idx, item in enumerate(base):
+        cid = str(item.get("chunk_id") or "")
+        if cid:
+            base_index_by_id[cid] = idx
 
-    # Sibling appended at the tail; if base already fills total_cap, drop
-    # the lowest-ranked NARRATIVE entry to make room (one drop per sibling
-    # to keep the math obvious; never drop existing structured chunks).
-    merged = list(base)
+    merged: list[dict[str, Any]] = list(base)
+
+    def _drop_tail_narrative(items: list[dict[str, Any]]) -> bool:
+        """Remove the lowest-ranked narrative from the tail; return True
+        when something was dropped."""
+        for idx in range(len(items) - 1, -1, -1):
+            if str(items[idx].get("chunk_type") or "") == "narrative":
+                items.pop(idx)
+                return True
+        return False
+
     for sib in sibs:
-        if len(merged) < total_cap:
-            merged.append(sib)
-            continue
-        # Find lowest-index narrative from the END to drop.
-        drop_idx = None
-        for idx in range(len(merged) - 1, -1, -1):
-            if str(merged[idx].get("chunk_type") or "") == "narrative":
-                drop_idx = idx
-                break
-        if drop_idx is None:
-            break  # nothing safe to drop; stop appending siblings.
-        merged.pop(drop_idx)
-        merged.append(sib)
+        anchor_id = str(sib.get("sibling_anchor") or "")
+        # Locate anchor position fresh each iteration — earlier inserts
+        # may have shifted indices.
+        insert_at: int | None = None
+        if anchor_id:
+            for idx, item in enumerate(merged):
+                if str(item.get("chunk_id") or "") == anchor_id:
+                    insert_at = idx + 1
+                    break
+        if insert_at is None:
+            insert_at = len(merged)  # anchor not found: tail-append fallback
+
+        if len(merged) >= total_cap and not _drop_tail_narrative(merged):
+            break  # nothing safe to drop; stop adding siblings.
+        # Re-locate anchor after the drop (drop may have changed indices).
+        if anchor_id:
+            for idx, item in enumerate(merged):
+                if str(item.get("chunk_id") or "") == anchor_id:
+                    insert_at = idx + 1
+                    break
+
+        merged.insert(min(insert_at, len(merged)), sib)
+
     return merged[:total_cap]

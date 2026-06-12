@@ -151,6 +151,42 @@ def test_select_handles_non_mapping_inputs_gracefully() -> None:
     assert [s["chunk_id"] for s in sibs] == ["t1"]
 
 
+def test_select_tags_sibling_with_source_labels_and_hint() -> None:
+    """Siblings must be tagged so the LLM / UI / answer judge can tell them
+    apart from rerank-decided chunks. The chat-router copies source_labels
+    onto ContextChunkPayload, which surfaces in the prompt builder."""
+    final = [
+        {"chunk_id": "n1", "chunk_type": "narrative", "section_path": ["S1"], "material_id": "m"},
+    ]
+    pool = list(final) + [
+        {"chunk_id": "t1", "chunk_type": "table", "section_path": ["S1"], "material_id": "m"},
+    ]
+    sibs = select_structured_siblings(final, pool, max_siblings=5)
+    assert sibs and "structured_sibling" in sibs[0]["source_labels"]
+    assert sibs[0]["source_hint"] == "structured_sibling"
+
+
+def test_select_preserves_existing_source_labels_when_tagging() -> None:
+    final = [
+        {"chunk_id": "n1", "chunk_type": "narrative", "section_path": ["S1"], "material_id": "m"},
+    ]
+    pool = list(final) + [
+        {
+            "chunk_id": "t1",
+            "chunk_type": "table",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "source_labels": ["bm25", "dense"],
+            "source_hint": "bm25+dense",
+        },
+    ]
+    sibs = select_structured_siblings(final, pool, max_siblings=5)
+    assert sibs
+    labels = sibs[0]["source_labels"]
+    assert labels == ["bm25", "dense", "structured_sibling"]
+    assert sibs[0]["source_hint"] == "bm25+dense+structured_sibling"
+
+
 # ---------- Module-level: merge_with_siblings ----------
 
 def test_merge_appends_when_capacity_allows() -> None:
@@ -196,6 +232,38 @@ def test_merge_never_displaces_structured_already_in_base() -> None:
 def test_merge_with_empty_siblings_is_passthrough() -> None:
     base = [{"chunk_id": "a", "chunk_type": "narrative"}]
     assert merge_with_siblings(base, [], total_cap=10) == base
+
+
+def test_merge_inserts_sibling_immediately_after_anchor() -> None:
+    """When a sibling carries a ``sibling_anchor``, it lands right after its
+    anchor — NOT at the tail. The chat-router truncate loop walks chunks in
+    order and stops on max_chars; inserting after the anchor gives the
+    sibling priority over downstream narrative entries that would otherwise
+    eat the budget."""
+    base = [
+        {"chunk_id": "n1", "chunk_type": "narrative"},
+        {"chunk_id": "n2", "chunk_type": "narrative"},
+        {"chunk_id": "n3", "chunk_type": "narrative"},
+    ]
+    sibs = [
+        {"chunk_id": "t1", "chunk_type": "table", "sibling_anchor": "n1"},
+        {"chunk_id": "t2", "chunk_type": "table", "sibling_anchor": "n2"},
+    ]
+    merged = merge_with_siblings(base, sibs, total_cap=10)
+    ids = [c["chunk_id"] for c in merged]
+    # Each sibling immediately follows its anchor.
+    assert ids.index("t1") == ids.index("n1") + 1
+    assert ids.index("t2") == ids.index("n2") + 1
+    # And the original narratives are still all present (no displacement
+    # when capacity allows).
+    assert {"n1", "n2", "n3"}.issubset(set(ids))
+
+
+def test_merge_without_anchor_id_falls_back_to_tail_append() -> None:
+    base = [{"chunk_id": "n1", "chunk_type": "narrative"}]
+    sibs = [{"chunk_id": "t1", "chunk_type": "table"}]  # no sibling_anchor
+    merged = merge_with_siblings(base, sibs, total_cap=10)
+    assert [c["chunk_id"] for c in merged] == ["n1", "t1"]
 
 
 def test_merge_validates_total_cap() -> None:
