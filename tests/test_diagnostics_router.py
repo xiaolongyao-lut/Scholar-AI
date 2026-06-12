@@ -171,3 +171,59 @@ def test_list_files_returns_backend_log_variants(diagnostics_with_temp_logs) -> 
     assert "backend.log" in files
     assert "backend.log.1" in files
     assert "unrelated.log" not in files
+
+
+def test_end_to_end_real_logger_writes_then_endpoint_redacts(
+    diagnostics_with_temp_logs,
+) -> None:
+    """端到端真链路: real logger + real FileHandler + real SensitiveDataFilter
+    → 写真凭据 → endpoint 读 → 必须二次脱敏 (两层防御)。
+
+    这覆盖了之前缺失的回归: 单层 SensitiveDataFilter 漏掉 / 关闭的场景下,
+    diagnostics endpoint 的 _redact() 是否能兜底。
+    """
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    dr, logs_dir = diagnostics_with_temp_logs
+
+    # 真实日志格式 (匹配 python_adapter_server.py:131 的 formatter)
+    fmt = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    log_path = logs_dir / "backend.log"
+    handler = RotatingFileHandler(
+        log_path, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )
+    handler.setFormatter(fmt)
+
+    test_logger = logging.getLogger("test_e2e_redact")
+    test_logger.handlers = [handler]
+    test_logger.setLevel(logging.INFO)
+    test_logger.propagate = False
+
+    # 关键: 故意 *不* 挂 SensitiveDataFilter, 模拟早期启动 / filter 漏挂场景
+    # 这种情况下原始凭据会真写到磁盘 — endpoint 层的 _redact() 必须救场
+    test_logger.warning("Authorization header: Bearer sk-MYREALAPIKEYABCDEF1234567890")
+    test_logger.error("Auth failed with token: sk-LEAKED_KEY_VALUE_HERE0123456789")
+    handler.flush()
+    handler.close()
+
+    # 真凭据确实写入了磁盘 (确认 attacker model: pre-redact 状态确实可能存在)
+    raw_disk = log_path.read_text(encoding="utf-8")
+    assert "sk-MYREALAPIKEYABCDEF1234567890" in raw_disk, "前提失败: 凭据没写入磁盘"
+    assert "sk-LEAKED_KEY_VALUE_HERE0123456789" in raw_disk
+
+    # 通过 endpoint 读 → 必须脱敏
+    tail = asyncio.run(
+        dr.get_log_tail(name="backend.log", lines=10, level="", search="")
+    )
+    api_body = "\n".join(e.message for e in tail.entries)
+    raw_body = "\n".join((e.raw or "") for e in tail.entries)
+
+    # 双层验证: 解析后的 message 和原始 raw 都不得泄露原始凭据
+    assert "sk-MYREALAPIKEYABCDEF1234567890" not in api_body
+    assert "sk-MYREALAPIKEYABCDEF1234567890" not in raw_body
+    assert "sk-LEAKED_KEY_VALUE_HERE0123456789" not in api_body
+    assert "sk-LEAKED_KEY_VALUE_HERE0123456789" not in raw_body
+    assert "***REDACTED***" in api_body or "***REDACTED***" in raw_body
