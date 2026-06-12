@@ -232,3 +232,62 @@ def test_server_main_refuses_non_loopback_bind_without_flag(
     from literature_assistant.core.local_rerank_server import main
     rc = main()
     assert rc == 2  # explicit non-loopback refuse code
+
+
+# ---------- GPU-fallback device detection ----------
+
+def test_detect_default_device_returns_cuda_when_torch_cuda_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When torch.cuda.is_available() returns True, _detect_default_device picks cuda."""
+    mod = _reload_adapter()
+
+    class _FakeTorch:
+        class cuda:
+            @staticmethod
+            def is_available() -> bool:
+                return True
+
+    import sys as _sys
+    monkeypatch.setitem(_sys.modules, "torch", _FakeTorch)
+    assert mod._detect_default_device() == "cuda"
+
+
+def test_detect_default_device_falls_back_to_cpu_when_no_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without CUDA, cpu is chosen — the adapter must not crash on CPU-only boxes."""
+    mod = _reload_adapter()
+
+    class _FakeTorch:
+        class cuda:
+            @staticmethod
+            def is_available() -> bool:
+                return False
+
+    import sys as _sys
+    monkeypatch.setitem(_sys.modules, "torch", _FakeTorch)
+    assert mod._detect_default_device() == "cpu"
+
+
+def test_detect_default_device_returns_cpu_when_torch_import_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If torch itself fails to import, the function must not raise — return cpu."""
+    mod = _reload_adapter()
+
+    import builtins
+    real_import = builtins.__import__
+
+    def _block_torch(name, *args, **kwargs):
+        if name == "torch":
+            raise ImportError("simulated: torch unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _block_torch)
+    assert mod._detect_default_device() == "cpu"
+
+
+def test_local_rerank_device_env_overrides_detection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LOCAL_RERANK_DEVICE env var bypasses auto-detection — opt-out for users
+    who want to force CPU even when a working CUDA is present."""
+    mod = _reload_adapter()
+    monkeypatch.setenv("LOCAL_RERANK_DEVICE", "cpu")
+    # Simulate the load path's resolution snippet.
+    import os as _os
+    resolved = _os.environ.get("LOCAL_RERANK_DEVICE", "").strip() or mod._detect_default_device()
+    assert resolved == "cpu"

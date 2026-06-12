@@ -37,7 +37,6 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
-_DEFAULT_DEVICE = "cpu"
 _DEFAULT_MAX_LEN = 512
 _DEFAULT_BATCH = 8
 
@@ -48,6 +47,35 @@ _BATCH_MIN, _BATCH_MAX = 1, 128
 _LOCAL_RERANKER: Any = None
 _LOCAL_RERANKER_LOADED = False
 _LOCAL_RERANKER_NAME: str | None = None
+
+
+def _detect_default_device() -> str:
+    """Pick the most efficient device available without forcing it.
+
+    Returns ``"cuda"`` when a working CUDA-enabled torch is importable,
+    otherwise ``"cpu"``. The detection happens lazily (only when this
+    function is called) so importing the module on a CPU-only box does
+    NOT pay the torch import cost.
+
+    Why dynamic default:
+        Main pipeline is API-first (SiliconFlow / DashScope rerank), so
+        local rerank only fires as a fallback. When it does fire, picking
+        CPU on a GPU box wastes the user's hardware and produces 3+s
+        latencies; picking CUDA on a CPU box crashes at model load.
+        Auto-detection makes the fallback fast without surprising
+        CPU-only users.
+
+    Override:
+        Set ``LOCAL_RERANK_DEVICE`` env var to force ``"cpu"`` /
+        ``"cuda"`` / ``"cuda:0"`` etc. — bypasses detection entirely.
+    """
+    try:
+        import torch  # local import — keeps adapter importable offline
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        pass
+    return "cpu"
 
 
 def _is_truthy(name: str) -> bool:
@@ -155,7 +183,10 @@ def _get_reranker() -> Any:
         return None
 
     model_name = _model_name()
-    device = os.environ.get("LOCAL_RERANK_DEVICE", _DEFAULT_DEVICE).strip() or _DEFAULT_DEVICE
+    device = (
+        os.environ.get("LOCAL_RERANK_DEVICE", "").strip()
+        or _detect_default_device()
+    )
 
     # Strict-offline guard: don't even try if weights missing and download not allowed.
     if not _weights_present(model_name) and not _allow_download():
