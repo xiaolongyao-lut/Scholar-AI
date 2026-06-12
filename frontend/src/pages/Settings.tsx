@@ -3,7 +3,7 @@ import {
   Settings as SettingsIcon, Key, Cpu, Network, FolderOpen, Layers, Server,
   Activity, ArrowLeft, Check, ChevronRight, Info, Zap,
   Loader2, RefreshCw, AlertCircle, CheckCircle2, XCircle, Users,
-  Play, Plus, Trash2, ToggleLeft, BookMarked,
+  Play, Plus, Trash2, ToggleLeft, BookMarked, ScrollText,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -65,6 +65,9 @@ import {
 const SkillManagerLazy = React.lazy(() => import('@/components/skills/SkillManager'));
 const CredentialsSectionLazy = React.lazy(() => import('@/components/settings/CredentialsSection'));
 const McpServersSectionLazy = React.lazy(() => import('@/components/settings/mcp/McpServersSection'));
+const LogsViewerSectionLazy = React.lazy(() =>
+  import('@/components/settings/LogsViewerSection').then((m) => ({ default: m.LogsViewerSection }))
+);
 const SETTINGS_API_PROBE_TIMEOUT_MS = 60_000;
 const SETTINGS_API_PROBE_TIMEOUT_SECONDS = SETTINGS_API_PROBE_TIMEOUT_MS / 1000;
 
@@ -3113,6 +3116,7 @@ export const SETTINGS_NAV_TABS: { id: SectionId; icon: React.ElementType; labelK
   { id: 'discussion', icon: Users, labelKey: 'settings.section_discussion' },
   { id: 'citation-styles', icon: BookMarked, labelKey: 'settings.section_citation_styles' },
   { id: 'experimental', icon: ToggleLeft, labelKey: 'settings.section_experimental' },
+  { id: 'logs', icon: ScrollText, labelKey: 'settings.section_logs' },
 ];
 
 export function SettingsPage() {
@@ -3212,6 +3216,11 @@ export function SettingsPage() {
     discussion: <SectionDiscussion t={t} />,
     'citation-styles': <CslStylesSection />,
     experimental: <SectionExperimental t={t} />,
+    logs: (
+      <React.Suspense fallback={<Loader2 size={16} className="animate-spin text-foreground/40" />}>
+        <LogsViewerSectionLazy />
+      </React.Suspense>
+    ),
   };
 
   return (

@@ -19,7 +19,8 @@ export type SectionId =
   | 'mcp'
   | 'discussion'
   | 'citation-styles'
-  | 'experimental';
+  | 'experimental'
+  | 'logs';
 
 export const SECTION_IDS: readonly SectionId[] = [
   'api',
@@ -35,6 +36,7 @@ export const SECTION_IDS: readonly SectionId[] = [
   'discussion',
   'citation-styles',
   'experimental',
+  'logs',
 ];
 
 export function isSectionId(value: string | null): value is SectionId {

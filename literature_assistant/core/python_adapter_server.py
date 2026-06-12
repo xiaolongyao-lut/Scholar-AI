@@ -1023,6 +1023,7 @@ from routers.agent_router import router as agent_router
 from routers.chat_router import router as chat_router
 from routers.intelligent_chat_router import router as intelligent_chat_router
 from routers.rerank_config_router import router as rerank_config_router
+from routers.diagnostics_router import router as diagnostics_router
 from routers.model_config_router import router as model_config_router
 from routers.llm_cost_router import router as llm_cost_router
 from routers.sampling_router import router as sampling_router
@@ -1095,6 +1096,7 @@ app.include_router(agent_router)
 app.include_router(chat_router)
 app.include_router(intelligent_chat_router)
 app.include_router(rerank_config_router)
+app.include_router(diagnostics_router)
 app.include_router(model_config_router)
 app.include_router(llm_cost_router)
 app.include_router(sampling_router)

@@ -868,6 +868,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/diagnostics/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Log Tail
+         * @description Return the tail of one rotating backend log.
+         *
+         *     Use cases:
+         *       - User sees "rerank failed, falling back to local" and wants to know
+         *         which provider broke. ``level=WARNING&search=rerank``.
+         *       - Setup wizard: confirm the backend received the credential by
+         *         searching for the masked suffix.
+         *       - Pre-bug-report: copy out the last 200 lines.
+         */
+        get: operations["get_api_diagnostics_logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagnostics/logs/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Log Files
+         * @description List rotating log file names available for tail.
+         *
+         *     Frontend uses this to populate a "Switch file" dropdown without
+         *     eagerly tailing every file.
+         */
+        get: operations["get_api_diagnostics_logs_files"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/discussion/archived": {
         parameters: {
             query?: never;
@@ -9350,6 +9400,56 @@ export interface components {
             weights_present: boolean;
         };
         /**
+         * LogLineEntry
+         * @description One parsed log line. Continuation lines (stack traces) carry the
+         *     same ``level`` / ``logger`` as the preceding parsed line so the UI
+         *     can group them under a single entry.
+         */
+        LogLineEntry: {
+            /**
+             * Is Continuation
+             * @default false
+             */
+            is_continuation: boolean;
+            /**
+             * Level
+             * @default
+             */
+            level: string;
+            /**
+             * Logger Name
+             * @default
+             */
+            logger_name: string;
+            /** Message */
+            message: string;
+            /** Raw */
+            raw: string;
+            /**
+             * Timestamp
+             * @default
+             */
+            timestamp: string;
+        };
+        /** LogTailResponse */
+        LogTailResponse: {
+            /** Available Files */
+            available_files?: string[];
+            /** Entries */
+            entries?: components["schemas"]["LogLineEntry"][];
+            /** File */
+            file: string;
+            /** File Size Bytes */
+            file_size_bytes: number;
+            /** Total Returned */
+            total_returned: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
          * ManualCaptureRequest
          * @description Request body for controlled manual experience import.
          */
@@ -14625,6 +14725,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_diagnostics_logs: {
+        parameters: {
+            query?: {
+                /** @description Log file basename within the logs dir. */
+                name?: string;
+                /** @description Tail size. */
+                lines?: number;
+                /** @description One of DEBUG/INFO/WARNING/ERROR/CRITICAL, or empty for all. */
+                level?: string;
+                /** @description Substring match against message or logger name. */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogTailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_diagnostics_logs_files: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string[];
+                    };
                 };
             };
         };

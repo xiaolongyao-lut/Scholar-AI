@@ -637,6 +637,7 @@
   "settings.discussion_fixed_turns": "固定轮次默认",
   "settings.discussion_save_hint": "保存后会影响新打开的讨论面板。",
   "settings.section_experimental": "功能开关",
+  "settings.section_logs": "后端日志",
   "settings.section_citation_styles": "文献样式",
   "settings.csl_intro": "导入 / 选择 CSL 引用样式（内置 GB/T 7714—2015 顺序编码制与著者-出版年制）。当前样式用于正文引用与参考文献表的格式化，刷新或重启后保持。",
   "settings.csl_import": "导入 .csl 样式",
