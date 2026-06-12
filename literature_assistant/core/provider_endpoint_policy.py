@@ -23,15 +23,32 @@ Public API:
 
 When called by the credential-test endpoint, the policy must run BEFORE any
 Authorization header is constructed.
+
+VPN / proxy fake-IP exception (added 2026-06-12):
+    When a corporate VPN or proxy is configured in "fake-IP" mode, official
+    provider domains can resolve to RFC 2544 benchmark range (198.18.0.0/15)
+    instead of real public IPs. The strict SSRF gate rejects this as
+    ``dns_resolved_to_unsafe_ip``. To recover, set:
+        LITASSIST_ALLOW_PROXY_FAKE_IP_FOR_OFFICIAL_PROVIDERS=1
+    optionally
+        LITASSIST_PROXY_FAKE_IP_CIDRS=198.18.0.0/15  (default)
+    Then official-host + https + all-IPs-in-fake-CIDR is allowed with reason
+    ``official_provider_fake_ip_proxy_allowed``. custom / runtime_untrusted /
+    http / partial-fake-IP / private-network IPs are STILL rejected.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import logging
+import os
 import socket
 from dataclasses import dataclass, field
 from enum import Enum
 from urllib.parse import urlsplit
+
+
+logger = logging.getLogger("provider_endpoint_policy")
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +215,102 @@ def resolve_host(host: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# VPN / proxy fake-IP exception (rule 7 of endpoint policy V2 — 2026-06-12)
+# ---------------------------------------------------------------------------
+
+# Trust-sources eligible for fake-IP compatibility. runtime_untrusted_custom
+# is intentionally absent.
+_FAKE_IP_ELIGIBLE_TRUST_SOURCES: frozenset[str] = frozenset({
+    TrustSource.OFFICIAL_PROVIDER.value,
+    TrustSource.ENV_CONFIGURED_GATEWAY.value,
+    TrustSource.RUNTIME_USER_CONFIRMED.value,
+})
+
+_DEFAULT_FAKE_IP_CIDRS = "198.18.0.0/15"
+
+
+def _proxy_fake_ip_enabled() -> bool:
+    """``LITASSIST_ALLOW_PROXY_FAKE_IP_FOR_OFFICIAL_PROVIDERS`` truthy?"""
+    raw = os.environ.get(
+        "LITASSIST_ALLOW_PROXY_FAKE_IP_FOR_OFFICIAL_PROVIDERS", "",
+    ).strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _proxy_fake_ip_cidrs() -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Parse env-configured fake-IP CIDR list. Bad entries are dropped with a warning."""
+    raw = os.environ.get("LITASSIST_PROXY_FAKE_IP_CIDRS", "").strip()
+    if not raw:
+        raw = _DEFAULT_FAKE_IP_CIDRS
+    out: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for piece in raw.split(","):
+        piece = piece.strip()
+        if not piece:
+            continue
+        try:
+            out.append(ipaddress.ip_network(piece, strict=False))
+        except (ValueError, TypeError):
+            logger.warning("LITASSIST_PROXY_FAKE_IP_CIDRS: invalid CIDR %r, skipping", piece)
+    return tuple(out)
+
+
+def _ip_in_fake_cidrs(
+    ip_str: str,
+    cidrs: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
+) -> bool:
+    """True iff ip_str parses and falls within ANY configured fake-IP CIDR."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    for net in cidrs:
+        # Match address family — IPv4 addr against IPv4 net only, and vice versa.
+        if isinstance(ip, ipaddress.IPv4Address) and isinstance(net, ipaddress.IPv4Network):
+            if ip in net:
+                return True
+        elif isinstance(ip, ipaddress.IPv6Address) and isinstance(net, ipaddress.IPv6Network):
+            if ip in net:
+                return True
+    return False
+
+
+def _all_ips_are_fake_ip_for_official_provider(
+    *,
+    host: str,
+    scheme: str,
+    trust_source: str,
+    ips: list[str],
+) -> bool:
+    """Return True iff this resolution qualifies for the fake-IP exception.
+
+    All conditions must hold (rule 7):
+      - env LITASSIST_ALLOW_PROXY_FAKE_IP_FOR_OFFICIAL_PROVIDERS truthy
+      - scheme is https
+      - host is on the built-in official-provider allowlist
+      - trust_source ∈ {official_provider, env_configured_gateway, runtime_user_confirmed}
+      - ips non-empty AND every IP falls within a configured fake-IP CIDR
+
+    If a host resolves to BOTH a fake-IP AND a real private/loopback IP
+    (rule 7 last bullet), this returns False so the standard SSRF gate
+    rejects the call.
+    """
+    if not _proxy_fake_ip_enabled():
+        return False
+    if scheme != "https":
+        return False
+    if host not in all_official_hosts():
+        return False
+    if trust_source not in _FAKE_IP_ELIGIBLE_TRUST_SOURCES:
+        return False
+    if not ips:
+        return False
+    cidrs = _proxy_fake_ip_cidrs()
+    if not cidrs:
+        return False
+    return all(_ip_in_fake_cidrs(ip, cidrs) for ip in ips)
+
+
 def classify_ip(ip_str: str) -> str | None:
     """Return a human-readable rejection reason if ip is unsafe, else None.
 
@@ -327,6 +440,24 @@ def validate_endpoint(
         return _reject(f"dns_resolution_failed:{exc}", ts,
                        scheme=parsed.scheme.lower(), host=host, port=port,
                        path=parsed.path)
+
+    # VPN / proxy fake-IP exception (rule 7 of endpoint policy V2).
+    # Must run BEFORE the strict per-IP classify, because the standard gate
+    # would reject 198.18.x.x as "non_global". This exception is narrow:
+    # official-host HTTPS + all IPs in configured fake CIDR + env opt-in.
+    if _all_ips_are_fake_ip_for_official_provider(
+        host=host, scheme=parsed.scheme.lower(),
+        trust_source=ts, ips=ips,
+    ):
+        # Note: log host + IPs only — never the Authorization header / key.
+        logger.info(
+            "official_provider_fake_ip_proxy_allowed host=%s scheme=%s ips=%s",
+            host, parsed.scheme.lower(), ips,
+        )
+        return _allow("official_provider_fake_ip_proxy_allowed", ts,
+                      scheme=parsed.scheme.lower(), host=host, port=port,
+                      path=parsed.path,
+                      resolved_ips=tuple(ips))
 
     rejected: list[str] = []
     for ip in ips:
