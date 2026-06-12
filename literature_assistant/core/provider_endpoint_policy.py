@@ -460,6 +460,7 @@ def validate_endpoint(
                       resolved_ips=tuple(ips))
 
     rejected: list[str] = []
+    loopback_only = True  # all IPs are loopback under allow_loopback_http
     for ip in ips:
         why = classify_ip(ip)
         if (
@@ -470,12 +471,24 @@ def validate_endpoint(
             continue
         if why is not None:
             rejected.append(f"{ip}({why})")
+            loopback_only = False
+        else:
+            # non-loopback safe IP (public) → not a pure loopback decision
+            loopback_only = False
     if rejected:
         return _reject("dns_resolved_to_unsafe_ip", ts,
                        scheme=parsed.scheme.lower(), host=host, port=port,
                        path=parsed.path,
                        resolved_ips=tuple(ips),
                        rejected_ips=tuple(rejected))
+
+    # Loopback HTTP exception: distinct reason so callers / telemetry
+    # can identify local-API decisions (rule 6 of endpoint policy V2).
+    if loopback_only and allow_loopback_http and parsed.scheme.lower() == "http":
+        return _allow("loopback_http_allowed", ts,
+                      scheme=parsed.scheme.lower(), host=host, port=port,
+                      path=parsed.path,
+                      resolved_ips=tuple(ips))
 
     return _allow("ok", ts,
                   scheme=parsed.scheme.lower(), host=host, port=port,

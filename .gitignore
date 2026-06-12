@@ -205,6 +205,8 @@ htmlcov/
 !/tests/test_token_utils_offline.py
 !/tests/test_local_rerank_adapter.py
 !/tests/test_provider_endpoint_policy_fake_ip.py
+!/tests/test_provider_endpoint_policy_loopback.py
+!/tests/test_provider_endpoint_policy.py
 /workspace_tests/benchmarks/results/
 /workspace_tests/diagnostics/
 /workspace_tests/evaluation_data/BASELINE_METRICS.json
