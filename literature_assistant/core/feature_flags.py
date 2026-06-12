@@ -93,6 +93,18 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
             "适合综述、找数据、深度调研。同一问题分别开/关跑一次可直观对比。"
         ),
     ),
+    "tolf_fusion_mode": FeatureFlagSpec(
+        name="tolf_fusion_mode",
+        default=False,
+        env_var="INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED",
+        label="TOLF 融合 RAG (RRF)",
+        description=(
+            "需要同时打开「TOLF 目标导向检索」。开启后 TOLF 不再替代 RAG,"
+            "改为与 RAG 候选池通过 Reciprocal Rank Fusion 合并: TOLF 给目标侧候选,"
+            "RAG 给词面侧候选, 各自独立排序后用 RRF 融合 (k=60), 再截到 max_chunks。"
+            "默认 off, 保持历史 fallback 行为不变; 适合调研型问题想要更广覆盖时打开。"
+        ),
+    ),
     "local_rerank": FeatureFlagSpec(
         name="local_rerank",
         default=True,

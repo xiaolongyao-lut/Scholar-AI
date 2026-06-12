@@ -612,6 +612,81 @@ def _tolf_context_enabled() -> bool:
     return is_enabled("tolf_context")
 
 
+def _tolf_fusion_mode_enabled() -> bool:
+    """Fuse RAG and TOLF candidates instead of using TOLF as a fallback.
+
+    Off by default for back-compat. When on AND ``tolf_context`` is also on,
+    ``_build_project_context_chunks`` blends ``search_project_chunks_for_query``
+    (RAG keyword) with ``select_tolf_context_chunks`` (TOLF text selector)
+    using Reciprocal Rank Fusion (Cormack et al., 2009), then truncates to
+    ``max_chunks``. When off (or TOLF off), behaviour is byte-identical to
+    the historical TOLF-or-RAG branch.
+    """
+    try:
+        from feature_flags import is_enabled
+    except ImportError:
+        val = os.getenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED")
+        return _truthy(val) if val else False
+    return is_enabled("tolf_fusion_mode")
+
+
+def _rrf_merge(
+    *ranked_lists: list[dict[str, Any]],
+    k: int = 60,
+    chunk_id_key: str = "chunk_id",
+) -> list[dict[str, Any]]:
+    """Reciprocal Rank Fusion of multiple ranked candidate lists.
+
+    Args:
+        ranked_lists: One or more ranked lists. Each entry must be a dict
+            carrying ``chunk_id_key``; duplicates within one list are deduped
+            by first occurrence (lowest rank). Lists with all-missing keys
+            are silently dropped.
+        k: RRF smoothing constant; 60 is the canonical default in
+            Cormack 2009 and most TREC follow-ups. Larger k flattens the
+            curve (later ranks contribute more); smaller k makes top ranks
+            dominate.
+        chunk_id_key: Field used as the dedup key across lists.
+
+    Returns:
+        One merged list sorted by descending fused score. Each result dict
+        is a shallow copy of the first occurrence of that chunk_id across
+        any input list, with a ``rrf_score`` float and ``rrf_sources``
+        list[int] (input-list indices that contributed) attached.
+
+    Why:
+        TOLF's activation score and RAG's keyword-overlap score live in
+        different metric spaces; a weighted sum across them needs a per-list
+        calibration we don't have. RRF only uses ranks, so it dodges the
+        score-scale problem and is what Anserini / Pyserini / RAG-Fusion all
+        use as the default fusion baseline.
+    """
+    score_by_id: dict[str, float] = {}
+    sources_by_id: dict[str, list[int]] = {}
+    first_seen: dict[str, dict[str, Any]] = {}
+
+    for list_idx, ranked in enumerate(ranked_lists):
+        if not isinstance(ranked, list):
+            continue
+        for rank_idx, item in enumerate(ranked):
+            if not isinstance(item, dict):
+                continue
+            cid = str(item.get(chunk_id_key) or "").strip()
+            if not cid:
+                continue
+            score_by_id[cid] = score_by_id.get(cid, 0.0) + 1.0 / (k + rank_idx + 1)
+            sources_by_id.setdefault(cid, []).append(list_idx)
+            first_seen.setdefault(cid, item)
+
+    fused: list[dict[str, Any]] = []
+    for cid, score in sorted(score_by_id.items(), key=lambda pair: pair[1], reverse=True):
+        merged = dict(first_seen[cid])
+        merged["rrf_score"] = round(score, 6)
+        merged["rrf_sources"] = sources_by_id[cid]
+        fused.append(merged)
+    return fused
+
+
 def _split_source_paths(raw_value: str) -> list[str]:
     normalized = raw_value.replace("\n", ";").replace(",", ";")
     return [item.strip() for item in normalized.split(";") if item.strip()]
@@ -902,7 +977,26 @@ def _build_project_context_chunks(
                 )
             except (RuntimeError, TypeError, ValueError):
                 tolfs = []
-            if tolfs:
+            if _tolf_fusion_mode_enabled():
+                # Fusion path: blend TOLF with RAG via RRF instead of using
+                # TOLF as a binary replacement. Both arms run independently;
+                # the merged list is truncated to max_chunks at the boundary.
+                try:
+                    rag_hits = search_project_chunks_for_query(
+                        project_id=project_id, query=query, top_k=max_chunks
+                    )
+                except (RuntimeError, TypeError, ValueError):
+                    rag_hits = []
+                merged = _rrf_merge(tolfs, rag_hits)
+                if merged:
+                    results = merged[:max_chunks]
+                elif tolfs:
+                    results = tolfs
+                elif rag_hits:
+                    results = rag_hits
+                else:
+                    results = []
+            elif tolfs:
                 results = tolfs
             else:
                 results = search_project_chunks_for_query(project_id=project_id, query=query, top_k=max_chunks)
