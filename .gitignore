@@ -39,6 +39,18 @@
 /.mcp.json
 /.opencode/
 
+# Root-only runtime diagnostics / probe outputs. These files contain key
+# fingerprints, API endpoint health, browser session traces, etc. Never
+# commit them — they leak credentials and pollute git status between runs.
+/.connectivity_results.json
+/.team_api_health.json
+/.playwright-cli/
+
+# Root-only ad-hoc audit notes that the team treats as local-only until they
+# are explicitly converted into product docs under docs/plans/.
+/SECURITY_AUDIT_*.md
+/SECURITY_AUDIT_REPORT_*.md
+
 # Root-only GitHub files are ignored by default because this workspace contains
 # private agent scaffolding. Public CI workflows may be promoted explicitly under
 # SOURCE_RELEASE_POLICY.md.
