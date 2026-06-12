@@ -169,6 +169,70 @@ def is_available() -> bool:
     return _allow_download()
 
 
+def get_status() -> dict[str, Any]:
+    """Aggregate status snapshot for UI / settings endpoints.
+
+    Does NOT load model weights or import torch eagerly beyond
+    detection (the same lazy probes ``is_available()`` uses). Safe to
+    call on every Settings page render — runs in well under 1ms on a
+    warm process.
+
+    The returned dict is the contract that frontends should render as a
+    status chip / badge. Field semantics:
+
+    - ``available`` — true when local fallback can actually be invoked
+      (weights on disk OR download allowed + libs importable + not
+      disabled). Frontend should show a green chip; false → red chip.
+    - ``disabled`` — true when ``LOCAL_RERANK_DISABLED=1``. Distinct
+      from "available=false because no weights" — disabled is an
+      operator opt-out, not a missing dependency.
+    - ``weights_present`` — true when the HF cache has the chosen
+      model. Frontend can show "Click to download (XX MB)" when false
+      and ``allow_download=true``.
+    - ``allow_download`` — true when ``LOCAL_RERANK_ALLOW_DOWNLOAD=1``;
+      controls whether ``is_available()`` returns true on a fresh box.
+    - ``model_name`` — currently selected model. Users who want to
+      swap to a different open-source reranker set
+      ``LOCAL_RERANK_MODEL_NAME`` env var (see workspace docs).
+    - ``device`` — resolved device that ``_get_reranker()`` would pick
+      if invoked right now. ``"cuda"`` / ``"cpu"`` / explicit override.
+    - ``max_length`` / ``batch_size`` — runtime knobs the user has
+      set via env (or defaults).
+    - ``loaded`` — true when the model has actually been pulled into
+      memory this process. Always false on a cold worker.
+
+    Why a single aggregator: the frontend can render the entire local-
+    rerank state from one HTTP round-trip; without this it would have
+    to probe weights, env vars, and torch separately, leaking
+    implementation details into the UI layer.
+    """
+    model_name = _model_name()
+    device_env_override = os.environ.get("LOCAL_RERANK_DEVICE", "").strip() or None
+    return {
+        "available": is_available(),
+        "disabled": _is_disabled(),
+        "weights_present": _weights_present(model_name),
+        "allow_download": _allow_download(),
+        "model_name": model_name,
+        "device": device_env_override or _detect_default_device(),
+        "device_source": "env_override" if device_env_override else "auto_detected",
+        "max_length": _env_int(
+            "LOCAL_RERANK_MAX_LENGTH",
+            _DEFAULT_MAX_LEN,
+            _MAX_LEN_MIN,
+            _MAX_LEN_MAX,
+        ),
+        "batch_size": _env_int(
+            "LOCAL_RERANK_BATCH_SIZE",
+            _DEFAULT_BATCH,
+            _BATCH_MIN,
+            _BATCH_MAX,
+        ),
+        "loaded": _LOCAL_RERANKER is not None and _LOCAL_RERANKER_LOADED,
+        "hf_cache_dir": str(_hf_cache_dir()),
+    }
+
+
 def _get_reranker() -> Any:
     """Lazy singleton — returns ``(tokenizer, model, device, torch)`` or None."""
     global _LOCAL_RERANKER, _LOCAL_RERANKER_LOADED, _LOCAL_RERANKER_NAME

@@ -1436,6 +1436,101 @@ interface RerankPublicConfig {
   updated_at: string;
 }
 
+interface LocalRerankStatus {
+  available: boolean;
+  disabled: boolean;
+  weights_present: boolean;
+  allow_download: boolean;
+  model_name: string;
+  device: string;
+  device_source: string;
+  max_length: number;
+  batch_size: number;
+  loaded: boolean;
+  hf_cache_dir: string;
+}
+
+/**
+ * Status chip for the local rerank fallback.
+ *
+ * Tells the user whether rerank will gracefully fall back to a local
+ * model when the configured API rerank fails. Polls /api/rerank/local-status
+ * once on mount — fast (<1ms backend probe, no model loading).
+ *
+ * Color rubric:
+ *   green   → available (API failure → local fallback works)
+ *   amber   → weights missing but download allowed
+ *   slate   → disabled by operator (LOCAL_RERANK_DISABLED=1)
+ *   red     → weights missing AND no download (API failure → static sort)
+ */
+function LocalRerankFallbackChip() {
+  const [status, setStatus] = useState<LocalRerankStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data } = await axios.get<LocalRerankStatus>(
+          `${getApiBaseUrl()}/api/rerank/local-status`
+        );
+        if (!cancelled) setStatus(data);
+      } catch {
+        if (!cancelled) setStatus(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <span className="text-[10px] text-foreground/40 italic">
+        正在探测本地回退…
+      </span>
+    );
+  }
+  if (!status) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 dark:bg-slate-700/40 dark:text-slate-300">
+        本地回退: 状态未知
+      </span>
+    );
+  }
+
+  let chipClass: string;
+  let label: string;
+  let tip: string;
+
+  if (status.disabled) {
+    chipClass = "bg-slate-100 text-slate-600 dark:bg-slate-700/40 dark:text-slate-300";
+    label = "本地回退: 已禁用";
+    tip = `运维通过 LOCAL_RERANK_DISABLED=1 关闭。云端 rerank 失败时将退回到静态 hybrid_score 排序，不再尝试本地模型。`;
+  } else if (status.available) {
+    chipClass = "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300";
+    label = `本地回退: 可用 · ${status.device.toUpperCase()}`;
+    tip = `云端 rerank API 失败时，会自动回退到本地模型 ${status.model_name}（${status.device}${status.device_source === 'env_override' ? '，已手动指定' : '，自动探测'}），不需要联网。模型权重已就绪。`;
+  } else if (status.weights_present === false && status.allow_download) {
+    chipClass = "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300";
+    label = "本地回退: 需下载";
+    tip = `权重 ${status.model_name} 未在本机 HF 缓存，但允许联网下载（LOCAL_RERANK_ALLOW_DOWNLOAD=1）。首次回退会拉取大约 1.5GB。`;
+  } else {
+    chipClass = "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300";
+    label = "本地回退: 不可用";
+    tip = `本机没有 ${status.model_name} 权重，且未允许下载（LOCAL_RERANK_ALLOW_DOWNLOAD 未设置）。云端 rerank 失败时，将退回到静态 hybrid_score 排序。要启用：先 \`pip install transformers torch\`，然后把权重放到 ${status.hf_cache_dir}，或者设置 LOCAL_RERANK_ALLOW_DOWNLOAD=1 允许联网下载。`;
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${chipClass}`}
+      title={tip}
+    >
+      {label}
+    </span>
+  );
+}
+
 function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | number>) => string }) {
   const trackedTimeout = useTrackedTimeout();
   const [config, setConfig] = useState<RerankPublicConfig | null>(null);
@@ -1559,7 +1654,10 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
           Rerank 模型配置
           <Tooltip text="文献检索后的精排模型，可接云端 rerank，也可接本地 BGE 等 Cohere 兼容服务。保存后会立即应用到本机语义路由。" />
         </h4>
-        <StatusPill status={config?.has_api_key ? 'online' : 'ready'} t={_t} />
+        <div className="flex items-center gap-2">
+          <LocalRerankFallbackChip />
+          <StatusPill status={config?.has_api_key ? 'online' : 'ready'} t={_t} />
+        </div>
       </div>
 
       {testStatus === 'ok' && testMessage && (

@@ -66,6 +66,40 @@ class RerankProbeResult(BaseModel):
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
+class LocalRerankStatusPayload(BaseModel):
+    """Snapshot of the local rerank fallback for the Settings UI.
+
+    Rendered as a status chip / badge. ``available=true`` means the
+    local fallback can actually be invoked when the API rerank fails;
+    ``available=false`` means rerank will degrade to static
+    hybrid_score sorting on API failure.
+
+    Frontend rendering hints (non-binding, just what the UI usually
+    needs):
+      - green chip when available
+      - yellow chip when available=false but weights_present=false and
+        allow_download=true ("click to download N MB")
+      - red chip when disabled or weights missing and no download
+      - secondary line: "GPU (RTX 4060)" / "CPU" — show device + source
+      - tertiary line: model_name + "Change in Settings → 高级" link
+
+    The ``loaded`` flag exists for engineers debugging cold-start
+    latency; UI does not need to surface it.
+    """
+
+    available: bool
+    disabled: bool
+    weights_present: bool
+    allow_download: bool
+    model_name: str
+    device: str
+    device_source: str  # "auto_detected" | "env_override"
+    max_length: int
+    batch_size: int
+    loaded: bool
+    hf_cache_dir: str
+
+
 def _extract_rerank_probe_scores(payload: Any, document_count: int) -> list[float]:
     if not isinstance(payload, dict):
         return []
@@ -95,6 +129,37 @@ def _extract_rerank_probe_scores(payload: Any, document_count: int) -> list[floa
 @router.get("/config", response_model=RerankConfigPayload)
 async def get_rerank_config() -> RerankConfigPayload:
     return RerankConfigPayload(**rerank_runtime_config.get_public_config())
+
+
+@router.get("/local-status", response_model=LocalRerankStatusPayload)
+async def get_local_rerank_status() -> LocalRerankStatusPayload:
+    """Status of the local rerank fallback (model weights / device / availability).
+
+    Used by Settings UI to render a chip telling the user whether
+    rerank will gracefully fall back to a local model when the
+    configured API rerank fails. Does NOT load weights — runs in <1 ms
+    on a warm process.
+
+    See ``LocalRerankStatusPayload`` docstring for rendering hints.
+    """
+    try:
+        from local_rerank_adapter import get_status
+    except ImportError as exc:  # adapter module missing — degrade gracefully
+        logger.warning("local_rerank_adapter unavailable: %s", exc)
+        return LocalRerankStatusPayload(
+            available=False,
+            disabled=True,
+            weights_present=False,
+            allow_download=False,
+            model_name="",
+            device="cpu",
+            device_source="auto_detected",
+            max_length=0,
+            batch_size=0,
+            loaded=False,
+            hf_cache_dir="",
+        )
+    return LocalRerankStatusPayload(**get_status())
 
 
 @router.put("/config", response_model=RerankConfigPayload)
