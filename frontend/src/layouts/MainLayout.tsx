@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, NavLink } from 'react-router-dom';
-import { 
-  BarChart3,
+import {
   BookOpen,
   BookMarked,
   BookOpenCheck,
@@ -9,24 +8,19 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
-  Edit3, 
-  FileEdit,
+  Edit3,
   FileText,
   Folder,
-  FolderPlus,
-  FolderKanban, 
+  FolderKanban,
   HelpCircle,
   Image,
-  Layers,
   LayoutDashboard,
   List,
   Menu,
   PencilLine,
   Settings,
-  Bell,
   ShieldCheck,
   Activity,
-  Trash2,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -270,6 +264,7 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 /* ─── Config Popover ─── */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 写作 header config 弹层, 重构后暂未挂载, 保留供后续恢复
 function ConfigPopover({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useI18n();
   const { scope, setScope, outputMode, setOutputMode } = useWriting();
@@ -343,16 +338,16 @@ function ConfigPopover({ open, onClose }: { open: boolean; onClose: () => void }
 /* ─── MainLayout ─── */
 export const MainLayout = ({ children, className }: { children: React.ReactNode; className?: string }) => {
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { toast: _toast } = useToast();
   const { activeProjectId, setActiveProjectId, leftNavCollapsed, setLeftNavCollapsed, zenMode } = useWriting();
   const { t } = useI18n();
   const location = useLocation();
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [_isConfigOpen, _setIsConfigOpen] = useState(false);
+  const [_isNotifOpen, _setIsNotifOpen] = useState(false);
   const [headerProjects, setHeaderProjects] = useState<Array<{ id: string; title: string }>>([]);
-  const [projectLoading, setProjectLoading] = useState(false);
+  const [_projectLoading, setProjectLoading] = useState(false);
 
   const isWritingRoute = location.pathname.startsWith('/writing');
   const isProjectsRoute = location.pathname.startsWith('/projects');
@@ -361,7 +356,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
     return (params.get('project_id') ?? params.get('project') ?? '').trim();
   }, [location.search]);
 
-  const getHeaderTitle = () => {
+  const _getHeaderTitle = () => {
     if (isWritingRoute) return t('writing.workbench_title');
     if (location.pathname.startsWith('/library')) return '文献库';
     if (location.pathname.startsWith('/workbench/paper')) return '研究工作台 · 文献';
@@ -440,7 +435,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
     void loadHeaderProjects();
   }, [loadHeaderProjects, location.pathname]);
 
-  const notificationItems = headerProjects.length === 0
+  const _notificationItems = headerProjects.length === 0
     ? [{
       id: 'notif-no-project',
       title: t('nav.notifications_empty'),
@@ -462,14 +457,14 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
         ? routeProjectId
       : (isProjectsRoute ? '' : (headerProjects[0]?.id ?? ''));
 
-  const handleProjectSelectorChange = useCallback((projectId: string) => {
+  const _handleProjectSelectorChange = useCallback((projectId: string) => {
     setActiveProjectId(projectId);
     if (isProjectsRoute) {
       navigate('/projects');
     }
   }, [isProjectsRoute, navigate, setActiveProjectId]);
 
-  const handleDeleteProject = useCallback(async () => {
+  const _handleDeleteProject = useCallback(async () => {
     if (!selectedProjectId) return;
     const project = headerProjects.find(p => p.id === selectedProjectId);
     if (!project || !window.confirm(`确定要删除项目「${project.title}」吗？删除后无法恢复。`)) return;
