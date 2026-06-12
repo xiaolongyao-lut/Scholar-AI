@@ -371,3 +371,66 @@ def test_router_flag_on_appends_siblings(
         chunk_ids = [c.chunk_id for c in chunks]
         assert "n1" in chunk_ids
         assert "t1" in chunk_ids
+
+
+def test_router_structured_chunks_get_budget_reservation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Long narrative chunks must not starve a structured chunk down to a
+    metadata-header sliver. tier=fast has max_chars=2000; without the
+    reservation, a 1800-char narrative leaves 200 chars total for everything
+    after it — most of which is chunk-header boilerplate. The reservation
+    is computed as min(structured_count * per_floor, max_chars // 2)
+    where per_floor = clamp(max_chars // 8, 400, 1200)."""
+
+    monkeypatch.delenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", raising=False)
+    monkeypatch.delenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", raising=False)
+    monkeypatch.delenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", raising=False)
+    monkeypatch.delenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", raising=False)
+    _reset_flag_cache()
+
+    from routers import intelligent_chat_router as router
+
+    # max_chars for "fast" is 2000. Without reservation: narrative eats
+    # 1800, table is left with 200. With reservation (per_floor=400
+    # since 2000//8=250 → clamped to 400; structured_count=1 → reserve=400):
+    # narrative gets 1600 max, table sees 400+ from the reserved pool.
+    long_narrative_body = "x" * 1800
+    table_body = "y" * 1500  # bigger than what would fit without reservation
+
+    rag = [
+        {
+            "chunk_id": "n1",
+            "chunk_type": "narrative",
+            "content": long_narrative_body,
+            "title": "Paper",
+            "material_id": "m",
+        },
+        {
+            "chunk_id": "t1",
+            "chunk_type": "table",
+            "content": table_body,
+            "title": "Paper",
+            "material_id": "m",
+        },
+    ]
+
+    monkeypatch.setattr(router, "_hybrid_retrieval_enabled", lambda: False)
+    monkeypatch.setattr(router, "_tolf_context_enabled", lambda: False)
+    monkeypatch.setattr(router, "_structured_sibling_inclusion_enabled", lambda: False)
+
+    with patch.object(router, "search_project_chunks_for_query", return_value=rag):
+        chunks, _ = asyncio.run(
+            router._build_project_context_chunks(
+                query="anything", project_id="proj_test", tier="fast"
+            )
+        )
+
+    chunk_by_id = {c.chunk_id: c for c in chunks}
+    assert "n1" in chunk_by_id
+    assert "t1" in chunk_by_id
+    # The structured chunk must hold at least its per_floor (=400 here),
+    # not the leftover sliver after the narrative.
+    assert len(chunk_by_id["t1"].content) >= 400
+    # The narrative was clamped by max_chars - reserve = 2000 - 400 = 1600.
+    assert len(chunk_by_id["n1"].content) <= 1600

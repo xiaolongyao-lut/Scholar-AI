@@ -1130,8 +1130,40 @@ async def _build_project_context_chunks(
     used_chars = 0
     truncated = False
 
+    # Reserve a char-budget floor for structured chunks (table / formula /
+    # figure_caption / equation) so the truncate loop below cannot starve
+    # them down to a metadata-header sliver. Without this, a Table 2 chunk
+    # appearing after a long narrative anchor commonly lands with 162 chars
+    # of which 130 are the chunk header — the LLM sees zero numerical rows.
+    # Cap the reservation at half max_chars so structured chunks cannot
+    # crowd out the narrative entirely.
+    structured_types = {"table", "formula", "figure_caption", "equation"}
+    structured_reserve = 0
+    if max_chars > 0:
+        per_structured_floor = min(max(max_chars // 8, 400), 1200)
+        structured_count = sum(
+            1 for r in results
+            if isinstance(r, dict)
+            and str(r.get("chunk_type") or "") in structured_types
+        )
+        structured_reserve = min(
+            structured_count * per_structured_floor,
+            max_chars // 2,
+        )
+
     for result in results:
-        remaining = max_chars - used_chars
+        remaining_for_narrative = max_chars - used_chars - structured_reserve
+        is_structured = (
+            isinstance(result, dict)
+            and str(result.get("chunk_type") or "") in structured_types
+        )
+        # Structured chunks may consume from the reserve; narrative chunks
+        # may not — they are bounded by the non-reserved budget.
+        remaining = (
+            max_chars - used_chars
+            if is_structured
+            else remaining_for_narrative
+        )
         if len(chunks) >= max_chunks or remaining <= 0:
             truncated = True
             break
@@ -1144,6 +1176,12 @@ async def _build_project_context_chunks(
             continue
         if len(full_content) > len(content):
             truncated = True
+
+        # As soon as a structured chunk lands, shrink the reserve by the
+        # space it claimed (clamped to ≥ 0) so following structured chunks
+        # see an accurate ceiling.
+        if is_structured and structured_reserve > 0:
+            structured_reserve = max(structured_reserve - len(content), 0)
 
         score = result.get("score")
         numeric_score = float(score) if isinstance(score, int | float) else None
