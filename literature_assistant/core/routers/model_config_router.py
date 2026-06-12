@@ -462,6 +462,59 @@ async def discover_chat_models(req: DiscoverRequest) -> DiscoverResult:
 embedding_router = _build_config_routes(embedding_store, "/api/embedding", "Embedding Config")
 
 
+class LocalEmbeddingStatusPayload(BaseModel):
+    """Snapshot of the local embedding fallback for the Settings UI.
+
+    Rendered as a status chip / badge next to the Embedding card. Mirrors
+    ``LocalRerankStatusPayload`` field-by-field so the frontend can reuse
+    the same chip component for both.
+
+    ``available=true`` means embedding will gracefully fall back to a
+    locally-cached SentenceTransformer (default ``BAAI/bge-m3``) when the
+    upstream API fails; ``available=false`` means an API outage will
+    propagate as ``EmbeddingAPIError`` to the caller.
+    """
+
+    available: bool
+    disabled: bool
+    weights_present: bool
+    allow_download: bool
+    model_name: str
+    device: str
+    device_source: str  # "auto_detected" | "env_override"
+    batch_size: int
+    loaded: bool
+    hf_cache_dir: str
+
+
+@embedding_router.get("/local-status", response_model=LocalEmbeddingStatusPayload)
+async def get_local_embedding_status() -> LocalEmbeddingStatusPayload:
+    """Status of the local embedding fallback (model weights / device / availability).
+
+    Used by Settings UI to render a chip telling the user whether
+    embedding will gracefully fall back to a local SentenceTransformer
+    when the configured API embedding fails. Does NOT load weights —
+    runs in <1 ms on a warm process.
+    """
+    try:
+        from local_embedding_adapter import get_status
+    except ImportError as exc:  # adapter module missing — degrade gracefully
+        logger.warning("local_embedding_adapter unavailable: %s", exc)
+        return LocalEmbeddingStatusPayload(
+            available=False,
+            disabled=True,
+            weights_present=False,
+            allow_download=False,
+            model_name="",
+            device="cpu",
+            device_source="auto_detected",
+            batch_size=0,
+            loaded=False,
+            hf_cache_dir="",
+        )
+    return LocalEmbeddingStatusPayload(**get_status())
+
+
 @embedding_router.post("/test", response_model=ProbeResult)
 async def test_embedding_endpoint(payload: ConfigUpdate) -> ProbeResult:
     """Probe an embedding endpoint using runtime_env helpers for URL construction."""

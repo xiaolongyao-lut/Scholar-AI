@@ -8579,6 +8579,65 @@
         "title": "LastPageRequest",
         "type": "object"
       },
+      "LocalEmbeddingStatusPayload": {
+        "description": "Snapshot of the local embedding fallback for the Settings UI.\n\nRendered as a status chip / badge next to the Embedding card. Mirrors\n``LocalRerankStatusPayload`` field-by-field so the frontend can reuse\nthe same chip component for both.\n\n``available=true`` means embedding will gracefully fall back to a\nlocally-cached SentenceTransformer (default ``BAAI/bge-m3``) when the\nupstream API fails; ``available=false`` means an API outage will\npropagate as ``EmbeddingAPIError`` to the caller.",
+        "properties": {
+          "allow_download": {
+            "title": "Allow Download",
+            "type": "boolean"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "batch_size": {
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "device_source": {
+            "title": "Device Source",
+            "type": "string"
+          },
+          "disabled": {
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "hf_cache_dir": {
+            "title": "Hf Cache Dir",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "model_name": {
+            "title": "Model Name",
+            "type": "string"
+          },
+          "weights_present": {
+            "title": "Weights Present",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available",
+          "disabled",
+          "weights_present",
+          "allow_download",
+          "model_name",
+          "device",
+          "device_source",
+          "batch_size",
+          "loaded",
+          "hf_cache_dir"
+        ],
+        "title": "LocalEmbeddingStatusPayload",
+        "type": "object"
+      },
       "LocalRerankStatusPayload": {
         "description": "Snapshot of the local rerank fallback for the Settings UI.\n\nRendered as a status chip / badge. ``available=true`` means the\nlocal fallback can actually be invoked when the API rerank fails;\n``available=false`` means rerank will degrade to static\nhybrid_score sorting on API failure.\n\nFrontend rendering hints (non-binding, just what the UI usually\nneeds):\n  - green chip when available\n  - yellow chip when available=false but weights_present=false and\n    allow_download=true (\"click to download N MB\")\n  - red chip when disabled or weights missing and no download\n  - secondary line: \"GPU (RTX 4060)\" / \"CPU\" — show device + source\n  - tertiary line: model_name + \"Change in Settings → 高级\" link\n\nThe ``loaded`` flag exists for engineers debugging cold-start\nlatency; UI does not need to surface it.",
         "properties": {
@@ -20887,6 +20946,28 @@
           }
         },
         "summary": "Apply Credential",
+        "tags": [
+          "Embedding Config"
+        ]
+      }
+    },
+    "/api/embedding/local-status": {
+      "get": {
+        "description": "Status of the local embedding fallback (model weights / device / availability).\n\nUsed by Settings UI to render a chip telling the user whether\nembedding will gracefully fall back to a local SentenceTransformer\nwhen the configured API embedding fails. Does NOT load weights —\nruns in <1 ms on a warm process.",
+        "operationId": "get_api_embedding_local_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalEmbeddingStatusPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Local Embedding Status",
         "tags": [
           "Embedding Config"
         ]

@@ -510,7 +510,7 @@ async def _embed_single_long(
     return pooled.tolist()
 
 
-async def _batch_embed(
+async def _batch_embed_api_only(
     texts: list[str],
     api_key: str,
     base_url: str,
@@ -524,13 +524,18 @@ async def _batch_embed(
 
     Supports parallel batch embedding via semaphore (configurable via EMBED_CONCURRENCY env var).
     Raises `EmbeddingAPIError` on transport/HTTP failures — no silent zero fallback.
+
+    NOTE: This is the API-only embed path. Public callers should use
+    ``_batch_embed`` which wraps this with an offline local-model fallback
+    (``local_embedding_adapter``) so a transient API outage does not break
+    backfill / query when weights are cached on disk.
     """
     if not texts:
         return []
 
     if credential_pool is not None:
         async def _invoke_with_credential(cred: Any) -> list[list[float]]:
-            return await _batch_embed(
+            return await _batch_embed_api_only(
                 texts,
                 cred.api_key,
                 cred.base_url,
@@ -637,6 +642,80 @@ async def _batch_embed(
         raise EmbeddingAPIError(f"embedding slots unfilled: {missing[:8]}")
 
     return [vec for vec in output if vec is not None]
+
+
+async def _batch_embed(
+    texts: list[str],
+    api_key: str,
+    base_url: str,
+    model: str,
+    batch_size: int | None = None,
+    concurrency: int | None = None,
+    stage: str | None = None,
+    credential_pool: Any | None = None,
+) -> list[list[float]]:
+    """Public embed entry — API-first with local sentence-encoder fallback.
+
+    Behavior:
+      1. Try ``_batch_embed_api_only`` (the upstream HTTP path).
+      2. On ``EmbeddingAPIError`` (transport/HTTP failure or unfilled slots),
+         check ``local_embedding_adapter.is_available()`` — if true, encode
+         via the locally-cached SentenceTransformer (default ``BAAI/bge-m3``)
+         and return those vectors. Same dim, same normalize convention, so
+         downstream cosine math doesn't care which path produced the vectors.
+      3. If local is unavailable too, re-raise the original API error — no
+         silent degradation, callers see the real upstream error.
+
+    Why this layering: the API is the cheap fast path in normal operation
+    (no model load, no GPU memory). Local fallback only kicks in when the
+    user actually needs it (offline / DNS-blocked / 403 / rate-limit).
+    Mirrors the local_rerank_adapter design from f9a319b1.
+    """
+    if not texts:
+        return []
+    try:
+        return await _batch_embed_api_only(
+            texts,
+            api_key,
+            base_url,
+            model,
+            batch_size=batch_size,
+            concurrency=concurrency,
+            stage=stage,
+            credential_pool=credential_pool,
+        )
+    except EmbeddingAPIError as api_exc:
+        try:
+            from local_embedding_adapter import aencode_texts, is_available
+        except ImportError as import_exc:
+            logger.warning(
+                "embed: local fallback adapter not importable (%s); re-raising API error",
+                import_exc,
+            )
+            raise api_exc
+        if not is_available():
+            logger.info(
+                "embed: API failed (%s) and local fallback unavailable; re-raising",
+                api_exc,
+            )
+            raise api_exc
+        logger.warning(
+            "embed: API failed (%s); attempting local sentence-encoder fallback",
+            api_exc,
+        )
+        normalized = [t if (t and t.strip()) else "empty" for t in texts]
+        local_vectors = await aencode_texts(normalized, target_dim=EMBEDDING_DIM)
+        if local_vectors is None:
+            logger.warning("embed: local fallback returned None; re-raising API error")
+            raise api_exc
+        if len(local_vectors) != len(texts):
+            logger.warning(
+                "embed: local fallback returned %d vectors for %d inputs; re-raising API error",
+                len(local_vectors),
+                len(texts),
+            )
+            raise api_exc
+        return _normalize_embedding_vectors(local_vectors)
 
 
 async def batch_embed_texts(

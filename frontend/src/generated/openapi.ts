@@ -1471,6 +1471,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/embedding/local-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Local Embedding Status
+         * @description Status of the local embedding fallback (model weights / device / availability).
+         *
+         *     Used by Settings UI to render a chip telling the user whether
+         *     embedding will gracefully fall back to a local SentenceTransformer
+         *     when the configured API embedding fails. Does NOT load weights —
+         *     runs in <1 ms on a warm process.
+         */
+        get: operations["get_api_embedding_local_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/embedding/models/discover": {
         parameters: {
             query?: never;
@@ -9355,6 +9380,41 @@ export interface components {
             page?: number | null;
         };
         /**
+         * LocalEmbeddingStatusPayload
+         * @description Snapshot of the local embedding fallback for the Settings UI.
+         *
+         *     Rendered as a status chip / badge next to the Embedding card. Mirrors
+         *     ``LocalRerankStatusPayload`` field-by-field so the frontend can reuse
+         *     the same chip component for both.
+         *
+         *     ``available=true`` means embedding will gracefully fall back to a
+         *     locally-cached SentenceTransformer (default ``BAAI/bge-m3``) when the
+         *     upstream API fails; ``available=false`` means an API outage will
+         *     propagate as ``EmbeddingAPIError`` to the caller.
+         */
+        LocalEmbeddingStatusPayload: {
+            /** Allow Download */
+            allow_download: boolean;
+            /** Available */
+            available: boolean;
+            /** Batch Size */
+            batch_size: number;
+            /** Device */
+            device: string;
+            /** Device Source */
+            device_source: string;
+            /** Disabled */
+            disabled: boolean;
+            /** Hf Cache Dir */
+            hf_cache_dir: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Model Name */
+            model_name: string;
+            /** Weights Present */
+            weights_present: boolean;
+        };
+        /**
          * LocalRerankStatusPayload
          * @description Snapshot of the local rerank fallback for the Settings UI.
          *
@@ -15735,6 +15795,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_embedding_local_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalEmbeddingStatusPayload"];
                 };
             };
         };

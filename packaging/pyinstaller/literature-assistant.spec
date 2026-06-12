@@ -212,6 +212,12 @@ hiddenimports = [
     "webview",
     "literature_assistant.bootstrap",
     "literature_assistant.core.python_adapter_server",
+    # Local fallback adapters — imported lazily by chunk_vector_store /
+    # rerank routers; explicit listing avoids "Hidden import not found"
+    # warnings and guarantees the adapter ships even when static analysis
+    # misses the conditional import path.
+    "local_rerank_adapter",
+    "local_embedding_adapter",
     "routers.pipeline_router",
     "routers.skills_router",
     "routers.resources_router",
