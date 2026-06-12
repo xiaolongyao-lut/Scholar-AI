@@ -2963,6 +2963,22 @@ const FEATURE_FLAG_DISPLAY_COPY: Record<string, { label?: string; description: s
     label: '经验应用到长期记忆',
     description: '开启后，已保存的经验可以继续应用到长期记忆或 Skill 草稿。关闭时仍可复审候选，但不会写入长期记忆。',
   },
+  rag_chunk_type_weighting: {
+    label: 'RAG 表格/公式优先送入精排',
+    description: '检索时把表格、公式、章节标题等结构化片段优先排进精排候选池，让数值答案更容易被引用。默认开启；关闭会让所有片段等权进入精排，可能更容易遗漏表格数据。',
+  },
+  hybrid_retrieval: {
+    label: '研读答问真混合检索',
+    description: '研读答问的 RAG 召回走真混合：词面 + 向量 + 精排，质量明显优于关键词重叠。默认开启；关闭会回退到关键词重叠的旧行为，主要在调试时使用。',
+  },
+  tolf_fusion_mode: {
+    label: '深度检索 + RAG 融合',
+    description: '需要先开启「深度证据检索」。两路候选会用 Reciprocal Rank Fusion 合并，深度检索负责目标侧、RAG 负责词面侧，互不替代。默认开启；关闭会回到「深度检索拿到结果就丢掉 RAG 候选」的旧行为。',
+  },
+  rag_structured_sibling_inclusion: {
+    label: '同章节表格/公式邻居自动补全',
+    description: '答完最终候选后，把命中段落所在章节里同位的表格、公式、图注自动补进上下文，让 LLM 可以引用具体数值。默认开启；关闭后，回答里出现「具体数值见 Table X」时 Table X 本身可能不在上下文。',
+  },
 };
 
 function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string | number>) => string }) {

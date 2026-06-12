@@ -2020,6 +2020,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/pdf-backend/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pdf Backend Status
+         * @description Return the current PDF backend wiring + marker installability.
+         */
+        get: operations["get_api_pdf_backend_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rerank/config": {
         parameters: {
             query?: never;
@@ -2050,6 +2070,33 @@ export interface paths {
         put?: never;
         /** Apply Rerank Credential */
         post: operations["post_api_rerank_config_apply_credential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rerank/local-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Local Rerank Status
+         * @description Status of the local rerank fallback (model weights / device / availability).
+         *
+         *     Used by Settings UI to render a chip telling the user whether
+         *     rerank will gracefully fall back to a local model when the
+         *     configured API rerank fails. Does NOT load weights — runs in <1 ms
+         *     on a warm process.
+         *
+         *     See ``LocalRerankStatusPayload`` docstring for rendering hints.
+         */
+        get: operations["get_api_rerank_local_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4511,6 +4558,45 @@ export interface paths {
         get: operations["get_resources_projects"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/projects/{project_id}/reparse-with-marker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reparse Project With Marker
+         * @description Re-extract every PDF material in a project using the active PDF backend.
+         *
+         *     Primary motivation: after a user enables marker (Settings → 实验性功能
+         *     → "PDF 结构化解析(marker)"), already-ingested PDFs were chunked by
+         *     PyMuPDF and therefore lack ``bbox / section_path / table_csv /
+         *     equation_latex / image_paths``. This endpoint walks each material in
+         *     the project, re-runs ``_extract_document_payload_from_path``(which
+         *     consults ``get_pdf_backend()`` and thus uses marker when the feature
+         *     flag is on), and persists structure-aware chunks + a markdown sidecar.
+         *
+         *     Behavior:
+         *       - Only PDF materials are reparsed.Non-PDF (DOCX, plaintext, etc.)
+         *         unchanged.
+         *       - Materials whose source file is missing are reported in ``skipped``
+         *         with reason ``source_missing``.
+         *       - Per-material failures(parse exceptions)go in ``failed`` with
+         *         the exception message; the overall request still returns 200.
+         *       - When the active backend is PyMuPDF this endpoint still runs but
+         *         produces identical chunks to the existing store (no harm; no
+         *         benefit) and ``backend`` reports ``pymupdf``.
+         */
+        post: operations["post_resources_projects_project_id_reparse_with_marker"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9219,6 +9305,51 @@ export interface components {
             page?: number | null;
         };
         /**
+         * LocalRerankStatusPayload
+         * @description Snapshot of the local rerank fallback for the Settings UI.
+         *
+         *     Rendered as a status chip / badge. ``available=true`` means the
+         *     local fallback can actually be invoked when the API rerank fails;
+         *     ``available=false`` means rerank will degrade to static
+         *     hybrid_score sorting on API failure.
+         *
+         *     Frontend rendering hints (non-binding, just what the UI usually
+         *     needs):
+         *       - green chip when available
+         *       - yellow chip when available=false but weights_present=false and
+         *         allow_download=true ("click to download N MB")
+         *       - red chip when disabled or weights missing and no download
+         *       - secondary line: "GPU (RTX 4060)" / "CPU" — show device + source
+         *       - tertiary line: model_name + "Change in Settings → 高级" link
+         *
+         *     The ``loaded`` flag exists for engineers debugging cold-start
+         *     latency; UI does not need to surface it.
+         */
+        LocalRerankStatusPayload: {
+            /** Allow Download */
+            allow_download: boolean;
+            /** Available */
+            available: boolean;
+            /** Batch Size */
+            batch_size: number;
+            /** Device */
+            device: string;
+            /** Device Source */
+            device_source: string;
+            /** Disabled */
+            disabled: boolean;
+            /** Hf Cache Dir */
+            hf_cache_dir: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Max Length */
+            max_length: number;
+            /** Model Name */
+            model_name: string;
+            /** Weights Present */
+            weights_present: boolean;
+        };
+        /**
          * ManualCaptureRequest
          * @description Request body for controlled manual experience import.
          */
@@ -9971,6 +10102,30 @@ export interface components {
             project_id: string;
             /** Updated At */
             updated_at: string;
+        };
+        /**
+         * PDFBackendStatus
+         * @description Status payload consumed by Settings frontend.
+         */
+        PDFBackendStatus: {
+            /** Active Backend */
+            active_backend: string;
+            /** Active Source */
+            active_source: string;
+            /** Env Var Name */
+            env_var_name: string;
+            /** Env Var Value */
+            env_var_value: string | null;
+            /** Feature Flag Enabled */
+            feature_flag_enabled: boolean;
+            /** Feature Flag Name */
+            feature_flag_name: string;
+            /** Marker Install Hint */
+            marker_install_hint: string;
+            /** Marker Installed */
+            marker_installed: boolean;
+            /** Marker Version */
+            marker_version: string | null;
         };
         /**
          * PdfBboxUnit
@@ -16562,6 +16717,26 @@ export interface operations {
             };
         };
     };
+    get_api_pdf_backend_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PDFBackendStatus"];
+                };
+            };
+        };
+    };
     get_api_rerank_config: {
         parameters: {
             query?: never;
@@ -16664,6 +16839,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_rerank_local_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalRerankStatusPayload"];
                 };
             };
         };
@@ -21081,6 +21276,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resources_projects_project_id_reparse_with_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

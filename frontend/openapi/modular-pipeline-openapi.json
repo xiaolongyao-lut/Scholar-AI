@@ -8579,6 +8579,70 @@
         "title": "LastPageRequest",
         "type": "object"
       },
+      "LocalRerankStatusPayload": {
+        "description": "Snapshot of the local rerank fallback for the Settings UI.\n\nRendered as a status chip / badge. ``available=true`` means the\nlocal fallback can actually be invoked when the API rerank fails;\n``available=false`` means rerank will degrade to static\nhybrid_score sorting on API failure.\n\nFrontend rendering hints (non-binding, just what the UI usually\nneeds):\n  - green chip when available\n  - yellow chip when available=false but weights_present=false and\n    allow_download=true (\"click to download N MB\")\n  - red chip when disabled or weights missing and no download\n  - secondary line: \"GPU (RTX 4060)\" / \"CPU\" — show device + source\n  - tertiary line: model_name + \"Change in Settings → 高级\" link\n\nThe ``loaded`` flag exists for engineers debugging cold-start\nlatency; UI does not need to surface it.",
+        "properties": {
+          "allow_download": {
+            "title": "Allow Download",
+            "type": "boolean"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "batch_size": {
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "device_source": {
+            "title": "Device Source",
+            "type": "string"
+          },
+          "disabled": {
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "hf_cache_dir": {
+            "title": "Hf Cache Dir",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "max_length": {
+            "title": "Max Length",
+            "type": "integer"
+          },
+          "model_name": {
+            "title": "Model Name",
+            "type": "string"
+          },
+          "weights_present": {
+            "title": "Weights Present",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available",
+          "disabled",
+          "weights_present",
+          "allow_download",
+          "model_name",
+          "device",
+          "device_source",
+          "max_length",
+          "batch_size",
+          "loaded",
+          "hf_cache_dir"
+        ],
+        "title": "LocalRerankStatusPayload",
+        "type": "object"
+      },
       "ManualCaptureRequest": {
         "additionalProperties": false,
         "description": "Request body for controlled manual experience import.",
@@ -10366,6 +10430,74 @@
           "updated_at"
         ],
         "title": "OutlinePayload",
+        "type": "object"
+      },
+      "PDFBackendStatus": {
+        "description": "Status payload consumed by Settings frontend.",
+        "properties": {
+          "active_backend": {
+            "title": "Active Backend",
+            "type": "string"
+          },
+          "active_source": {
+            "title": "Active Source",
+            "type": "string"
+          },
+          "env_var_name": {
+            "title": "Env Var Name",
+            "type": "string"
+          },
+          "env_var_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Env Var Value"
+          },
+          "feature_flag_enabled": {
+            "title": "Feature Flag Enabled",
+            "type": "boolean"
+          },
+          "feature_flag_name": {
+            "title": "Feature Flag Name",
+            "type": "string"
+          },
+          "marker_install_hint": {
+            "title": "Marker Install Hint",
+            "type": "string"
+          },
+          "marker_installed": {
+            "title": "Marker Installed",
+            "type": "boolean"
+          },
+          "marker_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marker Version"
+          }
+        },
+        "required": [
+          "active_backend",
+          "active_source",
+          "env_var_name",
+          "env_var_value",
+          "feature_flag_name",
+          "feature_flag_enabled",
+          "marker_installed",
+          "marker_version",
+          "marker_install_hint"
+        ],
+        "title": "PDFBackendStatus",
         "type": "object"
       },
       "PdfBboxUnit": {
@@ -22361,6 +22493,28 @@
         ]
       }
     },
+    "/api/pdf-backend/status": {
+      "get": {
+        "description": "Return the current PDF backend wiring + marker installability.",
+        "operationId": "get_api_pdf_backend_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PDFBackendStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Pdf Backend Status",
+        "tags": [
+          "PDF Backend"
+        ]
+      }
+    },
     "/api/rerank/config": {
       "delete": {
         "operationId": "delete_api_rerank_config",
@@ -22476,6 +22630,28 @@
           }
         },
         "summary": "Apply Rerank Credential",
+        "tags": [
+          "Rerank"
+        ]
+      }
+    },
+    "/api/rerank/local-status": {
+      "get": {
+        "description": "Status of the local rerank fallback (model weights / device / availability).\n\nUsed by Settings UI to render a chip telling the user whether\nrerank will gracefully fall back to a local model when the\nconfigured API rerank fails. Does NOT load weights — runs in <1 ms\non a warm process.\n\nSee ``LocalRerankStatusPayload`` docstring for rendering hints.",
+        "operationId": "get_api_rerank_local_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalRerankStatusPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Local Rerank Status",
         "tags": [
           "Rerank"
         ]
@@ -29419,6 +29595,51 @@
           }
         },
         "summary": "List Projects",
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/resources/projects/{project_id}/reparse-with-marker": {
+      "post": {
+        "description": "Re-extract every PDF material in a project using the active PDF backend.\n\nPrimary motivation: after a user enables marker (Settings → 实验性功能\n→ \"PDF 结构化解析(marker)\"), already-ingested PDFs were chunked by\nPyMuPDF and therefore lack ``bbox / section_path / table_csv /\nequation_latex / image_paths``. This endpoint walks each material in\nthe project, re-runs ``_extract_document_payload_from_path``(which\nconsults ``get_pdf_backend()`` and thus uses marker when the feature\nflag is on), and persists structure-aware chunks + a markdown sidecar.\n\nBehavior:\n  - Only PDF materials are reparsed.Non-PDF (DOCX, plaintext, etc.)\n    unchanged.\n  - Materials whose source file is missing are reported in ``skipped``\n    with reason ``source_missing``.\n  - Per-material failures(parse exceptions)go in ``failed`` with\n    the exception message; the overall request still returns 200.\n  - When the active backend is PyMuPDF this endpoint still runs but\n    produces identical chunks to the existing store (no harm; no\n    benefit) and ``backend`` reports ``pymupdf``.",
+        "operationId": "post_resources_projects_project_id_reparse_with_marker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Resources Projects Project Id Reparse With Marker",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reparse Project With Marker",
         "tags": [
           "Resources"
         ]
