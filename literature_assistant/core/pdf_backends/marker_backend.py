@@ -50,15 +50,20 @@ MARKER_BLOCK_TYPE_MAPPING: dict[str, str] = {
     "Text": "narrative",
     "Paragraph": "narrative",
     "TextBlock": "narrative",
+    "Footnote": "narrative",  # 2026-06-12 真实 reparse 实测出现,语义同正文
+    "PageFooter": "narrative",  # 页脚噪声较大,但映射给 narrative,后续 retriever 加权阶段可降权
     "Table": "table",
-    "TableGroup": "table",
+    "TableGroup": "table",  # marker 1.10.2 实际产出
     "Equation": "formula",
     "Formula": "formula",
     "FigureCaption": "figure_caption",
     "Caption": "figure_caption",
     "TableCaption": "figure_caption",
+    "FigureGroup": "figure_caption",  # 2026-06-12 真实 reparse 实测,图组的语义代理
+    "PictureGroup": "figure_caption",  # 同上
     "List": "list",
     "ListItem": "list",
+    "ListGroup": "list",  # 2026-06-12 真实 reparse 实测,列表组
     "Code": "code",
     "CodeBlock": "code",
     "Image": "image_caption",
