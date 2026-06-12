@@ -151,6 +151,141 @@ def test_select_handles_non_mapping_inputs_gracefully() -> None:
     assert [s["chunk_id"] for s in sibs] == ["t1"]
 
 
+# ---------- Content-aware ranking ----------
+
+def test_select_prefers_table_explicitly_cited_by_narrative() -> None:
+    """Anchor narrative mentions 'Table 2' → Table 2 sibling outranks Table 1
+    sibling, even though both share the same section. Closes the "Table 1
+    drowns out Table 2" failure mode from the real Reis e2e."""
+    final = [
+        {
+            "chunk_id": "n1",
+            "chunk_type": "narrative",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "The creep test data are summarised in Table 2 across all three temperatures.",
+        },
+    ]
+    pool = list(final) + [
+        {
+            "chunk_id": "t1",
+            "chunk_type": "table",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "[meta]\nTable 1 EDS data showing the nitrogen concentration.",
+        },
+        {
+            "chunk_id": "t2",
+            "chunk_type": "table",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "[meta]\nTable 2 Creep data at 500 C, 600 C and 700 C.",
+        },
+    ]
+    sibs = select_structured_siblings(final, pool, max_siblings=1)
+    # max_siblings=1 forces a tiebreak — the cited Table 2 must win.
+    assert [s["chunk_id"] for s in sibs] == ["t2"]
+
+
+def test_select_ranks_multiple_cited_refs_in_narrative_order() -> None:
+    """Narrative mentions 'Table 2 ... Fig. 4' — Table 2 must rank ahead of
+    Fig 4 when max_siblings forces a choice, because narrative order is the
+    proxy for human-author intent."""
+    final = [
+        {
+            "chunk_id": "n1",
+            "chunk_type": "narrative",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "The creep rates appear in Table 2, then Fig. 4 plots stress dependence.",
+        },
+    ]
+    pool = list(final) + [
+        {
+            "chunk_id": "fig4",
+            "chunk_type": "figure_caption",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "[meta]\nFig. 4 Stress dependence of the steady-state creep rate.",
+        },
+        {
+            "chunk_id": "table2",
+            "chunk_type": "table",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "[meta]\nTable 2 Creep data at 500/600/700 C.",
+        },
+    ]
+    sibs = select_structured_siblings(final, pool, max_siblings=1)
+    assert [s["chunk_id"] for s in sibs] == ["table2"]
+
+
+def test_select_falls_back_to_uncited_siblings_when_capacity_allows() -> None:
+    """When max_siblings has room beyond cited siblings, the uncited
+    same-section siblings still ride in — they just rank lower."""
+    final = [
+        {
+            "chunk_id": "n1",
+            "chunk_type": "narrative",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "Mentions Table 2 only.",
+        },
+    ]
+    pool = list(final) + [
+        {
+            "chunk_id": "t1",
+            "chunk_type": "table",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "[meta]\nTable 1 EDS data.",
+        },
+        {
+            "chunk_id": "t2",
+            "chunk_type": "table",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "[meta]\nTable 2 Creep data.",
+        },
+    ]
+    sibs = select_structured_siblings(final, pool, max_siblings=2)
+    # Table 2 (cited) first, Table 1 (uncited but same section) second.
+    assert [s["chunk_id"] for s in sibs] == ["t2", "t1"]
+
+
+def test_select_recognises_latex_tag_for_formula_siblings() -> None:
+    """Formula chunks don't carry "Table N" / "Fig N"; they use LaTeX
+    ``\\tag{N}``. When the narrative cites "Eq. 2", the chunk with
+    ``\\tag{2}`` must rank ahead of one with ``\\tag{1}``."""
+    final = [
+        {
+            "chunk_id": "n1",
+            "chunk_type": "narrative",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "The steady-state rate follows Eq. 2.",
+        },
+    ]
+    pool = list(final) + [
+        {
+            "chunk_id": "f1",
+            "chunk_type": "formula",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "[meta]\nt_p = A sigma^m \\tag{1}",
+        },
+        {
+            "chunk_id": "f2",
+            "chunk_type": "formula",
+            "section_path": ["S1"],
+            "material_id": "m",
+            "content": "[meta]\n\\dot\\varepsilon_s = B sigma^n \\tag{2}",
+        },
+    ]
+    sibs = select_structured_siblings(final, pool, max_siblings=1)
+    assert [s["chunk_id"] for s in sibs] == ["f2"]
+
+
 def test_select_tags_sibling_with_source_labels_and_hint() -> None:
     """Siblings must be tagged so the LLM / UI / answer judge can tell them
     apart from rerank-decided chunks. The chat-router copies source_labels

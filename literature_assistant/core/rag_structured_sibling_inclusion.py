@@ -30,6 +30,7 @@ Why:
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Mapping, Sequence
 
 __all__ = [
@@ -43,6 +44,39 @@ __all__ = [
 
 DEFAULT_MAX_SIBLINGS = 2
 DEFAULT_STRUCTURED_TYPES = frozenset({"table", "formula", "figure_caption", "equation"})
+
+# Regex for "Table 2" / "Fig. 4" / "Figure 4" / "Eq. (1)" / "Equation 3"
+# style references inside narrative content. Used to rank candidate
+# siblings by literal mention.
+_NARRATIVE_REF_RE = re.compile(
+    r"\b(Table|Fig\.?|Figure|Eq\.?|Equation)\s*[\.\(\[]?\s*(\d+)",
+    re.IGNORECASE,
+)
+
+# Identifier inside a sibling chunk's content body:
+#   - "Table 1 EDS data..." / "Table 2 Creep data..."
+#   - "Fig. 4 ..." / "Figure 4 ..."
+#   - "\tag{1}" / "\tag{2}" inside LaTeX formulas
+_SIBLING_ID_HEAD_RE = re.compile(
+    r"\b(Table|Fig\.?|Figure|Eq\.?|Equation)\s*(\d+)",
+    re.IGNORECASE,
+)
+_SIBLING_ID_TAG_RE = re.compile(r"\\tag\{?\s*(\d+)\s*\}?")
+
+
+_REF_FAMILY = {
+    "table": "table",
+    "fig": "figure",
+    "fig.": "figure",
+    "figure": "figure",
+    "eq": "equation",
+    "eq.": "equation",
+    "equation": "equation",
+}
+
+
+def _normalize_family(raw: str) -> str:
+    return _REF_FAMILY.get(str(raw).lower().rstrip("."), str(raw).lower())
 
 
 def is_sibling_inclusion_enabled() -> bool:
@@ -77,6 +111,85 @@ def _normalize_section_key(section_path: Any) -> str:
 
 def _normalize_material_id(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _extract_narrative_refs(content: str) -> list[tuple[str, str]]:
+    """Return ordered (family, number) tuples mentioned in narrative content.
+
+    Order matters: earlier mentions outrank later ones, so when the
+    anchor narrative says "Table 2 ... Fig. 4 ..." we prefer the Table 2
+    sibling over Fig 4 if max_siblings forces a choice.
+
+    Family names are normalized:
+        Table / Fig / Fig. / Figure / Eq / Eq. / Equation
+        → "table" / "figure" / "equation"
+
+    Duplicates are de-duped while preserving first occurrence order so
+    "Table 2 ... Table 2 ..." ranks Table 2 once.
+    """
+    refs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    if not content:
+        return refs
+    for match in _NARRATIVE_REF_RE.finditer(content):
+        family = _normalize_family(match.group(1))
+        number = match.group(2)
+        key = (family, number)
+        if key in seen:
+            continue
+        seen.add(key)
+        refs.append(key)
+    return refs
+
+
+def _sibling_identifier(chunk: Mapping[str, Any]) -> tuple[str, str] | None:
+    """Best-effort identifier from a sibling chunk's body.
+
+    Looks at the start of the content (after metadata header brackets)
+    and tries to pick out "Table N" / "Fig. N" first, then falls back to
+    LaTeX ``\\tag{N}`` which is how marker labels equations / formulas.
+    Returns None when nothing parseable is found.
+    """
+    content = str(chunk.get("content") or "")
+    if not content:
+        return None
+
+    # Strip leading bracketed metadata so we look at the actual body.
+    body = re.sub(r"^(?:\[[^\[\]]*\])+\n?", "", content, count=1)
+
+    head_match = _SIBLING_ID_HEAD_RE.search(body[:240])
+    if head_match is not None:
+        family = _normalize_family(head_match.group(1))
+        return (family, head_match.group(2))
+
+    tag_match = _SIBLING_ID_TAG_RE.search(body[:240])
+    if tag_match is not None:
+        return ("equation", tag_match.group(1))
+
+    return None
+
+
+def _sibling_rank(
+    chunk: Mapping[str, Any],
+    anchor_refs: list[tuple[str, str]],
+) -> tuple[int, int]:
+    """Rank a candidate sibling against the anchor narrative's references.
+
+    Lower is better. The first element is the position of the matching
+    reference in ``anchor_refs`` (0 = first mention). The second element
+    is the chunk_index, used as a stable tie-breaker so identical-rank
+    siblings keep document order.
+
+    When the chunk's identifier doesn't appear in anchor_refs at all
+    (no literal mention), the sibling gets a sentinel rank that sorts
+    AFTER every cited sibling — they ride in only on remaining capacity.
+    """
+    identifier = _sibling_identifier(chunk)
+    chunk_index = chunk.get("chunk_index")
+    tie = chunk_index if isinstance(chunk_index, int) else 0
+    if identifier is None or identifier not in anchor_refs:
+        return (10_000, tie)
+    return (anchor_refs.index(identifier), tie)
 
 
 def select_structured_siblings(
@@ -130,8 +243,10 @@ def select_structured_siblings(
     final_ids.discard("")
 
     # Index narrative chunks in final_results by (material_id, section_key,
-    # page) so we can match them efficiently against all_chunks.
-    anchors: list[tuple[str, str, Any, str]] = []
+    # page) so we can match them efficiently against all_chunks. Also pull
+    # the anchor's content so we can rank candidate siblings by literal
+    # cross-reference (Table N / Fig N / Eq N) mentions in the narrative.
+    anchors: list[tuple[str, str, Any, str, list[tuple[str, str]]]] = []
     for item in final_results:
         if not isinstance(item, Mapping):
             continue
@@ -141,12 +256,15 @@ def select_structured_siblings(
         sec = _normalize_section_key(item.get("section_path"))
         page = item.get("page")
         anchor_id = str(item.get("chunk_id") or "")
-        anchors.append((mat, sec, page, anchor_id))
+        anchor_refs = _extract_narrative_refs(str(item.get("content") or ""))
+        anchors.append((mat, sec, page, anchor_id, anchor_refs))
 
     if not anchors:
         return []
 
-    selected: list[dict[str, Any]] = []
+    # Collect candidates first (no cap yet), then rank by literal
+    # cross-reference order against the anchor that pulled them in.
+    candidates: list[tuple[tuple[int, int], dict[str, Any]]] = []
     seen: set[str] = set()
     for chunk in all_chunks:
         if not isinstance(chunk, Mapping):
@@ -162,7 +280,7 @@ def select_structured_siblings(
         c_sec = _normalize_section_key(chunk.get("section_path"))
         c_page = chunk.get("page")
 
-        for anchor_mat, anchor_sec, anchor_page, anchor_id in anchors:
+        for anchor_mat, anchor_sec, anchor_page, anchor_id, anchor_refs in anchors:
             if anchor_mat and c_mat and anchor_mat != c_mat:
                 continue
             # Prefer section_path match; fall back to same-page when both
@@ -198,13 +316,13 @@ def select_structured_siblings(
             sib["source_hint"] = (
                 f"{hint}+structured_sibling" if hint else "structured_sibling"
             )
-            selected.append(sib)
+            rank = _sibling_rank(sib, anchor_refs)
+            candidates.append((rank, sib))
             seen.add(cid)
-            if len(selected) >= max_siblings:
-                return selected
             break  # one anchor per sibling is enough
 
-    return selected
+    candidates.sort(key=lambda pair: pair[0])
+    return [sib for _rank, sib in candidates[:max_siblings]]
 
 
 def merge_with_siblings(
