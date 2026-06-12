@@ -263,6 +263,37 @@ def _embedding_request_token_count(texts: list[str]) -> int:
     return sum(max(1, count_tokens(text)) for text in texts)
 
 
+def _model_accepts_dimensions(model: str | None) -> bool:
+    """Return True only for embedding models that document a ``dimensions`` param.
+
+    Why:
+        SiliconFlow's ``BAAI/bge-m3`` returns HTTP 400 ``code=20015 parameter is
+        invalid`` when ``dimensions`` is present in the payload, because bge-m3
+        is natively 1024-dim and does not expose runtime truncation. In
+        contrast, ``Qwen/Qwen3-Embedding-8B`` is natively 4096-dim and requires
+        ``dimensions=1024`` to match the rest of the pipeline.
+
+        Hard-coding ``dimensions=EMBEDDING_DIM`` for all models therefore
+        breaks bge-m3 backfill / build paths. We allow-list only the models
+        known to accept the parameter.
+    """
+    if not model:
+        return False
+    lowered = model.strip().lower()
+    # Qwen3 embedding family advertises configurable dimensions (1024/512/...).
+    if "qwen3-embedding" in lowered:
+        return True
+    # OpenAI text-embedding-3-* family also supports dimensions.
+    if "text-embedding-3" in lowered:
+        return True
+    return False
+
+
+def _embed_dimensions_arg(model: str | None) -> int | None:
+    """Return ``EMBEDDING_DIM`` when the model accepts it, else ``None``."""
+    return EMBEDDING_DIM if _model_accepts_dimensions(model) else None
+
+
 def _invoke_embedding_http(text: str, api_key: str, base_url: str, model: str) -> list[float]:
     # Security gate: validate endpoint before sending credentials
     try:
@@ -292,7 +323,7 @@ def _invoke_embedding_http(text: str, api_key: str, base_url: str, model: str) -
         [text],
         base_url=base_url,
         model=model,
-        dimensions=EMBEDDING_DIM,
+        dimensions=_embed_dimensions_arg(model),
     )
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -401,7 +432,7 @@ async def _post_embed_batch(
         batch,
         base_url=base_url,
         model=model,
-        dimensions=EMBEDDING_DIM,
+        dimensions=_embed_dimensions_arg(model),
     )
     headers = {
         "Authorization": f"Bearer {api_key}",
