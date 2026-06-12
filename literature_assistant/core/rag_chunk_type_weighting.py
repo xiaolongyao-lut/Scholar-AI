@@ -11,12 +11,13 @@ Purpose:
   a no-op: returns ``list(candidates)`` as-is, NO score mutation, NO
   re-sort. Critical 稳定优先 contract: byte-level zero impact when off.
 
-When the flag is ON the weights table is a baseline (all 1.0) — tuning
-权重值 needs real RAG goldset evaluation (deferred per OPEN_THREADS A15).
+When the flag is ON the weights table is tuned for the pre-rerank candidate
+pool: table/formula chunks are easier to forward to the expensive cross
+encoder, while final rerank scores still decide the answer order.
 
-This file does NOT modify any retriever code path. Retriever integration
-is intentionally left as a future slice so RAG behavior stays unchanged
-until a callsite consciously imports + invokes this hook.
+The production retriever calls ``prioritize_candidates_for_rerank`` before
+the reranker candidate cap is applied. Final answer ordering still belongs
+to the reranker score, not to these chunk-type weights.
 """
 
 from __future__ import annotations
@@ -27,19 +28,19 @@ from typing import Any, Iterable, Mapping
 __all__ = [
     "CHUNK_TYPE_WEIGHTS",
     "apply_chunk_type_weights",
+    "prioritize_candidates_for_rerank",
     "is_weighting_enabled",
 ]
 
 
-# Baseline weights — all 1.0 means "flag-on has no scoring effect yet"
-# (intentional: real tuning requires a RAG goldset evaluation, see plan §6
-# and OPEN_THREADS A15). Future tuning replaces these values; the flag
-# semantics — apply table to score — stays the same.
+# Conservative pre-rerank candidate weights. They are intentionally applied
+# before reranking so table/formula evidence can enter the cross-encoder pool
+# without overriding final cross-encoder relevance scores.
 CHUNK_TYPE_WEIGHTS: dict[str, float] = {
     "narrative": 1.0,
-    "heading": 1.0,
-    "table": 1.0,
-    "formula": 1.0,
+    "heading": 0.5,
+    "table": 3.0,
+    "formula": 2.0,
     "figure_caption": 1.0,
     "list": 1.0,
     "code": 1.0,
@@ -101,3 +102,56 @@ def apply_chunk_type_weights(
         out.append(adjusted)
     out.sort(key=lambda c: float(c.get(score_key) or 0.0), reverse=True)
     return out
+
+
+def prioritize_candidates_for_rerank(
+    candidates: Iterable[Mapping[str, Any]] | list[dict[str, Any]],
+    *,
+    score_key: str = "hybrid_score",
+    chunk_type_key: str = "chunk_type",
+    candidate_limit: int,
+    weights: Mapping[str, float] | None = None,
+) -> list[dict[str, Any]]:
+    """Return the pre-rerank candidate pool with optional type-aware priority.
+
+    Args:
+        candidates: Ranked chunk records from the hybrid retriever.
+        score_key: Base retrieval score field used for candidate priority.
+        chunk_type_key: Chunk type metadata field.
+        candidate_limit: Positive maximum number of candidates forwarded to
+            the expensive reranker.
+        weights: Optional per-type weights for tests and later tuning.
+
+    Returns:
+        When the feature flag is disabled, the first ``candidate_limit`` rows
+        are returned unchanged as dictionaries. When enabled, shallow copies are
+        sorted by ``score_key * weight(chunk_type)`` before truncation, while the
+        original score field is preserved for downstream filtering and logging.
+
+    Raises:
+        ValueError: If ``candidate_limit`` is not positive.
+    """
+
+    if not isinstance(candidate_limit, int) or candidate_limit <= 0:
+        raise ValueError("candidate_limit must be a positive integer")
+
+    rows = [dict(item) for item in candidates if isinstance(item, Mapping)]
+    if not rows:
+        return []
+
+    if not is_weighting_enabled():
+        return rows[:candidate_limit]
+
+    table = weights if weights is not None else CHUNK_TYPE_WEIGHTS
+
+    def priority(item: Mapping[str, Any]) -> float:
+        ctype = item.get(chunk_type_key)
+        weight = table.get(str(ctype) if ctype is not None else "", 1.0)
+        try:
+            base_score = float(item.get(score_key) or 0.0)
+        except (TypeError, ValueError):
+            base_score = 0.0
+        return base_score * weight
+
+    ranked = sorted(enumerate(rows), key=lambda pair: (priority(pair[1]), -pair[0]), reverse=True)
+    return [item for _, item in ranked[:candidate_limit]]
