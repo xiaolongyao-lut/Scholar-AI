@@ -125,6 +125,85 @@ def test_select_falls_back_to_page_match_when_no_section_path() -> None:
     assert sibs[0]["sibling_reason"] == "same_page"
 
 
+def test_select_falls_back_to_section_title_when_no_section_path() -> None:
+    """Legacy PyMuPDF chunks lack section_path but DO have section_title.
+    The fallback chain is section_path > section_title > page, so two
+    chunks sharing only a section_title still match — and that beats
+    a same-page-but-different-title chunk."""
+    final = [
+        {
+            "chunk_id": "n1",
+            "chunk_type": "narrative",
+            "section_title": "3. Results",
+            "page": 5,
+            "material_id": "m",
+        },
+    ]
+    pool = list(final) + [
+        {
+            "chunk_id": "t_same_title",
+            "chunk_type": "table",
+            "section_title": "3. Results",
+            "page": 7,  # different page
+            "material_id": "m",
+        },
+        {
+            "chunk_id": "t_same_page_only",
+            "chunk_type": "table",
+            "section_title": "4. Discussion",  # different title
+            "page": 5,  # same page
+            "material_id": "m",
+        },
+    ]
+    sibs = select_structured_siblings(final, pool, max_siblings=5)
+    sib_ids = [s["chunk_id"] for s in sibs]
+    # section_title match wins; same-page-only must NOT match because
+    # both sides have a section_title that disagrees.
+    assert "t_same_title" in sib_ids
+    assert "t_same_page_only" not in sib_ids
+    # Provenance is recorded so the chat layer / evidence reports know
+    # which fallback rung the sibling came through.
+    section_title_sib = next(s for s in sibs if s["chunk_id"] == "t_same_title")
+    assert section_title_sib["sibling_reason"] == "section_title"
+
+
+def test_select_section_path_wins_over_section_title_when_both_present() -> None:
+    """Modern marker chunks have BOTH section_path and section_title. The
+    stronger signal (section_path) must be the deciding factor; a chunk
+    with matching section_title but mismatched section_path is NOT a
+    sibling because the document structure says otherwise."""
+    final = [
+        {
+            "chunk_id": "n1",
+            "chunk_type": "narrative",
+            "section_path": ["3.2. Mechanical properties"],
+            "section_title": "3. Results",  # broader title
+            "material_id": "m",
+        },
+    ]
+    pool = list(final) + [
+        {
+            "chunk_id": "t_path_match",
+            "chunk_type": "table",
+            "section_path": ["3.2. Mechanical properties"],
+            "section_title": "3. Results",
+            "material_id": "m",
+        },
+        {
+            "chunk_id": "t_title_only",
+            "chunk_type": "table",
+            "section_path": ["3.1. Microstructure"],  # different subsection
+            "section_title": "3. Results",  # same broader title
+            "material_id": "m",
+        },
+    ]
+    sibs = select_structured_siblings(final, pool, max_siblings=5)
+    sib_ids = [s["chunk_id"] for s in sibs]
+    assert "t_path_match" in sib_ids
+    assert "t_title_only" not in sib_ids
+    assert sibs[0]["sibling_reason"] == "section_path"
+
+
 def test_select_does_not_cross_material_boundary() -> None:
     final = [
         {"chunk_id": "n1", "chunk_type": "narrative", "section_path": ["S1"], "material_id": "matA"},

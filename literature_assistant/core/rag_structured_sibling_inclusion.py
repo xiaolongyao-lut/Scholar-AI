@@ -243,10 +243,10 @@ def select_structured_siblings(
     final_ids.discard("")
 
     # Index narrative chunks in final_results by (material_id, section_key,
-    # page) so we can match them efficiently against all_chunks. Also pull
-    # the anchor's content so we can rank candidate siblings by literal
-    # cross-reference (Table N / Fig N / Eq N) mentions in the narrative.
-    anchors: list[tuple[str, str, Any, str, list[tuple[str, str]]]] = []
+    # section_title, page) so we can match them efficiently against all_chunks.
+    # Also pull the anchor's content so we can rank candidate siblings by
+    # literal cross-reference (Table N / Fig N / Eq N) mentions in the narrative.
+    anchors: list[tuple[str, str, str, Any, str, list[tuple[str, str]]]] = []
     for item in final_results:
         if not isinstance(item, Mapping):
             continue
@@ -254,10 +254,11 @@ def select_structured_siblings(
             continue
         mat = _normalize_material_id(item.get("material_id"))
         sec = _normalize_section_key(item.get("section_path"))
+        sec_title = str(item.get("section_title") or "").strip()
         page = item.get("page")
         anchor_id = str(item.get("chunk_id") or "")
         anchor_refs = _extract_narrative_refs(str(item.get("content") or ""))
-        anchors.append((mat, sec, page, anchor_id, anchor_refs))
+        anchors.append((mat, sec, sec_title, page, anchor_id, anchor_refs))
 
     if not anchors:
         return []
@@ -278,27 +279,53 @@ def select_structured_siblings(
 
         c_mat = _normalize_material_id(chunk.get("material_id"))
         c_sec = _normalize_section_key(chunk.get("section_path"))
+        c_sec_title = str(chunk.get("section_title") or "").strip()
         c_page = chunk.get("page")
 
-        for anchor_mat, anchor_sec, anchor_page, anchor_id, anchor_refs in anchors:
+        for anchor_mat, anchor_sec, anchor_sec_title, anchor_page, anchor_id, anchor_refs in anchors:
             if anchor_mat and c_mat and anchor_mat != c_mat:
                 continue
-            # Prefer section_path match; fall back to same-page when both
-            # sides lack a section_path.
+            # Resolution order: section_path > section_title > page.
+            # section_path is marker's structural truth; section_title is
+            # the next-best signal for legacy PyMuPDF chunks (which lack
+            # section_path); same-page is a coarse last resort for chunks
+            # with neither, but multi-column / spanning-page layouts make
+            # it noisy, so it's gated on BOTH sides lacking title.
+            #
+            # When EITHER side has a section_path, it is the deciding
+            # signal — we do NOT fall back to title when path is present
+            # but mismatched, because path is finer-grained than title
+            # (e.g. anchor "3.2. Mechanical properties" should never
+            # bring in a table from "3.1. Microstructure" just because
+            # both live under the broader "3. Results" title).
+            either_has_path = bool(anchor_sec) or bool(c_sec)
             section_match = bool(anchor_sec) and anchor_sec == c_sec
+            section_title_match = (
+                not either_has_path
+                and bool(anchor_sec_title)
+                and anchor_sec_title == c_sec_title
+            )
             page_match = (
-                not anchor_sec
-                and not c_sec
+                not section_match
+                and not section_title_match
+                and not anchor_sec_title
+                and not c_sec_title
+                and not either_has_path
                 and anchor_page is not None
                 and c_page is not None
                 and anchor_page == c_page
             )
-            if not (section_match or page_match):
+            if not (section_match or section_title_match or page_match):
                 continue
 
             sib = dict(chunk)
             sib["sibling_anchor"] = anchor_id
-            sib["sibling_reason"] = "section_path" if section_match else "same_page"
+            if section_match:
+                sib["sibling_reason"] = "section_path"
+            elif section_title_match:
+                sib["sibling_reason"] = "section_title"
+            else:
+                sib["sibling_reason"] = "same_page"
             # Tag the chunk with a source label the chat layer's
             # ContextChunkPayload constructor copies through to the LLM
             # context payload. Lets the UI / prompt builder / answer
