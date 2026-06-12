@@ -5,9 +5,7 @@ import {
   Upload,
   Search,
   FileText,
-  HardDrive,
   Clock,
-  ChevronRight,
   Loader2,
   RefreshCw,
   FolderOpen,
@@ -23,6 +21,7 @@ import {
   MessageCircle,
   Trash2,
 } from 'lucide-react';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 文献库动画包装暂未启用, 保留供后续恢复
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
@@ -78,7 +77,7 @@ interface UploadBatchResult {
   results: UploadBatchItem[];
 }
 
-const typeColors: Record<KBDocumentType, string> = {
+const _typeColors: Record<KBDocumentType, string> = {
   pdf: 'text-red-500 bg-red-50 dark:bg-red-500/15 dark:text-red-300',
   docx: 'text-blue-500 bg-blue-50 dark:bg-blue-500/15 dark:text-blue-300',
   bib: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300',
@@ -182,7 +181,7 @@ export function KnowledgeBase() {
     results?: ScanResultItem[];
   } | null>(null);
   const [scanNotice, setScanNotice] = useState('');
-  const [showFailedDetails, setShowFailedDetails] = useState(false);
+  const [_showFailedDetails, setShowFailedDetails] = useState(false);
   const [projectSourceFolder, setProjectSourceFolder] = useState('');
   const [projectTitle, setProjectTitle] = useState('');
   const [collectionFilter, setCollectionFilter] = useState<DocumentCollectionFilter>('all');
@@ -479,9 +478,9 @@ export function KnowledgeBase() {
   const totalChunks = docs.reduce((sum, doc) => sum + doc.chunks, 0);
   const indexedCount = docs.filter(doc => doc.status === 'indexed').length;
   const noTextCount = docs.filter(doc => doc.status === 'no_text').length;
-  const recentSucceeded = (uploadSummary?.results ?? []).filter(item => item.status === 'ok').slice(0, 4);
-  const recentQueued = (uploadSummary?.results ?? []).filter(item => item.status === 'queued').slice(0, 4);
-  const recentFailed = (uploadSummary?.results ?? []).filter(item => item.status === 'error').slice(0, 4);
+  const _recentSucceeded = (uploadSummary?.results ?? []).filter(item => item.status === 'ok').slice(0, 4);
+  const _recentQueued = (uploadSummary?.results ?? []).filter(item => item.status === 'queued').slice(0, 4);
+  const _recentFailed = (uploadSummary?.results ?? []).filter(item => item.status === 'error').slice(0, 4);
 
   // Library index view based on
   // workspace_artifacts/generated/output/scholar_ai_workbench_visual_baseline/06_left_rail_destinations/12_library_index_screen.png

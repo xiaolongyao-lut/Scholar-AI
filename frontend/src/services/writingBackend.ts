@@ -48,7 +48,6 @@ import {
   GlobalStats,
   VolumeSummary,
   VolumeAnalysisResult,
-  BatchDeleteRequest,
   BatchDeleteResult,
   UpdateProjectRequest,
   UpdateSectionRequest,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Settings as SettingsIcon, Key, Cpu, Network, FolderOpen, Layers, Server,
+  Settings as _SettingsIcon, Key, Cpu, Network, FolderOpen, Layers, Server,
   Activity, ArrowLeft, Check, ChevronRight, Info, Zap,
   Loader2, RefreshCw, AlertCircle, CheckCircle2, XCircle, Users,
   Play, Plus, Trash2, ToggleLeft, BookMarked, ScrollText,
@@ -174,6 +174,7 @@ function TextInput({
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 通用下拉组件, 当前实现已被原生 select 取代, 保留供后续 UI 升级
 function SelectInput({
   id,
   value,
@@ -1169,7 +1170,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
   );
 }
 
-function EmbeddingCard({ t, settings, onChange }: { t: (k: string, p?: Record<string, string | number>) => string; settings: AppSettings; onChange: (s: AppSettings) => void }) {
+function EmbeddingCard({ t, settings: _settings, onChange: _onChange }: { t: (k: string, p?: Record<string, string | number>) => string; settings: AppSettings; onChange: (s: AppSettings) => void }) {
   const trackedTimeout = useTrackedTimeout();
   const [config, setConfig] = useState<EmbeddingPublicConfig | null>(null);
   const [form, setForm] = useState<ApiEndpointFormValue>({ provider: '', baseUrl: '', apiKey: '', model: '' });

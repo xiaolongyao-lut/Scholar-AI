@@ -117,6 +117,7 @@ const severityConfig: Record<ReviewSeverity, { label: string; tone: StatusTone; 
   format: { label: '格式问题', tone: 'neutral', className: 'border-outline-variant/60 bg-surface-low' },
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- AbortError 守卫工具, 暂未在主流程中使用, 保留供 task cancel 路径恢复
 function isAbortError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === 'AbortError') return true;
   if (typeof error !== 'object' || error === null) return false;

@@ -1276,7 +1276,7 @@ export function Dialog() {
   const inputStorageKey = `dialog-input_${dialogStorageScope}`;
   const sessionStorageKey = `dialog-session_${dialogStorageScope}`;
   const conversation = getConversation(smartReadScope);
-  const messages = useMemo(
+  const _messages = useMemo(
     () => conversation.messages.flatMap((message) => {
       try {
         return [mapChatDataToDialogMessage(message)];
@@ -2688,7 +2688,7 @@ export function Dialog() {
 
   const renderEmbeddedReader = () => {
     if (!pinnedMaterialId) return null;
-    const material = activePinnedMaterial;
+    const _material = activePinnedMaterial;
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-outline-variant/60 bg-surface-low">
         <PdfTabStrip onActivate={handlePdfTabActivate} onEmpty={handlePdfTabsEmpty} />

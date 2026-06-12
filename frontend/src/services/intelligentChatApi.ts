@@ -342,6 +342,7 @@ function isChatHistorySearchResponse(data: unknown): data is ChatHistorySearchRe
   return Array.isArray(data.results);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 智能 chat agents 响应守卫, 当前路径用结构性宽容解析, 保留供后续 strict-mode 切换
 function isChatSessionAgentsResponse(data: unknown): data is ChatAgentsResponse {
   if (!isRecord(data)) return false;
   return Array.isArray(data.agents);

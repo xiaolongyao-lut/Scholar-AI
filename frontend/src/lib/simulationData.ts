@@ -16,7 +16,7 @@ export const getSimulationDraftForSection = (projectId: string, sectionId: strin
   return "Section content placeholder for " + sectionId;
 };
 
-export const getSimulationMaterialsForProject = (projectId: string): WritingMaterial[] => {
+export const getSimulationMaterialsForProject = (_projectId: string): WritingMaterial[] => {
   return [
     { id: 'mat-1', titleZh: '量子纠缠协议 2024', titleEn: 'Quantum Entanglement Protocols 2024', summaryZh: '分析了当前量子同步的主要瓶颈...', summaryEn: 'Analyzes major bottlenecks in quantum sync...', type: 'PAPER', focusPointsZh: ['同步效率', '误码率'], focusPointsEn: ['Sync Efficiency', 'Bit Error Rate'] },
     { id: 'mat-2', titleZh: '分布式系统综述', titleEn: 'Distributed Systems Review', summaryZh: '2023年顶级期刊综述...', summaryEn: 'Top-tier journal review 2023...', type: 'BOOK', focusPointsZh: ['容错性'], focusPointsEn: ['Fault Tolerance'] },

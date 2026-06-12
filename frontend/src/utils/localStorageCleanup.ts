@@ -142,7 +142,7 @@ export function isLocalStorageNearLimit(): boolean {
  * 注意：需要实现时间戳追踪逻辑
  */
 export function autoCleanOldData(retentionDays: number = 30): void {
-  const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  const _cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
   // TODO: 实现基于时间戳的清理逻辑
   // 需要在写入 localStorage 时同时存储时间戳

@@ -15,7 +15,6 @@ import {
   type EvidenceGraphEdge,
   type EvidenceGraphNode,
   type EvidenceGraphPayload,
-  type EvidenceGraphRelation,
   type EvidenceGraphScopeKind,
   type EvidenceGraphStatus,
 } from '@/services/graphApi';

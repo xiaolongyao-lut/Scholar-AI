@@ -517,6 +517,7 @@ export function OutlineManager() {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 大纲展开器辅助函数, 重构后用 useMemo inline 实现替代, 保留供后续 server-side outline 重建
 function sectionsToOutline(sections: WritingSection[], drafts: WritingDraft[]): OutlineNode[] {
   const draftBySection = new Map<string, WritingDraft[]>();
   for (const draft of drafts) {

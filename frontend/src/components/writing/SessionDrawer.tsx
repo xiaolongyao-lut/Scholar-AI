@@ -79,7 +79,7 @@ export function SessionDrawer({
   onSessionForked,
   onSessionRewound,
 }: SessionDrawerProps) {
-  const { t } = useI18n();
+  const { t: _t } = useI18n();
   const { toast } = useToast();
   const { resume, fork, rewind } = useSessionPersistence();
   const api = useMemo(() => getSessionApi(), []);

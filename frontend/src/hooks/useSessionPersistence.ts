@@ -3,7 +3,7 @@ import { getSessionApi } from '@/services/sessionApi';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/contexts/I18nContext';
 import { formatChatVisibleError } from '@/components/chat/chatDisplay';
-import { CheckpointMeta, ResumeSessionResult } from '@/types/runtime';
+import { CheckpointMeta } from '@/types/runtime';
 
 export function useSessionPersistence() {
   const { t } = useI18n();

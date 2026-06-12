@@ -576,7 +576,7 @@ export function DraftStudio() {
           setDraft(createEmptyDraftContent(activeSectionId));
           setSessionMessage(t('writing.studio.no_draft_hint'));
         }
-      } catch (err) {
+      } catch (_err) {
         setConnectionState(typeof navigator !== 'undefined' && navigator.onLine ? 'degraded' : 'offline');
         setSessionMessage(t('writing.studio.draft_sync_error'));
         setDraft(createEmptyDraftContent(activeSectionId));

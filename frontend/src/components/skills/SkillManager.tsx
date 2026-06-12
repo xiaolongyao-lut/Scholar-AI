@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Layers, Shield, Play, Ban, CheckCircle2, AlertTriangle,
-  History, Download, Plus, Info, ChevronRight, X, Loader2,
+  History, Download, Plus, ChevronRight, X, Loader2,
   Lock, Terminal, Cpu, Database, Eye, ExternalLink,
   Trash2, RotateCcw, ClipboardCheck, Clock3, type LucideIcon,
 } from 'lucide-react';

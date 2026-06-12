@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Folder, Clock, CheckCircle2, AlertCircle, Loader2, ChevronRight, Search, Upload, X, Trash2, CheckSquare, Square, FolderOpen } from 'lucide-react';
+import { Plus, Folder, Clock, Loader2, Search, X, Trash2, CheckSquare, Square, FolderOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, FileEdit, FolderKanban, BookOpen, Settings, BarChart3, Layers, Keyboard, Activity, FileText, List, BookMarked, Image, ShieldCheck, Database } from 'lucide-react';
+import { Search, FileEdit, FolderKanban, BookOpen, Settings, BarChart3, Keyboard, Activity, FileText, List, BookMarked, Image, ShieldCheck, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
 

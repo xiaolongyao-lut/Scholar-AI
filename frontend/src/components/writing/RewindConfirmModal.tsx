@@ -20,7 +20,7 @@ interface RewindConfirmModalProps {
 
 export function RewindConfirmModal({
   isOpen,
-  checkpoint,
+  checkpoint: _checkpoint,
   onCancel,
   onConfirm,
   busy = false,

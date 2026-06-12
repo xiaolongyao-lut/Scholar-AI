@@ -16,7 +16,6 @@ import {
   CreateJobRequest,
   JobStatusDetail,
   WritingRuntimeClient,
-  EventType,
   JobStatus,
   JobEventQueryOptions,
   JobEventSnapshot,
@@ -214,7 +213,7 @@ export class HttpWritingRuntimeClient implements WritingRuntimeClient {
     };
   }
 
-  private startEventPolling(sessionId: string): NodeJS.Timeout {
+  private startEventPolling(_sessionId: string): NodeJS.Timeout {
     return setInterval(() => {
       // Session-level event polling is intentionally idle; job timelines use
       // `useJobEventPolling` with concrete job ids.

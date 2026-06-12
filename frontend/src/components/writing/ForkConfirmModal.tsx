@@ -13,7 +13,7 @@ interface ForkConfirmModalProps {
 
 export function ForkConfirmModal({
   isOpen,
-  checkpoint,
+  checkpoint: _checkpoint,
   onCancel,
   onConfirm,
   busy = false,
