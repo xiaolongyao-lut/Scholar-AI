@@ -97,10 +97,27 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
         name="local_rerank",
         default=True,
         env_var="ENABLE_LOCAL_RERANK",
-        label="本地 Rerank 主线",
+        label="主线 Rerank(API 优先)",
         description=(
-            "语义路由默认把候选证据交给本机或已配置的 rerank 服务重排。"
-            "未配置 rerank 凭证或服务不可用时仍按现有 fallback 返回检索结果。"
+            "语义路由把候选证据交给配置的 rerank 服务(SiliconFlow / DashScope / "
+            "或本地 loopback 服务等)重排。API 不可用时按 hybrid_score 静态排序兜底。"
+            "本开关名义上含「本地」是历史遗留 — 真正的本地 rerank 是「本地 loopback "
+            "Rerank 服务(实验)」开关 + Settings 里把 RERANK_BASE_URL 指向 "
+            "http://127.0.0.1:<port>。"
+        ),
+    ),
+    "rag_local_cross_encoder_rerank": FeatureFlagSpec(
+        name="rag_local_cross_encoder_rerank",
+        default=False,
+        env_var="RAG_LOCAL_CROSS_ENCODER_RERANK_ENABLED",
+        label="本地 loopback Rerank 服务(实验)",
+        description=(
+            "云端 rerank API 失败(或 DNS 被代理 fake-IP 拦截)时,fallback 到本机 "
+            "loopback rerank HTTP 服务(默认 http://127.0.0.1:7997/rerank,"
+            "由 local_rerank_server.py 起,加载 BAAI/bge-reranker-v2-m3)。"
+            "服务进程独立于主后端,不在 FastAPI 主进程吃模型权重。"
+            "权重需先下载到 ~/.cache/huggingface/hub(约 2GB);服务未启动或权重缺时"
+            "本开关自动失效,走 hybrid_score 静态排序兜底。"
         ),
     ),
     "analysis_chain_rag": FeatureFlagSpec(
