@@ -649,6 +649,25 @@ def _hybrid_retrieval_enabled() -> bool:
     return is_enabled("hybrid_retrieval")
 
 
+def _structured_sibling_inclusion_enabled() -> bool:
+    """Append same-section table/formula siblings after rerank-decided top-K.
+
+    Off by default. When on, ``_build_project_context_chunks`` calls
+    ``rag_structured_sibling_inclusion.select_structured_siblings`` to
+    pull in chunks of type ``table`` / ``formula`` / ``figure_caption``
+    that share a ``section_path`` (or page) with a narrative chunk
+    already in the result set. Bounded by ``DEFAULT_MAX_SIBLINGS`` (2) and
+    only triggers when narrative chunks are present; structured chunks
+    already in the result set are never displaced.
+    """
+    try:
+        from feature_flags import is_enabled
+    except ImportError:
+        val = os.getenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED")
+        return _truthy(val) if val else False
+    return is_enabled("rag_structured_sibling_inclusion")
+
+
 async def _hybrid_search_project(
     project_id: str,
     query: str,
@@ -1085,6 +1104,28 @@ async def _build_project_context_chunks(
             results = await _rag_search(max_chunks)
     else:
         results = await _rag_search(max_chunks)
+
+    # Optional A15+ structured-sibling inclusion: when a narrative chunk in
+    # the result set lives in a section that ALSO has table/formula/figure
+    # chunks, pull those siblings in so the LLM sees the numerical evidence
+    # alongside the textual claim. Off by default; capped at 2 siblings to
+    # avoid blowing the context budget; never displaces structured chunks
+    # already in the result set (those earned their spot via rerank).
+    if results and _structured_sibling_inclusion_enabled():
+        try:
+            sibling_pool = load_project_chunks_for_rag(project_id)
+        except (RuntimeError, TypeError, ValueError):
+            sibling_pool = []
+        if sibling_pool:
+            from rag_structured_sibling_inclusion import (
+                merge_with_siblings,
+                select_structured_siblings,
+            )
+            siblings = select_structured_siblings(results, sibling_pool)
+            if siblings:
+                results = merge_with_siblings(
+                    results, siblings, total_cap=max_chunks
+                )
     chunks: list[ContextChunkPayload] = []
     used_chars = 0
     truncated = False

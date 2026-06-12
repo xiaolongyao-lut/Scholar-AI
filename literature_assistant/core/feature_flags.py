@@ -119,6 +119,20 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
             "hybrid_search 的真分数。默认 off, 实验稳定后再考虑切换默认值。"
         ),
     ),
+    "rag_structured_sibling_inclusion": FeatureFlagSpec(
+        name="rag_structured_sibling_inclusion",
+        default=False,
+        env_var="RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED",
+        label="同 section 结构化邻居补全",
+        description=(
+            "答完最终 top-K 后, 看 narrative 命中的 chunk 所在 section_path / page,"
+            "把同 section 的 table / formula / figure_caption 邻居自动补进上下文。"
+            "解决 A15 (chunk-type 加权) 把表格送进 rerank 候选池后, 仍可能被 reranker"
+            "压在 narrative summary 下的痛点 — 比如答案里说\"Table 2 给出 creep 速率\","
+            "Table 2 chunk 本身却没进 top-K。默认 off, 每个 query 最多补 2 个邻居,"
+            "且只在 narrative chunk 已 earn 进 top-K 时才触发, 不抢已有 rerank 排名。"
+        ),
+    ),
     "local_rerank": FeatureFlagSpec(
         name="local_rerank",
         default=True,
