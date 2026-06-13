@@ -153,20 +153,36 @@ cd frontend
 npm ci
 ```
 
-启动后端：
+构建前端：
+
+```powershell
+cd frontend
+npm run build
+```
+
+推荐启动方式是一体桌面模式：
+
+```powershell
+cd ..
+.\.venv-1\Scripts\python.exe .\start_desktop.py
+```
+
+`start_desktop.py` 会在同一个 Python 进程里启动本地 FastAPI 后端线程，并打开 pywebview 桌面窗口；关闭窗口后进程退出，不需要用户手动分别管理前后端。
+
+需要调试后端 API 时，可以只启动后端：
 
 ```powershell
 .\.venv-1\Scripts\python.exe -m uvicorn literature_assistant.core.python_adapter_server:app --host 127.0.0.1 --port 8000
 ```
 
-另开一个 PowerShell 启动前端：
+需要前端热更新时，另开一个 PowerShell 启动 Vite：
 
 ```powershell
 cd frontend
 npm run dev
 ```
 
-打开 Vite 输出的本地地址即可。建议先启动后端再启动前端；前端代理会从 `workspace_artifacts/runtime_state/api-port.json` 跟随后端实际端口，并自动附加本地 API capability token。
+Vite 开发模式才是两个进程：一个 uvicorn 后端进程，一个 Vite 前端进程。前端代理会从 `workspace_artifacts/runtime_state/api-port.json` 跟随后端实际端口，并自动附加本地 API capability token。
 
 常用检查命令：
 
