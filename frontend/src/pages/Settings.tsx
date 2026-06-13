@@ -3200,7 +3200,7 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
                 {isOptionalAddon && (
                   <span
                     className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30"
-                    title="主安装包不含运行时依赖, 需要在命令行 pip install 才工作。绝大多数用户用 API 路线即可, 不需要启用。"
+                    title="主安装包不含运行时依赖, 需要在命令行 pip install 才工作。绝大多数用户用 API 路线即可, 不需要启用。详见仓库根的 OPTIONAL_ADDONS.md"
                   >
                     可选扩展 · 需自装包
                   </span>
