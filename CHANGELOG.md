@@ -12,6 +12,8 @@
 
 安装提示：当前仍是 alpha / dogfood 版本，Windows 安装包未签名，首次安装可能触发 SmartScreen 提示。
 
+分发策略：0.1.8.3 的公开 Windows 安装包是 API-first 轻量包，约 466MB，不包含本地 GPU/CPU 推理代码。源码用户仍可按需安装 marker-pdf、本地 rerank 和本地 embedding；自行构建时设置 `LITASSIST_BUNDLE_RAG=1` 可生成约 3GB 的完整版 onedir。
+
 界面预览：项目首页已更新为缩略图网格，展示智能研读、多智能体讨论、Wiki 工作台和系统设置。
 
 ### 检索质量（RAG）
@@ -35,6 +37,7 @@
 ### 工程基础设施
 
 - **PyInstaller 打包修复**：补 `routers.diagnostics_router` 到 hiddenimports，避免设置页日志查看器在 onedir 安装版中启动时报 ImportError。已用真跑 PyInstaller onedir 验证 import 路径正确。
+- **双线分发保护**：默认 PyInstaller spec 物理排除 `local_rerank_adapter.py`、`local_embedding_adapter.py`、`local_rerank_server.py`、`local_embedding_server.py`，安装包保持 API-first；`LITASSIST_BUNDLE_RAG=1` 才会把本地推理 adapter 打进 onedir。新增合同测试锁定默认排除和完整版包含两条路径。
 - **前端代码质量**：ESLint `--max-warnings 0` 现在零错零警告通过，CI 流水线打通。`@typescript-eslint/no-unused-vars` 跨 22 个文件清理（lucide 未用图标真删、业务 WIP 占位变量加 `_` 前缀保留）。`no-console` 允许 `error`/`warn`/`info`，仍禁 `console.log`。`@typescript-eslint/no-explicit-any` 收紧到产品代码，测试文件的 mock fixture 在 lint 层归 ignore。
 - **测试覆盖**：后端 3883 单元 + 集成测试全过；新增端到端 redact 回归测试覆盖"日志过滤器漏挂时日志查看器二层兜底"场景。前端 vitest 119 测试文件 / 730 个 case 全过。
 

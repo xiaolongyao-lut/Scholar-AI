@@ -47,6 +47,7 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 ## 0.1.8.3 重点
 
 - RAG 主链路默认启用 hybrid retrieval、chunk 类型加权、同章节结构化邻居补全、TOLF 目标导向检索和 TOLF×RAG 融合。
+- Windows 安装包明确采用 API-first 双线分发：默认包约 466MB，不包含本地 GPU/CPU 推理代码；源码用户可按需安装可选扩展。
 - 设置页新增后端日志查看器。
 - README 图片已替换为当前 UI 的真实截图，并以缩略图表格展示。
 - 默认 Windows 安装包保持轻量，不随安装包分发大型模型文件。
@@ -131,7 +132,8 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 
 - Windows 发布脚本是 `scripts/build_windows_exe.ps1`。
 - 打包链路会先构建前端，再跑 PyInstaller、路径扫描、敏感信息扫描、Inno Setup 和首次启动 smoke。
-- 默认 release 保持轻量，避免安装包从百 MB 膨胀到数 GB。
+- 默认 release 是 API-first 轻量安装包，PyInstaller spec 会物理排除本地推理 adapter/server 代码，避免安装包从百 MB 膨胀到数 GB。
+- 自行构建完整版时可设置 `LITASSIST_BUNDLE_RAG=1`，把本地 rerank / embedding adapter 打进 onedir；该形态约 3GB，本仓库不预构建发布。
 
 ## 从源码运行
 
