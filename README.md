@@ -61,46 +61,76 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 - [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/SHA256SUMS.txt)
 - 安装包 SHA256：`77FBA03CE894B95D186261ED7D4ED32AFE43FCD08F5B8689F91B5A71B7D06235`
 
-## 为什么不直接用 NotebookLM、Obsidian 或 GPT 网页版
-
-NotebookLM、GPT / Claude / Gemini 网页版适合快速问答，但研究写作里更难控制证据链、长期项目空间、引用复核和本地工具调用。Obsidian 很适合笔记，但 AI 文献检索、讨论、引用和写作链路通常依赖多个插件拼装。
-
-Scholar AI 的重点不是换一个模型聊天，而是把研究流程中反复发生的动作串起来：读 PDF → 入库 → 检索证据 → 多视角讨论 → 复核引用 → 沉淀 Wiki → 写作导出。
-
-| 维度 | NotebookLM | Obsidian | Scholar AI |
-|---|---|---|---|
-| 部署形态 | 云端 | 本地笔记软件 | 本地桌面应用 |
-| LLM 接入 | Google 产品内置 | 依赖插件 | 用户自己的 OpenAI 兼容 API |
-| PDF 阅读 | 简易阅读与引用 | 依赖插件 | 内嵌阅读器 + 页码定位 |
-| 多文献检索 | 有 | 依赖插件 | 项目级 RAG / TOLF / rerank |
-| 多角色讨论 | 无 | 无 | 有 |
-| 知识沉淀 | Notebook 内部 | Markdown / 双链 | Wiki + Evolution 复审 |
-| 写作交付 | 轻量辅助 | Markdown | 富文本编辑 + DOCX 导出 |
-| 工具扩展 | 产品内置 | 插件 | MCP / Skill，本地审批 |
-| 数据位置 | 云端 | 本地 | 本地优先 |
-
 ## 架构
 
 ```text
-Frontend
-  React + Vite + TipTap + PDF.js
-  route-level lazy loading
-  OpenAPI-generated TypeScript types
-
-Backend
-  Python + FastAPI + Pydantic v2
-  project/resource/chat/wiki/writing/MCP routers
-  SQLite / JSONL / local runtime state
-
-Retrieval
-  PDF extraction -> chunk store -> embedding/BM25 -> rerank
-  TOLF target-oriented retrieval -> RRF fusion with RAG
-  structured sibling inclusion for tables/formulas/figure captions
-
-Extensions
-  MCP servers and Scholar AI Skills
-  local package scan, credential binding, manual approval before tool calls
+┌──────────────────────────────────────────────────────────────────────┐
+│ Frontend                                                             │
+│ React + Vite + TypeScript + TipTap + PDF.js                          │
+│ 路由级 lazy loading，OpenAPI 生成类型，本地 dev proxy 自动带能力令牌     │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │ HTTP / SSE / OpenAPI
+┌───────────────────────────────▼──────────────────────────────────────┐
+│ Backend                                                              │
+│ FastAPI + Pydantic v2                                                │
+│ python_adapter_server:app 挂载 chat / resources / wiki / writing /    │
+│ mcp / settings / diagnostics / feature-flags 等 router                │
+└───────┬───────────────────────┬──────────────────────┬───────────────┘
+        │                       │                      │
+        ▼                       ▼                      ▼
+  Project storage          Retrieval runtime       Extension runtime
+  SQLite / JSONL           PyMuPDF extraction       MCP / Skill scanner
+  chunk_store              chunking + embedding     credential binding
+  runtime_state            BM25 + dense + rerank    approval gate
+  backend.log              TOLF + RRF fusion        audit records
+        │                       │                      │
+        └───────────────┬───────┴──────────────┬───────┘
+                        ▼                      ▼
+                  Research workflow        Writing workflow
+                  SmartRead / discussion   TipTap editor
+                  evidence references      citation resources
+                  Wiki / Evolution         DOCX export
 ```
+
+### 前端层
+
+- `frontend/src/App.tsx` 定义桌面工作台路由，主要页面包括智能研读、知识库、项目、Wiki、写作、任务和设置。
+- `frontend/vite.config.ts` 在开发模式下代理后端 API，并从 `workspace_artifacts/runtime_state/api-port.json` 读取实际后端端口。
+- 同一个代理还会读取 `api-capability.json` 并注入 `X-LitAssist-Capability`，匹配后端本地 API 安全门。
+- OpenAPI schema 由 `scripts/export_openapi_schema.py` 导出，前端通过 `openapi-typescript` 生成 `frontend/src/generated/openapi.ts`。
+
+### 后端层
+
+- ASGI 入口是 `literature_assistant.core.python_adapter_server:app`。
+- `literature_assistant/bootstrap.py` 在启动时显式注册 repo root 和 `literature_assistant/core`，兼容包式导入和旧的平铺导入。
+- 业务 router 分散在 `literature_assistant/core/routers/`：资源入库、聊天、Wiki、写作、MCP、凭证、设置、日志、模型配置和 feature flags 都通过 FastAPI 暴露。
+- 本地 API 默认启用 capability token。浏览器静态页面和健康检查可以访问，真实 API 请求必须带运行时生成的本机令牌。
+
+### 数据与运行时状态
+
+- 安装版数据集中在 `%APPDATA%\LiteratureAssistant\`。
+- 源码运行数据集中在 `workspace_artifacts/`，其中 `runtime_state/` 放端口、能力令牌、日志和运行时配置，项目资料和切块索引按项目分目录保存。
+- 文献切块使用 JSONL / SQLite 等本地文件结构；日志写入 `backend.log` 并在设置页可查看。
+
+### 检索与问答链路
+
+- PDF 默认用 PyMuPDF 抽取文本；marker 结构化解析保留为实验能力，默认关闭。
+- 入库后形成 chunk store，并按项目维护文献、页码、chunk 类型、章节和证据引用信息。
+- 召回链路包括关键词/BM25、dense embedding、rerank、TOLF 目标导向检索和 RRF 融合。
+- A15 系列逻辑会让表格、公式、图注和同章节相邻证据更容易进入最终上下文。
+- 云端 embedding / rerank 是默认路线；本地模型只作为用户自行安装后的回退路径，默认安装包不捆绑大模型权重。
+
+### 写作、Wiki 与扩展
+
+- 写作区使用 TipTap 富文本编辑器，引用、图表资料和导出能力由后端 writing router 支持。
+- Wiki / Evolution 用于把问答、讨论和写作中出现的可复用发现沉淀为本地知识。
+- MCP / Skill 包从本地路径扫描，不自动执行包内代码；绑定凭证和启用后，工具调用仍经过审批和审计。
+
+### 打包发布
+
+- Windows 发布脚本是 `scripts/build_windows_exe.ps1`。
+- 打包链路会先构建前端，再跑 PyInstaller、路径扫描、敏感信息扫描、Inno Setup 和首次启动 smoke。
+- 默认 release 不打包 torch、sentence-transformers、marker 权重，避免安装包从百 MB 膨胀到数 GB。
 
 ## 从源码运行
 
@@ -108,12 +138,17 @@ Extensions
 
 环境要求：Python 3.11+、Node.js 20+、Windows PowerShell。
 
-```powershell
-# 后端依赖
-python -m pip install --upgrade pip
-python -m pip install -r requirements-ci.txt
+创建虚拟环境并安装后端依赖：
 
-# 前端依赖
+```powershell
+py -3.11 -m venv .venv-1
+.\.venv-1\Scripts\python.exe -m pip install --upgrade pip
+.\.venv-1\Scripts\python.exe -m pip install -r requirements-ci.txt
+```
+
+安装前端依赖：
+
+```powershell
 cd frontend
 npm ci
 ```
@@ -124,14 +159,34 @@ npm ci
 .\.venv-1\Scripts\python.exe -m uvicorn literature_assistant.core.python_adapter_server:app --host 127.0.0.1 --port 8000
 ```
 
-启动前端：
+另开一个 PowerShell 启动前端：
 
 ```powershell
 cd frontend
 npm run dev
 ```
 
-打开 Vite 输出的本地地址即可。安装版的数据目录在 `%APPDATA%\LiteratureAssistant\`；源码运行的数据目录在仓库内 `workspace_artifacts\`。
+打开 Vite 输出的本地地址即可。建议先启动后端再启动前端；前端代理会从 `workspace_artifacts/runtime_state/api-port.json` 跟随后端实际端口，并自动附加本地 API capability token。
+
+常用检查命令：
+
+```powershell
+.\.venv-1\Scripts\python.exe .\run_literature_assistant.py paths
+.\.venv-1\Scripts\python.exe -m compileall -q literature_assistant run_literature_assistant.py sitecustomize.py tests\conftest.py
+.\.venv-1\Scripts\python.exe -m pytest tests --collect-only -q
+
+cd frontend
+npm run lint
+npm run build
+```
+
+构建 Windows 安装包：
+
+```powershell
+.\scripts\build_windows_exe.ps1 -Version 0.1.8.3 -AllowUnsigned
+```
+
+正式发布构建应配置签名命令，而不是使用 `-AllowUnsigned`。
 
 ## 公开源码结构
 
@@ -151,14 +206,6 @@ npm run dev
 - 第三方 API key 不写入前端 localStorage，不在日志和 API 响应中明文展示。
 - MCP 工具调用前需要用户确认；高风险能力会被阻断或进入审批流。
 - 默认安装包不捆绑本地大模型。需要本地 embedding / rerank 时，由用户自行安装模型权重。
-
-## 路线图
-
-- macOS / Linux 安装包。
-- 更稳定的本地 embedding / rerank 启动器。
-- 论文实体抽取与参数-过程-结构-性能关系图。
-- 前端中英双语。
-- 团队 / 课题组协作模式。
 
 ## 许可
 
