@@ -3000,6 +3000,33 @@ function formatSavedCredentialLabel(credential: RuntimeCredentialPublic): string
 /*  Experimental Features section                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Mainline RAG flags: 这 5 个 flag 后端 default=True、经过跨 2 篇 PDF A/B
+ * 与 3883 测试验证, 已作为检索主链路。UI 不再渲染开关 (避免误导用户以为
+ * 可关), 在「实验性功能」分区顶部用一个只读的"已主线化"提示卡告知。
+ * 对应后端 5 个 default=True 的 RAG flag (literature_assistant/core/feature_flags.py).
+ */
+const MAINLINE_RAG_FLAG_NAMES = new Set<string>([
+  'rag_chunk_type_weighting',
+  'hybrid_retrieval',
+  'tolf_context',
+  'tolf_fusion_mode',
+  'rag_structured_sibling_inclusion',
+]);
+
+/**
+ * Optional addon flags: 主安装包不含其运行时依赖, 需要用户自己 pip install
+ * 才工作 (marker-pdf ~2GB / torch+sentence-transformers ~3GB cu126)。
+ * 默认 API-first 路线对绝大多数用户够用 — 这些是 power-user 选项, UI 上
+ * 用一个明显标签 (橙色 "可选扩展") 让普通用户知道"主包没带, 要的人自己装",
+ * 不会去误触发。
+ */
+const OPTIONAL_ADDON_FLAG_NAMES = new Set<string>([
+  'pdf_parser_marker',
+  'local_rerank',
+  'rag_local_cross_encoder_rerank',
+]);
+
 const FEATURE_FLAG_DISPLAY_COPY: Record<string, { label?: string; description: string }> = {
   pdf_parser_marker: {
     label: 'PDF 结构化解析(marker)',
@@ -3123,6 +3150,19 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
         <p className="text-xs text-foreground/70 leading-relaxed">{t('settings.experimental_intro')}</p>
       </div>
 
+      <div className="border border-emerald-500/30 bg-emerald-500/5 rounded-lg p-4">
+        <div className="flex items-start gap-2">
+          <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-sm text-foreground mb-1">检索主链已升级 · 默认开启</h3>
+            <p className="text-xs text-foreground/65 leading-relaxed">
+              结构化片段加权、研读真混合检索、深度证据检索、RRF 融合、同章节表格邻居补全 —
+              这五项经过跨论文 A/B 与全量回归验证,出厂默认启用,无需配置。
+            </p>
+          </div>
+        </div>
+      </div>
+
       {loading && (
         <div className="flex items-center gap-2 text-xs text-foreground/60">
           <Loader2 size={14} className="animate-spin" />
@@ -3137,15 +3177,16 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
         </div>
       )}
 
-      {!loading && !loadError && flags.length === 0 && (
+      {!loading && !loadError && flags.filter(f => !MAINLINE_RAG_FLAG_NAMES.has(f.name)).length === 0 && (
         <p className="text-xs text-foreground/50">{t('settings.experimental_empty')}</p>
       )}
 
-      {!loading && flags.map(flag => {
+      {!loading && flags.filter(f => !MAINLINE_RAG_FLAG_NAMES.has(f.name)).map(flag => {
         const displayCopy = FEATURE_FLAG_DISPLAY_COPY[flag.name];
         const displayLabel = displayCopy?.label ?? flag.label;
         const displayDescription = displayCopy?.description ?? flag.description;
         const isMarkerFlag = flag.name === 'pdf_parser_marker';
+        const isOptionalAddon = OPTIONAL_ADDON_FLAG_NAMES.has(flag.name);
         return (
         <div key={flag.name} className="border border-outline-variant rounded-lg p-4 bg-surface">
           {isMarkerFlag && (
@@ -3154,8 +3195,16 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
             </div>
           )}          <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <h3 className="font-semibold text-sm text-foreground">{displayLabel}</h3>
+                {isOptionalAddon && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                    title="主安装包不含运行时依赖, 需要在命令行 pip install 才工作。绝大多数用户用 API 路线即可, 不需要启用。"
+                  >
+                    可选扩展 · 需自装包
+                  </span>
+                )}
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-lowest text-foreground/60 border border-outline-variant">
                   {sourceLabel(flag.source)}
                 </span>
