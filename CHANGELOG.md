@@ -46,9 +46,9 @@
 - **前端代码质量**：ESLint `--max-warnings 0` 现在零错零警告通过，CI 流水线打通。`@typescript-eslint/no-unused-vars` 跨 22 个文件清理（lucide 未用图标真删、业务 WIP 占位变量加 `_` 前缀保留）。`no-console` 允许 `error`/`warn`/`info`，仍禁 `console.log`。`@typescript-eslint/no-explicit-any` 收紧到产品代码，测试文件的 mock fixture 在 lint 层归 ignore。
 - **测试覆盖**：后端 3883 单元 + 集成测试全过；新增端到端 redact 回归测试覆盖"日志过滤器漏挂时日志查看器二层兜底"场景；新增本地 embedding adapter 11 个 case 覆盖禁用 / 无权重 / 状态契约 / cuda 探测等。前端 vitest 119 测试文件 / 730 个 case 全过。
 
-## 0.1.8.3 - 2026-06-10
+### 2026-06-10 发布加固
 
-发布加固补丁：
+本轮发布加固补丁：
 
 - 默认关闭生产环境 OpenAPI schema 暴露，只有 `LITASSIST_ENABLE_DOCS=1` 时才返回 `/openapi.json`。
 - PyInstaller 打包前过滤运行时目录、日志、审批/审计/回档目录、私钥和凭证类文件，降低从开发工作区误带敏感数据的风险。
