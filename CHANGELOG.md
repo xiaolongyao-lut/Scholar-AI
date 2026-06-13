@@ -2,7 +2,7 @@
 
 ## 0.1.8.3 - 2026-06-13
 
-本版本核心是把 RAG 检索链做强、把"实验性功能"开关默认打开，并补上后端日志查看器和本地推理回退。
+本版本核心是把 RAG 检索链做强、把"实验性功能"开关默认打开，并补上后端日志查看器。
 
 下载：
 
@@ -10,7 +10,7 @@
 - 校验文件：`SHA256SUMS.txt`
 - 安装包 SHA256：`77FBA03CE894B95D186261ED7D4ED32AFE43FCD08F5B8689F91B5A71B7D06235`
 
-安装提示：当前仍是 alpha / dogfood 版本，Windows 安装包未签名，首次安装可能触发 SmartScreen 提示。默认安装包不内置本地 embedding / rerank 大模型；用户自行安装本地模型后，设置页会显示本地回退可用状态。
+安装提示：当前仍是 alpha / dogfood 版本，Windows 安装包未签名，首次安装可能触发 SmartScreen 提示。
 
 界面预览：项目首页已更新为缩略图网格，展示智能研读、多智能体讨论、Wiki 工作台和系统设置。
 
@@ -27,14 +27,6 @@
 - **凭据二次脱敏**：API key（`sk-*`）和 Bearer token 进入查看器前被强制脱敏一次，即使早期启动阶段日志过滤器漏挂也兜得住。
 - **路径越权保护**：日志路径解析只允许读 `runtime_state/logs/` 下的 `backend.log` 系列文件，禁止任意路径读取。
 
-### 本地推理回退
-
-- **rerank 自动用 GPU**：如果本地装了 CUDA 版 PyTorch（例如 cu126 + RTX 系列），rerank 回退会自动选 cuda 设备，否则用 CPU。`LOCAL_RERANK_DEVICE` 环境变量可强制覆盖（`cpu` / `cuda` / `cuda:0`）。
-- **embedding 加同款本地回退**：云端 embedding API 失败时（DNS 屏蔽 / 403 / 限流 / 完全离线），自动回退到本地 SentenceTransformer（默认 `BAAI/bge-m3`），在 cuda 或 cpu 上跑。env 变量与 rerank 同形态（`LOCAL_EMBEDDING_MODEL_NAME` / `DEVICE` / `BATCH_SIZE` / `DISABLED` / `ALLOW_DOWNLOAD`），不需要联网。
-- **回退链**：远端 API → 本地 GPU/CPU 模型 → hybrid_score 兜底，任一环节失败都不会让对话或入库挂掉。
-- **状态可视化**：设置 → Rerank 卡片 + Embedding 卡片头部各加 4 色 chip，显示当前回退链路状态（绿=本地可用 / 黄=需下载 / 灰=已禁用 / 红=不可用），hover 看完整说明。换模型操作手册见 `docs/local-rerank-fallback-models.md`。
-- **参考服务器脚本**：`local_rerank_server.py` 和新加的 `local_embedding_server.py`，让用户能在另一台机器跑独立的本地推理服务，App 通过 OpenAI 兼容协议消费。
-
 ### 智能研读 → 引用链路标签
 
 - **每条引用显示"怎么被召回的"**：MessageBubble 的证据 chip 上多了一个小标签，告诉用户这条引用是怎么进入答案上下文的：「上下文兄弟」=同章节相邻表/公式被一起拉进来，「语义匹配」=向量相似度，「关键词」=BM25 命中，「深度检索」=TOLF 多角度发散。鼠标 hover 可以看到完整召回链路。
@@ -42,9 +34,9 @@
 
 ### 工程基础设施
 
-- **PyInstaller 打包修复**：补 `routers.diagnostics_router`、`local_rerank_adapter`、`local_embedding_adapter` 到 hiddenimports；这几个模块是新加的日志查看器和本地回退入口，缺失会让 onedir 安装版启动时 ImportError。已用真跑 PyInstaller onedir 验证 onedir 里 import 路径正确。
+- **PyInstaller 打包修复**：补 `routers.diagnostics_router` 到 hiddenimports，避免设置页日志查看器在 onedir 安装版中启动时报 ImportError。已用真跑 PyInstaller onedir 验证 import 路径正确。
 - **前端代码质量**：ESLint `--max-warnings 0` 现在零错零警告通过，CI 流水线打通。`@typescript-eslint/no-unused-vars` 跨 22 个文件清理（lucide 未用图标真删、业务 WIP 占位变量加 `_` 前缀保留）。`no-console` 允许 `error`/`warn`/`info`，仍禁 `console.log`。`@typescript-eslint/no-explicit-any` 收紧到产品代码，测试文件的 mock fixture 在 lint 层归 ignore。
-- **测试覆盖**：后端 3883 单元 + 集成测试全过；新增端到端 redact 回归测试覆盖"日志过滤器漏挂时日志查看器二层兜底"场景；新增本地 embedding adapter 11 个 case 覆盖禁用 / 无权重 / 状态契约 / cuda 探测等。前端 vitest 119 测试文件 / 730 个 case 全过。
+- **测试覆盖**：后端 3883 单元 + 集成测试全过；新增端到端 redact 回归测试覆盖"日志过滤器漏挂时日志查看器二层兜底"场景。前端 vitest 119 测试文件 / 730 个 case 全过。
 
 ### 2026-06-10 发布加固
 

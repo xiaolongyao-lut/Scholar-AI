@@ -42,15 +42,14 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 | Wiki 知识沉淀 | 可把材料、观点和复审后的发现沉淀为本地 Wiki 页面 |
 | 写作 | TipTap 富文本编辑器，大纲、引用、图表资料和 DOCX 导出链路 |
 | MCP / Skill | 本地扫描安装包，绑定凭证后启用；工具调用前需要人工审批 |
-| 设置与日志 | API、模型、凭证、实验功能、本地回退状态和后端日志查看器集中在设置页 |
+| 设置与日志 | API、模型、凭证、实验功能和后端日志查看器集中在设置页 |
 
 ## 0.1.8.3 重点
 
 - RAG 主链路默认启用 hybrid retrieval、chunk 类型加权、同章节结构化邻居补全、TOLF 目标导向检索和 TOLF×RAG 融合。
-- 云端 embedding / rerank 仍是默认路线；用户本机安装模型后，可在 API 不可用时回退到本地 SentenceTransformer / reranker。
-- 设置页新增本地回退状态提示和后端日志查看器。
+- 设置页新增后端日志查看器。
 - README 图片已替换为当前 UI 的真实截图，并以缩略图表格展示。
-- 默认 Windows 安装包不内置 torch / sentence-transformers / marker 大模型，避免安装包膨胀到数 GB。
+- 默认 Windows 安装包保持轻量，不随安装包分发大型模型文件。
 
 ## 下载
 
@@ -118,7 +117,7 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 - 入库后形成 chunk store，并按项目维护文献、页码、chunk 类型、章节和证据引用信息。
 - 召回链路包括关键词/BM25、dense embedding、rerank、TOLF 目标导向检索和 RRF 融合。
 - A15 系列逻辑会让表格、公式、图注和同章节相邻证据更容易进入最终上下文。
-- 云端 embedding / rerank 是默认路线；本地模型只作为用户自行安装后的回退路径，默认安装包不捆绑大模型权重。
+- 云端 embedding / rerank 是默认路线。
 
 ### 写作、Wiki 与扩展
 
@@ -130,7 +129,7 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 
 - Windows 发布脚本是 `scripts/build_windows_exe.ps1`。
 - 打包链路会先构建前端，再跑 PyInstaller、路径扫描、敏感信息扫描、Inno Setup 和首次启动 smoke。
-- 默认 release 不打包 torch、sentence-transformers、marker 权重，避免安装包从百 MB 膨胀到数 GB。
+- 默认 release 保持轻量，避免安装包从百 MB 膨胀到数 GB。
 
 ## 从源码运行
 
@@ -221,7 +220,7 @@ npm run build
 - 研究资料、对话、索引、Wiki、日志默认写在本机。
 - 第三方 API key 不写入前端 localStorage，不在日志和 API 响应中明文展示。
 - MCP 工具调用前需要用户确认；高风险能力会被阻断或进入审批流。
-- 默认安装包不捆绑本地大模型。需要本地 embedding / rerank 时，由用户自行安装模型权重。
+- 默认安装包保持轻量，研究资料、对话、索引和日志默认留在本机。
 
 ## 许可
 
