@@ -41,21 +41,20 @@ Scholar AI 是面向文献综述、课题调研和论文写作的本地优先研
 
 ## 界面预览
 
-深色模式：
-多智能体讨论
-<img width="2162" height="1407" alt="scholar-ai-discussion" src="https://github.com/user-attachments/assets/7f173a14-a800-4fd9-ba96-fea84ce4e435" />
-系统设置
-<img width="2162" height="1407" alt="scholar-ai-mcp-settings" src="https://github.com/user-attachments/assets/96386a5a-d5be-4e7e-a27f-14c3c966596d" />
-wiki界面
-<img width="2162" height="1407" alt="scholar-ai-wiki" src="https://github.com/user-attachments/assets/b9117dea-8dde-40b9-9f29-fdc8f88cfb8c" />
-智能研读
-<img width="2162" height="1407" alt="scholar-ai-workbench" src="https://github.com/user-attachments/assets/4b12189b-b6af-4d62-bdf1-b28dd62afbd3" />
-
-浅色模式
-多智能体讨论
-<img width="2162" height="1407" alt="scholar-ai-discussion-light" src="https://github.com/user-attachments/assets/b91d4828-a769-4949-865c-91f49e06dbe0" />
-智能研读
-<img width="2162" height="1407" alt="scholar-ai-workbench-light" src="https://github.com/user-attachments/assets/8dd46fe0-58f8-443c-ba18-9f19f196a5cf" />
+<table>
+  <tr>
+    <td width="50%"><strong>智能研读</strong><br><img width="520" alt="智能研读界面" src="https://github.com/user-attachments/assets/4b12189b-b6af-4d62-bdf1-b28dd62afbd3" /></td>
+    <td width="50%"><strong>多智能体讨论</strong><br><img width="520" alt="多智能体讨论界面" src="https://github.com/user-attachments/assets/7f173a14-a800-4fd9-ba96-fea84ce4e435" /></td>
+  </tr>
+  <tr>
+    <td width="50%"><strong>Wiki 工作台</strong><br><img width="520" alt="Wiki 工作台界面" src="https://github.com/user-attachments/assets/b9117dea-8dde-40b9-9f29-fdc8f88cfb8c" /></td>
+    <td width="50%"><strong>系统设置</strong><br><img width="520" alt="系统设置界面" src="https://github.com/user-attachments/assets/96386a5a-d5be-4e7e-a27f-14c3c966596d" /></td>
+  </tr>
+  <tr>
+    <td width="50%"><strong>浅色模式：智能研读</strong><br><img width="520" alt="浅色模式智能研读界面" src="https://github.com/user-attachments/assets/8dd46fe0-58f8-443c-ba18-9f19f196a5cf" /></td>
+    <td width="50%"><strong>浅色模式：多智能体讨论</strong><br><img width="520" alt="浅色模式多智能体讨论界面" src="https://github.com/user-attachments/assets/b91d4828-a769-4949-865c-91f49e06dbe0" /></td>
+  </tr>
+</table>
 
 ## 为什么不直接用 NotebookLM、Obsidian 或 GPT 网页版
 
