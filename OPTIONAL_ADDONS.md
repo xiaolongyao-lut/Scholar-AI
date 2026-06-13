@@ -40,7 +40,7 @@ pip uninstall marker-pdf
 
 ## 二、本地推理回退 · rerank + embedding
 
-**作用**: 远端 rerank / embedding API 不可达时(DNS 屏蔽 / 403 / 限流 / 完全离线),自动回退到本地 BAAI/bge-reranker-v2-m3 / BAAI/bge-m3 模型,在 GPU 或 CPU 上跑。链路: 远端 API → 本地模型 → hybrid_score 兜底。
+**作用**: 远端 rerank / embedding API 不可达时(DNS 屏蔽 / 403 / 限流 / 完全离线),自动回退到本地模型。设备默认自动选择:有可用 CUDA 就走 GPU,否则降级到 CPU。链路: 远端 API → 本地模型 → hybrid_score 兜底。
 
 **默认安装包不包含的原因**：本地 rerank / embedding 需要 PyTorch、sentence-transformers 和模型权重，完整版体积约 3GB。默认安装包保持 API-first，便于普通用户快速安装和更新。
 
@@ -65,11 +65,12 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install sentence-transformers
 ```
 
-**验证装好了**: 设置 → Rerank 卡片 / Embedding 卡片头部会显示本地回退状态。装上后状态应该是绿色「本地回退: 可用 · CUDA」或「CPU」。
+**验证装好了**: 设置 → Rerank 卡片 / Embedding 卡片头部会显示本地回退状态。装上后状态应该是绿色「本地回退: 可用 · CUDA」；无可用 GPU 时会显示「CPU」。
 
-**强制 CPU 模式** (即使有 GPU,某些情况想让 4060 不被占): 启动前设环境变量
+**强制指定设备**: 默认不需要设置。只有想绕开自动检测时,才在启动前设环境变量。
 
 ```powershell
+# 例如:强制 CPU,避免占用独立显卡
 $env:LOCAL_RERANK_DEVICE = "cpu"
 $env:LOCAL_EMBEDDING_DEVICE = "cpu"
 ```

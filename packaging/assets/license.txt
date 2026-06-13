@@ -1,31 +1,35 @@
-Literature Assistant — Personal Use License
-=============================================
+Scholar AI
+==========
 
-Copyright (c) 2026 Literature Assistant Project Authors
+Project license
+---------------
 
-This software is provided for personal academic use by the original author
-and authorized collaborators only. The application bundles open-source
-dependencies whose licenses (MIT, BSD-3, Apache-2.0, MPL-2.0, etc.) apply
-to their respective components.
+Scholar AI source code is licensed under the MIT License.
 
-NO WARRANTY. The software is provided "AS IS", without warranty of any
-kind, express or implied, including but not limited to the warranties of
-merchantability, fitness for a particular purpose and non-infringement.
+Copyright (c) 2026 xiaolongyao-lut
 
-THIRD-PARTY ATTRIBUTIONS
-------------------------
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-This installer redistributes the following key third-party components:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-- FastAPI (MIT)
-- Uvicorn (BSD-3-Clause)
-- pywebview (BSD-3-Clause)
-- PyMuPDF (AGPL-3.0)
-- python-docx (MIT)
-- React, Vite (MIT)
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
-The full dependency manifest is available inside the installation directory
-under ``literature_assistant/`` (Python) and ``frontend/dist/`` (web assets).
+Third-party components
+----------------------
 
-By installing this software you agree to use it only for non-commercial
-academic and personal-research purposes.
+The installer also includes third-party open-source components. Those
+components keep their own licenses, including but not limited to MIT, BSD,
+Apache-2.0, MPL-2.0, and AGPL-3.0 licensed packages. Their licenses apply to
+the respective third-party components.

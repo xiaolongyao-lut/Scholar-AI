@@ -14,6 +14,8 @@
 
 分发策略：0.1.8.3 的公开 Windows 安装包是 API-first 轻量包，约 466MB，不包含本地 GPU/CPU 推理代码。源码用户可以按需安装 marker-pdf、本地 rerank 和本地 embedding；自行构建时设置 `LITASSIST_BUNDLE_RAG=1` 可生成约 3GB 的完整版。
 
+许可：项目代码改为 MIT License。安装包中的第三方组件仍保留各自许可证。
+
 界面预览：项目首页已更新为缩略图网格，展示智能研读、多智能体讨论、Wiki 工作台和系统设置。
 
 ### 检索质量（RAG）

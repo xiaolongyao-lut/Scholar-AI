@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=65.0", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,8 @@ version = "0.1.8.3"
 description = "Local-first academic literature research workbench with RAG, wiki, MCP, and operator review UI"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "Source-Available Non-Commercial"}
+license = "MIT"
+license-files = ["LICENSE"]
 
 dependencies = [
     "fastapi>=0.115.0,<1.0.0",
