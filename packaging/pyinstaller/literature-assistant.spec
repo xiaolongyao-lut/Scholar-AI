@@ -212,12 +212,6 @@ hiddenimports = [
     "webview",
     "literature_assistant.bootstrap",
     "literature_assistant.core.python_adapter_server",
-    # Local fallback adapters — imported lazily by chunk_vector_store /
-    # rerank routers; explicit listing avoids "Hidden import not found"
-    # warnings and guarantees the adapter ships even when static analysis
-    # misses the conditional import path.
-    "local_rerank_adapter",
-    "local_embedding_adapter",
     "routers.pipeline_router",
     "routers.skills_router",
     "routers.resources_router",
@@ -267,7 +261,13 @@ hiddenimports = [
 _mcp_datas, _mcp_binaries, _mcp_hiddenimports = collect_all("mcp")
 
 _OPTIONAL_RAG_EXCLUDES = []
+_OPTIONAL_RAG_HIDDENIMPORTS = []
 if os.environ.get("LITASSIST_BUNDLE_RAG", "").strip() != "1":
+    # Default release (API-first): exclude heavy local-inference deps to keep
+    # onedir at ~360MB. Users who need offline rerank/embedding install
+    # torch + sentence-transformers into their Python env themselves and the
+    # adapters fall back gracefully (is_available() returns False, callers
+    # route to API or hybrid_score).
     _OPTIONAL_RAG_EXCLUDES = [
         "chromadb",
         "sentence_transformers",
@@ -277,6 +277,16 @@ if os.environ.get("LITASSIST_BUNDLE_RAG", "").strip() != "1":
         "sklearn",
         "numba",
         "llvmlite",
+    ]
+else:
+    # LITASSIST_BUNDLE_RAG=1: full release. Ship local_rerank/embedding
+    # adapters as hidden imports so PyInstaller pulls torch +
+    # sentence-transformers into the onedir. Roughly 3GB extra (cu126
+    # CUDA runtime DLLs + cuDNN dominate). Use this only when targeting
+    # offline / firewalled deployments.
+    _OPTIONAL_RAG_HIDDENIMPORTS = [
+        "local_rerank_adapter",
+        "local_embedding_adapter",
     ]
 
 
@@ -288,7 +298,7 @@ a = Analysis(
     ],
     binaries=[] + _mcp_binaries,
     datas=datas + _mcp_datas,
-    hiddenimports=hiddenimports + _mcp_hiddenimports,
+    hiddenimports=hiddenimports + _mcp_hiddenimports + _OPTIONAL_RAG_HIDDENIMPORTS,
     hookspath=[],
     runtime_hooks=[str(REPO_ROOT / "packaging" / "pyinstaller" / "runtime_hook.py")],
     excludes=[
