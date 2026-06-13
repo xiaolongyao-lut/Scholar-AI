@@ -220,6 +220,7 @@ htmlcov/
 !/tests/test_provider_endpoint_policy_loopback.py
 !/tests/test_provider_endpoint_policy.py
 !/tests/test_key_pool_priority.py
+!/tests/test_env_example_contract.py
 /workspace_tests/benchmarks/results/
 /workspace_tests/diagnostics/
 /workspace_tests/evaluation_data/BASELINE_METRICS.json

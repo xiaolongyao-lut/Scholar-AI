@@ -161,14 +161,14 @@ py -3.11 -m venv .venv-1
 cd frontend
 npm ci
 npm run build
-cd ..
 ```
 
-前端构建会生成桌面窗口加载的静态页面。`start_desktop.py` 在缺少构建产物时也会尝试自动构建，但首次配置建议手动执行一次，错误更容易定位。
+前端构建会生成桌面窗口加载的静态页面。命令执行完后，回到仓库根目录再启动桌面应用。
 
 ### 第四步：启动桌面应用
 
 ```powershell
+cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
 .\.venv-1\Scripts\python.exe .\start_desktop.py
 ```
 
@@ -236,6 +236,7 @@ Windows 安装包构建属于发布流程，不是源码运行的必要步骤。
 
 - 研究资料、对话、索引、Wiki、日志默认写在本机。
 - 第三方 API key 不写入前端 localStorage，不在日志和 API 响应中明文显示。
+- 普通桌面使用优先在「设置」里配置 API 凭证；`.env.example` 只作为源码运行、CI 和临时测试的模板。
 - MCP 工具调用前需要用户确认；高风险能力会被阻断或进入审批流。
 - 默认安装包保持轻量，研究资料、对话、索引和日志默认留在本机。
 

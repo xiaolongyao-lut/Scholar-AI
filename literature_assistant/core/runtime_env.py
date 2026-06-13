@@ -217,9 +217,35 @@ def resolve_llm_config(
 
     Security: validates base_url endpoint before returning.
     """
-    resolved_key = _clean(api_key) or env_value("ARK_API_KEY", "VOLCANO_API_KEY", "OPENAI_API_KEY", "API_KEY")
-    resolved_url = _clean_urlish(base_url) or env_value("ARK_BASE_URL", "OPENAI_BASE_URL", "BASE_URL", default=default_base_url) or default_base_url
-    resolved_model = _clean(model) or env_value("ARK_MODEL", "OPENAI_MODEL", "MODEL", default=default_model) or default_model
+    resolved_key = _clean(api_key) or env_value(
+        "CHAT_API_KEY",
+        "ARK_API_KEY",
+        "VOLCANO_API_KEY",
+        "OPENAI_API_KEY",
+        "API_KEY",
+    )
+    resolved_url = (
+        _clean_urlish(base_url)
+        or env_value(
+            "CHAT_BASE_URL",
+            "ARK_BASE_URL",
+            "OPENAI_BASE_URL",
+            "BASE_URL",
+            default=default_base_url,
+        )
+        or default_base_url
+    )
+    resolved_model = (
+        _clean(model)
+        or env_value(
+            "CHAT_MODEL",
+            "ARK_MODEL",
+            "OPENAI_MODEL",
+            "MODEL",
+            default=default_model,
+        )
+        or default_model
+    )
 
     # Security gate: validate endpoint when returning config with credentials
     if resolved_key and resolved_url:
