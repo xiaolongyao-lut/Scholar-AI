@@ -1,16 +1,16 @@
 # 可选扩展 · Optional Addons (源码版)
 
-> **本文档面向源码版用户**。Windows 安装包 (`Scholar-AI-Setup-x.x.x-windows-x64.exe`) 是 API-first 路线 — 不含本地推理代码,无法启用任何本地加速。这是设计选择:用安装包的人大多在乎"装好就用",不在乎本地 GPU 推理。
+> **本文档面向源码版用户**。Windows 安装包 (`Scholar-AI-Setup-x.x.x-windows-x64.exe`) 是 API-first 路线，不包含本地推理模块。
 
-Scholar AI 默认 API-first(SiliconFlow / DashScope 等远端服务)。从源码运行的用户额外获得本地 GPU/CPU 推理能力,针对**离线 / 防火墙 / 想用本地 GPU 推理**的场景。
+Scholar AI 默认使用远端模型服务（如 SiliconFlow、DashScope 或其他 OpenAI 兼容服务）。从源码运行时，可以按需启用本地 GPU/CPU 推理能力，适合离线环境、受限网络或自有算力场景。
 
 ## 重要前提 · 适用范围
 
 | 部署方式 | 本地推理能力 |
 |---|---|
-| Inno Setup 安装包 | **不可用** — `local_*_adapter.py` 被打包脚本物理排除,PyInstaller bundle 内嵌 python 没有 pip 入口 |
-| 从源码克隆 + `pip install -e .` + `python run_literature_assistant.py` | **可用** — adapter 在源码树里,装 `pip install marker-pdf` 或 `pip install sentence-transformers torch` 即生效 |
-| 构建完整版安装包 `LITASSIST_BUNDLE_RAG=1 pyinstaller ...` | **可用** — 但产物 ~3.3GB,本仓库不发布该版本,需要自己构建 |
+| Windows 安装包 | 不可用。默认安装包不包含本地推理模块 |
+| 源码运行 | 可用。安装 `marker-pdf` 或 `sentence-transformers torch` 后启用 |
+| 自构建完整版安装包 | 可用。构建前设置 `LITASSIST_BUNDLE_RAG=1`，产物约 3GB，本仓库不预构建发布 |
 
 ---
 
@@ -18,7 +18,7 @@ Scholar AI 默认 API-first(SiliconFlow / DashScope 等远端服务)。从源码
 
 **作用**: 替代默认 PyMuPDF 解析新上传的 PDF,能识别标题层级、表格、公式、图片,RAG 检索质量更好。
 
-**主包不含原因**: marker-pdf 含 2GB+ 模型权重,而且首次解析每篇 5-15 分钟(GPU 也要 18 分钟/篇),对绝大多数用户来说"鸡肋"。只有需要从论文里精确提取表/公式的研究场景才值得装。
+**默认安装包不包含的原因**：marker-pdf 依赖较大的模型文件，首次解析单篇 PDF 可能需要数分钟。它适合需要保留标题层级、表格、公式和图片结构的精读场景，不适合作为所有用户的默认依赖。
 
 **装法** (在已经 `pip install -e .` 的源码 venv 内):
 
@@ -42,7 +42,7 @@ pip uninstall marker-pdf
 
 **作用**: 远端 rerank / embedding API 不可达时(DNS 屏蔽 / 403 / 限流 / 完全离线),自动回退到本地 BAAI/bge-reranker-v2-m3 / BAAI/bge-m3 模型,在 GPU 或 CPU 上跑。链路: 远端 API → 本地模型 → hybrid_score 兜底。
 
-**主包不含原因**: CUDA 版 torch + sentence-transformers + cuDNN runtime 加起来约 3GB,装进主包会让安装包从 466MB 涨到 3.3GB。绝大多数用户用得到 API,装上反而拖累首次安装。
+**默认安装包不包含的原因**：本地 rerank / embedding 需要 PyTorch、sentence-transformers 和模型权重，完整版体积约 3GB。默认安装包保持 API-first，便于普通用户快速安装和更新。
 
 **装法** (Windows + RTX 系列 GPU,例如 4060):
 
@@ -65,7 +65,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install sentence-transformers
 ```
 
-**验证装好了**: 设置 → Rerank 卡片 / Embedding 卡片头部各有一个回退状态 chip。装上后状态应该是绿色「本地回退: 可用 · CUDA」或「CPU」。
+**验证装好了**: 设置 → Rerank 卡片 / Embedding 卡片头部会显示本地回退状态。装上后状态应该是绿色「本地回退: 可用 · CUDA」或「CPU」。
 
 **强制 CPU 模式** (即使有 GPU,某些情况想让 4060 不被占): 启动前设环境变量
 
@@ -100,9 +100,8 @@ pip uninstall torch torchvision sentence-transformers transformers tokenizers
 
 ---
 
-## 设计哲学 · 为什么"主线 + 可选扩展"两条线
+## 分发策略
 
-- **主安装包 (~466MB)** = API-first,给所有人。首次安装快,默认开箱即用,RAG 主链 5 项 (chunk 加权 + hybrid + TOLF + RRF + sibling) 直接是默认行为。
-- **可选扩展** = 给离线场景 / 自有 GPU / 想精读表格的少数用户。pip install 是最自然的"按需推送",装包 = 启用,卸包 = 禁用,零额外维护。
-
-如果哪天 marker 的速度从 5-15 min/篇 降到 1 min 以内,或 GPU 推理变成所有人都需要,我们再讨论是否进主包。
+- **默认安装包**：API-first，体积约 466MB，适合大多数用户直接安装使用。
+- **源码可选扩展**：面向需要离线运行、自有 GPU 或精细结构化解析的用户，通过额外依赖按需启用。
+- **自构建完整版**：面向私有部署或实验环境，可以通过 `LITASSIST_BUNDLE_RAG=1` 将本地推理模块打包进安装目录。

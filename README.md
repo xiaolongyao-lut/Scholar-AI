@@ -36,8 +36,8 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 | PDF 阅读 | 内嵌 PDF.js 阅读器，多标签页、连续滚动、页码跳转、高亮、便签和阅读位置保存 |
 | 文献库 | 项目级文献管理，上传 PDF 后切块、去重、索引，支持绑定源文件夹后按需或全量入库 |
 | 智能研读 | 统一问答入口，结合 RAG、目标导向检索和 rerank，回答带证据引用 |
-| 检索链路 | BM25 + dense embedding + rerank；TOLF 与 RAG 通过 RRF 融合，不再互相替代 |
-| 结构化证据补全 | 表格、公式、同章节相邻证据可作为 sibling 一起进入上下文，减少“提到表格但没给真数据”的情况 |
+| 检索链路 | 关键词检索、向量检索、重排序和目标导向检索共同工作，提升长文献问答的召回质量 |
+| 结构化证据补全 | 表格、公式、图注和同章节相邻证据会一起进入上下文，减少“提到表格但没给真数据”的情况 |
 | 多角色讨论 | 多个角色围绕同一问题讨论、质询、补证据并形成综合结论 |
 | Wiki 知识沉淀 | 可把材料、观点和复审后的发现沉淀为本地 Wiki 页面 |
 | 写作 | TipTap 富文本编辑器，大纲、引用、图表资料和 DOCX 导出链路 |
@@ -46,11 +46,11 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 
 ## 0.1.8.3 重点
 
-- RAG 主链路默认启用 hybrid retrieval、chunk 类型加权、同章节结构化邻居补全、TOLF 目标导向检索和 TOLF×RAG 融合。
-- Windows 安装包明确采用 API-first 双线分发：默认包约 466MB，不包含本地 GPU/CPU 推理代码；源码用户可按需安装可选扩展。
-- 设置页新增后端日志查看器。
+- 检索链路默认启用混合检索、结构化证据补全、目标导向检索和结果融合，回答更容易带到表格、公式和同章节证据。
+- Windows 安装包采用 API-first 方案，默认依赖已配置的云端 embedding / rerank / chat 服务，不捆绑本地推理代码。
+- 源码运行支持可选本地加速能力，适合需要 marker-pdf 结构化解析、本地 rerank 或本地 embedding 的开发者。
+- 设置页新增后端日志查看器，便于排查 API、模型、文献入库和检索问题。
 - README 图片已替换为当前 UI 的真实截图，并以缩略图表格展示。
-- 默认 Windows 安装包保持轻量，不随安装包分发大型模型文件。
 
 ## 下载
 
@@ -61,7 +61,7 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 - [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/SHA256SUMS.txt)
 - 安装包 SHA256：`77FBA03CE894B95D186261ED7D4ED32AFE43FCD08F5B8689F91B5A71B7D06235`
 
-安装包是 API-first 路线，~466MB，依赖远端服务（SiliconFlow / DashScope 等）。**不含本地 GPU/CPU 推理代码** — 想跑 marker-pdf 结构化解析、本地 rerank、本地 embedding 的用户请走「从源码运行」。
+Windows 安装包面向普通用户，体积约 466MB，默认使用你在设置页配置的云端模型服务。安装包不包含本地推理代码；需要本地 GPU/CPU 加速或 marker-pdf 结构化解析的开发者，请使用源码运行方式。
 
 ## 架构
 
@@ -69,22 +69,21 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Frontend                                                             │
 │ React + Vite + TypeScript + TipTap + PDF.js                          │
-│ 路由级 lazy loading，OpenAPI 生成类型，本地 dev proxy 自动带能力令牌     │
+│ 桌面工作台、PDF 阅读、写作编辑器和设置页面                              │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │ HTTP / SSE / OpenAPI
 ┌───────────────────────────────▼──────────────────────────────────────┐
 │ Backend                                                              │
 │ FastAPI + Pydantic v2                                                │
-│ python_adapter_server:app 挂载 chat / resources / wiki / writing /    │
-│ mcp / settings / diagnostics / feature-flags 等 router                │
+│ 文献入库、聊天问答、Wiki、写作、MCP、设置、日志和模型配置 API            │
 └───────┬───────────────────────┬──────────────────────┬───────────────┘
         │                       │                      │
         ▼                       ▼                      ▼
-  Project storage          Retrieval runtime       Extension runtime
+  Project storage          Retrieval engine        Extension system
   SQLite / JSONL           PyMuPDF extraction       MCP / Skill scanner
-  chunk_store              chunking + embedding     credential binding
-  runtime_state            BM25 + dense + rerank    approval gate
-  backend.log              TOLF + RRF fusion        audit records
+  chunk store              chunking + embedding     credential binding
+  runtime state            keyword/vector search    approval gate
+  backend logs             rerank + evidence merge  audit records
         │                       │                      │
         └───────────────┬───────┴──────────────┬───────┘
                         ▼                      ▼
@@ -94,19 +93,19 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
                   Wiki / Evolution         DOCX export
 ```
 
-### 前端层
+### 前端
 
 - `frontend/src/App.tsx` 定义桌面工作台路由，主要页面包括智能研读、知识库、项目、Wiki、写作、任务和设置。
 - `frontend/vite.config.ts` 在开发模式下代理后端 API，并从 `workspace_artifacts/runtime_state/api-port.json` 读取实际后端端口。
-- 同一个代理还会读取 `api-capability.json` 并注入 `X-LitAssist-Capability`，匹配后端本地 API 安全门。
+- 同一个代理还会读取本地访问令牌，并在开发请求中自动附加，匹配后端本地 API 保护机制。
 - OpenAPI schema 由 `scripts/export_openapi_schema.py` 导出，前端通过 `openapi-typescript` 生成 `frontend/src/generated/openapi.ts`。
 
-### 后端层
+### 后端
 
 - ASGI 入口是 `literature_assistant.core.python_adapter_server:app`。
-- `literature_assistant/bootstrap.py` 在启动时显式注册 repo root 和 `literature_assistant/core`，兼容包式导入和旧的平铺导入。
-- 业务 router 分散在 `literature_assistant/core/routers/`：资源入库、聊天、Wiki、写作、MCP、凭证、设置、日志、模型配置和 feature flags 都通过 FastAPI 暴露。
-- 本地 API 默认启用 capability token。浏览器静态页面和健康检查可以访问，真实 API 请求必须带运行时生成的本机令牌。
+- `literature_assistant/bootstrap.py` 负责启动时路径注册，保证从源码运行和打包后运行都能加载同一套后端代码。
+- 业务 API 位于 `literature_assistant/core/routers/`，覆盖资源入库、聊天、Wiki、写作、MCP、凭证、设置、日志、模型配置和功能开关。
+- 本地 API 默认启用访问令牌。健康检查可以直接访问，真实业务请求需要携带运行时生成的本机令牌。
 
 ### 数据与运行时状态
 
@@ -118,8 +117,8 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 
 - PDF 默认用 PyMuPDF 抽取文本；marker 结构化解析保留为实验能力，默认关闭。
 - 入库后形成 chunk store，并按项目维护文献、页码、chunk 类型、章节和证据引用信息。
-- 召回链路包括关键词/BM25、dense embedding、rerank、TOLF 目标导向检索和 RRF 融合。
-- A15 系列逻辑会让表格、公式、图注和同章节相邻证据更容易进入最终上下文。
+- 召回链路包括关键词检索、向量检索、重排序、目标导向检索和结果融合。
+- 表格、公式、图注和同章节相邻证据会被优先补入最终上下文，减少只引用段落、不引用真实数据的问题。
 - 云端 embedding / rerank 是默认路线。
 
 ### 写作、Wiki 与扩展
@@ -132,20 +131,21 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 
 - Windows 发布脚本是 `scripts/build_windows_exe.ps1`。
 - 打包链路会先构建前端，再跑 PyInstaller、路径扫描、敏感信息扫描、Inno Setup 和首次启动 smoke。
-- 默认 release 是 API-first 轻量安装包，PyInstaller spec 会物理排除本地推理 adapter/server 代码，避免安装包从百 MB 膨胀到数 GB。
-- 自行构建完整版时可设置 `LITASSIST_BUNDLE_RAG=1`，把本地 rerank / embedding adapter 打进 onedir；该形态约 3GB，本仓库不预构建发布。
+- 默认发布的是 API-first 轻量安装包，PyInstaller 配置会排除本地推理相关模块，避免安装包膨胀到数 GB。
+- 自行构建包含本地推理模块的完整版时，可在构建前设置 `LITASSIST_BUNDLE_RAG=1`；该形态体积约 3GB，本仓库不提供预构建安装包。
 
 ## 从源码运行
 
 源码运行面向开发者。普通用户建议使用 Windows 安装包。
 
-环境要求：Python 3.11+、Node.js 20+、Windows PowerShell。
+环境要求：Python 3.11、Node.js 20+、Windows PowerShell。
 
 创建虚拟环境并安装后端依赖：
 
 ```powershell
 py -3.11 -m venv .venv-1
 .\.venv-1\Scripts\python.exe -m pip install --upgrade pip
+.\.venv-1\Scripts\python.exe -m pip install -e ".[desktop,packaging,dev]"
 .\.venv-1\Scripts\python.exe -m pip install -r requirements-ci.txt
 ```
 
@@ -178,14 +178,14 @@ cd ..
 .\.venv-1\Scripts\python.exe -m uvicorn literature_assistant.core.python_adapter_server:app --host 127.0.0.1 --port 8000
 ```
 
-需要前端热更新时，另开一个 PowerShell 启动 Vite：
+开发前端界面时，可以另开一个 PowerShell 启动 Vite 开发服务器：
 
 ```powershell
 cd frontend
 npm run dev
 ```
 
-Vite 开发模式才是两个进程：一个 uvicorn 后端进程，一个 Vite 前端进程。前端代理会从 `workspace_artifacts/runtime_state/api-port.json` 跟随后端实际端口，并自动附加本地 API capability token。
+这种开发模式会同时运行两个进程：后端由 `start_desktop.py` 或 uvicorn 提供，Vite 只负责前端开发服务器。Vite 代理会读取 `workspace_artifacts/runtime_state/api-port.json` 中的后端端口，并自动附加本地 API 访问令牌。
 
 常用检查命令：
 
@@ -199,13 +199,7 @@ npm run lint
 npm run build
 ```
 
-构建 Windows 安装包：
-
-```powershell
-.\scripts\build_windows_exe.ps1 -Version 0.1.8.3 -AllowUnsigned
-```
-
-正式发布构建应配置签名命令，而不是使用 `-AllowUnsigned`。
+Windows 安装包构建属于发布流程，不是源码运行的必要步骤。公开发布前需要完成打包、签名、哈希校验和安装烟测。
 
 ## 公开源码结构
 
@@ -222,15 +216,15 @@ npm run build
 ## 隐私与凭证
 
 - 研究资料、对话、索引、Wiki、日志默认写在本机。
-- 第三方 API key 不写入前端 localStorage，不在日志和 API 响应中明文展示。
+- 第三方 API key 不写入前端 localStorage，不在日志和 API 响应中明文显示。
 - MCP 工具调用前需要用户确认；高风险能力会被阻断或进入审批流。
 - 默认安装包保持轻量，研究资料、对话、索引和日志默认留在本机。
 
 ## 可选扩展
 
-**安装包用户**: 没有本地推理选项,装包就是 API 路线。这是设计选择 — 用安装包的人大多在乎"装好就用",不在乎本地 GPU 加速。
+Windows 安装包默认不包含本地推理模块，适合直接配置 API 后使用。
 
-**源码用户**: 自动获得 marker-pdf 结构化解析、本地 rerank 回退、本地 embedding 回退三个选项。装 `pip install marker-pdf` 或 `pip install sentence-transformers torch` 即可启用。详见 [OPTIONAL_ADDONS.md](OPTIONAL_ADDONS.md)。
+从源码运行时，可以按需启用 marker-pdf 结构化解析、本地 rerank 和本地 embedding。相关依赖不会随默认安装包分发，需要开发者自行安装。详见 [OPTIONAL_ADDONS.md](OPTIONAL_ADDONS.md)。
 
 ## 许可
 

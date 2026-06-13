@@ -12,34 +12,34 @@
 
 安装提示：当前仍是 alpha / dogfood 版本，Windows 安装包未签名，首次安装可能触发 SmartScreen 提示。
 
-分发策略：0.1.8.3 的公开 Windows 安装包是 API-first 轻量包，约 466MB，不包含本地 GPU/CPU 推理代码。源码用户仍可按需安装 marker-pdf、本地 rerank 和本地 embedding；自行构建时设置 `LITASSIST_BUNDLE_RAG=1` 可生成约 3GB 的完整版 onedir。
+分发策略：0.1.8.3 的公开 Windows 安装包是 API-first 轻量包，约 466MB，不包含本地 GPU/CPU 推理代码。源码用户可以按需安装 marker-pdf、本地 rerank 和本地 embedding；自行构建时设置 `LITASSIST_BUNDLE_RAG=1` 可生成约 3GB 的完整版。
 
 界面预览：项目首页已更新为缩略图网格，展示智能研读、多智能体讨论、Wiki 工作台和系统设置。
 
 ### 检索质量（RAG）
 
-- **结构化兄弟块召回（A15 链）**：rerank 之前先按 chunk 类型加权（表 ×3 / 公式 ×2 / 段落 ×1 / 标题 ×0.5），让真正含数值和方程的块更容易进 cross-encoder 池。命中之后会把同一章节里相邻的表/公式作为"兄弟块"一起送进 LLM 上下文，保证答案里能引用真实表格数值而不是泛泛复述（例如 "0.4990→0.0357 h⁻¹ 降低 14 倍" 真表数据）。
-- **段落标题缺失时的兜底**：旧的 PyMuPDF 入库结果里章节标题字段可能是空的，新增 `section_title` fallback 让兄弟块召回链对这部分老文献依然有效。
-- **TOLF × RAG 融合（RRF）**：把"目标导向检索（TOLF）"和传统 hybrid_search 用 RRF（k=60）融合，替代原来的"TOLF 命中就用 TOLF、否则退回 RAG"二选一。两条检索路径互补、互不替代。
-- **5 个 RAG 实验开关默认打开**：`hybrid_retrieval`、`rag_chunk_type_weighting`、`rag_structured_sibling_inclusion`、`tolf_context`、`tolf_fusion_mode` 出厂全部 ON，原有用户的 `feature_flags_override.json` 仍生效。设置 → 实验性功能里能看到产品语言文案（不暴露 BM25 / RRF 等内部术语）。
+- **结构化证据补全**：重排序前会提高表格、公式等结构化片段的候选优先级。命中某个段落后，同一章节里的相邻表格和公式也会一起进入答案上下文，保证回答能引用真实数值而不是只复述段落描述。
+- **章节标题补全**：旧的 PyMuPDF 入库结果里章节标题字段可能为空，新版本会使用可推断的章节标题补齐，让同章节证据补全对旧文献同样有效。
+- **目标导向检索与 RAG 融合**：目标导向检索和传统混合检索会共同参与排序，替代原来的二选一模式。两条检索路径互补、互不替代。
+- **关键检索能力默认开启**：混合检索、chunk 类型加权、同章节证据补全、目标导向检索和结果融合默认开启；已有用户的 `feature_flags_override.json` 仍会保留其本地设置。
 
-### 设置 → 后端日志
+### 设置 → 日志
 
-- **新增「后端日志」分区**：直接在设置里查看 `backend.log`，支持按级别（INFO / WARNING / ERROR / CRITICAL）阈值过滤、关键字搜索、行数选择、5 秒自动刷新、一键复制。终端配色，连续行（如堆栈）正确归到上一条日志。
-- **凭据二次脱敏**：API key（`sk-*`）和 Bearer token 进入查看器前被强制脱敏一次，即使早期启动阶段日志过滤器漏挂也兜得住。
-- **路径越权保护**：日志路径解析只允许读 `runtime_state/logs/` 下的 `backend.log` 系列文件，禁止任意路径读取。
+- **新增「后端日志」分区**：可以直接在设置页查看 `backend.log`，支持日志级别过滤、关键字搜索、行数选择、自动刷新和一键复制。堆栈等多行日志会归并到同一条记录。
+- **敏感信息脱敏**：API key（`sk-*`）和 Bearer token 在进入日志查看器前会再次脱敏，避免凭证通过日志界面明文展示。
+- **日志读取范围限制**：日志查看器只允许读取运行目录下的 `backend.log` 系列文件，不能读取任意本机路径。
 
 ### 智能研读 → 引用链路标签
 
-- **每条引用显示"怎么被召回的"**：MessageBubble 的证据 chip 上多了一个小标签，告诉用户这条引用是怎么进入答案上下文的：「上下文兄弟」=同章节相邻表/公式被一起拉进来，「语义匹配」=向量相似度，「关键词」=BM25 命中，「深度检索」=TOLF 多角度发散。鼠标 hover 可以看到完整召回链路。
+- **引用来源更清楚**：答案中的证据标签会显示该引用进入上下文的原因，例如同章节补全、语义匹配、关键词命中或目标导向检索。鼠标 hover 可以查看更完整的召回说明。
 - chat 默认显示，其他场景（Workbench、讨论面板等）保持不显，避免视觉过载。
 
 ### 工程基础设施
 
-- **PyInstaller 打包修复**：补 `routers.diagnostics_router` 到 hiddenimports，避免设置页日志查看器在 onedir 安装版中启动时报 ImportError。已用真跑 PyInstaller onedir 验证 import 路径正确。
-- **双线分发保护**：默认 PyInstaller spec 物理排除 `local_rerank_adapter.py`、`local_embedding_adapter.py`、`local_rerank_server.py`、`local_embedding_server.py`，安装包保持 API-first；`LITASSIST_BUNDLE_RAG=1` 才会把本地推理 adapter 打进 onedir。新增合同测试锁定默认排除和完整版包含两条路径。
-- **前端代码质量**：ESLint `--max-warnings 0` 现在零错零警告通过，CI 流水线打通。`@typescript-eslint/no-unused-vars` 跨 22 个文件清理（lucide 未用图标真删、业务 WIP 占位变量加 `_` 前缀保留）。`no-console` 允许 `error`/`warn`/`info`，仍禁 `console.log`。`@typescript-eslint/no-explicit-any` 收紧到产品代码，测试文件的 mock fixture 在 lint 层归 ignore。
-- **测试覆盖**：后端 3883 单元 + 集成测试全过；新增端到端 redact 回归测试覆盖"日志过滤器漏挂时日志查看器二层兜底"场景。前端 vitest 119 测试文件 / 730 个 case 全过。
+- **安装包启动修复**：补齐日志查看器在 Windows 安装包中的后端导入配置，避免安装版启动时找不到日志 API。
+- **双线分发保护**：默认安装包保持 API-first，不包含本地推理模块；设置 `LITASSIST_BUNDLE_RAG=1` 才会构建包含本地推理模块的完整版。新增测试覆盖默认包和完整版两种构建路径。
+- **前端代码质量**：ESLint 以零警告模式通过，清理未使用导入、收紧 TypeScript 检查，并保留仍在接线中的业务占位变量。
+- **测试覆盖**：后端 3883 单元 + 集成测试全过；新增日志脱敏回归测试，覆盖日志过滤器未生效时查看器仍会隐藏敏感信息的场景。前端 vitest 119 测试文件 / 730 个 case 全过。
 
 ### 2026-06-10 发布加固
 
