@@ -224,14 +224,7 @@ npm run build
 
 ## 可选扩展
 
-主安装包 ~466MB，API-first 路线，绝大多数用户开箱即用。下面这些可选能力针对**离线 / 防火墙 / 想用本地 GPU 推理**的少数场景，主包不含运行时依赖，需要自己 `pip install` 启用：
-
-- **PDF 结构化解析 (marker-pdf)**: 表格 / 公式 / 标题层级精确抽取，解析慢但 RAG 质量更好
-- **本地 rerank 回退**: 远端 rerank API 不可达时，自动用本地 BAAI/bge-reranker-v2-m3 兜底
-- **本地 embedding 回退**: 同上，本地 BAAI/bge-m3 跑 GPU/CPU
-- **独立本地推理服务器**: 在另一台 GPU 机器跑 rerank/embedding，App 通过 OpenAI/Cohere 兼容协议消费
-
-完整装法、模型权重位置、状态 chip 配色、强制 CPU / 禁用 / 卸载步骤 → [OPTIONAL_ADDONS.md](OPTIONAL_ADDONS.md)。
+绝大多数用户用 API 路线即可。如果你**从源码运行**且需要离线推理或本机 GPU 推理,Scholar AI 提供 PDF 结构化解析 (marker)、本地 rerank、本地 embedding 三个回退选项,详见 [OPTIONAL_ADDONS.md](OPTIONAL_ADDONS.md)。Inno Setup 安装包不支持这些选项 (PyInstaller bundle 封闭, 无法 `pip install` 进去)。
 
 ## 许可
 
