@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.1.8.3 - 2026-06-13
 
 本版本核心是把 RAG 检索链做强、把"实验性功能"开关默认打开，并补上后端日志查看器和本地推理回退。
+
+下载：
+
+- Windows 安装包：`Scholar-AI-Setup-0.1.8.3-windows-x64.exe`
+- 校验文件：`SHA256SUMS.txt`
+- 安装包 SHA256：`77FBA03CE894B95D186261ED7D4ED32AFE43FCD08F5B8689F91B5A71B7D06235`
+
+安装提示：当前仍是 alpha / dogfood 版本，Windows 安装包未签名，首次安装可能触发 SmartScreen 提示。默认安装包不内置本地 embedding / rerank 大模型；用户自行安装本地模型后，设置页会显示本地回退可用状态。
 
 ### 检索质量（RAG）
 

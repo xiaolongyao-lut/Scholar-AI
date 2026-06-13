@@ -2,9 +2,9 @@
 
 Scholar AI 是面向文献综述、课题调研和论文写作的本地优先研究工作台。它适合“读几十到上百篇文献、围绕同一问题反复追问、每个观点都要能追溯到具体页码”的场景：把 PDF 阅读、证据检索、多智能体讨论、引用校验、写作和知识沉淀放在同一个桌面应用里。
 
-最新版本 [v0.1.8.1](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.1)（2026-05-23）·
-[Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.1/Scholar-AI-Setup-0.1.8.1-windows-x64.exe) ·
-[SHA256](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.1/SHA256SUMS.txt)
+最新版本 [v0.1.8.3](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.3)（2026-06-13）·
+[Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/Scholar-AI-Setup-0.1.8.3-windows-x64.exe) ·
+[SHA256](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/SHA256SUMS.txt)
 
 当前是 alpha / dogfood 阶段，Windows 安装包未做代码签名，首次安装可能触发 SmartScreen 警告。
 
@@ -13,7 +13,7 @@ Scholar AI 是面向文献综述、课题调研和论文写作的本地优先研
 把研究里“读、问、讨论、写、沉淀”几个动作串成一个闭环：
 
 - **读文献**：内嵌 PDF 阅读器，支持高亮、便签、阅读位置保存。
-- **问问题**：从本地文献库检索证据，回答带页码级引用，点击引用能回到原文位置。
+- **问问题**：从本地文献库检索证据，回答带页码级引用，点击引用能回到原文位置；深度检索会同时使用传统 RAG 和目标导向检索，再统一重排。
 - **多角色讨论**：方法学审查员、领域专家、数据分析师、质疑者等角色围绕同一问题按轮次讨论，互相质询、补证据、收敛结论。
 - **写作整理**：内嵌 TipTap 富文本编辑器，支持大纲、引用、图表和 DOCX 导出。
 - **知识沉淀**：Wiki + Evolution 经验沉淀，把临时发现审核后沉淀为长期知识。
@@ -27,15 +27,17 @@ Scholar AI 是面向文献综述、课题调研和论文写作的本地优先研
 - **按需入库**：根据当前问题筛选源文件夹里的待索引文件，先切块再检索，适合刚接入大量文献或卷次分析前的首次提问。
 - **全量入库**：先处理源文件夹里所有待索引文件，再开始检索。
 
-语义路由由 embedding 和 rerank 两段组成。Embedding 把文本转成向量，通常填写 OpenAI 兼容 `/v1` 地址和模型 ID；rerank 对候选证据重排，通常填写 Cohere 兼容 `/rerank` 完整端点和模型 ID。本地服务如果没有鉴权，访问密钥可以留空。
+语义路由由 embedding、关键词检索、目标导向检索和 rerank 组成。默认路径会先扩大候选池，再把表格、公式和同章节相邻证据一起送入统一重排，减少“答案说到数据但没带真表格”的情况。
+
+默认 Windows 安装包不内置本地大模型，体积保持在普通桌面应用范围内；如果用户自己安装本地 embedding / rerank 模型，应用会在云端服务不可用时自动回退到本机推理。设置页会显示本地回退是否可用。
 
 ## 下载
 
 普通用户建议直接下载 Windows 安装包：
 
-- [v0.1.8.1 发布页](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.1)
-- [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.1/Scholar-AI-Setup-0.1.8.1-windows-x64.exe)
-- [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.1/SHA256SUMS.txt)
+- [v0.1.8.3 发布页](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.3)
+- [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/Scholar-AI-Setup-0.1.8.3-windows-x64.exe)
+- [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/SHA256SUMS.txt)
 
 ## 界面预览
 
@@ -87,7 +89,7 @@ Scholar AI 不训练大模型，调的就是 OpenAI、Anthropic、Google、DeepS
 | 引用校验 | 依赖模型自觉与用户复核 | 引用没真出现在传给 LLM 的上下文里就拒绝写入 |
 | 多智能体 | 单 agent | 多 agent：独立模型 / 提示词 / 工具权限，按轮次互相质询 |
 | 上下文预算 | 由产品决定，前端通常不可见 | 显式预算 envelope，超额返回 422 告知超出位置 |
-| 成本结构 | 订阅制 | 按 token 计费，按用量精细控制 |
+| 成本结构 | 订阅制 | 按调用量计费，按用量精细控制 |
 | 工具扩展 | 各家自有协议，主要面向云端 | MCP 标准接入本地 stdio 工具，每次调用弹窗审批 |
 | 写作工作台 | 复制到外部编辑器 | 内嵌 TipTap + DOCX 导出 |
 | 可定制与可审查 | 客户端实现不公开 | 公开仓库可审查 |
@@ -187,8 +189,8 @@ API、MCP、Skill 的本地凭证配置见 [API_CONFIGURATION.md](API_CONFIGURAT
 **安装版（Windows）**：所有数据集中在 `%APPDATA%\LiteratureAssistant\`，可直接在文件资源管理器地址栏粘贴这串地址回车打开。
 
 - 知识库切块和索引：`projects\{项目ID}\`（每个项目一个子文件夹）
-- 应用日志：`runtime_state\logs\backend.log`（自动轮转，保留最近 5 份）
-- 浏览器配置 / 临时状态：`runtime_state\app-profile\`
+- 应用日志：`logs\backend.log`（自动轮转，保留最近 5 份）
+- 浏览器配置 / 临时状态：`app-profile\`
 
 遇到问题时，把 `backend.log` 拷一份发我或附在反馈里就行 —— 后端报错、PDF 加载失败原因、卷次分析的去重统计、前端崩溃都会写在这一个文件里。
 
