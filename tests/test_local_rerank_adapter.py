@@ -56,7 +56,13 @@ def test_disabled_env_truthy_short_circuits(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_allow_download_truthy_unlocks_no_cache_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """LOCAL_RERANK_ALLOW_DOWNLOAD=1 + 不存在的模型名 → is_available True
-    (虚假允许,但 get_reranker 真加载会失败转 None — 那是另一回事)。"""
+    (虚假允许,但 get_reranker 真加载会失败转 None — 那是另一回事)。
+
+    依赖 transformers + torch 在 venv 内可 import (双线打包政策下默认 release
+    venv 没装这俩, 此时 is_available 直接返回 False, 该测试跳过)。
+    """
+    pytest.importorskip("torch")
+    pytest.importorskip("transformers")
     monkeypatch.setenv("LOCAL_RERANK_ALLOW_DOWNLOAD", "1")
     monkeypatch.setenv("LOCAL_RERANK_MODEL_NAME", "fake-org/does-not-exist")
     lra = _reload_adapter()

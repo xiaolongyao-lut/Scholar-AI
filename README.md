@@ -60,6 +60,8 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 - [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/SHA256SUMS.txt)
 - 安装包 SHA256：`77FBA03CE894B95D186261ED7D4ED32AFE43FCD08F5B8689F91B5A71B7D06235`
 
+安装包是 API-first 路线，~466MB，依赖远端服务（SiliconFlow / DashScope 等）。**不含本地 GPU/CPU 推理代码** — 想跑 marker-pdf 结构化解析、本地 rerank、本地 embedding 的用户请走「从源码运行」。
+
 ## 架构
 
 ```text
@@ -224,7 +226,9 @@ npm run build
 
 ## 可选扩展
 
-绝大多数用户用 API 路线即可。如果你**从源码运行**且需要离线推理或本机 GPU 推理,Scholar AI 提供 PDF 结构化解析 (marker)、本地 rerank、本地 embedding 三个回退选项,详见 [OPTIONAL_ADDONS.md](OPTIONAL_ADDONS.md)。Inno Setup 安装包不支持这些选项 (PyInstaller bundle 封闭, 无法 `pip install` 进去)。
+**安装包用户**: 没有本地推理选项,装包就是 API 路线。这是设计选择 — 用安装包的人大多在乎"装好就用",不在乎本地 GPU 加速。
+
+**源码用户**: 自动获得 marker-pdf 结构化解析、本地 rerank 回退、本地 embedding 回退三个选项。装 `pip install marker-pdf` 或 `pip install sentence-transformers torch` 即可启用。详见 [OPTIONAL_ADDONS.md](OPTIONAL_ADDONS.md)。
 
 ## 许可
 

@@ -143,3 +143,59 @@ def test_pyinstaller_literature_datas_exclude_runtime_state_and_secrets(tmp_path
         combined = Path(dest) / rel_src.name
         assert not any(part in {".audit", ".approval", ".rollback_snapshots"} for part in combined.parts)
         assert not any(part in {"logs", "chunk_store", "mcp_servers"} for part in combined.parts)
+
+
+def test_default_release_excludes_local_inference_adapters(tmp_path: Path, monkeypatch) -> None:
+    """Default release MUST NOT ship local_*_adapter.py to the onedir.
+
+    Per "API-first 双线" packaging policy (CHANGELOG 0.1.8.3 / OPTIONAL_ADDONS.md):
+      - Default Inno Setup installer excludes local GPU/CPU inference adapters
+        so users get a 466MB bundle that depends only on remote APIs.
+      - LITASSIST_BUNDLE_RAG=1 includes them for offline / firewalled deployments
+        (~3.3GB onedir).
+
+    Routes that import these adapters (rerank_config_router.get_local_*_status,
+    model_config_router.get_local_embedding_status) wrap the import in
+    try/except ImportError and return available=False, so excluding the .py
+    files at the data layer is safe.
+    """
+    monkeypatch.delenv("LITASSIST_BUNDLE_RAG", raising=False)
+    root = tmp_path / "literature_assistant"
+    (root / "core").mkdir(parents=True)
+    (root / "core" / "local_rerank_adapter.py").write_text("# adapter\n", encoding="utf-8")
+    (root / "core" / "local_embedding_adapter.py").write_text("# adapter\n", encoding="utf-8")
+    (root / "core" / "python_adapter_server.py").write_text("# server\n", encoding="utf-8")
+
+    collect_datas = _load_spec_function("_collect_literature_assistant_datas")
+    collected = collect_datas(root, "literature_assistant")
+    collected_srcs = {Path(src).relative_to(root).as_posix() for src, _dest in collected}
+
+    assert "core/python_adapter_server.py" in collected_srcs, "regular sources must still ship"
+    assert "core/local_rerank_adapter.py" not in collected_srcs, (
+        "local rerank adapter must be excluded from default release"
+    )
+    assert "core/local_embedding_adapter.py" not in collected_srcs, (
+        "local embedding adapter must be excluded from default release"
+    )
+
+
+def test_bundle_rag_release_includes_local_inference_adapters(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """LITASSIST_BUNDLE_RAG=1 SHIPS local_*_adapter.py to the onedir.
+
+    Counterpart to default-exclusion test: confirms the env-var opt-in
+    actually pulls the adapters back in.
+    """
+    monkeypatch.setenv("LITASSIST_BUNDLE_RAG", "1")
+    root = tmp_path / "literature_assistant"
+    (root / "core").mkdir(parents=True)
+    (root / "core" / "local_rerank_adapter.py").write_text("# adapter\n", encoding="utf-8")
+    (root / "core" / "local_embedding_adapter.py").write_text("# adapter\n", encoding="utf-8")
+
+    collect_datas = _load_spec_function("_collect_literature_assistant_datas")
+    collected = collect_datas(root, "literature_assistant")
+    collected_srcs = {Path(src).relative_to(root).as_posix() for src, _dest in collected}
+
+    assert "core/local_rerank_adapter.py" in collected_srcs
+    assert "core/local_embedding_adapter.py" in collected_srcs

@@ -1,17 +1,16 @@
-# 可选扩展 · Optional Addons
+# 可选扩展 · Optional Addons (源码版)
 
-Scholar AI 默认走 API-first 路线 — 接 SiliconFlow / DashScope 等远端服务,主安装包 ~466MB,绝大多数用户不需要任何额外配置。
+> **本文档面向源码版用户**。Windows 安装包 (`Scholar-AI-Setup-x.x.x-windows-x64.exe`) 是 API-first 路线 — 不含本地推理代码,无法启用任何本地加速。这是设计选择:用安装包的人大多在乎"装好就用",不在乎本地 GPU 推理。
 
-下面这些"可选扩展"针对**离线 / 防火墙 / 想用本地 GPU 推理**的用户,**只对从源码运行的开发版生效**。
+Scholar AI 默认 API-first(SiliconFlow / DashScope 等远端服务)。从源码运行的用户额外获得本地 GPU/CPU 推理能力,针对**离线 / 防火墙 / 想用本地 GPU 推理**的场景。
 
 ## 重要前提 · 适用范围
 
-| 你的部署方式 | 能不能启用可选扩展 |
+| 部署方式 | 本地推理能力 |
 |---|---|
-| Inno Setup 安装包 (`Scholar-AI-Setup-x.x.x-windows-x64.exe`) | **不能** — PyInstaller bundle 是封闭的,没暴露 `python.exe` 和 `pip`,你装到系统 Python 的包它看不到 |
-| 从源码克隆 + `pip install -e .` + `python run_literature_assistant.py` (开发版) | **能** — pip 装哪里 Python 找哪里 |
-
-未来如果做成独立扩展安装器,会在 release notes 里另行通告。目前**只有源码运行的用户**才能用下面的步骤。
+| Inno Setup 安装包 | **不可用** — `local_*_adapter.py` 被打包脚本物理排除,PyInstaller bundle 内嵌 python 没有 pip 入口 |
+| 从源码克隆 + `pip install -e .` + `python run_literature_assistant.py` | **可用** — adapter 在源码树里,装 `pip install marker-pdf` 或 `pip install sentence-transformers torch` 即生效 |
+| 构建完整版安装包 `LITASSIST_BUNDLE_RAG=1 pyinstaller ...` | **可用** — 但产物 ~3.3GB,本仓库不发布该版本,需要自己构建 |
 
 ---
 

@@ -108,6 +108,21 @@ _SOURCE_DATA_SUFFIX_EXCLUDES = frozenset({
     ".pyo",
 })
 
+# Source files that ship ONLY in source builds + the LITASSIST_BUNDLE_RAG=1 full
+# release. Default release packs API-first only; local GPU/CPU inference adapters
+# are excluded at the data-copy layer so the .py files don't reach the bundle.
+# Routes that import these adapters lazily (rerank_config_router.get_local_*_status,
+# model_config_router.get_local_embedding_status) already wrap the import in
+# try/except ImportError → return available=False, so the frontend status chip
+# degrades to "本地回退: 不可用" with no runtime error.
+_SOURCE_DATA_LOCAL_FALLBACK_FILES = frozenset({
+    "local_rerank_adapter.py",
+    "local_embedding_adapter.py",
+    "local_rerank_server.py",
+    "local_embedding_server.py",
+})
+_SOURCE_DATA_INCLUDE_LOCAL_FALLBACK = os.environ.get("LITASSIST_BUNDLE_RAG", "").strip() == "1"
+
 
 def _should_exclude_literature_assistant_data_path(path: Path, is_dir: bool) -> bool:
     """Return True for source-tree files that must never enter release datas.
@@ -124,6 +139,11 @@ def _should_exclude_literature_assistant_data_path(path: Path, is_dir: bool) -> 
     if path.name in _SOURCE_DATA_FILE_EXCLUDES:
         return True
     if path.name.startswith(".env.") and path.name != ".env.example":
+        return True
+    if (
+        not _SOURCE_DATA_INCLUDE_LOCAL_FALLBACK
+        and path.name in _SOURCE_DATA_LOCAL_FALLBACK_FILES
+    ):
         return True
     return path.suffix in _SOURCE_DATA_SUFFIX_EXCLUDES
 
