@@ -10,6 +10,11 @@
  *   - one `evidence` node per Source, deduped by material_id+chunk_id
  *     (fallback fingerprint when material_id is missing).
  *   - `supports` edges from each evidence to the claim.
+ *   - **2026-06-14 dimension overlay**: when an AnalysisChain is provided,
+ *     each non-empty field becomes an additional node tagged with
+ *     `analysis_chain_field` so DimensionGraphViewer projects the answer
+ *     into the six reasoning lanes. Original claim/evidence shape is
+ *     preserved so the relations view still renders cleanly.
  *
  * Source.page in the Workbench message is a Chinese chunk-index label
  * like `片段 5`, not a real PDF page number; the GraphPayloadViewer node
@@ -17,6 +22,7 @@
  * page is available.
  */
 import type { components } from '@/generated/openapi';
+import type { AnalysisChainPayload } from '@/services/discussionApi';
 
 type GraphPayloadV0 = components['schemas']['GraphPayloadV0'];
 type GraphNode = components['schemas']['GraphNode'];
@@ -81,17 +87,21 @@ function claimLabel(query: string): string {
  * Convert a (query, sources) pair into GraphPayloadV0. `sources` may be
  * empty / undefined; in that case the payload still carries the claim
  * node so callers can render an "evidence will appear here" panel.
+ *
+ * When ``analysisChain`` is provided, every non-empty field is added as
+ * a typed node so DimensionGraphViewer can place it in the matching lane.
  */
 export function workbenchToGraphPayload(
   query: string,
   sources: ReadonlyArray<WorkbenchSource> | null | undefined,
+  analysisChain?: AnalysisChainPayload | null,
 ): GraphPayloadV0 {
   const claimNodeId = claimIdOf(query);
   const claimNode: GraphNode = {
     id: claimNodeId,
     label: claimLabel(query),
     type: 'claim',
-    metadata: { surface: 'workbench' },
+    metadata: { surface: 'workbench', reasoning_dimension: 'question', analysis_chain_field: 'question' },
     material_id: null,
     source_ref: null,
     evidence_refs: null,
@@ -154,11 +164,119 @@ export function workbenchToGraphPayload(
     metadata: null,
   }));
 
+  // Mark every dedup'd evidence node with reasoning_dimension=evidence so
+  // DimensionGraphViewer routes them into the evidence lane regardless of
+  // upstream heuristics.
+  for (const node of evidenceNodes) {
+    const existingMeta = (node.metadata as Record<string, unknown> | null | undefined) ?? {};
+    node.metadata = { ...existingMeta, reasoning_dimension: 'evidence', analysis_chain_field: 'evidence' };
+  }
+
+  const chainNodes = analysisChain ? buildAnalysisChainNodes(claimNodeId, analysisChain) : [];
+  for (const entry of chainNodes) {
+    edges.push(entry.edge);
+  }
+  const chainNodeList = chainNodes.map((entry) => entry.node);
+
   return {
     version: 'v0',
     scope: { kind: 'question', ref: query.length > 0 ? query.slice(0, 200) : 'workbench' },
     updated_at: new Date().toISOString(),
-    nodes: [claimNode, ...evidenceNodes],
+    nodes: [claimNode, ...evidenceNodes, ...chainNodeList],
     edges,
   };
+}
+
+interface AnalysisChainNodeEntry {
+  node: GraphNode;
+  edge: GraphEdge;
+}
+
+/**
+ * Project an AnalysisChainPayload onto typed nodes. Each non-empty field
+ * yields one node connected to the claim with a relation that suggests
+ * its argumentative role (supports / contradicts / derives_from).
+ */
+function buildAnalysisChainNodes(
+  claimNodeId: string,
+  chain: AnalysisChainPayload,
+): AnalysisChainNodeEntry[] {
+  const entries: AnalysisChainNodeEntry[] = [];
+
+  const pushTextNode = (
+    field: 'observation' | 'mechanism' | 'boundary' | 'next_action',
+    text: string | undefined,
+    type: GraphNode['type'],
+    relation: GraphEdge['relation'],
+  ) => {
+    const trimmed = (text ?? '').trim();
+    if (!trimmed) return;
+    const id = `chain:${field}:${hashText(trimmed)}`;
+    const node: GraphNode = {
+      id,
+      label: trimmed.length > 60 ? `${trimmed.slice(0, 57)}…` : trimmed,
+      type,
+      metadata: { analysis_chain_field: field, reasoning_dimension: field },
+      material_id: null,
+      source_ref: null,
+      evidence_refs: null,
+      confidence: null,
+    };
+    const edge: GraphEdge = {
+      id: `edge:${id}->${claimNodeId}`,
+      source: id,
+      target: claimNodeId,
+      relation,
+      material_id: null,
+      source_ref: null,
+      evidence_refs: null,
+      confidence: null,
+      metadata: { via: 'analysis_chain', field },
+    };
+    entries.push({ node, edge });
+  };
+
+  pushTextNode('observation', chain.observation, 'claim', 'extends');
+  pushTextNode('mechanism', chain.mechanism, 'concept', 'extends');
+  pushTextNode('boundary', chain.boundary, 'limitation', 'supports');
+  pushTextNode('next_action', chain.next_action, 'agent', 'related');
+
+  const pushListNodes = (
+    field: 'evidence' | 'counter_evidence',
+    list: string[] | undefined,
+    type: GraphNode['type'],
+    relation: GraphEdge['relation'],
+  ) => {
+    const items = (list ?? []).map((item) => item.trim()).filter((item) => item.length > 0);
+    items.forEach((text, index) => {
+      const id = `chain:${field}:${index}:${hashText(text)}`;
+      const node: GraphNode = {
+        id,
+        label: text.length > 60 ? `${text.slice(0, 57)}…` : text,
+        type,
+        metadata: { analysis_chain_field: field, reasoning_dimension: field },
+        material_id: null,
+        source_ref: null,
+        evidence_refs: null,
+        confidence: null,
+      };
+      const edge: GraphEdge = {
+        id: `edge:${id}->${claimNodeId}`,
+        source: id,
+        target: claimNodeId,
+        relation,
+        material_id: null,
+        source_ref: null,
+        evidence_refs: null,
+        confidence: null,
+        metadata: { via: 'analysis_chain', field },
+      };
+      entries.push({ node, edge });
+    });
+  };
+
+  pushListNodes('evidence', chain.evidence, 'evidence', 'supports');
+  pushListNodes('counter_evidence', chain.counter_evidence, 'evidence', 'contradicts');
+
+  return entries;
 }

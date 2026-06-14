@@ -316,9 +316,6 @@ export function EvidenceGraphWorkbench() {
               </div>
               <div className="min-w-0">
                 <h2 className="text-base font-semibold text-foreground">证据图谱</h2>
-                <p className="mt-1 text-xs leading-5 text-foreground/55">
-                  按来源、知识项、洞察、研读会话、问题或项目查看可追溯关系。
-                </p>
               </div>
             </div>
             <button
@@ -352,7 +349,7 @@ export function EvidenceGraphWorkbench() {
                 value={scopeRef}
                 onChange={(event) => setScopeRef(event.target.value)}
                 className="h-9 rounded-md border border-outline-variant/50 bg-surface-high px-3 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
-                placeholder="scope id / question"
+                placeholder="scope id"
               />
             </label>
             <label className="grid gap-1 text-[11px] text-foreground/55">
@@ -362,7 +359,7 @@ export function EvidenceGraphWorkbench() {
                 value={sessionId}
                 onChange={(event) => setSessionId(event.target.value)}
                 className="h-9 rounded-md border border-outline-variant/50 bg-surface-high px-3 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
-                placeholder="SmartRead session"
+                placeholder="session"
               />
             </label>
             <button

@@ -218,9 +218,6 @@ export function GraphDebugPanel({ graph, isLoading, error, onRefresh }: GraphDeb
         <div className="min-w-0">
           <div className="font-label text-[11px] uppercase tracking-[0.22em] text-foreground/35">知识图谱</div>
           <h2 className="mt-2 font-headline text-base font-semibold text-foreground">交互式知识图谱</h2>
-          <p className="mt-1 text-xs leading-5 text-foreground/50">
-            拖拽、缩放和选择节点，快速检查页面之间的证据关系。
-          </p>
         </div>
 
         <button
@@ -282,7 +279,7 @@ export function GraphDebugPanel({ graph, isLoading, error, onRefresh }: GraphDeb
             ) : (
               <div className="absolute right-3 top-3 z-10 flex max-w-xs items-center gap-2 rounded-md border border-outline-variant/50 bg-surface-lowest/95 px-3 py-2 text-[11px] text-foreground/55 shadow-sm">
                 <Info size={13} className="shrink-0 text-primary/70" />
-                点击节点查看页面、类型和关联信息。
+                点击节点查看详情。
               </div>
             )}
           </div>

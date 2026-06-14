@@ -141,6 +141,32 @@ def _node_type_from_kind(kind: str) -> tuple[NodeType, dict[str, Any]]:
     return "concept", {"original_kind": kind}
 
 
+# 维度提示：根据 wiki node kind 推一个默认的「思维角色」标签。
+# 前端 dimensionGraph 缺失时用启发式，这里只是把后端已经知道的语义显式落到 payload，
+# 让 SmartRead / 写作 / WikiWorkbench 拿到一致的维度。
+_DIMENSION_BY_KIND: dict[str, str] = {
+    "claim": "observation",
+    "method": "mechanism",
+    "concept": "mechanism",
+    "dataset": "evidence",
+    "metric": "evidence",
+    "material": "evidence",
+    "evidence": "evidence",
+    "paper": "evidence",
+    "limitation": "boundary",
+    "boundary": "boundary",
+    "agent": "next_action",
+    "topic": "question",
+    "question": "question",
+}
+
+
+def _reasoning_dimension_from_kind(kind: str) -> str | None:
+    """Return a reasoning-dimension hint for a wiki node kind, or None if unknown."""
+    normalised = (kind or "").strip().lower()
+    return _DIMENSION_BY_KIND.get(normalised)
+
+
 def _confidence_from_edge(edge: WikiGraphEdge) -> float | None:
     """Reduce ``weight`` (0..1) and qualitative ``confidence`` into one number.
 
@@ -240,6 +266,11 @@ def adapt_node(node: WikiGraphNode) -> GraphNode:
         merged_meta.setdefault("frontmatter_id", node.frontmatter_id)
     if node.status:
         merged_meta.setdefault("status", node.status)
+    # 在 payload 里显式声明 reasoning_dimension（设计文档 Slice 4）。
+    # ``setdefault`` 保证调用方已显式标注的维度不会被覆盖。
+    dimension_hint = _reasoning_dimension_from_kind(node.kind)
+    if dimension_hint is not None:
+        merged_meta.setdefault("reasoning_dimension", dimension_hint)
     return GraphNode(
         id=node.node_id,
         label=node.title or node.node_id,

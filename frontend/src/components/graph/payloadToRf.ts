@@ -212,7 +212,9 @@ function edgeStroke(relation: GraphEdge['relation']): string {
  * and is trivially unit-testable.
  */
 export function payloadToRf(payload: GraphPayloadV0): { nodes: Node[]; edges: Edge[] } {
-  const edges: Edge[] = payload.edges.map((e) => ({
+  const nodeIds = new Set(payload.nodes.map((node) => node.id));
+  const graphEdges = payload.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
+  const edges: Edge[] = graphEdges.map((e) => ({
     id: e.id,
     source: e.source,
     target: e.target,
@@ -237,7 +239,7 @@ export function payloadToRf(payload: GraphPayloadV0): { nodes: Node[]; edges: Ed
   }));
 
   const nodes: Node[] = payload.nodes.map((n) => {
-    const weight = nodeWeight(n, payload.edges);
+    const weight = nodeWeight(n, graphEdges);
     return {
       id: n.id,
       // dagre will overwrite position; keep a placeholder so React Flow
