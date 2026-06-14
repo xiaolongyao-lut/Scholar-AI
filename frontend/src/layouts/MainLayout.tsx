@@ -204,6 +204,30 @@ function NavGroup({ icon, label, basePath, collapsed, children, onNavigate }: {
 /* ─── Help Dialog ─── */
 function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useI18n();
+  const closeButtonRef = React.useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    document.addEventListener('keydown', handleEscape, true);
+    document.addEventListener('keyup', handleEscape, true);
+    window.addEventListener('keydown', handleEscape, true);
+    window.addEventListener('keyup', handleEscape, true);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', handleEscape, true);
+      document.removeEventListener('keyup', handleEscape, true);
+      window.removeEventListener('keydown', handleEscape, true);
+      window.removeEventListener('keyup', handleEscape, true);
+    };
+  }, [open, onClose]);
 
   return (
     <AnimatePresence>
@@ -215,6 +239,9 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
           transition={{ duration: 0.15 }}
           className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center backdrop-blur-sm"
           onClick={onClose}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="help-dialog-title"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -225,11 +252,12 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between p-6 border-b border-outline-variant">
-              <h2 className="font-headline text-lg text-foreground flex items-center gap-2.5">
+              <h2 id="help-dialog-title" className="font-headline text-lg text-foreground flex items-center gap-2.5">
                 <HelpCircle size={20} className="text-primary" />
                 <span>{t('nav.help_docs')}</span>
               </h2>
               <button
+                ref={closeButtonRef}
                 type="button"
                 onClick={onClose}
                 title={t('common.close')}
@@ -565,7 +593,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
               <div className="flex items-center justify-between px-5 py-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <img
-                    src="/app-icon.png"
+                    src="/app-icon-128.png"
                     alt=""
                     aria-hidden="true"
                     className="h-10 w-10 shrink-0 rounded-xl object-contain shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
@@ -631,7 +659,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
                 className="flex min-w-0 items-center gap-3"
               >
                 <img
-                  src="/app-icon.png"
+                  src="/app-icon-128.png"
                   alt=""
                   aria-hidden="true"
                   className="h-10 w-10 shrink-0 rounded-xl object-contain shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
@@ -645,7 +673,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
           </AnimatePresence>
           {leftNavCollapsed && (
             <img
-              src="/app-icon.png"
+              src="/app-icon-128.png"
               alt=""
               aria-hidden="true"
               className="h-10 w-10 shrink-0 rounded-xl object-contain shadow-[0_8px_24px_rgba(0,0,0,0.24)]"

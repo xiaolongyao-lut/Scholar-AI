@@ -243,7 +243,7 @@ function ResearchWorkbenchInner() {
 
   return (
     <WorkbenchShell
-      drawerTitle="阅读说明"
+      drawerTitle="阅读"
       header={
         <>
           <button
@@ -307,9 +307,7 @@ function ResearchWorkbenchInner() {
         <div className="flex h-full min-h-0 flex-col gap-3 p-4">
           <div>
             <h3 className="text-sm font-semibold text-foreground">在智能研读里继续</h3>
-            <p className="mt-1 text-xs leading-relaxed text-foreground/60">
-              本页是全屏阅读器。围绕本文献的提问、多智能体讨论和证据图谱已统一到智能研读工作台。
-            </p>
+            <p className="mt-1 text-xs leading-relaxed text-foreground/60">提问、讨论、证据图谱。</p>
           </div>
           <button
             type="button"
@@ -329,7 +327,7 @@ function ResearchWorkbenchInner() {
       }
       drawer={
         <p className="text-xs leading-relaxed text-foreground/55">
-          证据、笔记与图谱已统一到智能研读工作台；在上方「智能研读」入口围绕本文献提问即可看到对应证据定位。
+          证据、笔记、图谱在智能研读中查看。
         </p>
       }
     />

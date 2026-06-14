@@ -4,6 +4,7 @@ import type {
   CreateJobRequest,
   JobStatusDetail,
   WritingArtifact,
+  WritingEvent,
   WritingJob,
   WritingSession,
 } from '@/types/runtime';
@@ -11,6 +12,46 @@ import type {
 const DEFAULT_POLL_INTERVAL_MS = 1200;
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+/**
+ * Sanitize a free-form backend event payload field into a short, single-line
+ * UI string. Backend writes structured payloads but the progress callback only
+ * needs a one-liner; everything else is dropped to keep the message bubble
+ * stable. Never echoes raw JSON or stack traces.
+ */
+function eventPayloadToProgressText(event: WritingEvent): string | null {
+  const payload = (event.data ?? {}) as Record<string, unknown>;
+  const candidates = [
+    payload.phase_label,
+    payload.label,
+    payload.message,
+    payload.stage,
+    payload.phase,
+    payload.detail,
+    payload.description,
+  ];
+  for (const cand of candidates) {
+    if (typeof cand === 'string' && cand.trim()) {
+      return cand.trim().slice(0, 120);
+    }
+  }
+  // Fallback to event_type — readable for debug but better than nothing.
+  if (typeof event.event_type === 'string' && event.event_type) {
+    return event.event_type;
+  }
+  return null;
+}
+
+export interface JobProgressTick {
+  /** Job's current top-level state — `running` / `paused` / etc. */
+  status: string;
+  /** One-liner derived from the latest non-terminal event for the UI bubble. */
+  label: string | null;
+  /** Server-side progress percentage if backend included it, else null. */
+  percent: number | null;
+  /** Latest event seen this tick (caller may inspect for richer UI). */
+  latestEvent: WritingEvent | null;
+}
 
 interface EnsureSessionOptions {
   title: string;
@@ -27,6 +68,13 @@ interface RunBackgroundJobOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   onJobCreated?: (job: WritingJob, session: WritingSession) => void;
+  /**
+   * B12 (2026-06-13): Fires every poll tick with the latest job phase/label so
+   * the chat bubble can render "AI 正在做：[阶段名]" instead of stale
+   * "AI 思考中" while a 2-minute RAG job runs. Backend already emits
+   * JOB_PROGRESS / JOB_PHASE — this just surfaces them.
+   */
+  onProgress?: (tick: JobProgressTick) => void;
 }
 
 interface RunBackgroundJobResult {
@@ -78,11 +126,13 @@ export async function waitForRuntimeJobTerminalState(
     pollIntervalMs?: number;
     timeoutMs?: number;
     signal?: AbortSignal;
+    onProgress?: (tick: JobProgressTick) => void;
   } = {},
 ): Promise<JobStatusDetail> {
   const client = getWritingRuntimeClient();
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const onProgress = options.onProgress;
   const startedAt = now();
 
   if (options.signal?.aborted) {
@@ -90,13 +140,64 @@ export async function waitForRuntimeJobTerminalState(
   }
 
   const abortError = () => new DOMException('Aborted', 'AbortError');
+  // Sequence cursor for incremental events — backend supports after_sequence so
+  // we only get NEW events on each tick. Avoids re-emitting the same phase
+  // label to onProgress on every poll.
+  let afterSequence: number | undefined;
+  let lastLabel: string | null = null;
 
   while (now() - startedAt <= timeoutMs) {
     if (options.signal?.aborted) {
       await client.cancelJob(jobId).catch(() => undefined);
       throw abortError();
     }
-    const status = await client.getJobStatus(jobId);
+    // B12: use snapshot to fetch status + incremental events in ONE round-trip
+    // instead of polling /status alone. Falls back to /status if snapshot fails.
+    let status: JobStatusDetail;
+    let latestEvent: WritingEvent | null = null;
+    let labelForTick: string | null = lastLabel;
+    let percentForTick: number | null = null;
+    try {
+      const snapshot = await client.getJobEventSnapshot(jobId, {
+        afterSequence,
+      });
+      status = snapshot.status;
+      const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+      if (events.length > 0) {
+        latestEvent = events[events.length - 1];
+        const newLabel = eventPayloadToProgressText(latestEvent);
+        if (newLabel) {
+          labelForTick = newLabel;
+          lastLabel = newLabel;
+        }
+        const rawPercent = (latestEvent.data as Record<string, unknown> | undefined)?.percent;
+        if (typeof rawPercent === 'number' && Number.isFinite(rawPercent)) {
+          percentForTick = Math.max(0, Math.min(100, rawPercent));
+        }
+      }
+      if (typeof snapshot.latest_sequence === 'number') {
+        afterSequence = snapshot.latest_sequence;
+      }
+    } catch {
+      // Snapshot endpoint may be missing on older backends — fall back to
+      // status-only polling. The user still gets a stable bubble, just no
+      // per-phase label.
+      status = await client.getJobStatus(jobId);
+    }
+
+    if (onProgress) {
+      try {
+        onProgress({
+          status: String(status.status ?? ''),
+          label: labelForTick,
+          percent: percentForTick,
+          latestEvent,
+        });
+      } catch {
+        // Callback must never break the polling loop.
+      }
+    }
+
     if (isTerminal(status.status)) {
       return status;
     }
@@ -128,6 +229,7 @@ export async function runBackgroundJob({
   timeoutMs,
   signal,
   onJobCreated,
+  onProgress,
 }: RunBackgroundJobOptions): Promise<RunBackgroundJobResult> {
   const client = getWritingRuntimeClient();
   const session = request.session_id
@@ -152,6 +254,7 @@ export async function runBackgroundJob({
     pollIntervalMs,
     timeoutMs,
     signal,
+    onProgress,
   });
   const artifacts = await client.getJobArtifacts(job.job_id);
   return { session, job, status, artifacts };

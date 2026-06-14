@@ -565,7 +565,7 @@ export function VolumeAnalysis() {
               <div>
                 <div className="font-label text-[11px] tracking-[0.18em] text-foreground/35">批处理</div>
                 <h2 className="mt-1 font-headline text-base font-semibold text-foreground">批处理任务</h2>
-                <p className="mt-1 text-xs leading-5 text-foreground/50">选择 PDF 文件夹、输出目录和分析目标后提交；任务状态会自动追踪，并写入最近任务。</p>
+                <p className="mt-1 text-xs leading-5 text-foreground/50">PDF 文件夹、输出目录、目标。</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <select
@@ -599,7 +599,7 @@ export function VolumeAnalysis() {
                 <input
                   value={batchForm.pdf_folder}
                   onChange={e => setBatchForm(prev => ({ ...prev, pdf_folder: e.target.value }))}
-                  placeholder="选择或粘贴本机 PDF 文件夹"
+                  placeholder="PDF 文件夹"
                   className="h-10 w-full rounded-md border border-outline-variant/60 bg-surface-low px-3 text-sm font-label text-foreground focus:border-primary/40 focus:outline-none"
                 />
               </label>
@@ -714,11 +714,11 @@ export function VolumeAnalysis() {
                     style={{ width: `${Math.max(0, Math.min(100, batchTask.progress || 0))}%` }}
                   />
                 </div>
-                <div className="text-[11px] font-label text-foreground/35">任务已记录在本机历史中。</div>
+                <div className="text-[11px] font-label text-foreground/35">已记录。</div>
               </div>
             ) : (
               <div className="rounded-md border border-dashed border-outline-variant/60 bg-surface-low px-3 py-6 text-center text-xs text-foreground/45">
-                暂无正在追踪的批处理任务
+                暂无批处理任务
               </div>
             )}
           </div>
@@ -728,7 +728,7 @@ export function VolumeAnalysis() {
           <section className="mb-5 rounded-lg border border-outline-variant/60 bg-surface-lowest p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="font-headline text-sm font-semibold text-foreground">最近任务</h2>
-              <span className="text-[11px] font-label text-foreground/40">保留最近 {MAX_HISTORY_COUNT} 条本机记录</span>
+              <span className="text-[11px] font-label text-foreground/40">最近 {MAX_HISTORY_COUNT} 条</span>
             </div>
             <div className="grid gap-2 lg:grid-cols-2">
               {taskHistory.slice(0, 6).map(item => (

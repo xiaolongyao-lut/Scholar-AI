@@ -561,7 +561,7 @@ function SectionApiSettings({
       <div>
         <h2 className="font-headline text-lg font-semibold text-foreground">API 配置</h2>
         <p className="mt-1 text-xs leading-relaxed text-foreground/55">
-          统一查看研读/写作、向量化、重排序和凭证中心状态；具体编辑仍走各自的专用表单。
+          模型、向量化、重排、凭证。
         </p>
       </div>
 
@@ -627,7 +627,13 @@ function SectionApiSettings({
                 <ToggleLeft size={16} className="text-foreground/40" />
               </div>
               <p className="mt-2 text-xs text-foreground/55">
-                {settings.feature_flags.filter((flag) => flag.current).length} / {settings.feature_flags.length} 已启用
+                {/* B16 (2026-06-14): summary only counts the flags actually
+                    shown in the experimental section — PDF backend + GPU
+                    rerank — so the badge matches what the user can toggle. */}
+                {settings.feature_flags.filter((flag) => VISIBLE_FLAG_NAMES.has(flag.name) && flag.current).length}
+                {' / '}
+                {settings.feature_flags.filter((flag) => VISIBLE_FLAG_NAMES.has(flag.name)).length}
+                {' 已启用'}
               </p>
               <p className="mt-1 truncate text-[10px] text-foreground/35">
                 管理 Wiki、经验沉淀、讨论和检索能力
@@ -769,7 +775,7 @@ function AppliedCredentialPicker({
         </p>
       ) : credentials.length === 0 && !loading ? (
         <p className="mt-2 text-[11px] text-foreground/45">
-          没有可用凭证。请先到“API 凭证”分区新增。
+          暂无可用凭证。
         </p>
       ) : null}
       {message ? (
@@ -801,7 +807,7 @@ function SmartReadDefaultTierControl(): JSX.Element {
         <div className="min-w-0">
           <p className="text-xs font-semibold text-foreground/75">智能研读默认成本模式</p>
           <p className="mt-1 text-[11px] leading-relaxed text-foreground/50">
-            这里控制智能研读、知识库智读和工作台问答的默认调用预算；提问界面不再单独显示这个开关。
+            默认调用预算。
           </p>
           <p className="mt-1 text-[11px] leading-relaxed text-foreground/45">
             Claude 系列最高用 <span className="font-semibold text-foreground/70">Max</span>；
@@ -995,8 +1001,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
       </div>
       <div className="rounded-lg border border-outline-variant/50 bg-surface-low px-3 py-2">
         <p className="text-[11px] leading-relaxed text-foreground/55">
-          这里配置智能研读和写作使用的 API；主界面智能研读、知识库智读和工作台问答共用这套接口。
-          当前应用内同类请求会按顺序发送，避免上游并发。
+          智能研读与写作 API。
         </p>
       </div>
       <SmartReadDefaultTierControl />
@@ -1072,7 +1077,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
         <Field label={t('settings.top_p')} htmlFor="chat-top-p">
           <SliderInput id="chat-top-p" value={llm.topP} min={0} max={1} step={0.05} ariaLabel={t('settings.top_p')} onChange={v => setLlm({ topP: v })} />
         </Field>
-        <Field label={t('settings.max_tokens')} tooltip="限制智能研读或写作一次回复最多生成多少内容；不是笔记数量，也不会截断已保存的原文。" htmlFor="chat-max-tokens">
+        <Field label={t('settings.max_tokens')} tooltip="单次回复生成上限。" htmlFor="chat-max-tokens">
           <input id="chat-max-tokens" type="number" value={llm.maxTokens} onChange={e => setLlm({ maxTokens: Number(e.target.value) })}
             aria-label={t('settings.max_tokens')}
             className="w-full bg-surface-high rounded-lg px-3 py-2 border border-outline-variant/50 text-sm font-mono text-foreground focus:outline-none focus:border-primary/40 transition-colors" />
@@ -1094,7 +1099,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
           <div className="min-w-0">
             <p className="text-xs font-semibold text-foreground/75">长对话自动摘要</p>
             <p className="mt-1 text-[11px] leading-relaxed text-foreground/50">
-              对话很长时，把较早内容整理成摘要以继续提问；原始对话仍完整保留，供搜索、恢复和分叉使用。
+              旧消息自动整理成摘要。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1107,7 +1112,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
           </div>
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <Field label="开始整理的长度" tooltip="对话累计内容接近这个长度后，系统开始把较早消息整理成摘要。数值越大，越晚整理。" htmlFor="chat-compression-trigger">
+          <Field label="开始整理的长度" tooltip="数值越大，越晚整理。" htmlFor="chat-compression-trigger">
             <input
               id="chat-compression-trigger"
               type="number"
@@ -1411,7 +1416,7 @@ function SectionWorkspace({
           />
           <p className="mt-1.5 text-[11px] leading-relaxed text-foreground/45">
             默认写入安装目录下的 <code className="rounded bg-surface-high px-1 font-mono text-foreground/65">workspace_artifacts/generated/output</code>，
-            生成的导出文件、报告和临时产物都集中在这里，方便备份和清理。
+            用于导出、报告和临时产物。
           </p>
         </Field>
         <div className="flex items-center justify-between">
@@ -1849,7 +1854,7 @@ function SectionSemanticRouting({ t, settings, onChange }: { t: (k: string, p?: 
       <div className="rounded-lg border border-primary/15 bg-primary/5 p-3 text-[11px] leading-relaxed text-foreground/55">
         <p className="font-medium text-foreground/70">语义路由 = Embedding 召回 + Rerank 精排</p>
         <p className="mt-1">
-          Embedding 决定哪些片段先进入候选池；Rerank 决定这些候选证据的最终顺序。两者可分别绑定保存的 API 凭证，也可以指向本地服务。
+          Embedding 召回，Rerank 精排。
         </p>
       </div>
       <div className="rounded-lg border border-outline-variant/45 bg-surface-lowest p-3">
@@ -1857,7 +1862,7 @@ function SectionSemanticRouting({ t, settings, onChange }: { t: (k: string, p?: 
           <div className="min-w-0">
             <p className="text-xs font-semibold text-foreground/75">检索与排序范围</p>
             <p className="mt-1 text-[11px] leading-relaxed text-foreground/50">
-              语义路由只控制候选证据怎么召回、怎么精排；温度、核采样、最大输出和提示词属于生成设置，放在“研读和写作”和“多智能体讨论”里。
+              只控制召回与精排。
             </p>
           </div>
           <Field
@@ -1887,9 +1892,7 @@ function SectionSemanticRouting({ t, settings, onChange }: { t: (k: string, p?: 
       <details className="rounded-lg border border-outline-variant/45 bg-surface-lowest px-3 py-2 text-[11px] text-foreground/50">
         <summary className="cursor-pointer font-medium text-foreground/65 hover:text-foreground/80">本地向量化与重排怎么接？</summary>
         <p className="mt-2 leading-relaxed">
-          本地语义路由由两段组成：向量化把文本转成可检索表示，填写兼容服务地址和模型名称；
-          重排模型会对候选证据重新排序。填写兼容服务地址和模型名称；本地服务没有鉴权时访问密钥可留空。
-          常见组合是本地向量服务提供语义向量，BGE、Jina 或 Cohere 兼容服务提供重排。
+          填写兼容服务地址与模型名称。
         </p>
       </details>
       <EmbeddingCard t={t} settings={settings} onChange={onChange} />
@@ -2062,7 +2065,7 @@ function SectionSampling({
       </h3>
       <p className="text-xs text-foreground/50 leading-relaxed">
         {embedded
-          ? '这些参数属于研读和写作调用。API 凭证页只管理上游连接；这里按任务覆写默认温度、Top-p、Top-k 和最大输出。'
+          ? '按任务覆写生成参数。'
           : t('settings.sampling_description')}
       </p>
 
@@ -2586,7 +2589,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
             {t('settings.section_discussion')}
           </h3>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-foreground/50">
-            为每个讨论角色配置名称、API 绑定、输出参数和提示词；讨论页选中角色后直接使用这里的设置。
+            角色、API、参数、提示词。
           </p>
         </div>
         <span className={cn(
@@ -2678,7 +2681,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
             </div>
           </Field>
 
-          <Field label="默认裁判角色" tooltip="讨论页会优先从已选角色中匹配这个裁判。这里使用角色详情中显示的“讨论角色 ID”，不是角色显示名称。">
+          <Field label="默认裁判角色" tooltip="填写讨论角色 ID。">
             <select
               value={profileStore.defaultJudgeProfileId}
               onChange={(event) => {
@@ -2703,7 +2706,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
         <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <h4 className="font-headline text-sm font-semibold text-foreground">角色与 API</h4>
-            <p className="mt-1 text-xs text-foreground/45">这里维护可选角色。讨论页选择角色后，会直接带上对应 API、输出参数和提示词。</p>
+            <p className="mt-1 text-xs text-foreground/45">可选讨论角色。</p>
           </div>
           <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row xl:w-[360px]">
             <input
@@ -2820,7 +2823,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
               </Field>
               <Field
                 label="API 绑定方式"
-                tooltip="每个角色都可以复用研读和写作设置、选择已保存 API，或单独填写一套 API。"
+                tooltip="复用默认配置或单独填写。"
                 htmlFor={`discussion-profile-${activeProfile.id}-api-mode`}
               >
                 <select
@@ -2849,7 +2852,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
                 apiKeyPlaceholder="粘贴服务提供的访问密钥"
                 modelPlaceholder="填写服务提供的模型名称"
                 baseUrlPlaceholder="填写兼容服务地址"
-                apiKeyTooltip="每个角色可使用不同访问密钥；保存后会进入本机已保存 API 配置，并在讨论时按角色调用。"
+                apiKeyTooltip="保存到本机 API 配置。"
                 modelTooltip="该角色发言时使用的模型。"
                 baseUrlTooltip="兼容研读和写作模型接口的服务地址。"
                 savedKeyMasked={activeProfile.apiKeyMasked}
@@ -2890,7 +2893,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
 
             {activeProfile.apiMode === 'default' ? (
               <div className="rounded-lg border border-outline-variant/60 bg-surface-lowest px-3 py-2 text-xs leading-relaxed text-foreground/55">
-                该角色直接使用“研读和写作”分区的模型配置。需要单独指定模型或 Key 时，切换到“单独填写 API”。
+                使用“研读和写作”模型配置。
               </div>
             ) : null}
 
@@ -2919,7 +2922,7 @@ function SectionDiscussion({ t }: { t: (k: string) => string }) {
                   className="w-full rounded-lg border border-outline-variant/50 bg-surface-lowest px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none"
                 />
               </Field>
-              <Field label="单次发言长度上限" tooltip="限制这个角色每次发言最多生成多少内容。数值越大，回答可能更长，耗时和成本也会增加。" htmlFor={`discussion-profile-${activeProfile.id}-max-tokens`}>
+              <Field label="单次发言长度上限" tooltip="越大越长，耗时和成本更高。" htmlFor={`discussion-profile-${activeProfile.id}-max-tokens`}>
                 <input
                   id={`discussion-profile-${activeProfile.id}-max-tokens`}
                   type="number"
@@ -3027,78 +3030,94 @@ const OPTIONAL_ADDON_FLAG_NAMES = new Set<string>([
   'rag_local_cross_encoder_rerank',
 ]);
 
+/**
+ * B16 (2026-06-13): 用户反馈 19 个 feature flag 全暴露太繁琐 — 大部分功能
+ * 已经经过验证默认集成（RAG/Wiki/Evolution/Analysis chain 等），不需要给
+ * 用户切换的入口。只保留少数需要真正人工配置或会被页面引导开启的开关：
+ *   - PDF 解析后端 (pdf_parser_marker) — 关本地依赖 marker-pdf 2GB
+ *   - 本地 GPU 加速 (local_rerank / rag_local_cross_encoder_rerank) — 关本地 GPU
+ *   - Wiki 知识沉淀 (wiki) — 知识沉淀页面会引导用户从这里开启。
+ * 其余 flag 后端仍生效，可通过 env var 或 API 控制（开发场景），不在 UI 暴露。
+ */
+const VISIBLE_FLAG_NAMES = new Set<string>([
+  'pdf_parser_marker',
+  'local_rerank',
+  'rag_local_cross_encoder_rerank',
+  'wiki',
+]);
+
 const FEATURE_FLAG_DISPLAY_COPY: Record<string, { label?: string; description: string }> = {
   pdf_parser_marker: {
     label: 'PDF 结构化解析(marker)',
-    description: '用 marker 替代默认 PyMuPDF 解析新上传的 PDF;能识别标题层级、表格、公式与图片,RAG 检索质量更好。需先在终端 `pip install marker-pdf`(~2GB,含模型权重),首次解析每篇约 5-15 分钟。已入库的旧 PDF 不会自动重做,可在项目工作台点「重新解析以获取结构化索引」按 marker 重建。关闭后新上传 PDF 走 PyMuPDF 默认链路,已抽取的结构化数据保留。',
+    description: '使用 marker 解析新上传 PDF。需本地安装 marker-pdf，首次解析较慢。',
   },
   tolf_context: {
     label: '深度证据检索',
-    description: '把问题拆成多面查询，在文献图上扩散，并按硬证据筛选结果。比默认检索更慢，但更适合综述、找数据和深度调研。',
+    description: '多面查询，证据优先。',
   },
   local_rerank: {
     label: '本地重排主线',
-    description: '语义路由默认用本机或已配置的重排服务整理候选证据。没有可用服务或凭证时会保留现有检索结果，不会阻断答问。',
+    description: '用重排服务整理候选证据。',
   },
   analysis_chain_rag: {
     label: '答复附推理过程',
-    description: '智能研读回答时附带结构化推理过程，包括观察、机制、证据、边界、反证和下一步。默认不增加模型调用。',
+    description: '回答附结构化推理摘要。',
   },
   analysis_chain_rag_llm: {
     label: '增强推理说明',
-    description: '让模型生成更完整的推理过程，适合需要复核思路的复杂问题。失败时会自动回到基础推理过程，不影响答问。',
+    description: '生成更完整的推理过程。',
   },
   analysis_chain_discussion: {
     label: '多智能体讨论附推理过程',
-    description: '讨论中每个智能体发言时携带自己的推理链，可在讨论面板逐个展开查看。',
+    description: '角色发言附推理链。',
   },
   analysis_chain_carryover: {
     label: '承接上一步思路',
-    description: '下一位智能体或下一轮对话会参考上一步推理，减少重复思考，让讨论更连贯。',
+    description: '下一轮参考上一步。',
   },
   analysis_chain_ui: {
     label: '推理过程展开入口',
-    description: '答案带有推理过程时，界面提供展开入口并默认收起。关闭后只隐藏入口，不影响答问能力。',
+    description: '显示推理展开入口。',
   },
   discussion_streaming: {
     label: '讨论实时进度',
-    description: '讨论运行时逐个显示智能体完成进度，长讨论不用等全部结束才看到结果。关闭后仍可完成讨论。',
+    description: '逐个显示角色进度。',
   },
   inspector_embed_unified: {
     label: '工作台右侧助手',
-    description: '在研究工作台右侧检视面板直接使用智能研读和多智能体讨论完整能力，关闭后回到跳转入口。',
+    description: '阅读页内嵌智能研读。',
   },
   wiki: {
     label: 'Wiki 知识沉淀',
-    description: '开启后可使用 Wiki 工作台、页面检索、编译和审阅队列，把项目资料沉淀为可回看的本地知识页。关闭后保留已有页面，只暂停入口和 API 能力。',
+    description: '启用 Wiki 页面、检索和复审队列。',
   },
   evolution_candidate_capture: {
     label: '经验候选收纳',
-    description: '开启后，智能研读、讨论、写作任务、Skill 和 MCP 工具运行完成时，会把可复用经验放入复审队列，等待人工确认。',
+    description: '把可复用经验放入复审队列。',
   },
   evolution_review_ui: {
     label: '学到的经验复审入口',
-    description: '开启后显示“学到的经验”页面，用于查看、保存、忽略和撤销经验候选。关闭时不删除已有候选。',
+    description: '显示经验复审页。',
   },
   evolution_promotion: {
     label: '经验应用到长期记忆',
-    description: '开启后，已保存的经验可以继续应用到长期记忆或 Skill 草稿。关闭时仍可复审候选，但不会写入长期记忆。',
+    description: '允许写入长期记忆或 Skill 草稿。',
   },
   rag_chunk_type_weighting: {
     label: 'RAG 表格/公式优先送入精排',
-    description: '检索时把表格、公式、章节标题等结构化片段优先排进精排候选池，让数值答案更容易被引用。默认开启；关闭会让所有片段等权进入精排，可能更容易遗漏表格数据。',
+    description: '表格、公式、标题优先精排。',
   },
   hybrid_retrieval: {
     label: '研读答问真混合检索',
-    description: '研读答问的 RAG 召回走真混合：词面 + 向量 + 精排，质量明显优于关键词重叠。默认开启；关闭会回退到关键词重叠的旧行为，主要在调试时使用。',
+    description: '词面 + 向量 + 精排。',
   },
   tolf_fusion_mode: {
     label: '深度检索 + RAG 融合',
-    description: '需要先开启「深度证据检索」。两路候选会用 Reciprocal Rank Fusion 合并，深度检索负责目标侧、RAG 负责词面侧，互不替代。默认开启；关闭会回到「深度检索拿到结果就丢掉 RAG 候选」的旧行为。',
+    description: '融合深度检索与 RAG 候选。',
   },
   rag_structured_sibling_inclusion: {
     label: '同章节表格/公式邻居自动补全',
-    description: '答完最终候选后，把命中段落所在章节里同位的表格、公式、图注自动补进上下文，让 LLM 可以引用具体数值。默认开启；关闭后，回答里出现「具体数值见 Table X」时 Table X 本身可能不在上下文。',
+    description: '补入同章节表格、公式、图注。',
   },
 };
 
@@ -3177,11 +3196,11 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
         </div>
       )}
 
-      {!loading && !loadError && flags.filter(f => !MAINLINE_RAG_FLAG_NAMES.has(f.name)).length === 0 && (
+      {!loading && !loadError && flags.filter(f => VISIBLE_FLAG_NAMES.has(f.name)).length === 0 && (
         <p className="text-xs text-foreground/50">{t('settings.experimental_empty')}</p>
       )}
 
-      {!loading && flags.filter(f => !MAINLINE_RAG_FLAG_NAMES.has(f.name)).map(flag => {
+      {!loading && flags.filter(f => VISIBLE_FLAG_NAMES.has(f.name)).map(flag => {
         const displayCopy = FEATURE_FLAG_DISPLAY_COPY[flag.name];
         const displayLabel = displayCopy?.label ?? flag.label;
         const displayDescription = displayCopy?.description ?? flag.description;

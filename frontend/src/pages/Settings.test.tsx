@@ -35,9 +35,9 @@ vi.mock('axios', () => {
 vi.mock('@/services/featureFlagsApi', () => ({
   listFeatureFlags: vi.fn(async () => [
     {
-      name: 'wiki',
-      label: 'Wiki 知识沉淀',
-      description: '开启 Wiki 工作台。',
+      name: 'pdf_parser_marker',
+      label: 'PDF 结构化解析(marker)',
+      description: '启用本地 Marker 解析后端。',
       default: false,
       env_var: null,
       current: false,
@@ -46,8 +46,8 @@ vi.mock('@/services/featureFlagsApi', () => ({
   ]),
   setFeatureFlag: vi.fn(async (name: string, enabled: boolean) => ({
     name,
-    label: 'Wiki 知识沉淀',
-    description: '开启 Wiki 工作台。',
+    label: 'PDF 结构化解析(marker)',
+    description: '启用本地 Marker 解析后端。',
     default: false,
     env_var: null,
     current: enabled,
@@ -92,8 +92,8 @@ vi.mock('@/services/settingsApi', () => ({
     },
     feature_flags: [
       {
-        name: 'wiki',
-        label: 'Wiki 知识沉淀',
+        name: 'pdf_parser_marker',
+        label: 'PDF 结构化解析(marker)',
         current: false,
       },
     ],
@@ -135,7 +135,8 @@ describe('Settings navigation', () => {
 
     render(<SettingsPage />);
 
-    expect(await screen.findByText('Wiki 知识沉淀')).toBeInTheDocument();
+    expect(await screen.findByText('PDF 结构化解析(marker)')).toBeInTheDocument();
+    expect(screen.getByText('检索主链已升级 · 默认开启')).toBeInTheDocument();
     expect(window.location.search).toBe('?section=experimental');
 
     fireEvent.click(screen.getByRole('button', { name: 'API 配置' }));

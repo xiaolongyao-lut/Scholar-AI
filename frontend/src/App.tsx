@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './layouts/MainLayout';
 import { WritingProvider } from './contexts/WritingContext';
@@ -10,7 +10,6 @@ import { ToastProvider } from './components/ui/Toast';
 import { CommandPalette } from './components/ui/CommandPalette';
 import { McpPendingCallPoller } from './components/mcp/McpPendingCallPoller';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { CustomTitleBar } from './components/CustomTitleBar';
 
 // Route-level lazy imports keep the initial shell small.
 const Workbench = React.lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
@@ -40,10 +39,32 @@ const LazyFallback = () => (
 );
 
 const App = () => {
-  const [isDesktopApp, setIsDesktopApp] = React.useState(false);
-
-  React.useEffect(() => {
-    setIsDesktopApp(typeof window !== 'undefined' && 'pywebview' in window);
+  // B19 (2026-06-14): React-side fallback for F5 / Ctrl+R reload. The backend
+  // injects the same hotkeys via window.evaluate_js (start_desktop.py), but
+  // WebView2 sometimes swallows that listener before React mounts (or replaces
+  // the document on route change). Registering once in the React root with
+  // `capture: true` guarantees the hotkey survives navigation. Pywebview's
+  // js_api exposes reload_window when available; otherwise fall back to
+  // window.location.reload() so dev-mode in a normal browser still works.
+  useEffect(() => {
+    const isReload = (e: KeyboardEvent): boolean =>
+      e.key === 'F5'
+      || ((e.key === 'r' || e.key === 'R') && (e.ctrlKey || e.metaKey));
+    const handler = (e: KeyboardEvent): void => {
+      if (!isReload(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const w = window as unknown as {
+        pywebview?: { api?: { reload_window?: () => void } };
+      };
+      if (w.pywebview?.api?.reload_window) {
+        w.pywebview.api.reload_window();
+      } else {
+        window.location.reload();
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, []);
 
   return (
@@ -55,8 +76,12 @@ const App = () => {
               <SmartReadProvider>
               <ToastProvider>
               <Router>
-                {isDesktopApp && <CustomTitleBar />}
-                <MainLayout className={isDesktopApp ? 'pt-8' : undefined}>
+                {/* B5 (2026-06-13): frameless=False on Windows so we keep the
+                    native Windows titlebar (drag/maximize/snap/close all free).
+                    React-painted titlebar is removed because pywebview's frameless
+                    mode is unreliable on EdgeChromium and rendering both produced
+                    a visible duplicate titlebar (user screenshot 2026-06-13). */}
+                <MainLayout>
                   <Suspense fallback={<LazyFallback />}>
                     <Routes>
                       {/* Home */}

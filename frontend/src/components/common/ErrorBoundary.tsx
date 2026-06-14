@@ -41,7 +41,11 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       .map((line) => line.trim())
       .filter(Boolean)[0];
     const safeMessage = sanitizeClientErrorText(error?.message, '客户端界面发生异常。');
-    const safeStack = sanitizeClientErrorText(error?.stack?.split('\n', 1)[0], '');
+    const rawStackHead = error?.stack
+      ?.split('\n')
+      .map((line) => line.trim())
+      .find((line) => line && !line.includes(String(error?.message ?? '')));
+    const safeStack = sanitizeClientErrorText(rawStackHead ?? error?.stack?.split('\n', 1)[0], '');
     // Log to console for developer visibility, but do NOT surface to
     // the user. Production telemetry hook can plug in later via
     // a `WorkbenchEvent` (§ 20) subscriber.

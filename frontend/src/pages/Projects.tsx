@@ -79,6 +79,7 @@ export function Projects() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const newProjectTitleRef = React.useRef<HTMLInputElement | null>(null);
 
   const batchMode = selectedIds.size > 0;
 
@@ -180,6 +181,42 @@ export function Projects() {
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
+  const resetCreateDialog = useCallback((): void => {
+    setShowCreateDialog(false);
+    setNewTitle('');
+    setNewDesc('');
+    setNewFolder('');
+    setLoadError('');
+  }, []);
+
+  const closeCreateDialog = useCallback((): void => {
+    if (creating) return;
+    resetCreateDialog();
+  }, [creating, resetCreateDialog]);
+
+  useEffect(() => {
+    if (!showCreateDialog) return undefined;
+    const handleEscape = (event: KeyboardEvent): void => {
+      if ((event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape') && !creating) {
+        event.preventDefault();
+        event.stopPropagation();
+        resetCreateDialog();
+      }
+    };
+    const focusTimer = window.setTimeout(() => newProjectTitleRef.current?.focus(), 0);
+    document.addEventListener('keydown', handleEscape, true);
+    document.addEventListener('keyup', handleEscape, true);
+    window.addEventListener('keydown', handleEscape, true);
+    window.addEventListener('keyup', handleEscape, true);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', handleEscape, true);
+      document.removeEventListener('keyup', handleEscape, true);
+      window.removeEventListener('keydown', handleEscape, true);
+      window.removeEventListener('keyup', handleEscape, true);
+    };
+  }, [creating, resetCreateDialog, showCreateDialog]);
+
   const handleCreateProject = async () => {
     if (!newTitle.trim() || creating) return;
     setCreating(true);
@@ -276,7 +313,10 @@ export function Projects() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
-            onClick={() => !creating && setShowCreateDialog(false)}
+            onClick={closeCreateDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-project-dialog-title"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -286,10 +326,10 @@ export function Projects() {
               className="bg-surface-lowest border border-outline-variant rounded-xl p-6 w-full max-w-md shadow-xl"
             >
               <div className="flex items-center justify-between mb-5">
-                <h2 className="font-headline text-lg font-semibold text-foreground">{t('projects.create_title')}</h2>
+                <h2 id="new-project-dialog-title" className="font-headline text-lg font-semibold text-foreground">{t('projects.create_title')}</h2>
                 <button
                   type="button"
-                  onClick={() => !creating && setShowCreateDialog(false)}
+                  onClick={closeCreateDialog}
                   title={t('common.close')}
                   aria-label={t('common.close')}
                   className="p-1.5 text-foreground/30 hover:text-foreground transition-colors"
@@ -301,10 +341,16 @@ export function Projects() {
                 <div>
                   <label htmlFor="new-project-title" className="font-label text-xs font-medium text-foreground/70 mb-1.5 block">{t('projects.field_title')}</label>
                   <input
+                    ref={newProjectTitleRef}
                     id="new-project-title"
                     value={newTitle}
                     onChange={e => setNewTitle(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleCreateProject();
+                      }
+                    }}
                     placeholder={t('projects.field_title_placeholder')}
                     aria-label={t('projects.field_title')}
                     className="w-full bg-surface-high rounded-lg px-3 py-2.5 border border-outline-variant/50 text-sm font-label text-foreground focus:outline-none focus:border-primary/40 transition-colors"
@@ -345,7 +391,7 @@ export function Projects() {
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => { setShowCreateDialog(false); setNewTitle(''); setNewDesc(''); setNewFolder(''); setLoadError(''); }}
+                    onClick={closeCreateDialog}
                     disabled={creating}
                     className="px-4 py-2 text-sm font-label font-medium text-foreground/50 hover:text-foreground transition-colors"
                   >

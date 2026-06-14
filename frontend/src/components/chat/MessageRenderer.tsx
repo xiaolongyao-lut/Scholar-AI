@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, GitFork, Pencil } from 'lucid
 import { cn } from '@/lib/utils';
 import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import { AnalysisChainPanel } from '@/components/analysis_chain/AnalysisChainPanel';
+import { CaptureToInboxButton } from '@/components/knowledge/CaptureToInboxButton';
 import type { AnalysisChainPayload } from '@/services/discussionApi';
 
 export type ChatRole = 'user' | 'assistant' | 'system' | 'agent';
@@ -96,6 +97,8 @@ interface MessageRendererProps {
   message: ChatMessageData;
   /** Active project id forwarded to evidence pills for locator upgrade. */
   projectId?: string | null;
+  /** Optional session id for capture-to-inbox traceability. */
+  sessionId?: string | null;
   /** Receives the focused evidence ref so parent surfaces can synchronize
    *  drawer rows and PDF highlights. */
   selectedEvidenceId?: string | null;
@@ -107,6 +110,8 @@ interface MessageRendererProps {
   onEditMessage?: (message: ChatMessageData) => void;
   /** Start a new local branch from this message. */
   onForkMessage?: (message: ChatMessageData) => void;
+  /** Hide the per-message 「记一下」 button. */
+  hideCaptureToInbox?: boolean;
   className?: string;
 }
 
@@ -132,12 +137,14 @@ interface MessageRendererProps {
 export function MessageRenderer({
   message,
   projectId,
+  sessionId,
   selectedEvidenceId,
   onSelectEvidence,
   navigateEvidenceAfterSelect = false,
   footer,
   onEditMessage,
   onForkMessage,
+  hideCaptureToInbox = false,
   className,
 }: MessageRendererProps) {
   const isUser = message.role === 'user';
@@ -208,7 +215,7 @@ export function MessageRenderer({
 
         {footer && <div className="mt-2">{footer}</div>}
 
-        {(onEditMessage || onForkMessage) && (
+        {(onEditMessage || onForkMessage || (isAgent && !hideCaptureToInbox)) && (
           <div
             className={cn(
               'mt-2 flex items-center gap-1 border-t pt-1.5',
@@ -246,6 +253,25 @@ export function MessageRenderer({
               >
                 <GitFork className="h-3.5 w-3.5" />
               </button>
+            )}
+            {isAgent && !hideCaptureToInbox && (
+              <div className="ml-auto">
+                <CaptureToInboxButton
+                  variant="icon"
+                  label="记到待确认"
+                  context={{
+                    kind: 'dialog',
+                    sourceLabel: message.agent?.name ? `对话 · ${message.agent.name}` : '对话回复',
+                    quote: message.content,
+                    locator: message.timestamp ? `时间 ${message.timestamp}` : undefined,
+                    rawIds: {
+                      message_id: message.id,
+                      session_id: sessionId ?? null,
+                      project_id: projectId ?? null,
+                    },
+                  }}
+                />
+              </div>
             )}
           </div>
         )}
