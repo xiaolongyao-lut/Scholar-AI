@@ -1544,6 +1544,14 @@ async def serve_document_file(material_id: str, as_: str = Query("", alias="as")
     recognise it as a PDF and divert the in-app reader's fetch into a save
     dialog. Used by the in-app PDF viewer; everything else (default) keeps
     the natural MIME so e.g. right-click "open in new tab" still works.
+
+    ``?as=raw1`` (0.1.8.4 hardening): newer download-manager extensions are
+    now aggressive enough to swallow even ``application/octet-stream`` GETs
+    on large bodies, returning a synthetic ``204 No Content`` to the JS
+    fetch. We hand back a fully private vendor MIME
+    (``application/vnd.litassist.encoded``) plus ``X-Content-Type-Options:
+    nosniff`` so extensions can't sniff PDF magic bytes either. The PDF
+    bytes themselves are unchanged — pdf.js parses the body normally.
     """
     store = _rr.get_writing_resource_store()
     material = store.get_material(material_id)
@@ -1582,19 +1590,27 @@ async def serve_document_file(material_id: str, as_: str = Query("", alias="as")
         ".md": "text/markdown",
     }
     ext = candidate.suffix.lower()
-    # 0.1.8.1: when the in-app reader requests ?as=bin we hand back the
-    # bytes as a generic binary stream so browser download-manager
-    # extensions don't recognise the response as a PDF and steal it from
-    # the JS fetch. Other callers (right-click open in new tab, direct
-    # link sharing) get the real MIME so the browser's native viewer
-    # still works.
-    if as_.strip().lower() == "bin":
+    # 0.1.8.4: vendor MIME for the in-app reader hardened path. Download
+    # managers can't sniff it as PDF; pdf.js doesn't care about the
+    # response Content-Type — it parses the body bytes directly.
+    flag = as_.strip().lower()
+    if flag == "raw1":
+        media_type = "application/vnd.litassist.encoded"
+    elif flag == "bin":
+        # 0.1.8.1: legacy disguise — kept for back-compat with older
+        # bundled installers that still send ?as=bin.
         media_type = "application/octet-stream"
     else:
         media_type = media_types.get(ext, "application/octet-stream")
     response = FileResponse(path=str(candidate), media_type=media_type)
     safe_name = candidate.name.encode("utf-8").decode("latin-1", errors="ignore")
     response.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+    if flag in ("raw1", "bin"):
+        # Belt-and-suspenders: stop the browser (and well-behaved
+        # extensions) from sniffing PDF magic bytes; force no-store so a
+        # cached 204 from a prior interception can't poison a retry.
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 

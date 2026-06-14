@@ -571,7 +571,7 @@ app.add_middleware(
     allow_origins=_allowed_origins,
     allow_credentials="*" not in _allowed_origins,
     allow_methods=["*"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-Id", LOCAL_API_CAPABILITY_HEADER],
+    allow_headers=["Content-Type", "Authorization", "X-Request-Id", "X-LitAssist-Pdf-Stream", LOCAL_API_CAPABILITY_HEADER],
 )
 
 

@@ -240,7 +240,8 @@ async def test_rerank_endpoint(payload: RerankConfigUpdate) -> RerankProbeResult
     try:
         from routers.chat_router import _validate_outbound_llm_base_url
 
-        _validate_outbound_llm_base_url(base_url, "Local LLM")
+        # B20 (2026-06-13): user-initiated rerank probe — see chat_router note.
+        _validate_outbound_llm_base_url(base_url, "Local LLM", skip_dns=True)
     except ValueError as exc:
         return RerankProbeResult(ok=False, error=str(exc))
 

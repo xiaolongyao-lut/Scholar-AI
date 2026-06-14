@@ -822,7 +822,9 @@ async def _generate_llm_sparks(req: GenerateSparksRequest) -> list[SparkResponse
     )
     response_format = _response_format_for_llm(llm)
     try:
-        _validate_outbound_llm_base_url(llm.base_url, llm.provider)
+        # B20 (2026-06-13): inspiration chat call uses the same user-confirmed
+        # credential as the main chat path; treat consistent with B18.
+        _validate_outbound_llm_base_url(llm.base_url, llm.provider, skip_dns=True)
         url, headers, payload = _build_chat_request(
             prompt,
             [],
