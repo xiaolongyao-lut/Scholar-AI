@@ -69,6 +69,14 @@ export const WRITING_EXPORT_FORMATS = [
 
 export type WritingExportFormat = (typeof WRITING_EXPORT_FORMATS)[number];
 
+export const WRITING_DOCUMENT_EXPORT_FORMATS = [
+  "latex",
+  "markdown",
+  "word",
+] as const satisfies readonly WritingExportFormat[];
+
+export type WritingDocumentExportFormat = (typeof WRITING_DOCUMENT_EXPORT_FORMATS)[number];
+
 const EXPORT_MIME_BY_FORMAT: Record<WritingExportFormat, string> = {
   markdown: "text/markdown;charset=utf-8",
   json: "application/json;charset=utf-8",
@@ -89,6 +97,35 @@ function isWritingExportFormat(value: string): value is WritingExportFormat {
   return WRITING_EXPORT_FORMATS.includes(value as WritingExportFormat);
 }
 
+function resolveExportFormat(
+  result: ProjectExportResponseEnvelope,
+  requestedFormat?: WritingExportFormat,
+): WritingExportFormat {
+  if (requestedFormat && isWritingExportFormat(requestedFormat)) {
+    return requestedFormat;
+  }
+  if (isWritingExportFormat(String(result.format))) {
+    return result.format as WritingExportFormat;
+  }
+  throw new Error(`Unsupported export format: ${String(result.format)}`);
+}
+
+function normalizeExportFilename(filename: string | null | undefined, extension: string): string {
+  if (!extension.trim()) {
+    throw new Error("export extension is required");
+  }
+  const safeExtension = extension.replace(/^\.+/, "");
+  const fallback = `project-export.${safeExtension}`;
+  const trimmed = typeof filename === "string" ? filename.trim() : "";
+  if (!trimmed) {
+    return fallback;
+  }
+  if (new RegExp(`\\.${safeExtension}$`, "i").test(trimmed)) {
+    return trimmed;
+  }
+  return `${trimmed.replace(/\.[A-Za-z0-9]{1,8}$/, "")}.${safeExtension}`;
+}
+
 function decodeBase64ToBytes(value: string): Uint8Array {
   if (!value.trim()) {
     throw new Error("content_base64 is empty");
@@ -101,25 +138,53 @@ function decodeBase64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
+function blobToBase64(blob: Blob): Promise<string> {
+  if (!(blob instanceof Blob)) {
+    throw new TypeError("blob must be a Blob");
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read export blob"));
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Export blob reader returned a non-string result"));
+        return;
+      }
+      const [, base64 = ""] = result.split(",", 2);
+      if (!base64) {
+        reject(new Error("Export blob reader returned empty base64 content"));
+        return;
+      }
+      resolve(base64);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function buildProjectExportBlob(
   result: ProjectExportResponseEnvelope,
   requestedFormat?: WritingExportFormat,
 ): { blob: Blob; filename: string } {
-  const normalizedFormat = isWritingExportFormat(String(result.format))
+  const normalizedFormat = resolveExportFormat(result, requestedFormat);
+  const resultFormat = isWritingExportFormat(String(result.format))
     ? result.format as WritingExportFormat
-    : requestedFormat;
-  if (!normalizedFormat) {
-    throw new Error(`Unsupported export format: ${String(result.format)}`);
-  }
-
-  const mediaType = result.media_type || EXPORT_MIME_BY_FORMAT[normalizedFormat];
+    : null;
+  const mediaType = resultFormat === normalizedFormat && result.media_type
+    ? result.media_type
+    : EXPORT_MIME_BY_FORMAT[normalizedFormat];
   const extension = EXPORT_EXTENSION_BY_FORMAT[normalizedFormat];
-  const filename = result.filename || `project-export.${extension}`;
-  if (result.content_base64) {
+  const filename = normalizeExportFilename(result.filename, extension);
+  const canUseEncodedPayload = Boolean(result.content_base64)
+    && (resultFormat === null || resultFormat === normalizedFormat);
+  if (canUseEncodedPayload && result.content_base64) {
     return {
       blob: new Blob([decodeBase64ToBytes(result.content_base64)], { type: mediaType }),
       filename,
     };
+  }
+  if (resultFormat && resultFormat !== normalizedFormat && normalizedFormat !== "json") {
+    throw new Error(`Cannot build ${normalizedFormat} export from ${resultFormat} payload`);
   }
   const content = normalizedFormat === "json"
     ? JSON.stringify(result, null, 2)
@@ -130,11 +195,16 @@ export function buildProjectExportBlob(
   };
 }
 
-export function downloadProjectExportBlob(
+export async function downloadProjectExportBlob(
   result: ProjectExportResponseEnvelope,
   requestedFormat?: WritingExportFormat,
-): void {
+): Promise<string | null> {
   const { blob, filename } = buildProjectExportBlob(result, requestedFormat);
+  const nativeSaveBytes = globalThis.window?.pywebview?.api?.save_bytes;
+  if (nativeSaveBytes) {
+    const contentBase64 = await blobToBase64(blob);
+    return (await nativeSaveBytes(filename, contentBase64)) ?? null;
+  }
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -143,6 +213,25 @@ export function downloadProjectExportBlob(
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
+  return null;
+}
+
+export async function resolveProjectExportForDownload(
+  currentData: ProjectExportResponseEnvelope,
+  requestedFormat: WritingExportFormat,
+  projectId: string,
+  fetchExport: (projectId: string, format: WritingExportFormat) => Promise<ProjectExportResponseEnvelope>,
+): Promise<ProjectExportResponseEnvelope> {
+  if (!projectId.trim()) {
+    throw new Error("projectId is required to resolve an export download");
+  }
+  const currentFormat = isWritingExportFormat(String(currentData.format))
+    ? currentData.format as WritingExportFormat
+    : null;
+  if (currentFormat === requestedFormat) {
+    return currentData;
+  }
+  return fetchExport(projectId, requestedFormat);
 }
 
 export function buildFigureAssetFileUrl(projectId: string, assetPath: string): string {

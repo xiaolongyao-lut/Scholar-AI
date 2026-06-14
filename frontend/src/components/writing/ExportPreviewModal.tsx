@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Download, Copy, FileJson, FileText, Loader2, Check, Square } from 'lucide-react';
+import { X, Download, Copy, FileText, Loader2, Check, Square } from 'lucide-react';
 import { useI18n } from '@/contexts/I18nContext';
 import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
@@ -8,10 +8,16 @@ import { sanitizeRuntimeVisibleText } from '@/components/writing/writingRuntimeD
 import {
   downloadProjectExportBlob,
   getWritingBackendService,
-  WRITING_EXPORT_FORMATS,
+  resolveProjectExportForDownload,
+  type WritingDocumentExportFormat,
   type WritingExportFormat,
 } from '@/services/writingBackend';
 import { ProjectExportResponseEnvelope } from '@/types/resources';
+import {
+  DOCUMENT_EXPORT_OPTIONS,
+  getDocumentExportOption,
+  writingExportFormatLabel,
+} from './documentExportOptions';
 
 interface ExportPreviewModalProps {
   isOpen: boolean;
@@ -31,24 +37,13 @@ export function formatExportError(error: unknown, fallback: string): string {
   return sanitizeRuntimeVisibleText(message, fallback);
 }
 
-function exportFormatLabel(format: WritingExportFormat): string {
-  const labels: Record<WritingExportFormat, string> = {
-    markdown: '文稿预览',
-    json: '结构化文件',
-    word: 'Word 文档',
-    latex: '排版源文件',
-    pdf: 'PDF 文件',
-  };
-  return labels[format];
-}
-
 export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreviewModalProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ProjectExportResponseEnvelope | null>(null);
   const [copied, setCopied] = useState(false);
-  const [selectedFormat, setSelectedFormat] = useState<WritingExportFormat>('markdown');
+  const [selectedFormat, setSelectedFormat] = useState<WritingDocumentExportFormat>('markdown');
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const stopExport = useCallback((showNotice: boolean) => {
@@ -104,6 +99,7 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
     };
   }, [fetchExportData, isOpen, projectId, stopExport]);
 
+  const selectedOption = getDocumentExportOption(selectedFormat);
   const isStructuredJson = data?.format === 'json';
   const previewText = isStructuredJson
     ? (data ? JSON.stringify(data, null, 2) : '')
@@ -118,10 +114,21 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = (format: WritingExportFormat) => {
+  const handleDownload = async (format: WritingExportFormat) => {
     if (!data) return;
-    downloadProjectExportBlob(data, format);
-    toast(t('ref.export_downloaded'), 'success');
+    try {
+      const service = getWritingBackendService();
+      const exportData = await resolveProjectExportForDownload(
+        data,
+        format,
+        projectId,
+        (targetProjectId, targetFormat) => service.exportProject(targetProjectId, targetFormat),
+      );
+      const savedPath = await downloadProjectExportBlob(exportData, format);
+      toast(savedPath ? `已保存：${savedPath}` : t('ref.export_downloaded'), 'success');
+    } catch (err) {
+      toast(formatExportError(err, t('ref.export_failed')), 'error');
+    }
   };
 
   if (!isOpen) return null;
@@ -171,42 +178,57 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
           ) : data ? (
             <div className="flex-1 min-h-0 flex flex-col">
               {/* Toolbar */}
-              <div className="px-6 py-3 bg-surface-high border-b border-outline-variant flex items-center justify-between gap-3">
+              <div className="px-6 py-3 bg-surface-high border-b border-outline-variant flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="text-[11px] font-medium text-foreground/40 uppercase tracking-wider">{t('ref.export_preview')}</span>
+                  <span className="rounded-md border border-outline-variant bg-surface-low px-2 py-1 text-[11px] font-medium text-foreground/55">
+                    {selectedOption.extension}
+                  </span>
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-                  <select
+                  <div
+                    role="group"
                     aria-label="导出格式"
-                    value={selectedFormat}
-                    onChange={(event) => setSelectedFormat(event.target.value as WritingExportFormat)}
-                    className="rounded-md border border-outline-variant bg-surface-low px-2 py-1.5 text-xs font-medium text-foreground/70"
+                    className="grid min-w-[360px] grid-cols-3 overflow-hidden rounded-md border border-outline-variant bg-surface-low"
                   >
-                    {WRITING_EXPORT_FORMATS.map((format) => (
-                      <option key={format} value={format}>{exportFormatLabel(format)}</option>
-                    ))}
-                  </select>
+                    {DOCUMENT_EXPORT_OPTIONS.map(({ format, label, extension, Icon }) => {
+                      const isSelected = selectedFormat === format;
+                      return (
+                        <button
+                          key={format}
+                          type="button"
+                          onClick={() => setSelectedFormat(format)}
+                          aria-pressed={isSelected}
+                          className={cn(
+                            'inline-flex h-9 items-center justify-center gap-1.5 border-r border-outline-variant px-3 text-xs font-medium transition-colors last:border-r-0',
+                            isSelected
+                              ? 'bg-primary text-primary-foreground shadow-sm'
+                              : 'text-foreground/65 hover:bg-surface-container hover:text-foreground',
+                          )}
+                        >
+                          <Icon size={14} aria-hidden />
+                          <span>{label}</span>
+                          <span className={cn('text-[10px]', isSelected ? 'text-primary-foreground/70' : 'text-foreground/40')}>
+                            {extension}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <button
                     onClick={handleCopy}
                     disabled={!hasPreviewText}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-black/5 hover:bg-black/10 transition-colors disabled:opacity-40"
                   >
                     {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                    {copied ? t('ref.export_copied') : hasPreviewText ? t('ref.export_copy_markdown') : '无文本可复制'}
+                    {copied ? t('ref.export_copied') : hasPreviewText ? '复制预览' : '无文本可复制'}
                   </button>
                   <button
                     onClick={() => handleDownload(selectedFormat)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-colors shadow-sm"
                   >
                     <Download size={14} />
-                    {selectedFormat === 'json' ? t('ref.export_download_json') : `下载 ${exportFormatLabel(selectedFormat)}`}
-                  </button>
-                  <button
-                    onClick={() => handleDownload('json')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-black/5 hover:bg-black/10 transition-colors"
-                  >
-                    <FileJson size={14} />
-                    结构化文件
+                    {`下载 ${selectedOption.label}`}
                   </button>
                 </div>
               </div>
@@ -229,8 +251,12 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
                     </div>
                   )
                 ) : (
-                  <div className="max-w-3xl mx-auto text-foreground/50 italic">
-                    {`已生成 ${exportFormatLabel(selectedFormat)}：${data.filename || 'project-export'}`}
+                  <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center text-center">
+                    <FileText size={28} className="mb-3 text-foreground/25" />
+                    <p className="text-sm font-medium text-foreground/70">{t('ref.export_empty_preview_title')}</p>
+                    <p className="mt-2 max-w-md text-xs leading-5 text-foreground/45">
+                      {t('ref.export_empty_preview_desc')}
+                    </p>
                   </div>
                 )}
               </div>
@@ -245,9 +271,8 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
         {/* Footer */}
         <div className="px-6 py-3 border-t border-outline-variant bg-surface-low flex items-center justify-between text-[11px] text-foreground/40">
           <div className="flex items-center gap-4">
-            <span>{t('ref.export_evidence_count', { count: data?.evidence_rows?.length || 0 })}</span>
-            <span>{t('ref.export_chain_count', { count: data?.citation_chain?.length || 0 })}</span>
-            <span>{t('ref.export_review_count', { count: data?.review_findings?.length || 0 })}</span>
+            <span>{selectedOption.label}</span>
+            <span>{data?.filename || 'project-export'}</span>
           </div>
           <div className="flex items-center gap-1 italic">
             <Loader2 size={10} />

@@ -122,6 +122,7 @@ async def export_project(
             filename=filename,
             file_path=path,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            content=content,
             **academic_export,
         )
     if format == _rr.ProjectExportFormat.PDF:

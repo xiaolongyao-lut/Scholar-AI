@@ -23,6 +23,7 @@ __all__ = [
     "_material_excerpt",
     "_paragraphs_with_offsets",
     "_build_project_academic_export",
+    "_build_project_manuscript_markdown",
     "_build_project_markdown_export",
     "_build_project_latex_export",
     "_build_project_docx_export",
@@ -47,6 +48,9 @@ class ProjectExportFormat(str, __import__("enum").Enum):
     WORD = "word"
     LATEX = "latex"
     PDF = "pdf"
+
+
+_APP_CITATION_TOKEN_RE = re.compile(r"\[\^cite:([^\]:\]]+)(?::[^\]]*)?\]")
 
 
 def _strip_citation_tokens(value: str) -> str:
@@ -417,6 +421,71 @@ def _build_bibliography_entries(materials: list[Any]) -> list[dict[str, Any]]:
     return entries
 
 
+def _append_unique_material_id(material_ids: list[str], seen: set[str], value: Any) -> None:
+    """Append one non-empty material id while preserving first-seen order."""
+
+    material_id = str(value or "").strip()
+    if not material_id or material_id in seen:
+        return
+    seen.add(material_id)
+    material_ids.append(material_id)
+
+
+def _cited_material_ids_from_drafts(drafts: list[Any]) -> list[str]:
+    """Return material ids that are actually cited in draft content or anchors."""
+
+    material_ids: list[str] = []
+    seen: set[str] = set()
+    for draft in drafts:
+        content = str(getattr(draft, "content", "") or "")
+        for match in _APP_CITATION_TOKEN_RE.finditer(content):
+            _append_unique_material_id(material_ids, seen, match.group(1))
+        to_dict = getattr(draft, "to_dict", None)
+        payload = to_dict() if callable(to_dict) else {}
+        anchors = payload.get("citation_anchors") if isinstance(payload, Mapping) else []
+        if not isinstance(anchors, list):
+            continue
+        for anchor in anchors:
+            if not isinstance(anchor, Mapping):
+                continue
+            _append_unique_material_id(material_ids, seen, anchor.get("materialId"))
+    return material_ids
+
+
+def _cited_materials(materials: list[Any], drafts: list[Any]) -> list[Any]:
+    """Return material records cited by manuscript drafts in citation order."""
+
+    material_by_id = {str(getattr(material, "material_id", "") or ""): material for material in materials}
+    return [
+        material_by_id[material_id]
+        for material_id in _cited_material_ids_from_drafts(drafts)
+        if material_id in material_by_id
+    ]
+
+
+def _citation_number_map(drafts: list[Any]) -> dict[str, int]:
+    """Return stable one-based citation numbers by cited material id."""
+
+    return {
+        material_id: index
+        for index, material_id in enumerate(_cited_material_ids_from_drafts(drafts), 1)
+    }
+
+
+def _render_manuscript_citations_as_numbers(content: str, citation_numbers: Mapping[str, int]) -> str:
+    """Render app citation tokens as compact numeric manuscript citations."""
+
+    if not isinstance(content, str):
+        raise TypeError("content must be a string")
+
+    def replace(match: re.Match[str]) -> str:
+        material_id = match.group(1)
+        number = citation_numbers.get(material_id)
+        return f"[{number}]" if number is not None else ""
+
+    return _APP_CITATION_TOKEN_RE.sub(replace, content).strip()
+
+
 def _paragraphs_with_offsets(content: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     separator = re.compile(r"\n\s*\n+")
@@ -724,6 +793,126 @@ def _iter_project_export_markdown_lines(
     return lines
 
 
+def _render_manuscript_draft_content(
+    draft: Any,
+    *,
+    citation_style: str,
+    citation_numbers: Mapping[str, int],
+) -> str:
+    """Render one draft as manuscript text without internal app metadata."""
+
+    content = str(getattr(draft, "content", "") or "")
+    if citation_style == "pandoc":
+        return _citation_tokens_to_pandoc(content).strip()
+    if citation_style == "numeric":
+        return _render_manuscript_citations_as_numbers(content, citation_numbers)
+    raise ValueError("citation_style must be 'numeric' or 'pandoc'")
+
+
+def _iter_project_manuscript_markdown_lines(
+    project: Any,
+    sections: list[Any],
+    drafts: list[Any],
+    materials: list[Any],
+    *,
+    citation_style: str = "numeric",
+    include_bibliography: bool = True,
+    include_title: bool = True,
+) -> list[str]:
+    """Build manuscript-only Markdown lines for preview and document export."""
+
+    if project is None:
+        raise ValueError("project is required")
+    if citation_style not in {"numeric", "pandoc"}:
+        raise ValueError("citation_style must be 'numeric' or 'pandoc'")
+    citation_numbers = _citation_number_map(drafts)
+    sorted_sections = sorted(sections, key=lambda section: getattr(section, "order", 0))
+    lines: list[str] = []
+    title = str(getattr(project, "title", "") or "").strip()
+    if include_title and title:
+        lines.extend([f"# {title}", ""])
+
+    for section in sorted_sections:
+        section_drafts = [
+            draft
+            for draft in drafts
+            if getattr(draft, "section_id", None) == getattr(section, "section_id", None)
+            and _render_manuscript_draft_content(
+                draft,
+                citation_style=citation_style,
+                citation_numbers=citation_numbers,
+            ).strip()
+        ]
+        section_title = str(getattr(section, "title", "") or "").strip()
+        if section_title:
+            lines.extend([f"## {section_title}", ""])
+        if not section_drafts:
+            continue
+        for draft in section_drafts:
+            draft_text = _render_manuscript_draft_content(
+                draft,
+                citation_style=citation_style,
+                citation_numbers=citation_numbers,
+            )
+            draft_title = str(getattr(draft, "title", "") or "").strip()
+            if len(section_drafts) > 1 and draft_title:
+                lines.extend([f"### {draft_title}", ""])
+            lines.extend([draft_text, ""])
+
+    orphans = [
+        draft
+        for draft in drafts
+        if not getattr(draft, "section_id", None)
+        and _render_manuscript_draft_content(
+            draft,
+            citation_style=citation_style,
+            citation_numbers=citation_numbers,
+        ).strip()
+    ]
+    for draft in orphans:
+        draft_title = str(getattr(draft, "title", "") or "").strip()
+        if draft_title:
+            lines.extend([f"## {draft_title}", ""])
+        lines.extend(
+            [
+                _render_manuscript_draft_content(
+                    draft,
+                    citation_style=citation_style,
+                    citation_numbers=citation_numbers,
+                ),
+                "",
+            ]
+        )
+
+    cited_materials = _cited_materials(materials, drafts)
+    if include_bibliography and cited_materials:
+        if citation_style == "pandoc":
+            lines.extend(["## 参考文献", "", "::: {#refs}", ":::", ""])
+        else:
+            lines.extend(["## 参考文献", ""])
+            for entry in _build_bibliography_entries(cited_materials):
+                lines.extend([f"{entry['ordinal']}. {entry['display_text']}", ""])
+
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return lines
+
+
+def _build_project_manuscript_markdown(
+    project: Any,
+    sections: list[Any],
+    drafts: list[Any],
+    materials: list[Any],
+) -> str:
+    """Render project drafts as manuscript-only Markdown without audit appendices."""
+
+    if project is None:
+        raise ValueError("project is required")
+    return "\n".join(
+        _iter_project_manuscript_markdown_lines(project, sections, drafts, materials)
+    )
+
+
 def _build_project_markdown_export(
     project: Any,
     sections: list[Any],
@@ -731,10 +920,8 @@ def _build_project_markdown_export(
     materials: list[Any],
     academic_export: Mapping[str, list[dict[str, Any]]],
 ) -> str:
-    """Render project data into the canonical markdown export body."""
-    return "\n".join(
-        _iter_project_export_markdown_lines(project, sections, drafts, materials, academic_export)
-    )
+    """Render project drafts into the manuscript-only markdown export body."""
+    return _build_project_manuscript_markdown(project, sections, drafts, materials)
 
 
 def _latex_escape(value: Any) -> str:
@@ -762,104 +949,43 @@ def _build_project_latex_export(
     materials: list[Any],
     academic_export: Mapping[str, list[dict[str, Any]]],
 ) -> str:
-    """Render a standalone LaTeX article from project data."""
-    sorted_sections = sorted(sections, key=lambda s: s.order)
+    """Render a standalone LaTeX article from manuscript-only project drafts."""
+    manuscript_lines = _iter_project_manuscript_markdown_lines(project, sections, drafts, materials)
+    title = str(getattr(project, "title", "") or "").strip()
     lines = [
         r"\documentclass[UTF8]{ctexart}",
-        r"\usepackage{longtable}",
         r"\usepackage{geometry}",
         r"\geometry{a4paper, margin=2.5cm}",
-        f"\\title{{{_latex_escape(project.title)}}}",
-        r"\date{}",
-        r"\begin{document}",
-        r"\maketitle",
-        "",
     ]
-    if project.description:
-        lines.extend([_latex_escape(project.description), ""])
-
-    for section in sorted_sections:
-        lines.append(f"\\section{{{_latex_escape(section.title)}}}")
-        if section.description:
-            lines.extend([_latex_escape(section.description), ""])
-        section_drafts = [d for d in drafts if getattr(d, "section_id", None) == section.section_id]
-        for draft in section_drafts:
-            lines.append(f"\\subsection{{{_latex_escape(draft.title)}}}")
-            for paragraph in _paragraphs_with_offsets(str(draft.content)):
-                lines.extend([_latex_escape(paragraph["text"]), ""])
-
-    orphans = [d for d in drafts if not getattr(d, "section_id", None)]
-    if orphans:
-        lines.append(r"\section{未分类草稿}")
-        for draft in orphans:
-            lines.append(f"\\subsection{{{_latex_escape(draft.title)}}}")
-            for paragraph in _paragraphs_with_offsets(str(draft.content)):
-                lines.extend([_latex_escape(paragraph["text"]), ""])
-
-    evidence_rows = academic_export.get("evidence_rows", [])
-    if evidence_rows:
+    if title:
         lines.extend(
             [
-                r"\section{证据表}",
-                r"\begin{longtable}{p{0.18\linewidth}p{0.20\linewidth}p{0.12\linewidth}p{0.22\linewidth}p{0.22\linewidth}}",
-                r"Evidence ID & Material & Status & PDF Anchor & Excerpt \\",
-                r"\hline",
+                f"\\title{{{_latex_escape(title)}}}",
+                r"\date{}",
             ]
         )
-        for row in evidence_rows:
-            material_title = row["provenance"]["material_title"]
-            lines.append(
-                " & ".join(
-                    [
-                        _latex_escape(row["evidence_id"]),
-                        _latex_escape(material_title),
-                        _latex_escape(row["status"]),
-                        _latex_escape(_source_anchor_label(row.get("source_anchor"))),
-                        _latex_escape(row["excerpt"]),
-                    ]
-                )
-                + r" \\"
-            )
-        lines.append(r"\end{longtable}")
-
-    figure_assets = academic_export.get("figure_assets", [])
-    if figure_assets:
-        lines.extend(
-            [
-                r"\section{图表资产 provenance}",
-                r"\begin{longtable}{p{0.16\linewidth}p{0.12\linewidth}p{0.18\linewidth}p{0.26\linewidth}p{0.20\linewidth}}",
-                r"Asset & Kind & Numbering & Source & Asset Path \\",
-                r"\hline",
-            ]
-        )
-        for row in figure_assets:
-            lines.append(
-                " & ".join(
-                    [
-                        _latex_escape(row.get("asset_id")),
-                        _latex_escape(row.get("kind")),
-                        _latex_escape(row.get("numbering")),
-                        _latex_escape(_source_anchor_label(row.get("source_anchor"))),
-                        _latex_escape(row.get("asset_path")),
-                    ]
-                )
-                + r" \\"
-            )
-        lines.append(r"\end{longtable}")
-
-    review_findings = academic_export.get("review_findings", [])
-    if review_findings:
-        lines.extend([r"\section{审计提示}", r"\begin{itemize}"])
-        for finding in review_findings:
-            lines.append(f"\\item {_latex_escape(finding['message'])}")
-        lines.append(r"\end{itemize}")
-
-    bibliography_entries = academic_export.get("bibliography_entries", [])
-    if bibliography_entries:
-        lines.extend([r"\section{参考文献}", r"\begin{enumerate}"])
-        for entry in bibliography_entries:
-            lines.append(f"\\item {_latex_escape(entry['display_text'])}")
-        lines.append(r"\end{enumerate}")
+    lines.extend(
+        [
+        r"\begin{document}",
+        "",
+        ]
+    )
+    if title:
+        lines.extend([r"\maketitle", ""])
+    for raw_line in manuscript_lines:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("# "):
+            continue
+        if stripped.startswith("### "):
+            lines.extend([f"\\subsection{{{_latex_escape(stripped[4:])}}}", ""])
+            continue
+        if stripped.startswith("## "):
+            lines.extend([f"\\section{{{_latex_escape(stripped[3:])}}}", ""])
+            continue
+        for paragraph in _paragraphs_with_offsets(stripped):
+            lines.extend([_latex_escape(paragraph["text"]), ""])
 
     lines.append(r"\end{document}")
     return "\n".join(lines)
@@ -902,69 +1028,24 @@ def _build_project_docx_export(
     normal.font.size = Pt(10.5)
     normal._element.rPr.get_or_add_rFonts().set(qn("w:eastAsia"), "宋体")
 
-    document.add_heading(str(project.title), level=0)
-    if project.description:
-        document.add_paragraph(str(project.description))
-
-    sorted_sections = sorted(sections, key=lambda s: s.order)
-    for section_item in sorted_sections:
-        document.add_heading(str(section_item.title), level=1)
-        if section_item.description:
-            document.add_paragraph(str(section_item.description))
-        for draft in [d for d in drafts if getattr(d, "section_id", None) == section_item.section_id]:
-            document.add_heading(str(draft.title), level=2)
-            _add_docx_paragraphs_from_text(document, str(draft.content))
-
-    orphans = [d for d in drafts if not getattr(d, "section_id", None)]
-    if orphans:
-        document.add_heading("未分类草稿", level=1)
-        for draft in orphans:
-            document.add_heading(str(draft.title), level=2)
-            _add_docx_paragraphs_from_text(document, str(draft.content))
-
-    evidence_rows = academic_export.get("evidence_rows", [])
-    if evidence_rows:
-        document.add_heading("证据表", level=1)
-        table = document.add_table(rows=1, cols=5)
-        table.style = "Table Grid"
-        header_cells = table.rows[0].cells
-        for index, label in enumerate(("Evidence ID", "Material", "Status", "PDF Anchor", "Excerpt")):
-            header_cells[index].text = label
-        for row in evidence_rows:
-            cells = table.add_row().cells
-            cells[0].text = str(row["evidence_id"])
-            cells[1].text = str(row["provenance"]["material_title"])
-            cells[2].text = str(row["status"])
-            cells[3].text = _source_anchor_label(row.get("source_anchor"))
-            cells[4].text = str(row["excerpt"])
-
-    figure_assets = academic_export.get("figure_assets", [])
-    if figure_assets:
-        document.add_heading("图表资产 provenance", level=1)
-        table = document.add_table(rows=1, cols=5)
-        table.style = "Table Grid"
-        header_cells = table.rows[0].cells
-        for index, label in enumerate(("Asset", "Kind", "Numbering", "Source", "Asset Path")):
-            header_cells[index].text = label
-        for row in figure_assets:
-            cells = table.add_row().cells
-            cells[0].text = str(row.get("asset_id") or "")
-            cells[1].text = str(row.get("kind") or "")
-            cells[2].text = str(row.get("numbering") or "")
-            cells[3].text = _source_anchor_label(row.get("source_anchor"))
-            cells[4].text = str(row.get("asset_path") or "")
-
-    review_findings = academic_export.get("review_findings", [])
-    if review_findings:
-        document.add_heading("审计提示", level=1)
-        for finding in review_findings:
-            document.add_paragraph(str(finding["message"]), style="List Bullet")
-
-    bibliography_entries = academic_export.get("bibliography_entries", [])
-    if bibliography_entries:
-        document.add_heading("参考文献", level=1)
-        for entry in bibliography_entries:
-            document.add_paragraph(str(entry["display_text"]), style="List Number")
+    for raw_line in _iter_project_manuscript_markdown_lines(project, sections, drafts, materials):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("# "):
+            document.add_heading(stripped[2:].strip(), level=0)
+            continue
+        if stripped.startswith("### "):
+            document.add_heading(stripped[4:].strip(), level=2)
+            continue
+        if stripped.startswith("## "):
+            document.add_heading(stripped[3:].strip(), level=1)
+            continue
+        number_match = re.match(r"^\d+\.\s+(.+)$", stripped)
+        if number_match:
+            document.add_paragraph(number_match.group(1).strip(), style="List Number")
+            continue
+        _add_docx_paragraphs_from_text(document, stripped)
 
     document.save(str(output_path))
     return output_path
@@ -1032,24 +1113,24 @@ def _build_project_csl_markdown(
     drafts: list[Any],
     materials: list[Any],
 ) -> str:
-    """Build a pandoc-markdown manuscript body with ``[@key]`` cites + a refs slot."""
-    lines: list[str] = [f"# {project.title}", ""]
-    if getattr(project, "description", ""):
-        lines += [str(project.description), ""]
-    for section in sorted(sections, key=lambda s: s.order):
-        lines += [f"## {section.title}", ""]
-        if getattr(section, "description", ""):
-            lines += [str(section.description), ""]
-        for draft in [d for d in drafts if getattr(d, "section_id", None) == section.section_id]:
-            lines += [f"### {draft.title}", "", _citation_tokens_to_pandoc(str(draft.content)), ""]
-    orphans = [d for d in drafts if not getattr(d, "section_id", None)]
-    if orphans:
-        lines += ["## 未分类草稿", ""]
-        for draft in orphans:
-            lines += [f"### {draft.title}", "", _citation_tokens_to_pandoc(str(draft.content)), ""]
-    # Place the citeproc bibliography under a "参考文献" heading.
-    lines += ["# 参考文献", "", "::: {#refs}", ":::", ""]
-    return "\n".join(lines)
+    """Build pandoc Markdown from manuscript drafts with CSL cite tokens only."""
+    if project is None:
+        raise ValueError("project is required")
+    title = str(getattr(project, "title", "") or "").strip()
+    body = "\n".join(
+        _iter_project_manuscript_markdown_lines(
+            project,
+            sections,
+            drafts,
+            materials,
+            citation_style="pandoc",
+            include_bibliography=True,
+            include_title=False,
+        )
+    )
+    if not title:
+        return body
+    return "\n".join(["---", f"title: {json.dumps(title, ensure_ascii=False)}", "---", "", body]).strip()
 
 
 def _build_project_csl_export(
@@ -1075,7 +1156,7 @@ def _build_project_csl_export(
     if not shutil.which("pandoc"):
         raise RuntimeError("pandoc 未安装")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    items = [_material_to_csl_json(material) for material in materials]
+    items = [_material_to_csl_json(material) for material in _cited_materials(materials, drafts)]
     body = _build_project_csl_markdown(project, sections, drafts, materials)
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)

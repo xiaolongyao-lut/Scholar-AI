@@ -60,6 +60,31 @@ _RUNTIME_RECOVERABLE_EXCEPTIONS = (
 )
 
 
+def _is_http_like_exception(exc: BaseException) -> bool:
+    """Return True for FastAPI/Starlette HTTPException-like errors.
+
+    We can't add HTTPException to the recoverable tuple directly because
+    importing fastapi at module load adds startup cost. Detect by class name
+    walking the MRO so both ``fastapi.HTTPException`` and
+    ``starlette.exceptions.HTTPException`` (the former's parent) match.
+    """
+    for cls in type(exc).__mro__:
+        if cls.__name__ == "HTTPException":
+            return True
+    return False
+
+
+def _format_http_exception(exc: BaseException) -> str:
+    """Render an HTTPException for the job error string."""
+    status = getattr(exc, "status_code", None)
+    detail = getattr(exc, "detail", None)
+    if status and detail:
+        return f"HTTP {status}: {detail}"
+    if detail:
+        return str(detail)
+    return str(exc)
+
+
 def _resolve_workspace_root(entry_cwd: str | Path | None = None) -> Path:
     """Resolve the workspace root, preferring a parent git root when present."""
     candidate = Path(entry_cwd or Path.cwd()).expanduser().resolve()
@@ -71,7 +96,16 @@ def _resolve_workspace_root(entry_cwd: str | Path | None = None) -> Path:
 
 def _default_runtime_storage_root() -> Path:
     """Return the default workspace-local storage root for runtime persistence."""
-    return _resolve_workspace_root() / ".modular" / "sessions"
+    configured_root = os.environ.get("WRITING_RUNTIME_STORAGE_ROOT", "").strip()
+    if configured_root:
+        return Path(configured_root).expanduser().resolve()
+
+    try:
+        from project_paths import runtime_state_path
+
+        return runtime_state_path("writing_runtime")
+    except Exception:
+        return _resolve_workspace_root() / ".modular" / "sessions"
 
 
 def _stable_workspace_key(workspace_root: Path) -> str:
@@ -853,6 +887,20 @@ class WritingRuntime:
             if current and current.status != JobStatus.CANCELLED:
                 self._logger.error("Executor error for job %s: %s", job_id, exc)
                 await self.fail_job(job_id, str(exc))
+        except BaseException as exc:  # noqa: BLE001 — must not silently drop FastAPI HTTPException; UI relies on JOB_FAILED event.
+            # HTTPException (FastAPI/Starlette) inherits from Exception, not the
+            # narrow recoverable tuple above. Without this branch, a 400/401
+            # from chat/embedding/rerank providers escapes asyncio as
+            # "Task exception was never retrieved" and the job stays
+            # IN_PROGRESS forever — the UI calls this "stuck at 1800s".
+            if _is_http_like_exception(exc):
+                current = self.get_job(job_id)
+                if current and current.status != JobStatus.CANCELLED:
+                    msg = _format_http_exception(exc)
+                    self._logger.error("HTTP error for job %s: %s", job_id, msg)
+                    await self.fail_job(job_id, msg)
+                return  # swallow — fail_job already emitted JOB_FAILED
+            raise  # truly unknown error: surface to asyncio, don't lie
         finally:
             self._job_tasks.pop(job_id, None)
             self._autosave_if_enabled()

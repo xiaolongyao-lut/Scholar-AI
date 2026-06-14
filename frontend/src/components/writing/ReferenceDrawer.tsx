@@ -8,11 +8,17 @@ import { useWriting } from '@/contexts/WritingContext';
 import {
   downloadProjectExportBlob,
   getWritingBackendService,
-  WRITING_EXPORT_FORMATS,
+  resolveProjectExportForDownload,
+  type WritingDocumentExportFormat,
   type WritingExportFormat,
 } from '@/services/writingBackend';
 import type { ProjectExportResponseEnvelope } from '@/types/resources';
 import { sanitizeRuntimeVisibleText } from './writingRuntimeDisplay';
+import {
+  DOCUMENT_EXPORT_OPTIONS,
+  getDocumentExportOption,
+  writingExportFormatLabel,
+} from './documentExportOptions';
 
 type ReferenceDrawerTab = 'evidence' | 'chain' | 'review' | 'export';
 
@@ -127,17 +133,6 @@ function isAbortError(error: unknown): boolean {
   return record.name === 'AbortError' || record.name === 'CanceledError' || record.code === 'ERR_CANCELED';
 }
 
-function exportFormatLabel(format: WritingExportFormat): string {
-  const labels: Record<WritingExportFormat, string> = {
-    markdown: '文稿预览',
-    json: '结构化文件',
-    word: 'Word 文档',
-    latex: '排版工程',
-    pdf: 'PDF 文件',
-  };
-  return labels[format] ?? '导出文件';
-}
-
 function ExportPanel() {
   const { t } = useI18n();
   const { activeProjectId } = useWriting();
@@ -145,7 +140,7 @@ function ExportPanel() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
-  const [selectedFormat, setSelectedFormat] = React.useState<WritingExportFormat>('markdown');
+  const [selectedFormat, setSelectedFormat] = React.useState<WritingDocumentExportFormat>('markdown');
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
   const handleStopExport = React.useCallback((showNotice: boolean = true) => {
@@ -191,10 +186,26 @@ function ExportPanel() {
     };
   }, [handleStopExport]);
 
-  const handleDownload = React.useCallback((format: WritingExportFormat) => {
+  const handleDownload = React.useCallback(async (format: WritingExportFormat) => {
     if (!exportData) return;
-    downloadProjectExportBlob(exportData, format);
-  }, [activeProjectId, exportData]);
+    if (!activeProjectId) {
+      setError(t('ref.export_no_project'));
+      return;
+    }
+    setError(null);
+    try {
+      const svc = getWritingBackendService();
+      const resolvedExport = await resolveProjectExportForDownload(
+        exportData,
+        format,
+        activeProjectId,
+        (projectId, targetFormat) => svc.exportProject(projectId, targetFormat),
+      );
+      await downloadProjectExportBlob(resolvedExport, format);
+    } catch (err) {
+      setError(formatReferenceDrawerError(err, t('ref.export_failed')));
+    }
+  }, [activeProjectId, exportData, t]);
 
   const handleCopy = React.useCallback(async () => {
     if (!exportData?.content) return;
@@ -207,11 +218,9 @@ function ExportPanel() {
     }
   }, [exportData]);
 
-  const evidenceRows = exportData?.evidence_rows;
-  const citationChain = exportData?.citation_chain;
-  const reviewFindings = exportData?.review_findings;
   const previewText = exportData?.content ?? '';
   const canCopyPreview = previewText.trim().length > 0;
+  const selectedOption = getDocumentExportOption(selectedFormat);
 
   return (
     <div className="space-y-4">
@@ -222,24 +231,43 @@ function ExportPanel() {
         </div>
       ) : (
         <>
-          <div className="flex gap-2">
-            <select
+          <div className="space-y-3">
+            <div
+              role="group"
               aria-label="导出格式"
-              value={selectedFormat}
-              onChange={(event) => setSelectedFormat(event.target.value as WritingExportFormat)}
-              className="min-w-0 flex-1 rounded-sm border border-outline-variant bg-surface-low px-3 py-2 font-label text-[11px] font-medium text-foreground/70"
+              className="grid grid-cols-3 overflow-hidden rounded-sm border border-outline-variant bg-surface-low"
             >
-              {WRITING_EXPORT_FORMATS.map((format) => (
-                <option key={format} value={format}>{exportFormatLabel(format)}</option>
-              ))}
-            </select>
+              {DOCUMENT_EXPORT_OPTIONS.map(({ format, label, extension, Icon }) => {
+                const isSelected = selectedFormat === format;
+                return (
+                  <button
+                    key={format}
+                    type="button"
+                    onClick={() => setSelectedFormat(format)}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      'inline-flex min-h-[48px] flex-col items-center justify-center gap-1 border-r border-outline-variant px-2 py-2 font-label transition-all last:border-r-0',
+                      isSelected
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-foreground/55 hover:bg-surface-container hover:text-foreground',
+                    )}
+                  >
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold">
+                      <Icon size={12} aria-hidden />
+                      {label}
+                    </span>
+                    <span className="text-[9px] text-foreground/40">{extension}</span>
+                  </button>
+                );
+              })}
+            </div>
             <button
               type="button"
               onClick={() => loading ? handleStopExport() : void handleFetchExport(selectedFormat)}
-              className="min-w-[120px] inline-flex items-center justify-center gap-1.5 rounded-sm border border-primary/30 bg-primary/10 px-3 py-2 font-label text-[11px] font-medium text-primary transition-all hover:bg-primary/20 disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-1.5 rounded-sm border border-primary/30 bg-primary/10 px-3 py-2 font-label text-[11px] font-medium text-primary transition-all hover:bg-primary/20 disabled:opacity-50"
             >
               {loading ? <Square size={12} /> : <Download size={12} />}
-              {loading ? '停止' : `获取${exportFormatLabel(selectedFormat)}`}
+              {loading ? '停止' : `生成${selectedOption.label}预览`}
             </button>
           </div>
 
@@ -258,19 +286,11 @@ function ExportPanel() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => handleDownload('json')}
+                  onClick={() => void handleDownload(selectedFormat)}
                   className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm border border-emerald-200/70 bg-emerald-50/60 px-3 py-1.5 font-label text-[10px] font-medium text-emerald-700 transition-all hover:bg-emerald-100 dark:border-emerald-700/40 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
                 >
                   <Download size={10} />
-                  {t('ref.export_download_json')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDownload(selectedFormat)}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm border border-emerald-200/70 bg-emerald-50/60 px-3 py-1.5 font-label text-[10px] font-medium text-emerald-700 transition-all hover:bg-emerald-100 dark:border-emerald-700/40 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
-                >
-                  <Download size={10} />
-                  {selectedFormat === 'json' ? t('ref.export_download_json') : `下载${exportFormatLabel(selectedFormat)}`}
+                  {`下载${selectedOption.label}`}
                 </button>
                 <button
                   type="button"
@@ -285,66 +305,20 @@ function ExportPanel() {
 
               {previewText && (
                 <div className="rounded-sm border border-outline-variant bg-surface-low p-4">
-                  <div className="font-headline text-xs font-semibold text-foreground mb-2">{exportFormatLabel(exportData.format)}</div>
+                  <div className="font-headline text-xs font-semibold text-foreground mb-2">{writingExportFormatLabel(exportData.format)}</div>
                   <div className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-body text-[11px] text-foreground/75 custom-scrollbar">
                     {previewText}
                   </div>
                 </div>
               )}
 
-              {Array.isArray(evidenceRows) && evidenceRows.length > 0 && (
-                <div className="rounded-sm border border-outline-variant bg-surface-low p-4">
-                  <h5 className="font-headline text-xs font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <FileText size={13} className="text-primary/60" />
-                    {t('ref.export_evidence_table')} ({evidenceRows.length})
-                  </h5>
-                  <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-                    {evidenceRows.slice(0, 10).map((row, i) => (
-                      <div key={`ev-${i}`} className="rounded-sm border border-outline-variant bg-surface-lowest px-3 py-2">
-                        <div className="font-headline text-[11px] font-semibold text-foreground truncate">{row.provenance.material_title}</div>
-                        <p className="font-body text-[10px] text-foreground/55 mt-0.5 line-clamp-2">{row.excerpt}</p>
-                      </div>
-                    ))}
-                  </div>
+              {!previewText.trim() && (
+                <div className="rounded-sm border border-dashed border-outline-variant bg-surface-low px-4 py-5 text-center">
+                  <p className="font-headline text-xs font-semibold text-foreground">{t('ref.export_empty_preview_title')}</p>
+                  <p className="mt-2 font-body text-[11px] leading-5 text-foreground/50">{t('ref.export_empty_preview_desc')}</p>
                 </div>
               )}
 
-              {Array.isArray(citationChain) && citationChain.length > 0 && (
-                <div className="rounded-sm border border-outline-variant bg-surface-low p-4">
-                  <h5 className="font-headline text-xs font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <Link2 size={13} className="text-primary/60" />
-                    {t('ref.export_citation_chain')} ({citationChain.length})
-                  </h5>
-                  <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-                    {citationChain.slice(0, 10).map((row, i) => (
-                      <div key={`cc-${i}`} className="rounded-sm border border-outline-variant bg-surface-lowest px-3 py-2 flex items-center gap-2">
-                        <span className="font-label text-[9px] text-primary bg-primary/10 px-1.5 py-0.5 rounded-sm">#{String(row.paragraph_index || i + 1)}</span>
-                        <span className="font-body text-[10px] text-foreground/60 truncate flex-1">{row.claim_excerpt}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {Array.isArray(reviewFindings) && reviewFindings.length > 0 && (
-                <div className="rounded-sm border border-outline-variant bg-surface-low p-4">
-                  <h5 className="font-headline text-xs font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <AlertTriangle size={13} className="text-amber-500 dark:text-amber-400" />
-                    {t('ref.export_review_findings')} ({reviewFindings.length})
-                  </h5>
-                  <div className="space-y-2">
-                    {reviewFindings.map((row, i) => (
-                      <div key={`rf-${i}`} className={cn(
-                        'rounded-sm border px-3 py-2',
-                        row.severity === 'warning' ? 'border-amber-200/70 bg-amber-50/60 dark:border-amber-700/40 dark:bg-amber-500/10' : 'border-emerald-200/70 bg-emerald-50/60 dark:border-emerald-700/40 dark:bg-emerald-500/10'
-                      )}>
-                        <div className="font-headline text-[11px] font-semibold text-foreground">{row.severity}</div>
-                        <p className="font-body text-[10px] text-foreground/55 mt-0.5">{row.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </>
           )}
         </>
