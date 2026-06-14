@@ -194,7 +194,7 @@ export function AuditPanel({
           className="rounded border border-dashed border-outline-variant/50 px-3 py-4 text-center text-xs text-foreground/50"
           data-testid="evolution-audit-empty"
         >
-          还没有任何候选经验被收纳。开启经验候选收纳后，完成智能研读、讨论、写作任务、Skill 或 MCP 工具运行，系统才会把可复用经验送到这里复审。
+          暂无候选经验。
         </div>
       )}
 
@@ -254,9 +254,6 @@ export function AuditPanel({
                           {friendlyDecisionReason(row.decision_reason)}
                         </span>
                       </div>
-                      <p className="text-[10px] text-foreground/45">
-                        原始诊断和本地标识只保留在后台记录，界面仅显示处置结果。
-                      </p>
                     </div>
                     <span className="flex-shrink-0 whitespace-nowrap text-[10px] text-foreground/45">
                       {formatDecidedAt(row.decided_at)}

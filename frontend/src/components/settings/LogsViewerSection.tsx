@@ -209,10 +209,7 @@ export function LogsViewerSection() {
           </div>
         </div>
 
-        <p className="text-[11px] text-foreground/60 leading-relaxed mb-3">
-          只读看后端日志，凭据已脱敏。当 chat 出现报错、rerank 回退、检索失败时，这里能看到最近的原因。
-          自动刷新每 5 秒拉一次，未开启时不再轮询。
-        </p>
+        <p className="text-[11px] text-foreground/60 leading-relaxed mb-3">只读日志，凭据已脱敏。</p>
 
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
           <label className="flex flex-col gap-1 text-[11px] text-foreground/60">
@@ -255,7 +252,7 @@ export function LogsViewerSection() {
           </label>
 
           <label className="col-span-2 flex flex-col gap-1 text-[11px] text-foreground/60">
-            <span>搜索（在 message 或 logger 名里包含）</span>
+            <span>搜索</span>
             <div className="relative">
               <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-foreground/40" />
               <input

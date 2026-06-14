@@ -86,11 +86,11 @@ const PROTOCOL_OPTIONS: CredentialProtocol[] = [
   'rerank',
 ];
 const PROTOCOL_LABELS: Record<CredentialProtocol, string> = {
-  openai_chat_completions: '聊天补全兼容',
-  openai_responses: '响应式兼容',
-  anthropic_messages: '消息协议兼容',
-  embeddings: '向量嵌入',
-  rerank: '重排序',
+  openai_chat_completions: 'OpenAI Chat Completions',
+  openai_responses: 'OpenAI Responses',
+  anthropic_messages: 'Anthropic Messages',
+  embeddings: 'Embeddings 向量嵌入',
+  rerank: 'Rerank 重排序',
 };
 const TRUST_OPTIONS: { value: CredentialTrustSource; label: string }[] = [
   { value: 'official_provider', label: '官方服务商' },
@@ -440,7 +440,7 @@ export function CredentialsSection(): JSX.Element {
       ? `${selectedCredential.provider || '未命名提供商'} / ${selectedCredential.model || '未填模型'}`
       : '编辑 API';
   const detailSubtitle = mode === 'create'
-    ? '创建后会出现在列表中，可被研读和写作、语义路由和多智能体复用。'
+    ? '可用于研读、写作和语义路由。'
     : selectedCredential
       ? `${CATEGORY_LABELS[selectedCredential.category]} · ${formatCredentialCardSecondary(selectedCredential)}`
       : '该 API 凭证可能已被删除，请返回列表刷新。';
@@ -454,7 +454,7 @@ export function CredentialsSection(): JSX.Element {
             API 凭证
           </h3>
           <p className="mt-1 font-label text-xs text-foreground/45">
-            统一管理可复用的提供商、服务地址、模型、密钥和调用档位。
+            提供商、模型、密钥。
           </p>
         </div>
         {!detailOpen ? (
@@ -484,7 +484,7 @@ export function CredentialsSection(): JSX.Element {
           <Upload size={14} className="mt-0.5 text-amber-700 dark:text-amber-300" aria-hidden="true" />
           <div className="flex-1">
             <p className="font-label text-xs leading-relaxed text-amber-900 dark:text-amber-200">
-              浏览器旧设置里发现了一个访问密钥。可以导入为本机 API 配置，系统不会自动导入。
+              发现旧访问密钥。
             </p>
             <div className="mt-2 flex gap-2">
               <button
@@ -537,7 +537,7 @@ export function CredentialsSection(): JSX.Element {
           {list.length === 0 && !loading ? (
             <div className="rounded-lg border border-dashed border-outline-variant/70 bg-surface-low px-4 py-8 text-center sm:col-span-2">
               <p className="font-label text-xs text-foreground/50">
-                还没有保存 API。点击“新增”添加一套配置。
+                暂无已保存 API。
               </p>
               <button
                 type="button"
@@ -749,7 +749,7 @@ function CredentialForm({
             type="text"
             value={form.provider}
             onChange={e => onForm({ ...form, provider: e.target.value })}
-            placeholder="任意兼容服务名称，可手动填写"
+            placeholder="服务名称"
             className={INPUT_CLASS}
           />
         </FormField>
@@ -760,7 +760,7 @@ function CredentialForm({
               type="text"
               value={form.model}
               onChange={e => onForm({ ...form, model: e.target.value })}
-              placeholder="填写服务提供的模型名称"
+              placeholder="模型名称"
               className="min-w-0 flex-1 rounded border border-outline bg-surface px-2 py-1.5 text-xs"
             />
             <button
@@ -826,7 +826,7 @@ function CredentialForm({
             ))}
           </select>
           <p className="mt-1 text-[10px] leading-relaxed text-foreground/45">
-            {strategyHintDescription(form.strategy_hint)}。低/中/高控制成本与上下文预算；XHigh 和 Max 用于区分 Codex、Claude Max 等高预算模型路由。
+            {strategyHintDescription(form.strategy_hint)}
           </p>
         </FormField>
         <FormField label="服务地址" full htmlFor={fieldId('base-url')}>
@@ -835,12 +835,9 @@ function CredentialForm({
             type="url"
             value={form.base_url}
             onChange={e => onForm({ ...form, base_url: e.target.value })}
-            placeholder="填写兼容服务地址"
+            placeholder="服务地址"
             className={`${INPUT_CLASS} font-mono text-xs`}
           />
-          <p className="mt-1 text-[10px] text-foreground/50">
-            请按服务商文档填写兼容地址；官方、聚合或本地服务都可以手动填写，无需固定域名。
-          </p>
         </FormField>
         <FormField
           label={mode === 'edit' ? '访问密钥（留空保留当前值）' : '访问密钥'}

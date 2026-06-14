@@ -288,9 +288,7 @@ function SourceStep(props: {
 
   return (
     <div className="space-y-3">
-      <p className="font-label text-[12px] text-foreground/70">
-        粘贴你已经下载到本地的 MCP 包路径(目录或 zip)。后端将扫描包内的声明文件并自动识别启动方式、配置项和所需凭证。
-      </p>
+      <p className="font-label text-[12px] text-foreground/70">本地目录或 zip。</p>
       <label className="block">
         <span className="font-label text-[11px] text-foreground/55">本地路径</span>
         <input
@@ -403,7 +401,7 @@ function CandidateStep(props: {
   return (
     <div className="space-y-3">
       <p className="font-label text-[12px] text-foreground/70">
-        扫描发现 {scan.launch_candidates.length} 种可能的启动方式。请选择一种;命令将以 argv 数组执行,不经过 shell。
+        发现 {scan.launch_candidates.length} 种启动方式。
       </p>
       <ul className="space-y-2">
         {scan.launch_candidates.map((c) => {
@@ -478,9 +476,7 @@ function ConfigStep(props: {
   }
   return (
     <div className="space-y-4">
-      <p className="font-label text-[12px] text-foreground/70">
-        按 MCP 包声明自动生成配置项。普通配置可选预设也可手动填写；敏感信息请在下一步绑定已保存凭证。
-      </p>
+      <p className="font-label text-[12px] text-foreground/70">配置项。</p>
       {scan.config_fields.map((f, fieldIndex) => {
         const label = formatDynamicConfigFieldLabel(f.label, fieldIndex);
         const description = formatDynamicDescription(f.description);
@@ -571,9 +567,7 @@ function CredentialsStep(props: {
   }
   return (
     <div className="space-y-5">
-      <p className="font-label text-[12px] text-foreground/70">
-        为下面每个敏感配置选择一个已保存的凭证。系统只保存凭证引用，不会把原始密钥写入 MCP 配置文件。
-      </p>
+      <p className="font-label text-[12px] text-foreground/70">绑定已保存凭证。</p>
       {scan.required_credentials.map((rc) => (
         <CredentialPicker
           key={rc.id}
@@ -620,9 +614,6 @@ function ReviewStep(props: {
         <div>
           <p className="font-label text-[12px] text-amber-800 dark:text-amber-200 font-medium">
             我信任此包,允许启动进程探测工具列表
-          </p>
-          <p className="font-label text-[11px] text-amber-700/80 dark:text-amber-200/80 mt-0.5">
-            探测会运行该 MCP 包的启动方式，并读取它公开的工具列表。未勾选时仅注册不启用，你可以之后在「已安装」单独探测。
           </p>
         </div>
       </label>

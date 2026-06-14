@@ -34,9 +34,6 @@ export function McpInstallSummary(props: McpInstallSummaryProps): JSX.Element {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-label text-sm font-semibold">安装完成</p>
-              <p className="mt-1 text-xs leading-5 text-emerald-900/75 dark:text-emerald-100/75">
-                服务已加入本地 MCP 管理列表。可以继续在高级页查看调用日志、授权状态和凭证绑定。
-              </p>
             </div>
             <button
               type="button"

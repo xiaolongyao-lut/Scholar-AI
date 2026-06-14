@@ -109,9 +109,6 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
               <div className="font-label text-[11px] tracking-[0.2em] text-foreground/45">
                 资源与索引配置
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-foreground/50">
-                Wiki 页面、图谱、查询索引和复审队列由工作区统一管理；默认只显示可用状态。
-              </p>
             </div>
             <FileText size={18} className="shrink-0 text-primary/60" />
           </div>
@@ -132,9 +129,6 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
                         {row.exists ? '可用' : '待生成'}
                       </span>
                     </div>
-                    <p className="mt-2 text-[11px] leading-5 text-foreground/45">
-                      {row.exists ? '工作区已有对应管理记录。' : '等待系统生成对应管理记录。'}
-                    </p>
                   </div>
                 </div>
               </div>

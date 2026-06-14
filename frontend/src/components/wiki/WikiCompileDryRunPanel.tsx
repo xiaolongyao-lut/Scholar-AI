@@ -112,9 +112,6 @@ export function WikiCompileDryRunPanel({
             <span className="font-label text-[11px] tracking-[0.16em] text-foreground/35">编译与手动沉淀</span>
           </div>
           <h2 className="mt-1 font-headline text-base font-semibold text-foreground">Wiki 知识写入</h2>
-          <p className="mt-1 max-w-3xl text-xs leading-5 text-foreground/55">
-            编译会把已注册来源转换成 Wiki 页面；手动录入用于把你已确认的知识直接沉淀成页面。
-          </p>
         </div>
 
         <button
@@ -135,9 +132,6 @@ export function WikiCompileDryRunPanel({
               <ShieldCheck size={16} className="text-primary/65" />
               <h3 className="font-headline text-sm font-semibold">来源编译</h3>
             </div>
-            <p className="mt-2 text-xs leading-5 text-foreground/55">
-              当前接口按 Wiki 注册表中的来源生成预案；只填写项目不会筛选数据源，后端会把 project_id 作为前向兼容字段接收。
-            </p>
 
             <div className="mt-4 space-y-3">
               <label className="block text-xs text-foreground/55">
@@ -145,7 +139,7 @@ export function WikiCompileDryRunPanel({
                 <input
                   value={sourceId}
                   onChange={(event) => setSourceId(event.target.value)}
-                  placeholder="source_id，例如 paper-source-003"
+                  placeholder="source_id"
                   className="mt-1.5 w-full rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
                 />
               </label>
@@ -155,7 +149,7 @@ export function WikiCompileDryRunPanel({
                 <input
                   value={projectId}
                   onChange={(event) => setProjectId(event.target.value)}
-                  placeholder="project_id，仅作兼容记录"
+                  placeholder="project_id"
                   className="mt-1.5 w-full rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
                 />
               </label>
@@ -167,20 +161,18 @@ export function WikiCompileDryRunPanel({
                   onChange={(event) => setAllowWrite(event.target.checked)}
                   className="mt-0.5"
                 />
-                <span>
-                  直接写入 Wiki 页面。关闭时只生成预案和预算，不改动页面文件。
-                </span>
+                <span>直接写入 Wiki 页面</span>
               </label>
 
               {!isWikiEnabled ? (
                 <div className="rounded-md border border-amber-200/80 bg-amber-50 px-3 py-3 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
-                  Wiki 当前未启用，开启后可编译或录入知识。
+                  Wiki 未启用。
                 </div>
               ) : null}
 
               {isWikiStale ? (
                 <div className="rounded-md border border-amber-200/80 bg-amber-50 px-3 py-3 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
-                  当前索引需要重新生成，建议写入后刷新状态、图谱和检索索引。
+                  索引需要重新生成。
                 </div>
               ) : null}
             </div>
@@ -243,7 +235,7 @@ export function WikiCompileDryRunPanel({
                   value={manualBody}
                   onChange={(event) => setManualBody(event.target.value)}
                   rows={6}
-                  placeholder="写入你已经确认的结论、边界条件、证据说明或操作规则。"
+                  placeholder="写入已确认知识"
                   className="mt-1.5 min-h-32 w-full resize-y rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm leading-6 text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
                 />
               </label>
@@ -299,7 +291,7 @@ export function WikiCompileDryRunPanel({
                   </div>
                   {!budget?.pricing_configured ? (
                     <div className="mt-2 rounded-md border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs leading-5 text-slate-400">
-                      当前未配置模型价格，成本按 0 显示；模型用量估算仍可用于预算阈值判断。
+                      未配置模型价格。
                     </div>
                   ) : null}
                 </div>
@@ -316,7 +308,7 @@ export function WikiCompileDryRunPanel({
                     </ul>
                   ) : (
                     <div className="mt-2 rounded-md border border-slate-800 bg-slate-900/70 px-3 py-3 text-xs text-slate-400">
-                      暂未返回具体页面。没有注册来源时，先用手动录入或导入文献后再编译。
+                      暂无计划页面。
                     </div>
                   )}
                 </div>

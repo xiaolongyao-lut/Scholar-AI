@@ -649,7 +649,7 @@ export function SkillManager({ embedded = false }: SkillManagerProps) {
       setTestResult({
         tone: 'success',
         title: 'Skill 设置已保存',
-        details: ['普通配置和凭证引用已写入本地 Skill 元数据。'],
+        details: ['Skill 设置已更新。'],
       });
     } catch (err) {
       setTestResult({
@@ -1375,9 +1375,7 @@ function SkillRuntimeSettingsPanel({
             <Database size={13} />
             Skill 设置
           </div>
-          <p className="mt-1 text-[10px] leading-relaxed text-foreground/45">
-            按 Skill 声明自动生成。普通配置可选预设也可手动填写，敏感信息只绑定已保存凭证。
-          </p>
+          <p className="mt-1 text-[10px] leading-relaxed text-foreground/45">配置项与凭证绑定。</p>
         </div>
         <button
           type="button"
@@ -1567,7 +1565,7 @@ function ApprovalPane({
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-foreground">{capabilityName}</h4>
-                    <p className="text-[10px] text-foreground/45">需要授权后才会执行</p>
+                    <p className="text-[10px] text-foreground/45">等待授权</p>
                   </div>
                 </div>
               </div>

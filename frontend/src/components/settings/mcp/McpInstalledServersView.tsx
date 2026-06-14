@@ -98,8 +98,7 @@ export function McpInstalledServersView(): JSX.Element {
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-2">
         <p className="font-label text-[11px] text-foreground/55 flex-1">
-          通过「推荐」或「本地安装」注册的 MCP 服务器在此列出。
-          需要修改启动参数或切换授权状态，请到「高级 / 手动添加」页操作。
+          已安装 MCP 服务器。
         </p>
         <button
           type="button"
@@ -125,7 +124,7 @@ export function McpInstalledServersView(): JSX.Element {
 
       {!loading && servers.length === 0 && (
         <div className="rounded-md border border-dashed border-outline-variant p-6 font-label text-[11px] text-foreground/40 text-center">
-          还没有已安装的 MCP 服务器。请到「推荐」或「本地安装」开始。
+          暂无已安装 MCP。
         </div>
       )}
 

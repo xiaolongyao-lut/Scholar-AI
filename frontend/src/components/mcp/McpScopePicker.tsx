@@ -86,7 +86,7 @@ export function McpScopePicker({
       {error && <span className="text-amber-700">{error}</span>}
       {!loading && !error && visible.length === 0 && (
         <span className="text-foreground/40 italic">
-          没有已启用的 MCP 服务。请先到“设置 · MCP 服务器”启用一个。
+          暂无已启用 MCP。
         </span>
       )}
       {visible.map((s) => {

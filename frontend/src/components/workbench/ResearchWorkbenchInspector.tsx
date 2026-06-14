@@ -193,7 +193,7 @@ function InspectorDiscussionFallback({
       <div className="rounded-md border border-dashed border-outline-variant bg-surface-low p-4 text-xs text-foreground/55">
         <p className="mb-2 font-medium text-foreground/75">多智能体讨论已切换到回退入口</p>
         <p className="mb-3 leading-relaxed">
-          当前本机功能开关关闭了工作台内嵌讨论。仍可前往多智能体讨论页继续运行同一套讨论流程。
+          内嵌讨论已关闭。
         </p>
         <button
           type="button"

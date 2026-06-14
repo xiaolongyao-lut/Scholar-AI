@@ -433,9 +433,9 @@ export function SourcesCitations() {
             <div className="flex items-start gap-3">
               <ListChecks size={16} className="mt-0.5 shrink-0 text-primary/70" />
               <div className="space-y-1 text-xs leading-5 text-foreground/58">
-                <div><span className="font-medium text-foreground/78">引用检查：</span>检查未引用条目、缺失元数据、重复 DOI/题名和近年文献占比。</div>
-                <div><span className="font-medium text-foreground/78">样式格式：</span>参考文献表由当前 CSL 样式实时生成，支持 GB/T、IEEE、APA 等样式。</div>
-                <div><span className="font-medium text-foreground/78">导入方式：</span>BibTeX 会先进入本页临时条目；保存到项目元数据需要在条目里补齐并保存。</div>
+                <div><span className="font-medium text-foreground/78">引用检查：</span>缺失、重复、未引用。</div>
+                <div><span className="font-medium text-foreground/78">样式格式：</span>当前 CSL。</div>
+                <div><span className="font-medium text-foreground/78">导入：</span>BibTeX 临时条目。</div>
               </div>
             </div>
           </div>
@@ -488,7 +488,7 @@ export function SourcesCitations() {
         ) : filtered.length === 0 ? (
           <EmptyState
             title={activeProjectId ? '没有匹配的来源' : '未激活项目'}
-            description={activeProjectId ? '项目上传的文献会在这里显示，并同步展示引用次数、切块数量和元数据完整度。' : '先选择项目，或临时导入 Bib/RIS/PDF 作为本页来源。'}
+            description={activeProjectId ? '换个关键词。' : '先选择项目。'}
             icon={<Inbox size={40} />}
           />
         ) : (
@@ -761,7 +761,7 @@ function CitationBibliographySection({
       {!safeStyleXml.trim() ? (
         <p className="text-xs leading-5 text-foreground/45">样式未就绪；请在「设置 · 文献样式」中确认当前 CSL 样式。</p>
       ) : sources.length === 0 ? (
-        <p className="text-xs leading-5 text-foreground/45">本项目暂无文献来源；上传或导入文献后将按当前样式生成参考文献表。</p>
+        <p className="text-xs leading-5 text-foreground/45">暂无文献来源。</p>
       ) : result && result.bibliography.length > 0 ? (
         <div className="space-y-2 text-xs leading-relaxed text-foreground/80">
           {result.bibliography.map((entry) => (
@@ -773,7 +773,7 @@ function CitationBibliographySection({
           ))}
         </div>
       ) : (
-        <p className="text-xs leading-5 text-foreground/45">尚无法生成条目；为文献补全作者、年份、题名、期刊等元数据后即可按样式格式化。</p>
+        <p className="text-xs leading-5 text-foreground/45">元数据不足。</p>
       )}
       {result && result.errors.length > 0 ? (
         <p className="mt-2 font-label text-[10px] text-amber-600 dark:text-amber-400">{result.errors.length} 个条目存在格式化告警（多为元数据缺失）。</p>
@@ -975,12 +975,12 @@ function CitationSuggestionPanel({
         value={contextText}
         onChange={(event) => onContextChange(event.target.value)}
         rows={2}
-        placeholder="粘贴一段草稿上下文，用已有文献切块推荐可引用来源"
+        placeholder="粘贴草稿上下文"
         className="min-h-[64px] w-full resize-y rounded-md border border-outline-variant/50 bg-surface-low px-3 py-2 text-xs leading-5 text-foreground outline-none placeholder:text-foreground/30 focus:border-primary/40"
       />
       {!draftReady ? (
         <p className="mt-2 text-[10px] leading-4 text-foreground/42">
-          当前项目还没有可用于推荐的草稿；先在手稿页面创建或保存草稿后再请求推荐。
+          暂无可推荐草稿。
         </p>
       ) : null}
       {stopped ? (
@@ -1020,7 +1020,7 @@ function CitationSuggestionPanel({
         </div>
       ) : attempted && !loading ? (
         <p className="mt-2 rounded-md border border-outline-variant/50 bg-surface-low px-3 py-2 text-[10px] leading-4 text-foreground/42">
-          当前上下文没有匹配到可推荐来源；可换一段包含关键词、机制或实验对象的草稿上下文再试。
+          暂无匹配来源。
         </p>
       ) : null}
     </div>

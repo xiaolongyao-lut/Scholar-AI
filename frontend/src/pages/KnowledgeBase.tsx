@@ -363,7 +363,7 @@ export function KnowledgeBase() {
       await loadMaterials();
     } catch (err: unknown) {
       if (scanStopRequestedRef.current || isAbortLikeError(err)) {
-        setScanNotice('已停止扫描。已进入后台的处理可能会在稍后出现在列表中。');
+        setScanNotice('已停止扫描。');
         return;
       }
       const msg = formatKnowledgeActionError(err);
@@ -383,7 +383,7 @@ export function KnowledgeBase() {
     scanStopRequestedRef.current = true;
     controller.abort();
     setScanning(false);
-    setScanNotice('已停止扫描。已进入后台的处理可能会在稍后出现在列表中。');
+    setScanNotice('已停止扫描。');
   }, []);
 
   const handleUploadFiles = useCallback(async (files: FileList | null) => {
@@ -415,7 +415,7 @@ export function KnowledgeBase() {
       setUploadSummary(data);
     } catch (err: unknown) {
       if (uploadStopRequestedRef.current || isAbortLikeError(err)) {
-        setUploadNotice('已停止导入。已进入后台的处理可能会在稍后出现在列表中。');
+        setUploadNotice('已停止导入。');
         setUploadSummary(null);
         return;
       }
@@ -456,7 +456,7 @@ export function KnowledgeBase() {
     controller.abort();
     setUploading(false);
     setUploadSelection([]);
-    setUploadNotice('已停止导入。已进入后台的处理可能会在稍后出现在列表中。');
+    setUploadNotice('已停止导入。');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -538,8 +538,8 @@ export function KnowledgeBase() {
           </div>
         </div>
         <div className="border-b border-outline-variant/30 px-3 py-2 text-[11px] leading-5 text-foreground/55">
-          <p className="font-medium text-foreground/70">触发说明</p>
-          <p className="mt-1">文献、智能研读、讨论和写作编译完成后，会把可复用内容写入 Wiki 或经验队列；没有变化时先看任务中心，再确认设置里的开关。</p>
+          <p className="font-medium text-foreground/70">沉淀状态</p>
+          <p className="mt-1">Wiki / 经验队列</p>
         </div>
         <nav className="flex-1 overflow-auto p-2 text-xs text-foreground/75">
           <ul className="space-y-0.5">
@@ -1003,8 +1003,8 @@ export function KnowledgeBase() {
               <SectionCard title="摘要" className="mb-3">
                 <p className="text-foreground/65">
                   {selectedDoc.status === 'indexed'
-                    ? `共有 ${selectedDoc.chunks} 个检索片段可供使用。可点击下方按钮在工作台中继续阅读。`
-                    : '该文档暂未提取到可索引文本，可重新上传或检查源文件。'}
+                    ? `${selectedDoc.chunks} 个检索片段。`
+                    : '暂未提取到可索引文本。'}
                 </p>
               </SectionCard>
               <SectionCard title="操作" className="mb-3" bodyClassName="space-y-2">

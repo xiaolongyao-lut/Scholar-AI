@@ -1,5 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, BookOpen, CheckCircle2, ChevronRight, Clock, GraduationCap, Loader2, XCircle, RefreshCw, Pause, Play, Square, Trash2 } from 'lucide-react';
+import {
+  Activity,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Database,
+  GitBranch,
+  Inbox,
+  Layers3,
+  Library,
+  Loader2,
+  XCircle,
+  RefreshCw,
+  Pause,
+  Play,
+  Square,
+  Trash2,
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -29,8 +46,8 @@ interface Job {
 
 interface UserTaskShortcut {
   id: string;
-  name: string;
-  description: string;
+  label: string;
+  detail: string;
   route: string;
   icon: React.ElementType;
 }
@@ -46,18 +63,32 @@ const statusConfig: Record<JobStatus, { icon: React.ElementType; color: string; 
 
 const USER_TASK_SHORTCUTS: UserTaskShortcut[] = [
   {
-    id: 'wiki',
-    name: 'Wiki 知识沉淀',
-    description: '整理项目 Wiki、审阅待编译条目。',
-    route: '/wiki',
-    icon: BookOpen,
+    id: 'insights',
+    label: '待确认',
+    detail: '复审内容',
+    route: '/wiki?section=insights',
+    icon: Inbox,
   },
   {
-    id: 'evolution',
-    name: '学到的经验',
-    description: '复审、保存和回滚可复用经验。',
-    route: '/evolution',
-    icon: GraduationCap,
+    id: 'knowledge',
+    label: '已沉淀',
+    detail: '确认页面',
+    route: '/wiki?section=knowledge',
+    icon: Library,
+  },
+  {
+    id: 'sources',
+    label: '来源',
+    detail: '原文与分块',
+    route: '/wiki?section=sources',
+    icon: Database,
+  },
+  {
+    id: 'graph',
+    label: '关联',
+    detail: '关系视图',
+    route: '/wiki?section=graph',
+    icon: GitBranch,
   },
 ];
 
@@ -87,6 +118,19 @@ export function Jobs() {
 
   useEffect(() => {
     void loadJobs();
+    // B17 (2026-06-13): 任务中心需要看到 job 实时进度，原本只在首次加载或
+    // 用户点"刷新"按钮才更新。改成每 4s 自动轮询，"刷新"按钮保留用于强制
+    // 立即拉取。轮询仅在 tab 可见时跑，节省后台/隐藏窗口的请求。
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      void loadJobs();
+    };
+    const id = window.setInterval(tick, 4000);
+    return () => {
+      window.clearInterval(id);
+    };
   }, [loadJobs]);
 
   const handlePause = async (jobId: string) => {
@@ -215,25 +259,42 @@ export function Jobs() {
           ))}
         </div>
 
-        <div className="mb-4 grid gap-2 md:grid-cols-2">
-          {USER_TASK_SHORTCUTS.map((task) => (
+        <section className="mb-4 rounded-md border border-outline-variant/60 bg-surface-lowest px-3 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <Layers3 size={16} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="font-display text-sm font-semibold text-foreground">知识沉淀</h2>
+              <p className="mt-0.5 text-[11px] text-foreground/45">记录、复审、沉淀、召回。</p>
+            </div>
             <button
-              key={task.id}
               type="button"
-              onClick={() => navigate(task.route)}
-              className="group flex min-w-0 items-center gap-3 rounded-md border border-outline-variant/60 bg-surface-lowest px-3 py-2.5 text-left transition-colors hover:border-primary/35 hover:bg-surface-default/40"
+              onClick={() => navigate('/wiki')}
+              className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2.5 py-1.5 text-xs text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                <task.icon size={15} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-label text-sm font-medium text-foreground">{task.name}</span>
-                <span className="mt-0.5 block truncate text-[11px] text-foreground/45">{task.description}</span>
-              </span>
-              <ChevronRight size={14} className="shrink-0 text-foreground/35 transition-colors group-hover:text-primary" />
+              打开
+              <ChevronRight size={13} />
             </button>
-          ))}
-        </div>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {USER_TASK_SHORTCUTS.map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => navigate(task.route)}
+                className="group flex min-h-12 min-w-0 items-center gap-2 rounded-md border border-outline-variant/50 bg-surface-low px-3 py-2 text-left transition-colors hover:border-primary/35 hover:bg-surface-default/40"
+              >
+                <task.icon size={14} className="shrink-0 text-primary/75" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-label text-xs font-semibold text-foreground/75">{task.label}</span>
+                  <span className="mt-0.5 block truncate text-[10px] text-foreground/40">{task.detail}</span>
+                </span>
+                <ChevronRight size={12} className="shrink-0 text-foreground/30 transition-colors group-hover:text-primary" />
+              </button>
+            ))}
+          </div>
+        </section>
 
         {/* Job list */}
         {loading ? (

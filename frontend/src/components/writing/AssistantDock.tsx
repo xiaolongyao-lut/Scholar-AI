@@ -179,7 +179,7 @@ export function AssistantDock({
               <p className="text-[11px] text-foreground line-clamp-2">
                 {activeJobTimeline
                   ? `当前动作 · ${formatRuntimeJobStatus(activeJobTimeline.status, t)}`
-                  : '启动动作后，这里会显示实时运行记录和最终状态。'}
+                  : '等待动作事件。'}
               </p>
               <div className="mt-3 flex items-center justify-between text-[8px] font-medium text-foreground/40 uppercase tracking-wider">
                 <span className="flex items-center gap-1">
@@ -229,7 +229,7 @@ export function AssistantDock({
               ))
             ) : (
               <div className="rounded-sm border border-dashed border-outline-variant bg-surface-low p-4 text-[11px] text-foreground/50 leading-6">
-                暂无事件。启动动作后，这里会实时刷新并显示最新运行记录与终态。
+                暂无事件。
               </div>
             )}
           </div>

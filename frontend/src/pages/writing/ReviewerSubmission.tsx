@@ -511,7 +511,7 @@ export function ReviewerSubmission() {
         <div className="rounded-md border border-outline-variant/60 bg-surface-lowest px-4 py-3 text-xs leading-6 text-foreground/65">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded bg-primary/10 px-2 py-0.5 text-[11px] text-primary">探查</span>
-            <span>开始后会创建后台任务；切换页面不会中断。任务中心可查看进度，本页保持打开时会自动回填报告。</span>
+            <span>后台任务，可在任务中心查看。</span>
           </div>
           {activeJobId ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-foreground/55">
@@ -567,7 +567,7 @@ export function ReviewerSubmission() {
               value={journalRules}
               onChange={(event) => setJournalRules(event.target.value)}
               rows={7}
-              placeholder="粘贴目标期刊作者指南、字数、结构、图表、引用、开放数据等要求。留空则按通用学术审稿标准。"
+              placeholder="粘贴目标期刊要求"
               className="min-h-[148px] w-full resize-y rounded-md border border-outline-variant/60 bg-surface-low px-3 py-2 text-sm leading-6 text-foreground outline-none transition-colors placeholder:text-foreground/30 focus:border-primary/60"
             />
             <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -610,7 +610,7 @@ export function ReviewerSubmission() {
                 <BrainCircuit className="h-8 w-8 text-foreground/25" aria-hidden />
                 <p className="mt-3 text-sm font-medium text-foreground/70">点击“开始 AI 审稿”生成结构化报告</p>
                 <p className="mt-1 max-w-xl text-xs leading-5 text-foreground/45">
-                  报告会围绕当前手稿、项目文献和上方期刊要求输出：总体判断、主要问题、次要问题、格式问题和可执行修改清单。当前审稿 AI：{reviewModel}
+                  当前审稿 AI：{reviewModel}
                 </p>
               </div>
             )}

@@ -172,9 +172,6 @@ export function DoctorReportPanel({ doctor, isLoading, error, onRefresh }: Docto
         <div className="min-w-0">
           <div className="font-label text-[11px] uppercase tracking-[0.22em] text-foreground/35">健康诊断</div>
           <h2 className="mt-2 font-display text-xl font-semibold text-foreground">知识沉淀健康检查</h2>
-          <p className="mt-1 max-w-2xl text-xs leading-5 text-foreground/50">
-            先看异常和处理建议；页面数、节点数等内部计数只用于判断是否需要重新编译或重建索引。
-          </p>
         </div>
 
         <button

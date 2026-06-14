@@ -35,8 +35,8 @@ import { formatChatVisibleError, sanitizeChatVisibleText } from '@/components/ch
 import type { ChatAttachment, ChatInputSubmitPayload } from '@/components/chat/ChatInput';
 import type { ChatMessageData, ChatMessageDiagnostics } from '@/components/chat/MessageRenderer';
 import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
-import { GraphPayloadViewer } from '@/components/graph/GraphPayloadViewer';
 import type { GraphNavigateTarget } from '@/components/graph/GraphPayloadViewer';
+import { WikiGraphSegmentedView } from '@/components/graph/WikiGraphSegmentedView';
 import type { GraphPayloadV0 } from '@/components/graph/payloadToRf';
 import { PdfTabStrip } from '@/components/PdfViewer/PdfTabStrip';
 import type { PdfSelectionAnchor } from '@/components/PdfViewer/PdfViewer';
@@ -826,7 +826,7 @@ function buildDialogEvidenceGraphPayload(messages: ChatMessageData[]): GraphPayl
     source_ref: null,
     evidence_refs: null,
     confidence: null,
-    metadata: { surface: 'dialog' },
+    metadata: { surface: 'dialog', reasoning_dimension: 'question' },
   });
 
   let evidenceIndex = 0;
@@ -855,6 +855,7 @@ function buildDialogEvidenceGraphPayload(messages: ChatMessageData[]): GraphPayl
           metadata: {
             source_kind: evidence.source_kind ?? 'local',
             evidence_text: graphEvidenceText(evidence),
+            reasoning_dimension: 'evidence',
           },
         });
       }
@@ -887,7 +888,7 @@ function buildDialogEvidenceGraphPayload(messages: ChatMessageData[]): GraphPayl
             },
             evidence_refs: evidenceRefs,
             confidence: null,
-            metadata: { evidence_count: 1 },
+            metadata: { evidence_count: 1, reasoning_dimension: 'evidence' },
           });
         }
         const evidenceToMaterialId = `edge:${evidenceId}->${materialNodeId}`;
@@ -1384,9 +1385,18 @@ export function Dialog() {
     [backendSuggestedQuestions, activePinnedMaterial, suggestedQuestionChunks],
   );
   const pinnedLooksLikePdf = useMemo(() => {
+    // B10 (2026-06-13): 之前只看 title.endsWith('.pdf')，但
+    //   (1) title 可能来自 URL searchParam，在刚切换 material 的那一帧还没同步
+    //   (2) 用户上传的 PDF 可能不带 .pdf 扩展（命名为 paper / 1 等）
+    // 后端 backend 当前给 type='reference' 不区分文件格式，所以这里降级为
+    // 「乐观判定」：只要有 pinnedMaterialId 就先认作可以打开 reader；真正
+    // 不能渲染时 PdfViewer 会自己降级到错误态。这样避免「点研读后中间栏
+    // 强制回 chat」的 race，并修复无扩展名 PDF 也能打开（用户反馈）。
     const name = String(pinnedMaterialTitle || activePinnedMaterial?.title || '').trim().toLowerCase();
-    return name.endsWith('.pdf');
-  }, [activePinnedMaterial, pinnedMaterialTitle]);
+    if (name.endsWith('.pdf')) return true;
+    if (pinnedMaterialId) return true;  // optimistic — reader 自己会显示错误
+    return false;
+  }, [activePinnedMaterial, pinnedMaterialId, pinnedMaterialTitle]);
   const pinnedPdfUrl = useMemo(
     () => (pinnedMaterialId ? `${getApiBaseUrl()}/resources/document/${pinnedMaterialId}/file` : ''),
     [pinnedMaterialId],
@@ -1444,6 +1454,7 @@ export function Dialog() {
   const activeJobIdRef = useRef<string | null>(dialogActiveJobsByScope.get(smartReadScope) ?? null);
   const isMountedRef = useRef(true);
   const restoringSessionIdRef = useRef<string | null>(null);
+  const taskCenterNavigationPendingRef = useRef(false);
   const dialogShellRef = useRef<HTMLDivElement | null>(null);
   const previousPinnedMaterialIdRef = useRef('');
   const projectReasoningBias = useProjectReasoningBiasState(activeProjectId);
@@ -2015,7 +2026,12 @@ export function Dialog() {
   };
 
   const handleOpenTaskCenter = () => {
+    if (taskCenterNavigationPendingRef.current || location.pathname === '/jobs') return;
+    taskCenterNavigationPendingRef.current = true;
     navigate('/jobs');
+    window.setTimeout(() => {
+      taskCenterNavigationPendingRef.current = false;
+    }, 750);
   };
 
   const handleEditMessage = (message: ChatMessageData) => {
@@ -2160,6 +2176,21 @@ export function Dialog() {
           dialogActiveJobsByScope.set(smartReadScope, job.job_id);
           updateAssistantMessage({
             content: `AI 正在后台研读，任务已进入任务中心。\n\n任务编号：${job.job_id}`,
+            status: 'streaming',
+          });
+        },
+        // B12 (2026-06-13): show backend phase label so the user sees real
+        // progress ("TOLF 检索 → Rerank → 分析链 → 生成") instead of staring at
+        // a stale "AI 思考中" for 2 minutes. Only updates content when the
+        // phase label is present to avoid noisy re-renders.
+        onProgress: (tick) => {
+          if (!isMountedRef.current) return;
+          if (!tick.label) return;
+          const percentSuffix = (typeof tick.percent === 'number' && Number.isFinite(tick.percent))
+            ? `  ${Math.round(tick.percent)}%`
+            : '';
+          updateAssistantMessage({
+            content: `AI 正在研读：${tick.label}${percentSuffix}`,
             status: 'streaming',
           });
         },
@@ -2641,15 +2672,10 @@ export function Dialog() {
               </div>
             )}
             <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleOpenMaterialInReader(materialId)}
-                disabled={!materialId}
-                className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 px-2 py-1 text-xs text-foreground/65 transition-colors hover:border-primary/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <BookOpen className="h-3.5 w-3.5" aria-hidden />
-                阅读
-              </button>
+              {/* B9 (2026-06-13): 原本有「阅读」+「研读」两按钮，功能高度重叠
+                  （都调 focusMaterialReaderPane）。删「阅读」，「研读」成为
+                  唯一入口；研读 = 中间栏展开 PDF + 右栏切 chat tab + 输入框
+                  围绕该文献提问。 */}
               <button
                 type="button"
                 onClick={() => handleSelectContextMaterial(material)}
@@ -2854,7 +2880,7 @@ export function Dialog() {
           </div>
           <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-outline-variant/60 bg-surface-low">
             {evidenceGraphPayload ? (
-              <GraphPayloadViewer
+              <WikiGraphSegmentedView
                 payload={evidenceGraphPayload}
                 projectId={effectiveProjectId || null}
                 onNavigateTarget={pinnedMaterialId && pinnedLooksLikePdf ? handleGraphNavigateTarget : undefined}
@@ -3635,7 +3661,13 @@ export function Dialog() {
           className="hidden h-full min-h-0 shrink-0 flex-col border-l border-outline-variant/60 bg-surface-lowest lg:flex"
         >
           <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant/60 px-3 py-2">
-            <div className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-md border border-outline-variant/50 bg-surface-low p-1">
+            {/* B6 (2026-06-13): contextRailTabs 实际有 4-6 个（读阅模式多出 2 个），
+                之前写死 grid-cols-3 导致第 4 个折到第二行（用户截图证据）。
+                改成 inline-style grid-template-columns 按运行时实际数量等分。 */}
+            <div
+              className="grid min-w-0 flex-1 gap-1 rounded-md border border-outline-variant/50 bg-surface-low p-1"
+              style={{ gridTemplateColumns: `repeat(${contextRailTabs.length}, minmax(0, 1fr))` }}
+            >
               {contextRailTabs.map((tab) => {
                 const Icon = tab.icon;
                 const selected = contextRailTab === tab.id;

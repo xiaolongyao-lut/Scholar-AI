@@ -70,8 +70,7 @@ export function McpServersSection(): JSX.Element {
               MCP 服务器
             </h2>
             <p className="mt-1 font-label text-[11px] leading-relaxed text-foreground/55 max-w-2xl">
-              管理本地 MCP 服务。只有「本次会话已授权」的服务才会被对话调用；
-              本地进程运行，没有完整沙箱。
+              本地 MCP 服务。会话授权后可调用。
             </p>
           </div>
         </div>
@@ -121,10 +120,7 @@ export function McpServersSection(): JSX.Element {
         {activeTab === 'installed' && <McpInstalledServersView />}
         {activeTab === 'advanced' && (
           <div className="rounded-md border border-outline-variant bg-surface-low p-3">
-            <p className="font-label text-[11px] text-foreground/55 mb-3">
-              下面的手动表单保留给已经熟悉本地进程或网络服务连接方式的用户。
-              新用户建议使用「推荐」或「本地安装」。
-            </p>
+            <p className="font-label text-[11px] text-foreground/55 mb-3">手动连接配置。</p>
             <McpServersSectionLegacy />
           </div>
         )}

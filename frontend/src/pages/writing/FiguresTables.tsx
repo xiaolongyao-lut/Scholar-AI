@@ -468,7 +468,7 @@ export function FiguresTables() {
               <div className="min-w-0">
                 <h2 className="font-headline text-sm font-semibold text-foreground">已保存图表与待确认图表</h2>
                 <p className="mt-1 text-xs leading-5 text-foreground/55">
-                  已保存图表可直接复制到手稿中粘贴；待确认条目只来自文献切块已经产出的像素级图片，不在这里临时渲染 PDF 裁剪图。
+                  已保存 / 待确认。
                 </p>
               </div>
             </div>
@@ -531,7 +531,7 @@ export function FiguresTables() {
         ) : filteredRecords.length === 0 ? (
           <EmptyState
             title={activeProjectId ? '没有匹配的图表条目' : '未激活项目'}
-            description={activeProjectId ? '文献切块产出的像素级图表、已保存图表和手动添加项会在这里合并管理。' : '先选择项目，或手动添加图像进入暂存区。'}
+            description={activeProjectId ? '换个关键词。' : '先选择项目。'}
             icon={<Inbox size={40} />}
             action={
               <button
@@ -1232,7 +1232,7 @@ function FigurePreviewDialog({
             <div className="flex min-h-[300px] flex-col items-center justify-center gap-2 text-center text-foreground/45">
               <FileImage size={34} />
               <p className="text-sm">没有可显示的像素图</p>
-              <p className="max-w-lg text-xs leading-5">候选必须来自切块阶段已经产出的图片文件；重新运行文献切块或图表抽取后再刷新。</p>
+              <p className="max-w-lg text-xs leading-5">刷新图表抽取结果。</p>
             </div>
           )}
         </div>

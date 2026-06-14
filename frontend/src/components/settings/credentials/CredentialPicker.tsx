@@ -151,7 +151,7 @@ export function CredentialPicker(props: CredentialPickerProps): JSX.Element {
       {!state.loading && state.credentials.length === 0 ? (
         <div className="rounded-md border border-dashed border-outline-variant p-3 text-center">
           <p className="font-label text-[11px] text-foreground/55 mb-2">
-            还没有可用凭证。请先到凭证管理添加一个,再回到这里完成绑定。
+            暂无可用凭证。
           </p>
           {onJumpToCreate && (
             <button

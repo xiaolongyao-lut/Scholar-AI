@@ -259,10 +259,7 @@ export function WikiPagePreviewPanel({ selectedPath, page, isLoading, error, onR
       {!selectedPath ? (
         <div className="mt-5 rounded-2xl border border-dashed border-outline-variant/40 bg-surface-lowest/70 px-5 py-10 text-center text-sm text-foreground/50">
           <FileSearch size={20} className="mx-auto text-primary/55" />
-          <div className="mt-3 font-medium text-foreground/70">请先在左侧页面列表中选中一个页面</div>
-          <p className="mt-2 text-xs leading-6 text-foreground/45">
-            选中后，这里会展示页面属性、正文内容与引用状态。
-          </p>
+          <div className="mt-3 font-medium text-foreground/70">选择一个页面</div>
         </div>
       ) : isLoading ? (
         <div className="mt-5 rounded-2xl border border-outline-variant/30 bg-surface-lowest/70 px-5 py-10 text-center text-sm text-foreground/50">
@@ -355,7 +352,7 @@ export function WikiPagePreviewPanel({ selectedPath, page, isLoading, error, onR
                 </div>
               ) : (
                 <div className="mt-4 rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-5 text-sm text-foreground/45">
-                  当前页面没有结构化属性，或者后端返回的是空对象。
+                  暂无结构化属性。
                 </div>
               )}
             </div>
@@ -393,7 +390,7 @@ export function WikiPagePreviewPanel({ selectedPath, page, isLoading, error, onR
                 </div>
               ) : (
                 <div className="mt-4 rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-5 text-sm text-foreground/45">
-                  当前页面正文为空，仍然保留路径与页面属性供人工判断。
+                  正文为空。
                 </div>
               )}
             </div>

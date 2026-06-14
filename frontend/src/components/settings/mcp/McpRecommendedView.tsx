@@ -77,10 +77,7 @@ export function McpRecommendedView(): JSX.Element {
 
   return (
     <div className="space-y-3">
-      <p className="font-label text-[11px] text-foreground/55">
-        以下是文献助手官方推荐的本地可装能力。请先自行下载或克隆对应仓库到本地,
-        再用一键安装将其注册到当前主机。安装过程**不会**联网下载,也不会执行任何包代码(除非你勾选探测)。
-      </p>
+      <p className="font-label text-[11px] text-foreground/55">推荐本地能力。</p>
 
       <ul className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {RECOMMENDED.map((cap) => {
@@ -100,9 +97,6 @@ export function McpRecommendedView(): JSX.Element {
                   </h3>
                 </div>
                 <p className="mt-1 font-label text-[11px] text-foreground/55">{cap.description}</p>
-                <p className="mt-2 font-label text-[10px] text-foreground/40">
-                  在向导中选择你已经下载到本机的对应 MCP 包目录。
-                </p>
                 <button
                   type="button"
                   onClick={() => openWizard(cap)}

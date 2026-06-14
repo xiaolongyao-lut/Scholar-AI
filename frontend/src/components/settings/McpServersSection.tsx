@@ -265,7 +265,7 @@ export function McpServersSection(): JSX.Element {
         <div>
           <h3 className="font-display text-base font-semibold text-foreground">MCP 服务器</h3>
           <p className="mt-1 font-label text-[11px] leading-relaxed text-foreground/55">
-            管理本地 MCP 服务。只有「本次会话已授权」的服务才会被对话调用；本地进程运行，没有完整沙箱。
+            本地 MCP 服务。会话授权后可调用。
           </p>
         </div>
         <div className="flex items-center gap-2">

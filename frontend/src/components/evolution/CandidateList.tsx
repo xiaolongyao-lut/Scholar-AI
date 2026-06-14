@@ -94,7 +94,7 @@ export function CandidateList({
     return (
       <EmptyState
         title="还没有可保存的经验"
-        description="先在设置的功能开关中开启经验候选收纳和复审入口；之后完成智能研读、讨论、写作任务、Skill 或 MCP 工具运行，这里才会出现待复审经验。"
+        description="开启经验收纳后，新候选会出现在这里。"
       />
     );
   }

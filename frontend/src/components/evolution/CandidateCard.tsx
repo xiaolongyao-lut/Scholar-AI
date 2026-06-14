@@ -78,7 +78,7 @@ export function CandidateCard({
   const anyPending = pendingAction !== null;
   const title = sanitizeEvolutionUserText(candidate.title, '待复审经验');
   const claim = sanitizeEvolutionDetailText(candidate.claim, title, 260);
-  const futureUse = sanitizeEvolutionUserText(candidate.future_use, '保存后可作为后续任务的参考。');
+  const futureUse = sanitizeEvolutionUserText(candidate.future_use, '后续参考。');
   const targetLabel = promotionTargetLabel(candidate.memory_type);
   const reviewTask = `确认这条“${MEMORY_TYPE_LABELS[candidate.memory_type]}”是否准确、可复用，并决定是否写入${targetLabel}。`;
 

@@ -229,7 +229,7 @@ function buildRuntimeCredentialRequirement(agent: AgentSlot, profile?: Discussio
     kind: 'api_key',
     provider_hints: profile?.provider.trim() ? [profile.provider.trim()] : [],
     required: false,
-    description: '只影响本次讨论；留空时使用该角色预设或全局默认生成配置。',
+    description: '留空用角色或全局默认。',
   };
 }
 
@@ -1176,7 +1176,7 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({
             <div>
               <h2 className="font-headline text-sm font-semibold text-foreground">讨论历史</h2>
               <p className="mt-0.5 text-xs text-foreground/45">
-                {historyMode === 'archived' ? '归档记录为只读查看。' : '最近运行记录支持分页、搜索和归档。'}
+                {historyMode === 'archived' ? '只读归档。' : '最近运行记录。'}
               </p>
             </div>
             <div className="inline-flex rounded-md border border-outline-variant/60 bg-surface-low p-0.5">
@@ -1440,7 +1440,7 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({
           <div className="mb-2 flex flex-col gap-2">
             <div>
               <label className="font-label text-xs font-medium text-foreground/70">角色配置（{agents.length}/{MAX_DISCUSSION_AGENTS}）</label>
-              <p className="mt-0.5 text-[11px] text-foreground/45">角色来自系统设置，新增角色和绑定 API 后会自动出现在这里。</p>
+              <p className="mt-0.5 text-[11px] text-foreground/45">角色来自系统设置。</p>
             </div>
             <div className="flex flex-wrap items-center gap-1">
               <button
@@ -1601,7 +1601,7 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({
           {incompleteRoleApiCount > 0 && (
             <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200/70 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
               <AlertCircle size={13} className="mt-0.5 shrink-0" />
-              <span>{incompleteRoleApiCount} 个角色还没有保存 API。可继续运行并使用聊天与生成设置，也可以先到系统设置中补齐。</span>
+              <span>{incompleteRoleApiCount} 个角色未保存 API。</span>
             </div>
           )}
           {configuredPrompts > 0 && (
@@ -1715,7 +1715,7 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({
             hideWhenEmpty
           />
           <p className="text-[10px] text-foreground/40">
-            全局 MCP 是本次讨论的默认工具范围；需要隔离时，可在下方为单个角色覆盖。
+            默认 MCP 工具范围。
           </p>
           {mcpServerIds.length > 0 || Object.keys(perAgentMcpServerIds).length > 0 ? (
             <div className="space-y-2 rounded-md border border-outline-variant/50 bg-surface-lowest px-3 py-2">
@@ -1960,10 +1960,10 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({
                           ⚠ 此角色调用失败
                         </p>
                         <p className="mt-0.5 text-[10px] text-rose-700/85 dark:text-rose-200/85">
-                          请检查该角色绑定的模型服务后重试。
+                          请检查该角色的模型服务。
                         </p>
                         <p className="mt-0.5 text-[10px] text-rose-700/65 dark:text-rose-200/65">
-                          提示：若出现上游服务错误，多为该角色绑定的模型服务异常。请到「系统设置 → 凭证」检查服务地址和访问密钥，或切换到其他服务后重试。
+                          上游服务异常，可在「系统设置 → 凭证」调整。
                         </p>
                       </div>
                     )}

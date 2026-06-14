@@ -128,7 +128,7 @@ function buildMemorySummary(memory: MemoryRecordPayload): {
   return {
     title: '长期记忆条目',
     summary: sanitizeEvolutionDetailText(memory.text, '这条长期记忆包含内部诊断信息，已在界面隐藏。', 180),
-    detail: '已保存到本地长期记忆，可作为后续任务参考。',
+    detail: '已保存。',
     status: '已记录',
     kind: '通用记忆',
   };
@@ -213,9 +213,6 @@ export function MemoryPalacePanel() {
           </div>
           <div className="min-w-0">
             <h2 className="font-headline text-sm font-semibold text-foreground">长期记忆</h2>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-foreground/55">
-              已保存到 MemPalace 的研究经验会在这里显示，便于确认复审结果是否进入长期记忆。
-            </p>
           </div>
         </div>
         <button
@@ -241,13 +238,13 @@ export function MemoryPalacePanel() {
 
         {!isLoading && !error && unavailable ? (
           <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-4 text-xs leading-5 text-foreground/55">
-            长期记忆适配器当前不可用；候选经验仍可先在上方完成复审。
+            长期记忆不可用。
           </div>
         ) : null}
 
         {!isLoading && !error && !unavailable && memories.length === 0 ? (
           <div className="rounded-md border border-dashed border-outline-variant/50 bg-surface-low px-3 py-4 text-xs leading-5 text-foreground/50">
-            暂无长期记忆。保存候选并启用长期记忆应用后，这里会出现最近写入的记忆。
+            暂无长期记忆。
           </div>
         ) : null}
 

@@ -4,6 +4,8 @@ import { Save, Loader2, BookOpen, Diff, Quote, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
 import { useWriting } from '@/contexts/WritingContext';
+import { CaptureToInboxButton } from '@/components/knowledge/CaptureToInboxButton';
+import { RecallPanel } from '@/components/knowledge/RecallPanel';
 import {
   getEvidenceReferenceBody,
   getEvidenceReferenceMetaParts,
@@ -100,6 +102,7 @@ export function WritingCanvas({
   // 'rich' = TipTap WYSIWYG with citation superscripts; 'source' = raw textarea
   // (the manuscript true source + reliable fallback).
   const [editorMode, setEditorMode] = useState<'rich' | 'source'>('rich');
+  const [recallOpen, setRecallOpen] = useState(false);
 
   const materialLookup = useMemo(() => {
     return new Map(materials.map((material) => [material.id, material] as const));
@@ -310,17 +313,53 @@ export function WritingCanvas({
                 <span className="text-[10px] shrink-0">{activeMaterial ? t('writing.canvas.material_selected') : '[^1]'}</span>
               </div>
            </button>
-           <button 
+           <button
               onClick={() => setShowComparison(!showComparison)}
               disabled={!transformResult}
               title={t('writing.preview_rewrite')}
               aria-label={t('writing.preview_rewrite')}
               className={cn(
-                "p-2 rounded-sm transition-all", 
+                "p-2 rounded-sm transition-all",
                 showComparison ? "bg-primary text-primary-foreground" : "hover:bg-surface-container text-foreground/50 disabled:opacity-20 disabled:cursor-not-allowed"
               )}
            >
               <Diff size={18} />
+           </button>
+           <CaptureToInboxButton
+              variant="icon"
+              label="记到待确认"
+              context={{
+                kind: 'writing',
+                sourceLabel: activeSection?.titleZh
+                  ? `写作 · ${activeSection.titleZh}`
+                  : '写作片段',
+                quote: textareaRef.current
+                  ? (() => {
+                      const start = textareaRef.current.selectionStart ?? 0;
+                      const end = textareaRef.current.selectionEnd ?? 0;
+                      if (end > start) {
+                        return (draft?.content ?? '').slice(start, end);
+                      }
+                      return undefined;
+                    })()
+                  : undefined,
+                locator: activeSection?.titleZh,
+                rawIds: { section_id: activeSection?.id ?? null },
+              }}
+           />
+           <button
+              type="button"
+              onClick={() => setRecallOpen((value) => !value)}
+              aria-pressed={recallOpen}
+              title="召回相关沉淀"
+              className={cn(
+                'p-2 rounded-sm transition-all',
+                recallOpen
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-surface-container text-foreground/50',
+              )}
+           >
+              <Quote size={18} />
            </button>
            {zenMode ? (
            <button
@@ -359,6 +398,18 @@ export function WritingCanvas({
            </button>
         </div>
       </motion.header>
+
+      {recallOpen && (
+        <div className="px-4 py-3 border-b border-outline-variant/60 bg-surface-low">
+          <RecallPanel
+            context={{
+              materialTitle: activeSection?.titleZh,
+              projectId: null,
+              defaultQuery: activeSection?.titleZh,
+            }}
+          />
+        </div>
+      )}
 
       {zenMode && (
         <div className="absolute top-3 right-5 z-30 flex items-center gap-1 rounded-full border border-outline-variant bg-surface-lowest/90 px-1.5 py-1 shadow-lg backdrop-blur-sm fade-in">

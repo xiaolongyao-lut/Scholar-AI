@@ -90,7 +90,7 @@ function ExperienceKnowledgeLayerCard({
           <div className="min-w-0">
             <h2 className="font-headline text-base font-semibold text-foreground">经验知识层</h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-foreground/55">
-              这里复审任务、讨论、研读、Skill 和 MCP 运行中沉淀的可复用经验；保存后才会进入长期记忆或流程草稿，未确认内容不会自动应用。
+              复审、保存、撤销。
             </p>
           </div>
         </div>
@@ -102,7 +102,7 @@ function ExperienceKnowledgeLayerCard({
           aria-label="刷新经验候选列表"
         >
           <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
-          探查触发状态
+          刷新
         </button>
       </div>
 
@@ -117,9 +117,7 @@ function ExperienceKnowledgeLayerCard({
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
           <div className="flex items-start gap-2">
             <ShieldCheck size={14} className="mt-0.5 shrink-0" />
-            <p>
-              经验候选需要先在设置里开启「经验候选收纳」和「学到的经验复审入口」；任务完成后没有新增时，先到任务中心确认对应任务是否完成。
-            </p>
+            <p>请先在设置开启经验收纳与复审入口。</p>
           </div>
         </div>
       ) : null}
@@ -353,7 +351,7 @@ export default function EvolutionInbox({ embedded = false }: EvolutionInboxProps
       {!embedded ? (
         <PageHeader
           title="学到的经验"
-          subtitle="AI 在你完成任务时学到的内容。你可以保留有用的、忽略没用的，永远不会自动应用。"
+          subtitle="复审、保留、忽略、撤销。"
           icon={<BookOpenCheck size={20} />}
           actions={
             <button
@@ -364,7 +362,7 @@ export default function EvolutionInbox({ embedded = false }: EvolutionInboxProps
               aria-label="刷新候选经验列表"
             >
               <Activity size={14} className={cn((isLoading || isProbing) && 'animate-spin')} />
-              探查触发状态
+              刷新
             </button>
           }
         />
@@ -384,10 +382,8 @@ export default function EvolutionInbox({ embedded = false }: EvolutionInboxProps
           role="status"
           className="rounded-lg border border-outline-variant/60 bg-surface-lowest px-5 py-12 text-center"
         >
-          <p className="font-display text-base text-foreground/75">学到的经验功能尚未开启</p>
-          <p className="mt-2 text-xs text-foreground/50">
-            请到「设置 → 功能开关」打开「经验候选收纳」和「学到的经验复审入口」。开启后，系统会把智能研读、讨论、写作任务和工具运行中学到的内容放到这里等待人工确认。
-          </p>
+          <p className="font-display text-base text-foreground/75">学到的经验未开启</p>
+          <p className="mt-2 text-xs text-foreground/50">设置 → 功能开关</p>
         </div>
       ) : (
         <>

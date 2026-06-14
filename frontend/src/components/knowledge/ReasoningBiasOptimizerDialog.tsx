@@ -45,9 +45,6 @@ export function ReasoningBiasOptimizerDialog({
         <h2 id="bias-optimizer-title" className="font-headline text-base font-semibold text-foreground">
           AI 优化项目思维偏置
         </h2>
-        <p className="mt-1 text-xs leading-5 text-foreground/55">
-          优化结果只作为建议显示，点击采纳后才会写入输入框。
-        </p>
       </ModalHeader>
       <ModalBody className="max-h-[68vh] space-y-4">
         {loading && (

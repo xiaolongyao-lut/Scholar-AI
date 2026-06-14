@@ -117,7 +117,7 @@ export function CandidateDetailDrawer({ candidate, open, onClose }: CandidateDet
   const decisionReason = friendlyDecisionReason(candidate.decision_reason);
   const title = sanitizeEvolutionUserText(candidate.title, '待复审经验');
   const knowledgeClaim = sanitizeEvolutionDetailText(candidate.claim, '这条候选没有返回可展示的知识正文。');
-  const futureUse = sanitizeEvolutionDetailText(candidate.future_use, '保存后可作为后续任务的参考。', 900);
+  const futureUse = sanitizeEvolutionDetailText(candidate.future_use, '后续参考。', 900);
   const sourceSummary = sanitizeEvolutionUserText(
     candidate.source_summary,
     '来源摘要包含内部诊断信息，已在界面隐藏。',
@@ -187,7 +187,7 @@ export function CandidateDetailDrawer({ candidate, open, onClose }: CandidateDet
           <Section title="经验来源">
             <MetaRow label="来源类型" value={SOURCE_LABELS[candidate.source_type]} />
             <MetaRow label="经验类型" value={MEMORY_TYPE_LABELS[candidate.memory_type]} />
-            <MetaRow label="触发方式" value={SOURCE_TRIGGER_DESCRIPTIONS[candidate.source_type]} />
+            <MetaRow label="状态" value={SOURCE_TRIGGER_DESCRIPTIONS[candidate.source_type]} />
             <div className="mt-2">
               <p className="font-label text-[11px] text-foreground/45">来源摘要</p>
               <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-foreground/75">
@@ -217,9 +217,9 @@ export function CandidateDetailDrawer({ candidate, open, onClose }: CandidateDet
             )}
           </Section>
 
-          <Section title="复审规则">
+          <Section title="安全边界">
             <div className="rounded-md border border-outline-variant/40 bg-surface-low px-3 py-2 text-xs leading-5 text-foreground/60">
-              这里只展示可读来源、风险、证据状态和处置说明。原始诊断、本地路径、接口地址和内部标识不会在界面直接显示；需要排查时请使用后台日志。
+              内部诊断仅保留在后台日志。
             </div>
           </Section>
         </div>

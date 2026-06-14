@@ -9,10 +9,7 @@ export function McpLocalInstallView(): JSX.Element {
 
   return (
     <div className="space-y-3">
-      <p className="font-label text-[11px] text-foreground/55">
-        从本地路径安装第三方 MCP 服务器。请先把目标包下载到本地(可以是源码目录或解压后的 zip);
-        粘贴路径后,系统会只读扫描包内声明文件，自动识别启动方式、配置字段和所需凭证。
-      </p>
+      <p className="font-label text-[11px] text-foreground/55">从本地路径安装。</p>
 
       <div className="rounded-md border border-amber-300/40 bg-amber-50/40 dark:border-amber-700/40 dark:bg-amber-500/10 p-3 flex items-start gap-2">
         <AlertTriangle size={14} className="text-amber-600 dark:text-amber-300 mt-0.5 flex-shrink-0" />
@@ -21,9 +18,9 @@ export function McpLocalInstallView(): JSX.Element {
             安全提示
           </p>
           <ul className="font-label text-[11px] text-amber-700/80 dark:text-amber-200/80 list-disc list-inside space-y-0.5">
-            <li>本地路径会先经过安全检查；远端地址会被拒绝。</li>
-            <li>扫描阶段不会执行任何包代码，只读取声明文件。</li>
-            <li>启动包进程探测工具列表需要你在最后一步显式勾选信任。</li>
+            <li>仅接受本地路径。</li>
+            <li>扫描只读声明文件。</li>
+            <li>探测前需要勾选信任。</li>
           </ul>
         </div>
       </div>
