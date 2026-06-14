@@ -196,7 +196,59 @@ def _build_smart_read_executor(job):
         target_job = current_job or job
         runtime = get_runtime()
         runtime.emit_job_progress(target_job.job_id, stage="prepare", message="正在准备智能研读上下文", progress=10)
-        from routers.intelligent_chat_router import IntelligentChatRequest, intelligent_chat
+        from routers.intelligent_chat_router import (
+            IntelligentChatRequest,
+            _is_light_chat_query,
+            intelligent_chat,
+        )
+
+        # B11 (2026-06-14): light-chat fast path — short greetings like "hi" /
+        # "你好" / "嗯" should skip the full RAG pipeline (18+ LLM calls / ~2min)
+        # and respond immediately. Even when a paper is pinned, a single-token
+        # greeting almost never needs evidence-bound retrieval. Detection
+        # mirrors the chat-router fast path; canned reply is rule-based so this
+        # is a pure round-trip with zero upstream LLM cost.
+        # NOTE: IntelligentChatRequest enforces query min-length, so guard
+        # against empty input first — falls through to intelligent_chat which
+        # surfaces the real validation error to the user.
+        probe_query = (target_job.input_text or "").strip()
+        if probe_query:
+            light_probe_req = IntelligentChatRequest(
+                query=probe_query,
+                mode=None,
+                material_id=None,
+                current_pdf_context=None,
+            )
+            is_light = _is_light_chat_query(light_probe_req)
+            # B11 (2026-06-14): structured diagnostic so the log proves whether
+            # the fast path fired. Logged at INFO so it shows up by default.
+            logger.info(
+                "[B11] smart_read input=%r light=%s material_id=%s pdf_ctx=%s",
+                probe_query[:30],
+                is_light,
+                bool(metadata.get("material_id")),
+                bool(metadata.get("current_pdf_context")),
+            )
+            if is_light:
+                runtime.emit_job_progress(target_job.job_id, stage="finalize", message="寒暄快速回复", progress=95)
+                reply = "你好，我在。需要研读什么文献或问题，直接告诉我。"
+                return {
+                    "status": "completed",
+                    "kind": "smart_read",
+                    "response": reply,
+                    "text": reply,
+                    "session_id": metadata.get("chat_session_id") or metadata.get("session_id"),
+                    "context_chunks_used": 0,
+                    "tokens_used": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                    },
+                    "tier_used": "fast",
+                    "context_metadata": None,
+                    "evidence_refs": [],
+                    "actual_sampling_params": None,
+                }
 
         request_payload = {
             "query": target_job.input_text,
