@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, BookMarked, CheckCircle2, Download, FileText, RefreshCw, Search, Settings2, ShieldCheck, Square } from 'lucide-react';
+import { AlertTriangle, BookMarked, CheckCircle2, ChevronDown, Download, FilePlus2, FileText, RefreshCw, Search, Settings2, ShieldCheck, Square } from 'lucide-react';
 
 import { WikiCompileDryRunPanel } from '@/components/wiki/WikiCompileDryRunPanel';
 import { DoctorReportPanel } from '@/components/wiki/DoctorReportPanel';
 import { GraphDebugPanel } from '@/components/wiki/GraphDebugPanel';
-import { GraphPayloadViewer } from '@/components/graph/GraphPayloadViewer';
+import { WikiGraphSegmentedView } from '@/components/graph/WikiGraphSegmentedView';
 import type { GraphPayloadV0 } from '@/components/graph/payloadToRf';
 import { getGraphPayload } from '@/services/graphApi';
 import { WikiPagePreviewPanel } from '@/components/wiki/WikiPagePreviewPanel';
@@ -32,6 +32,8 @@ import type {
   WikiCompileDryRunInputModel,
   WikiCompileDryRunModel,
   WikiManualPageInputModel,
+  WikiManualPageKind,
+  WikiManualPageStatus,
   WikiPageMutationModel,
   WikiDoctorModel,
   WikiGraphModel,
@@ -42,6 +44,7 @@ import type {
   WikiExportModel,
   WikiStatusModel,
 } from '@/types/wiki';
+import { cn } from '@/lib/utils';
 
 function isAbortError(err: unknown): boolean {
   if (err instanceof DOMException && err.name === 'AbortError') return true;
@@ -442,15 +445,147 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
         <PageHeader
           icon={<BookMarked size={18} />}
           title={headline}
-          subtitle="面向文献证据的编译知识层：页面、检索、图谱、健康诊断、复审队列和编译预案在这里统一管理。"
+          subtitle="检索、复审、页面与图谱。"
           className="mb-0"
         />
       ) : null}
 
+      {embedded ? (
+        <EmbeddedWikiSimpleView
+          status={status}
+          pageList={pageList}
+          review={review}
+          isPagesLoading={isPagesLoading}
+          pagesError={pagesError}
+          isReviewLoading={isReviewLoading}
+          reviewError={reviewError}
+          selectedPagePath={selectedPagePath}
+          pageDetail={pageDetail}
+          isPageDetailLoading={isPageDetailLoading}
+          pageDetailError={pageDetailError}
+          searchQuery={searchQuery}
+          searchResult={searchResult}
+          isSearchLoading={isSearchLoading}
+          searchError={searchError}
+          isManualLoading={isManualCreateLoading}
+          manualError={manualCreateError}
+          manualResult={manualCreateResult}
+          onQueryChange={setSearchQuery}
+          onSearch={() => void handleSearch()}
+          onStopSearch={handleStopSearch}
+          onRefreshReview={() => void loadReview()}
+          onRefreshPages={() => void loadPages()}
+          onSelectPagePath={handleSelectPagePath}
+          onRefreshSelectedPage={refreshSelectedPage}
+          onCreateManual={(input) => void handleCreateManualPage(input)}
+          onStopManual={handleStopManualCreate}
+          onOpenSettings={() => navigate(buildSettingsSectionPath('experimental'))}
+        >
+          {/* 高级 / 诊断：保留全部既有富面板，默认折叠 */}
+          <section className="rounded-lg border border-outline-variant/60 bg-surface-lowest px-4 py-3 text-xs leading-6 text-foreground/65">
+            <div className="flex flex-wrap items-center gap-2 font-medium text-foreground/80">
+              <span className="rounded bg-primary/10 px-2 py-0.5 text-[11px] text-primary">状态</span>
+              <button
+                type="button"
+                onClick={() => navigate(buildSettingsSectionPath('experimental'))}
+                className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-low px-2.5 py-1.5 text-[11px] text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary"
+              >
+                前往功能开关
+              </button>
+              <button
+                type="button"
+                onClick={handleProbeWiki}
+                disabled={isProbeLoading}
+                className="inline-flex items-center gap-1.5 rounded-md border border-primary/35 bg-primary/10 px-2.5 py-1.5 text-[11px] text-primary transition-colors hover:bg-primary/15 disabled:cursor-wait disabled:opacity-60"
+              >
+                <RefreshCw size={12} className={isProbeLoading ? 'animate-spin' : ''} />
+                探查
+              </button>
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <span>启用：{status?.enabled ? '已开启' : '未开启'}</span>
+              <span>页面：{pageList?.pages.length ?? status?.page_count ?? 0} 个</span>
+              <span>复审：{review?.items.length ?? 0} 条</span>
+              <span>图谱：{graphPayload ? `${graphPayload.nodes.length} 节点 / ${graphPayload.edges.length} 边` : '未生成'}</span>
+            </div>
+          </section>
+
+          <WikiKnowledgeLayerCard
+            status={status}
+            pageList={pageList}
+            doctor={doctor}
+            review={review}
+            graph={graph}
+            isExporting={isExportLoading}
+            exportResult={exportResult}
+            exportError={exportError}
+            onRefreshAll={handleProbeWiki}
+            onExport={() => void handleExport()}
+            onStopExport={handleStopExport}
+            onOpenSettings={() => navigate(buildSettingsSectionPath('experimental'))}
+          />
+
+          <WikiCompileDryRunPanel
+            result={compileResult}
+            isLoading={isCompileLoading}
+            error={compileError}
+            isWikiEnabled={status?.enabled ?? false}
+            isWikiStale={status?.stale ?? false}
+            manualResult={manualCreateResult}
+            manualError={manualCreateError}
+            isManualLoading={isManualCreateLoading}
+            onRun={(input) => void handleRunCompileDryRun(input)}
+            onStop={handleStopCompileDryRun}
+            onCreateManual={(input) => void handleCreateManualPage(input)}
+            onStopManual={handleStopManualCreate}
+          />
+
+          <section className="overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest">
+            <div className="flex items-center justify-between border-b border-outline-variant/60 px-4 py-2">
+              <div className="flex items-center gap-2">
+                <span className="font-headline text-sm font-semibold text-foreground">知识图谱</span>
+                <span className="text-[10px] text-foreground/45">
+                  {graphPayload ? `${graphPayload.nodes.length} 节点 · ${graphPayload.edges.length} 边` : '尚未加载'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadGraphPayload()}
+                className="rounded-md border border-outline-variant/60 bg-surface-low px-2 py-0.5 text-[11px] text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
+              >
+                刷新
+              </button>
+            </div>
+            <div className="h-[420px]">
+              <WikiGraphSegmentedView
+                payload={graphPayload}
+                loading={isGraphPayloadLoading}
+                error={graphPayloadError}
+              />
+            </div>
+          </section>
+
+          <section className="grid gap-4 xl:grid-cols-3">
+            <WikiStatusCard status={status} isLoading={isStatusLoading} error={statusError} onRefresh={() => void loadStatus()} />
+            <DoctorReportPanel
+              doctor={doctor}
+              isLoading={isDoctorLoading}
+              error={doctorError}
+              onRefresh={() => void loadDoctor()}
+            />
+            <GraphDebugPanel
+              graph={graph}
+              isLoading={isGraphLoading}
+              error={graphError}
+              onRefresh={() => void loadGraph()}
+            />
+          </section>
+        </EmbeddedWikiSimpleView>
+      ) : (
+        <>
       <section className="rounded-lg border border-outline-variant/60 bg-surface-lowest px-4 py-3 text-xs leading-6 text-foreground/65">
         <div className="flex flex-wrap items-center gap-2 font-medium text-foreground/80">
-          <span className="rounded bg-primary/10 px-2 py-0.5 text-[11px] text-primary">触发方式</span>
-          <span>先在设置里打开“Wiki 知识沉淀”，再运行智能研读、多智能体讨论、写作编译、页面搜索或知识编译；这些动作会把可编译页面写入 Wiki。这里用探查按钮一次检查页面、图谱、索引和复审队列。</span>
+          <span className="rounded bg-primary/10 px-2 py-0.5 text-[11px] text-primary">状态</span>
           <button
             type="button"
             onClick={() => navigate(buildSettingsSectionPath('experimental'))}
@@ -465,7 +600,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
             className="inline-flex items-center gap-1.5 rounded-md border border-primary/35 bg-primary/10 px-2.5 py-1.5 text-[11px] text-primary transition-colors hover:bg-primary/15 disabled:cursor-wait disabled:opacity-60"
           >
             <RefreshCw size={12} className={isProbeLoading ? 'animate-spin' : ''} />
-            探查触发状态
+            探查
           </button>
         </div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -473,9 +608,6 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
           <span>页面：{pageList?.pages.length ?? status?.page_count ?? 0} 个</span>
           <span>复审：{review?.items.length ?? 0} 条</span>
           <span>图谱：{graphPayload ? `${graphPayload.nodes.length} 节点 / ${graphPayload.edges.length} 边` : '未生成'}</span>
-        </div>
-        <div className="mt-2 rounded-md border border-outline-variant/40 bg-surface-low px-3 py-2 text-[11px] text-foreground/55">
-          如果探查后仍为空，先确认功能开关已打开，再检查任务中心里对应的智能研读、讨论或编译任务是否真的完成。
         </div>
       </section>
 
@@ -534,7 +666,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
           </button>
         </div>
         <div className="h-[420px]">
-          <GraphPayloadViewer
+          <WikiGraphSegmentedView
             payload={graphPayload}
             loading={isGraphPayloadLoading}
             error={graphPayloadError}
@@ -586,6 +718,8 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
           onRefresh={() => void loadGraph()}
         />
       </section>
+        </>
+      )}
     </div>
   );
 }
@@ -634,9 +768,6 @@ function WikiKnowledgeLayerCard({
           </div>
           <div className="min-w-0">
             <h2 className="font-headline text-base font-semibold text-foreground">Wiki 知识层</h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-foreground/55">
-              Wiki 保存由文献证据支撑的页面、检索索引、图谱关系、待审页面和编译预案；“学到的经验”只处理任务、讨论和工具运行里沉淀的可复用经验，不放 Wiki 页面。
-            </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -692,18 +823,8 @@ function WikiKnowledgeLayerCard({
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
           <div className="flex items-start gap-2">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            <div className="space-y-2">
-                <p>
-                  Wiki 当前未启用。请点“前往功能开关”，在设置里的“功能开关”中开启“Wiki 知识沉淀”，再返回本页刷新。
-                </p>
-              <details>
-                <summary className="cursor-pointer text-amber-900/75 transition-colors hover:text-amber-950 dark:text-amber-200/80 dark:hover:text-amber-100">
-                  它和经验沉淀有什么区别？
-                </summary>
-                <p className="mt-1 text-amber-900/70 dark:text-amber-200/75">
-                  Wiki 用来沉淀项目资料的知识页、检索索引、图谱关系和复审队列；“学到的经验”用来复审智能研读、讨论、写作任务和工具运行中产生的可复用经验，两者相互独立。
-                </p>
-              </details>
+            <div>
+              <p>Wiki 未启用。</p>
             </div>
           </div>
         </div>
@@ -823,5 +944,391 @@ function FlowStatus({ label, value, detail, active }: { label: string; value: st
       <div className="mt-1 truncate text-sm font-medium text-foreground">{value}</div>
       <div className="mt-0.5 truncate text-[11px] text-foreground/45">{detail}</div>
     </div>
+  );
+}
+
+interface EmbeddedWikiSimpleViewProps {
+  status: WikiStatusModel | null;
+  pageList: WikiPageListModel | null;
+  review: WikiReviewListModel | null;
+  isPagesLoading: boolean;
+  pagesError: string | null;
+  isReviewLoading: boolean;
+  reviewError: string | null;
+  selectedPagePath: string | null;
+  pageDetail: WikiPageDetailModel | null;
+  isPageDetailLoading: boolean;
+  pageDetailError: string | null;
+  searchQuery: string;
+  searchResult: WikiSearchModel | null;
+  isSearchLoading: boolean;
+  searchError: string | null;
+  isManualLoading: boolean;
+  manualError: string | null;
+  manualResult: WikiPageMutationModel | null;
+  onQueryChange: (value: string) => void;
+  onSearch: () => void;
+  onStopSearch: () => void;
+  onRefreshReview: () => void;
+  onRefreshPages: () => void;
+  onSelectPagePath: (pagePath: string) => void;
+  onRefreshSelectedPage: () => void;
+  onCreateManual: (input: WikiManualPageInputModel) => void;
+  onStopManual: () => void;
+  onOpenSettings: () => void;
+  children: React.ReactNode;
+}
+
+/**
+ * Embedded 模式只暴露记忆流核心动作：搜索 / 复审 / 记一下 / 看页面预览。
+ * 其它工程能力（状态触发说明、知识层卡、图谱大卡、Doctor、状态、图调试、编译预案）
+ * 收进高级折叠，避免日常使用界面太重。
+ *
+ * 输入：embedded 父组件中所有现有状态 + 操作回调（不新增数据请求）。
+ * 输出：渲染节点；children 是高级折叠的内容。
+ */
+function EmbeddedWikiSimpleView({
+  status,
+  pageList,
+  review,
+  isPagesLoading,
+  pagesError,
+  isReviewLoading,
+  reviewError,
+  selectedPagePath,
+  pageDetail,
+  isPageDetailLoading,
+  pageDetailError,
+  searchQuery,
+  searchResult,
+  isSearchLoading,
+  searchError,
+  isManualLoading,
+  manualError,
+  manualResult,
+  onQueryChange,
+  onSearch,
+  onStopSearch,
+  onRefreshReview,
+  onRefreshPages,
+  onSelectPagePath,
+  onRefreshSelectedPage,
+  onCreateManual,
+  onStopManual,
+  onOpenSettings,
+  children,
+}: EmbeddedWikiSimpleViewProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialCapture = searchParams.get('action') === 'capture';
+  const [captureOpen, setCaptureOpen] = useState(initialCapture);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // 当外部链接带 ?action=capture 时自动展开「记一下」，并把参数清掉避免每次刷新都展开。
+  useEffect(() => {
+    if (searchParams.get('action') === 'capture') {
+      setCaptureOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const wikiEnabled = status?.enabled ?? false;
+  const reviewCount = review?.items.length ?? 0;
+  const pageCount = pageList?.pages.length ?? status?.page_count ?? 0;
+
+  return (
+    <div className="flex min-h-0 flex-col gap-4">
+      {!wikiEnabled ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <p>Wiki 未启用。</p>
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="inline-flex items-center gap-1 rounded-md border border-amber-300/60 bg-amber-100/60 px-2 py-0.5 text-[11px] text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
+              >
+                <Settings2 size={11} />
+                前往功能开关
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <section className="rounded-lg border border-outline-variant/60 bg-surface-lowest p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <label className="font-label text-[11px] font-medium text-foreground/65" htmlFor="wiki-embedded-search">
+              Wiki 检索
+            </label>
+            <div className="mt-1 flex min-w-0 gap-2">
+              <input
+                id="wiki-embedded-search"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => onQueryChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') onSearch();
+                }}
+                placeholder="搜索已沉淀页面"
+                className="min-w-0 flex-1 rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={isSearchLoading ? onStopSearch : onSearch}
+                disabled={!isSearchLoading && searchQuery.trim().length === 0}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSearchLoading ? <Square size={13} /> : <Search size={13} />}
+                {isSearchLoading ? '停止' : '搜索'}
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-foreground/55">
+            <span>已沉淀 {pageCount} 页</span>
+            <span>待审 {reviewCount} 条</span>
+            <button
+              type="button"
+              onClick={() => setCaptureOpen((value) => !value)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
+                captureOpen
+                  ? 'border-primary/35 bg-primary/10 text-primary'
+                  : 'border-outline-variant/60 bg-surface-low text-foreground/70 hover:border-primary/35 hover:text-primary',
+              )}
+            >
+              <FilePlus2 size={13} />
+              {captureOpen ? '收起记一下' : '记一下'}
+            </button>
+          </div>
+        </div>
+
+        {searchError ? (
+          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
+            {searchError}
+          </div>
+        ) : null}
+
+        {searchResult?.warnings.length ? (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
+            {searchResult.warnings.join(' ')}
+          </div>
+        ) : null}
+
+        {searchResult && searchResult.evidence_refs.length > 0 ? (
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {searchResult.evidence_refs.map((ref, index) => {
+              const pagePath = typeof ref.page_path === 'string' ? ref.page_path : '';
+              return (
+                <button
+                  key={`${pagePath}-${index}`}
+                  type="button"
+                  onClick={() => pagePath && onSelectPagePath(pagePath)}
+                  disabled={!pagePath}
+                  className="min-w-0 rounded-md border border-outline-variant/50 bg-surface-low px-3 py-2 text-left transition-colors hover:border-primary/35 hover:bg-surface-high disabled:cursor-default disabled:opacity-70"
+                >
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <FileText size={14} className="shrink-0 text-primary/70" />
+                    <span className="truncate">{ref.title || pagePath || 'Wiki 页面'}</span>
+                  </div>
+                  <div className="mt-1 line-clamp-2 text-xs leading-5 text-foreground/55">
+                    {ref.snippet || pagePath}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </section>
+
+      {captureOpen ? (
+        <SimpleCaptureForm
+          isManualLoading={isManualLoading}
+          manualError={manualError}
+          manualResult={manualResult}
+          isWikiEnabled={wikiEnabled}
+          onCreateManual={onCreateManual}
+          onStopManual={onStopManual}
+          onClose={() => setCaptureOpen(false)}
+        />
+      ) : null}
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <ReviewQueuePanel
+          items={review?.items ?? null}
+          isLoading={isReviewLoading}
+          error={reviewError}
+          onRefresh={onRefreshReview}
+        />
+        <div className="grid gap-4">
+          <WikiPageListPanel
+            pages={pageList?.pages ?? null}
+            isLoading={isPagesLoading}
+            error={pagesError}
+            onRefresh={onRefreshPages}
+            selectedPath={selectedPagePath}
+            onSelectPath={onSelectPagePath}
+          />
+        </div>
+      </section>
+
+      <WikiPagePreviewPanel
+        selectedPath={selectedPagePath}
+        page={pageDetail}
+        isLoading={isPageDetailLoading}
+        error={pageDetailError}
+        onRefresh={onRefreshSelectedPage}
+      />
+
+      <details
+        className="rounded-lg border border-outline-variant/50 bg-surface-lowest"
+        open={advancedOpen}
+        onToggle={(event) => setAdvancedOpen((event.currentTarget as HTMLDetailsElement).open)}
+      >
+        <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-2 text-[11px] text-foreground/60 marker:hidden">
+          <span className="inline-flex items-center gap-1.5">
+            <ChevronDown size={12} className={cn('transition-transform', advancedOpen ? 'rotate-0' : '-rotate-90')} />
+            高级 / 诊断
+          </span>
+          <span className="text-foreground/40">状态、图谱、诊断、导出</span>
+        </summary>
+        <div className="flex flex-col gap-4 px-4 pb-4 pt-2">
+          {children}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+interface SimpleCaptureFormProps {
+  isManualLoading: boolean;
+  manualError: string | null;
+  manualResult: WikiPageMutationModel | null;
+  isWikiEnabled: boolean;
+  onCreateManual: (input: WikiManualPageInputModel) => void;
+  onStopManual: () => void;
+  onClose: () => void;
+}
+
+/**
+ * 轻量「记一下」表单，把 createWikiManualPage 拆出来在 embedded 顶部直接用。
+ * 当前后端会创建待确认 Wiki 草稿，并同步进入 ReviewQueue。
+ */
+function SimpleCaptureForm({
+  isManualLoading,
+  manualError,
+  manualResult,
+  isWikiEnabled,
+  onCreateManual,
+  onStopManual,
+  onClose,
+}: SimpleCaptureFormProps) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [kind, setKind] = useState<WikiManualPageKind>('concept');
+  const status: WikiManualPageStatus = 'review';
+
+  const canSubmit = isWikiEnabled && title.trim().length > 0 && body.trim().length > 0 && !isManualLoading;
+
+  return (
+    <section className="rounded-lg border border-primary/35 bg-primary/5 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-foreground">
+            <FilePlus2 size={15} className="text-primary" />
+            <h3 className="font-headline text-sm font-semibold">记一下</h3>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md border border-outline-variant/50 px-2 py-1 text-[11px] text-foreground/55 transition-colors hover:border-primary/30 hover:text-foreground"
+        >
+          收起
+        </button>
+      </div>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        <label className="block text-xs text-foreground/55">
+          <span className="font-label text-[11px] text-foreground/45">标题</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="比如：扩散模型采样步骤的关键观察"
+            className="mt-1.5 w-full rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
+          />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs text-foreground/55">
+            <span className="font-label text-[11px] text-foreground/45">类型</span>
+            <select
+              value={kind}
+              onChange={(event) => setKind(event.target.value as WikiManualPageKind)}
+              className="mt-1.5 w-full rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+            >
+              <option value="concept">概念</option>
+              <option value="synthesis">综合结论</option>
+              <option value="exploration">探索记录</option>
+              <option value="experiment">实验结果</option>
+              <option value="question">问题</option>
+              <option value="paper">论文摘要</option>
+            </select>
+          </label>
+          <div className="rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2">
+            <div className="font-label text-[11px] text-foreground/45">保存位置</div>
+            <div className="mt-1 text-sm text-foreground">待确认草稿</div>
+          </div>
+        </div>
+      </div>
+
+      <label className="mt-3 block text-xs text-foreground/55">
+        <span className="font-label text-[11px] text-foreground/45">内容</span>
+        <textarea
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          rows={5}
+          placeholder="可以粘贴原文片段、写一两句结论、附上后续要追问的问题。"
+          className="mt-1.5 w-full rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
+        />
+      </label>
+
+      {!isWikiEnabled ? (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
+          Wiki 未启用。
+        </div>
+      ) : null}
+
+      {manualError ? (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
+          {manualError}
+        </div>
+      ) : null}
+
+      {manualResult ? (
+        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300">
+          已保存为待确认草稿：{manualResult.slug || manualResult.message || '新页面'}。
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={isManualLoading ? onStopManual : () => onCreateManual({
+            title: title.trim(),
+            kind,
+            status,
+            body: body.trim(),
+          })}
+          disabled={!isManualLoading && !canSubmit}
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isManualLoading ? <Square size={13} /> : <FilePlus2 size={13} />}
+          {isManualLoading ? '停止' : '保存待确认草稿'}
+        </button>
+      </div>
+    </section>
   );
 }
