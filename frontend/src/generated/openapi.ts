@@ -2440,6 +2440,11 @@ export interface paths {
         /**
          * Wiki Page Create
          * @description Create a new wiki page (G2 2026-05-26).
+         *
+         *     Capture flow (2026-06-14): every page created through this endpoint is
+         *     forced to ``draft`` status and surfaced as a pending review-queue item.
+         *     Final pages can only be produced by approving the review item, never by
+         *     the capture caller asking for ``status=final`` directly.
          */
         post: operations["post_api_wiki_pages"];
         delete?: never;
@@ -2579,7 +2584,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Wiki Review Approve */
+        /**
+         * Wiki Review Approve
+         * @description Approve a pending review item.
+         *
+         *     Capture flow (2026-06-14): when the item points at an existing wiki page,
+         *     approval first promotes the page to ``final`` and only then marks the
+         *     queue item ``approved``. A promotion failure leaves the queue pending.
+         */
         post: operations["post_api_wiki_review_item_id_approve"];
         delete?: never;
         options?: never;
@@ -3121,7 +3133,14 @@ export interface paths {
          */
         get: operations["get_chat_models_discover"];
         put?: never;
-        post?: never;
+        /**
+         * Discover Models Post
+         * @description POST variant of /models/discover — keeps api_key out of query string.
+         *
+         *     See discover_models() docstring for behavior; the implementation is shared
+         *     via _discover_models_impl. Returns the same response shape.
+         */
+        post: operations["post_chat_models_discover"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4105,6 +4124,14 @@ export interface paths {
          *     recognise it as a PDF and divert the in-app reader's fetch into a save
          *     dialog. Used by the in-app PDF viewer; everything else (default) keeps
          *     the natural MIME so e.g. right-click "open in new tab" still works.
+         *
+         *     ``?as=raw1`` (0.1.8.4 hardening): newer download-manager extensions are
+         *     now aggressive enough to swallow even ``application/octet-stream`` GETs
+         *     on large bodies, returning a synthetic ``204 No Content`` to the JS
+         *     fetch. We hand back a fully private vendor MIME
+         *     (``application/vnd.litassist.encoded``) plus ``X-Content-Type-Options:
+         *     nosniff`` so extensions can't sniff PDF magic bytes either. The PDF
+         *     bytes themselves are unchanged — pdf.js parses the body normally.
          */
         get: operations["get_resources_document_material_id_file"];
         put?: never;
@@ -13018,6 +13045,29 @@ export interface components {
             section_id?: string | null;
         };
         /**
+         * _DiscoverModelsBody
+         * @description Body shape for the POST /models/discover variant.
+         *
+         *     B14 (2026-06-13): Frontend (CredentialsSection -> chatApi.discoverModels)
+         *     has been POSTing for a while, but the route only existed as GET, returning
+         *     405 silently mapped to "未能获取模型列表" in the UI. POST body keeps the
+         *     api_key out of access logs / browser history and matches the existing
+         *     frontend caller without UI changes.
+         */
+        _DiscoverModelsBody: {
+            /**
+             * Api Key
+             * @description Access credential (optional for local services)
+             * @default
+             */
+            api_key: string;
+            /**
+             * Base Url
+             * @description Base URL of LLM service
+             */
+            base_url: string;
+        };
+        /**
          * AnalysisChainPayload
          * @description 6-field structured reasoning chain (IRAC + FinCoT compatible).
          *
@@ -18912,6 +18962,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_chat_models_discover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_DiscoverModelsBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

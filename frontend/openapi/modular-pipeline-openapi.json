@@ -16892,6 +16892,28 @@
         "title": "WritingAssociationPayload",
         "type": "object"
       },
+      "_DiscoverModelsBody": {
+        "description": "Body shape for the POST /models/discover variant.\n\nB14 (2026-06-13): Frontend (CredentialsSection -> chatApi.discoverModels)\nhas been POSTing for a while, but the route only existed as GET, returning\n405 silently mapped to \"未能获取模型列表\" in the UI. POST body keeps the\napi_key out of access logs / browser history and matches the existing\nfrontend caller without UI changes.",
+        "properties": {
+          "api_key": {
+            "default": "",
+            "description": "Access credential (optional for local services)",
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "description": "Base URL of LLM service",
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base_url"
+        ],
+        "title": "_DiscoverModelsBody",
+        "type": "object"
+      },
       "models__analysis_chain__AnalysisChainPayload": {
         "description": "6-field structured reasoning chain (IRAC + FinCoT compatible).\n\nOptional + tolerant: missing / wrong-shape fields fall back to empty\nstrings or empty lists so the surrounding response is preserved.",
         "properties": {
@@ -23734,7 +23756,7 @@
         ]
       },
       "post": {
-        "description": "Create a new wiki page (G2 2026-05-26).",
+        "description": "Create a new wiki page (G2 2026-05-26).\n\nCapture flow (2026-06-14): every page created through this endpoint is\nforced to ``draft`` status and surfaced as a pending review-queue item.\nFinal pages can only be produced by approving the review item, never by\nthe capture caller asking for ``status=final`` directly.",
         "operationId": "post_api_wiki_pages",
         "parameters": [
           {
@@ -24288,6 +24310,7 @@
     },
     "/api/wiki/review/{item_id}/approve": {
       "post": {
+        "description": "Approve a pending review item.\n\nCapture flow (2026-06-14): when the item points at an existing wiki page,\napproval first promotes the page to ``final`` and only then marks the\nqueue item ``approved``. A promotion failure leaves the queue pending.",
         "operationId": "post_api_wiki_review_item_id_approve",
         "parameters": [
           {
@@ -25820,6 +25843,48 @@
           }
         },
         "summary": "Discover Models",
+        "tags": [
+          "Chat"
+        ]
+      },
+      "post": {
+        "description": "POST variant of /models/discover — keeps api_key out of query string.\n\nSee discover_models() docstring for behavior; the implementation is shared\nvia _discover_models_impl. Returns the same response shape.",
+        "operationId": "post_chat_models_discover",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_DiscoverModelsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Chat Models Discover",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Discover Models Post",
         "tags": [
           "Chat"
         ]
@@ -28268,7 +28333,7 @@
     },
     "/resources/document/{material_id}/file": {
       "get": {
-        "description": "Serve the original file for a material (e.g. PDF for in-app viewing).\n\n``?as=bin`` returns the bytes with media_type=application/octet-stream so\nbrowser download-manager extensions (IDM, FlashGet, 迅雷, etc.) don't\nrecognise it as a PDF and divert the in-app reader's fetch into a save\ndialog. Used by the in-app PDF viewer; everything else (default) keeps\nthe natural MIME so e.g. right-click \"open in new tab\" still works.",
+        "description": "Serve the original file for a material (e.g. PDF for in-app viewing).\n\n``?as=bin`` returns the bytes with media_type=application/octet-stream so\nbrowser download-manager extensions (IDM, FlashGet, 迅雷, etc.) don't\nrecognise it as a PDF and divert the in-app reader's fetch into a save\ndialog. Used by the in-app PDF viewer; everything else (default) keeps\nthe natural MIME so e.g. right-click \"open in new tab\" still works.\n\n``?as=raw1`` (0.1.8.4 hardening): newer download-manager extensions are\nnow aggressive enough to swallow even ``application/octet-stream`` GETs\non large bodies, returning a synthetic ``204 No Content`` to the JS\nfetch. We hand back a fully private vendor MIME\n(``application/vnd.litassist.encoded``) plus ``X-Content-Type-Options:\nnosniff`` so extensions can't sniff PDF magic bytes either. The PDF\nbytes themselves are unchanged — pdf.js parses the body normally.",
         "operationId": "get_resources_document_material_id_file",
         "parameters": [
           {
