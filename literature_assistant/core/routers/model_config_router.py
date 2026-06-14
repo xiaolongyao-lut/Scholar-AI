@@ -183,7 +183,11 @@ async def discover_models_from_endpoint(base_url: str, api_key: str) -> Discover
             _validate_outbound_llm_base_url,
         )
 
-        _validate_outbound_llm_base_url(trimmed, "Local LLM")
+        # B15 (2026-06-13): user is exploring a new provider — let probes hit
+        # any HTTPS host without requiring a pre-baked .env allowlist entry.
+        # Scheme / userinfo / path checks still run. Real chat traffic uses the
+        # strict path (skip_dns=False default) elsewhere.
+        _validate_outbound_llm_base_url(trimmed, "Local LLM", skip_dns=True)
         url = _build_models_discovery_endpoint(trimmed)
     except ValueError as exc:
         return DiscoverResult(ok=False, error=str(exc))
@@ -391,7 +395,10 @@ async def test_chat_endpoint(payload: ConfigUpdate) -> ProbeResult:
             _validate_outbound_llm_base_url,
         )
 
-        _validate_outbound_llm_base_url(base_url, provider or "OpenAI")
+        # B20 (2026-06-13): user-initiated probe — skip strict IP classification
+        # so freshly-added third-party gateways don't get rejected before the
+        # user can even reach "测试连接". Real chat traffic stays strict.
+        _validate_outbound_llm_base_url(base_url, provider or "OpenAI", skip_dns=True)
         url = _build_chat_endpoint(base_url, provider or "OpenAI")
         resolved_key = _resolve_api_key(provider or "OpenAI", api_key)
     except ValueError as exc:
@@ -529,7 +536,8 @@ async def test_embedding_endpoint(payload: ConfigUpdate) -> ProbeResult:
     try:
         from routers.chat_router import _validate_outbound_llm_base_url
 
-        _validate_outbound_llm_base_url(base_url, provider or "Local LLM")
+        # B20: user-initiated embedding probe — see B20 note above.
+        _validate_outbound_llm_base_url(base_url, provider or "Local LLM", skip_dns=True)
     except ValueError as exc:
         return ProbeResult(ok=False, error=str(exc))
 

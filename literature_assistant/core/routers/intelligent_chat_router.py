@@ -921,6 +921,72 @@ def _clean_optional_text(value: Any) -> str | None:
     return clean_optional_text(value)
 
 
+# B11 (2026-06-13/14): light-chat fast path detector.
+# Rule-based — no LLM dependency, ~0ms overhead.
+_LIGHT_CHAT_GREETINGS: frozenset[str] = frozenset({
+    # English
+    "hi", "hello", "hey", "hiya", "yo", "thanks", "thank you", "ok", "okay",
+    "bye", "goodbye", "test", "ping", "sup", "hola", "yes", "no",
+    # 中文 — 短寒暄/客套
+    "你好", "您好", "在吗", "在?", "在", "早", "早上好", "中午好",
+    "晚安", "晚上好", "下午好", "睡了",
+    "谢谢", "感谢", "多谢", "好的", "好", "知道了", "明白", "了解",
+    "嗯", "嗯嗯", "哦", "啊", "呵呵", "哈哈", "嘻嘻",
+    "测试", "test一下", "测试一下",
+    "再见", "拜拜", "88",
+    # 互动确认
+    "?", "？", "!", "！", ".", "。", "??", "？？",
+})
+
+# B11 (2026-06-14): broaden regex to cover common variations like
+# "hi 啊", "hello~", "你好啊", "在不在", "在么". The 16-char outer length
+# cap (see _is_light_chat_query) keeps research questions out even if
+# they happen to start with a greeting word.
+_LIGHT_CHAT_PATTERN = re.compile(
+    r"^("
+    r"(hi|hello|hey|嗨|哈喽|哈罗|yo|sup|hola)[\s,，。.!！?？~～\-呀啊哦哎]*"
+    r"|你好[啊呀哦吗]*"
+    r"|您好[啊呀]*"
+    r"|在([不]?在)?[吗么呀]?[?？]?"
+    r"|睡了[吗么]?"
+    r")$",
+    re.IGNORECASE,
+)
+
+
+def _is_light_chat_query(req: "IntelligentChatRequest") -> bool:
+    """Return True when a query should bypass full RAG and go DIRECT.
+
+    All conditions must hold:
+      1. query length ≤ 16 chars (rules out actual research questions).
+      2. exact match against greetings whitelist OR matches greeting regex
+         OR is whitespace+punctuation only.
+      3. no current_pdf_context (user isn't asking about a PDF selection).
+      4. no material_id (user hasn't anchored to a specific paper).
+
+    Note: req.mode is NOT checked here — the caller already gates this on
+    effective_mode == LITERATURE_QA, and the frontend always sends a mode
+    string (never None), so checking it here would make the fast path
+    permanently dead. (B11 bug fix 2026-06-14.)
+    """
+    query = str(getattr(req, "query", "") or "").strip()
+    if not query or len(query) > 16:
+        return False
+    if getattr(req, "current_pdf_context", None) is not None:
+        return False
+    if str(getattr(req, "material_id", "") or "").strip():
+        return False
+    normalized = query.lower().strip(" \t\n,，。.!！?？~～")
+    if normalized in _LIGHT_CHAT_GREETINGS:
+        return True
+    if _LIGHT_CHAT_PATTERN.match(query):
+        return True
+    # All-punctuation queries ("???" / "。。。") — treat as no-op chat.
+    if all(ch in " \t\n,，。.!！?？~～-_" for ch in query):
+        return True
+    return False
+
+
 def _validate_project_id(project_id: str | None) -> str | None:
     normalized = str(project_id or "").strip()
     if not normalized:
@@ -2432,6 +2498,9 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
     )
     session_id = turn_plan.session_id
     effective_mode = ChatMode(turn_plan.mode_decision.execution_mode)
+    # B11 fast path — see _is_light_chat_query() docstring.
+    if effective_mode == ChatMode.LITERATURE_QA and _is_light_chat_query(req):
+        effective_mode = ChatMode.DIRECT
     if turn_plan.conflict is not None:
         return JSONResponse(
             status_code=409,
@@ -2772,6 +2841,9 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
     )
     session_id = turn_plan.session_id
     effective_mode = ChatMode(turn_plan.mode_decision.execution_mode)
+    # B11 fast path — see _is_light_chat_query() docstring.
+    if effective_mode == ChatMode.LITERATURE_QA and _is_light_chat_query(req):
+        effective_mode = ChatMode.DIRECT
 
     # Session.mode immutability gate.
     # Triggered only when the client supplied a session_id pointing at a
