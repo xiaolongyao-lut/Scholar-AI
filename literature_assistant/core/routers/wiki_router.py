@@ -44,6 +44,7 @@ from literature_assistant.core.wiki.review_queue import (
     ReviewItemKind,
     ReviewItemStatus,
     ReviewQueue,
+    make_review_item,
 )
 from literature_assistant.core.wiki.source_registry import WikiRegistry
 
@@ -688,6 +689,33 @@ def _ensure_can_write_extra(extra: dict[str, Any], user_id: str) -> None:
         raise HTTPException(status_code=403, detail="Only owner can update this wiki page")
 
 
+def _promote_review_target_to_final(item: Any) -> None:
+    """Promote the wiki page bound to a review item from draft/review to final.
+
+    Raises:
+        ValueError: If the review item points at a page that cannot be promoted.
+    """
+    page_path = getattr(item, "page_path", "") or ""
+    if not page_path:
+        raise ValueError("review item has no page bound")
+    slug = Path(page_path).stem
+    if not slug:
+        raise ValueError(f"could not derive slug from page_path={page_path}")
+    from wiki.service import get_wiki_service
+
+    service = get_wiki_service()
+    page = service.get_page(slug)
+    if page is None:
+        raise ValueError(f"target page not found: {slug}")
+    # 已经是 final 就保持，避免重复写版本记录。
+    if page.status == WikiPageStatus.final:
+        return
+    try:
+        service.update_page(slug=slug, status=WikiPageStatus.final.value)
+    except ValueError as exc:
+        raise ValueError(f"promotion to final failed: {exc}") from exc
+
+
 def _permissions_response(permissions: WikiPagePermissions) -> WikiPagePermissionsResponse:
     return WikiPagePermissionsResponse(
         owner=permissions.owner,
@@ -716,8 +744,40 @@ class _AuthorizedWikiPageStore(WikiPageStore):
         return [page_path for page_path in super().list_pages(kind_dir) if self.read_page(page_path) is not None]
 
 
+class _ReviewedWikiPageStore(_AuthorizedWikiPageStore):
+    """Read-only page store view for published knowledge surfaces.
+
+    Capture drafts that still wait in the human review queue are hidden from
+    page lists, search indexes, graph exports, and Markdown exports.
+    """
+
+    def read_page(self, relative_path: Path) -> str | None:
+        content = super().read_page(relative_path)
+        if content is None:
+            return None
+        frontmatter, _body = _split_frontmatter(str(content))
+        if _is_unfinalized_capture_draft(frontmatter):
+            return None
+        return content
+
+
 def _authorized_page_store(user_id: str) -> WikiPageStore:
     return _AuthorizedWikiPageStore(_page_store(create=False), user_id)
+
+
+def _reviewed_page_store(user_id: str) -> WikiPageStore:
+    return _ReviewedWikiPageStore(_page_store(create=False), user_id)
+
+
+def _is_unfinalized_capture_draft(frontmatter: dict[str, Any]) -> bool:
+    """Return true for capture drafts that are not approved into final pages."""
+
+    if not isinstance(frontmatter, dict):
+        return False
+    if str(frontmatter.get("status") or "").strip().lower() != WikiPageStatus.draft.value:
+        return False
+    extra = _frontmatter_extra(frontmatter)
+    return str(extra.get("entry_source") or "").strip() == "manual_frontend"
 
 
 @router.post("/import", response_model=WikiImportResponse)
@@ -857,7 +917,7 @@ def wiki_import(
 def wiki_status(user_id: str | None = Query(default=None)) -> WikiStatusResponse:
     enabled = wiki_enabled()
     current_user = _current_wiki_user(user_id)
-    store = _authorized_page_store(current_user)
+    store = _reviewed_page_store(current_user)
     pages = store.list_pages() if store.wiki_root.exists() else []
     page_count = len(pages) if enabled else 0
     stale, stale_warnings = _status_stale(page_count, enabled=enabled)
@@ -970,7 +1030,7 @@ def _wiki_search_impl(request: WikiQueryRequest, user_id: str) -> WikiQueryRespo
             warnings=["Wiki query index is not available; call the main RAG chain for raw-corpus fallback."],
         )
     index = WikiQueryIndex(index_path, observability_sink=sink)
-    readable_store = _authorized_page_store(user_id)
+    readable_store = _reviewed_page_store(user_id)
     try:
         with sink.start_span("wiki.router.query", {"wiki_first": request.wiki_first, "debug": request.debug}):
             result = wiki_query_with_fallback(
@@ -1034,7 +1094,7 @@ def wiki_pages(
     if not wiki_enabled():
         return WikiPageListResponse(enabled=False, pages=[])
     current_user = _current_wiki_user(user_id)
-    store = _authorized_page_store(current_user)
+    store = _reviewed_page_store(current_user)
     kind_filter = _normalize_filter_token(kind, "kind")
     status_filter = _normalize_filter_token(status, "status")
     pages: list[WikiPageSummaryPayload] = []
@@ -1057,7 +1117,7 @@ def wiki_categories(user_id: str | None = Query(default=None)) -> WikiCategories
     if not wiki_enabled():
         return WikiCategoriesResponse(enabled=False, categories=[])
     current_user = _current_wiki_user(user_id)
-    store = _authorized_page_store(current_user)
+    store = _reviewed_page_store(current_user)
     entries: list[tuple[list[str], WikiPageSummaryPayload]] = []
     for page_path in store.list_pages():
         content = store.read_page(page_path)
@@ -1075,7 +1135,7 @@ def wiki_tags(user_id: str | None = Query(default=None)) -> WikiTagsResponse:
     if not wiki_enabled():
         return WikiTagsResponse(enabled=False, tags=[])
     current_user = _current_wiki_user(user_id)
-    store = _authorized_page_store(current_user)
+    store = _reviewed_page_store(current_user)
     entries: list[tuple[list[str], WikiPageSummaryPayload]] = []
     for page_path in store.list_pages():
         content = store.read_page(page_path)
@@ -1193,24 +1253,38 @@ def wiki_page_create(
     request: WikiPageCreateRequest,
     user_id: str | None = Query(default=None),
 ) -> WikiPageMutationResponse:
-    """Create a new wiki page (G2 2026-05-26)."""
+    """Create a new wiki page (G2 2026-05-26).
+
+    Capture flow (2026-06-14): every page created through this endpoint is
+    forced to ``draft`` status and surfaced as a pending review-queue item.
+    Final pages can only be produced by approving the review item, never by
+    the capture caller asking for ``status=final`` directly.
+    """
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
 
     from wiki.service import get_wiki_service
 
     current_user = _current_wiki_user(user_id)
+    capture_extra = {key: value for key, value in request.extra.items() if key != PERMISSIONS_KEY}
+    capture_extra.setdefault("entry_source", "manual_frontend")
     page_extra = set_permissions(
-        {key: value for key, value in request.extra.items() if key != PERMISSIONS_KEY},
+        capture_extra,
         WikiPagePermissions(owner=current_user, visibility=WikiPageVisibility.PRIVATE),
     )
+    # 捕获入口不再相信 caller 提的 status：所有从 /pages POST 来的写入都先落 draft。
+    # 真正升级到 final 必须通过 /review/{id}/approve。requested_status 留存在 review
+    # metadata 里，供审核界面区分用户是「随手记」还是「想直接沉淀」。
+    requested_status = request.status
+    forced_status = WikiPageStatus.draft.value
+
     service = get_wiki_service()
     try:
         page = service.create_page(
             title=request.title,
             kind=request.kind,
             body=request.body,
-            status=request.status,
+            status=forced_status,
             evidence_refs=request.evidence_refs,
             source_hashes=request.source_hashes,
             extra=page_extra,
@@ -1221,10 +1295,49 @@ def wiki_page_create(
             raise HTTPException(status_code=409, detail=detail) from exc
         raise HTTPException(status_code=400, detail=detail) from exc
 
+    # 把这条草稿挂到 ReviewQueue 当待确认条目。失败就回滚刚创建的 page，
+    # 避免「页面有了但收件箱没有」的半成功状态。
+    page_relative_path = f"{page.kind.value}/{page.stable_slug}.md"
+    try:
+        queue = ReviewQueue(wiki_review_queue_path())
+        existing_ids = {item.item_id for item in queue.list_items()}
+        candidate_id = f"capture-{page.stable_slug}"
+        # 防同名 slug 重写时撞 item_id；递增后缀。
+        suffix = 1
+        while candidate_id in existing_ids:
+            suffix += 1
+            candidate_id = f"capture-{page.stable_slug}-{suffix}"
+        capture_metadata: dict[str, Any] = {
+            "entry_source": request.extra.get("entry_source") or "manual_frontend",
+            "requested_status": requested_status,
+            "kind": page.kind.value,
+            "owner": current_user,
+        }
+        queue.append(
+            make_review_item(
+                item_id=candidate_id,
+                kind=ReviewItemKind.draft,
+                title=page.title,
+                page_path=page_relative_path,
+                summary=(page.body or "").strip().splitlines()[0][:200] if page.body else "",
+                source="capture",
+                metadata=capture_metadata,
+            )
+        )
+    except (ValueError, OSError) as exc:
+        try:
+            service.delete_page(page.stable_slug)
+        except (ValueError, OSError):
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create pending review entry; draft was rolled back: {exc}",
+        ) from exc
+
     return WikiPageMutationResponse(
         success=True,
         slug=page.stable_slug,
-        message=f"Page created: {page.stable_slug}",
+        message=f"Page saved as draft pending review: {page.stable_slug}",
     )
 
 
@@ -1333,7 +1446,7 @@ def wiki_export(
     current_user = _current_wiki_user(user_id)
     resolved_output_path = _resolve_wiki_export_path(output_path)
 
-    result = export_wiki_markdown(_authorized_page_store(current_user), resolved_output_path)
+    result = export_wiki_markdown(_reviewed_page_store(current_user), resolved_output_path)
 
     if not result["success"]:
         raise HTTPException(status_code=500, detail={"errors": result["errors"]})
@@ -1346,7 +1459,7 @@ def wiki_graph(user_id: str | None = Query(default=None)) -> WikiGraphResponse:
     if not wiki_enabled():
         return WikiGraphResponse(enabled=False, graph={})
     current_user = _current_wiki_user(user_id)
-    snapshot = build_wiki_graph(_authorized_page_store(current_user))
+    snapshot = build_wiki_graph(_reviewed_page_store(current_user))
     return WikiGraphResponse(enabled=True, graph=snapshot.to_dict())
 
 
@@ -1376,18 +1489,27 @@ def wiki_review_list(
 
 @router.post("/review/{item_id}/approve", response_model=WikiReviewItemPayload)
 def wiki_review_approve(item_id: str, request: WikiReviewDecisionRequest) -> WikiReviewItemPayload:
+    """Approve a pending review item.
+
+    Capture flow (2026-06-14): when the item points at an existing wiki page,
+    approval first promotes the page to ``final`` and only then marks the
+    queue item ``approved``. A promotion failure leaves the queue pending.
+    """
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+    queue = ReviewQueue(wiki_review_queue_path())
     try:
-        item = ReviewQueue(wiki_review_queue_path()).approve(
-            item_id,
-            reason=request.reason,
-            decided_by=request.decided_by,
-        )
+        existing = queue.get(item_id)
+        if existing is None:
+            raise KeyError(item_id)
+        # 先把页面推到 final，再标 queue=approved。这样任何失败都不会留下
+        # 「已批准但未沉淀」的页面。
+        _promote_review_target_to_final(existing)
+        item = queue.approve(item_id, reason=request.reason, decided_by=request.decided_by)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Review item not found: {item_id}") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return WikiReviewItemPayload(**item.to_dict())
 
 
