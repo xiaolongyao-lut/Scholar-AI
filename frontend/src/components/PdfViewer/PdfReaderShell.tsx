@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PdfViewer, type PdfOutlineEntry, type PdfSelectionAnchor } from '@/components/PdfViewer/PdfViewer';
+import { CaptureToInboxButton } from '@/components/knowledge/CaptureToInboxButton';
+import { RecallPanel } from '@/components/knowledge/RecallPanel';
 import {
   type AnnotationData,
   type Highlight,
@@ -340,6 +342,17 @@ export function PdfReaderShell({
             <div className="flex items-center justify-between gap-2 px-3 py-2">
               <TabBar active={activeTab} counts={counts} onSelect={handleTabSelect} />
               <div className="flex items-center gap-1">
+                <CaptureToInboxButton
+                  variant="icon"
+                  label="记到待确认"
+                  context={{
+                    kind: 'pdf',
+                    sourceLabel: `论文 ${materialId}`,
+                    quote: highlights[highlights.length - 1]?.text,
+                    locator: `第 ${currentPage} 页`,
+                    rawIds: { material_id: materialId },
+                  }}
+                />
                 <button
                   type="button"
                   onClick={() => void handleExport()}
@@ -363,6 +376,22 @@ export function PdfReaderShell({
             </div>
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
+            <details className="border-b border-outline-variant/40 bg-surface-lowest" >
+              <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[11px] text-foreground/60 marker:hidden">
+                <span>可召回的沉淀</span>
+                <span className="text-foreground/40">点击展开</span>
+              </summary>
+              <div className="px-3 pb-3">
+                <RecallPanel
+                  density="compact"
+                  context={{
+                    materialTitle: `论文 ${materialId}`,
+                    projectId: null,
+                    defaultQuery: highlights[highlights.length - 1]?.text,
+                  }}
+                />
+              </div>
+            </details>
             {activeTab === 'highlights' && (
               <HighlightsTab
                 highlights={highlights}

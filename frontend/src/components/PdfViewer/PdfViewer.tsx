@@ -106,6 +106,30 @@ function sanitizePdfLoadDetail(detail: unknown): string {
   return raw;
 }
 
+function blobToBase64(blob: Blob): Promise<string> {
+  if (!(blob instanceof Blob)) {
+    throw new TypeError('blob must be a Blob');
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read PDF bytes'));
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('PDF reader returned a non-string payload'));
+        return;
+      }
+      const [, base64 = ''] = result.split(',', 2);
+      if (!base64) {
+        reject(new Error('PDF reader returned empty base64 content'));
+        return;
+      }
+      resolve(base64);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function formatPdfLoadError(status: number | null, detail: unknown): string {
   const prefix = status ? `PDF 加载失败（HTTP ${status}）` : 'PDF 加载失败';
   return `${prefix}：${sanitizePdfLoadDetail(detail)}`;
@@ -266,6 +290,24 @@ export function PdfViewer({
   }, []);
 
   // Own the bytes fetch so pdf.js doesn't (see comment on pdfData state).
+  //
+  // 0.1.8.4 PDF-fetch-hardening (bug: source-dev mode 204 No Content):
+  //   Browser download-manager extensions (IDM / 迅雷 / FlashGet / etc.) and
+  //   some service-worker shells intercept large binary GETs and replace the
+  //   real response with 204 — body, Content-Type, Content-Length all gone.
+  //   The original `?as=bin` + application/octet-stream trick (0.1.8.1) no
+  //   longer escapes them. Layered defence here:
+  //     1. `?as=raw1` selects a private vendor MIME on the backend
+  //        (application/vnd.litassist.encoded). Download managers don't
+  //        sniff it as PDF and ignore.
+  //     2. Custom `X-LitAssist-Pdf-Stream: 1` header forces a CORS preflight,
+  //        which most download-manager extensions don't intercept.
+  //     3. If we still get 204 / 0-byte / null content-type, retry once
+  //        with XHR + responseType='arraybuffer' (XHR uses a different
+  //        code path than fetch in many extensions).
+  //     4. If XHR also returns empty, fall back to the natural PDF MIME
+  //        (no `as=` flag) — works for users without an aggressive
+  //        download manager.
   useEffect(() => {
     // Multi-tab fast path: parent's LRU cache already has the bytes.
     if (bytes) {
@@ -277,16 +319,42 @@ export function PdfViewer({
     let cancelled = false;
     setLoadError(null);
     setPdfData(null);
-    (async () => {
+
+    const buildUrl = (flag: 'raw1' | 'bin' | null): string => {
+      if (!flag) return url;
+      const sep = url.includes('?') ? '&' : '?';
+      return `${url}${sep}as=${flag}`;
+    };
+
+    const isEmptyResponse = (status: number, byteLength: number): boolean => {
+      // 204 / 205 are explicitly bodiless. A 200 with 0 bytes means an
+      // interceptor (extension / SW) swallowed the body.
+      if (status === 204 || status === 205) return true;
+      if (status >= 200 && status < 300 && byteLength === 0) return true;
+      return false;
+    };
+
+    type FetchOk = { kind: 'ok'; bytes: Uint8Array; via: string };
+    type FetchEmpty = { kind: 'empty'; status: number; via: string };
+    type FetchHttpErr = { kind: 'http_err'; status: number; detail: string; via: string };
+    type FetchNetErr = { kind: 'net_err'; detail: string; via: string };
+    type FetchOutcome = FetchOk | FetchEmpty | FetchHttpErr | FetchNetErr;
+
+    const fetchViaFetch = async (fetchUrl: string, via: string): Promise<FetchOutcome> => {
       try {
-        const fetchUrl = url.includes('?') ? `${url}&as=bin` : `${url}?as=bin`;
         const resp = await fetch(fetchUrl, {
           method: 'GET',
           cache: 'no-store',
-          headers: { Accept: 'application/octet-stream,application/pdf;q=0.9,*/*;q=0.1' },
+          headers: {
+            Accept: 'application/vnd.litassist.encoded,application/octet-stream,application/pdf;q=0.9,*/*;q=0.1',
+            // Non-simple header → forces CORS preflight, which most
+            // download-manager extensions don't intercept.
+            'X-LitAssist-Pdf-Stream': '1',
+          },
         });
         if (typeof console !== 'undefined') {
           console.info('[PdfViewer] fetch resp', {
+            via,
             url: fetchUrl,
             status: resp.status,
             ok: resp.ok,
@@ -294,7 +362,7 @@ export function PdfViewer({
             contentType: resp.headers.get('content-type'),
           });
         }
-        if (!resp.ok) {
+        if (!resp.ok && !isEmptyResponse(resp.status, 0)) {
           let detail = `HTTP ${resp.status}`;
           try {
             const body = await resp.clone().json();
@@ -306,27 +374,103 @@ export function PdfViewer({
               if (text) detail = text.slice(0, 200);
             } catch { /* ignore */ }
           }
-          if (!cancelled) handleLoadError(new Error(detail), resp.status, detail);
-          return;
+          return { kind: 'http_err', status: resp.status, detail, via };
         }
         const decoded = new Uint8Array(await resp.arrayBuffer());
-        if (decoded.byteLength === 0) {
-          const detail = '响应体为空。';
-          if (!cancelled) handleLoadError(new Error(detail), resp.status, detail);
-          return;
+        if (isEmptyResponse(resp.status, decoded.byteLength)) {
+          return { kind: 'empty', status: resp.status, via };
         }
-        if (typeof console !== 'undefined') {
-          console.info('[PdfViewer] decoded bytes', decoded.byteLength);
-        }
-        if (!cancelled) {
-          setPdfData(decoded);
-          if (onBytesLoaded) onBytesLoaded(decoded);
-        }
+        return { kind: 'ok', bytes: decoded, via };
       } catch (err) {
-        if (cancelled) return;
         const e = err instanceof Error ? err : new Error(String(err));
-        handleLoadError(e, null, e.message || '网络请求失败');
+        return { kind: 'net_err', detail: e.message || '网络请求失败', via };
       }
+    };
+
+    const fetchViaXhr = (fetchUrl: string, via: string): Promise<FetchOutcome> => {
+      return new Promise((resolve) => {
+        try {
+          const xhr = new XMLHttpRequest();
+          xhr.open('GET', fetchUrl, true);
+          xhr.responseType = 'arraybuffer';
+          xhr.setRequestHeader(
+            'Accept',
+            'application/vnd.litassist.encoded,application/octet-stream,application/pdf;q=0.9,*/*;q=0.1',
+          );
+          xhr.setRequestHeader('X-LitAssist-Pdf-Stream', '1');
+          xhr.setRequestHeader('Cache-Control', 'no-store');
+          xhr.onload = () => {
+            const status = xhr.status || 0;
+            const ab = xhr.response instanceof ArrayBuffer ? xhr.response : null;
+            const byteLength = ab ? ab.byteLength : 0;
+            if (typeof console !== 'undefined') {
+              console.info('[PdfViewer] xhr resp', {
+                via,
+                url: fetchUrl,
+                status,
+                byteLength,
+                contentType: xhr.getResponseHeader('content-type'),
+                contentLength: xhr.getResponseHeader('content-length'),
+              });
+            }
+            if (status >= 400) {
+              const detail = xhr.responseText ? xhr.responseText.slice(0, 200) : `HTTP ${status}`;
+              resolve({ kind: 'http_err', status, detail, via });
+              return;
+            }
+            if (!ab || isEmptyResponse(status, byteLength)) {
+              resolve({ kind: 'empty', status, via });
+              return;
+            }
+            resolve({ kind: 'ok', bytes: new Uint8Array(ab), via });
+          };
+          xhr.onerror = () => {
+            resolve({ kind: 'net_err', detail: 'XHR network error', via });
+          };
+          xhr.send();
+        } catch (err) {
+          const e = err instanceof Error ? err : new Error(String(err));
+          resolve({ kind: 'net_err', detail: e.message || 'XHR setup failed', via });
+        }
+      });
+    };
+
+    (async () => {
+      // Stage 1: fetch + vendor MIME (?as=raw1). Most users land here.
+      let outcome = await fetchViaFetch(buildUrl('raw1'), 'fetch:raw1');
+      // Stage 2: XHR + vendor MIME — different transport, sometimes
+      // escapes interceptors that swallow fetch().
+      if (outcome.kind === 'empty' || outcome.kind === 'net_err') {
+        const fallback = await fetchViaXhr(buildUrl('raw1'), 'xhr:raw1');
+        if (fallback.kind === 'ok') outcome = fallback;
+        else if (outcome.kind === 'empty') outcome = fallback;
+      }
+      // Stage 3: natural PDF MIME (no flag). Works for users without
+      // aggressive download manager extensions; loses the octet-stream
+      // disguise but at least the doc opens.
+      if (outcome.kind === 'empty') {
+        const fallback = await fetchViaFetch(buildUrl(null), 'fetch:plain');
+        if (fallback.kind === 'ok') outcome = fallback;
+      }
+      if (cancelled) return;
+      if (outcome.kind === 'ok') {
+        if (typeof console !== 'undefined') {
+          console.info('[PdfViewer] decoded bytes', outcome.bytes.byteLength, 'via', outcome.via);
+        }
+        setPdfData(outcome.bytes);
+        if (onBytesLoaded) onBytesLoaded(outcome.bytes);
+        return;
+      }
+      if (outcome.kind === 'http_err') {
+        handleLoadError(new Error(outcome.detail), outcome.status, outcome.detail);
+        return;
+      }
+      if (outcome.kind === 'empty') {
+        const detail = '响应体为空（可能被浏览器扩展或下载管理器拦截，请暂时禁用 IDM/迅雷/FDM 类扩展后重试）。';
+        handleLoadError(new Error(detail), outcome.status, detail);
+        return;
+      }
+      handleLoadError(new Error(outcome.detail), null, outcome.detail);
     })();
     return () => { cancelled = true; };
   }, [url, loadAttempt, handleLoadError, bytes, onBytesLoaded]);
@@ -363,6 +507,13 @@ export function PdfViewer({
   const handleDownloadPdf = useCallback(() => {
     const blob = createPdfBlob();
     if (!blob) return;
+    const nativeSaveBytes = window.pywebview?.api?.save_bytes;
+    if (nativeSaveBytes) {
+      void blobToBase64(blob)
+        .then((contentBase64) => nativeSaveBytes(pdfFileName, contentBase64))
+        .catch(() => undefined);
+      return;
+    }
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = objectUrl;
