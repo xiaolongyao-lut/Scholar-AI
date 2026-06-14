@@ -19,6 +19,8 @@ import sys
 import threading
 import time
 import urllib.request
+import base64
+from collections.abc import Sequence
 from typing import Final
 from pathlib import Path
 
@@ -28,7 +30,76 @@ configure_runtime_paths()
 
 ROOT = Path(__file__).resolve().parent
 VENV_PYTHON = ROOT / ".venv-1" / "Scripts" / "python.exe"
-FRONTEND_DIST = ROOT / "frontend" / "dist" / "index.html"
+FRONTEND_ROOT = ROOT / "frontend"
+FRONTEND_DIST = FRONTEND_ROOT / "dist" / "index.html"
+DESKTOP_PROFILE_ROOT: Final[Path] = ROOT / "workspace_artifacts" / "runtime_state" / "desktop_webview_profile"
+FRONTEND_BUILD_INPUTS: Final[tuple[Path, ...]] = (
+    FRONTEND_ROOT / "src",
+    FRONTEND_ROOT / "public",
+    FRONTEND_ROOT / "index.html",
+    FRONTEND_ROOT / "package.json",
+    FRONTEND_ROOT / "package-lock.json",
+    FRONTEND_ROOT / "vite.config.ts",
+    FRONTEND_ROOT / "tailwind.config.js",
+    FRONTEND_ROOT / "postcss.config.js",
+    FRONTEND_ROOT / "tsconfig.json",
+)
+
+
+def _load_dotenv_into_environ(env_path: Path) -> int:
+    """Load KEY=VALUE pairs from ``.env`` into ``os.environ`` without overriding existing keys.
+
+    Why: vite (browser dev path) auto-sources .env, but the embedded uvicorn here
+    runs in a daemon thread of a fresh Python process and does not. SSRF policy
+    in `provider_endpoint_policy.py` reads these vars at module import; missing
+    them rejects every chat / rerank call (verified 2026-06-13 desktop test).
+
+    Format contract (what `.env` in this repo actually uses):
+      - Lines starting with `#` or `##` are comments.
+      - Blank lines are skipped.
+      - One assignment per line: `KEY=VALUE` (no quoting, no `${var}` expansion).
+      - Duplicate keys: later wins (matches existing `runtime_env.env_value()` semantic).
+
+    Shell-injected env (e.g. user already exported a key) wins over .env — this
+    matches dotenv-cli `--no-override` and keeps CI / explicit-override workflows
+    working.
+
+    Returns the number of keys loaded (0 if the file is absent or unreadable).
+    """
+    if not isinstance(env_path, Path):
+        raise TypeError("env_path must be a pathlib.Path")
+    if not env_path.is_file():
+        return 0
+    try:
+        text = env_path.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    # Two-pass: collect every well-formed assignment with last-wins inside the file,
+    # then write to os.environ skipping any key shell already set.
+    file_pairs: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        if not key or not key.replace("_", "").isalnum():
+            continue
+        file_pairs[key] = value.strip()  # last wins inside the file
+    loaded = 0
+    for key, value in file_pairs.items():
+        if key in os.environ:
+            continue  # shell-injected wins over .env
+        os.environ[key] = value
+        loaded += 1
+    return loaded
+
+
+_DOTENV_LOADED_KEYS = _load_dotenv_into_environ(ROOT / ".env")
+if _DOTENV_LOADED_KEYS:
+    print(f"[启动器] .env 已加载 {_DOTENV_LOADED_KEYS} 项 (shell 已存在的 key 不覆盖)")
 
 DEFAULT_PORT = 8000
 WINDOW_TITLE = "文献助手"
@@ -137,8 +208,46 @@ def _port_available(port: int) -> bool:
             return False
 
 
-def _check_frontend_build() -> bool:
-    return FRONTEND_DIST.exists()
+def _latest_mtime(path: Path) -> float:
+    """Return the newest mtime under a frontend input path.
+
+    Why: the desktop launcher serves `frontend/dist`; if source files are newer
+    than dist, the user sees stale UI even though the source has changed.
+    """
+
+    if not isinstance(path, Path):
+        raise TypeError("path must be a pathlib.Path")
+    if not path.exists():
+        return 0.0
+    if path.is_file():
+        return path.stat().st_mtime
+    newest = path.stat().st_mtime
+    for child in path.rglob("*"):
+        if child.is_file():
+            newest = max(newest, child.stat().st_mtime)
+    return newest
+
+
+def _frontend_build_is_current() -> bool:
+    """Return true when the existing dist is newer than frontend source inputs."""
+
+    if not FRONTEND_DIST.is_file():
+        return False
+    dist_mtime = FRONTEND_DIST.stat().st_mtime
+    return all(_latest_mtime(path) <= dist_mtime for path in FRONTEND_BUILD_INPUTS)
+
+
+def _frontend_cache_version() -> str:
+    """Return a browser-cache version tied to the built SPA shell.
+
+    Raises:
+        FileNotFoundError: If the frontend build has not produced index.html.
+    """
+
+    if not FRONTEND_DIST.is_file():
+        raise FileNotFoundError(f"Frontend build not found: {FRONTEND_DIST}")
+    stat_result = FRONTEND_DIST.stat()
+    return f"{stat_result.st_mtime_ns}:{stat_result.st_size}"
 
 
 def _remove_profile_cache_dir(cache_dir: Path, profile_root: Path) -> None:
@@ -200,8 +309,8 @@ def _clear_stale_browser_cache(profile_root: Path, cache_version: str) -> None:
 
 
 def _build_frontend() -> bool:
-    print("[启动器] 前端未构建，正在编译...")
-    frontend_dir = ROOT / "frontend"
+    print("[启动器] 前端构建已过期或不存在，正在编译...")
+    frontend_dir = FRONTEND_ROOT
     if not (frontend_dir / "package.json").exists():
         print("[启动器] 前端构建失败: 找不到 frontend/package.json")
         return False
@@ -215,6 +324,8 @@ def _build_frontend() -> bool:
         cwd=str(frontend_dir),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if result.returncode != 0:
@@ -235,26 +346,106 @@ def _wait_for_http(host: str, port: int, timeout: float = 30.0) -> bool:
     return False
 
 
+def _first_dialog_path(result: Sequence[str] | str | None) -> str | None:
+    """Normalize pywebview file-dialog results for the JS bridge.
+
+    Args:
+        result: ``None`` on cancel, one path string, or a sequence whose first
+            item is the selected path.
+
+    Returns:
+        A non-empty path string, or ``None`` when no selection was made.
+    """
+    if result is None:
+        return None
+    if isinstance(result, str):
+        path = result.strip()
+        return path or None
+    if not isinstance(result, Sequence):
+        raise TypeError("dialog result must be None, a string, or a sequence of strings")
+    if not result:
+        return None
+    first = result[0]
+    if not isinstance(first, str):
+        raise TypeError("dialog result path must be a string")
+    path = first.strip()
+    return path or None
+
+
 class NativeApi:
     """JS→Python bridge exposed via pywebview js_api."""
 
     def save_dialog(self, default_name: str = "export.docx") -> str | None:
+        """Return one selected save path as a JSON-serializable string.
+
+        Args:
+            default_name: Non-empty filename shown by the native save dialog.
+
+        Returns:
+            The selected local path, or ``None`` when the user cancels.
+        """
+        if not isinstance(default_name, str) or not default_name.strip():
+            raise ValueError("default_name must be a non-empty string")
         import webview
+
         result = webview.windows[0].create_file_dialog(
             webview.SAVE_DIALOG, save_filename=default_name,
         )
-        if result and isinstance(result, tuple) and len(result) > 0:
-            return result[0]
-        return None
+        return _first_dialog_path(result)
 
-    def open_dialog(self, file_types: tuple = ("PDF Files (*.pdf)",)) -> str | None:
+    def open_dialog(self, file_types: Sequence[str] = ("PDF Files (*.pdf)",)) -> str | None:
+        """Return one selected open path as a JSON-serializable string.
+
+        Args:
+            file_types: pywebview file filter strings such as
+                ``"PDF Files (*.pdf)"``.
+
+        Returns:
+            The selected local path, or ``None`` when the user cancels.
+        """
+        if not isinstance(file_types, Sequence) or isinstance(file_types, (str, bytes)):
+            raise TypeError("file_types must be a sequence of strings")
+        normalized_types = tuple(file_type for file_type in file_types if isinstance(file_type, str) and file_type.strip())
+        if not normalized_types:
+            raise ValueError("file_types must contain at least one non-empty string")
         import webview
+
         result = webview.windows[0].create_file_dialog(
-            webview.OPEN_DIALOG, file_types=file_types,
+            webview.OPEN_DIALOG, file_types=normalized_types,
         )
-        if result and isinstance(result, tuple) and len(result) > 0:
-            return result[0]
-        return None
+        return _first_dialog_path(result)
+
+    def save_bytes(self, default_name: str, content_base64: str) -> str | None:
+        """Persist a browser-generated export through the native save dialog.
+
+        Args:
+            default_name: Non-empty filename shown by the native save dialog.
+            content_base64: Standard base64 payload generated by the frontend.
+
+        Returns:
+            The selected local path, or ``None`` when the user cancels.
+
+        Raises:
+            ValueError: If either input is empty or the payload is not valid
+                base64 bytes.
+        """
+        if not isinstance(default_name, str) or not default_name.strip():
+            raise ValueError("default_name must be a non-empty string")
+        if not isinstance(content_base64, str) or not content_base64.strip():
+            raise ValueError("content_base64 must be a non-empty string")
+        target = self.save_dialog(default_name)
+        if target is None:
+            return None
+        try:
+            payload = base64.b64decode(content_base64, validate=True)
+        except (ValueError, base64.binascii.Error) as exc:
+            raise ValueError("content_base64 must be valid base64") from exc
+        output_path = Path(target).expanduser()
+        if output_path.exists() and output_path.is_dir():
+            raise ValueError("save target must be a file path, not a directory")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(payload)
+        return str(output_path)
 
     def minimize_window(self) -> None:
         import webview
@@ -267,6 +458,25 @@ class NativeApi:
     def close_window(self) -> None:
         import webview
         webview.windows[0].destroy()
+
+    def reload_window(self) -> None:
+        """B13 (2026-06-13): pywebview disables F5/Ctrl+R by default. Expose a
+        Python-side reload so the injected keyboard handler can rebind it."""
+        import webview
+        window = webview.windows[0]
+        # Prefer load_url so cache is bypassed in dev. evaluate_js fallback
+        # if load_url is not available on the bound backend (Edge/Chromium).
+        try:
+            current = window.get_current_url()
+            if current:
+                window.load_url(current)
+                return
+        except Exception:
+            pass
+        try:
+            window.evaluate_js("window.location.reload(true)")
+        except Exception:
+            pass
 
 
 def main() -> None:
@@ -284,12 +494,16 @@ def main() -> None:
         print(f"[启动器] 端口 {DEFAULT_PORT} 已被占用，使用 {port}")
 
     # Check / build frontend
-    if not _check_frontend_build():
+    if not _frontend_build_is_current():
         if not _build_frontend():
             print("[启动器] 无法启动：前端构建失败")
             _show_startup_error("启动失败", "前端构建失败，请检查 Node.js/npm 和 frontend 构建日志。")
             sys.exit(1)
     print("[启动器] 前端已就绪")
+    try:
+        _clear_stale_browser_cache(DESKTOP_PROFILE_ROOT, _frontend_cache_version())
+    except (OSError, RuntimeError, ValueError) as cache_exc:
+        print(f"[启动器] 浏览器缓存刷新跳过: {cache_exc}")
 
     # Start uvicorn in daemon thread (IN-PROCESS — single process)
     host = "127.0.0.1"
@@ -325,13 +539,49 @@ def main() -> None:
     window = webview.create_window(
         WINDOW_TITLE, url=url,
         width=WINDOW_WIDTH, height=WINDOW_HEIGHT,
-        frameless=True,
+        frameless=False,
         text_select=True, js_api=api, background_color=LIGHT_APP_BACKGROUND,
     )
     if window is not None:
         window.events.shown += _apply_windows_titlebar_colors
+
+        # B13 (2026-06-13): pywebview disables F5 / Ctrl+R by default. Inject a
+        # tiny keydown handler that proxies these (and Ctrl+Shift+R for hard
+        # reload) to the Python-side reload_window API. Captures at window level
+        # before any React handler so reload always wins.
+        def _install_reload_hotkeys(_=None):
+            try:
+                window.evaluate_js("""
+                (function(){
+                  if (window.__litReloadHotkeyInstalled) return;
+                  window.__litReloadHotkeyInstalled = true;
+                  function isReload(e){
+                    return e.key === 'F5'
+                      || (e.key === 'r' && (e.ctrlKey || e.metaKey))
+                      || (e.key === 'R' && (e.ctrlKey || e.metaKey));
+                  }
+                  window.addEventListener('keydown', function(e){
+                    if (!isReload(e)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.pywebview && window.pywebview.api && window.pywebview.api.reload_window) {
+                      window.pywebview.api.reload_window();
+                    } else {
+                      window.location.reload();
+                    }
+                  }, true);
+                })();
+                """)
+            except Exception:
+                pass
+
+        window.events.shown += _install_reload_hotkeys
     print("[启动器] 桌面窗口已打开，关闭窗口将退出程序")
-    webview.start(debug=bool(os.environ.get("LITERATURE_ASSISTANT_DEBUG")))
+    webview.start(
+        debug=bool(os.environ.get("LITERATURE_ASSISTANT_DEBUG")),
+        private_mode=False,
+        storage_path=str(DESKTOP_PROFILE_ROOT),
+    )
 
     # Window closed → daemon threads auto-terminate with process exit
     print("[启动器] 窗口已关闭，退出")
