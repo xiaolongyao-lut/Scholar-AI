@@ -35,6 +35,24 @@ VPN / proxy fake-IP exception (added 2026-06-12):
     Then official-host + https + all-IPs-in-fake-CIDR is allowed with reason
     ``official_provider_fake_ip_proxy_allowed``. custom / runtime_untrusted /
     http / partial-fake-IP / private-network IPs are STILL rejected.
+
+Trusted custom provider hosts (added 2026-06-13):
+    Some self-managed gateways / CDN-fronted custom proxies are reached via
+    fake-IP DNS proxies (Clash / Mihomo / corporate VPN), so even though the
+    user *intends* to trust the hostname, all A records point inside the
+    fake-IP CIDR (198.18.0.0/15 etc.) which the strict SSRF gate rejects.
+    Rule 7 only covers official-provider hosts. To recover for known custom
+    hosts, set:
+        LITASSIST_TRUSTED_CUSTOM_PROVIDER_HOSTS=ai.example.com,gw.example.net
+    Comma-separated, case-insensitive. The exception applies only when:
+      - host (lowercased) is in the env-configured set
+      - scheme is https
+      - trust_source ∈ {env_configured_gateway, runtime_user_confirmed}
+      - every resolved IP falls within LITASSIST_PROXY_FAKE_IP_CIDRS
+    Loopback / RFC 1918 / link-local IPs are STILL rejected as long as they
+    fall OUTSIDE the configured fake-IP CIDRs (this is a host-scoped, CIDR-
+    scoped allowlist — not a blanket IP override). Reason on allow:
+    ``trusted_custom_provider_host_allowed``.
 """
 
 from __future__ import annotations
@@ -311,6 +329,65 @@ def _all_ips_are_fake_ip_for_official_provider(
     return all(_ip_in_fake_cidrs(ip, cidrs) for ip in ips)
 
 
+# ---------------------------------------------------------------------------
+# Trusted custom provider hosts (rule 8 of endpoint policy V2 — 2026-06-13)
+# ---------------------------------------------------------------------------
+
+# Same eligible trust-sources as rule 7 except OFFICIAL_PROVIDER (an official
+# host already has its own dedicated allowlist). RUNTIME_UNTRUSTED_CUSTOM is
+# intentionally excluded — user must have actively confirmed or env-configured.
+_TRUSTED_CUSTOM_ELIGIBLE_TRUST_SOURCES: frozenset[str] = frozenset({
+    TrustSource.ENV_CONFIGURED_GATEWAY.value,
+    TrustSource.RUNTIME_USER_CONFIRMED.value,
+})
+
+
+def _trusted_custom_provider_hosts() -> frozenset[str]:
+    """Parse ``LITASSIST_TRUSTED_CUSTOM_PROVIDER_HOSTS`` (case-insensitive)."""
+    raw = os.environ.get("LITASSIST_TRUSTED_CUSTOM_PROVIDER_HOSTS", "").strip()
+    if not raw:
+        return frozenset()
+    out: set[str] = set()
+    for piece in raw.split(","):
+        host = piece.strip().lower().rstrip(".")
+        if host:
+            out.add(host)
+    return frozenset(out)
+
+
+def _host_is_trusted_custom_provider(
+    *,
+    host: str,
+    scheme: str,
+    trust_source: str,
+    ips: list[str],
+) -> bool:
+    """Return True iff this host qualifies for the trusted-custom-provider exception.
+
+    All conditions must hold (rule 8):
+      - host (lowercased) ∈ env-configured trusted-custom set
+      - scheme is https (custom hosts MUST use TLS; no http exception here)
+      - trust_source ∈ {env_configured_gateway, runtime_user_confirmed}
+      - every resolved IP falls within LITASSIST_PROXY_FAKE_IP_CIDRS
+        (default 198.18.0.0/15). This keeps the override host-scoped without
+        opening a SSRF hole into RFC 1918 / loopback / metadata IPs — the
+        operator has to explicitly list both the host AND the CIDR.
+    """
+    if scheme != "https":
+        return False
+    if trust_source not in _TRUSTED_CUSTOM_ELIGIBLE_TRUST_SOURCES:
+        return False
+    trusted = _trusted_custom_provider_hosts()
+    if not trusted or host not in trusted:
+        return False
+    if not ips:
+        return False
+    cidrs = _proxy_fake_ip_cidrs()
+    if not cidrs:
+        return False
+    return all(_ip_in_fake_cidrs(ip, cidrs) for ip in ips)
+
+
 def classify_ip(ip_str: str) -> str | None:
     """Return a human-readable rejection reason if ip is unsafe, else None.
 
@@ -476,6 +553,22 @@ def validate_endpoint(
             # non-loopback safe IP (public) → not a pure loopback decision
             loopback_only = False
     if rejected:
+        # Rule 8: trusted custom provider hosts (env-configured).
+        # Lets a user-declared host (e.g. fake-IP DNS proxy fronting a custom
+        # gateway) through when all resolved IPs sit inside the configured
+        # LITASSIST_PROXY_FAKE_IP_CIDRS. Both host AND CIDR must be opted in.
+        if _host_is_trusted_custom_provider(
+            host=host, scheme=parsed.scheme.lower(),
+            trust_source=ts, ips=ips,
+        ):
+            logger.info(
+                "trusted_custom_provider_host_allowed host=%s scheme=%s ips=%s",
+                host, parsed.scheme.lower(), ips,
+            )
+            return _allow("trusted_custom_provider_host_allowed", ts,
+                          scheme=parsed.scheme.lower(), host=host, port=port,
+                          path=parsed.path,
+                          resolved_ips=tuple(ips))
         return _reject("dns_resolved_to_unsafe_ip", ts,
                        scheme=parsed.scheme.lower(), host=host, port=port,
                        path=parsed.path,

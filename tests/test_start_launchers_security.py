@@ -34,7 +34,9 @@ def _install_subprocess_spy(monkeypatch: Any, module: Any) -> list[dict[str, Any
 
 def test_pywebview_launcher_builds_frontend_without_shell(tmp_path: Path, monkeypatch: Any) -> None:
     """The pywebview launcher should invoke npm by argv, not through shell parsing."""
-    monkeypatch.setattr(start_desktop, "ROOT", _prepare_frontend_root(tmp_path))
+    root = _prepare_frontend_root(tmp_path)
+    monkeypatch.setattr(start_desktop, "ROOT", root)
+    monkeypatch.setattr(start_desktop, "FRONTEND_ROOT", root / "frontend")
     monkeypatch.setattr(
         start_desktop.shutil,
         "which",
@@ -49,7 +51,56 @@ def test_pywebview_launcher_builds_frontend_without_shell(tmp_path: Path, monkey
     assert call["args"] == ["C:/node/npm.cmd", "run", "build"]
     assert call["kwargs"]["cwd"] == str(tmp_path / "frontend")
     assert call["kwargs"].get("shell") is not True
+    assert call["kwargs"]["text"] is True
+    assert call["kwargs"]["encoding"] == "utf-8"
+    assert call["kwargs"]["errors"] == "replace"
     assert call["kwargs"]["check"] is False
+
+
+def test_frontend_build_current_requires_dist_newer_than_inputs(tmp_path: Path, monkeypatch: Any) -> None:
+    """The desktop launcher should rebuild when source files are newer than dist."""
+    frontend_root = tmp_path / "frontend"
+    src_dir = frontend_root / "src"
+    dist_dir = frontend_root / "dist"
+    src_dir.mkdir(parents=True)
+    dist_dir.mkdir(parents=True)
+    source_file = src_dir / "App.tsx"
+    dist_file = dist_dir / "index.html"
+    source_file.write_text("new ui", encoding="utf-8")
+    dist_file.write_text("old ui", encoding="utf-8")
+
+    old_mtime = 1_700_000_000
+    new_mtime = 1_700_000_100
+    import os
+
+    os.utime(dist_file, (old_mtime, old_mtime))
+    os.utime(source_file, (new_mtime, new_mtime))
+    os.utime(src_dir, (new_mtime, new_mtime))
+
+    monkeypatch.setattr(start_desktop, "FRONTEND_ROOT", frontend_root)
+    monkeypatch.setattr(start_desktop, "FRONTEND_DIST", dist_file)
+    monkeypatch.setattr(start_desktop, "FRONTEND_BUILD_INPUTS", (src_dir,))
+
+    assert start_desktop._frontend_build_is_current() is False
+
+    fresh_mtime = 1_700_000_200
+    os.utime(dist_file, (fresh_mtime, fresh_mtime))
+
+    assert start_desktop._frontend_build_is_current() is True
+
+
+def test_frontend_cache_version_tracks_built_index(tmp_path: Path, monkeypatch: Any) -> None:
+    """The embedded browser cache marker should change when the built shell changes."""
+    dist_file = tmp_path / "frontend" / "dist" / "index.html"
+    dist_file.parent.mkdir(parents=True)
+    dist_file.write_text("first", encoding="utf-8")
+    monkeypatch.setattr(start_desktop, "FRONTEND_DIST", dist_file)
+
+    first_version = start_desktop._frontend_cache_version()
+    dist_file.write_text("second build", encoding="utf-8")
+    second_version = start_desktop._frontend_cache_version()
+
+    assert first_version != second_version
 
 
 def test_launcher_sources_do_not_use_shell_true() -> None:

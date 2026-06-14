@@ -188,53 +188,55 @@ def _mask_decision(decision: Any) -> dict[str, Any]:
     return decision.as_log_dict()
 
 
-def _probe_https_endpoint(base_url: str, api_key: str, protocol: str) -> dict[str, Any]:
-    """Send a minimal authenticated probe to verify reachability.
 
-    Strategy:
-      - HEAD request to base_url (no body, no redirects, short timeout)
-      - If HEAD is not allowed (405/404), fall back to a tiny GET with no body
-      - Authorization header constructed AFTER policy validation has passed
-      - Response body / headers are NEVER echoed; only status_code + class
+# ---------------------------------------------------------------------------
+# B20 (2026-06-14): All probe / reachability / redaction / model-discovery
+# logic was consolidated into `literature_assistant.core.provider_probe`. The
+# following names are re-exported here so existing tests
+# (`tests/test_credentials_router_*.py`) keep importing from the same module
+# they used to. New callers should import from `provider_probe` directly.
+# ---------------------------------------------------------------------------
 
-    Returns a mask-safe dict. Raises nothing (all exceptions caught).
+from provider_probe import (
+    _build_auth_headers as _build_auth_header,
+    _chat_probe_payload as _build_chat_probe_payload,
+    _chat_probe_url as _chat_completions_probe_url,
+    _extract_provider_error_message,
+    _redact_secrets,
+    probe_endpoint_reachability as _probe_endpoint_reachability,
+)
+
+
+def _probe_https_endpoint(
+    base_url: str,
+    api_key: str,
+    protocol: str,
+) -> dict[str, Any]:
+    """Backward-compat shim returning the legacy dict shape.
+
+    Tests and the credential-test endpoint expect a flat dict (not a dataclass);
+    this preserves that contract while routing all work through the shared
+    `probe_endpoint_reachability` implementation.
     """
-    import httpx  # local import keeps router import-cheap
-
-    auth_header = _build_auth_header(api_key, protocol)
-    headers = {**auth_header, "User-Agent": "literature-assistant-credential-test/1.0"}
-
+    result = _probe_endpoint_reachability(base_url, api_key, protocol)
     out: dict[str, Any] = {
         "probed": True,
-        "url_used": base_url,
-        "method": "HEAD",
+        "url_used": result.url_used or base_url,
+        "method": result.method or "HEAD",
+        "ok": result.ok,
+        "reachable": result.ok or bool(result.status_code),
     }
-    try:
-        with httpx.Client(timeout=5.0, follow_redirects=False) as client:
-            resp = client.head(base_url, headers=headers)
-            out["status_code"] = resp.status_code
-            out["status_class"] = f"{resp.status_code // 100}xx"
-            if resp.status_code in (404, 405):
-                # Many providers reject HEAD; a tiny GET to the same path is acceptable.
-                resp2 = client.get(base_url, headers=headers)
-                out["method"] = "GET"
-                out["status_code"] = resp2.status_code
-                out["status_class"] = f"{resp2.status_code // 100}xx"
-        out["ok"] = 200 <= out["status_code"] < 500  # 4xx (auth/route) still proves reachability
-        out["reachable"] = True
-        return out
-    except httpx.TimeoutException:
-        return {**out, "ok": False, "reachable": False, "error": "timeout"}
-    except httpx.ConnectError:
-        return {**out, "ok": False, "reachable": False, "error": "connect_error"}
-    except httpx.HTTPError as exc:
-        # Mask any URL/path detail beyond class name; never include raw exception text.
-        return {**out, "ok": False, "reachable": False,
-                "error": f"http_error:{type(exc).__name__}"}
-    except Exception as exc:  # noqa: BLE001 — defense in depth for credential test
-        logger.warning("credential test probe unexpected failure: %s", type(exc).__name__)
-        return {**out, "ok": False, "reachable": False,
-                "error": f"unexpected:{type(exc).__name__}"}
+    if result.status_code is not None:
+        out["status_code"] = result.status_code
+        out["status_class"] = f"{result.status_code // 100}xx"
+    if result.error:
+        out["error"] = result.error
+    if result.provider_message:
+        out["provider_message"] = result.provider_message
+    if result.note:
+        out["note"] = result.note
+    return out
+
 
 
 def _build_auth_header(api_key: str, protocol: str) -> dict[str, str]:
@@ -341,7 +343,11 @@ async def test_credential(
             },
         )
 
-    decision = validate_endpoint(cred.base_url, trust_source=effective_trust)
+    # B15 (2026-06-13): credential test is the user-initiated "is this provider
+    # reachable?" path. Pre-allowlisting every new third-party gateway in .env
+    # blocks normal discovery. skip_dns lets test/discover try any HTTPS host;
+    # scheme/userinfo/path checks still run, and real chat traffic stays strict.
+    decision = validate_endpoint(cred.base_url, trust_source=effective_trust, skip_dns=True)
     decision_log = _mask_decision(decision)
 
     if decision.skipped_network:

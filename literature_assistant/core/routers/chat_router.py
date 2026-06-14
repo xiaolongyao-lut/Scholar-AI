@@ -472,16 +472,29 @@ def _allows_loopback_http_for_provider(provider: str, base_url: str) -> bool:
     return _provider_key(provider) in {"ollama", "local llm"}
 
 
-def _validate_outbound_llm_base_url(base_url: str, provider: str) -> None:
-    """Reject unsafe provider endpoints before credentials are sent over HTTP."""
+def _validate_outbound_llm_base_url(
+    base_url: str,
+    provider: str,
+    *,
+    skip_dns: bool = False,
+) -> None:
+    """Backward-compatible thin wrapper around provider_probe.validate_outbound_endpoint.
 
-    decision = validate_endpoint(
+    Kept so the existing call sites (chat / inspiration / model_config / rerank
+    routers) don't need to change their import. New code should call
+    `provider_probe.validate_outbound_endpoint(strict=...)` directly.
+
+    skip_dns=False → strict=True (real chat/embedding/rerank traffic).
+    skip_dns=True  → strict=False (user-initiated probe — credential test,
+    model discover, "应用" button reachability).
+    """
+    from provider_probe import validate_outbound_endpoint
+    validate_outbound_endpoint(
         base_url,
-        trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
+        provider,
+        strict=not skip_dns,
         allow_loopback_http=_allows_loopback_http_for_provider(provider, base_url),
     )
-    if not decision.allowed:
-        raise ValueError(f"provider endpoint rejected: {decision.reason}")
 
 
 def _build_openai_compatible_url(base_url: str, provider: str) -> str:
@@ -838,6 +851,30 @@ def _provider_request_error_message(exc: httpx.RequestError) -> str:
     return "无法连接上游 LLM，请检查网络、Base URL 或切换可用供应商。"
 
 
+def _provider_non_json_error_message(raw_body: str, content_type: str | None) -> str:
+    """User-facing copy for the 200-OK-but-non-JSON upstream case (B3 2026-06-13).
+
+    Triggered when a custom proxy (typically NewAPI / one-api style gateway) returns
+    a successful HTTP status but a non-parseable body — most often an HTML rate-limit
+    page, an empty body during proxy degradation, or a partial SSE chunk leaked from
+    a misconfigured non-stream route. The job runtime needs a stable 502 with a
+    user-actionable hint (not a stack trace) so the Dialog error bubble can render.
+
+    The body is NEVER echoed verbatim: it can contain proxy URLs, internal IPs, or
+    upstream API keys in error envelopes. We surface only a coarse hint based on
+    Content-Type so users can pick the right next action.
+    """
+    body_preview = (raw_body or "").strip()
+    ct_lower = (content_type or "").lower()
+    if "html" in ct_lower or body_preview.startswith("<"):
+        return "上游 LLM 网关返回了 HTML 页面（通常是限流或维护页），请稍后重试或在设置中切换服务地址。"
+    if not body_preview:
+        return "上游 LLM 网关返回空响应，请稍后重试或在设置中切换服务地址。"
+    if "text/event-stream" in ct_lower or body_preview.startswith("data:"):
+        return "上游 LLM 网关错误地返回了流式片段，请检查服务地址或切换可用供应商。"
+    return "上游 LLM 网关返回了非 JSON 响应，请稍后重试或在设置中切换服务地址。"
+
+
 def _extract_chat_response(
     data: dict[str, Any],
     provider: str,
@@ -975,7 +1012,40 @@ async def _post_chat_with_retry(
             async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
-                return resp.json()
+                # B3 (2026-06-13): Some custom proxies return 200 OK but a non-JSON body
+                # (HTML rate-limit page, empty body, partial SSE chunk) during upstream
+                # degradation. resp.json() then raises JSONDecodeError → 500. We classify
+                # as a retryable upstream error so D's HTTPException transparency still
+                # carries an actionable 502 to the job runtime instead of a stack trace.
+                try:
+                    return resp.json()
+                except (json.JSONDecodeError, ValueError) as decode_exc:
+                    last_exc = decode_exc
+                    raw_body = (resp.text or "")[:500]
+                    if attempt < max_retries:
+                        sleep_s = backoff_base * (2 ** attempt) + random.uniform(0, 0.5)
+                        logger.warning(
+                            "LLM API returned non-JSON body (attempt %d/%d, ct=%s, len=%d), retry in %.2fs: %s",
+                            attempt + 1, max_retries + 1,
+                            resp.headers.get("content-type", "?"),
+                            len(resp.content or b""),
+                            sleep_s,
+                            raw_body[:200],
+                        )
+                        await asyncio.sleep(sleep_s)
+                        continue
+                    _log_chat_telemetry(model=telemetry_model, task="chat", started_at=started_at, status="error")
+                    logger.error(
+                        "LLM API returned non-JSON body after %d attempts (ct=%s, len=%d): %s",
+                        max_retries + 1,
+                        resp.headers.get("content-type", "?"),
+                        len(resp.content or b""),
+                        raw_body,
+                    )
+                    raise HTTPException(
+                        status_code=502,
+                        detail=_provider_non_json_error_message(raw_body, resp.headers.get("content-type")),
+                    ) from decode_exc
         except httpx.HTTPStatusError as exc:
             last_exc = exc
             status_code = exc.response.status_code if exc.response else 0
@@ -1035,7 +1105,8 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
     llm = _apply_ai_cost_profile_to_llm(llm, req.ai_cost_profile)
     with use_cost_profile(req.ai_cost_profile):
         try:
-            _validate_outbound_llm_base_url(llm.base_url, llm.provider)
+            # B18 (2026-06-13): user-confirmed chat credential — see comment below
+            _validate_outbound_llm_base_url(llm.base_url, llm.provider, skip_dns=True)
             url, headers, payload = _build_chat_request(
                 req.query,
                 req.context,
@@ -1234,7 +1305,8 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
     llm = _apply_ai_cost_profile_to_llm(llm, req.ai_cost_profile)
     with use_cost_profile(req.ai_cost_profile):
         try:
-            _validate_outbound_llm_base_url(llm.base_url, llm.provider)
+            # B18 (2026-06-13): user-confirmed chat credential — see comment below
+            _validate_outbound_llm_base_url(llm.base_url, llm.provider, skip_dns=True)
             url, headers, payload = _build_chat_request(
                 req.query,
                 req.context,
@@ -1416,59 +1488,73 @@ async def discover_models(
       - "https://api.x.com/v1/chat/completions" -> "https://api.x.com/v1/models"
       - trailing slash tolerated
     """
+    return await _discover_models_impl(base_url=base_url, api_key=api_key)
+
+
+class _DiscoverModelsBody(BaseModel):
+    """Body shape for the POST /models/discover variant.
+
+    B14 (2026-06-13): Frontend (CredentialsSection -> chatApi.discoverModels)
+    has been POSTing for a while, but the route only existed as GET, returning
+    405 silently mapped to "未能获取模型列表" in the UI. POST body keeps the
+    api_key out of access logs / browser history and matches the existing
+    frontend caller without UI changes.
+    """
+    base_url: str = Field(..., min_length=1, description="Base URL of LLM service")
+    api_key: str = Field("", description="Access credential (optional for local services)")
+
+
+@router.post("/models/discover")
+async def discover_models_post(body: _DiscoverModelsBody) -> dict[str, Any]:
+    """POST variant of /models/discover — keeps api_key out of query string.
+
+    See discover_models() docstring for behavior; the implementation is shared
+    via _discover_models_impl. Returns the same response shape.
+    """
+    return await _discover_models_impl(base_url=body.base_url, api_key=body.api_key)
+
+
+async def _discover_models_impl(*, base_url: str, api_key: str) -> dict[str, Any]:
+    """Shared implementation for GET and POST /models/discover.
+
+    Thin wrapper over provider_probe.discover_models — keeps the response
+    shape that the existing GET and POST routes promised (ModelInfo with
+    provider/context_window fields) while routing all real work through the
+    single discovery implementation.
+    """
+    from provider_probe import discover_models as _probe_discover, validate_outbound_endpoint
+
     try:
-        _validate_outbound_llm_base_url(base_url, "Local LLM")
-        url = _build_models_discovery_endpoint(base_url)
+        validate_outbound_endpoint(base_url, "Local LLM", strict=False)
     except ValueError as exc:
         return {"ok": False, "error": str(exc), "models": []}
-    except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": f"Endpoint rejected: {exc}", "models": []}
 
-    headers: dict[str, str] = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-
-        models_list = data.get("data", []) if isinstance(data, dict) else []
-        discovered = [
-            ModelInfo(
-                id=m.get("id", ""),
-                name=m.get("id", ""),
-                provider="discovered",
-                context_window=0,
-                description=str(m.get("owned_by") or "自动发现的模型"),
-            )
-            for m in models_list
-            if isinstance(m, dict) and m.get("id")
-        ]
-        discovered.sort(key=lambda m: m.id)
-        return {"ok": True, "models": [m.model_dump() for m in discovered], "endpoint": url}
-    except httpx.HTTPStatusError as exc:
-        # Surface upstream response body so the UI can show *why* the test
-        # failed (invalid credential, model not found, quota exhausted, etc.).
-        body_snippet = ""
-        try:
-            body_snippet = exc.response.text[:400] if exc.response is not None else ""
-        except Exception:  # noqa: BLE001
-            body_snippet = ""
-        status_code = exc.response.status_code if exc.response is not None else 0
+    result = await _probe_discover(base_url, api_key)
+    if not result.ok:
         return {
             "ok": False,
-            "error": f"HTTP {status_code}" + (f" · {body_snippet}" if body_snippet else ""),
-            "status_code": status_code,
-            "body": body_snippet,
+            "error": result.error,
+            "status_code": result.status_code,
+            "body": result.body,
             "models": [],
-            "endpoint": url,
+            "endpoint": result.endpoint,
         }
-    except httpx.RequestError as exc:
-        return {
-            "ok": False,
-            "error": f"连接失败: {exc.__class__.__name__}: {exc}",
-            "models": [],
-            "endpoint": url,
-        }
+
+    # Re-wrap discover_models's plain dicts as ModelInfo to keep the published
+    # /api/chat/models/discover response shape stable (existing clients rely on
+    # the `provider` / `context_window` fields).
+    discovered = [
+        ModelInfo(
+            id=m.get("id", ""),
+            name=m.get("name", ""),
+            provider="discovered",
+            context_window=0,
+            description=m.get("description", "自动发现的模型"),
+        )
+        for m in result.models
+    ]
+    return {
+        "ok": True,
+        "models": [m.model_dump() for m in discovered],
+        "endpoint": result.endpoint,
+    }
