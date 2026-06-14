@@ -106,7 +106,7 @@ function SourceDetail({ source }: { source: SourceVaultSource | null }) {
   if (!source) {
     return (
       <aside className="rounded-lg border border-outline-variant/60 bg-surface-lowest p-4 text-sm text-foreground/45">
-        选择一个来源查看文件、解析版本和项目链接。
+        选择一个来源。
       </aside>
     );
   }
@@ -251,9 +251,6 @@ export function SourceVaultPanel() {
               </div>
               <div className="min-w-0">
                 <h2 className="text-base font-semibold text-foreground">来源库</h2>
-                <p className="mt-1 text-xs leading-5 text-foreground/55">
-                  独立保存原始文件、内容哈希、解析版本、分块索引和跨项目链接。
-                </p>
               </div>
             </div>
             <button
@@ -302,7 +299,7 @@ export function SourceVaultPanel() {
                       void handleSearch();
                     }
                   }}
-                  placeholder="搜索原文片段、标题或关键词"
+                  placeholder="搜索原文片段"
                   className="min-w-0 flex-1 rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
                 />
                 <button
@@ -376,7 +373,6 @@ export function SourceVaultPanel() {
             <div className="rounded-lg border border-outline-variant/60 bg-surface-lowest px-4 py-10 text-center">
               <FolderKanban size={24} className="mx-auto text-foreground/30" />
               <div className="mt-3 text-sm font-medium text-foreground/60">暂无来源记录</div>
-              <div className="mt-1 text-xs text-foreground/40">导入或编译后会按内容哈希复用原始材料。</div>
             </div>
           )}
         </div>
