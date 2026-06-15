@@ -152,6 +152,39 @@
         "title": "AgentThoughtTraceStep",
         "type": "object"
       },
+      "ApplyFixesRequest": {
+        "description": "应用修复请求。",
+        "properties": {
+          "fixes": {
+            "description": "要修复的字段列表，如 ['title', 'title_en', 'authors']",
+            "items": {
+              "type": "string"
+            },
+            "title": "Fixes",
+            "type": "array"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "preferred_case": {
+            "default": "title",
+            "enum": [
+              "title",
+              "sentence",
+              "original"
+            ],
+            "title": "Preferred Case",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_id",
+          "fixes"
+        ],
+        "title": "ApplyFixesRequest",
+        "type": "object"
+      },
       "ArtifactPayload": {
         "description": "Artifact response payload.",
         "properties": {
@@ -440,6 +473,45 @@
           "material_ids"
         ],
         "title": "BatchDeleteRequest",
+        "type": "object"
+      },
+      "BatchLintRequest": {
+        "description": "批量 lint 请求。",
+        "properties": {
+          "material_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "指定文献 ID 列表，为空则检查整个项目",
+            "title": "Material Ids"
+          },
+          "preferred_case": {
+            "default": "title",
+            "enum": [
+              "title",
+              "sentence",
+              "original"
+            ],
+            "title": "Preferred Case",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "BatchLintRequest",
         "type": "object"
       },
       "BatchProcessRequest": {
@@ -8577,6 +8649,184 @@
           }
         },
         "title": "LastPageRequest",
+        "type": "object"
+      },
+      "LintRequest": {
+        "description": "单个文献 lint 请求。",
+        "properties": {
+          "authors": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authors"
+          },
+          "doi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doi"
+          },
+          "journal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journal"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "preferred_case": {
+            "default": "title",
+            "description": "英文标题大小写风格",
+            "enum": [
+              "title",
+              "sentence",
+              "original"
+            ],
+            "title": "Preferred Case",
+            "type": "string"
+          },
+          "publication_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Date"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "title_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title En"
+          }
+        },
+        "required": [
+          "material_id",
+          "title"
+        ],
+        "title": "LintRequest",
+        "type": "object"
+      },
+      "LinterIssue": {
+        "description": "单个 linter 问题。",
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested"
+          }
+        },
+        "required": [
+          "field",
+          "severity",
+          "message",
+          "current",
+          "suggested"
+        ],
+        "title": "LinterIssue",
+        "type": "object"
+      },
+      "LinterResult": {
+        "description": "Linter 检查结果。",
+        "properties": {
+          "has_errors": {
+            "title": "Has Errors",
+            "type": "boolean"
+          },
+          "has_warnings": {
+            "title": "Has Warnings",
+            "type": "boolean"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/LinterIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_id",
+          "title",
+          "issues",
+          "has_errors",
+          "has_warnings"
+        ],
+        "title": "LinterResult",
         "type": "object"
       },
       "LocalEmbeddingStatusPayload": {
@@ -21860,6 +22110,359 @@
         "summary": "Source Vault Search",
         "tags": [
           "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/linter/apply-fixes": {
+      "post": {
+        "description": "应用 linter 修复建议并保存到数据库（使用新 linter 引擎）。",
+        "operationId": "post_api_linter_apply_fixes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyFixesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Linter Apply Fixes",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Fixes",
+        "tags": [
+          "Linter"
+        ]
+      }
+    },
+    "/api/linter/lint": {
+      "post": {
+        "description": "检查单个文献的元数据规范性。",
+        "operationId": "post_api_linter_lint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinterResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lint Single Material",
+        "tags": [
+          "Linter"
+        ]
+      }
+    },
+    "/api/linter/lint/batch": {
+      "post": {
+        "description": "批量检查项目中的文献元数据（使用新 linter 引擎）。",
+        "operationId": "post_api_linter_lint_batch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchLintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LinterResult"
+                  },
+                  "title": "Response Post Api Linter Lint Batch",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lint Batch",
+        "tags": [
+          "Linter"
+        ]
+      }
+    },
+    "/api/linter/lint/batch/async": {
+      "post": {
+        "description": "异步批量检查（后台任务）\n\nReturns:\n    {\"task_id\": \"linter_xxx\", \"status\": \"created\"}",
+        "operationId": "post_api_linter_lint_batch_async",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchLintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Linter Lint Batch Async",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lint Batch Async",
+        "tags": [
+          "Linter"
+        ]
+      }
+    },
+    "/api/linter/project/{project_id}/summary": {
+      "get": {
+        "description": "获取项目级 linter 摘要：有多少文献有问题。",
+        "operationId": "get_api_linter_project_project_id_summary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "preferred_case",
+            "required": false,
+            "schema": {
+              "default": "title",
+              "enum": [
+                "title",
+                "sentence",
+                "original"
+              ],
+              "title": "Preferred Case",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Api Linter Project Project Id Summary",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Linter Summary",
+        "tags": [
+          "Linter"
+        ]
+      }
+    },
+    "/api/linter/tasks/list": {
+      "get": {
+        "description": "列出所有 Linter 任务",
+        "operationId": "get_api_linter_tasks_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Api Linter Tasks List",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Linter Tasks",
+        "tags": [
+          "Linter"
+        ]
+      }
+    },
+    "/api/linter/tasks/{task_id}": {
+      "get": {
+        "description": "获取 Linter 任务状态",
+        "operationId": "get_api_linter_tasks_task_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Api Linter Tasks Task Id",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Linter Task Status",
+        "tags": [
+          "Linter"
+        ]
+      }
+    },
+    "/api/linter/tasks/{task_id}/cancel": {
+      "post": {
+        "description": "取消 Linter 任务",
+        "operationId": "post_api_linter_tasks_task_id_cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Linter Tasks Task Id Cancel",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Linter Task",
+        "tags": [
+          "Linter"
         ]
       }
     },

@@ -2077,6 +2077,11 @@ class WritingResourceStore:
         material_id: str,
         *,
         title: str | None = None,
+        title_en: str | None = None,
+        authors: list[str] | None = None,
+        publication_date: str | None = None,
+        journal: str | None = None,
+        doi: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> WritingMaterial | None:
         """Update a material's title and/or merge bibliographic metadata.
@@ -2085,19 +2090,43 @@ class WritingResourceStore:
         partial citation-field updates (authors, year, venue, doi, ...) do not
         drop previously stored keys. Returns the updated material, or ``None``
         when the id is unknown.
+
+        Dedicated fields keep top-level material state and bibliographic
+        metadata aliases aligned with Zotero (`date`, `publicationTitle`, `DOI`)
+        and the existing CSL/export keys (`year`, `venue`, `doi`).
         """
         with self._lock:
             material = self._materials.get(material_id)
             if material is None:
                 return None
-            new_metadata = material.metadata
+            new_metadata = dict(material.metadata)
             if metadata is not None:
-                merged = dict(material.metadata)
-                merged.update(metadata)
-                new_metadata = merged
+                new_metadata.update(metadata)
+
+            final_title_en = material.title_en
+            if title_en is not None:
+                new_metadata["title_en"] = title_en
+                final_title_en = title_en
+
+            if authors is not None:
+                new_metadata["authors"] = authors
+            if publication_date is not None:
+                new_metadata["publication_date"] = publication_date
+                new_metadata["date"] = publication_date
+                year_match = re.search(r"\b(19|20)\d{2}\b", publication_date)
+                if year_match:
+                    new_metadata["year"] = int(year_match.group(0))
+            if journal is not None:
+                new_metadata["journal"] = journal
+                new_metadata["publicationTitle"] = journal
+                new_metadata["venue"] = journal
+            if doi is not None:
+                new_metadata["doi"] = doi
+                new_metadata["DOI"] = doi
             updated = replace(
                 material,
                 title=title if title is not None else material.title,
+                title_en=final_title_en,
                 metadata=new_metadata,
                 updated_at=utc_now_iso_z(),
             )

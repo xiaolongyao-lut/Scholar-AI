@@ -10,6 +10,7 @@ import {
   FileText,
   Loader2,
   MessageCircle,
+  Maximize2,
   Plus,
   RefreshCw,
   AlertCircle,
@@ -38,6 +39,7 @@ import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import type { GraphNavigateTarget } from '@/components/graph/GraphPayloadViewer';
 import { WikiGraphSegmentedView } from '@/components/graph/WikiGraphSegmentedView';
 import type { GraphPayloadV0 } from '@/components/graph/payloadToRf';
+import type { ReasoningDimension } from '@/components/graph/dimensionGraph';
 import { PdfTabStrip } from '@/components/PdfViewer/PdfTabStrip';
 import type { PdfSelectionAnchor } from '@/components/PdfViewer/PdfViewer';
 import { getAnnotations, type Highlight, type Note as AnnotationNote } from '@/services/annotationApi';
@@ -1327,6 +1329,8 @@ export function Dialog() {
         : 'graph',
     ),
   );
+  const [graphExplorerOpen, setGraphExplorerOpen] = useState(false);
+  const [graphSelectedDimensions, setGraphSelectedDimensions] = useState<Set<ReasoningDimension>>(() => new Set());
   const [centerTab, setCenterTab] = useState<DialogCenterTab>(() => {
     if (pinnedMaterialId && pinnedMaterialTitle.toLowerCase().endsWith('.pdf')) return 'reader';
     if (urlCenterTab) return urlCenterTab;
@@ -1376,6 +1380,24 @@ export function Dialog() {
     materials: evidenceGraphPayload?.nodes.filter((node) => node.type === 'material').length ?? 0,
     edges: evidenceGraphPayload?.edges.length ?? 0,
   }), [evidenceGraphPayload]);
+
+  useEffect(() => {
+    if (!evidenceGraphPayload && graphExplorerOpen) {
+      setGraphExplorerOpen(false);
+    }
+  }, [evidenceGraphPayload, graphExplorerOpen]);
+
+  useEffect(() => {
+    if (!graphExplorerOpen) return undefined;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setGraphExplorerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [graphExplorerOpen]);
+
   const activePinnedMaterial = useMemo(
     () => projectMaterials.find((material) => material.material_id === pinnedMaterialId) ?? null,
     [pinnedMaterialId, projectMaterials],
@@ -2493,6 +2515,9 @@ export function Dialog() {
   function handleGraphNavigateTarget(target: GraphNavigateTarget): void {
     const targetMaterialId = normalizeMaterialId(target.material_id);
     if (!targetMaterialId) return;
+    setGraphExplorerOpen(false);
+    setContextRailOpen(true);
+    setContextRailTab('graph');
     if (targetMaterialId === pinnedMaterialId) {
       setEmbeddedReaderTarget((previous) => ({
         page: target.page ?? undefined,
@@ -2502,6 +2527,14 @@ export function Dialog() {
         nonce: previous.nonce + 1,
       }));
       setCenterTab('reader');
+      writeReaderSearchParams(targetMaterialId, {
+        title: activeMaterialLabel || pinnedMaterialTitle || targetMaterialId,
+        page: target.page,
+        chunkId: target.chunk_id,
+        bbox: target.bbox,
+        bboxUnit: target.bbox_unit,
+        replace: false,
+      });
       return;
     }
     const material = projectMaterials.find((item) => normalizeMaterialId(item.material_id) === targetMaterialId);
@@ -2514,6 +2547,12 @@ export function Dialog() {
       bboxUnit: target.bbox_unit,
       replace: false,
     });
+  }
+  function handleOpenGraphExplorer(): void {
+    if (!evidenceGraphPayload) return;
+    setContextRailOpen(true);
+    setContextRailTab('graph');
+    setGraphExplorerOpen(true);
   }
   function constrainResizablePaneWidth(
     pane: DialogResizablePane,
@@ -2869,21 +2908,39 @@ export function Dialog() {
                 {evidenceGraphStats.evidence} 条证据 · {evidenceGraphStats.materials} 篇材料
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void refreshProjectMaterials({ surfaceError: false })}
-              className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 px-2 py-1 text-[11px] text-foreground/60 transition-colors hover:border-primary/40 hover:text-foreground"
-            >
-              <Activity className="h-3.5 w-3.5" aria-hidden />
-              探查
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void refreshProjectMaterials({ surfaceError: false })}
+                className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 px-2 py-1 text-[11px] text-foreground/60 transition-colors hover:border-primary/40 hover:text-foreground"
+                title="刷新当前项目材料和图谱"
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                刷新
+              </button>
+              {evidenceGraphPayload ? (
+                <button
+                  type="button"
+                  onClick={handleOpenGraphExplorer}
+                  className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] text-primary transition-colors hover:bg-primary/15"
+                  title="展开为全宽图谱工作台"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" aria-hidden />
+                  展开
+                </button>
+              ) : null}
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-outline-variant/60 bg-surface-low">
             {evidenceGraphPayload ? (
               <WikiGraphSegmentedView
                 payload={evidenceGraphPayload}
                 projectId={effectiveProjectId || null}
-                onNavigateTarget={pinnedMaterialId && pinnedLooksLikePdf ? handleGraphNavigateTarget : undefined}
+                onNavigateTarget={handleGraphNavigateTarget}
+                variant="rail"
+                onExpand={handleOpenGraphExplorer}
+                selectedDimensions={graphSelectedDimensions}
+                onChangeSelectedDimensions={setGraphSelectedDimensions}
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center px-6 text-center">
@@ -3645,6 +3702,51 @@ export function Dialog() {
       )}
 
       </section>
+      {graphExplorerOpen && evidenceGraphPayload ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dialog-graph-explorer-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setGraphExplorerOpen(false);
+            }
+          }}
+        >
+          <section className="flex h-[min(880px,calc(100vh-40px))] w-[min(1320px,calc(100vw-40px))] min-w-0 flex-col overflow-hidden rounded-lg border border-outline-variant/70 bg-surface-lowest shadow-2xl">
+            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-outline-variant/60 px-4 py-3">
+              <div className="min-w-0">
+                <h2 id="dialog-graph-explorer-title" className="truncate text-sm font-semibold text-foreground">
+                  当前上下文图谱
+                </h2>
+                <p className="text-[11px] text-foreground/50">
+                  {evidenceGraphStats.evidence} 条证据 · {evidenceGraphStats.materials} 篇材料 · {evidenceGraphStats.edges} 条关系
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGraphExplorerOpen(false)}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-outline-variant/60 bg-surface-low text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
+                aria-label="关闭图谱工作台"
+                title="关闭图谱工作台"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </header>
+            <div className="min-h-0 flex-1 p-3">
+              <WikiGraphSegmentedView
+                payload={evidenceGraphPayload}
+                projectId={effectiveProjectId || null}
+                onNavigateTarget={handleGraphNavigateTarget}
+                variant="explorer"
+                selectedDimensions={graphSelectedDimensions}
+                onChangeSelectedDimensions={setGraphSelectedDimensions}
+              />
+            </div>
+          </section>
+        </div>
+      ) : null}
       {contextRailOpen && (
         <>
         <button

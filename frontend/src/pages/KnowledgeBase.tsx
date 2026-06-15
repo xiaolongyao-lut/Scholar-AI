@@ -35,6 +35,7 @@ import { SectionCard } from '@/components/common/SectionCard';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ReasoningBiasBar } from '@/components/knowledge/ReasoningBiasBar';
 import { ReparseWithMarkerButton } from '@/components/workbench/ReparseWithMarkerButton';
+import { MetadataLinterPanel } from '@/components/knowledge/MetadataLinterPanel';
 
 type KBDocumentType = 'pdf' | 'docx' | 'bib' | 'txt' | 'other';
 type KBDocumentStatus = 'indexed' | 'no_text';
@@ -693,6 +694,11 @@ export function KnowledgeBase() {
           ) : (
             <>
               <ReasoningBiasBar projectId={activeProjectId} />
+
+              {/* A16c: 元数据 Linter — 紧凑单行 */}
+              <div className="mb-2 rounded border border-outline-variant/30 bg-surface-low/30 px-2 py-1.5">
+                <MetadataLinterPanel projectId={activeProjectId} onComplete={() => void loadMaterials()} />
+              </div>
 
               {/* A16b: 项目级 PDF 重新解析(marker / pymupdf 都可用,见 Settings → 实验性功能) */}
               <div className="mb-3 rounded-md border border-outline-variant/40 bg-surface-low/40 p-3">

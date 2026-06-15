@@ -1,7 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Background,
-  Controls,
   MarkerType,
   MiniMap,
   Panel,
@@ -12,7 +11,7 @@ import {
   type Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Copy, ExternalLink, Crosshair, X } from 'lucide-react';
+import { Copy, ExternalLink, Crosshair, Maximize2, Minus, Plus, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { DimensionNode, type DimensionNodeData } from './DimensionNode';
@@ -358,6 +357,12 @@ export function DimensionGraphViewer({
   const nodes = useMemo(() => (layout ? layout.nodes : []), [layout]);
   const edges = useMemo(() => (layout ? styleEdges(layout.edges) : []), [layout]);
 
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    if (nodes.some((node) => node.id === selectedNodeId)) return;
+    handleCloseDetail();
+  }, [handleCloseDetail, nodes, selectedNodeId]);
+
   if (error) {
     return (
       <PlaceholderShell className={className}>
@@ -462,7 +467,20 @@ function DimensionFlow({
   onOpenSource?: (entry: DimensionGraphNode) => Promise<boolean> | boolean;
   onCloseDetail: () => void;
 }) {
-  const { fitView } = useReactFlow();
+  const { fitView, zoomIn, zoomOut } = useReactFlow();
+  const nodeViewportSignature = useMemo(() => nodes.map((node) => node.id).join('|'), [nodes]);
+
+  useEffect(() => {
+    if (nodes.length === 0) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      void fitView({
+        duration: 260,
+        maxZoom: nodes.length <= 1 ? 1.25 : 1.08,
+        padding: nodes.length <= 1 ? 0.42 : 0.12,
+      });
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [fitView, nodeViewportSignature, nodes.length]);
 
   const handleFitToNode = useCallback(
     (entry: DimensionGraphNode) => {
@@ -470,6 +488,9 @@ function DimensionFlow({
     },
     [fitView],
   );
+  const handleFitView = useCallback(() => {
+    void fitView({ duration: 260, maxZoom: nodes.length <= 1 ? 1.25 : 1.08, padding: nodes.length <= 1 ? 0.42 : 0.12 });
+  }, [fitView, nodes.length]);
 
   return (
     <ReactFlow
@@ -490,7 +511,37 @@ function DimensionFlow({
       zoomOnPinch
     >
       <Background gap={28} size={1} />
-      <Controls showInteractive={false} fitViewOptions={{ maxZoom: 1.2, padding: 0.08 }} />
+      <Panel position="bottom-left">
+        <div className="flex flex-col overflow-hidden rounded-md border border-outline-variant/60 bg-surface/95 shadow-sm backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={() => void zoomIn({ duration: 180 })}
+            className="inline-flex h-7 w-7 items-center justify-center border-b border-outline-variant/50 text-foreground/70 transition-colors hover:bg-surface-high hover:text-foreground"
+            aria-label="放大图谱"
+            title="放大图谱"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => void zoomOut({ duration: 180 })}
+            className="inline-flex h-7 w-7 items-center justify-center border-b border-outline-variant/50 text-foreground/70 transition-colors hover:bg-surface-high hover:text-foreground"
+            aria-label="缩小图谱"
+            title="缩小图谱"
+          >
+            <Minus className="h-3.5 w-3.5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={handleFitView}
+            className="inline-flex h-7 w-7 items-center justify-center text-foreground/70 transition-colors hover:bg-surface-high hover:text-foreground"
+            aria-label="适配视图"
+            title="适配视图"
+          >
+            <Maximize2 className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      </Panel>
       {showMiniMap ? (
         <MiniMap
           pannable
@@ -514,7 +565,7 @@ function DimensionFlow({
         </Panel>
       ) : null}
       {detailPlacement === 'sidebar' && selectedEntry ? (
-        // sidebar 模式：详情在外层右栏，这里只暴露 Fit 到节点的浮层按钮。
+        // sidebar 模式：详情在外层右栏，这里只暴露定位节点的浮层按钮。
         <Panel position="top-right">
           <button
             type="button"
@@ -523,7 +574,7 @@ function DimensionFlow({
             title="把视图聚焦到选中节点"
           >
             <Crosshair className="h-3 w-3" aria-hidden />
-            Fit 到节点
+            定位节点
           </button>
         </Panel>
       ) : null}
@@ -551,7 +602,7 @@ function describeReason(reason: DimensionGraphNode['reason']): string {
 
 /**
  * 节点详情 / 操作面板。展示证据元信息，并提供明确动作按钮：
- * 打开原文（需有材料定位）、复制证据、Fit 到节点。
+ * 打开原文（需有材料定位）、复制证据、定位节点。
  */
 function SelectionDetail({
   entry,
@@ -714,7 +765,7 @@ function SelectionDetail({
               title="把视图聚焦到选中节点"
             >
               <Crosshair className="h-3 w-3" aria-hidden />
-              Fit
+              定位节点
             </button>
           )}
         </div>

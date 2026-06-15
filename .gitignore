@@ -204,6 +204,7 @@ htmlcov/
 !/tests/test_discussion_mcp_per_agent_scope.py
 !/tests/test_discussion_runtime_credentials.py
 !/tests/test_evolution_release_hardening.py
+!/tests/test_metadata_linter_api.py
 !/tests/test_pyinstaller_hiddenimports.py
 !/tests/test_pyproject_runtime_metadata.py
 !/tests/test_release_secret_scan.py

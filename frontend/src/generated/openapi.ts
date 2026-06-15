@@ -1772,6 +1772,169 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/linter/apply-fixes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Fixes
+         * @description 应用 linter 修复建议并保存到数据库（使用新 linter 引擎）。
+         */
+        post: operations["post_api_linter_apply_fixes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/linter/lint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lint Single Material
+         * @description 检查单个文献的元数据规范性。
+         */
+        post: operations["post_api_linter_lint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/linter/lint/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lint Batch
+         * @description 批量检查项目中的文献元数据（使用新 linter 引擎）。
+         */
+        post: operations["post_api_linter_lint_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/linter/lint/batch/async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lint Batch Async
+         * @description 异步批量检查（后台任务）
+         *
+         *     Returns:
+         *         {"task_id": "linter_xxx", "status": "created"}
+         */
+        post: operations["post_api_linter_lint_batch_async"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/linter/project/{project_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Linter Summary
+         * @description 获取项目级 linter 摘要：有多少文献有问题。
+         */
+        get: operations["get_api_linter_project_project_id_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/linter/tasks/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Linter Tasks
+         * @description 列出所有 Linter 任务
+         */
+        get: operations["get_api_linter_tasks_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/linter/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Linter Task Status
+         * @description 获取 Linter 任务状态
+         */
+        get: operations["get_api_linter_tasks_task_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/linter/tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Linter Task
+         * @description 取消 Linter 任务
+         */
+        post: operations["post_api_linter_tasks_task_id_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/mcp/audit": {
         parameters: {
             query?: never;
@@ -5826,6 +5989,25 @@ export interface components {
             summary: string;
         };
         /**
+         * ApplyFixesRequest
+         * @description 应用修复请求。
+         */
+        ApplyFixesRequest: {
+            /**
+             * Fixes
+             * @description 要修复的字段列表，如 ['title', 'title_en', 'authors']
+             */
+            fixes: string[];
+            /** Material Id */
+            material_id: string;
+            /**
+             * Preferred Case
+             * @default title
+             * @enum {string}
+             */
+            preferred_case: "title" | "sentence" | "original";
+        };
+        /**
          * ArtifactPayload
          * @description Artifact response payload.
          */
@@ -5974,6 +6156,25 @@ export interface components {
              * @description 要删除的素材 ID 列表
              */
             material_ids: string[];
+        };
+        /**
+         * BatchLintRequest
+         * @description 批量 lint 请求。
+         */
+        BatchLintRequest: {
+            /**
+             * Material Ids
+             * @description 指定文献 ID 列表，为空则检查整个项目
+             */
+            material_ids?: string[] | null;
+            /**
+             * Preferred Case
+             * @default title
+             * @enum {string}
+             */
+            preferred_case: "title" | "sentence" | "original";
+            /** Project Id */
+            project_id: string;
         };
         /**
          * BatchProcessRequest
@@ -9405,6 +9606,68 @@ export interface components {
         LastPageRequest: {
             /** Page */
             page?: number | null;
+        };
+        /**
+         * LintRequest
+         * @description 单个文献 lint 请求。
+         */
+        LintRequest: {
+            /** Authors */
+            authors?: string[] | null;
+            /** Doi */
+            doi?: string | null;
+            /** Journal */
+            journal?: string | null;
+            /** Material Id */
+            material_id: string;
+            /**
+             * Preferred Case
+             * @description 英文标题大小写风格
+             * @default title
+             * @enum {string}
+             */
+            preferred_case: "title" | "sentence" | "original";
+            /** Publication Date */
+            publication_date?: string | null;
+            /** Title */
+            title: string;
+            /** Title En */
+            title_en?: string | null;
+        };
+        /**
+         * LinterIssue
+         * @description 单个 linter 问题。
+         */
+        LinterIssue: {
+            /** Current */
+            current: string | null;
+            /** Field */
+            field: string;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning" | "info";
+            /** Suggested */
+            suggested: string | null;
+        };
+        /**
+         * LinterResult
+         * @description Linter 检查结果。
+         */
+        LinterResult: {
+            /** Has Errors */
+            has_errors: boolean;
+            /** Has Warnings */
+            has_warnings: boolean;
+            /** Issues */
+            issues: components["schemas"]["LinterIssue"][];
+            /** Material Id */
+            material_id: string;
+            /** Title */
+            title: string;
         };
         /**
          * LocalEmbeddingStatusPayload
@@ -16325,6 +16588,265 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceVaultSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_linter_apply_fixes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyFixesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_linter_lint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LintRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinterResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_linter_lint_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchLintRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinterResult"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_linter_lint_batch_async: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchLintRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_linter_project_project_id_summary: {
+        parameters: {
+            query?: {
+                preferred_case?: "title" | "sentence" | "original";
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_linter_tasks_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    get_api_linter_tasks_task_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_linter_tasks_task_id_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

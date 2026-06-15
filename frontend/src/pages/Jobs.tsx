@@ -105,9 +105,26 @@ export function Jobs() {
     setLoading(true);
     setLoadError(null);
     try {
+      // 1. 加载 runtime 任务
       const client = getWritingRuntimeClient();
-      const payload = await client.listJobs({ limit: 100 });
-      setJobs(payload.map(mapRuntimeJob));
+      const runtimeJobs = await client.listJobs({ limit: 100 });
+      const mappedRuntimeJobs = runtimeJobs.map(mapRuntimeJob);
+
+      // 2. 加载 Linter 任务
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      let linterJobs: Job[] = [];
+      try {
+        const response = await fetch(`${baseUrl}/api/linter/tasks/list`);
+        if (response.ok) {
+          const linterTasks = await response.json();
+          linterJobs = linterTasks.map((task: any) => mapLinterTask(task));
+        }
+      } catch (err) {
+        console.warn('加载 Linter 任务失败:', err);
+      }
+
+      // 3. 合并所有任务
+      setJobs([...mappedRuntimeJobs, ...linterJobs]);
     } catch (err) {
       setLoadError(formatJobError(err));
       setJobs([]);
@@ -511,6 +528,36 @@ function mapRuntimeJob(job: WritingJob): Job {
     stage: readVisibleString(metadata.progress_stage),
     message: readVisibleString(metadata.progress_message),
     route: readJobRoute(metadata),
+  };
+}
+
+function mapLinterTask(task: any): Job {
+  const statusMap: Record<string, JobStatus> = {
+    'created': 'queued',
+    'running': 'running',
+    'completed': 'completed',
+    'failed': 'failed',
+    'cancelled': 'cancelled',
+  };
+
+  const status = statusMap[task.status] || 'queued';
+  const progress = task.progress || {};
+  const progressPct = progress.total > 0
+    ? Math.round((progress.current / progress.total) * 100)
+    : 0;
+
+  return {
+    id: task.task_id,
+    name: '元数据检查',
+    type: 'linter',
+    status,
+    progress: progressPct,
+    startedAt: task.created_at || new Date().toISOString(),
+    duration: undefined,
+    error: task.error,
+    stage: undefined,
+    message: progress.message || `${progress.current}/${progress.total} 条文献`,
+    route: '/knowledge',
   };
 }
 
