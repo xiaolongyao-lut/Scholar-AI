@@ -1131,7 +1131,15 @@ def _persist_uploaded_document(
     """
     safe_filename = _safe_upload_filename(filename)
     extracted = _ensure_extracted_text(safe_filename, content)
-    summary = extracted[:200].replace("\n", " ").strip() if extracted else f"从文件 {safe_filename} 导入"
+    # 智能摘要提取（优先 Abstract 章节）
+    if extracted:
+        try:
+            from services.abstract_extractor import extract_abstract
+            summary = extract_abstract(extracted, max_length=500).strip()
+        except Exception:  # noqa: BLE001 - fallback to simple truncate
+            summary = extracted[:200].replace("\n", " ").strip()
+    else:
+        summary = f"从文件 {safe_filename} 导入"
     material = store.create_material(
         project_id=project_id,
         title=safe_filename,
@@ -1221,6 +1229,30 @@ async def _ingest_uploaded_document(
         source_size=uploaded.size,
         blocks=payload.blocks,
         markdown_full=payload.markdown_full,
+    )
+
+
+def _build_unified_batch_upload_service(filter_engine: Any | None = None) -> Any:
+    """Build the shared batch ingestion service from router-local helpers.
+
+    Why:
+        Upload and source-folder scan endpoints must share the same parsing,
+        dedupe, summary, and chunk persistence contracts while preserving the
+        existing monkeypatchable helper boundary used by tests.
+    """
+
+    from services.unified_batch_upload_service import UnifiedBatchUploadService
+
+    return UnifiedBatchUploadService(
+        persist_upload=_persist_upload_to_source_file,
+        load_doc_store=_load_doc_store,
+        save_doc_store=_save_doc_store,
+        extract_payload=_extract_document_payload_from_path,
+        truncate_content=_truncate_document_content,
+        ensure_extracted_text=_ensure_extracted_text,
+        write_material_document_content=_write_material_document_content,
+        safe_upload_filename=_safe_upload_filename,
+        filter_engine=filter_engine,
     )
 
 
@@ -1398,6 +1430,12 @@ from .endpoints_search_upload import (  # noqa: E402,F401
     list_figure_table_candidates,
     search_chunks,
     serve_document_file,
+)
+from .endpoints_merged_projects import (  # noqa: E402,F401
+    create_merged_project,
+    get_project_sources,
+    update_project_sources,
+    search_multi_projects,
 )
 from .endpoints_export_stats import (  # noqa: E402,F401
     export_project,

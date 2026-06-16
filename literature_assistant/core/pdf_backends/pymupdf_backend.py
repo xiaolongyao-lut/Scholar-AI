@@ -24,12 +24,16 @@ and any change to them is a contract break.
 
 from __future__ import annotations
 
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from . import PDFParserBackend, StructuredBlock  # noqa: F401  (Protocol attached)
 
 
 __all__ = ["PyMuPDFBackend"]
+
+logger = logging.getLogger("PyMuPDFBackend")
 
 
 class PyMuPDFBackend:
@@ -80,3 +84,79 @@ class PyMuPDFBackend:
             text = f"[PDF 解析失败: {exc}]"
 
         return text, None, None
+
+    def parse_batch(
+        self,
+        source_paths: list[Path],
+        max_workers: int | None = None,
+    ) -> list[tuple[str, list[StructuredBlock] | None, str | None] | Exception]:
+        """批量解析多个 PDF 文件（纯 CPU 并发）。
+
+        使用 ThreadPoolExecutor 多线程并发处理，适合 I/O 密集型任务。
+
+        Args:
+            source_paths: PDF 文件路径列表
+            max_workers: 并发工作线程数（默认 CPU 核心数，可通过 PYMUPDF_BATCH_MAX_WORKERS 环境变量覆盖）
+
+        Returns:
+            结果列表，成功返回 (text, None, None)，失败返回 Exception
+        """
+        import os
+
+        if not source_paths:
+            return []
+
+        if max_workers is None:
+            max_workers = int(
+                os.environ.get("PYMUPDF_BATCH_MAX_WORKERS", str(os.cpu_count() or 4))
+            )
+
+        total = len(source_paths)
+        logger.info(
+            "pymupdf_batch_start total=%d max_workers=%d",
+            total,
+            max_workers,
+        )
+
+        results: list[
+            tuple[str, list[StructuredBlock] | None, str | None] | Exception
+        ] = [None] * total  # type: ignore
+        completed = 0
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(self.parse, path): idx
+                for idx, path in enumerate(source_paths)
+            }
+
+            for future in as_completed(future_to_index):
+                idx = future_to_index[future]
+                path = source_paths[idx]
+                try:
+                    result = future.result()
+                    results[idx] = result
+                    completed += 1
+                    # 每 10% 输出进度
+                    if (
+                        completed == 1
+                        or completed == total
+                        or completed % max(1, total // 10) == 0
+                    ):
+                        logger.info(
+                            "pymupdf_batch_progress completed=%d/%d",
+                            completed,
+                            total,
+                        )
+                except Exception as exc:
+                    results[idx] = exc
+                    completed += 1
+                    logger.error(
+                        "pymupdf_batch_failed completed=%d/%d path=%s err=%s",
+                        completed,
+                        total,
+                        path.name,
+                        exc,
+                    )
+
+        logger.info("pymupdf_batch_complete total=%d", total)
+        return results
