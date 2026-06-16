@@ -5,9 +5,15 @@ Provides a backend Protocol for the active PyMuPDF parser. Heavy document
 parsers with third-party model runtimes must live outside the core source tree
 as optional plugins or workspace references.
 
+RemoteDocumentParseBackend (MinerU / Mistral OCR) is instantiated on-demand
+by UnifiedBatchUploadService when the OCR classifier detects scanned PDFs.
+It does not participate in the default get_pdf_backend() flow.
+
 Public API:
     PDFParserBackend        : Protocol; .parse(path) -> (text, blocks?, md?)
     get_pdf_backend(env=None): factory returning the active backend instance
+    RemoteDocumentParseBackend: remote document parse backend
+    DocumentParseProvider: provider config for remote backends
 
 Default behavior:
     PyMuPDFBackend, byte-level compatible with the legacy PDF branch.
@@ -25,6 +31,10 @@ __all__ = [
     "PDFParserBackend",
     "StructuredBlock",
     "get_pdf_backend",
+    "RemoteDocumentParseBackend",
+    "DocumentParseProvider",
+    "create_mineru_provider",
+    "create_mistral_provider",
 ]
 
 
@@ -120,3 +130,12 @@ def get_pdf_backend(env: str | None = None) -> PDFParserBackend:
     from .pymupdf_backend import PyMuPDFBackend
 
     return PyMuPDFBackend()
+
+
+# 导入远程文档解析后端（不参与默认 factory）
+from .remote_document_parse_backend import (
+    RemoteDocumentParseBackend,
+    DocumentParseProvider,
+    create_mineru_provider,
+    create_mistral_provider,
+)
