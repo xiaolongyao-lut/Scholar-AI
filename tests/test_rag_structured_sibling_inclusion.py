@@ -179,7 +179,7 @@ def test_select_falls_back_to_section_title_when_no_section_path() -> None:
 
 
 def test_select_section_path_wins_over_section_title_when_both_present() -> None:
-    """Modern marker chunks have BOTH section_path and section_title. The
+    """Modern structured chunks have BOTH section_path and section_title. The
     stronger signal (section_path) must be the deciding factor; a chunk
     with matching section_title but mismatched section_path is NOT a
     sibling because the document structure says otherwise."""

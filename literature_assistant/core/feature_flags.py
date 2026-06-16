@@ -55,20 +55,6 @@ class FeatureFlagSpec:
 
 
 FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
-    "pdf_parser_marker": FeatureFlagSpec(
-        name="pdf_parser_marker",
-        default=False,
-        env_var=None,  # Coexist with the LITASSIST_PDF_PARSER string env var
-                       # in get_pdf_backend() — either path opts into marker.
-        label="PDF 结构化解析(marker)",
-        description=(
-            "用 marker-pdf 替代默认 PyMuPDF 解析新上传的 PDF;能识别标题层级、表格、"
-            "公式与图片,RAG 检索质量更好。需先 `pip install marker-pdf`(~2GB 含模型);"
-            "首次解析每篇约 5-15 分钟。已入库的旧 PDF 不会自动重做,可在项目工作台点 "
-            "「重新解析以获取结构化索引」按 marker 重建。关闭后新上传 PDF 走 PyMuPDF "
-            "默认链路,旧结构化数据保留。"
-        ),
-    ),
     "rag_chunk_type_weighting": FeatureFlagSpec(
         name="rag_chunk_type_weighting",
         default=True,

@@ -866,7 +866,7 @@ def _write_markdown_sidecar(
     material_id: str,
     markdown: str | None,
 ) -> Path | None:
-    """Persist marker's full markdown for a material as a sidecar file.
+    """Persist full markdown for a material as a sidecar file.
 
     Atomic write (project's ``_atomic_write_text`` helper — NamedTemporaryFile
     + os.replace, plan §1.7). Concurrent writes are safe: each writer creates
@@ -898,16 +898,14 @@ def _write_material_document_content(
 ) -> dict[str, Any]:
     """Persist extracted text, optional sidecar markdown, and chunks.
 
-    Plan §1.7 — when called from a payload-aware caller (see L999/L1063/L1130
-    via the new ``_extract_document_payload_from_path``), the marker backend's
-    ``blocks`` and ``markdown_full`` are forwarded here so that:
+    Payload-aware callers may pass ``blocks`` and ``markdown_full`` here so that:
       - The markdown sidecar is written (atomic, sha1-suffixed filename)
       - The chunker receives ``blocks=...`` and produces structure-aware
         chunks with the 5 new metadata keys.
 
     When ``blocks`` / ``markdown_full`` are both None (default PyMuPDF path
     AND all legacy callers), behavior is byte-level identical to the
-    pre-marker implementation: doc_store row identical, chunk_store entries
+    legacy implementation: doc_store row identical, chunk_store entries
     identical, no sidecar written.
     """
 
@@ -932,12 +930,12 @@ def _write_material_document_content(
     }
     _save_doc_store(project_id, doc_store)
 
-    # Sidecar: only when caller passed markdown_full (marker path); default
+    # Sidecar: only when caller passed markdown_full; default
     # path leaves it None and we skip the write entirely.
     sidecar_path = _write_markdown_sidecar(project_id, material_id, markdown_full)
 
     # Chunker dispatch: blocks=None routes to legacy text chunker
-    # (byte-level identical); blocks=[...] routes to marker chunker.
+    # (byte-level identical); blocks=[...] routes to structured chunker.
     chunks = _chunk_document(material_id, filename, extracted, blocks=blocks)
     chunk_store = _load_chunk_store(project_id)
     chunk_store[material_id] = chunks

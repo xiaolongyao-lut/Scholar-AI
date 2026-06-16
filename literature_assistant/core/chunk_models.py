@@ -7,14 +7,14 @@ from dataclasses import dataclass
 class EnrichedChunk:
     """Per-chunk record produced by the structure-aware chunker.
 
-    Field stability contract (see docs/plans/active/2026-06-11-marker-pdf-rag-pipeline-plan.md §1.4):
+    Field stability contract:
 
     - Existing 12 fields (chunk_id through keywords) MUST NOT change type,
       default, or removal. ``page`` stays ``int = 0`` (not Optional) — some
       downstream code uses ``chunk.page > 0`` checks.
     - 5 new fields (bbox, section_path, image_paths, table_csv,
       equation_latex) are all Optional with default None. They are populated
-      ONLY by the marker-backend chunking path; the legacy PyMuPDF path
+      ONLY by structured-parser chunking paths; the legacy PyMuPDF path
       MUST NOT serialize them (see _chunk_text._chunk_document — default
       path's output dict key set is unchanged).
     - No ``from_dict`` / ``to_dict`` methods are added. The project's chunk
@@ -36,7 +36,7 @@ class EnrichedChunk:
     page: int = 0
     embedding: list[float] | None = None
     keywords: list[str] | None = None
-    # New Optional fields (marker backend only — PyMuPDF path leaves these as
+    # New Optional fields (structured parser only — PyMuPDF path leaves these as
     # field defaults and does NOT serialize the keys; see plan §1.5).
     bbox: list[float] | None = None
     section_path: list[str] | None = None

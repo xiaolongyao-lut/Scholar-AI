@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Tests for literature_assistant/core/pdf_backends/ (marker-rag-pipeline §2).
+"""Tests for literature_assistant/core/pdf_backends/.
 
-Locks the byte-level identity contract for PyMuPDFBackend (default,
-must mirror legacy _document_extraction PDF branch) and the contract
-shape of MarkerBackend's exception when marker-pdf is not installed.
+Locks the byte-level identity contract for PyMuPDFBackend, which must mirror
+the legacy _document_extraction PDF branch.
 
 Placeholder strings are byte-level locked here — any change is a
 contract break and should fail this test.
@@ -13,6 +12,7 @@ from __future__ import annotations
 
 import sys
 import types
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -24,14 +24,8 @@ if _CORE not in sys.path:
 
 from pdf_backends import (  # noqa: E402
     ENV_VAR,
-    MarkerUnavailable,
     StructuredBlock,
     get_pdf_backend,
-)
-from pdf_backends.marker_backend import (  # noqa: E402
-    MARKER_BLOCK_TYPE_MAPPING,
-    MarkerBackend,
-    map_marker_block_type,
 )
 from pdf_backends.pymupdf_backend import PyMuPDFBackend  # noqa: E402
 
@@ -48,11 +42,13 @@ def test_get_pdf_backend_default_pymupdf(monkeypatch: pytest.MonkeyPatch) -> Non
     assert backend.supports_blocks is False
 
 
-def test_get_pdf_backend_marker_when_env_set(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_pdf_backend_marker_env_still_yields_pymupdf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv(ENV_VAR, "marker")
     backend = get_pdf_backend()
-    assert backend.name == "marker"
-    assert backend.supports_blocks is True
+    assert backend.name == "pymupdf"
+    assert backend.supports_blocks is False
 
 
 @pytest.mark.parametrize(
@@ -63,13 +59,13 @@ def test_get_pdf_backend_non_marker_values_yield_pymupdf(
     raw_value: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # " marker " (whitespace-padded) is still marker after strip().
     monkeypatch.setenv(ENV_VAR, raw_value)
     backend = get_pdf_backend()
-    if raw_value.strip().lower() == "marker":
-        assert backend.name == "marker"
-    else:
-        assert backend.name == "pymupdf"
+    assert backend.name == "pymupdf"
+
+
+def test_external_backend_module_not_in_core_source() -> None:
+    assert importlib.util.find_spec("pdf_backends.marker_backend") is None
 
 
 # --------------------------------------------------------------------- #
@@ -181,86 +177,6 @@ def test_pymupdf_backend_fallback_to_pypdf2_when_pymupdf_missing(
     assert text == "fallback-pypdf2-page-1\n\nfallback-pypdf2-page-1"
     assert blocks is None
     assert md is None
-
-
-# --------------------------------------------------------------------- #
-# MarkerBackend — unavailable + mapping contract
-# --------------------------------------------------------------------- #
-
-
-def test_marker_backend_raises_when_not_installed(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """marker-pdf missing → MarkerUnavailable raised inside parse()."""
-    real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
-
-    def fake_import(name: str, *args, **kwargs):
-        if name.startswith("marker"):
-            raise ImportError(f"{name} blocked for test")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.__import__", fake_import)
-    pdf = tmp_path / "stub.pdf"
-    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
-    backend = MarkerBackend()
-    with pytest.raises(MarkerUnavailable):
-        backend.parse(pdf)
-
-
-@pytest.mark.parametrize(
-    "block_type, expected_chunk_type",
-    [
-        ("Heading", "heading"),
-        ("SectionHeader", "heading"),
-        ("PageHeader", "heading"),
-        ("Text", "narrative"),
-        ("Paragraph", "narrative"),
-        ("TextBlock", "narrative"),
-        ("Footnote", "narrative"),       # 2026-06-12 真实 reparse 实测
-        ("PageFooter", "narrative"),     # 页脚 — 噪声大但映射为 narrative,future retriever 加权降权
-        ("Table", "table"),
-        ("TableGroup", "table"),
-        ("Equation", "formula"),
-        ("Formula", "formula"),
-        ("FigureCaption", "figure_caption"),
-        ("Caption", "figure_caption"),
-        ("TableCaption", "figure_caption"),
-        ("FigureGroup", "figure_caption"),  # 2026-06-12 真实 reparse 实测
-        ("PictureGroup", "figure_caption"), # 2026-06-12 真实 reparse 实测
-        ("List", "list"),
-        ("ListItem", "list"),
-        ("ListGroup", "list"),           # 2026-06-12 真实 reparse 实测
-        ("Code", "code"),
-        ("CodeBlock", "code"),
-        ("Image", "image_caption"),
-        ("Figure", "image_caption"),
-        ("Picture", "image_caption"),
-    ],
-)
-def test_marker_block_type_mapping(block_type: str, expected_chunk_type: str) -> None:
-    """Stable block_type → chunk_type mapping for all known marker types."""
-    assert map_marker_block_type(block_type) == expected_chunk_type
-    # MARKER_BLOCK_TYPE_MAPPING dict must agree
-    assert MARKER_BLOCK_TYPE_MAPPING[block_type] == expected_chunk_type
-
-
-def test_marker_mapping_table_covers_real_reparse_observed_types() -> None:
-    """Lock: 2026-06-12 真实 reparse(proj_ec65a4e90854 / Reis 2013 Ti-6Al-4V 论文)
-    出现过的 ListGroup/FigureGroup/PictureGroup/Footnote 4 个 block_type 必须
-    在映射表里 — 不再走 unknown fallback。
-    """
-    observed_in_real_reparse = ["ListGroup", "FigureGroup", "PictureGroup", "Footnote"]
-    for bt in observed_in_real_reparse:
-        assert bt in MARKER_BLOCK_TYPE_MAPPING, (
-            f"{bt} 在真实 reparse 出现过却未在映射表;请勿删,否则 fallback narrative 警告会回来"
-        )
-
-
-@pytest.mark.parametrize("unknown_type", [None, "", "FuturisticBlock", "UnknownType"])
-def test_marker_unknown_block_type_falls_back_to_narrative(unknown_type) -> None:
-    """Unknown / None block_type → ``"narrative"`` graceful fallback."""
-    assert map_marker_block_type(unknown_type) == "narrative"
 
 
 # --------------------------------------------------------------------- #

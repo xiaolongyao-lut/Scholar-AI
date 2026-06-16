@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PyMuPDF backend (marker-rag-pipeline-plan §1.1 — byte-level identical).
+"""PyMuPDF backend — byte-level identical to the legacy parser.
 
 This backend is the DEFAULT chosen by ``get_pdf_backend()`` when the env
 var ``LITASSIST_PDF_PARSER`` is unset. It MUST behave byte-level identical to
@@ -14,8 +14,7 @@ the legacy ``_extract_document_content_from_path`` PDF branch in
   4. Parse failure (OSError / RuntimeError / TypeError / ValueError) →
      placeholder: ``"[PDF 解析失败: {exc}]"``
 
-Returns ``(text, None, None)`` — no blocks, no full markdown (those are
-marker-only).
+Returns ``(text, None, None)`` — no blocks, no full markdown.
 
 The placeholder strings are byte-level locked by
 ``tests/test_pdf_backends.py::test_pymupdf_backend_returns_placeholder_*``

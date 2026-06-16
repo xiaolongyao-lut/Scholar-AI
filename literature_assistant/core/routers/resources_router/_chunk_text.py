@@ -25,6 +25,39 @@ __all__ = [
 
 _DEFAULT_CHUNK_SIZE = 800
 _DEFAULT_CHUNK_OVERLAP = 150
+_STRUCTURED_BLOCK_TYPE_MAPPING: dict[str, str] = {
+    "Heading": "heading",
+    "SectionHeader": "heading",
+    "PageHeader": "heading",
+    "Text": "narrative",
+    "Paragraph": "narrative",
+    "TextBlock": "narrative",
+    "Footnote": "narrative",
+    "PageFooter": "narrative",
+    "Table": "table",
+    "TableGroup": "table",
+    "Equation": "formula",
+    "Formula": "formula",
+    "FigureCaption": "figure_caption",
+    "Caption": "figure_caption",
+    "TableCaption": "figure_caption",
+    "FigureGroup": "figure_caption",
+    "PictureGroup": "figure_caption",
+    "List": "list",
+    "ListItem": "list",
+    "ListGroup": "list",
+    "Code": "code",
+    "CodeBlock": "code",
+    "Image": "image_caption",
+    "Figure": "image_caption",
+    "Picture": "image_caption",
+}
+
+
+def _map_structured_block_type(block_type: str | None) -> str:
+    if not block_type:
+        return "narrative"
+    return _STRUCTURED_BLOCK_TYPE_MAPPING.get(block_type, "narrative")
 
 
 def _split_text_into_chunks(
@@ -176,26 +209,18 @@ def structure_aware_chunk_from_blocks(
     material_id: str,
     title: str,
 ) -> list[EnrichedChunk]:
-    """Build EnrichedChunks directly from marker StructuredBlocks (plan §1.5).
+    """Build EnrichedChunks directly from structured PDF blocks.
 
-    Each marker block becomes one EnrichedChunk; no text re-splitting (marker
-    has already segmented by layout). Section_path is built by tracking a
-    running stack of heading-block markdowns:
+    Each source block becomes one EnrichedChunk; no text re-splitting because
+    the upstream parser has already segmented by layout. Section_path is built
+    by tracking a running stack of heading-block markdowns:
       - On Heading/SectionHeader/PageHeader: push to stack at appropriate
         level (we use a simple "replace the last element" strategy since
-        marker does not emit heading-level depth reliably).
+        external parsers may not emit heading-level depth reliably).
       - On any other block: section_path is the current stack snapshot.
-
-    block_type → chunk_type mapping is done by ``map_marker_block_type``
-    (defined in pdf_backends.marker_backend so the table stays close to the
-    backend that produces it).
     """
     if not blocks:
         return []
-
-    # Local import — pdf_backends depends on no router code so the cycle is
-    # safe, but we still keep this as a lazy import to avoid eager loading.
-    from pdf_backends.marker_backend import map_marker_block_type
 
     enriched: list[EnrichedChunk] = []
     section_stack: list[str] = []
@@ -208,7 +233,7 @@ def structure_aware_chunk_from_blocks(
         if not raw_md:
             continue
 
-        chunk_type = map_marker_block_type(block.block_type)
+        chunk_type = _map_structured_block_type(block.block_type)
 
         # Maintain section stack from heading blocks. We treat each heading
         # as overwriting the most recent entry — a deeper / richer heading-
@@ -263,14 +288,14 @@ def _chunk_document(
       - Default path (blocks is None / empty): output dict key set is
         **byte-level identical** to the previous implementation. New 5 fields
         DO NOT appear as keys.
-      - marker path (blocks given): emits chunks with the 5 new keys
+      - structured path (blocks given): emits chunks with the 5 new keys
         populated (bbox / section_path / image_paths / table_csv / equation_latex).
 
     The key-set contract is locked by
     ``tests/test_chunk_document_default_path_dict_keys_unchanged.py``.
     """
     if blocks:
-        # marker path — adds 5 new keys
+        # Structured parser path — adds 5 new keys.
         enriched_chunks = structure_aware_chunk_from_blocks(
             blocks=blocks,
             material_id=material_id,
@@ -290,7 +315,7 @@ def _chunk_document(
                 "page": chunk.page,
                 "embedding": chunk.embedding,
                 "keywords": chunk.keywords,
-                # ↓ 5 new keys — marker path ONLY
+                # ↓ 5 new keys — structured parser path ONLY
                 "bbox": chunk.bbox,
                 "section_path": chunk.section_path,
                 "image_paths": chunk.image_paths,

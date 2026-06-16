@@ -147,7 +147,7 @@ def _sibling_identifier(chunk: Mapping[str, Any]) -> tuple[str, str] | None:
 
     Looks at the start of the content (after metadata header brackets)
     and tries to pick out "Table N" / "Fig. N" first, then falls back to
-    LaTeX ``\\tag{N}`` which is how marker labels equations / formulas.
+    LaTeX ``\\tag{N}`` which is how structured parsers may label equations / formulas.
     Returns None when nothing parseable is found.
     """
     content = str(chunk.get("content") or "")
@@ -229,7 +229,7 @@ def select_structured_siblings(
       - Siblings are NOT scored or sorted by relevance — they ride in on
         the narrative's verified semantic relevance.
       - When section_path is missing on both sides, falls back to
-        same-page matching. This is rare on marker chunks but common on
+        same-page matching. This is rare on structured chunks but common on
         legacy PyMuPDF projects.
     """
     if max_siblings <= 0:
@@ -286,7 +286,7 @@ def select_structured_siblings(
             if anchor_mat and c_mat and anchor_mat != c_mat:
                 continue
             # Resolution order: section_path > section_title > page.
-            # section_path is marker's structural truth; section_title is
+            # section_path is the structured parser's truth; section_title is
             # the next-best signal for legacy PyMuPDF chunks (which lack
             # section_path); same-page is a coarse last resort for chunks
             # with neither, but multi-column / spanning-page layouts make

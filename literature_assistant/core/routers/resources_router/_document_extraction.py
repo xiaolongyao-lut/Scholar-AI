@@ -10,15 +10,11 @@ from pathlib import Path
 
 try:
     from pdf_backends import (
-        ENV_VAR as _PDF_BACKEND_ENV_VAR,
-        MarkerUnavailable,
         StructuredBlock,
         get_pdf_backend,
     )
     from pdf_backends.pymupdf_backend import PyMuPDFBackend
 except ImportError:  # pragma: no cover — only triggered in misconfigured envs
-    _PDF_BACKEND_ENV_VAR = "LITASSIST_PDF_PARSER"
-    MarkerUnavailable = RuntimeError  # type: ignore[misc,assignment]
     StructuredBlock = None  # type: ignore[assignment]
     get_pdf_backend = None  # type: ignore[assignment]
     PyMuPDFBackend = None  # type: ignore[assignment]
@@ -38,15 +34,15 @@ _LOGGER = logging.getLogger("DocumentExtraction")
 
 @dataclass(frozen=True)
 class ExtractedDocumentPayload:
-    """Structured result of document extraction (plan §1.3).
+    """Structured result of document extraction.
 
     Default PyMuPDF path returns ``ExtractedDocumentPayload(content=text)``
     with ``blocks`` and ``markdown_full`` both None — same caller-visible
     information as the legacy ``_extract_document_content_from_path``
     return value (a plain string).
 
-    marker path adds ``blocks`` (structured PDF blocks) and
-    ``markdown_full`` (full-document markdown for sidecar writing). Upload
+    Optional external parser paths may add ``blocks`` (structured PDF blocks)
+    and ``markdown_full`` (full-document markdown for sidecar writing). Upload
     layer routes these to the chunker (`blocks=`) and the sidecar writer.
     """
 
@@ -181,17 +177,11 @@ def _extract_document_payload_from_path(
 ) -> ExtractedDocumentPayload:
     """Extract content + optional structured blocks + optional markdown_full.
 
-    Plan §1.3 — replaces the legacy content-only return with a structured
-    payload. For PDFs, the active backend is picked by
-    ``LITASSIST_PDF_PARSER`` env var (see ``pdf_backends.get_pdf_backend``):
+    Replaces the legacy content-only return with a structured payload. For
+    PDFs, the core backend is PyMuPDF (see ``pdf_backends.get_pdf_backend``):
 
-      - Default (env unset / "pymupdf" / "auto"): ``PyMuPDFBackend`` —
-        byte-level identical to legacy behavior; ``blocks`` and
-        ``markdown_full`` are always None.
-      - ``LITASSIST_PDF_PARSER=marker``: ``MarkerBackend`` — populates
-        ``blocks`` (structured) and ``markdown_full`` (sidecar source).
-        If marker-pdf is not installed, falls back to PyMuPDFBackend with
-        a warning log; ``blocks`` / ``markdown_full`` remain None.
+      - ``PyMuPDFBackend`` — byte-level identical to legacy behavior;
+        ``blocks`` and ``markdown_full`` are always None.
 
     Non-PDF formats (DOCX, plaintext, etc.) go through the legacy text-only
     paths; ``blocks`` / ``markdown_full`` are None for those.
@@ -225,21 +215,7 @@ def _extract_document_payload_from_path(
                 blocks=blocks,
                 markdown_full=markdown_full,
             )
-        except MarkerUnavailable as exc:
-            # marker selected but not installed → log + fall back to PyMuPDF
-            _LOGGER.warning(
-                "marker backend selected but unavailable; "
-                "falling back to PyMuPDF (filename=%s, reason=%s)",
-                filename,
-                exc,
-            )
-            if PyMuPDFBackend is not None:
-                fallback_text, _, _ = PyMuPDFBackend().parse(source_path)
-                return ExtractedDocumentPayload(content=fallback_text)
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
-            # marker may raise non-MarkerUnavailable errors during actual
-            # parsing (model load issues, etc). Fall back to PyMuPDF rather
-            # than propagate, mirroring legacy graceful-degrade behavior.
             _LOGGER.warning(
                 "PDF backend %r failed parsing %s: %s; "
                 "falling back to PyMuPDF",
@@ -279,7 +255,7 @@ def _extract_document_content_from_path(filename: str, source_path: Path) -> str
 
     LEGACY SIGNATURE — kept verbatim for all existing callers. New code
     should use ``_extract_document_payload_from_path`` to access the
-    structured blocks and markdown_full produced by the marker backend.
+    structured blocks and markdown_full produced by optional external parsers.
 
     Args:
         filename: Display filename used to choose parser behavior.
@@ -302,4 +278,3 @@ def _truncate_document_content(content: str) -> str:
     if len(content) <= max_content_len:
         return content
     return content[:max_content_len] + f"\n\n[...文档内容已截断，总长度 {len(content)} 字符]"
-
