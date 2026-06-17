@@ -3,10 +3,10 @@
 Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅读 PDF、围绕同一课题反复追问、整理证据并写成文稿的研究流程。它把文献库、PDF 阅读、RAG 问答、多角色讨论、Wiki 知识沉淀、写作编辑器和 MCP 工具调用放在同一个桌面应用里。
 
 当前源码版本 [v0.1.8.4](CHANGELOG.md#0184---2026-06-17) ·
-最新 Windows 安装包 [v0.1.8.3](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.3) ·
-[SHA256](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/SHA256SUMS.txt)
+[本地文献 MCP 工具箱](agent_mcp_server/README.md) ·
+[从源码运行](#从源码运行)
 
-> 当前仍是 alpha / dogfood 阶段。Windows 安装包未做代码签名，首次安装可能触发 SmartScreen 警告。
+> 当前方向是源码工作区 + 本地 MCP 工具箱。Claude、Codex 等支持 MCP 的客户端可以直接调用文献助手能力，也可以在安全边界内查看源码和复用工作流。
 
 ## 界面预览
 
@@ -51,24 +51,13 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 - 新增 Agent Workspace，用于查看 MCP 工具调用审计、工作流产物和临时输出，避免外部智能体任务混入文献助手自己的任务中心。
 - PDF 阅读器增加 `raw1` 读取路径，降低下载管理器拦截内嵌 PDF 请求导致空白或 204 响应的概率。
 
-## 0.1.8.3 重点
+## 获取与使用
 
-- 检索链路默认启用混合检索、结构化证据补全、目标导向检索和结果融合，回答更容易带到表格、公式和同章节证据。
-- Windows 安装包采用 API-first 方案，默认依赖已配置的云端 embedding / rerank / chat 服务，不捆绑本地推理代码。
-- 源码运行支持可选本地加速能力，适合需要 marker-pdf 结构化解析、本地 rerank 或本地 embedding 的开发者。
-- 设置页新增后端日志查看器，便于排查 API、模型、文献入库和检索问题。
-- README 图片已替换为当前 UI 的真实截图，并以缩略图表格展示。
+0.1.8.4 以源码工作区为主：先启动文献助手，再把 `agent_mcp_server/` 配置给 Claude、Codex 或其他支持 MCP 的客户端。
 
-## 下载
-
-普通用户建议直接下载最新 Windows 安装包。当前源码版已更新到 0.1.8.4；安装包仍沿用 0.1.8.3，后续发布新安装包后会同步更新链接。
-
-- [v0.1.8.3 发布页](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.3)
-- [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/Scholar-AI-Setup-0.1.8.3-windows-x64.exe)
-- [SHA256 校验文件](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/SHA256SUMS.txt)
-- 安装包 SHA256：`77FBA03CE894B95D186261ED7D4ED32AFE43FCD08F5B8689F91B5A71B7D06235`
-
-Windows 安装包面向普通用户，体积约 466MB，默认使用你在设置页配置的云端模型服务。安装包不包含本地推理代码；需要本地 GPU/CPU 加速或 marker-pdf 结构化解析的开发者，请使用源码运行方式。
+- [从源码运行文献助手](#从源码运行)
+- [配置 Claude / Codex 本地 MCP 工具箱](agent_mcp_server/README.md)
+- [查看 0.1.8.4 更新记录](CHANGELOG.md#0184---2026-06-17)
 
 ## 架构
 
@@ -136,16 +125,15 @@ Windows 安装包面向普通用户，体积约 466MB，默认使用你在设置
 - MCP / Skill 包从本地路径扫描，不自动执行包内代码；绑定凭证和启用后，工具调用仍经过审批和审计。
 - 源码版附带 `agent_mcp_server/`，可把文献助手作为本地 MCP 工具箱暴露给 Claude / Codex：它默认走本机 HTTP API，工具输出统一脱敏并写入审计日志。
 
-### 打包发布
+### MCP 工具箱
 
-- Windows 发布脚本是 `scripts/build_windows_exe.ps1`。
-- 打包链路会先构建前端，再跑 PyInstaller、路径扫描、敏感信息扫描、Inno Setup 和首次启动 smoke。
-- 默认发布的是 API-first 轻量安装包，PyInstaller 配置会排除本地推理相关模块，避免安装包膨胀到数 GB。
-- 自行构建包含本地推理模块的完整版时，可在构建前设置 `LITASSIST_BUNDLE_RAG=1`；该形态体积约 3GB，本仓库不提供预构建安装包。
+- `agent_mcp_server/` 是给外部智能体使用的本地工具层，通过 stdio MCP 对接 Claude / Codex。
+- 工具箱默认通过本机 HTTP API 调用文献助手后端，不直接读取用户 API key。
+- 源码工具受路径白名单和输出脱敏保护，调用记录会写入 Agent Workspace 审计日志。
 
 ## 从源码运行
 
-源码运行面向开发者。普通用户建议使用 Windows 安装包。
+0.1.8.4 面向源码运行和本地 MCP 接入。先启动桌面应用，再按 `agent_mcp_server/README.md` 配置 Claude / Codex。
 
 ### 第一步：准备环境
 
@@ -216,7 +204,7 @@ npm run lint
 npm run build
 ```
 
-Windows 安装包构建属于发布流程，不是源码运行的必要步骤。公开发布前需要完成打包、签名、哈希校验和安装烟测。
+打包脚本保留在仓库中用于历史发布和本地验证，但 0.1.8.4 的主入口是源码工作区和本地 MCP 工具箱。
 
 ## 公开源码结构
 
@@ -249,17 +237,15 @@ Windows 安装包构建属于发布流程，不是源码运行的必要步骤。
 - 普通桌面使用优先在「设置」里配置 API 凭证；`.env.example` 只作为源码运行、CI 和临时测试的模板。
 - MCP 工具调用前需要用户确认；高风险能力会被阻断或进入审批流。
 - 给 Claude / Codex 使用的本地 MCP 工具箱只能读取允许范围内的源码和工作流产物；工具返回前会统一脱敏，调用记录写入 Agent Workspace 审计日志。
-- 默认安装包保持轻量，研究资料、对话、索引和日志默认留在本机。
+- 研究资料、对话、索引和日志默认留在本机。
 
 ## 可选扩展
 
-Windows 安装包默认不包含本地推理模块，适合直接配置 API 后使用。
-
-从源码运行时，可以按需启用 marker-pdf 结构化解析、本地 rerank 和本地 embedding。相关依赖不会随默认安装包分发，需要开发者自行安装。详见 [OPTIONAL_ADDONS.md](OPTIONAL_ADDONS.md)。
+从源码运行时，可以按需启用 marker-pdf 结构化解析、本地 rerank 和本地 embedding。相关依赖需要开发者自行安装。详见 [OPTIONAL_ADDONS.md](OPTIONAL_ADDONS.md)。
 
 ## 许可
 
-Scholar AI 项目代码使用 MIT License。安装包中包含的第三方开源组件仍适用各自许可证。详见 [LICENSE](LICENSE)。
+Scholar AI 项目代码使用 MIT License。第三方开源组件仍适用各自许可证。详见 [LICENSE](LICENSE)。
 
 ## 反馈
 
