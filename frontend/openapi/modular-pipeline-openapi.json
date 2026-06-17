@@ -152,6 +152,166 @@
         "title": "AgentThoughtTraceStep",
         "type": "object"
       },
+      "AgentWorkspaceArtifact": {
+        "description": "One visible workflow artifact.",
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "modified_at": {
+            "title": "Modified At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "preview": {
+            "default": "",
+            "title": "Preview",
+            "type": "string"
+          },
+          "size_bytes": {
+            "minimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "kind",
+          "size_bytes",
+          "modified_at"
+        ],
+        "title": "AgentWorkspaceArtifact",
+        "type": "object"
+      },
+      "AgentWorkspaceAuditRecord": {
+        "description": "One redacted MCP tool audit event.",
+        "properties": {
+          "allow_block_reason": {
+            "default": "",
+            "title": "Allow Block Reason",
+            "type": "string"
+          },
+          "args_summary": {
+            "additionalProperties": true,
+            "title": "Args Summary",
+            "type": "object"
+          },
+          "duration_ms": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "result_preview": {
+            "default": "",
+            "title": "Result Preview",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          },
+          "touched_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Touched Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "timestamp",
+          "tool_name"
+        ],
+        "title": "AgentWorkspaceAuditRecord",
+        "type": "object"
+      },
+      "AgentWorkspaceStatus": {
+        "description": "Aggregated Agent Workspace snapshot.",
+        "properties": {
+          "artifact_count": {
+            "minimum": 0.0,
+            "title": "Artifact Count",
+            "type": "integer"
+          },
+          "artifact_root": {
+            "title": "Artifact Root",
+            "type": "string"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentWorkspaceArtifact"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "audit_count": {
+            "minimum": 0.0,
+            "title": "Audit Count",
+            "type": "integer"
+          },
+          "audit_records": {
+            "items": {
+              "$ref": "#/components/schemas/AgentWorkspaceAuditRecord"
+            },
+            "title": "Audit Records",
+            "type": "array"
+          },
+          "latest_activity_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Activity At"
+          },
+          "total_artifact_bytes": {
+            "minimum": 0.0,
+            "title": "Total Artifact Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_root",
+          "artifact_count",
+          "audit_count",
+          "total_artifact_bytes"
+        ],
+        "title": "AgentWorkspaceStatus",
+        "type": "object"
+      },
       "ApplyFixesRequest": {
         "description": "应用修复请求。",
         "properties": {
@@ -3573,6 +3733,40 @@
           "title"
         ],
         "title": "CreateMaterialRequest",
+        "type": "object"
+      },
+      "CreateMergedProjectRequest": {
+        "description": "Request body for creating a merged literature project.",
+        "properties": {
+          "auto_cross_analysis": {
+            "default": false,
+            "title": "Auto Cross Analysis",
+            "type": "boolean"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "source_projects": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Source Projects",
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "source_projects"
+        ],
+        "title": "CreateMergedProjectRequest",
         "type": "object"
       },
       "CreateProjectRequest": {
@@ -10720,6 +10914,37 @@
         "title": "ModelInfo",
         "type": "object"
       },
+      "MultiProjectSearchRequest": {
+        "description": "Request body for searching standard and merged projects together.",
+        "properties": {
+          "project_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Project Ids",
+            "type": "array"
+          },
+          "query": {
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 10,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_ids",
+          "query"
+        ],
+        "title": "MultiProjectSearchRequest",
+        "type": "object"
+      },
       "OutlineItemPayload": {
         "description": "Outline item (section/subsection) in hierarchical structure.",
         "properties": {
@@ -10848,32 +11073,13 @@
             ],
             "title": "Env Var Value"
           },
-          "feature_flag_enabled": {
-            "title": "Feature Flag Enabled",
+          "external_backends_supported": {
+            "title": "External Backends Supported",
             "type": "boolean"
           },
-          "feature_flag_name": {
-            "title": "Feature Flag Name",
+          "install_hint": {
+            "title": "Install Hint",
             "type": "string"
-          },
-          "marker_install_hint": {
-            "title": "Marker Install Hint",
-            "type": "string"
-          },
-          "marker_installed": {
-            "title": "Marker Installed",
-            "type": "boolean"
-          },
-          "marker_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Marker Version"
           }
         },
         "required": [
@@ -10881,11 +11087,8 @@
           "active_source",
           "env_var_name",
           "env_var_value",
-          "feature_flag_name",
-          "feature_flag_enabled",
-          "marker_installed",
-          "marker_version",
-          "marker_install_hint"
+          "external_backends_supported",
+          "install_hint"
         ],
         "title": "PDFBackendStatus",
         "type": "object"
@@ -15787,6 +15990,24 @@
         "title": "UpdateFigureAssetRequest",
         "type": "object"
       },
+      "UpdateMergedProjectSourcesRequest": {
+        "description": "Request body for replacing merged-project sources.",
+        "properties": {
+          "source_projects": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Source Projects",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_projects"
+        ],
+        "title": "UpdateMergedProjectSourcesRequest",
+        "type": "object"
+      },
       "UpdateNoteRequest": {
         "additionalProperties": false,
         "description": "L2 note replace (body + tags). page + anchor_text immutable.",
@@ -17444,6 +17665,76 @@
         "summary": "List Tools",
         "tags": [
           "Agent"
+        ]
+      }
+    },
+    "/api/agent-workspace/status": {
+      "get": {
+        "description": "Return redacted Agent Workspace artifacts and MCP audit events.",
+        "operationId": "get_api_agent_workspace_status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "artifact_limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Artifact Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "audit_limit",
+            "required": false,
+            "schema": {
+              "default": 300,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Audit Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "preview_chars",
+            "required": false,
+            "schema": {
+              "default": 4000,
+              "maximum": 12000,
+              "minimum": 0,
+              "title": "Preview Chars",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentWorkspaceStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Workspace Status",
+        "tags": [
+          "Agent Workspace"
         ]
       }
     },
@@ -23395,7 +23686,7 @@
     },
     "/api/pdf-backend/status": {
       "get": {
-        "description": "Return the current PDF backend wiring + marker installability.",
+        "description": "Return current core PDF backend wiring.",
         "operationId": "get_api_pdf_backend_status",
         "responses": {
           "200": {
@@ -30543,28 +30834,27 @@
         ]
       }
     },
-    "/resources/projects/{project_id}/reparse-with-marker": {
+    "/resources/projects/merged": {
       "post": {
-        "description": "Re-extract every PDF material in a project using the active PDF backend.\n\nPrimary motivation: after a user enables marker (Settings → 实验性功能\n→ \"PDF 结构化解析(marker)\"), already-ingested PDFs were chunked by\nPyMuPDF and therefore lack ``bbox / section_path / table_csv /\nequation_latex / image_paths``. This endpoint walks each material in\nthe project, re-runs ``_extract_document_payload_from_path``(which\nconsults ``get_pdf_backend()`` and thus uses marker when the feature\nflag is on), and persists structure-aware chunks + a markdown sidecar.\n\nBehavior:\n  - Only PDF materials are reparsed.Non-PDF (DOCX, plaintext, etc.)\n    unchanged.\n  - Materials whose source file is missing are reported in ``skipped``\n    with reason ``source_missing``.\n  - Per-material failures(parse exceptions)go in ``failed`` with\n    the exception message; the overall request still returns 200.\n  - When the active backend is PyMuPDF this endpoint still runs but\n    produces identical chunks to the existing store (no harm; no\n    benefit) and ``backend`` reports ``pymupdf``.",
-        "operationId": "post_resources_projects_project_id_reparse_with_marker",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "title": "Project Id",
-              "type": "string"
+        "description": "Create a project that references existing literature projects.",
+        "operationId": "post_resources_projects_merged",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMergedProjectRequest"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Post Resources Projects Project Id Reparse With Marker",
+                  "title": "Response Post Resources Projects Merged",
                   "type": "object"
                 }
               }
@@ -30582,7 +30872,105 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Reparse Project With Marker",
+        "summary": "Create Merged Project",
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/resources/projects/{project_id}/sources": {
+      "get": {
+        "description": "Return direct and expanded source projects for one project.",
+        "operationId": "get_resources_projects_project_id_sources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Resources Projects Project Id Sources",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Sources",
+        "tags": [
+          "Resources"
+        ]
+      },
+      "put": {
+        "description": "Replace the direct source projects for a merged project.",
+        "operationId": "put_resources_projects_project_id_sources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMergedProjectSourcesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Resources Projects Project Id Sources",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project Sources",
         "tags": [
           "Resources"
         ]
@@ -30673,6 +31061,50 @@
           }
         },
         "summary": "List Revisions",
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/resources/search/multi": {
+      "post": {
+        "description": "Search across standard projects and merged-project sources.",
+        "operationId": "post_resources_search_multi",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MultiProjectSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Resources Search Multi",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Multi Projects",
         "tags": [
           "Resources"
         ]

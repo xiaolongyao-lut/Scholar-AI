@@ -25,9 +25,9 @@
 
 ## 可回档位置
 
-- `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.rollback_snapshots\internal-literature-workspace-20260501_020742`
-- `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.rollback_snapshots\path-hardening-20260501_024551`
-- `C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.rollback_snapshots\my-project-code-move-20260501_030802`
+- `<REPO_ROOT>\.rollback_snapshots\internal-literature-workspace-20260501_020742`
+- `<REPO_ROOT>\.rollback_snapshots\path-hardening-20260501_024551`
+- `<REPO_ROOT>\.rollback_snapshots\my-project-code-move-20260501_030802`
 
 ## 残留说明
 

@@ -1,0 +1,117 @@
+{
+  "manifest_version": "0.3",
+  "name": "literature-assistant-toolbox",
+  "display_name": "Literature Assistant Toolbox",
+  "version": "0.1.0",
+  "description": "Local Literature Assistant MCP toolbox for Claude Desktop.",
+  "long_description": "Connects Claude Desktop to the local Literature Assistant backend through a stdio MCP server. It exposes literature search, material reads, annotation export, and safe source-inspection tools without storing provider keys in the extension.",
+  "author": {
+    "name": "Local Literature Assistant"
+  },
+  "license": "UNLICENSED",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/lit-assistant-mcp.ps1",
+    "mcp_config": {
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${__dirname}/server/lit-assistant-mcp.ps1"
+      ],
+      "env": {
+        "LITERATURE_ASSISTANT_REPO_ROOT": "${user_config.repository_root}",
+        "LITERATURE_ASSISTANT_BASE_URL": "${user_config.backend_base_url}",
+        "LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS": "${user_config.enable_experimental_tools}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "literature.config_status",
+      "description": "Check Literature Assistant backend health."
+    },
+    {
+      "name": "literature.search_literature",
+      "description": "Search local Literature Assistant project chunks."
+    },
+    {
+      "name": "literature.ingest_then_search",
+      "description": "Ingest pending project files before searching."
+    },
+    {
+      "name": "literature.export_annotations_markdown",
+      "description": "Export material annotations as Markdown."
+    },
+    {
+      "name": "source.read_file",
+      "description": "Read safe Literature Assistant source files."
+    },
+    {
+      "name": "source.inspect_routes",
+      "description": "Inspect FastAPI route decorators without importing backend modules."
+    },
+    {
+      "name": "workflow.run_json_workflow",
+      "description": "Run a bounded JSON workflow through registered MCP tools."
+    },
+    {
+      "name": "workflow.run_python_sandbox",
+      "description": "Run bounded pure-Python data shaping in an experimental local sandbox."
+    },
+    {
+      "name": "literature.ocr_material",
+      "description": "Prepare OCR/page-image artifacts for a material."
+    },
+    {
+      "name": "literature.prepare_visual_review",
+      "description": "Prepare retrieval and figure/table evidence for visual review."
+    },
+    {
+      "name": "literature.translate_pack",
+      "description": "Generate a bounded translation pack through backend-managed model calls."
+    },
+    {
+      "name": "artifact.write_markdown",
+      "description": "Write Markdown workflow artifacts under the local agent workspace."
+    }
+  ],
+  "tools_generated": true,
+  "keywords": [
+    "literature",
+    "research",
+    "mcp",
+    "local"
+  ],
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": [
+      "win32"
+    ]
+  },
+  "user_config": {
+    "repository_root": {
+      "type": "directory",
+      "title": "Literature Assistant repository root",
+      "description": "Directory containing AI_WORKSPACE_GUIDE.md and .venv-1.",
+      "required": true,
+      "default": "C:\\path\\to\\Scholar-AI"
+    },
+    "backend_base_url": {
+      "type": "string",
+      "title": "Literature Assistant backend URL",
+      "description": "Local backend URL used by the MCP server.",
+      "required": false,
+      "default": "http://127.0.0.1:8000"
+    },
+    "enable_experimental_tools": {
+      "type": "string",
+      "title": "Enable experimental MCP tools",
+      "description": "Set to 1 to enable OCR, visual review, translation packs, and the bounded Python sandbox.",
+      "required": false,
+      "default": "1"
+    }
+  }
+}

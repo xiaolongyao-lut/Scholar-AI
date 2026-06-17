@@ -198,7 +198,7 @@ export default defineConfig({
       '/memory': withCapability,
       '/recovery': withCapability,
       '/autopilot': withCapability,
-      '/agent': withCapability,
+      '/agent/': withCapability,
       '/api': withCapability,
       '/volumes': withCapability,
       '/sampling': withCapability,

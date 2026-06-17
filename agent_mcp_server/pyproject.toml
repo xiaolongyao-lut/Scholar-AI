@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lit-assistant-mcp"
+version = "0.1.0"
+description = "Literature Assistant Local Agent MCP Toolbox"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.24.0",
+    "mcp>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

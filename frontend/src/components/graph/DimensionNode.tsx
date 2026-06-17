@@ -2,6 +2,14 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 
 import { cn } from '@/lib/utils';
 import { DIMENSION_META, type DimensionGraphNode } from './dimensionGraph';
+import {
+  DIMENSION_SOURCE_BOTTOM_HANDLE,
+  DIMENSION_SOURCE_LEFT_HANDLE,
+  DIMENSION_SOURCE_RIGHT_HANDLE,
+  DIMENSION_TARGET_LEFT_HANDLE,
+  DIMENSION_TARGET_RIGHT_HANDLE,
+  DIMENSION_TARGET_TOP_HANDLE,
+} from './DimensionBusEdge';
 
 export interface DimensionNodeData extends Record<string, unknown> {
   dimensionEntry: DimensionGraphNode;
@@ -49,7 +57,9 @@ export function DimensionNode({ data, selected }: NodeProps) {
       aria-label={`${meta.label}: ${entry.display.title}`}
       title={entry.display.title}
     >
-      <Handle type="target" position={Position.Left} className="!size-1.5 !border-0 !bg-transparent" />
+      <Handle id={DIMENSION_TARGET_LEFT_HANDLE} type="target" position={Position.Left} className="!size-1.5 !border-0 !bg-transparent" />
+      <Handle id={DIMENSION_SOURCE_LEFT_HANDLE} type="source" position={Position.Left} className="!size-1.5 !border-0 !bg-transparent" />
+      <Handle id={DIMENSION_TARGET_TOP_HANDLE} type="target" position={Position.Top} className="!size-1.5 !border-0 !bg-transparent" />
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide">
         <span
           className="inline-flex h-4 min-w-4 items-center justify-center rounded-sm px-1 text-[10px] font-semibold text-white"
@@ -84,7 +94,9 @@ export function DimensionNode({ data, selected }: NodeProps) {
         ) : null}
         {confidenceText ? <span>{confidenceText}</span> : null}
       </div>
-      <Handle type="source" position={Position.Right} className="!size-1.5 !border-0 !bg-transparent" />
+      <Handle id={DIMENSION_SOURCE_RIGHT_HANDLE} type="source" position={Position.Right} className="!size-1.5 !border-0 !bg-transparent" />
+      <Handle id={DIMENSION_TARGET_RIGHT_HANDLE} type="target" position={Position.Right} className="!size-1.5 !border-0 !bg-transparent" />
+      <Handle id={DIMENSION_SOURCE_BOTTOM_HANDLE} type="source" position={Position.Bottom} className="!size-1.5 !border-0 !bg-transparent" />
     </div>
   );
 }

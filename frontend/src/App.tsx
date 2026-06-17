@@ -19,6 +19,7 @@ const KnowledgeDeposits = React.lazy(() => import('./pages/KnowledgeDeposits').t
 const SettingsPage = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.SettingsPage })));
 const VolumeAnalysis = React.lazy(() => import('./pages/VolumeAnalysis').then(m => ({ default: m.VolumeAnalysis })));
 const Jobs = React.lazy(() => import('./pages/Jobs').then(m => ({ default: m.Jobs })));
+const AgentWorkspace = React.lazy(() => import('./pages/AgentWorkspace').then(m => ({ default: m.AgentWorkspace })));
 const DraftStudio = React.lazy(() => import('./components/DraftStudio').then(m => ({ default: m.DraftStudio })));
 const Dialog = React.lazy(() => import('./pages/Dialog').then(m => ({ default: m.Dialog })));
 const ResearchWorkbench = React.lazy(() => import('./pages/ResearchWorkbench').then(m => ({ default: m.ResearchWorkbench })));
@@ -113,6 +114,7 @@ const App = () => {
                       <Route path="/workbench/wiki" element={<WorkbenchWiki />} />
                       <Route path="/workbench/inspiration" element={<Navigate to="/dialog" replace />} />
                       <Route path="/jobs" element={<Jobs />} />
+                      <Route path="/agent-workspace" element={<AgentWorkspace />} />
                       <Route path="/evolution" element={<KnowledgeDeposits />} />
                       <Route path="/settings" element={<SettingsPage />} />
 

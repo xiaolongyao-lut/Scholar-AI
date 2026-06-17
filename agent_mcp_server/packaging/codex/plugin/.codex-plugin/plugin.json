@@ -1,0 +1,35 @@
+{
+  "name": "literature-assistant-toolbox",
+  "version": "0.1.0",
+  "description": "Local Literature Assistant toolbox for Codex.",
+  "author": {
+    "name": "Local Literature Assistant"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "literature",
+    "mcp",
+    "research",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Literature Assistant Toolbox",
+    "shortDescription": "Use the local Literature Assistant through MCP.",
+    "longDescription": "Adds a local MCP toolbox and workflow skill so Codex can search Literature Assistant, inspect safe project source, export annotations, and compose local research workflows.",
+    "developerName": "Local Literature Assistant",
+    "category": "Productivity",
+    "capabilities": [
+      "MCP",
+      "Research",
+      "Local"
+    ],
+    "defaultPrompt": [
+      "Search my Literature Assistant project for this topic.",
+      "Inspect the literature toolbox source tools.",
+      "Export annotations for a material as Markdown."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

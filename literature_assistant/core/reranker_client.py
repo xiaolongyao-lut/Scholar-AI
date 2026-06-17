@@ -455,6 +455,30 @@ def _resolve_rerank_targets(
     base_url: str | None = None,
     model: str | None = None,
 ) -> dict[str, str | None]:
+    siliconflow_specific_api_key = env_value("SILICONFLOW_RERANK_API_KEY")
+    siliconflow_generic_api_key = env_value("SILICONFLOW_API_KEY")
+    dashscope_specific_api_key = env_value("DASHSCOPE_RERANK_API_KEY")
+    dashscope_generic_api_key = env_value("DASHSCOPE_API_KEY")
+    siliconflow_base_url = _normalize_rerank_base_url(env_value("SILICONFLOW_RERANK_BASE_URL"))
+    dashscope_base_url = _normalize_rerank_base_url(env_value("DASHSCOPE_RERANK_BASE_URL"))
+    legacy_base_url = _normalize_rerank_base_url(env_value("RERANK_BASE_URL"))
+    siliconflow_model = env_value("SILICONFLOW_RERANK_MODEL")
+    dashscope_model = env_value("DASHSCOPE_RERANK_MODEL")
+    legacy_model = env_value("RERANK_MODEL")
+    env_has_explicit_rerank_target = any(
+        value is not None
+        for value in (
+            siliconflow_specific_api_key,
+            dashscope_specific_api_key,
+            legacy_base_url,
+            legacy_model,
+            siliconflow_base_url,
+            siliconflow_model,
+            dashscope_base_url,
+            dashscope_model,
+        )
+    )
+
     # Runtime override (Settings UI) takes precedence over .env for users
     # who configured a local BGE rerank server or a different SiliconFlow
     # account from the UI. The override file is small (4 fields) and
@@ -462,26 +486,21 @@ def _resolve_rerank_targets(
     try:
         from rerank_runtime_config import get_resolved_field as _rerank_override
 
-        override_provider = _rerank_override("provider")
-        override_base_url = _rerank_override("base_url")
-        override_model = _rerank_override("model")
+        override_provider = None if env_has_explicit_rerank_target else _rerank_override("provider")
+        override_base_url = None if env_has_explicit_rerank_target else _rerank_override("base_url")
+        override_model = None if env_has_explicit_rerank_target else _rerank_override("model")
     except Exception:
         override_provider = override_base_url = override_model = None
 
     explicit_base_url = _normalize_rerank_base_url(base_url) or _normalize_rerank_base_url(override_base_url)
     explicit_model = _clean(model) or _clean(override_model)
 
-    siliconflow_specific_api_key = env_value("SILICONFLOW_RERANK_API_KEY")
-    siliconflow_generic_api_key = env_value("SILICONFLOW_API_KEY")
-    dashscope_specific_api_key = env_value("DASHSCOPE_RERANK_API_KEY")
-    dashscope_generic_api_key = env_value("DASHSCOPE_API_KEY")
-
     # Override api_key (when present) takes priority over env keys; it is
     # bucketed by the override provider hint so SiliconFlow / DashScope
     # selection downstream still picks the right candidate.
     try:
         from rerank_runtime_config import get_resolved_field as _rerank_override
-        override_api_key = _rerank_override("api_key")
+        override_api_key = None if env_has_explicit_rerank_target else _rerank_override("api_key")
     except Exception:
         override_api_key = None
     if override_api_key:
@@ -489,14 +508,6 @@ def _resolve_rerank_targets(
             dashscope_specific_api_key = override_api_key
         else:
             siliconflow_specific_api_key = override_api_key
-
-    siliconflow_base_url = _normalize_rerank_base_url(env_value("SILICONFLOW_RERANK_BASE_URL"))
-    dashscope_base_url = _normalize_rerank_base_url(env_value("DASHSCOPE_RERANK_BASE_URL"))
-    legacy_base_url = _normalize_rerank_base_url(env_value("RERANK_BASE_URL"))
-
-    siliconflow_model = env_value("SILICONFLOW_RERANK_MODEL")
-    dashscope_model = env_value("DASHSCOPE_RERANK_MODEL")
-    legacy_model = env_value("RERANK_MODEL")
 
     explicit_is_dashscope = is_dashscope_rerank_url(explicit_base_url) or _looks_like_dashscope_rerank_model(explicit_model)
     explicit_is_siliconflow = bool(explicit_base_url or explicit_model) and not explicit_is_dashscope
@@ -771,6 +782,25 @@ def resolve_rerank_config(
     base_url: str | None = None,
     model: str | None = None,
 ) -> tuple[str | None, str, str]:
+    explicit_env_names = (
+        "RERANK_API_KEY",
+        "RERANK_BASE_URL",
+        "RERANK_MODEL",
+        "SILICONFLOW_RERANK_API_KEY",
+        "SILICONFLOW_RERANK_BASE_URL",
+        "SILICONFLOW_RERANK_MODEL",
+        "DASHSCOPE_RERANK_API_KEY",
+        "DASHSCOPE_RERANK_BASE_URL",
+        "DASHSCOPE_RERANK_MODEL",
+    )
+    if (
+        _dotenv_disabled()
+        and _clean(api_key) is None
+        and _clean(base_url) is None
+        and _clean(model) is None
+        and not any(_clean(os.environ.get(name)) is not None for name in explicit_env_names)
+    ):
+        return None, DEFAULT_RERANKER_URL, DEFAULT_RERANKER_MODEL
     targets = _resolve_rerank_targets(base_url=base_url, model=model)
     resolved_base_url = str(targets["resolved_base_url"] or DEFAULT_RERANKER_URL)
     resolved_model = str(targets["resolved_model"] or DEFAULT_RERANKER_MODEL)

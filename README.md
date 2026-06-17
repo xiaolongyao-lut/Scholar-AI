@@ -168,7 +168,7 @@ npm run build
 ### 第四步：启动桌面应用
 
 ```powershell
-cd C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script
+cd <REPO_ROOT>
 .\.venv-1\Scripts\python.exe .\start_desktop.py
 ```
 

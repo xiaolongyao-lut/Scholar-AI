@@ -21,6 +21,7 @@ import {
   Settings,
   ShieldCheck,
   Activity,
+  TerminalSquare,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -553,6 +554,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
       <NavItem to="/projects" icon={<FolderKanban size={20} />} label={t('nav.projects')} collapsed={collapsed} onNavigate={onNavigate} />
       <NavItem to="/volume" icon={<FileText size={20} />} label={t('nav.volume')} collapsed={collapsed} onNavigate={onNavigate} />
       <NavItem to="/jobs" icon={<Activity size={20} />} label={t('nav.jobs')} collapsed={collapsed} onNavigate={onNavigate} />
+      <NavItem to="/agent-workspace" icon={<TerminalSquare size={20} />} label="Agent Workspace" collapsed={collapsed} onNavigate={onNavigate} />
       <NavItem to="/settings" icon={<Settings size={20} />} label={t('nav.settings')} collapsed={collapsed} onNavigate={onNavigate} />
     </>
   ), [t]);

@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "literature_assistant": {
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "C:\\path\\to\\Scholar-AI\\agent_mcp_server\\bin\\lit-assistant-mcp.ps1"
+      ],
+      "cwd": "C:\\path\\to\\Scholar-AI",
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 90,
+      "default_tools_approval_mode": "prompt",
+      "enabled": true,
+      "env": {
+        "LITERATURE_ASSISTANT_REPO_ROOT": "C:\\path\\to\\Scholar-AI",
+        "LITERATURE_ASSISTANT_BASE_URL": "http://127.0.0.1:8000",
+        "LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS": "1"
+      }
+    }
+  }
+}

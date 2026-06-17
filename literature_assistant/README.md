@@ -41,7 +41,7 @@
 主回档脚本：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Users\xiao\Desktop\tools\Modular-Pipeline-Script\.rollback_snapshots\internal-literature-workspace-20260501_020742\rollback.ps1"
+powershell -ExecutionPolicy Bypass -File "<REPO_ROOT>\.rollback_snapshots\internal-literature-workspace-20260501_020742\rollback.ps1"
 ```
 
 ## 待处理

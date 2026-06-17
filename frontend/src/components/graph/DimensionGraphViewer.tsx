@@ -15,6 +15,7 @@ import { Copy, ExternalLink, Crosshair, Maximize2, Minus, Plus, X } from 'lucide
 
 import { cn } from '@/lib/utils';
 import { DimensionNode, type DimensionNodeData } from './DimensionNode';
+import { DimensionBusEdge } from './DimensionBusEdge';
 import {
   DIMENSION_DISPLAY_ORDER,
   DIMENSION_META,
@@ -59,6 +60,7 @@ interface DimensionGraphViewerProps {
 }
 
 const NODE_TYPES = { dimensionNode: DimensionNode } as const;
+const EDGE_TYPES = { dimensionBusEdge: DimensionBusEdge } as const;
 
 /** 证据维度集合，用于「只看证据」快捷筛选。 */
 const EVIDENCE_DIMENSIONS: ReadonlySet<ReasoningDimension> = new Set<ReasoningDimension>([
@@ -200,10 +202,10 @@ function LaneHeaders({ lanes, height }: { lanes: DimensionLane[]; height: number
             key={lane.dimension}
             className="absolute"
             style={{
-              top: 0,
+              top: lane.y ?? 0,
               left: lane.x,
               width: lane.width,
-              height,
+              height: lane.height ?? height,
             }}
           >
             <div
@@ -497,6 +499,7 @@ function DimensionFlow({
       nodes={nodes}
       edges={edges}
       nodeTypes={NODE_TYPES}
+      edgeTypes={EDGE_TYPES}
       fitView
       fitViewOptions={{ maxZoom: 1.2, padding: 0.08 }}
       proOptions={{ hideAttribution: true }}

@@ -64,6 +64,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-workspace/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Workspace Status
+         * @description Return redacted Agent Workspace artifacts and MCP audit events.
+         */
+        get: operations["get_api_agent_workspace_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/annotations/{material_id}": {
         parameters: {
             query?: never;
@@ -2267,7 +2287,7 @@ export interface paths {
         };
         /**
          * Get Pdf Backend Status
-         * @description Return the current PDF backend wiring + marker installability.
+         * @description Return current core PDF backend wiring.
          */
         get: operations["get_api_pdf_backend_status"];
         put?: never;
@@ -4829,7 +4849,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/resources/projects/{project_id}/reparse-with-marker": {
+    "/resources/projects/merged": {
         parameters: {
             query?: never;
             header?: never;
@@ -4839,29 +4859,34 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Reparse Project With Marker
-         * @description Re-extract every PDF material in a project using the active PDF backend.
-         *
-         *     Primary motivation: after a user enables marker (Settings → 实验性功能
-         *     → "PDF 结构化解析(marker)"), already-ingested PDFs were chunked by
-         *     PyMuPDF and therefore lack ``bbox / section_path / table_csv /
-         *     equation_latex / image_paths``. This endpoint walks each material in
-         *     the project, re-runs ``_extract_document_payload_from_path``(which
-         *     consults ``get_pdf_backend()`` and thus uses marker when the feature
-         *     flag is on), and persists structure-aware chunks + a markdown sidecar.
-         *
-         *     Behavior:
-         *       - Only PDF materials are reparsed.Non-PDF (DOCX, plaintext, etc.)
-         *         unchanged.
-         *       - Materials whose source file is missing are reported in ``skipped``
-         *         with reason ``source_missing``.
-         *       - Per-material failures(parse exceptions)go in ``failed`` with
-         *         the exception message; the overall request still returns 200.
-         *       - When the active backend is PyMuPDF this endpoint still runs but
-         *         produces identical chunks to the existing store (no harm; no
-         *         benefit) and ``backend`` reports ``pymupdf``.
+         * Create Merged Project
+         * @description Create a project that references existing literature projects.
          */
-        post: operations["post_resources_projects_project_id_reparse_with_marker"];
+        post: operations["post_resources_projects_merged"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/projects/{project_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Sources
+         * @description Return direct and expanded source projects for one project.
+         */
+        get: operations["get_resources_projects_project_id_sources"];
+        /**
+         * Update Project Sources
+         * @description Replace the direct source projects for a merged project.
+         */
+        put: operations["put_resources_projects_project_id_sources"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4902,6 +4927,26 @@ export interface paths {
         get: operations["get_resources_revisions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/search/multi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Multi Projects
+         * @description Search across standard projects and merged-project sources.
+         */
+        post: operations["post_resources_search_multi"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5987,6 +6032,85 @@ export interface components {
              * @default
              */
             summary: string;
+        };
+        /**
+         * AgentWorkspaceArtifact
+         * @description One visible workflow artifact.
+         */
+        AgentWorkspaceArtifact: {
+            /** Kind */
+            kind: string;
+            /** Modified At */
+            modified_at: string;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /**
+             * Preview
+             * @default
+             */
+            preview: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * AgentWorkspaceAuditRecord
+         * @description One redacted MCP tool audit event.
+         */
+        AgentWorkspaceAuditRecord: {
+            /**
+             * Allow Block Reason
+             * @default
+             */
+            allow_block_reason: string;
+            /** Args Summary */
+            args_summary?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Duration Ms
+             * @default 0
+             */
+            duration_ms: number;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Result Preview
+             * @default
+             */
+            result_preview: string;
+            /** Timestamp */
+            timestamp: string;
+            /** Tool Name */
+            tool_name: string;
+            /** Touched Paths */
+            touched_paths?: string[];
+        };
+        /**
+         * AgentWorkspaceStatus
+         * @description Aggregated Agent Workspace snapshot.
+         */
+        AgentWorkspaceStatus: {
+            /** Artifact Count */
+            artifact_count: number;
+            /** Artifact Root */
+            artifact_root: string;
+            /** Artifacts */
+            artifacts?: components["schemas"]["AgentWorkspaceArtifact"][];
+            /** Audit Count */
+            audit_count: number;
+            /** Audit Records */
+            audit_records?: components["schemas"]["AgentWorkspaceAuditRecord"][];
+            /** Latest Activity At */
+            latest_activity_at?: string | null;
+            /** Total Artifact Bytes */
+            total_artifact_bytes: number;
         };
         /**
          * ApplyFixesRequest
@@ -7468,6 +7592,26 @@ export interface components {
              * @default reference
              */
             type: string;
+        };
+        /**
+         * CreateMergedProjectRequest
+         * @description Request body for creating a merged literature project.
+         */
+        CreateMergedProjectRequest: {
+            /**
+             * Auto Cross Analysis
+             * @default false
+             */
+            auto_cross_analysis: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Source Projects */
+            source_projects: string[];
+            /** Title */
+            title: string;
         };
         /**
          * CreateProjectRequest
@@ -10507,6 +10651,21 @@ export interface components {
             provider: string;
         };
         /**
+         * MultiProjectSearchRequest
+         * @description Request body for searching standard and merged projects together.
+         */
+        MultiProjectSearchRequest: {
+            /** Project Ids */
+            project_ids: string[];
+            /** Query */
+            query: string;
+            /**
+             * Top K
+             * @default 10
+             */
+            top_k: number;
+        };
+        /**
          * OutlineItemPayload
          * @description Outline item (section/subsection) in hierarchical structure.
          */
@@ -10566,16 +10725,10 @@ export interface components {
             env_var_name: string;
             /** Env Var Value */
             env_var_value: string | null;
-            /** Feature Flag Enabled */
-            feature_flag_enabled: boolean;
-            /** Feature Flag Name */
-            feature_flag_name: string;
-            /** Marker Install Hint */
-            marker_install_hint: string;
-            /** Marker Installed */
-            marker_installed: boolean;
-            /** Marker Version */
-            marker_version: string | null;
+            /** External Backends Supported */
+            external_backends_supported: boolean;
+            /** Install Hint */
+            install_hint: string;
         };
         /**
          * PdfBboxUnit
@@ -12681,6 +12834,14 @@ export interface components {
             width?: number | null;
         };
         /**
+         * UpdateMergedProjectSourcesRequest
+         * @description Request body for replacing merged-project sources.
+         */
+        UpdateMergedProjectSourcesRequest: {
+            /** Source Projects */
+            source_projects: string[];
+        };
+        /**
          * UpdateNoteRequest
          * @description L2 note replace (body + tags). page + anchor_text immutable.
          */
@@ -13530,6 +13691,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_api_agent_workspace_status: {
+        parameters: {
+            query?: {
+                artifact_limit?: number;
+                audit_limit?: number;
+                preview_chars?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentWorkspaceStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -22136,7 +22330,42 @@ export interface operations {
             };
         };
     };
-    post_resources_projects_project_id_reparse_with_marker: {
+    post_resources_projects_merged: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMergedProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_projects_project_id_sources: {
         parameters: {
             query?: never;
             header?: never;
@@ -22146,6 +22375,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_resources_projects_project_id_sources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMergedProjectSourcesRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -22218,6 +22484,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resources_search_multi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MultiProjectSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

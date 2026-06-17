@@ -1049,6 +1049,7 @@ from routers.pdf_backend_router import router as pdf_backend_router
 from routers.writing_router import router as writing_router
 from routers.evidence_router import router as evidence_router
 from routers.linter_router import router as linter_router
+from routers.agent_workspace_router import router as agent_workspace_router
 
 
 def _initialize_mcp_installer_runtime() -> None:
@@ -1123,6 +1124,7 @@ app.include_router(pdf_backend_router)
 app.include_router(writing_router)
 app.include_router(evidence_router)
 app.include_router(linter_router)
+app.include_router(agent_workspace_router)
 
 
 if FRONTEND_ASSETS_DIR.is_dir():
