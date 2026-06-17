@@ -1,11 +1,10 @@
-"""Distribution packaging tests for Codex and Claude local MCP setup."""
+"""Distribution template tests for Codex and Claude local MCP setup."""
 
 import json
 import os
 import platform
 import subprocess
 import tomllib
-import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +13,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WRAPPER = REPO_ROOT / "agent_mcp_server" / "bin" / "lit-assistant-mcp.ps1"
 CODEX_CONFIG = REPO_ROOT / "agent_mcp_server" / "packaging" / "codex" / "config.example.toml"
 CODEX_PACKAGING = REPO_ROOT / "agent_mcp_server" / "packaging" / "codex"
-CODEX_PLUGIN = REPO_ROOT / "agent_mcp_server" / "packaging" / "codex" / "plugin"
 CLAUDE_DESKTOP = REPO_ROOT / "agent_mcp_server" / "packaging" / "claude-desktop"
 CLAUDE_CODE = REPO_ROOT / "agent_mcp_server" / "packaging" / "claude-code"
 GENERIC_REPO_ROOT = "C:\\path\\to\\Scholar-AI"
@@ -43,50 +41,22 @@ def test_codex_config_example_points_to_shared_wrapper() -> None:
     assert server["default_tools_approval_mode"] == "prompt"
 
 
-def test_codex_plugin_manifest_and_mcp_config_are_valid() -> None:
-    """Codex plugin must bundle both a skill and MCP config."""
-    manifest = _load_json(CODEX_PLUGIN / ".codex-plugin" / "plugin.json")
-    mcp_config = _load_json(CODEX_PLUGIN / ".mcp.json")
-    marketplace = _load_json(REPO_ROOT / "agent_mcp_server" / "packaging" / "codex" / "marketplace.example.json")
+def test_claude_desktop_config_example_points_to_shared_wrapper() -> None:
+    """Claude Desktop config must use the shared PowerShell wrapper."""
+    payload = _load_json(CLAUDE_DESKTOP / "claude_desktop_config.example.json")
 
-    assert manifest["name"] == "literature-assistant-toolbox"
-    assert manifest["skills"] == "./skills/"
-    assert manifest["mcpServers"] == "./.mcp.json"
-    assert (CODEX_PLUGIN / "skills" / "literature-toolbox" / "SKILL.md").is_file()
-
-    server = mcp_config["mcpServers"]["literature_assistant"]
+    server = payload["mcpServers"]["literature-assistant"]
     assert server["command"] == "powershell"
     assert GENERIC_WRAPPER in server["args"]
-    assert server["cwd"] == GENERIC_REPO_ROOT
     assert server["env"]["LITERATURE_ASSISTANT_REPO_ROOT"] == GENERIC_REPO_ROOT
     assert server["env"]["LITERATURE_ASSISTANT_BASE_URL"] == "http://127.0.0.1:8000"
     assert server["env"]["LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS"] == "1"
-    assert marketplace["plugins"][0]["source"]["path"] == "./plugin"
-
-
-def test_claude_desktop_manifest_uses_packaged_wrapper_and_repo_root_config() -> None:
-    """MCPB manifest must be portable while locating the external repo safely."""
-    manifest = _load_json(CLAUDE_DESKTOP / "manifest.json")
-    config = manifest["server"]["mcp_config"]
-
-    assert manifest["manifest_version"] == "0.3"
-    assert manifest["name"] == "literature-assistant-toolbox"
-    assert config["command"] == "powershell"
-    assert "${__dirname}/server/lit-assistant-mcp.ps1" in config["args"]
-    assert config["env"]["LITERATURE_ASSISTANT_REPO_ROOT"] == "${user_config.repository_root}"
-    assert manifest["user_config"]["repository_root"]["default"] == GENERIC_REPO_ROOT
-    assert manifest["user_config"]["backend_base_url"]["default"] == "http://127.0.0.1:8000"
 
 
 def test_distribution_templates_do_not_embed_local_absolute_paths() -> None:
     """Committed local-distribution templates must stay portable across machines."""
     template_paths = [
         CODEX_CONFIG,
-        CODEX_PLUGIN / ".mcp.json",
-        CODEX_PLUGIN / ".codex-plugin" / "mcp_server_config.toml",
-        CODEX_PLUGIN / "README.md",
-        CODEX_PLUGIN / ".codex-plugin" / "plugin.json",
-        CLAUDE_DESKTOP / "manifest.json",
         CLAUDE_DESKTOP / "claude_desktop_config.example.json",
     ]
     forbidden_fragments = [
@@ -102,6 +72,21 @@ def test_distribution_templates_do_not_embed_local_absolute_paths() -> None:
         text = path.read_text(encoding="utf-8")
         for fragment in forbidden_fragments:
             assert fragment not in text, f"{path} embeds local path fragment: {fragment}"
+
+
+def test_legacy_local_plugin_packages_are_not_published() -> None:
+    """Current direction is direct MCP config, not local plugin or MCPB packages."""
+    removed_paths = [
+        REPO_ROOT / "agent_mcp_server" / "packaging" / "codex" / "plugin" / "README.md",
+        REPO_ROOT / "agent_mcp_server" / "packaging" / "codex" / "plugin" / ".mcp.json",
+        REPO_ROOT / "agent_mcp_server" / "packaging" / "codex" / "plugin" / ".codex-plugin" / "plugin.json",
+        REPO_ROOT / "agent_mcp_server" / "packaging" / "codex" / "marketplace.example.json",
+        REPO_ROOT / "agent_mcp_server" / "packaging" / "claude-desktop" / "manifest.json",
+        REPO_ROOT / "agent_mcp_server" / "packaging" / "claude-desktop" / "build_mcpb.ps1",
+    ]
+
+    for path in removed_paths:
+        assert not path.exists(), f"legacy plugin/MCPB package file should stay absent: {path}"
 
 
 def test_claude_code_script_prints_non_mutating_add_command() -> None:
@@ -183,35 +168,3 @@ def test_wrapper_self_test_registers_expected_tools() -> None:
 
     assert "lit-assistant-mcp self-test ok" in completed.stdout
     assert "tool_count=26" in completed.stdout
-
-
-def test_build_mcpb_creates_small_package_with_manifest_and_wrapper(tmp_path: Path) -> None:
-    """MCPB build should package only metadata plus the shared wrapper shim."""
-    if platform.system() != "Windows":
-        return
-
-    output_path = tmp_path / "literature-assistant-toolbox.mcpb"
-    subprocess.run(
-        [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(CLAUDE_DESKTOP / "build_mcpb.ps1"),
-            "-OutputPath",
-            str(output_path),
-        ],
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-
-    assert output_path.is_file()
-    assert output_path.stat().st_size < 200_000
-    with zipfile.ZipFile(output_path) as archive:
-        names = set(archive.namelist())
-    assert "manifest.json" in names
-    assert "server/lit-assistant-mcp.ps1" in names

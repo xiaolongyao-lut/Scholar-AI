@@ -177,7 +177,7 @@ $env:LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS = "1"
 - 源码运行数据集中在 `workspace_artifacts/`，包括运行时端口、本机访问令牌、日志、审计和项目索引。
 - PDF 默认用 PyMuPDF 抽取文本；marker 结构化解析保留为可选能力。
 - 检索链路包括关键词检索、向量检索、重排序、目标导向检索和证据融合。
-- 云端 embedding / rerank 是默认路线，本地 embedding / rerank 可按需配置。
+- embedding、rerank、LLM、OCR、视觉和翻译能力由文献助手后端配置，外部智能体通过 MCP 调用能力，不接收原始 provider key。
 
 ## 开发检查
 
@@ -205,8 +205,6 @@ npm run build
 | `agent_mcp_server/` | 面向 Claude / Codex 的本地文献 MCP 工具箱、配置模板和测试 |
 | `literature_assistant/` | Python 后端、RAG、Wiki、写作、凭证、设置和本地 API |
 | `frontend/` | React / Vite / pywebview 桌面控制台 |
-| `extension_packages/skills/` | 可选 Scholar AI Skill 包，包根目录需有 `SKILL.md` |
-| `extension_packages/mcp/` | 文献助手自身可扫描的可选 MCP 包，包根目录需有 `literature-mcp.json` 或 `lit-mcp.json` |
 | `scripts/` | OpenAPI、索引回填、发布校验和维护脚本 |
 | `tests/` | 后端、检索、安全、MCP 和前端相关回归测试 |
 
@@ -220,10 +218,6 @@ npm run build
 | `sitecustomize.py` | 兼容从仓库根目录直接运行时的 Python 导入路径 |
 | `requirements-ci.txt` | CI 和回归测试依赖锁定 |
 | `requirements-pin.txt` | 依赖版本参考 |
-
-## 可选扩展
-
-从源码运行时，可以按需启用 marker-pdf 结构化解析、本地 rerank 和本地 embedding。相关依赖需要开发者自行安装。详见 [docs/OPTIONAL_ADDONS.md](docs/OPTIONAL_ADDONS.md)。
 
 ## 许可
 

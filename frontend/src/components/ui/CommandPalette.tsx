@@ -27,7 +27,7 @@ export function CommandPalette() {
   const groupWriting = t('cmd.group_writing');
 
   const items: CommandItem[] = [
-    { id: 'workbench', label: t('nav.workbench'), icon: <BookOpen size={16} />, action: () => navigate('/'), group: groupNav, keywords: 'research workbench 研读' },
+    { id: 'workbench', label: t('nav.workbench'), icon: <BookOpen size={16} />, action: () => navigate('/'), group: groupNav, keywords: 'literature toolbox 研读' },
     { id: 'overview', label: t('nav.side_writing_overview'), icon: <BarChart3 size={16} />, action: () => navigate('/writing'), group: groupWriting, keywords: 'overview 总览' },
     { id: 'draft', label: t('nav.side_draft_studio'), icon: <FileEdit size={16} />, action: () => navigate('/writing/draft'), group: groupWriting, keywords: 'draft writing 手稿 写作' },
     { id: 'outline', label: t('nav.side_outline'), icon: <List size={16} />, action: () => navigate('/writing/outline'), group: groupWriting, keywords: 'outline 大纲' },

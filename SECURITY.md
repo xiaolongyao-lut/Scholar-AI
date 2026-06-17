@@ -21,6 +21,6 @@ Security reports are currently accepted for the active source branch and the `0.
 
 Do not commit real `.env` files, provider API keys, browser profiles, SQLite runtime databases, model caches, or generated workspace output. Use `.env.example` and `.env.frontend.example` for documentation.
 
-## Local-First Boundary
+## Local MCP Boundary
 
-Scholar AI Workbench is designed to keep generated artifacts and runtime state local by default. External LLM, embedding, rerank, or MCP providers should be configured explicitly by the operator.
+Scholar AI is designed to keep generated artifacts and runtime state local by default. Claude / Codex connect through the local MCP toolbox in `agent_mcp_server/`; external LLM, embedding, rerank, or MCP providers should be configured explicitly by the operator.

@@ -9,8 +9,8 @@ only describe the variables or credential slots that users must fill locally.
 - Local development: copy `.env.example` to `.env` and fill real backend keys.
 - Frontend development: copy `frontend.env.example` to `frontend/.env.local`
   and fill only low-privilege frontend values.
-- Installed app: add credentials in Settings, then bind them to MCP or Skill
-  requirements through the UI.
+- Desktop control console: add credentials in Settings, then bind them to MCP or
+  Skill requirements through the local UI.
 - Git: never commit `.env`, `frontend/.env.local`, raw API keys, bearer tokens,
   credential store files, or installed MCP runtime configs.
 
@@ -52,12 +52,16 @@ admin tokens in frontend env files.
 
 ## MCP Packages
 
+This section is for optional MCP packages that Scholar AI can scan and manage
+inside its own desktop control console. It is separate from the MCP-first
+Claude/Codex toolbox under `agent_mcp_server/`.
+
 Public MCP packages live under `extension_packages/mcp/`. A package root must
 contain `literature-mcp.json` or `lit-mcp.json`.
 
 MCP manifests should declare credential requirements, not secret values. Use
-`required_credentials` to tell the installer which environment variables must
-be bound:
+`required_credentials` to tell the local setup UI which environment variables
+must be bound:
 
 ```json
 {
@@ -75,7 +79,7 @@ be bound:
 }
 ```
 
-At install time:
+When enabling a local MCP package:
 
 1. Download or unpack the MCP package locally.
 2. Open Settings -> MCP servers.

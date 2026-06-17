@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for improving Scholar AI Workbench.
+Thank you for improving Scholar AI.
 
 ## Development Setup
 

@@ -5,9 +5,8 @@ Local MCP toolbox for Codex and Claude.
 ## Scope
 
 This project is source-checkout-first. It assumes the Literature Assistant repo
-and `.venv-1` exist locally. Standalone installers, bundled exe builds, public
-MCPB distribution, and dependency packaging are out of scope for the current
-direction.
+and `.venv-1` exist locally. Claude and Codex should connect to this server
+through direct MCP config that points at the checked-out repository.
 
 Claude/Codex should use this server to call Literature Assistant tools and to
 inspect safe source code. If a capability is missing, add an MCP tool or backend
@@ -63,11 +62,8 @@ Non-mutating CLI command preview:
 .\agent_mcp_server\packaging\codex\add-user.ps1 -PrintOnly
 ```
 
-Local plugin bundle:
-
-```text
-agent_mcp_server/packaging/codex/plugin/
-```
+Use the config example or the print-only helper above for the current
+MCP-first path.
 
 ## Claude
 
@@ -77,17 +73,14 @@ Claude Desktop config example:
 agent_mcp_server/packaging/claude-desktop/claude_desktop_config.example.json
 ```
 
-Optional local `.mcpb` shim for Claude Desktop testing only:
-
-```powershell
-.\agent_mcp_server\packaging\claude-desktop\build_mcpb.ps1
-```
-
 Non-mutating Claude Code command preview:
 
 ```powershell
 .\agent_mcp_server\packaging\claude-code\add-user.ps1 -PrintOnly
 ```
+
+Use the desktop config example or the Claude Code helper above for the current
+MCP-first path.
 
 ## Security Foundation
 

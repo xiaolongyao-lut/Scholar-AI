@@ -3004,25 +3004,9 @@ function formatSavedCredentialLabel(credential: RuntimeCredentialPublic): string
 /* ------------------------------------------------------------------ */
 
 /**
- * Mainline RAG flags: 这 5 个 flag 后端 default=True、经过跨 2 篇 PDF A/B
- * 与 3883 测试验证, 已作为检索主链路。UI 不再渲染开关 (避免误导用户以为
- * 可关), 在「实验性功能」分区顶部用一个只读的"已主线化"提示卡告知。
- * 对应后端 5 个 default=True 的 RAG flag (literature_assistant/core/feature_flags.py).
- */
-const MAINLINE_RAG_FLAG_NAMES = new Set<string>([
-  'rag_chunk_type_weighting',
-  'hybrid_retrieval',
-  'tolf_context',
-  'tolf_fusion_mode',
-  'rag_structured_sibling_inclusion',
-]);
-
-/**
- * Optional addon flags: 主安装包不含其运行时依赖, 需要用户自己 pip install
- * 才工作 (marker-pdf ~2GB / torch+sentence-transformers ~3GB cu126)。
- * 默认 API-first 路线对绝大多数用户够用 — 这些是 power-user 选项, UI 上
- * 用一个明显标签 (橙色 "可选扩展") 让普通用户知道"主包没带, 要的人自己装",
- * 不会去误触发。
+ * Advanced local-runtime flags need dependencies that are not part of the
+ * default MCP-first source checkout. Keep them visible but clearly labeled so
+ * users do not mistake missing optional runtimes for broken toggles.
  */
 const OPTIONAL_ADDON_FLAG_NAMES = new Set<string>([
   'pdf_parser_marker',
@@ -3219,9 +3203,9 @@ function SectionExperimental({ t }: { t: (k: string, p?: Record<string, string |
                 {isOptionalAddon && (
                   <span
                     className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30"
-                    title="主安装包不含运行时依赖, 需要在命令行 pip install 才工作。绝大多数用户用 API 路线即可, 不需要启用。详见 docs/OPTIONAL_ADDONS.md"
+                    title="该能力需要在当前源码环境中安装对应运行时依赖。MCP-first 默认路径优先使用后端配置的模型服务。"
                   >
-                    可选扩展 · 需自装包
+                    高级能力 · 需自装依赖
                   </span>
                 )}
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-lowest text-foreground/60 border border-outline-variant">
