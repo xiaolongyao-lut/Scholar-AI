@@ -2,8 +2,8 @@
 
 Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅读 PDF、围绕同一课题反复追问、整理证据并写成文稿的研究流程。它把文献库、PDF 阅读、RAG 问答、多角色讨论、Wiki 知识沉淀、写作编辑器和 MCP 工具调用放在同一个桌面应用里。
 
-最新版本 [v0.1.8.3](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.3) ·
-[Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/Scholar-AI-Setup-0.1.8.3-windows-x64.exe) ·
+当前源码版本 [v0.1.8.4](CHANGELOG.md#0184---2026-06-17) ·
+最新 Windows 安装包 [v0.1.8.3](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.3) ·
 [SHA256](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/SHA256SUMS.txt)
 
 > 当前仍是 alpha / dogfood 阶段。Windows 安装包未做代码签名，首次安装可能触发 SmartScreen 警告。
@@ -41,8 +41,15 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 | 多角色讨论 | 多个角色围绕同一问题讨论、质询、补证据并形成综合结论 |
 | Wiki 知识沉淀 | 可把材料、观点和复审后的发现沉淀为本地 Wiki 页面 |
 | 写作 | TipTap 富文本编辑器，大纲、引用、图表资料和 DOCX 导出链路 |
-| MCP / Skill | 本地扫描安装包，绑定凭证后启用；工具调用前需要人工审批 |
+| MCP / Skill | 文献助手内置 MCP / Skill 扩展；源码版额外提供给 Claude / Codex 使用的本地文献工具箱 |
 | 设置与日志 | API、模型、凭证、实验功能和后端日志查看器集中在设置页 |
+
+## 0.1.8.4 重点
+
+- 新增本地文献 MCP 工具箱，Claude、Codex 等支持 MCP 的客户端可以从源码工作区调用文献检索、材料读取、导出、审计和工作流工具。
+- MCP 工具箱提供安全源码查看能力，外部智能体可以读取允许范围内的文献助手源码，用于理解接口、复用工作流和辅助修复工具问题；凭证、运行时状态和工作区私有数据仍在保护边界外。
+- 新增 Agent Workspace，用于查看 MCP 工具调用审计、工作流产物和临时输出，避免外部智能体任务混入文献助手自己的任务中心。
+- PDF 阅读器增加 `raw1` 读取路径，降低下载管理器拦截内嵌 PDF 请求导致空白或 204 响应的概率。
 
 ## 0.1.8.3 重点
 
@@ -54,7 +61,7 @@ Scholar AI 是一个本地优先的学术研究工作台，面向需要长期阅
 
 ## 下载
 
-普通用户建议直接下载 Windows 安装包：
+普通用户建议直接下载最新 Windows 安装包。当前源码版已更新到 0.1.8.4；安装包仍沿用 0.1.8.3，后续发布新安装包后会同步更新链接。
 
 - [v0.1.8.3 发布页](https://github.com/xiaolongyao-lut/Scholar-AI/releases/tag/v0.1.8.3)
 - [下载 Windows 安装包](https://github.com/xiaolongyao-lut/Scholar-AI/releases/download/v0.1.8.3/Scholar-AI-Setup-0.1.8.3-windows-x64.exe)
@@ -106,6 +113,7 @@ Windows 安装包面向普通用户，体积约 466MB，默认使用你在设置
 - `literature_assistant/bootstrap.py` 负责启动时路径注册，保证从源码运行和打包后运行都能加载同一套后端代码。
 - 业务 API 位于 `literature_assistant/core/routers/`，覆盖资源入库、聊天、Wiki、写作、MCP、凭证、设置、日志、模型配置和功能开关。
 - 本地 API 默认启用访问令牌。健康检查可以直接访问，真实业务请求需要携带运行时生成的本机令牌。
+- `agent_mcp_server/` 提供给 Claude / Codex 等 MCP 客户端使用的本地文献工具箱，通过 HTTP 调用文献助手后端，不直接读取用户凭证。
 
 ### 数据与运行时状态
 
@@ -126,6 +134,7 @@ Windows 安装包面向普通用户，体积约 466MB，默认使用你在设置
 - 写作区使用 TipTap 富文本编辑器，引用、图表资料和导出能力由后端 writing router 支持。
 - Wiki / Evolution 用于把问答、讨论和写作中出现的可复用发现沉淀为本地知识。
 - MCP / Skill 包从本地路径扫描，不自动执行包内代码；绑定凭证和启用后，工具调用仍经过审批和审计。
+- 源码版附带 `agent_mcp_server/`，可把文献助手作为本地 MCP 工具箱暴露给 Claude / Codex：它默认走本机 HTTP API，工具输出统一脱敏并写入审计日志。
 
 ### 打包发布
 
@@ -214,6 +223,7 @@ Windows 安装包构建属于发布流程，不是源码运行的必要步骤。
 | 路径 | 说明 |
 |---|---|
 | `literature_assistant/` | Python 后端、RAG、Wiki、写作、MCP、Skill、Evolution 运行时 |
+| `agent_mcp_server/` | 面向 Claude / Codex 的本地文献 MCP 工具箱、配置模板和测试 |
 | `frontend/` | React / Vite 桌面工作台 |
 | `extension_packages/skills/` | 可选 Scholar AI Skill 包，包根目录需有 `SKILL.md` |
 | `extension_packages/mcp/` | 可选 MCP 包，包根目录需有 `literature-mcp.json` 或 `lit-mcp.json` |
@@ -238,6 +248,7 @@ Windows 安装包构建属于发布流程，不是源码运行的必要步骤。
 - 第三方 API key 不写入前端 localStorage，不在日志和 API 响应中明文显示。
 - 普通桌面使用优先在「设置」里配置 API 凭证；`.env.example` 只作为源码运行、CI 和临时测试的模板。
 - MCP 工具调用前需要用户确认；高风险能力会被阻断或进入审批流。
+- 给 Claude / Codex 使用的本地 MCP 工具箱只能读取允许范围内的源码和工作流产物；工具返回前会统一脱敏，调用记录写入 Agent Workspace 审计日志。
 - 默认安装包保持轻量，研究资料、对话、索引和日志默认留在本机。
 
 ## 可选扩展

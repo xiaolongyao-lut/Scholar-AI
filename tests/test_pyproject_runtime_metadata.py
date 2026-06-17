@@ -18,9 +18,9 @@ def test_pyproject_declares_python_311_runtime_floor() -> None:
     assert data["tool"]["black"]["target-version"] == ["py311"]
 
 
-def test_pyproject_declares_0183_release_version() -> None:
-    """Project metadata must advertise the packaged 0.1.8.3 release."""
+def test_pyproject_declares_0184_release_version() -> None:
+    """Project metadata must advertise the current 0.1.8.4 source release."""
 
     data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
 
-    assert data["project"]["version"] == "0.1.8.3"
+    assert data["project"]["version"] == "0.1.8.4"
