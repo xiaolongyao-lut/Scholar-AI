@@ -53,7 +53,7 @@ For implementation of true OS-level sandboxing, see:
 - Linux: seccomp / landlock / containers
 - Cross-platform: Docker/Podman runtime
 
-See MCP_SECURITY_ISOLATION.md for detailed security analysis and roadmap.
+See docs/MCP_SECURITY_ISOLATION.md for detailed security analysis and roadmap.
 """
 
 from __future__ import annotations

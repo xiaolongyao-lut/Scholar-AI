@@ -148,7 +148,7 @@ def test_pyinstaller_literature_datas_exclude_runtime_state_and_secrets(tmp_path
 def test_default_release_excludes_local_inference_adapters(tmp_path: Path, monkeypatch) -> None:
     """Default release MUST NOT ship local_*_adapter.py to the onedir.
 
-    Per "API-first 双线" packaging policy (CHANGELOG 0.1.8.3 / OPTIONAL_ADDONS.md):
+    Per "API-first 双线" packaging policy (CHANGELOG 0.1.8.3 / docs/OPTIONAL_ADDONS.md):
       - Default Inno Setup installer excludes local GPU/CPU inference adapters
         so users get a 466MB bundle that depends only on remote APIs.
       - LITASSIST_BUNDLE_RAG=1 includes them for offline / firewalled deployments

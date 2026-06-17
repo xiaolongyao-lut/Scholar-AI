@@ -241,7 +241,7 @@ npm run build
 
 ## 可选扩展
 
-从源码运行时，可以按需启用 marker-pdf 结构化解析、本地 rerank 和本地 embedding。相关依赖需要开发者自行安装。详见 [OPTIONAL_ADDONS.md](OPTIONAL_ADDONS.md)。
+从源码运行时，可以按需启用 marker-pdf 结构化解析、本地 rerank 和本地 embedding。相关依赖需要开发者自行安装。详见 [docs/OPTIONAL_ADDONS.md](docs/OPTIONAL_ADDONS.md)。
 
 ## 许可
 

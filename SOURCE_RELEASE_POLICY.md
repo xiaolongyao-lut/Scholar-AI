@@ -41,7 +41,8 @@ These paths are acceptable public Git candidates after normal review:
   `requirements-pin.txt`, `run_literature_assistant.py`, `sitecustomize.py`,
   `start.py`, `start.bat`, `start_desktop.py`.
 - Public project documents: `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
-  `SECURITY.md`, `LICENSE`, `SOURCE_RELEASE_POLICY.md`.
+  `SECURITY.md`, `LICENSE`, `SOURCE_RELEASE_POLICY.md`, and selected
+  user-facing how-to files under `docs/` after scrub review.
 - Test reproducibility files: `pytest.ini`, `tests/`, selected
   `frontend/**/*.test.ts`, `frontend/**/*.test.tsx`, `frontend/tests/`,
   and `frontend/src/test/` when they contain no private fixtures.
@@ -49,8 +50,10 @@ These paths are acceptable public Git candidates after normal review:
   `.github/workflows/online-smoke.yml`, and selected release workflows that do
   not require local-only secrets.
 - Build and verification scripts that are safe to run from a clone:
+  `scripts/audit_pyinstaller_hiddenimports.py`,
   `scripts/build_windows_exe.ps1`, `scripts/dump_pyinstaller_analysis.py`,
-  `scripts/export_openapi_schema.py`,
+  `scripts/embedding_backfill.py`, `scripts/export_openapi_schema.py`,
+  `scripts/ingest_project_pdfs.py`,
   `scripts/release_forbidden_path_scan.py`,
   `scripts/release_secret_scan.py`,
   `scripts/smoke_frozen_first_launch.py`, and

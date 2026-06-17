@@ -73,7 +73,12 @@
 
 # Internal planning, review, and agent process documents. Public docs may be
 # promoted explicitly only after plan/runbook/private evidence review.
-/docs/
+/docs/*
+!/docs/API_CONFIGURATION.md
+!/docs/LOCAL_RERANK_MODELS.md
+!/docs/MCP_SECURITY_ISOLATION.md
+!/docs/OPTIONAL_ADDONS.md
+!/docs/local-rerank-fallback-models.md
 
 # Public installable Literature Assistant extension packages.
 # Commit only packages that the app can scan/install directly:
@@ -138,6 +143,7 @@ htmlcov/
 /frontend/**/*.test.ts
 /frontend/**/*.test.tsx
 /frontend/**/*.test.mjs
+!/frontend/src/pages/Settings.test.tsx
 /frontend/playwright.config.ts
 /frontend/vite.config.e2e.ts
 /frontend/.axe-linter.yml
@@ -170,9 +176,12 @@ htmlcov/
 /scripts/
 !/scripts/
 /scripts/*
+!/scripts/audit_pyinstaller_hiddenimports.py
 !/scripts/build_windows_exe.ps1
 !/scripts/dump_pyinstaller_analysis.py
+!/scripts/embedding_backfill.py
 !/scripts/export_openapi_schema.py
+!/scripts/ingest_project_pdfs.py
 !/scripts/release_forbidden_path_scan.py
 !/scripts/release_secret_scan.py
 !/scripts/smoke_frozen_first_launch.py
@@ -199,17 +208,26 @@ htmlcov/
 /tests/*
 # Public-source candidate tests stay path-explicit until the full tests tree is reviewed.
 !/tests/test_build_windows_exe_script.py
+!/tests/test_chat_hybrid_retrieval.py
+!/tests/test_chunk_vector_store_dim_allowlist.py
 !/tests/test_credentials_sampling.py
 !/tests/test_credentials_strategy_hint_mapping.py
+!/tests/test_diagnostics_router.py
 !/tests/test_discussion_mcp_per_agent_scope.py
 !/tests/test_discussion_runtime_credentials.py
+!/tests/test_embedding_key_probe.py
 !/tests/test_evolution_release_hardening.py
+!/tests/test_local_rerank_status_endpoint.py
 !/tests/test_metadata_linter_api.py
+!/tests/test_pdf_backend_router.py
 !/tests/test_pyinstaller_hiddenimports.py
 !/tests/test_pyproject_runtime_metadata.py
+!/tests/test_rag_structured_sibling_inclusion.py
 !/tests/test_release_secret_scan.py
 !/tests/test_skill_export.py
 !/tests/test_smoke_frozen_host_appdata.py
+!/tests/test_start_launchers_security.py
+!/tests/test_tolf_rag_fusion.py
 !/tests/test_wiki_crud.py
 !/tests/test_wiki_export.py
 !/tests/test_wiki_permissions.py
