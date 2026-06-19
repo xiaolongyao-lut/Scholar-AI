@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -55,6 +56,27 @@ def test_pywebview_launcher_builds_frontend_without_shell(tmp_path: Path, monkey
     assert call["kwargs"]["encoding"] == "utf-8"
     assert call["kwargs"]["errors"] == "replace"
     assert call["kwargs"]["check"] is False
+
+
+def test_native_folder_dialog_uses_pywebview_folder_dialog(monkeypatch: Any) -> None:
+    """Native folder picker should return a selected directory path without browser file APIs."""
+    calls: list[str] = []
+
+    class FakeWindow:
+        def create_file_dialog(self, dialog_kind: str) -> list[str]:
+            calls.append(dialog_kind)
+            return ["C:/Users/example/Documents/Papers"]
+
+    fake_webview = SimpleNamespace(
+        FOLDER_DIALOG="folder-dialog",
+        windows=[FakeWindow()],
+    )
+    monkeypatch.setitem(sys.modules, "webview", fake_webview)
+
+    selected = start_desktop.NativeApi().folder_dialog()
+
+    assert selected == "C:/Users/example/Documents/Papers"
+    assert calls == ["folder-dialog"]
 
 
 def test_frontend_build_current_requires_dist_newer_than_inputs(tmp_path: Path, monkeypatch: Any) -> None:

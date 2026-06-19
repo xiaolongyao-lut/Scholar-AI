@@ -18,14 +18,34 @@ HTTP endpoint instead of creating an installer path.
 - `source.search`
 - `source.read_file`
 - `source.read_symbols`
+- `source.inspect_routes`
+- `source.find_references`
+- `source.explain_entrypoints`
 - `literature.config_status`
 - `literature.list_projects`
 - `literature.list_materials`
 - `literature.read_material`
 - `literature.get_material_chunks`
-- `literature.search_literature`
-- `literature.ingest_then_search`
+- `literature.search_refs`
+- `literature.evidence_pack_build`
+- `literature.project_scan_folder`
+- `literature.figures_candidates`
+- `literature.figures_generate`
+- `literature.citations_sources`
+- `literature.citations_detect_overlap`
+- `literature.outline_generate`
 - `literature.export_annotations_markdown`
+- `literature.export_docx`
+- `literature.journal_style_spec_draft`
+- `literature.journal_style_spec_confirm`
+- `literature.agent_bridge_status`
+- `literature.agent_request_create`
+- `literature.agent_request_list`
+- `literature.agent_request_read`
+- `literature.agent_resource_read`
+- `literature.agent_progress`
+- `literature.agent_result`
+- `literature.agent_fail`
 
 ## Wrapper
 
@@ -39,14 +59,41 @@ server and must not print extra protocol noise.
 Optional non-secret runtime setting:
 
 ```powershell
-$env:LITERATURE_ASSISTANT_BASE_URL = "http://127.0.0.1:8000"
 $env:LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS = "1"
+$env:LITASSIST_MCP_SKIP_BACKEND_AUTOSTART = "1"
+$env:LITASSIST_MCP_BACKEND_STARTUP_TIMEOUT_SEC = "45"
 ```
 
 `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1` enables OCR/page-image artifact
 generation, visual review packs, translation packs, project packs, and the
 bounded Python sandbox. Translation model calls still go through the Literature
 Assistant backend; raw provider keys are never passed through MCP.
+
+By default, the wrapper attaches to `workspace_artifacts/runtime_state/desktop-runtime.json`.
+If no healthy desktop runtime is present and the user has not deliberately
+closed the app, it launches the source desktop app via `start_desktop.py` in a
+visible terminal so the user can configure API/model/rerank/wiki settings in
+the visible `文献助手` window and copy the printed
+`LITERATURE_ASSISTANT_BASE_URL=http://127.0.0.1:<port>` line if an agent needs
+manual help. After the user closes the desktop app, the wrapper does not
+relaunch it automatically; start `start_desktop.py` manually or run
+`.\agent_mcp_server\bin\lit-assistant-mcp.ps1 -ForceLaunch` for an explicit
+Codex-driven reopen.
+
+Headless Uvicorn autostart is debug-only. Set
+`LITASSIST_MCP_ALLOW_HEADLESS_AUTOSTART=1` with a loopback
+`LITERATURE_ASSISTANT_BASE_URL` to start
+`literature_assistant.core.python_adapter_server:app` without the desktop UI.
+Startup logs stay under `workspace_artifacts/runtime_state/mcp_backend/` so
+stdio MCP output remains protocol-clean. Set
+`LITASSIST_MCP_SKIP_BACKEND_AUTOSTART=1` to require an already-running runtime.
+
+Debug-only headless example:
+
+```powershell
+$env:LITERATURE_ASSISTANT_BASE_URL = "http://127.0.0.1:<port>"
+$env:LITASSIST_MCP_ALLOW_HEADLESS_AUTOSTART = "1"
+```
 
 ## Codex
 

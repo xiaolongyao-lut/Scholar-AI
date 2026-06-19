@@ -1,8 +1,12 @@
 """Writing resource API models used by the FastAPI adapter."""
 
 from typing import Any, Dict, List, Optional
-
 from pydantic import BaseModel, Field
+
+try:
+    from literature_assistant.core.academic_writing_linter import AcademicWritingLintResponse
+except ModuleNotFoundError:
+    from academic_writing_linter import AcademicWritingLintResponse  # type: ignore[no-redef]
 
 from .evidence import PdfAnchorFields, PdfBboxUnit
 from .project_reasoning_bias import ProjectReasoningBiasPayload
@@ -19,6 +23,18 @@ class CitationAnchorPayload(BaseModel):
     ordinal: int
 
 
+class SourceFolderRefPayload(BaseModel):
+    """Privacy-safe project source-folder binding metadata.
+
+    The backend stores the real local path for guarded scans, but public
+    clients should use this shape when they only need to show binding state.
+    """
+
+    display_name: str = ""
+    bound_at: str = ""
+    bound_by: str = ""
+
+
 class ProjectPayload(BaseModel):
     """Writing project response."""
 
@@ -32,6 +48,7 @@ class ProjectPayload(BaseModel):
     user_id: Optional[str] = None
     tags: List[str]
     source_folder: str = ""  # User-specified folder for literature files & chunk storage
+    source_folder_ref: Optional[SourceFolderRefPayload] = None
     project_reasoning_bias: Optional[ProjectReasoningBiasPayload] = None
 
 
@@ -61,6 +78,65 @@ class MaterialPayload(BaseModel):
     focus_points_en: List[str] = Field(default_factory=list)
     created_at: str
     updated_at: str
+
+
+class ChunkSearchRefMetadataPayload(BaseModel):
+    """Whitelisted provenance metadata for token-bounded chunk refs.
+
+    Args:
+        material_id: Material that owns the matched chunk.
+        title: Human-readable source title when available.
+        page: One-based page number when the chunk store records it.
+        chunk_type: Optional chunk classifier from the extraction pipeline.
+        source_relative_path: Project-local source-file path when persisted.
+        locator: Optional compact locator payload suitable for reader jumps.
+    """
+
+    material_id: str
+    title: Optional[str] = None
+    page: Optional[int] = None
+    chunk_type: Optional[str] = None
+    source_relative_path: Optional[str] = None
+    locator: Optional[Dict[str, Any]] = None
+
+
+class ChunkSearchRefPayload(BaseModel):
+    """Small search hit returned to MCP clients without source text content.
+
+    Args:
+        chunk_id: Stable chunk identifier in the project chunk store.
+        ref_id: Agent bridge ref id in ``kind:id`` form.
+        summary: Short display-safe preview derived from local metadata/text.
+        lexical_score: Score from the local lexical matcher.
+        rerank_score: Reserved rerank score; mirrors lexical score until a
+            deterministic reranker is wired into this read-only endpoint.
+        metadata: Whitelisted provenance fields only.
+        read_endpoint: Bounded reader endpoint for fetching full content later.
+    """
+
+    chunk_id: str
+    ref_id: str
+    summary: str
+    lexical_score: float = Field(ge=0.0)
+    rerank_score: Optional[float] = Field(default=None, ge=0.0)
+    metadata: ChunkSearchRefMetadataPayload
+    read_endpoint: str
+
+
+class ChunkSearchRefsResponse(BaseModel):
+    """Read-only chunk ref search response for MCP-first retrieval.
+
+    Args:
+        project_id: Project searched.
+        query: Query string after FastAPI validation.
+        total_refs: Number of refs in ``refs``.
+        refs: Token-bounded refs with no chunk body fields.
+    """
+
+    project_id: str
+    query: str
+    total_refs: int = Field(ge=0)
+    refs: List[ChunkSearchRefPayload] = Field(default_factory=list)
 
 
 class FigureTableCandidatePayload(BaseModel):
@@ -264,6 +340,8 @@ class ProjectExportPayload(BaseModel):
     bibliography_entries: List[ProjectExportBibliographyEntryPayload] = Field(default_factory=list)
     review_findings: List[ProjectExportReviewFindingPayload] = Field(default_factory=list)
     figure_assets: List[ProjectExportFigureAssetPayload] = Field(default_factory=list)
+    writing_audit: Optional[AcademicWritingLintResponse] = None
+    rendered_writing_audit: Optional[AcademicWritingLintResponse] = None
 
 
 class AssociationSignalPayload(BaseModel):
@@ -593,6 +671,11 @@ class ExportProjectRequest(BaseModel):
     format: str = Field(pattern="^(json|markdown|word|latex|pdf)$")
     include_evidence: bool = True
     include_citations: bool = True
+    style_profile: Optional[str] = Field(
+        default=None,
+        max_length=80,
+        description="Optional built-in or confirmed project-scoped journal style profile for Word export.",
+    )
 
 
 class BuildAssociationRequest(BaseModel):

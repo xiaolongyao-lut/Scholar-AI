@@ -1,4 +1,5 @@
 import { createDefaultApiClient } from './httpClient';
+import type { WritingJob } from '@/types/runtime';
 
 export interface AgentWorkspaceArtifact {
   path: string;
@@ -31,6 +32,17 @@ export interface AgentWorkspaceStatus {
   audit_records: AgentWorkspaceAuditRecord[];
 }
 
+export interface AgentBridgeStatus {
+  enabled: boolean;
+  pending_count: number;
+  running_count: number;
+  recent: WritingJob[];
+}
+
+export interface RuntimeJobsStatus {
+  recent: WritingJob[];
+}
+
 const client = createDefaultApiClient({ timeoutMs: 20_000 });
 
 export async function getAgentWorkspaceStatus(opts?: {
@@ -46,4 +58,26 @@ export async function getAgentWorkspaceStatus(opts?: {
     },
   });
   return response.data;
+}
+
+export async function getAgentBridgeStatus(opts?: {
+  limit?: number;
+}): Promise<AgentBridgeStatus> {
+  const response = await client.get<AgentBridgeStatus>('/api/agent-bridge/status', {
+    params: {
+      limit: opts?.limit ?? 20,
+    },
+  });
+  return response.data;
+}
+
+export async function listRuntimeJobs(opts?: {
+  limit?: number;
+}): Promise<RuntimeJobsStatus> {
+  const response = await client.get<WritingJob[]>('/runtime/jobs', {
+    params: {
+      limit: opts?.limit ?? 100,
+    },
+  });
+  return { recent: response.data };
 }

@@ -41,6 +41,7 @@ from mcp_runtime.pending_calls import (
 from mcp_runtime.provider_tool_adapter import (
     NamespacedTool,
     ToolNamespaceError,
+    build_provider_tool_name_map,
     build_provider_tools,
     build_slug_to_server_id,
     parse_namespaced_tool,
@@ -132,17 +133,19 @@ def _provider_key(provider: str) -> str:
 
 
 def _extract_tool_calls_normalized(
-    data: dict[str, Any], provider_key: str
+    data: dict[str, Any], provider_key: str, tool_name_aliases: dict[str, str] | None = None
 ) -> list[DispatchInput]:
     """Return a normalized list of DispatchInput; empty if none."""
+    aliases = tool_name_aliases or {}
     out: list[DispatchInput] = []
     if provider_key == "claude":
         for block in data.get("content", []) or []:
             if isinstance(block, dict) and block.get("type") == "tool_use":
+                provider_name = str(block.get("name", ""))
                 out.append(
                     DispatchInput(
                         tool_call_id=str(block.get("id", "")),
-                        namespaced_name=str(block.get("name", "")),
+                        namespaced_name=aliases.get(provider_name, provider_name),
                         arguments=block.get("input", {}) or {},
                     )
                 )
@@ -154,10 +157,11 @@ def _extract_tool_calls_normalized(
         if not isinstance(tc, dict):
             continue
         fn = tc.get("function") or {}
+        provider_name = str(fn.get("name", ""))
         out.append(
             DispatchInput(
                 tool_call_id=str(tc.get("id", "")),
-                namespaced_name=str(fn.get("name", "")),
+                namespaced_name=aliases.get(provider_name, provider_name),
                 arguments=fn.get("arguments", {}),
             )
         )
@@ -258,6 +262,7 @@ class McpToolUseRunner:
             allow_high_risk_tools=allow_high_risk_tools,
             per_call_timeout=(caps or RunCaps()).per_call_timeout,
         )
+        self._allow_high_risk_tools = bool(allow_high_risk_tools)
         self._slug_to_id = build_slug_to_server_id(catalog_snapshot)
         # Pending-call protocol resolver. None preserves the immediate-dispatch
         # path; non-None enables ask flow. When None, ask-classified tools
@@ -382,6 +387,10 @@ class McpToolUseRunner:
                 continue
 
             # action == "ask"
+            if self._allow_high_risk_tools:
+                to_dispatch.append(replace(call, allow_high_risk=True))
+                continue
+
             cache_key = (ns.server_id if ns else "", ns.tool_name if ns else call.namespaced_name)
             cached = self._remember_decisions.get(cache_key)
             if cached == "approve":
@@ -464,6 +473,7 @@ class McpToolUseRunner:
     ) -> ToolUseRunResult:
         provider_key = _provider_key(provider)
         tools_payload = build_provider_tools(provider, self._snapshot)
+        tool_name_aliases = build_provider_tool_name_map(self._snapshot)
         messages = list(initial_messages)
         transcript: list[ToolResultRecord] = []
         start = time.perf_counter()
@@ -483,7 +493,7 @@ class McpToolUseRunner:
 
             data = await chat_call(messages, tools_payload if tools_payload else None)
             last_data = data
-            calls = _extract_tool_calls_normalized(data, provider_key)
+            calls = _extract_tool_calls_normalized(data, provider_key, tool_name_aliases)
 
             if not calls:
                 stopped_reason = "no_tools" if rounds == 1 else "natural"

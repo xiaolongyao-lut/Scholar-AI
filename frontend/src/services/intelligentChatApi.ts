@@ -42,6 +42,10 @@ export interface EvidenceReference {
   source_hint?: string | null;
   query_overlap_tokens?: string[];
   source_kind?: 'local' | 'web' | 'mcp';
+  source_type?: 'project' | 'wiki';
+  source_title?: string | null;
+  source_path?: string | null;
+  joint_score?: number | null;
 }
 
 export interface CurrentPdfContext {
@@ -107,6 +111,9 @@ export interface IntelligentChatRequest {
   material_id?: string;
   current_pdf_context?: CurrentPdfContext;
   source_paths?: string[];
+  mcpServerIds?: string[];
+  mcpAllowHighRiskTools?: boolean;
+  useLocalLiteratureTools?: boolean;
   /** @deprecated Legacy compatibility only. Unified smart-read callers should omit this. */
   direct_mode?: boolean;
   mode?: ChatMode;
@@ -129,6 +136,7 @@ export interface IntelligentChatResponse {
     max_tokens: number;
   };
   analysis_chain?: AnalysisChainPayload | null;
+  mcp_run?: Record<string, unknown> | null;
 }
 
 export type IntelligentChatStreamEvent =
@@ -540,6 +548,13 @@ export async function sendIntelligentChatMessage(
     };
     if (request.direct_mode !== undefined) payload.direct_mode = request.direct_mode;
     if (request.mode !== undefined) payload.mode = request.mode;
+    if (request.mcpServerIds !== undefined) payload.mcp_server_ids = request.mcpServerIds;
+    if (request.mcpAllowHighRiskTools !== undefined) {
+      payload.mcp_allow_high_risk_tools = request.mcpAllowHighRiskTools;
+    }
+    if (request.useLocalLiteratureTools !== undefined) {
+      payload.use_local_literature_tools = request.useLocalLiteratureTools;
+    }
     if (request.inspiration_context !== undefined) payload.inspiration_context = request.inspiration_context;
     if (request.images && request.images.length > 0) payload.images = request.images;
     const { data } = await axios.post<IntelligentChatResponse>(
@@ -571,6 +586,13 @@ export async function streamIntelligentChatMessage(
     };
     if (request.direct_mode !== undefined) payload.direct_mode = request.direct_mode;
     if (request.mode !== undefined) payload.mode = request.mode;
+    if (request.mcpServerIds !== undefined) payload.mcp_server_ids = request.mcpServerIds;
+    if (request.mcpAllowHighRiskTools !== undefined) {
+      payload.mcp_allow_high_risk_tools = request.mcpAllowHighRiskTools;
+    }
+    if (request.useLocalLiteratureTools !== undefined) {
+      payload.use_local_literature_tools = request.useLocalLiteratureTools;
+    }
     if (request.inspiration_context !== undefined) payload.inspiration_context = request.inspiration_context;
     if (request.images && request.images.length > 0) payload.images = request.images;
 

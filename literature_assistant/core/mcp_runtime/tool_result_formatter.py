@@ -12,6 +12,7 @@ audit log; the chat router persists those alongside the transcript.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,11 +20,19 @@ from mcp_runtime.security_policy import redact_text_for_audit
 
 
 PREVIEW_CHAR_LIMIT = 1200
+LLM_PAYLOAD_CHAR_LIMIT = 16000
+_REF_SUMMARY_LIMIT = 5
 
 
 @dataclass
 class ToolResultRecord:
-    """Audit-friendly summary of one tool execution."""
+    """Audit and provider-facing envelopes for one tool execution.
+
+    Args:
+        preview: Redacted, short audit string safe for logs and UI.
+        llm_payload: Redacted, bounded payload sent back to the provider.
+        raw_content: Local-only MCP content blocks, never persisted by audit.
+    """
 
     tool_call_id: str
     server_id: str
@@ -33,6 +42,8 @@ class ToolResultRecord:
     elapsed_ms: int
     preview: str
     truncated: bool = False
+    llm_payload: str = ""
+    llm_payload_truncated: bool = False
     raw_content: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -53,6 +64,243 @@ def _flatten_content(content: list[dict[str, Any]]) -> str:
     return "\n".join(p for p in parts if p)
 
 
+def _bounded_value(value: Any, *, max_chars: int) -> str | int | float | bool | None:
+    """Return a scalar value safe for a compact tool-result summary."""
+
+    if value is None or isinstance(value, (int, float, bool)):
+        return value
+    text = str(value).strip()
+    if len(text) > max_chars:
+        return f"{text[: max_chars - 1].rstrip()}…"
+    return text
+
+
+def _compact_ref_item(value: Any) -> dict[str, Any] | None:
+    """Project an evidence/search ref to identity fields needed by next calls."""
+
+    if not isinstance(value, dict):
+        return None
+    allowed_fields = (
+        "source_type",
+        "ref_id",
+        "read_endpoint",
+        "chunk_id",
+        "material_id",
+        "page",
+        "summary",
+        "lexical_score",
+        "rerank_score",
+        "source_title",
+        "source_path",
+        "joint_score",
+    )
+    compact: dict[str, Any] = {}
+    for field_name in allowed_fields:
+        if field_name not in value:
+            continue
+        max_chars = 280 if field_name == "summary" else 240
+        bounded = _bounded_value(value.get(field_name), max_chars=max_chars)
+        if bounded is not None and bounded != "":
+            compact[field_name] = bounded
+    return compact or None
+
+
+def _compact_refs_payload(payload: Any) -> dict[str, Any] | None:
+    """Return a compact refs summary for long Literature tool results.
+
+    Why:
+        Provider-facing tool-result previews are intentionally bounded, but
+        agents must still see ref ids/read endpoints early enough to perform
+        follow-up bounded resource reads.
+    """
+
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return None
+    raw_refs = data.get("evidence_refs")
+    if not isinstance(raw_refs, list):
+        raw_refs = data.get("refs")
+    if not isinstance(raw_refs, list) or not raw_refs:
+        return None
+    refs = [
+        compact
+        for compact in (_compact_ref_item(item) for item in raw_refs[:_REF_SUMMARY_LIMIT])
+        if compact is not None
+    ]
+    if not refs:
+        return None
+    summary: dict[str, Any] = {"refs": refs}
+    for field_name in (
+        "evidence_pack_ref",
+        "project_id",
+        "query",
+        "section_id",
+        "retrieval_method",
+        "rerank_status",
+        "total",
+        "truncated",
+    ):
+        if field_name in data:
+            bounded = _bounded_value(data.get(field_name), max_chars=280)
+            if bounded is not None and bounded != "":
+                summary[field_name] = bounded
+    return summary
+
+
+def _compact_audit_payload(payload: Any) -> dict[str, Any] | None:
+    """Return a compact writing-audit provenance summary when available."""
+
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return None
+    audit = data.get("audit")
+    if not isinstance(audit, dict):
+        return None
+    compact: dict[str, Any] = {}
+    for field_name in (
+        "invocation_surface",
+        "agent_mediated",
+        "mcp_tool_calls_used",
+        "disclosure_required",
+        "agent_host",
+        "source",
+    ):
+        if field_name in audit:
+            bounded = _bounded_value(audit.get(field_name), max_chars=160)
+            if bounded is not None and bounded != "":
+                compact[field_name] = bounded
+    for field_name in ("tool_chain", "used_mcp_tools"):
+        raw_items = audit.get(field_name)
+        if isinstance(raw_items, list):
+            items: list[str | int | float | bool] = []
+            for item in raw_items[:8]:
+                bounded = _bounded_value(item, max_chars=160)
+                if bounded is not None and bounded != "":
+                    items.append(bounded)
+            compact[field_name] = items
+    for field_name in ("style_profile", "quality_gate", "score"):
+        if field_name in data:
+            bounded = _bounded_value(data.get(field_name), max_chars=160)
+            if bounded is not None and bounded != "":
+                compact[field_name] = bounded
+    return compact or None
+
+
+def _tool_prefers_compact_llm_payload(tool_name: str) -> bool:
+    """Return True for tools whose contract is ref identity, not body text.
+
+    Why:
+        Search/evidence-pack tools intentionally return refs and summaries so
+        agents perform a bounded follow-up read before using source text.
+    """
+
+    normalized = str(tool_name or "").strip()
+    return normalized.endswith(
+        (
+            ".search_refs",
+            ".evidence_pack_build",
+            ".citations_sources",
+            ".citations_detect_overlap",
+            ".figures_candidates",
+        )
+    )
+
+
+def _json_text(value: Any) -> str:
+    """Serialize provider-facing JSON without ASCII escaping."""
+
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _prepend_compact_tool_summary(flat: str) -> str:
+    """Move follow-up-critical fields ahead of the bounded preview."""
+
+    if not flat:
+        return flat
+    try:
+        payload = json.loads(flat)
+    except json.JSONDecodeError:
+        return flat
+    compact: dict[str, Any] = {}
+    refs_summary = _compact_refs_payload(payload)
+    if refs_summary is not None:
+        compact.update(refs_summary)
+    audit_summary = _compact_audit_payload(payload)
+    if audit_summary is not None:
+        compact["audit"] = audit_summary
+    if not compact:
+        return flat
+    compact_text = json.dumps(
+        {"compact_tool_result": compact},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return f"{compact_text}\n{flat}"
+
+
+def _build_llm_payload_text(
+    *,
+    tool_name: str,
+    flat: str,
+    is_error: bool,
+    max_chars: int = LLM_PAYLOAD_CHAR_LIMIT,
+) -> tuple[str, bool]:
+    """Return the bounded payload that should be visible to the provider.
+
+    Args:
+        tool_name: Internal MCP tool name used for contract-specific shaping.
+        flat: Flattened tool content text.
+        is_error: Whether the tool result represents an error.
+        max_chars: Hard character budget for the provider-facing payload.
+
+    Returns:
+        A pair of provider-visible text and whether it was truncated.
+    """
+
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        raise ValueError("tool_name must be a non-empty string")
+    if not isinstance(flat, str):
+        raise ValueError("flat must be a string")
+    if not isinstance(is_error, bool):
+        raise ValueError("is_error must be a boolean")
+    if not isinstance(max_chars, int) or isinstance(max_chars, bool) or max_chars < 100:
+        raise ValueError("max_chars must be an integer >= 100")
+
+    payload_text = flat
+    if not is_error and _tool_prefers_compact_llm_payload(tool_name):
+        try:
+            parsed = json.loads(flat)
+        except json.JSONDecodeError:
+            parsed = None
+        compact: dict[str, Any] = {}
+        refs_summary = _compact_refs_payload(parsed)
+        if refs_summary is not None:
+            compact.update(refs_summary)
+        audit_summary = _compact_audit_payload(parsed)
+        if audit_summary is not None:
+            compact["audit"] = audit_summary
+        if compact:
+            payload_text = _json_text(
+                {
+                    "tool_result_for_llm": {
+                        "tool_name": tool_name,
+                        "is_error": is_error,
+                        "result": compact,
+                    }
+                }
+            )
+
+    redacted = redact_text_for_audit(payload_text)
+    if len(redacted) <= max_chars:
+        return redacted, False
+    marker = "\n...[llm_payload_truncated]"
+    return redacted[: max_chars - len(marker)].rstrip() + marker, True
+
+
 def build_tool_result_record(
     *,
     tool_call_id: str,
@@ -62,11 +310,17 @@ def build_tool_result_record(
     raw: dict[str, Any],
     elapsed_ms: int,
 ) -> ToolResultRecord:
-    """Wrap a manager call_tool() result in a record + redacted preview."""
+    """Wrap a manager call_tool() result in audit and LLM envelopes."""
     is_error = bool(raw.get("is_error", False))
     content = raw.get("content") or []
     flat = _flatten_content(content if isinstance(content, list) else [])
-    redacted = redact_text_for_audit(flat)
+    llm_payload, llm_payload_truncated = _build_llm_payload_text(
+        tool_name=tool_name,
+        flat=flat,
+        is_error=is_error,
+    )
+    audit_flat = _prepend_compact_tool_summary(flat)
+    redacted = redact_text_for_audit(audit_flat)
     truncated = False
     if len(redacted) > PREVIEW_CHAR_LIMIT:
         redacted = redacted[:PREVIEW_CHAR_LIMIT] + "...[truncated]"
@@ -80,6 +334,8 @@ def build_tool_result_record(
         elapsed_ms=elapsed_ms,
         preview=redacted,
         truncated=truncated,
+        llm_payload=llm_payload,
+        llm_payload_truncated=llm_payload_truncated,
         raw_content=content if isinstance(content, list) else [],
     )
 
@@ -92,7 +348,7 @@ def format_for_claude(record: ToolResultRecord) -> dict[str, Any]:
         "type": "tool_result",
         "tool_use_id": record.tool_call_id,
         "is_error": record.is_error,
-        "content": [{"type": "text", "text": record.preview}],
+        "content": [{"type": "text", "text": record.llm_payload or record.preview}],
     }
 
 
@@ -102,7 +358,7 @@ def format_for_openai(record: ToolResultRecord) -> dict[str, Any]:
         "role": "tool",
         "tool_call_id": record.tool_call_id,
         "name": record.tool_name,
-        "content": record.preview,
+        "content": record.llm_payload or record.preview,
     }
 
 
@@ -123,7 +379,7 @@ def format_generic_xml(record: ToolResultRecord) -> str:
     closing tags or fake XML structure into the LLM context.
     """
     err_tag = "true" if record.is_error else "false"
-    escaped = _escape_xml_content(record.preview)
+    escaped = _escape_xml_content(record.llm_payload or record.preview)
     return (
         f"<tool_result tool=\"{record.tool_name}\" "
         f"server=\"{record.server_slug}\" "
@@ -148,6 +404,7 @@ def format_for_provider(provider_key: str, record: ToolResultRecord) -> Any:
 
 __all__ = [
     "PREVIEW_CHAR_LIMIT",
+    "LLM_PAYLOAD_CHAR_LIMIT",
     "ToolResultRecord",
     "build_tool_result_record",
     "format_for_claude",

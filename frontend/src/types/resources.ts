@@ -254,6 +254,56 @@ export type ProjectExportFormat =
   | "latex"
   | "pdf";
 
+/** Reviewable project-scoped journal/export profile inferred from official requirements. */
+export interface JournalStyleProfileResource {
+  profile_id: string;
+  journal_name: string;
+  citation_style: "numeric" | "author_year";
+  latin_font: string;
+  cjk_font: string;
+  heading_cjk_font: string;
+  body_pt: number;
+  title_pt: number;
+  margins_cm: {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+  };
+  figure_caption_position: string;
+  table_caption_position: string;
+}
+
+export interface JournalStyleSpecDraftResponse {
+  project_id: string;
+  draft_id: string;
+  status: "draft" | "confirmed" | string;
+  profile: JournalStyleProfileResource;
+  warnings: string[];
+  requires_confirmation: boolean;
+  source: {
+    kind: "text" | "upload" | string;
+    filename: string;
+    bytes: number;
+  };
+}
+
+export interface JournalStyleSpecConfirmResponse {
+  project_id: string;
+  draft_id: string;
+  status: "confirmed" | string;
+  profile: JournalStyleProfileResource;
+  confirmed_at: string;
+}
+
+/** Deterministic academic writing lint request. */
+export type AcademicWritingLintRequest =
+  components["schemas"]["AcademicWritingLintRequest"];
+
+/** Deterministic academic writing lint response. */
+export type AcademicWritingLintResponse =
+  components["schemas"]["AcademicWritingLintResponse"];
+
 export interface ProjectExportSourceAnchor {
   material_id: string;
   chunk_id?: string | null;
@@ -321,6 +371,8 @@ export interface ProjectExportResponseEnvelope {
   bibliography_entries?: ProjectExportBibliographyEntry[];
   review_findings?: components["schemas"]["ProjectExportReviewFindingPayload"][];
   figure_assets?: ProjectExportFigureAsset[];
+  writing_audit?: AcademicWritingLintResponse | null;
+  rendered_writing_audit?: AcademicWritingLintResponse | null;
 }
 
 /** Reviewer submission request. */

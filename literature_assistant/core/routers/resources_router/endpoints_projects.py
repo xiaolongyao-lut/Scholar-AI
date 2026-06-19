@@ -12,6 +12,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 import os
+import threading
 
 from fastapi import HTTPException, Query
 
@@ -26,6 +27,7 @@ from models import (
     SectionPayload,
     CreateProjectRequest,
     CreateSectionRequest,
+    SourceFolderRefPayload,
 )
 from prompts.reasoning_bias_optimizer import (
     build_reasoning_bias_optimizer_prompt,
@@ -35,6 +37,21 @@ from prompts.reasoning_bias_optimizer import (
 )
 
 import routers.resources_router as _rr
+from routers.resources_router.path_guard import (
+    assert_bound_source_folder,
+    assert_safe_source_folder,
+    build_binding,
+    binding_ref_payload,
+)
+
+
+def _coerce_runtime_job_bool(value: Any) -> bool:
+    """Coerce common query truthy values for scan-folder job submission."""
+
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "on", "job", "async"}
 
 
 # =========================================================================
@@ -51,6 +68,16 @@ def _project_payload_from_resource(project: Any) -> ProjectPayload:
     metadata_dict = dict(metadata or {})
     d = project.to_dict()
     d["source_folder"] = str(metadata_dict.get("source_folder", ""))
+    raw_source_ref = metadata_dict.get("source_folder_ref")
+    d["source_folder_ref"] = (
+        SourceFolderRefPayload(
+            display_name=str(raw_source_ref.get("display_name", "")),
+            bound_at=str(raw_source_ref.get("bound_at", "")),
+            bound_by=str(raw_source_ref.get("bound_by", "")),
+        )
+        if isinstance(raw_source_ref, dict)
+        else None
+    )
     raw_bias = metadata_dict.get("project_reasoning_bias")
     d["project_reasoning_bias"] = (
         ProjectReasoningBiasPayload.model_validate(raw_bias)
@@ -63,6 +90,42 @@ def _project_payload_from_resource(project: Any) -> ProjectPayload:
 def _default_project_reasoning_bias() -> ProjectReasoningBiasPayload:
     """Return the API default for projects that have no saved reasoning bias."""
     return ProjectReasoningBiasPayload()
+
+
+def _source_folder_metadata(project_id: str, source_folder: str, *, bound_by: str) -> dict[str, Any]:
+    """Build guarded source-folder metadata for project writes.
+
+    Args:
+        project_id: Owning project identifier.
+        source_folder: User-selected local source directory.
+        bound_by: Auditable actor/source that confirmed the path.
+
+    Returns:
+        Metadata keys that must be persisted together.
+    """
+
+    if not project_id or not isinstance(project_id, str):
+        raise ValueError("project_id must be a non-empty string")
+    folder_raw = str(source_folder or "").strip()
+    if not folder_raw:
+        return {}
+    real = assert_safe_source_folder(Path(folder_raw))
+    binding = build_binding(project_id, real, bound_at=utc_now_iso_z())
+    return {
+        "source_folder": str(real),
+        "source_folder_ref": binding_ref_payload(binding, bound_by=bound_by),
+    }
+
+
+def _create_legacy_source_index_dir(source_folder: str) -> None:
+    """Create the opt-in legacy sidecar index directory for a guarded path."""
+
+    if not source_folder or os.environ.get("LITASSIST_USE_SOURCE_FOLDER_INDEX", "").strip() != "1":
+        return
+    try:
+        (Path(source_folder) / _rr._SCHOLAR_SUBDIR).mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        _rr.logger.warning("Could not create .scholarai dir in source_folder: %s", exc)
 
 
 def _bias_scopes_to_optimizer_scopes(
@@ -143,19 +206,28 @@ async def create_project(request: CreateProjectRequest) -> ProjectPayload:
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid content_type: {request.content_type}")
 
+    folder_raw = str(request.source_folder or "").strip()
+    if folder_raw:
+        assert_safe_source_folder(Path(folder_raw))
     project = store.create_project(
         title=request.title,
         description=request.description,
         content_type=content_type,
         user_id=request.user_id,
         tags=request.tags,
-        metadata={"source_folder": request.source_folder} if request.source_folder else {},
+        metadata={},
     )
-    if request.source_folder and os.environ.get("LITASSIST_USE_SOURCE_FOLDER_INDEX", "").strip() == "1":
-        try:
-            (Path(request.source_folder).expanduser().resolve() / _rr._SCHOLAR_SUBDIR).mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            _rr.logger.warning("Could not create .scholarai dir in source_folder: %s", exc)
+    if folder_raw:
+        guarded_metadata = {
+            **dict(project.metadata or {}),
+            **_source_folder_metadata(project.project_id, folder_raw, bound_by="project_create"),
+        }
+        updated_project = store.update_project(project.project_id, metadata=guarded_metadata)
+        if not updated_project:
+            store.delete_project(project.project_id)
+            raise HTTPException(status_code=500, detail="Failed to bind project source folder")
+        project = updated_project
+        _create_legacy_source_index_dir(str(project.metadata["source_folder"]))
     return _project_payload_from_resource(project)
 
 
@@ -218,15 +290,20 @@ async def update_project_source_folder(
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
     new_metadata = dict(project.metadata)
-    new_metadata["source_folder"] = source_folder.strip()
+    folder_raw = source_folder.strip()
+    if folder_raw:
+        # Binding mode: validate + persist a project-scoped source_folder_ref so
+        # scan-folder can later enforce "scan only what was bound" (plan §7).
+        new_metadata.update(_source_folder_metadata(project_id, folder_raw, bound_by="desktop_picker"))
+    else:
+        # Empty path = revert to default storage; clear both the legacy key and the ref.
+        new_metadata.pop("source_folder", None)
+        new_metadata.pop("source_folder_ref", None)
     updated = store.update_project(project_id, metadata=new_metadata)
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to update project metadata")
-    if source_folder.strip() and os.environ.get("LITASSIST_USE_SOURCE_FOLDER_INDEX", "").strip() == "1":
-        try:
-            (Path(source_folder.strip()).expanduser().resolve() / _rr._SCHOLAR_SUBDIR).mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            _rr.logger.warning("Could not create .scholarai dir: %s", exc)
+    if folder_raw:
+        _create_legacy_source_index_dir(str(new_metadata["source_folder"]))
     return _project_payload_from_resource(updated)
 
 
@@ -349,32 +426,33 @@ async def delete_project(project_id: str) -> dict[str, str]:
     return {"status": "deleted", "project_id": project_id}
 
 
-@_rr.router.post("/project/{project_id}/scan-folder")
-async def scan_project_folder(
+def _run_scan_folder_payload(
     project_id: str,
-    scan_mode: str = Query(
-        "fast",
-        description="扫描模式：legacy（串行兼容）/ fast（元数据预扫 + 分批并发解析）",
-    ),
-    batch_size: int = Query(
-        24,
-        ge=1,
-        le=256,
-        description="fast 模式下每批处理文件数",
-    ),
-    max_workers: int = Query(
-        8,
-        ge=1,
-        le=64,
-        description="fast 模式下并发 worker 数（建议 4-16）",
-    ),
+    *,
+    scan_mode: str,
+    batch_size: int,
+    max_workers: int,
+    runtime_job_id: str | None = None,
 ) -> dict[str, Any]:
-    """Scan the project's source_folder and ingest all literature files.
+    """Run the guarded source-folder scan and return the stable manifest.
 
-    Reads all supported files (.pdf, .docx, .doc, .txt, .md) from the project's
-    source_folder and indexes them into the knowledge base.  Already-indexed
-    files (same filename) are skipped.  Returns a summary of what was processed.
+    Args:
+        project_id: Project whose bound ``source_folder`` is scanned.
+        scan_mode: ``legacy`` or ``fast``.
+        batch_size: Positive batch size for fast scan mode.
+        max_workers: Positive worker count for fast scan mode.
+        runtime_job_id: Optional owning runtime job id for audit metadata.
+
+    Returns:
+        Scan manifest with indexed/skipped/failed counts and per-file results.
     """
+
+    if not str(project_id or "").strip():
+        raise ValueError("project_id must be a non-empty string")
+    if not isinstance(batch_size, int) or batch_size < 1:
+        raise ValueError("batch_size must be a positive integer")
+    if not isinstance(max_workers, int) or max_workers < 1:
+        raise ValueError("max_workers must be a positive integer")
     store = _rr._ensure_upload_project(project_id)
     project_obj = _rr.get_writing_resource_store().get_project(project_id)
     if not project_obj:
@@ -385,12 +463,10 @@ async def scan_project_folder(
             status_code=400,
             detail="该项目没有设置文献文件夹（source_folder）。请先在项目设置中指定文件夹路径。",
         )
-    folder_path = Path(source_folder).expanduser().resolve()
-    if not folder_path.is_dir():
-        raise HTTPException(
-            status_code=400,
-            detail=f"文件夹不存在或无法访问：{folder_path}",
-        )
+    # Check mode: re-validate safety (reparse/sensitive) and enforce that the
+    # folder matches the project's bound source_folder_ref (plan §7).
+    folder_path = assert_safe_source_folder(Path(source_folder))
+    assert_bound_source_folder(folder_path, project_obj.metadata.get("source_folder_ref"))
 
     normalized_mode = str(scan_mode or "").strip().lower()
     if normalized_mode not in _rr._SCAN_MODES:
@@ -472,7 +548,175 @@ async def scan_project_folder(
             "ingest": int(ingest_ms),
         },
         "results": results,
+        **({"runtime_job_id": runtime_job_id} if runtime_job_id else {}),
     }
+
+
+async def _start_scan_folder_runtime_job(
+    project_id: str,
+    *,
+    scan_mode: str,
+    batch_size: int,
+    max_workers: int,
+) -> dict[str, Any]:
+    """Create and start a runtime-visible resource-ingest job for scan-folder."""
+
+    from harness_protocols import JobKind, SessionMode
+    from writing_runtime import get_writing_runtime
+
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        raise ValueError("project_id must be a non-empty string")
+    normalized_mode = str(scan_mode or "").strip().lower()
+    if normalized_mode not in _rr._SCAN_MODES:
+        raise HTTPException(status_code=400, detail=f"scan_mode 不支持: {scan_mode}，可选值: legacy, fast")
+
+    runtime = get_writing_runtime()
+    session = runtime.create_session(
+        mode=SessionMode.PROMPT,
+        tags=["resource_ingest", "scan_folder"],
+        metadata={
+            "source": "resource_ingest",
+            "title": "文献文件夹入库",
+            "project_id": normalized_project_id,
+        },
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.RESOURCE_INGEST,
+        input_text=f"扫描项目文献文件夹: {normalized_project_id}",
+        tags=["resource_ingest", "scan_folder"],
+        metadata={
+            "source": "resource_ingest",
+            "project_id": normalized_project_id,
+            "scan_mode": normalized_mode,
+            "batch_size": batch_size,
+            "max_workers": max_workers,
+            "progress_stage": "queued",
+            "progress_message": "文献文件夹扫描已排队",
+            "progress": 1,
+        },
+    )
+    runtime.update_job_metadata(
+        job.job_id,
+        {
+            "status_url": f"/runtime/job/{job.job_id}/snapshot",
+            "artifacts_url": f"/runtime/job/{job.job_id}/artifacts",
+        },
+    )
+
+    async def _executor(current_job: Any) -> dict[str, Any]:
+        target_job = current_job or job
+        runtime.emit_job_progress(target_job.job_id, stage="prepare", message="正在校验项目文献文件夹", progress=8)
+
+        def _scan() -> dict[str, Any]:
+            return _run_scan_folder_payload(
+                normalized_project_id,
+                scan_mode=normalized_mode,
+                batch_size=batch_size,
+                max_workers=max_workers,
+                runtime_job_id=target_job.job_id,
+            )
+
+        runtime.emit_job_progress(target_job.job_id, stage="ingest", message="正在扫描并写入项目库", progress=35)
+        payload = await asyncio.to_thread(_scan)
+        runtime.emit_job_progress(
+            target_job.job_id,
+            stage="finalize",
+            message="正在保存文献入库结果",
+            progress=94,
+            data={
+                "indexed": int(payload.get("indexed") or 0),
+                "failed": int(payload.get("failed") or 0),
+                "total_chunks": int(payload.get("total_chunks") or 0),
+            },
+        )
+        return {
+            "status": "completed",
+            "kind": JobKind.RESOURCE_INGEST.value,
+            **payload,
+        }
+
+    async def _run_job_thread_async() -> None:
+        await runtime.start_job(job.job_id, executor=_executor)
+        task = getattr(runtime, "_job_tasks", {}).get(job.job_id)
+        if task is not None:
+            await task
+
+    def _run_job_thread() -> None:
+        try:
+            asyncio.run(_run_job_thread_async())
+        except BaseException as exc:  # noqa: BLE001 - background thread must fail the runtime job, not vanish.
+            async def _mark_failed() -> None:
+                current = runtime.get_job(job.job_id)
+                if current is not None and str(getattr(current.status, "value", current.status)) != "cancelled":
+                    await runtime.fail_job(job.job_id, str(exc))
+
+            asyncio.run(_mark_failed())
+
+    thread = threading.Thread(
+        target=_run_job_thread,
+        name=f"resource-ingest-{job.job_id}",
+        daemon=True,
+    )
+    thread.start()
+    current_job = runtime.get_job(job.job_id) or job
+    return {
+        "project_id": normalized_project_id,
+        "runtime_job_ref": {
+            "session_id": session.session_id,
+            "job_id": current_job.job_id,
+            "kind": JobKind.RESOURCE_INGEST.value,
+            "status": current_job.status.value,
+        },
+        "status_url": f"/runtime/job/{current_job.job_id}/snapshot",
+        "job_url": f"/runtime/job/{current_job.job_id}",
+        "artifacts_url": f"/runtime/job/{current_job.job_id}/artifacts",
+    }
+
+
+@_rr.router.post("/project/{project_id}/scan-folder")
+async def scan_project_folder(
+    project_id: str,
+    scan_mode: str = Query(
+        "fast",
+        description="扫描模式：legacy（串行兼容）/ fast（元数据预扫 + 分批并发解析）",
+    ),
+    batch_size: int = Query(
+        24,
+        ge=1,
+        le=256,
+        description="fast 模式下每批处理文件数",
+    ),
+    max_workers: int = Query(
+        8,
+        ge=1,
+        le=64,
+        description="fast 模式下并发 worker 数（建议 4-16）",
+    ),
+    async_job: bool = Query(False, description="为 MCP/任务中心提交 runtime job，而不是同步等待扫描完成"),
+) -> dict[str, Any]:
+    """Scan the project's source_folder and ingest all literature files.
+
+    Reads all supported files (.pdf, .docx, .doc, .txt, .md) from the project's
+    source_folder and indexes them into the knowledge base. Already-indexed
+    files are skipped. Set ``async_job=true`` to submit the scan as a runtime
+    job that can be polled through ``/runtime/job/{id}/snapshot``.
+    """
+
+    if _coerce_runtime_job_bool(async_job):
+        return await _start_scan_folder_runtime_job(
+            project_id,
+            scan_mode=scan_mode,
+            batch_size=batch_size,
+            max_workers=max_workers,
+        )
+    return _run_scan_folder_payload(
+        project_id,
+        scan_mode=scan_mode,
+        batch_size=batch_size,
+        max_workers=max_workers,
+    )
 
 
 # =========================================================================

@@ -174,7 +174,7 @@ async def create_draft(request: CreateDraftRequest) -> DraftPayload:
         content=request.content,
         section_id=request.section_id,
         edited_by=request.edited_by,
-        citation_anchors=[anchor.model_dump() for anchor in request.citation_anchors],
+        citation_anchors=[anchor.model_dump(by_alias=True) for anchor in request.citation_anchors],
     )
     return DraftPayload(**draft.to_dict())
 
@@ -208,7 +208,7 @@ async def save_draft(draft_id: str, request: SaveDraftRequest) -> DraftPayload:
         draft_id,
         request.content,
         edited_by=request.edited_by,
-        citation_anchors=[anchor.model_dump() for anchor in request.citation_anchors],
+        citation_anchors=[anchor.model_dump(by_alias=True) for anchor in request.citation_anchors],
         create_revision=True,
     )
     if not draft:

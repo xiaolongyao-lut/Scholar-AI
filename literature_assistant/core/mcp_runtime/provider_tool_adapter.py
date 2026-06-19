@@ -15,6 +15,8 @@ support tool-use natively (no schema emitted; the runner short-circuits).
 
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,10 +25,69 @@ from models.mcp import McpServerConfig, McpToolDescriptor
 
 NAMESPACE_PREFIX = "mcp__"
 NAMESPACE_SEP = "__"
+PROVIDER_TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_PROVIDER_TOOL_NAME_MAX_CHARS = 64
+_PROVIDER_TOOL_ALIAS_HASH_CHARS = 8
 
 
 def namespace_tool_name(server_slug: str, tool_name: str) -> str:
     return f"{NAMESPACE_PREFIX}{server_slug}{NAMESPACE_SEP}{tool_name}"
+
+
+def provider_tool_name(server_slug: str, tool_name: str) -> str:
+    """Return an OpenAI-compatible alias for a namespaced MCP tool.
+
+    Args:
+      server_slug: Valid MCP server slug used for namespacing.
+      tool_name: Server-local MCP tool name. MCP names may contain dots or
+        slashes, but OpenAI-compatible providers reject those in function names.
+
+    Returns:
+      A stable provider-facing name matching ``^[A-Za-z0-9_-]{1,64}$``.
+      The original MCP name must be recovered through the per-request alias map.
+    """
+
+    internal_name = namespace_tool_name(server_slug, tool_name)
+    if PROVIDER_TOOL_NAME_RE.match(internal_name):
+        return internal_name
+
+    sanitized = re.sub(r"[^A-Za-z0-9_-]", "_", internal_name).strip("_")
+    if not sanitized:
+        sanitized = "mcp_tool"
+    digest = hashlib.sha256(internal_name.encode("utf-8")).hexdigest()[:_PROVIDER_TOOL_ALIAS_HASH_CHARS]
+    suffix = f"_{digest}"
+    max_prefix_chars = _PROVIDER_TOOL_NAME_MAX_CHARS - len(suffix)
+    alias = f"{sanitized[:max_prefix_chars].rstrip('_-') or 'mcp_tool'}{suffix}"
+    if not PROVIDER_TOOL_NAME_RE.match(alias):  # pragma: no cover - defensive invariant.
+        raise ValueError(f"provider tool alias is invalid: {alias!r}")
+    return alias
+
+
+def build_provider_tool_name_map(
+    catalog: list[tuple[McpServerConfig, list[McpToolDescriptor]]],
+) -> dict[str, str]:
+    """Map provider-facing tool aliases back to internal namespaced MCP names.
+
+    Args:
+      catalog: Ordered runtime catalog used to build provider tool schemas.
+
+    Returns:
+      Mapping of provider tool name to ``mcp__{server_slug}__{tool_name}``.
+
+    Raises:
+      ValueError: If two internal tool names collapse to the same provider alias.
+    """
+
+    aliases: dict[str, str] = {}
+    for cfg, tools in catalog:
+        for tool in tools:
+            internal_name = namespace_tool_name(cfg.server_slug, tool.name)
+            alias = provider_tool_name(cfg.server_slug, tool.name)
+            previous = aliases.get(alias)
+            if previous is not None and previous != internal_name:
+                raise ValueError(f"provider tool alias collision: {alias!r}")
+            aliases[alias] = internal_name
+    return aliases
 
 
 @dataclass(frozen=True)
@@ -77,7 +138,7 @@ def _provider_key(provider: str) -> str:
 def _claude_schema(slug: str, tool: McpToolDescriptor) -> dict[str, Any]:
     schema = tool.input_schema or {"type": "object", "properties": {}}
     return {
-        "name": namespace_tool_name(slug, tool.name),
+        "name": provider_tool_name(slug, tool.name),
         "description": tool.description or "",
         "input_schema": schema,
     }
@@ -88,7 +149,7 @@ def _openai_schema(slug: str, tool: McpToolDescriptor) -> dict[str, Any]:
     return {
         "type": "function",
         "function": {
-            "name": namespace_tool_name(slug, tool.name),
+            "name": provider_tool_name(slug, tool.name),
             "description": tool.description or "",
             "parameters": parameters,
         },
@@ -133,9 +194,12 @@ __all__ = [
     "NAMESPACE_PREFIX",
     "NAMESPACE_SEP",
     "NamespacedTool",
+    "PROVIDER_TOOL_NAME_RE",
     "ToolNamespaceError",
+    "build_provider_tool_name_map",
     "build_provider_tools",
     "build_slug_to_server_id",
     "namespace_tool_name",
     "parse_namespaced_tool",
+    "provider_tool_name",
 ]

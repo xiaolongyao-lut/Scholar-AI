@@ -208,6 +208,28 @@ def api_port_file_path() -> Path:
     return WORKSPACE_RUNTIME_STATE_ROOT.joinpath("api-port.json")
 
 
+def desktop_runtime_file_path() -> Path:
+    """Path to the JSON descriptor for the visible desktop runtime.
+
+    Why:
+        MCP hosts need to attach to the same source desktop process the user
+        can see and configure. The descriptor is process-local runtime state;
+        it points to capability material by path but never stores tokens.
+    """
+    return WORKSPACE_RUNTIME_STATE_ROOT.joinpath("desktop-runtime.json")
+
+
+def desktop_runtime_closed_file_path() -> Path:
+    """Path to the marker written after the user closes the desktop runtime.
+
+    Why:
+        MCP hosts may restart stdio servers automatically. This marker records
+        a deliberate user close so the wrapper does not immediately reopen the
+        visible app without user intent.
+    """
+    return WORKSPACE_RUNTIME_STATE_ROOT.joinpath("desktop-runtime-closed.json")
+
+
 def ensure_project_directories() -> None:
     """Create stable workspace roots required by user-facing entry points."""
 

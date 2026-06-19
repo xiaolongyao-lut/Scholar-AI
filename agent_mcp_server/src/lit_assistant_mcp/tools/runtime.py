@@ -3,6 +3,7 @@
 import time
 from pathlib import Path
 from typing import Any, Protocol
+from uuid import uuid4
 
 from ..audit import AuditLog
 from ..backend_client import BackendClient
@@ -25,6 +26,14 @@ class BackendGetClient(Protocol):
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return a structured JSON response from a POST request."""
+
+    def post_binary(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return a structured binary response from a POST request."""
 
 
 class RuntimeTools:
@@ -56,6 +65,11 @@ class RuntimeTools:
         started = time.perf_counter()
         backend_result = self.backend.get("/resources/projects")
         result = self._wrap_backend_result(backend_result)
+        if result.get("is_error") is not True:
+            result = {
+                **result,
+                "data": self._project_list_for_mcp(result.get("data")),
+            }
         return self._finish("literature.list_projects", {}, result, started, "/resources/projects")
 
     def list_materials(self, project_id: str) -> dict[str, Any]:
@@ -137,6 +151,366 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.search_literature", args, result, started, endpoint)
 
+    def search_refs(
+        self,
+        project_id: str,
+        query: str,
+        top_k: int = 10,
+    ) -> dict[str, Any]:
+        """Search existing project chunks and return MCP-safe refs only.
+
+        Args:
+            project_id: Literature Assistant project id.
+            query: Search query.
+            top_k: Maximum refs, 1 through 50.
+        """
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        query = self._require_non_empty(query, "query")
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=50)
+        args = {"project_id": project_id, "query": query[:200], "top_k": top_k}
+        endpoint = "/resources/chunks/search-refs"
+        backend_result = self.backend.get(
+            endpoint,
+            params={
+                "project_id": project_id,
+                "query": query,
+                "top_k": top_k,
+            },
+        )
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.search_refs", args, result, started, endpoint)
+
+    def evidence_pack_build(
+        self,
+        project_id: str,
+        query: str,
+        section_id: str | None = None,
+        top_k: int = 10,
+    ) -> dict[str, Any]:
+        """Build a query-scoped evidence pack from backend-managed refs.
+
+        Args:
+            project_id: Literature Assistant project id.
+            query: Research question or section-local retrieval query.
+            section_id: Optional outline/draft section id for traceability.
+            top_k: Maximum evidence refs, 1 through 50.
+        """
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        query = self._require_non_empty(query, "query")
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=50)
+        payload: dict[str, Any] = {
+            "project_id": project_id,
+            "query": query,
+            "top_k": top_k,
+        }
+        if isinstance(section_id, str) and section_id.strip():
+            payload["section_id"] = self._bounded_text(section_id, "section_id", max_chars=128)
+        args = {
+            "project_id": project_id,
+            "query": query[:200],
+            "section_id": payload.get("section_id"),
+            "top_k": top_k,
+        }
+        endpoint = "/api/evidence-pack/build"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.evidence_pack_build", args, result, started, endpoint)
+
+    def project_scan_folder(
+        self,
+        project_id: str,
+        scan_mode: str = "fast",
+        batch_size: int = 24,
+        max_workers: int = 8,
+    ) -> dict[str, Any]:
+        """Submit project source-folder ingestion as a runtime job.
+
+        Args:
+            project_id: Literature Assistant project id with an existing
+                backend-bound ``source_folder``.
+            scan_mode: Either ``legacy`` or ``fast``.
+            batch_size: Fast-mode batch size, 1 through 256.
+            max_workers: Fast-mode worker count, 1 through 64.
+        """
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        scan_mode = self._scan_mode(scan_mode)
+        batch_size = self._bounded_int(batch_size, "batch_size", minimum=1, maximum=256)
+        max_workers = self._bounded_int(max_workers, "max_workers", minimum=1, maximum=64)
+        args = {
+            "project_id": project_id,
+            "scan_mode": scan_mode,
+            "batch_size": batch_size,
+            "max_workers": max_workers,
+            "async_job": True,
+        }
+        endpoint = f"/resources/project/{project_id}/scan-folder"
+        backend_result = self.backend.post_json(
+            endpoint,
+            payload={},
+            params={
+                "async_job": True,
+                "scan_mode": scan_mode,
+                "batch_size": batch_size,
+                "max_workers": max_workers,
+            },
+        )
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.project_scan_folder", args, result, started, endpoint)
+
+    def figures_candidates(
+        self,
+        project_id: str,
+        limit: int = 20,
+        pixel_only: bool = False,
+        render_pdf_fallback: bool = True,
+    ) -> dict[str, Any]:
+        """List backend-derived figure/table candidates for a project.
+
+        Args:
+            project_id: Literature Assistant project id.
+            limit: Maximum candidate count, 1 through 100 for MCP use.
+            pixel_only: Whether candidates must already have pixel assets.
+            render_pdf_fallback: Whether backend may render PDF crops.
+        """
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        limit = self._bounded_int(limit, "limit", minimum=1, maximum=100)
+        args = {
+            "project_id": project_id,
+            "limit": limit,
+            "pixel_only": bool(pixel_only),
+            "render_pdf_fallback": bool(render_pdf_fallback),
+        }
+        endpoint = "/api/writing/figures/candidates"
+        backend_result = self.backend.get(endpoint, params=args)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.figures_candidates", args, result, started, endpoint)
+
+    def figures_generate(
+        self,
+        project_id: str,
+        candidate_ids: list[str] | None = None,
+        max_items: int = 1,
+        kind: str | None = None,
+        overwrite_existing: bool = False,
+    ) -> dict[str, Any]:
+        """Materialize existing pixel-backed figure/table candidates.
+
+        Args:
+            project_id: Literature Assistant project id.
+            candidate_ids: Optional candidate ids to materialize.
+            max_items: Maximum assets to create, 1 through 20.
+            kind: Optional ``figure`` or ``table`` filter.
+            overwrite_existing: Whether existing asset paths may be duplicated.
+        """
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        ids = self._bounded_text_list(candidate_ids, "candidate_ids", maximum=50, max_chars=160)
+        max_items = self._bounded_int(max_items, "max_items", minimum=1, maximum=20)
+        normalized_kind = self._figure_kind(kind)
+        payload: dict[str, Any] = {
+            "project_id": project_id,
+            "candidate_ids": ids,
+            "max_items": max_items,
+            "overwrite_existing": bool(overwrite_existing),
+        }
+        if normalized_kind is not None:
+            payload["kind"] = normalized_kind
+        args = {
+            "project_id": project_id,
+            "candidate_id_count": len(ids),
+            "max_items": max_items,
+            "kind": normalized_kind,
+            "overwrite_existing": bool(overwrite_existing),
+        }
+        endpoint = "/api/writing/figures/generate"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.figures_generate", args, result, started, endpoint)
+
+    def citations_sources(self, project_id: str) -> dict[str, Any]:
+        """List backend-managed citation source metadata for a project.
+
+        Args:
+            project_id: Literature Assistant project id.
+        """
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        args = {"project_id": project_id}
+        endpoint = "/api/writing/citations/sources"
+        backend_result = self.backend.get(endpoint, params=args)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.citations_sources", args, result, started, endpoint)
+
+    def citations_detect_overlap(
+        self,
+        project_id: str,
+        anchors: list[dict[str, Any]],
+        threshold: float = 0.7,
+        draft_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Detect citation anchors that reuse the same or similar evidence.
+
+        Args:
+            project_id: Literature Assistant project id.
+            anchors: Citation anchor objects with ``anchor_id`` and optional
+                ``material_id``, ``chunk_id``, and bounded ``text``.
+            threshold: Jaccard/exact-match threshold, 0.0 through 1.0.
+            draft_id: Optional draft id for caller-side traceability.
+        """
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        threshold = self._bounded_float(threshold, "threshold", minimum=0.0, maximum=1.0)
+        normalized_anchors = self._citation_overlap_anchors(anchors)
+        payload: dict[str, Any] = {
+            "project_id": project_id,
+            "threshold": threshold,
+            "anchors": normalized_anchors,
+        }
+        if isinstance(draft_id, str) and draft_id.strip():
+            payload["draft_id"] = self._bounded_text(draft_id, "draft_id", max_chars=128)
+        args = {
+            "project_id": project_id,
+            "draft_id": payload.get("draft_id"),
+            "threshold": threshold,
+            "anchor_count": len(normalized_anchors),
+        }
+        endpoint = "/api/citations/detect_overlap"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.citations_detect_overlap", args, result, started, endpoint)
+
+    def academic_writing_lint(
+        self,
+        text: str | None = None,
+        html: str | None = None,
+        content_type: str = "manuscript",
+        language: str = "auto",
+        required_sections: list[str] | None = None,
+        require_evidence_refs: bool = True,
+        require_figure_table_formula_refs: bool = False,
+        style_profile: str | None = None,
+        audit_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Check scholarly writing quality before export or submission.
+
+        Args:
+            text: Plain Markdown/text manuscript content.
+            html: Optional HTML manuscript content.
+            content_type: ``review``, ``introduction``, ``manuscript``, or
+                ``section``.
+            language: ``zh``, ``en``, or ``auto``.
+            required_sections: Optional required scholarly section labels.
+            require_evidence_refs: Whether citations/evidence anchors are
+                required.
+            require_figure_table_formula_refs: Whether figure, table, and
+                equation references must all appear.
+            style_profile: Optional journal/export style profile id.
+            audit_context: Optional caller provenance. External MCP calls
+                default to an agent-mediated audit context when omitted.
+        """
+        started = time.perf_counter()
+        normalized_text = None
+        normalized_html = None
+        if isinstance(text, str) and text.strip():
+            normalized_text = self._bounded_text(text, "text", max_chars=300000)
+        if isinstance(html, str) and html.strip():
+            normalized_html = self._bounded_text(html, "html", max_chars=300000)
+        if normalized_text is None and normalized_html is None:
+            raise ValueError("text or html must be non-empty")
+        normalized_content_type = self._academic_content_type(content_type)
+        normalized_language = self._academic_language(language)
+        sections = self._bounded_text_list(
+            required_sections,
+            "required_sections",
+            maximum=32,
+            max_chars=120,
+        )
+        payload: dict[str, Any] = {
+            "text": normalized_text,
+            "html": normalized_html,
+            "content_type": normalized_content_type,
+            "language": normalized_language,
+            "required_sections": sections,
+            "require_evidence_refs": bool(require_evidence_refs),
+            "require_figure_table_formula_refs": bool(require_figure_table_formula_refs),
+            "style_profile": self._optional_style_profile(style_profile),
+            "audit_context": self._academic_audit_context(audit_context),
+        }
+        args = {
+            "content_type": normalized_content_type,
+            "language": normalized_language,
+            "required_sections": sections,
+            "require_evidence_refs": bool(require_evidence_refs),
+            "require_figure_table_formula_refs": bool(require_figure_table_formula_refs),
+            "style_profile": payload["style_profile"],
+            "audit_surface": payload["audit_context"]["invocation_surface"],
+            "text_chars": len(normalized_text or ""),
+            "html_chars": len(normalized_html or ""),
+        }
+        endpoint = "/api/linter/academic-writing"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.academic_writing_lint", args, result, started, endpoint)
+
+    def outline_generate(
+        self,
+        project_id: str,
+        topic: str,
+        content_type: str = "academic",
+        target_length: int | None = None,
+        focus_areas: list[str] | None = None,
+        existing_materials: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Generate an evidence-grounded project outline.
+
+        Args:
+            project_id: Literature Assistant project id.
+            topic: Academic writing topic.
+            content_type: Backend writing type, normally ``academic``.
+            target_length: Optional target word count, 100 through 200000.
+            focus_areas: Optional bounded focus terms.
+            existing_materials: Optional material ids that must belong to the project.
+        """
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        topic = self._bounded_text(topic, "topic", max_chars=300)
+        normalized_content_type = self._bounded_text(content_type, "content_type", max_chars=40)
+        payload: dict[str, Any] = {
+            "project_id": project_id,
+            "topic": topic,
+            "content_type": normalized_content_type,
+            "focus_areas": self._bounded_text_list(focus_areas, "focus_areas", maximum=12, max_chars=120),
+            "existing_materials": self._bounded_text_list(
+                existing_materials,
+                "existing_materials",
+                maximum=50,
+                max_chars=160,
+            ),
+        }
+        if target_length is not None:
+            payload["target_length"] = self._bounded_int(
+                target_length,
+                "target_length",
+                minimum=100,
+                maximum=200000,
+            )
+        args = {
+            "project_id": project_id,
+            "topic_preview": topic[:200],
+            "content_type": normalized_content_type,
+            "target_length": payload.get("target_length"),
+            "focus_area_count": len(payload["focus_areas"]),
+            "material_count": len(payload["existing_materials"]),
+        }
+        endpoint = "/api/writing/outline/generate"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.outline_generate", args, result, started, endpoint)
+
     def ingest_then_search(
         self,
         project_id: str,
@@ -194,6 +568,107 @@ class RuntimeTools:
         backend_result = self.backend.get_text(endpoint)
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.export_annotations_markdown", args, result, started, endpoint)
+
+    def export_docx(
+        self,
+        html: str,
+        title: str,
+        style_profile: str = "gb_t_7714_review",
+        verify_with_word: bool = False,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Export scholarly HTML as a DOCX artifact under MCP workflow storage.
+
+        Args:
+            html: Bounded TipTap-compatible HTML manuscript body.
+            title: User-facing document title used for the download filename.
+            style_profile: Journal/profile identifier understood by the backend.
+            verify_with_word: Whether to request optional local Word verification.
+            project_id: Optional project id required for project-scoped profiles.
+        """
+        started = time.perf_counter()
+        html = self._bounded_text(html, "html", max_chars=500000)
+        title = self._bounded_text(title, "title", max_chars=200)
+        style_profile = self._style_profile(style_profile)
+        payload = {
+            "html": html,
+            "title": title,
+            "style_profile": style_profile,
+            "verify_with_word": bool(verify_with_word),
+        }
+        if isinstance(project_id, str) and project_id.strip():
+            payload["project_id"] = self._bounded_text(project_id, "project_id", max_chars=128)
+        args = {
+            "title": title[:120],
+            "html_chars": len(html),
+            "style_profile": style_profile,
+            "verify_with_word": bool(verify_with_word),
+            "project_id": payload.get("project_id"),
+        }
+        endpoint = "/api/export/docx"
+        backend_result = self.backend.post_binary(endpoint, payload=payload)
+        result = self._binary_docx_result(
+            backend_result,
+            title=title,
+            style_profile=style_profile,
+            started=started,
+        )
+        return self._finish("literature.export_docx", args, result, started, endpoint)
+
+    def journal_style_spec_draft(
+        self,
+        project_id: str,
+        journal_name: str,
+        spec_text: str,
+    ) -> dict[str, Any]:
+        """Create a reviewable project-scoped journal style profile draft."""
+
+        started = time.perf_counter()
+        project_id = self._bounded_text(project_id, "project_id", max_chars=128)
+        journal_name = self._bounded_text(journal_name, "journal_name", max_chars=160)
+        spec_text = self._bounded_text(spec_text, "spec_text", max_chars=120000)
+        payload = {
+            "project_id": project_id,
+            "journal_name": journal_name,
+            "spec_text": spec_text,
+        }
+        args = {
+            "project_id": project_id,
+            "journal_name": journal_name,
+            "spec_chars": len(spec_text),
+        }
+        endpoint = "/api/export/journal-style-specs/draft"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.journal_style_spec_draft", args, result, started, endpoint)
+
+    def journal_style_spec_confirm(
+        self,
+        project_id: str,
+        draft_id: str,
+        confirmed_by: str = "mcp",
+    ) -> dict[str, Any]:
+        """Confirm a reviewable journal style profile draft."""
+
+        started = time.perf_counter()
+        project_id = self._bounded_text(project_id, "project_id", max_chars=128)
+        draft_id = self._bounded_text(draft_id, "draft_id", max_chars=128)
+        confirmed_by = self._bounded_text(confirmed_by, "confirmed_by", max_chars=120, allow_empty=True) or "mcp"
+        payload = {
+            "project_id": project_id,
+            "draft_id": draft_id,
+            "confirmed_by": confirmed_by,
+        }
+        endpoint = "/api/export/journal-style-specs/confirm"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish(
+            "literature.journal_style_spec_confirm",
+            {"project_id": project_id, "draft_id": draft_id, "confirmed_by": confirmed_by},
+            result,
+            started,
+            endpoint,
+        )
 
     def get_material_file_base64(self, material_id: str) -> dict[str, Any]:
         """Read a small material source file as a base64 JSON envelope.
@@ -277,6 +752,209 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.chat_ask", args, result, started, endpoint)
 
+    def agent_bridge_status(self, limit: int = 20) -> dict[str, Any]:
+        """Read the backend agent bridge status without large context payloads."""
+        started = time.perf_counter()
+        limit = self._bounded_int(limit, "limit", minimum=1, maximum=100)
+        args = {"limit": limit}
+        endpoint = "/api/agent-bridge/status"
+        backend_result = self.backend.get(endpoint, params=args)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_bridge_status", args, result, started, endpoint)
+
+    def agent_request_create(
+        self,
+        intent: str,
+        user_text: str = "",
+        project_id: str | None = None,
+        runtime_session_id: str | None = None,
+        chat_session_id: str | None = None,
+        route: str | None = None,
+        resource_refs: list[dict[str, Any]] | None = None,
+        agent_host: str = "mcp",
+        source: str = "mcp",
+        max_chars: int = 12000,
+        max_chunks: int = 12,
+        smart_read_conversation: bool = False,
+        wiki_candidate: bool = False,
+        graph_candidate: bool = False,
+        evolution_capture: bool = True,
+    ) -> dict[str, Any]:
+        """Create a frontend-visible runtime job for external agent work."""
+        started = time.perf_counter()
+        intent = self._bounded_text(intent, "intent", max_chars=120)
+        user_text = self._bounded_text(user_text, "user_text", max_chars=8000, allow_empty=True)
+        max_chars = self._bounded_int(max_chars, "max_chars", minimum=100, maximum=40000)
+        max_chunks = self._bounded_int(max_chunks, "max_chunks", minimum=1, maximum=50)
+        refs = self._resource_refs(resource_refs)
+        payload: dict[str, Any] = {
+            "source": self._bounded_text(source, "source", max_chars=80),
+            "agent_host": self._bounded_text(agent_host, "agent_host", max_chars=80),
+            "intent": intent,
+            "user_text": user_text,
+            "resource_refs": refs,
+            "context_budget": {
+                "max_chars": max_chars,
+                "max_chunks": max_chunks,
+                "include_full_text": False,
+            },
+            "output_targets": {
+                "runtime_job": True,
+                "smart_read_conversation": bool(smart_read_conversation),
+                "agent_workspace": True,
+                "wiki_candidate": bool(wiki_candidate),
+                "graph_candidate": bool(graph_candidate),
+                "evolution_capture": bool(evolution_capture),
+            },
+        }
+        for key, value in {
+            "project_id": project_id,
+            "runtime_session_id": runtime_session_id,
+            "chat_session_id": chat_session_id,
+            "route": route,
+        }.items():
+            if isinstance(value, str) and value.strip():
+                payload[key] = value.strip()
+        args = {
+            "intent": intent,
+            "user_text_preview": user_text[:200],
+            "resource_ref_count": len(refs),
+            "max_chars": max_chars,
+            "max_chunks": max_chunks,
+            "smart_read_conversation": bool(smart_read_conversation),
+            "wiki_candidate": bool(wiki_candidate),
+            "graph_candidate": bool(graph_candidate),
+            "evolution_capture": bool(evolution_capture),
+        }
+        endpoint = "/api/agent-bridge/request"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_request_create", args, result, started, endpoint)
+
+    def agent_request_list(
+        self,
+        status: str | None = None,
+        project_id: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List runtime-visible agent requests with small job payloads."""
+        started = time.perf_counter()
+        limit = self._bounded_int(limit, "limit", minimum=1, maximum=200)
+        params: dict[str, Any] = {"limit": limit}
+        for key, value in {"status": status, "project_id": project_id, "source": source}.items():
+            if isinstance(value, str) and value.strip():
+                params[key] = value.strip()
+        endpoint = "/api/agent-bridge/requests"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_request_list", params, result, started, endpoint)
+
+    def agent_request_read(self, request_id: str) -> dict[str, Any]:
+        """Read one agent request job by request id."""
+        started = time.perf_counter()
+        request_id = self._bounded_text(request_id, "request_id", max_chars=120)
+        args = {"request_id": request_id}
+        endpoint = f"/api/agent-bridge/request/{request_id}"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_request_read", args, result, started, endpoint)
+
+    def agent_resource_read(
+        self,
+        ref_id: str,
+        project_id: str | None = None,
+        max_chars: int = 6000,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """Read a bounded resource ref without returning full project context."""
+        started = time.perf_counter()
+        ref_id = self._bounded_text(ref_id, "ref_id", max_chars=240)
+        max_chars = self._bounded_int(max_chars, "max_chars", minimum=100, maximum=20000)
+        params: dict[str, Any] = {"max_chars": max_chars}
+        if isinstance(project_id, str) and project_id.strip():
+            params["project_id"] = project_id.strip()
+        if isinstance(cursor, str) and cursor.strip():
+            params["cursor"] = cursor.strip()
+        args = {
+            "ref_id": ref_id,
+            "project_id": params.get("project_id"),
+            "max_chars": max_chars,
+            "cursor": params.get("cursor"),
+        }
+        endpoint = f"/api/agent-bridge/resource/{ref_id}"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_resource_read", args, result, started, endpoint)
+
+    def agent_progress(
+        self,
+        request_id: str,
+        stage: str,
+        message: str,
+        progress: int | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Write a short progress delta to a runtime-visible agent job."""
+        started = time.perf_counter()
+        request_id = self._bounded_text(request_id, "request_id", max_chars=120)
+        stage = self._bounded_text(stage, "stage", max_chars=80)
+        message = self._bounded_text(message, "message", max_chars=500)
+        payload: dict[str, Any] = {"stage": stage, "message": message}
+        if progress is not None:
+            payload["progress"] = self._bounded_int(progress, "progress", minimum=0, maximum=100)
+        if data is not None:
+            if not isinstance(data, dict):
+                raise ValueError("data must be an object")
+            payload["data"] = data
+        args = {"request_id": request_id, "stage": stage, "message_preview": message[:120]}
+        endpoint = f"/api/agent-bridge/request/{request_id}/progress"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_progress", args, result, started, endpoint)
+
+    def agent_result(
+        self,
+        request_id: str,
+        text: str = "",
+        content: dict[str, Any] | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        wiki_refs: list[dict[str, Any]] | None = None,
+        graph_patch_refs: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Write final agent output to runtime artifacts."""
+        started = time.perf_counter()
+        request_id = self._bounded_text(request_id, "request_id", max_chars=120)
+        text = self._bounded_text(text, "text", max_chars=120000, allow_empty=True)
+        if not text and content is None:
+            raise ValueError("text or content must be provided")
+        payload: dict[str, Any] = {
+            "text": text,
+            "evidence_refs": self._dict_list(evidence_refs, "evidence_refs", maximum=200),
+            "wiki_refs": self._dict_list(wiki_refs, "wiki_refs", maximum=100),
+            "graph_patch_refs": self._dict_list(graph_patch_refs, "graph_patch_refs", maximum=100),
+            "metadata": self._optional_dict(metadata, "metadata"),
+        }
+        if content is not None:
+            payload["content"] = self._optional_dict(content, "content")
+        args = {"request_id": request_id, "text_preview": text[:200]}
+        endpoint = f"/api/agent-bridge/request/{request_id}/result"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_result", args, result, started, endpoint)
+
+    def agent_fail(self, request_id: str, error: str) -> dict[str, Any]:
+        """Fail a runtime-visible agent job with a redacted short error."""
+        started = time.perf_counter()
+        request_id = self._bounded_text(request_id, "request_id", max_chars=120)
+        error = self._bounded_text(error, "error", max_chars=2000)
+        args = {"request_id": request_id, "error_preview": error[:200]}
+        endpoint = f"/api/agent-bridge/request/{request_id}/fail"
+        backend_result = self.backend.post_json(endpoint, payload={"error": error})
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_fail", args, result, started, endpoint)
+
     def _wrap_backend_result(self, backend_result: dict[str, Any]) -> dict[str, Any]:
         if backend_result.get("is_error") is True:
             return safe_result(
@@ -286,6 +964,29 @@ class RuntimeTools:
                 message=backend_result.get("message"),
             )
         return safe_result(backend_result.get("data"))
+
+    def _project_list_for_mcp(self, data: Any) -> Any:
+        """Return project list data without local source-folder paths."""
+
+        if not isinstance(data, list):
+            return data
+        return [self._project_for_mcp(item) for item in data]
+
+    def _project_for_mcp(self, value: Any) -> Any:
+        """Project payload projection for external MCP callers."""
+
+        if not isinstance(value, dict):
+            return value
+        projected = dict(value)
+        projected.pop("source_folder", None)
+        source_ref = projected.get("source_folder_ref")
+        if isinstance(source_ref, dict):
+            projected["source_folder_ref"] = {
+                key: str(source_ref[key])
+                for key in ("display_name", "bound_at", "bound_by")
+                if source_ref.get(key) is not None
+            }
+        return projected
 
     def _finish(
         self,
@@ -316,16 +1017,30 @@ class RuntimeTools:
         return cleaned
 
     def _bounded_int(self, value: int, name: str, minimum: int, maximum: int) -> int:
-        if not isinstance(value, int):
+        if not isinstance(value, int) or isinstance(value, bool):
             raise ValueError(f"{name} must be an integer")
         if value < minimum or value > maximum:
             raise ValueError(f"{name} must be between {minimum} and {maximum}")
         return value
 
+    def _bounded_float(self, value: float, name: str, minimum: float, maximum: float) -> float:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError(f"{name} must be a number")
+        numeric = float(value)
+        if numeric < minimum or numeric > maximum:
+            raise ValueError(f"{name} must be between {minimum} and {maximum}")
+        return numeric
+
     def _ingest_mode(self, value: str) -> str:
         cleaned = self._require_non_empty(value, "ingest_mode").lower()
         if cleaned not in {"query", "full"}:
             raise ValueError("ingest_mode must be query or full")
+        return cleaned
+
+    def _scan_mode(self, value: str) -> str:
+        cleaned = self._require_non_empty(value, "scan_mode").lower()
+        if cleaned not in {"legacy", "fast"}:
+            raise ValueError("scan_mode must be legacy or fast")
         return cleaned
 
     def _cost_profile(self, value: str) -> str:
@@ -334,10 +1049,347 @@ class RuntimeTools:
             raise ValueError("ai_cost_profile must be balanced, aggressive, or quality")
         return cleaned
 
+    def _figure_kind(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = self._require_non_empty(value, "kind").lower()
+        if cleaned not in {"figure", "table"}:
+            raise ValueError("kind must be figure or table")
+        return cleaned
+
+    def _academic_content_type(self, value: str) -> str:
+        cleaned = self._require_non_empty(value, "content_type").lower()
+        if cleaned not in {"review", "introduction", "manuscript", "section"}:
+            raise ValueError("content_type must be review, introduction, manuscript, or section")
+        return cleaned
+
+    def _academic_language(self, value: str) -> str:
+        cleaned = self._require_non_empty(value, "language").lower()
+        if cleaned not in {"zh", "en", "auto"}:
+            raise ValueError("language must be zh, en, or auto")
+        return cleaned
+
+    def _optional_style_profile(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = str(value).strip().lower().replace("-", "_")
+        if not cleaned:
+            return None
+        if len(cleaned) > 80 or not all(char.isalnum() or char == "_" for char in cleaned):
+            raise ValueError("style_profile must be an identifier-like string up to 80 characters")
+        return cleaned
+
+    def _academic_audit_context(self, value: dict[str, Any] | None) -> dict[str, Any]:
+        if value is not None and not isinstance(value, dict):
+            raise ValueError("audit_context must be an object")
+        context = dict(value or {})
+        surface = str(context.get("invocation_surface") or "external_mcp").strip().lower()
+        if surface not in {"direct_api", "external_mcp", "api_chat_local_tools", "unknown"}:
+            raise ValueError("audit_context.invocation_surface is not supported")
+        context["invocation_surface"] = surface
+        context.setdefault("agent_host", "external-mcp")
+        context.setdefault("source", "mcp")
+        context["tool_chain"] = self._bounded_text_list(
+            context.get("tool_chain") if isinstance(context.get("tool_chain"), list) else ["academic_writing_lint"],
+            "audit_context.tool_chain",
+            maximum=32,
+            max_chars=120,
+        )
+        context["used_mcp_tools"] = self._bounded_text_list(
+            context.get("used_mcp_tools")
+            if isinstance(context.get("used_mcp_tools"), list)
+            else ["literature.academic_writing_lint"],
+            "audit_context.used_mcp_tools",
+            maximum=64,
+            max_chars=120,
+        )
+        for key, maximum in {"agent_host": 80, "source": 80, "project_id": 128}.items():
+            value_for_key = context.get(key)
+            if value_for_key is None:
+                continue
+            context[key] = self._bounded_text(str(value_for_key), f"audit_context.{key}", max_chars=maximum, allow_empty=True)
+        if isinstance(context.get("retrieval_diagnostics"), dict):
+            context["retrieval_diagnostics"] = self._retrieval_diagnostics(
+                context["retrieval_diagnostics"]
+            )
+        else:
+            context.pop("retrieval_diagnostics", None)
+        if isinstance(context.get("reasoning_trace"), list):
+            context["reasoning_trace"] = self._bounded_text_list(
+                context["reasoning_trace"],
+                "audit_context.reasoning_trace",
+                maximum=16,
+                max_chars=180,
+            )
+        else:
+            context.pop("reasoning_trace", None)
+        return context
+
+    def _retrieval_diagnostics(self, value: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            raise ValueError("retrieval_diagnostics must be an object")
+        cleaned: dict[str, Any] = {}
+        for key in ("retrieval_method", "embedding_status", "rerank_status", "fallback_reason"):
+            raw = value.get(key)
+            if isinstance(raw, str) and raw.strip():
+                cleaned[key] = self._bounded_text(raw, f"retrieval_diagnostics.{key}", max_chars=240)
+        for key in ("project_weight", "wiki_weight"):
+            raw_number = value.get(key)
+            if isinstance(raw_number, (int, float)) and not isinstance(raw_number, bool):
+                cleaned[key] = max(0.0, min(1.0, float(raw_number)))
+        for key in ("reasoning_trace", "notes"):
+            raw_list = value.get(key)
+            if isinstance(raw_list, list):
+                cleaned[key] = self._bounded_text_list(
+                    [str(item) for item in raw_list],
+                    f"retrieval_diagnostics.{key}",
+                    maximum=16,
+                    max_chars=180,
+                )
+        joint = value.get("joint_recall")
+        if isinstance(joint, dict):
+            cleaned_joint = self._joint_recall_diagnostics(joint)
+            if cleaned_joint:
+                cleaned["joint_recall"] = cleaned_joint
+        return cleaned
+
+    def _joint_recall_diagnostics(self, value: dict[str, Any]) -> dict[str, Any]:
+        """Return bounded joint project/wiki recall diagnostics for audit context."""
+
+        if not isinstance(value, dict):
+            raise ValueError("joint_recall must be an object")
+        cleaned: dict[str, Any] = {}
+        for key in ("enabled",):
+            raw_bool = value.get(key)
+            if isinstance(raw_bool, bool):
+                cleaned[key] = raw_bool
+        for key in ("status", "fusion_method", "reason"):
+            raw_text = value.get(key)
+            if isinstance(raw_text, str) and raw_text.strip():
+                cleaned[key] = self._bounded_text(raw_text, f"joint_recall.{key}", max_chars=160)
+        for key in (
+            "project_weight",
+            "wiki_weight",
+            "wiki_share_after_fusion",
+            "max_wiki_share_after_fusion",
+        ):
+            raw_number = value.get(key)
+            if isinstance(raw_number, (int, float)) and not isinstance(raw_number, bool):
+                cleaned[key] = max(0.0, min(1.0, float(raw_number)))
+        for key in ("project_hit_count", "wiki_hit_count"):
+            raw_count = value.get(key)
+            if isinstance(raw_count, int) and not isinstance(raw_count, bool):
+                cleaned[key] = max(0, min(100000, raw_count))
+        source_counts = value.get("source_counts")
+        if isinstance(source_counts, dict):
+            cleaned["source_counts"] = {
+                str(name)[:40]: max(0, min(100000, count))
+                for name, count in source_counts.items()
+                if isinstance(count, int) and not isinstance(count, bool)
+            }
+        top_doc_ids = value.get("top_doc_ids")
+        if isinstance(top_doc_ids, list):
+            cleaned["top_doc_ids"] = self._bounded_text_list(
+                [str(item) for item in top_doc_ids],
+                "joint_recall.top_doc_ids",
+                maximum=12,
+                max_chars=180,
+            )
+        wiki_summaries = value.get("wiki_summaries")
+        if isinstance(wiki_summaries, list):
+            cleaned_summaries: list[dict[str, Any]] = []
+            for item in wiki_summaries[:5]:
+                if not isinstance(item, dict):
+                    continue
+                summary: dict[str, Any] = {}
+                for key, limit in {
+                    "doc_id": 180,
+                    "ref_id": 180,
+                    "read_endpoint": 260,
+                    "title": 160,
+                    "summary": 300,
+                    "page_path": 220,
+                    "source": 80,
+                }.items():
+                    raw_text = item.get(key)
+                    if isinstance(raw_text, str) and raw_text.strip():
+                        summary[key] = self._bounded_text(raw_text, f"joint_recall.wiki_summaries.{key}", max_chars=limit)
+                if summary:
+                    cleaned_summaries.append(summary)
+            if cleaned_summaries:
+                cleaned["wiki_summaries"] = cleaned_summaries
+        return cleaned
+
+    def _style_profile(self, value: str) -> str:
+        cleaned = self._require_non_empty(value, "style_profile").lower().replace("-", "_")
+        allowed = {"gb_t_7714_review", "ieee", "apa", "nature", "generic_academic"}
+        if cleaned.startswith("custom_") and len(cleaned) <= 80 and all(
+            char.isalnum() or char == "_" for char in cleaned
+        ):
+            return cleaned
+        if cleaned not in allowed:
+            raise ValueError(f"style_profile must be one of {sorted(allowed)}")
+        return cleaned
+
+    def _bounded_text(self, value: str, name: str, max_chars: int, allow_empty: bool = False) -> str:
+        if not isinstance(value, str):
+            raise ValueError(f"{name} must be a string")
+        cleaned = value.strip()
+        if not allow_empty and not cleaned:
+            raise ValueError(f"{name} must be non-empty")
+        if len(cleaned) > max_chars:
+            raise ValueError(f"{name} must be at most {max_chars} characters")
+        return cleaned
+
+    def _optional_dict(self, value: dict[str, Any] | None, name: str) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError(f"{name} must be an object")
+        return dict(value)
+
+    def _dict_list(
+        self,
+        value: list[dict[str, Any]] | None,
+        name: str,
+        maximum: int,
+    ) -> list[dict[str, Any]]:
+        if value is None:
+            return []
+        if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+            raise ValueError(f"{name} must be a list of objects")
+        if len(value) > maximum:
+            raise ValueError(f"{name} must contain at most {maximum} items")
+        return [dict(item) for item in value]
+
+    def _resource_refs(self, value: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        refs = self._dict_list(value, "resource_refs", maximum=50)
+        for item in refs:
+            ref_id = str(item.get("ref_id") or "").strip()
+            kind = str(item.get("kind") or "").strip()
+            if not ref_id or not kind:
+                raise ValueError("each resource ref must include ref_id and kind")
+            item["ref_id"] = ref_id[:200]
+            item["kind"] = kind[:80]
+        return refs
+
+    def _bounded_text_list(
+        self,
+        value: list[str] | None,
+        name: str,
+        maximum: int,
+        max_chars: int,
+    ) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise ValueError(f"{name} must be a list of strings")
+        if len(value) > maximum:
+            raise ValueError(f"{name} must contain at most {maximum} items")
+        cleaned: list[str] = []
+        for item in value:
+            text = item.strip()
+            if not text:
+                continue
+            if len(text) > max_chars:
+                raise ValueError(f"{name} items must be at most {max_chars} characters")
+            cleaned.append(text)
+        return cleaned
+
+    def _citation_overlap_anchors(self, value: list[dict[str, Any]]) -> list[dict[str, str]]:
+        if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+            raise ValueError("anchors must be a list of objects")
+        if len(value) > 200:
+            raise ValueError("anchors must contain at most 200 items")
+        normalized: list[dict[str, str]] = []
+        for item in value:
+            anchor_id = self._anchor_text_field(item, "anchor_id", max_chars=128, allow_empty=False)
+            material_id = self._anchor_text_field(item, "material_id", max_chars=128, allow_empty=True)
+            chunk_id = self._anchor_text_field(item, "chunk_id", max_chars=128, allow_empty=True)
+            text = self._anchor_text_field(item, "text", max_chars=4096, allow_empty=True)
+            normalized.append(
+                {
+                    "anchor_id": anchor_id,
+                    "material_id": material_id,
+                    "chunk_id": chunk_id,
+                    "text": text,
+                }
+            )
+        return normalized
+
+    def _anchor_text_field(
+        self,
+        item: dict[str, Any],
+        name: str,
+        max_chars: int,
+        allow_empty: bool,
+    ) -> str:
+        value = item.get(name)
+        if value is None:
+            value = ""
+        if not isinstance(value, str):
+            raise ValueError(f"{name} must be a string")
+        return self._bounded_text(value, name, max_chars=max_chars, allow_empty=allow_empty)
+
+    def _binary_docx_result(
+        self,
+        backend_result: dict[str, Any],
+        *,
+        title: str,
+        style_profile: str,
+        started: float,
+    ) -> dict[str, Any]:
+        if backend_result.get("is_error") is True:
+            return self._wrap_backend_result(backend_result)
+        data = backend_result.get("data")
+        if not isinstance(data, dict):
+            return safe_result(
+                None,
+                error=True,
+                error_code="backend_openapi_mismatch",
+                message="Backend returned malformed binary envelope",
+            )
+        content = data.get("content")
+        if not isinstance(content, (bytes, bytearray)) or not content:
+            return safe_result(
+                None,
+                error=True,
+                error_code="backend_empty_export",
+                message="Backend returned empty DOCX content",
+            )
+        output_path = self._export_output_path(title, style_profile=style_profile)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(bytes(content))
+        headers = {str(key).lower(): str(value) for key, value in dict(data.get("headers") or {}).items()}
+        return safe_result(
+            {
+                "artifact_path": str(output_path),
+                "bytes": len(content),
+                "style_profile": style_profile,
+                "quality": headers.get("x-litassist-export-quality", ""),
+                "content_type": headers.get("content-type", ""),
+                "duration_ms": int((time.perf_counter() - started) * 1000),
+            }
+        )
+
+    def _export_output_path(self, title: str, *, style_profile: str) -> Path:
+        safe_title = "".join(
+            char if char.isalnum() or char in "._- " else "_"
+            for char in title.strip()
+        ).strip(" ._")
+        if not safe_title:
+            safe_title = "export"
+        safe_title = safe_title[:80]
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        filename = f"{safe_title}-{style_profile}-{stamp}-{uuid4().hex[:8]}.docx"
+        if self.audit is not None:
+            return self.audit.audit_root.parent / "exports" / filename
+        return Path("workspace_artifacts").resolve() / "agent_mcp_workflows" / "exports" / filename
+
 
 def create_default_runtime_tools(
     audit_root: Path | None = None,
-    base_url: str = "http://127.0.0.1:8000",
+    base_url: str | None = None,
 ) -> RuntimeTools:
     """Create RuntimeTools with the default backend client."""
     audit = AuditLog(audit_root) if audit_root is not None else None

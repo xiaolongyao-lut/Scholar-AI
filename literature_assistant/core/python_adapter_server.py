@@ -34,6 +34,7 @@ except ImportError:
     pass
 
 from project_paths import FRONTEND_ROOT, runtime_state_path, ensure_directory, api_port_file_path
+from runtime_descriptor import delete_desktop_runtime_descriptor, refresh_desktop_runtime_descriptor
 
 # Import configuration and models
 from datetime_utils import to_iso_z
@@ -182,9 +183,27 @@ mimetypes.add_type("text/javascript", ".mjs")
 
 _CAPABILITY_AUTH_ENV = "LITASSIST_API_CAPABILITY_AUTH"
 _CAPABILITY_TOKEN_ENV = "LITASSIST_API_CAPABILITY_TOKEN"
+_CAPABILITY_FILE_ENV = "LITASSIST_API_CAPABILITY_FILE"
 LOCAL_API_CAPABILITY_HEADER = "X-LitAssist-Capability"
 _LOCAL_API_CAPABILITY_TOKEN = os.environ.get(_CAPABILITY_TOKEN_ENV, "").strip() or secrets.token_urlsafe(32)
-_LOCAL_API_CAPABILITY_FILE = runtime_state_path("api-capability.json")
+
+
+def _resolve_local_api_capability_file() -> Path:
+    """Resolve the runtime capability handoff file.
+
+    Why:
+        Multiple local backend ports may run during MCP tests or diagnostics.
+        Port-specific launchers need isolated token files so one process cannot
+        overwrite another process's active capability.
+    """
+
+    explicit_path = os.environ.get(_CAPABILITY_FILE_ENV, "").strip()
+    if explicit_path:
+        return Path(explicit_path).expanduser().resolve()
+    return runtime_state_path("api-capability.json")
+
+
+_LOCAL_API_CAPABILITY_FILE = _resolve_local_api_capability_file()
 
 
 def _get_allowed_origins() -> list[str]:
@@ -475,6 +494,15 @@ async def _lifespan(app: FastAPI):
             _write_local_api_capability_file()
         except OSError as _capability_exc:
             logger.warning("api_capability_file write skipped: %s", _capability_exc)
+        else:
+            try:
+                refresh_desktop_runtime_descriptor(
+                    ready=True,
+                    capability_file=str(_LOCAL_API_CAPABILITY_FILE),
+                    process_kind="desktop",
+                )
+            except Exception as _descriptor_exc:
+                logger.warning("desktop_runtime_descriptor refresh skipped: %s", _descriptor_exc)
 
     # Security: verify keyring backend availability in frozen builds
     import sys
@@ -509,6 +537,10 @@ async def _lifespan(app: FastAPI):
         except OSError:
             pass
         _delete_local_api_capability_file()
+        try:
+            delete_desktop_runtime_descriptor()
+        except Exception:
+            pass
 
 
 def _write_api_port_from_argv() -> None:
@@ -649,6 +681,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     """Wrap FastAPI HTTPException into unified ErrorResponse."""
     code_map = {
         400: ErrorCode.BAD_REQUEST,
+        403: ErrorCode.BAD_REQUEST,
         404: ErrorCode.NOT_FOUND,
         422: ErrorCode.VALIDATION_ERROR,
         500: ErrorCode.INTERNAL_ERROR,
@@ -1050,6 +1083,7 @@ from routers.writing_router import router as writing_router
 from routers.evidence_router import router as evidence_router
 from routers.linter_router import router as linter_router
 from routers.agent_workspace_router import router as agent_workspace_router
+from routers.agent_bridge_router import router as agent_bridge_router
 
 
 def _initialize_mcp_installer_runtime() -> None:
@@ -1125,6 +1159,7 @@ app.include_router(writing_router)
 app.include_router(evidence_router)
 app.include_router(linter_router)
 app.include_router(agent_workspace_router)
+app.include_router(agent_bridge_router)
 
 
 if FRONTEND_ASSETS_DIR.is_dir():

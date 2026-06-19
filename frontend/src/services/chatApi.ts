@@ -55,6 +55,8 @@ export async function askChatWithConfig(params: {
   signal?: AbortSignal;
   fallbackMode?: 'gemini-first' | 'none';
   mcpServerIds?: string[];
+  mcpAllowHighRiskTools?: boolean;
+  useLocalLiteratureTools?: boolean;
 }): Promise<ChatAskResponse> {
   const {
     query,
@@ -65,6 +67,8 @@ export async function askChatWithConfig(params: {
     timeoutMs = 180000,
     signal,
     mcpServerIds,
+    mcpAllowHighRiskTools,
+    useLocalLiteratureTools,
   } = params;
 
   const body: Record<string, unknown> = {
@@ -76,6 +80,12 @@ export async function askChatWithConfig(params: {
   };
   if (mcpServerIds !== undefined) {
     body.mcp_server_ids = mcpServerIds;
+  }
+  if (mcpAllowHighRiskTools !== undefined) {
+    body.mcp_allow_high_risk_tools = mcpAllowHighRiskTools;
+  }
+  if (useLocalLiteratureTools !== undefined) {
+    body.use_local_literature_tools = useLocalLiteratureTools;
   }
 
   return await askWithPayload(body, timeoutMs, signal);

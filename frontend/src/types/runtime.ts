@@ -30,7 +30,9 @@ export type JobKind =
   | 'smart_read'
   | 'discussion'
   | 'ai_review'
-  | 'figure_load';
+  | 'figure_load'
+  | 'agent_request'
+  | 'resource_ingest';
 
 export type JobStatus =
   | 'created'

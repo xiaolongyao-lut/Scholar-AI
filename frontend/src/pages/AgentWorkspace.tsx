@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  Bot,
   CheckCircle2,
   Clock,
   FileJson2,
@@ -17,13 +18,18 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
 import { StatusPill, type StatusTone } from '@/components/common/StatusPill';
 import {
+  getAgentBridgeStatus,
   getAgentWorkspaceStatus,
+  listRuntimeJobs,
   type AgentWorkspaceArtifact,
   type AgentWorkspaceAuditRecord,
   type AgentWorkspaceStatus,
+  type AgentBridgeStatus,
+  type RuntimeJobsStatus,
 } from '@/services/agentWorkspaceApi';
+import type { WritingJob } from '@/types/runtime';
 
-type WorkspaceTab = 'artifacts' | 'audit';
+type WorkspaceTab = 'agents' | 'artifacts' | 'audit';
 
 const KIND_LABELS: Record<string, string> = {
   markdown: 'Markdown',
@@ -94,12 +100,15 @@ function matchesQuery(
   query: string,
   artifact: AgentWorkspaceArtifact | null,
   record: AgentWorkspaceAuditRecord | null,
+  job: WritingJob | null = null,
 ): boolean {
   const needle = filterText(query);
   if (!needle) {
     return true;
   }
-  const haystack = artifact
+  const haystack = job
+    ? `${job.kind} ${job.input_text} ${JSON.stringify(job.metadata ?? {})}`.toLowerCase()
+    : artifact
     ? `${artifact.path} ${artifact.kind} ${artifact.preview}`.toLowerCase()
     : `${record?.tool_name ?? ''} ${record?.allow_block_reason ?? ''} ${record?.error_code ?? ''} ${record?.result_preview ?? ''}`.toLowerCase();
   return haystack.includes(needle);
@@ -195,15 +204,118 @@ function AuditRow({
   );
 }
 
+function jobStatusTone(job: WritingJob): StatusTone {
+  if (job.status === 'failed') return 'danger';
+  if (job.status === 'completed') return 'success';
+  if (job.status === 'cancelled') return 'neutral';
+  if (job.status === 'paused' || job.status === 'started' || job.status === 'in_progress') return 'warning';
+  return 'neutral';
+}
+
+function jobKindLabel(job: WritingJob): string {
+  if (job.kind === 'resource_ingest') return '文献入库';
+  if (job.kind === 'agent_request') return '智能体任务';
+  return String(job.kind || '任务');
+}
+
+function jobMetadataText(job: WritingJob, key: string): string {
+  const value = job.metadata?.[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function AgentJobRow({
+  job,
+  selected,
+  onSelect,
+}: {
+  job: WritingJob;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const intent = jobMetadataText(job, 'intent') || jobKindLabel(job);
+  const host = jobMetadataText(job, 'agent_host') || 'agent';
+  const label = job.input_text?.trim() || intent;
+  const isResourceIngest = job.kind === 'resource_ingest';
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'flex w-full min-w-0 items-start gap-3 px-3 py-2.5 text-left transition-colors',
+        selected ? 'bg-primary/10' : 'hover:bg-surface-default/45',
+      )}
+    >
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-surface-high text-primary/75">
+        {isResourceIngest ? <FolderOpen size={15} /> : <Bot size={15} />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-label text-sm font-medium text-foreground">{label}</span>
+        <span className="mt-0.5 block truncate text-[11px] text-foreground/45">
+          {isResourceIngest ? 'runtime job · resource_ingest' : `${intent} · ${host}`}
+        </span>
+        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+          <StatusPill tone={jobStatusTone(job)}>{job.status}</StatusPill>
+          {jobMetadataText(job, 'progress_message') ? (
+            <StatusPill tone="info">{jobMetadataText(job, 'progress_message')}</StatusPill>
+          ) : null}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function DetailPanel({
   tab,
   artifact,
   record,
+  job,
 }: {
   tab: WorkspaceTab;
   artifact: AgentWorkspaceArtifact | null;
   record: AgentWorkspaceAuditRecord | null;
+  job: WritingJob | null;
 }) {
+  if (tab === 'agents') {
+    if (job === null) {
+      return <EmptyState title="没有选中任务" icon={<Bot size={36} />} className="h-full" />;
+    }
+    const metadata = job.metadata ?? {};
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 border-b border-outline-variant/50 px-4 py-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="truncate font-display text-base font-semibold text-foreground">
+                {job.input_text?.trim() || jobMetadataText(job, 'intent') || '智能体任务'}
+              </h2>
+              <p className="mt-0.5 truncate text-[11px] text-foreground/45">{job.job_id}</p>
+            </div>
+            <StatusPill tone={jobStatusTone(job)}>{job.status}</StatusPill>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <StatusPill tone="neutral">{jobMetadataText(job, 'agent_host') || 'agent'}</StatusPill>
+            <StatusPill tone="neutral">{jobMetadataText(job, 'intent') || jobKindLabel(job)}</StatusPill>
+            {jobMetadataText(job, 'project_id') ? <StatusPill tone="info">{jobMetadataText(job, 'project_id')}</StatusPill> : null}
+          </div>
+        </div>
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-auto px-4 py-3">
+          <section className="mb-4">
+            <h3 className="mb-1.5 font-label text-[11px] font-semibold uppercase text-foreground/40">Progress</h3>
+            <p className="break-words rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2 text-xs leading-5 text-foreground/70">
+              {jobMetadataText(job, 'progress_message') || '—'}
+            </p>
+          </section>
+          <section>
+            <h3 className="mb-1.5 font-label text-[11px] font-semibold uppercase text-foreground/40">Metadata</h3>
+            <pre className="whitespace-pre-wrap break-words rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2 font-mono text-xs leading-5 text-foreground/70">
+              {JSON.stringify(metadata, null, 2)}
+            </pre>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
   if (tab === 'artifacts') {
     if (artifact === null) {
       return <EmptyState title="没有选中文件" icon={<FileText size={36} />} className="h-full" />;
@@ -271,24 +383,43 @@ function DetailPanel({
 
 export function AgentWorkspace() {
   const [status, setStatus] = useState<AgentWorkspaceStatus | null>(null);
+  const [bridgeStatus, setBridgeStatus] = useState<AgentBridgeStatus | null>(null);
+  const [runtimeJobsStatus, setRuntimeJobsStatus] = useState<RuntimeJobsStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<WorkspaceTab>('artifacts');
+  const [tab, setTab] = useState<WorkspaceTab>('agents');
   const [query, setQuery] = useState('');
   const [selectedArtifactPath, setSelectedArtifactPath] = useState<string | null>(null);
   const [selectedAuditIndex, setSelectedAuditIndex] = useState(0);
+  const [selectedAgentJobId, setSelectedAgentJobId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const next = await getAgentWorkspaceStatus();
+      const [next, bridge, runtimeJobs] = await Promise.all([
+        getAgentWorkspaceStatus(),
+        getAgentBridgeStatus({ limit: 50 }).catch(() => null),
+        listRuntimeJobs({ limit: 100 }).catch(() => null),
+      ]);
       setStatus(next);
+      setBridgeStatus(bridge);
+      setRuntimeJobsStatus(runtimeJobs);
       setSelectedArtifactPath((current) => {
         if (current && next.artifacts.some((artifact) => artifact.path === current)) {
           return current;
         }
         return next.artifacts[0]?.path ?? null;
+      });
+      setSelectedAgentJobId((current) => {
+        const visibleJobs = [
+          ...(bridge?.recent ?? []),
+          ...((runtimeJobs?.recent ?? []).filter((job) => job.kind === 'resource_ingest')),
+        ];
+        if (current && visibleJobs.some((job) => job.job_id === current)) {
+          return current;
+        }
+        return visibleJobs[0]?.job_id ?? null;
       });
       setSelectedAuditIndex((current) => (
         current >= 0 && current < next.audit_records.length ? current : 0
@@ -297,6 +428,8 @@ export function AgentWorkspace() {
       const message = exc instanceof Error ? exc.message : 'Agent Workspace 加载失败';
       setError(message);
       setStatus(null);
+      setBridgeStatus(null);
+      setRuntimeJobsStatus(null);
     } finally {
       setLoading(false);
     }
@@ -314,8 +447,24 @@ export function AgentWorkspace() {
     () => (status?.audit_records ?? []).filter((record) => matchesQuery(query, null, record)),
     [query, status],
   );
+  const agentJobs = useMemo(
+    () => {
+      const seen = new Set<string>();
+      const merged = [
+        ...((runtimeJobsStatus?.recent ?? []).filter((job) => job.kind === 'resource_ingest')),
+        ...(bridgeStatus?.recent ?? []),
+      ].filter((job) => {
+        if (seen.has(job.job_id)) return false;
+        seen.add(job.job_id);
+        return true;
+      });
+      return merged.filter((job) => matchesQuery(query, null, null, job));
+    },
+    [bridgeStatus, query, runtimeJobsStatus],
+  );
   const selectedArtifact = artifacts.find((artifact) => artifact.path === selectedArtifactPath) ?? artifacts[0] ?? null;
   const selectedRecord = auditRecords[selectedAuditIndex] ?? auditRecords[0] ?? null;
+  const selectedAgentJob = agentJobs.find((job) => job.job_id === selectedAgentJobId) ?? agentJobs[0] ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
@@ -323,7 +472,7 @@ export function AgentWorkspace() {
         <PageHeader
           icon={<TerminalSquare size={18} />}
           title="Agent Workspace"
-          subtitle={`产物 ${status?.artifact_count ?? 0} 个 · 审计 ${status?.audit_count ?? 0} 条`}
+          subtitle={`任务 ${agentJobs.length} 个 · 产物 ${status?.artifact_count ?? 0} 个 · 审计 ${status?.audit_count ?? 0} 条`}
           className="mb-0"
           actions={
             <button
@@ -341,15 +490,16 @@ export function AgentWorkspace() {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4">
         <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatTile label="Agent Running" value={String(bridgeStatus?.running_count ?? 0)} icon={<Bot size={16} />} />
+          <StatTile label="Agent Pending" value={String(bridgeStatus?.pending_count ?? 0)} icon={<Clock size={16} />} />
+          <StatTile label="Resource Ingest" value={String((runtimeJobsStatus?.recent ?? []).filter((job) => job.kind === 'resource_ingest').length)} icon={<FolderOpen size={16} />} />
           <StatTile label="Artifacts" value={String(status?.artifact_count ?? 0)} icon={<FolderOpen size={16} />} />
-          <StatTile label="Audit" value={String(status?.audit_count ?? 0)} icon={<Activity size={16} />} />
-          <StatTile label="Bytes" value={formatBytes(status?.total_artifact_bytes ?? 0)} icon={<FileText size={16} />} />
-          <StatTile label="Latest" value={formatDateTime(status?.latest_activity_at ?? null)} icon={<Clock size={16} />} />
         </div>
 
         <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="inline-flex w-fit rounded-md border border-outline-variant/60 bg-surface-lowest p-1">
             {[
+              ['agents', '智能体'] as const,
               ['artifacts', '产物'] as const,
               ['audit', '审计'] as const,
             ].map(([key, label]) => (
@@ -400,6 +550,8 @@ export function AgentWorkspace() {
                   </button>
                 }
               />
+            ) : tab === 'agents' && agentJobs.length === 0 ? (
+              <EmptyState title="没有智能体任务" icon={<Bot size={36} />} className="h-full" />
             ) : tab === 'artifacts' && artifacts.length === 0 ? (
               <EmptyState title="没有产物" icon={<FolderOpen size={36} />} className="h-full" />
             ) : tab === 'audit' && auditRecords.length === 0 ? (
@@ -415,12 +567,21 @@ export function AgentWorkspace() {
                         onSelect={() => setSelectedArtifactPath(artifact.path)}
                       />
                     ))
-                  : auditRecords.map((record, index) => (
+                  : tab === 'audit'
+                  ? auditRecords.map((record, index) => (
                       <AuditRow
                         key={`${record.timestamp}-${record.tool_name}-${index}`}
                         record={record}
                         selected={selectedRecord === record}
                         onSelect={() => setSelectedAuditIndex(index)}
+                      />
+                    ))
+                  : agentJobs.map((job) => (
+                      <AgentJobRow
+                        key={job.job_id}
+                        job={job}
+                        selected={selectedAgentJob?.job_id === job.job_id}
+                        onSelect={() => setSelectedAgentJobId(job.job_id)}
                       />
                     ))}
               </div>
@@ -428,7 +589,7 @@ export function AgentWorkspace() {
           </section>
 
           <section className="min-h-[320px] overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest">
-            <DetailPanel tab={tab} artifact={selectedArtifact} record={selectedRecord} />
+            <DetailPanel tab={tab} artifact={selectedArtifact} record={selectedRecord} job={selectedAgentJob} />
           </section>
         </div>
       </div>

@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   BrainCircuit,
+  ChevronDown,
   CheckCircle2,
   ClipboardCopy,
   FileCheck,
+  FileUp,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -29,8 +31,10 @@ import {
   waitForRuntimeJobTerminalState,
 } from '@/services/backgroundJobRunner';
 import type {
+  AcademicWritingLintResponse,
   CitationSourceResource,
   FigureAssetResource,
+  JournalStyleSpecDraftResponse,
   ProjectExportReviewFinding,
   ProjectStats,
   WritingDraft,
@@ -41,6 +45,9 @@ import type {
 type CheckStatus = 'pass' | 'warn' | 'fail' | 'pending';
 type ReviewSeverity = 'critical' | 'major' | 'minor' | 'format';
 type FocusKey = 'novelty' | 'methods' | 'evidence' | 'reproducibility' | 'structure' | 'citations' | 'figures' | 'language';
+type JournalStyleStatus = 'idle' | 'drafting' | 'confirming' | 'confirmed' | 'error';
+type AcademicAuditStatus = 'idle' | 'running' | 'ready' | 'error';
+type AcademicWritingLintIssue = NonNullable<AcademicWritingLintResponse['issues']>[number];
 
 interface CheckItem {
   id: string;
@@ -68,6 +75,13 @@ interface ReviewDataset {
   exportFindings: ProjectExportReviewFinding[];
 }
 
+interface JournalStyleReviewState {
+  activeProfileId: string;
+  draftProfileId: string;
+  hasDraft: boolean;
+  confirmed: boolean;
+}
+
 interface FocusOption {
   key: FocusKey;
   label: string;
@@ -91,6 +105,7 @@ const DEFAULT_JOURNAL_RULES = [
   '- 结论是否由结果和引用证据支撑，避免过度推断。',
   '- 图表、引用、摘要、关键词和章节结构是否符合投稿习惯。',
 ].join('\n');
+const MAX_JOURNAL_SPEC_UPLOAD_BYTES = 256_000;
 
 const REVIEW_FOCUS_OPTIONS: FocusOption[] = [
   { key: 'novelty', label: '创新性', description: '研究问题、贡献边界、和现有工作的差异' },
@@ -145,6 +160,76 @@ function countDraftCharacters(drafts: WritingDraft[]): number {
   return drafts.reduce((sum, item) => sum + normalizeText(item.content).length, 0);
 }
 
+function formatByteCount(bytes: number | null | undefined): string {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) {
+    return '0 KB';
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  return `${Math.ceil(bytes / 1024)} KB`;
+}
+
+function sanitizeDisplayFilename(filename: string | null | undefined): string {
+  const trimmed = normalizeText(filename);
+  if (!trimmed) {
+    return '粘贴文本';
+  }
+  const normalized = trimmed.replace(/\\/g, '/');
+  const leaf = normalized.split('/').filter(Boolean).pop();
+  return normalizeText(leaf).slice(0, 120) || '规范文件';
+}
+
+function formatCitationStyle(style: JournalStyleSpecDraftResponse['profile']['citation_style']): string {
+  return style === 'author_year' ? '作者-年份引用' : '数字编号引用';
+}
+
+function formatCaptionPosition(position: string): string {
+  const normalized = normalizeText(position).toLowerCase();
+  if (normalized === 'above') {
+    return '题注在上';
+  }
+  if (normalized === 'below') {
+    return '题注在下';
+  }
+  return normalizeText(position) || '未指定';
+}
+
+function isJournalStyleDraftConfirmed(
+  draft: JournalStyleSpecDraftResponse,
+  activeProfileId: string,
+): boolean {
+  const normalizedActiveId = normalizeText(activeProfileId);
+  return draft.status === 'confirmed' || (
+    Boolean(normalizedActiveId) && draft.profile.profile_id === normalizedActiveId
+  );
+}
+
+function buildJournalStyleReviewState(
+  draft: JournalStyleSpecDraftResponse | null,
+  activeProfileId: string,
+): JournalStyleReviewState {
+  const normalizedActiveProfileId = normalizeText(activeProfileId);
+  const draftProfileId = normalizeText(draft?.profile.profile_id);
+  return {
+    activeProfileId: normalizedActiveProfileId,
+    draftProfileId,
+    hasDraft: Boolean(draft),
+    confirmed: draft ? isJournalStyleDraftConfirmed(draft, normalizedActiveProfileId) : Boolean(normalizedActiveProfileId),
+  };
+}
+
+function academicLintStyleProfile(journalStyle: JournalStyleReviewState): string | null {
+  if (!journalStyle.confirmed) {
+    return null;
+  }
+  const profileId = normalizeText(journalStyle.activeProfileId || journalStyle.draftProfileId).replace(/-/g, '_');
+  if (!/^[A-Za-z0-9_]{1,80}$/.test(profileId)) {
+    return null;
+  }
+  return profileId;
+}
+
 function compileManuscriptPreview(sections: WritingSection[], drafts: WritingDraft[], maxChars = 22000): string {
   const bySectionId = new Map(sections.map((section) => [section.section_id, section]));
   const orderedDrafts = [...drafts].sort((left, right) => {
@@ -165,11 +250,12 @@ function compileManuscriptPreview(sections: WritingSection[], drafts: WritingDra
 
 function buildAiReviewPrompt(params: {
   journalRules: string;
+  journalStyle: JournalStyleReviewState;
   selectedFocus: FocusKey[];
   dataset: ReviewDataset;
   manuscript: string;
 }): string {
-  const { journalRules, selectedFocus, dataset, manuscript } = params;
+  const { journalRules, journalStyle, selectedFocus, dataset, manuscript } = params;
   const sectionTitles = dataset.sections
     .sort((left, right) => left.order - right.order)
     .map((section) => `${section.order + 1}. ${section.title}`)
@@ -179,7 +265,7 @@ function buildAiReviewPrompt(params: {
     .filter((option) => selectedFocus.includes(option.key))
     .map((option) => `- ${option.label}: ${option.description}`)
     .join('\n');
-  const localFindings = buildReviewFindings(dataset, journalRules)
+  const localFindings = buildReviewFindings(dataset, journalRules, journalStyle)
     .map((finding) => `- [${severityConfig[finding.severity].label}] ${finding.title}: ${finding.detail}`)
     .join('\n');
 
@@ -217,6 +303,28 @@ function buildAiReviewPrompt(params: {
   ].join('\n');
 }
 
+function formatJournalStyleProfileForPrompt(
+  profile: JournalStyleSpecDraftResponse['profile'] | null | undefined,
+  params: { status?: string; activeProfileId?: string } = {},
+): string {
+  const activeProfileId = normalizeText(params.activeProfileId);
+  if (!profile) {
+    return activeProfileId ? `已确认的期刊样式 profile：${activeProfileId}` : '';
+  }
+
+  const margins = profile.margins_cm;
+  const confirmed = params.status === 'confirmed' || profile.profile_id === activeProfileId;
+  return [
+    `期刊样式 profile（${confirmed ? '已确认' : '待确认'}）：${profile.profile_id}`,
+    `- 期刊：${profile.journal_name}`,
+    `- 引用体例：${formatCitationStyle(profile.citation_style)}`,
+    `- 正文字号：${profile.body_pt} pt；标题字号：${profile.title_pt} pt`,
+    `- 字体：Latin ${profile.latin_font}；中文 ${profile.cjk_font}`,
+    `- 页边距：上 ${margins.top} cm、下 ${margins.bottom} cm、左 ${margins.left} cm、右 ${margins.right} cm`,
+    `- 图题位置：${formatCaptionPosition(profile.figure_caption_position)}；表题位置：${formatCaptionPosition(profile.table_caption_position)}`,
+  ].join('\n');
+}
+
 /**
  * AI manuscript review workspace.
  *
@@ -227,9 +335,19 @@ function buildAiReviewPrompt(params: {
 export function ReviewerSubmission() {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { activeProjectId } = useWriting();
+  const { activeProjectId, activeJournalStyleProfileId, setActiveJournalStyleProfileId } = useWriting();
   const normalizedProjectId = normalizeText(activeProjectId);
   const [journalRules, setJournalRules] = useState(DEFAULT_JOURNAL_RULES);
+  const [journalName, setJournalName] = useState('');
+  const [selectedSpecFile, setSelectedSpecFile] = useState<File | null>(null);
+  const [styleDraft, setStyleDraft] = useState<JournalStyleSpecDraftResponse | null>(null);
+  const [styleStatus, setStyleStatus] = useState<JournalStyleStatus>('idle');
+  const [styleError, setStyleError] = useState<string | null>(null);
+  const styleFileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const styleFileInputId = React.useId();
+  const styleFileHelpId = `${styleFileInputId}-help`;
+  const styleFileErrorId = `${styleFileInputId}-error`;
+  const [styleAuditOpen, setStyleAuditOpen] = useState(false);
   const [selectedFocus, setSelectedFocus] = useState<FocusKey[]>(REVIEW_FOCUS_OPTIONS.map((option) => option.key));
   const [dataset, setDataset] = useState<ReviewDataset>(EMPTY_DATASET);
   const [loading, setLoading] = useState(false);
@@ -241,12 +359,32 @@ export function ReviewerSubmission() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [academicAudit, setAcademicAudit] = useState<AcademicWritingLintResponse | null>(null);
+  const [academicAuditStatus, setAcademicAuditStatus] = useState<AcademicAuditStatus>('idle');
+  const [academicAuditError, setAcademicAuditError] = useState<string | null>(null);
   const mountedRef = React.useRef(true);
   const pollingGenerationRef = React.useRef(0);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
+
+  useEffect(() => {
+    setStyleDraft(null);
+    setStyleError(null);
+    setStyleStatus('idle');
+    setSelectedSpecFile(null);
+    setStyleAuditOpen(false);
+    setAcademicAudit(null);
+    setAcademicAuditStatus('idle');
+    setAcademicAuditError(null);
+    if (styleFileInputRef.current) {
+      styleFileInputRef.current.value = '';
+    }
+  }, [normalizedProjectId]);
 
   const loadDataset = useCallback(async () => {
     if (!normalizedProjectId) {
@@ -295,21 +433,54 @@ export function ReviewerSubmission() {
     void loadDataset();
   }, [loadDataset]);
 
-  const checks = useMemo(() => buildChecks(dataset, normalizedProjectId, journalRules), [dataset, journalRules, normalizedProjectId]);
-  const findings = useMemo(() => buildReviewFindings(dataset, journalRules), [dataset, journalRules]);
+  const journalStyleReview = useMemo(
+    () => buildJournalStyleReviewState(styleDraft, activeJournalStyleProfileId),
+    [activeJournalStyleProfileId, styleDraft],
+  );
+  const checks = useMemo(
+    () => buildChecks(dataset, normalizedProjectId, journalRules, journalStyleReview),
+    [dataset, journalRules, journalStyleReview, normalizedProjectId],
+  );
+  const findings = useMemo(
+    () => buildReviewFindings(dataset, journalRules, journalStyleReview),
+    [dataset, journalRules, journalStyleReview],
+  );
   const passCount = checks.filter((check) => check.status === 'pass').length;
   const failCount = checks.filter((check) => check.status === 'fail').length;
   const score = checks.length > 0 ? Math.round((passCount / checks.length) * 100) : 0;
   const ringColor = failCount > 0 ? 'text-red-500' : score >= 70 ? 'text-emerald-500' : 'text-amber-500';
   const manuscriptChars = countDraftCharacters(dataset.drafts);
   const citationCount = countCitations(dataset.citations);
+  const canDraftStyle = Boolean(normalizedProjectId && journalName.trim() && journalRules.trim().length >= 20);
+  const canUploadStyle = Boolean(normalizedProjectId && journalName.trim() && selectedSpecFile);
+  const academicAuditStyleProfile = useMemo(
+    () => academicLintStyleProfile(journalStyleReview),
+    [journalStyleReview],
+  );
+  const manuscriptForAudit = useMemo(
+    () => compileManuscriptPreview(dataset.sections, dataset.drafts),
+    [dataset.drafts, dataset.sections],
+  );
+  const canRunAcademicAudit = Boolean(normalizedProjectId && manuscriptForAudit.trim());
+
+  const journalStylePromptContext = useMemo(() => formatJournalStyleProfileForPrompt(styleDraft?.profile, {
+    status: styleDraft?.status,
+    activeProfileId: activeJournalStyleProfileId,
+  }), [activeJournalStyleProfileId, styleDraft?.profile, styleDraft?.status]);
 
   const promptPreview = useMemo(() => buildAiReviewPrompt({
-    journalRules,
+    journalRules: [journalRules, journalStylePromptContext].filter(Boolean).join('\n\n'),
+    journalStyle: journalStyleReview,
     selectedFocus,
     dataset,
     manuscript: compileManuscriptPreview(dataset.sections, dataset.drafts, 6000),
-  }), [dataset, journalRules, selectedFocus]);
+  }), [dataset, journalRules, journalStylePromptContext, journalStyleReview, selectedFocus]);
+
+  useEffect(() => {
+    setAcademicAudit(null);
+    setAcademicAuditStatus('idle');
+    setAcademicAuditError(null);
+  }, [academicAuditStyleProfile, manuscriptForAudit]);
 
   const handleToggleFocus = useCallback((key: FocusKey) => {
     setSelectedFocus((current) => {
@@ -319,6 +490,171 @@ export function ReviewerSubmission() {
       return [...current, key];
     });
   }, []);
+
+  const handleSpecFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null;
+    setStyleError(null);
+    setStyleDraft(null);
+    if (!file) {
+      setSelectedSpecFile(null);
+      setStyleStatus('idle');
+      return;
+    }
+    const filename = file.name.toLowerCase();
+    const supported = filename.endsWith('.txt') || filename.endsWith('.md') || filename.endsWith('.markdown');
+    if (!supported) {
+      setSelectedSpecFile(null);
+      setStyleStatus('error');
+      setStyleError('仅支持 UTF-8 文本或 Markdown 期刊规范文件。');
+      event.currentTarget.value = '';
+      return;
+    }
+    if (file.size > MAX_JOURNAL_SPEC_UPLOAD_BYTES) {
+      setSelectedSpecFile(null);
+      setStyleStatus('error');
+      setStyleError('期刊规范文件需小于 256 KB。');
+      event.currentTarget.value = '';
+      return;
+    }
+    setSelectedSpecFile(file);
+    setStyleStatus('idle');
+  }, []);
+
+  const handleRunAcademicAudit = useCallback(async () => {
+    if (!canRunAcademicAudit || academicAuditStatus === 'running') {
+      return;
+    }
+    setAcademicAuditStatus('running');
+    setAcademicAuditError(null);
+    try {
+      const service = getWritingBackendService();
+      const result = await service.lintAcademicWriting({
+        text: manuscriptForAudit,
+        content_type: 'manuscript',
+        language: 'auto',
+        required_sections: ['introduction', 'review'],
+        require_evidence_refs: true,
+        require_figure_table_formula_refs: dataset.figures.length > 0,
+        style_profile: academicAuditStyleProfile,
+        audit_context: {
+          invocation_surface: 'direct_api',
+          project_id: normalizedProjectId,
+          source: 'frontend-reviewer',
+          tool_chain: ['reviewer_submission', 'academic_writing_lint'],
+          used_mcp_tools: [],
+          reasoning_trace: ['Local deterministic reviewer audit before AI review.'],
+        },
+      });
+      if (!mountedRef.current) {
+        return;
+      }
+      setAcademicAudit(result);
+      setAcademicAuditStatus('ready');
+      setStatusMessage(`确定性写作审计完成：${Math.round(result.score)} 分。`);
+    } catch (err) {
+      if (!mountedRef.current) {
+        return;
+      }
+      setAcademicAudit(null);
+      setAcademicAuditStatus('error');
+      setAcademicAuditError(formatWritingRuntimeError(err, '确定性写作审计失败。'));
+    }
+  }, [academicAuditStatus, academicAuditStyleProfile, canRunAcademicAudit, dataset.figures.length, manuscriptForAudit, normalizedProjectId]);
+
+  const handleDraftJournalStyle = useCallback(async () => {
+    if (!canDraftStyle || styleStatus === 'drafting' || styleStatus === 'confirming') {
+      return;
+    }
+    setStyleStatus('drafting');
+    setStyleError(null);
+    try {
+      const service = getWritingBackendService();
+      const draft = await service.draftJournalStyleSpec({
+        project_id: normalizedProjectId,
+        journal_name: journalName.trim(),
+        spec_text: journalRules.trim(),
+      });
+      if (!mountedRef.current) {
+        return;
+      }
+      setStyleDraft(draft);
+      setStyleAuditOpen(false);
+      setStyleStatus('idle');
+    } catch (err) {
+      if (!mountedRef.current) {
+        return;
+      }
+      setStyleDraft(null);
+      setStyleStatus('error');
+      setStyleError(formatWritingRuntimeError(err, '期刊规范草拟失败，请检查输入长度和格式。'));
+    }
+  }, [canDraftStyle, journalName, journalRules, normalizedProjectId, styleStatus]);
+
+  const handleUploadJournalStyle = useCallback(async () => {
+    if (!canUploadStyle || !selectedSpecFile || styleStatus === 'drafting' || styleStatus === 'confirming') {
+      return;
+    }
+    setStyleStatus('drafting');
+    setStyleError(null);
+    try {
+      const service = getWritingBackendService();
+      const draft = await service.uploadJournalStyleSpec(
+        normalizedProjectId,
+        journalName.trim(),
+        selectedSpecFile,
+      );
+      if (!mountedRef.current) {
+        return;
+      }
+      setStyleDraft(draft);
+      setStyleAuditOpen(false);
+      setJournalRules((current) => (
+        current.trim().length >= 20
+          ? current
+          : `已上传 ${draft.source.filename}，请以草拟结果为准。`
+      ));
+      setStyleStatus('idle');
+    } catch (err) {
+      if (!mountedRef.current) {
+        return;
+      }
+      setStyleDraft(null);
+      setStyleStatus('error');
+      setStyleError(formatWritingRuntimeError(err, '期刊规范上传解析失败。'));
+    }
+  }, [canUploadStyle, journalName, normalizedProjectId, selectedSpecFile, styleStatus]);
+
+  const handleConfirmJournalStyle = useCallback(async () => {
+    if (!styleDraft || styleStatus === 'confirming') {
+      return;
+    }
+    setStyleStatus('confirming');
+    setStyleError(null);
+    try {
+      const service = getWritingBackendService();
+      const confirmed = await service.confirmJournalStyleSpec({
+        project_id: normalizedProjectId,
+        draft_id: styleDraft.draft_id,
+        confirmed_by: 'frontend-reviewer',
+      });
+      if (!mountedRef.current) {
+        return;
+      }
+      setActiveJournalStyleProfileId(confirmed.profile.profile_id);
+      setStyleDraft((current) => current
+        ? { ...current, status: 'confirmed', profile: confirmed.profile }
+        : current);
+      setStyleAuditOpen(true);
+      setStyleStatus('confirmed');
+      setStatusMessage(`期刊规范已确认：${confirmed.profile.profile_id}`);
+    } catch (err) {
+      if (!mountedRef.current) {
+        return;
+      }
+      setStyleStatus('error');
+      setStyleError(formatWritingRuntimeError(err, '期刊规范确认失败。'));
+    }
+  }, [normalizedProjectId, setActiveJournalStyleProfileId, styleDraft, styleStatus]);
 
   const handleRunAiReview = useCallback(async () => {
     if (!normalizedProjectId || running) {
@@ -337,7 +673,8 @@ export function ReviewerSubmission() {
       );
       const manuscript = normalizeText(exportResult?.content) || compileManuscriptPreview(dataset.sections, dataset.drafts);
       const query = buildAiReviewPrompt({
-        journalRules,
+        journalRules: [journalRules, journalStylePromptContext].filter(Boolean).join('\n\n'),
+        journalStyle: journalStyleReview,
         selectedFocus,
         dataset: {
           ...dataset,
@@ -419,7 +756,7 @@ export function ReviewerSubmission() {
         setRunning(false);
       }
     }
-  }, [dataset, journalRules, normalizedProjectId, running, selectedFocus]);
+  }, [dataset, journalRules, journalStylePromptContext, journalStyleReview, normalizedProjectId, running, selectedFocus]);
 
   const handleStopReview = useCallback(async () => {
     const normalizedJobId = activeJobId?.trim();
@@ -562,14 +899,110 @@ export function ReviewerSubmission() {
             </div>
           </SectionCard>
 
-          <SectionCard title="目标期刊要求" icon={<FileCheck size={14} />}>
-            <textarea
-              value={journalRules}
-              onChange={(event) => setJournalRules(event.target.value)}
-              rows={7}
-              placeholder="粘贴目标期刊要求"
-              className="min-h-[148px] w-full resize-y rounded-md border border-outline-variant/60 bg-surface-low px-3 py-2 text-sm leading-6 text-foreground outline-none transition-colors placeholder:text-foreground/30 focus:border-primary/60"
-            />
+          <SectionCard
+            title="目标期刊要求"
+            icon={<FileCheck size={14} />}
+            headerRight={
+              activeJournalStyleProfileId
+                ? <StatusPill tone="success">已确认规范</StatusPill>
+                : <StatusPill tone="neutral">未确认规范</StatusPill>
+            }
+          >
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="space-y-3">
+                <label className="block">
+                  <span className="mb-1 block font-label text-xs font-medium text-foreground/65">期刊名称</span>
+                  <input
+                    type="text"
+                    value={journalName}
+                    onChange={(event) => setJournalName(event.target.value)}
+                    placeholder="例如 Journal of Additive Manufacturing"
+                    className="h-9 w-full rounded-md border border-outline-variant/60 bg-surface-low px-3 text-sm text-foreground outline-none transition-colors placeholder:text-foreground/30 focus:border-primary/60"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block font-label text-xs font-medium text-foreground/65">作者指南 / 投稿规范</span>
+                  <textarea
+                    value={journalRules}
+                    onChange={(event) => setJournalRules(event.target.value)}
+                    rows={7}
+                    placeholder="粘贴目标期刊要求"
+                    className="min-h-[148px] w-full resize-y rounded-md border border-outline-variant/60 bg-surface-low px-3 py-2 text-sm leading-6 text-foreground outline-none transition-colors placeholder:text-foreground/30 focus:border-primary/60"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="rounded-md border border-outline-variant/60 bg-surface-low px-3 py-3">
+                  <input
+                    id={styleFileInputId}
+                    ref={styleFileInputRef}
+                    type="file"
+                    accept=".txt,.md,.markdown,text/plain,text/markdown"
+                    onChange={handleSpecFileChange}
+                    aria-describedby={`${styleFileHelpId}${styleError ? ` ${styleFileErrorId}` : ''}`}
+                    aria-invalid={Boolean(styleError)}
+                    className="sr-only"
+                  />
+                  <label htmlFor={styleFileInputId} className="sr-only">官方规范文件</label>
+                  <button
+                    type="button"
+                    onClick={() => styleFileInputRef.current?.click()}
+                    disabled={!normalizedProjectId}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-3 py-2 font-label text-xs font-medium text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FileUp size={14} />
+                    选择规范文件
+                  </button>
+                  <p id={styleFileHelpId} className="mt-2 truncate text-[11px] text-foreground/45">
+                    {selectedSpecFile ? `${sanitizeDisplayFilename(selectedSpecFile.name)} · ${formatByteCount(selectedSpecFile.size)}` : 'UTF-8 .txt / .md / .markdown · 最大 256 KB'}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleDraftJournalStyle()}
+                    disabled={!canDraftStyle || styleStatus === 'drafting' || styleStatus === 'confirming'}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-3 font-label text-xs font-medium text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {styleStatus === 'drafting' && !selectedSpecFile ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    草拟
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleUploadJournalStyle()}
+                    disabled={!canUploadStyle || styleStatus === 'drafting' || styleStatus === 'confirming'}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-3 font-label text-xs font-medium text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {styleStatus === 'drafting' && selectedSpecFile ? <Loader2 size={13} className="animate-spin" /> : <FileUp size={13} />}
+                    上传草拟
+                  </button>
+                </div>
+                {styleError ? (
+                  <div
+                    id={styleFileErrorId}
+                    role="alert"
+                    className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300"
+                  >
+                    {styleError}
+                  </div>
+                ) : null}
+                {activeJournalStyleProfileId ? (
+                  <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-700 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300">
+                    当前 Word 导出规范：{activeJournalStyleProfileId}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            {styleDraft ? (
+              <JournalStyleAuditPanel
+                activeProfileId={activeJournalStyleProfileId}
+                detailsOpen={styleAuditOpen}
+                draft={styleDraft}
+                isConfirming={styleStatus === 'confirming'}
+                onConfirm={() => void handleConfirmJournalStyle()}
+                onToggleDetails={() => setStyleAuditOpen((open) => !open)}
+              />
+            ) : null}
             <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               {REVIEW_FOCUS_OPTIONS.map((option) => {
                 const selected = selectedFocus.includes(option.key);
@@ -596,25 +1029,74 @@ export function ReviewerSubmission() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <SectionCard
-            title="AI 审稿报告"
-            icon={<BrainCircuit size={14} />}
-            headerRight={running ? <StatusPill tone="info">审稿中</StatusPill> : aiReport ? <StatusPill tone="success">已生成</StatusPill> : <StatusPill tone="neutral">未开始</StatusPill>}
-          >
-            {aiReport ? (
-              <div className="whitespace-pre-wrap rounded-md border border-outline-variant/60 bg-surface-low px-4 py-3 font-body text-sm leading-7 text-foreground/85">
-                {aiReport}
-              </div>
-            ) : (
-            <div className="flex min-h-[220px] flex-col items-center justify-center rounded-md border border-dashed border-outline-variant/70 bg-surface-low px-6 text-center">
-                <BrainCircuit className="h-8 w-8 text-foreground/25" aria-hidden />
-                <p className="mt-3 text-sm font-medium text-foreground/70">点击“开始 AI 审稿”生成结构化报告</p>
-                <p className="mt-1 max-w-xl text-xs leading-5 text-foreground/45">
-                  当前审稿 AI：{reviewModel}
-                </p>
-              </div>
-            )}
-          </SectionCard>
+          <div className="flex min-w-0 flex-col gap-4">
+            <SectionCard
+              title="确定性写作审计"
+              icon={<ShieldCheck size={14} />}
+              headerRight={
+                <div className="flex items-center gap-2">
+                  <StatusPill tone={
+                    academicAuditStatus === 'ready'
+                      ? (academicAudit?.passed ? 'success' : 'warning')
+                      : academicAuditStatus === 'running'
+                        ? 'info'
+                        : academicAuditStatus === 'error'
+                          ? 'danger'
+                          : 'neutral'
+                  }>
+                    {academicAuditStatus === 'ready'
+                      ? (academicAudit?.passed ? '已通过' : '需修订')
+                      : academicAuditStatus === 'running'
+                        ? '审计中'
+                        : academicAuditStatus === 'error'
+                          ? '失败'
+                          : '未运行'}
+                  </StatusPill>
+                  <button
+                    type="button"
+                    onClick={() => void handleRunAcademicAudit()}
+                    disabled={!canRunAcademicAudit || academicAuditStatus === 'running'}
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-3 font-label text-xs font-medium text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {academicAuditStatus === 'running' ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
+                    运行审计
+                  </button>
+                </div>
+              }
+            >
+              {academicAuditError ? (
+                <div role="alert" className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
+                  {academicAuditError}
+                </div>
+              ) : null}
+              <AcademicWritingAuditPanel
+                audit={academicAudit}
+                canRun={canRunAcademicAudit}
+                status={academicAuditStatus}
+                styleProfile={academicAuditStyleProfile}
+              />
+            </SectionCard>
+
+            <SectionCard
+              title="AI 审稿报告"
+              icon={<BrainCircuit size={14} />}
+              headerRight={running ? <StatusPill tone="info">审稿中</StatusPill> : aiReport ? <StatusPill tone="success">已生成</StatusPill> : <StatusPill tone="neutral">未开始</StatusPill>}
+            >
+              {aiReport ? (
+                <div className="whitespace-pre-wrap rounded-md border border-outline-variant/60 bg-surface-low px-4 py-3 font-body text-sm leading-7 text-foreground/85">
+                  {aiReport}
+                </div>
+              ) : (
+              <div className="flex min-h-[220px] flex-col items-center justify-center rounded-md border border-dashed border-outline-variant/70 bg-surface-low px-6 text-center">
+                  <BrainCircuit className="h-8 w-8 text-foreground/25" aria-hidden />
+                  <p className="mt-3 text-sm font-medium text-foreground/70">点击“开始 AI 审稿”生成结构化报告</p>
+                  <p className="mt-1 max-w-xl text-xs leading-5 text-foreground/45">
+                    当前审稿 AI：{reviewModel}
+                  </p>
+                </div>
+              )}
+            </SectionCard>
+          </div>
 
           <SectionCard
             title="基础检查"
@@ -709,7 +1191,247 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function buildChecks(dataset: ReviewDataset, activeProjectId: string, journalRules: string): CheckItem[] {
+interface AcademicWritingAuditPanelProps {
+  audit: AcademicWritingLintResponse | null;
+  canRun: boolean;
+  status: AcademicAuditStatus;
+  styleProfile: string | null;
+}
+
+function formatAuditSurface(surface: AcademicWritingLintResponse['audit']['invocation_surface']): string {
+  if (surface === 'external_mcp') {
+    return '外部 MCP';
+  }
+  if (surface === 'api_chat_local_tools') {
+    return '本地工具聊天';
+  }
+  if (surface === 'direct_api') {
+    return 'Direct API';
+  }
+  return '未知';
+}
+
+function formatAuditIssueSeverity(severity: AcademicWritingLintIssue['severity']): string {
+  if (severity === 'error') {
+    return '错误';
+  }
+  if (severity === 'warning') {
+    return '警告';
+  }
+  return '提示';
+}
+
+function AcademicWritingAuditPanel({
+  audit,
+  canRun,
+  status,
+  styleProfile,
+}: AcademicWritingAuditPanelProps) {
+  if (!canRun) {
+    return (
+      <div className="rounded-md border border-dashed border-outline-variant/70 bg-surface-low px-4 py-4 text-center text-xs leading-5 text-foreground/55">
+        当前项目还没有可审计的正文草稿。
+      </div>
+    );
+  }
+
+  if (!audit) {
+    return (
+      <div className="rounded-md border border-dashed border-outline-variant/70 bg-surface-low px-4 py-4 text-center text-xs leading-5 text-foreground/55">
+        {status === 'running' ? '正在运行确定性写作审计。' : '运行审计后可查看 Direct API 质量门、引用证据、图表公式和期刊样式检查。'}
+      </div>
+    );
+  }
+
+  const auditTone: StatusTone = audit.passed ? 'success' : 'warning';
+  const disclosureLabel = audit.audit.disclosure_required ? '需要披露' : '无需 MCP/Agent 披露';
+  const checks = audit.audit.checks ?? [];
+  const issues = audit.issues ?? [];
+  const recommendations = audit.recommendations ?? [];
+
+  return (
+    <section aria-label="确定性写作审计结果" className="space-y-3">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="审计分数" value={`${Math.round(audit.score)}`} />
+        <Metric label="质量门" value={audit.audit.quality_gate === 'passed' ? 'passed' : 'failed'} />
+        <Metric label="调用面" value={formatAuditSurface(audit.audit.invocation_surface)} />
+        <Metric label="Style" value={styleProfile || '未绑定'} />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="章节" value={`${audit.metrics.section_count}`} />
+        <Metric label="证据锚点" value={`${audit.metrics.evidence_ref_count}`} />
+        <Metric label="图/表/式" value={`${audit.metrics.figure_ref_count}/${audit.metrics.table_ref_count}/${audit.metrics.equation_ref_count}`} />
+        <Metric label="引用" value={`${audit.metrics.citation_count}`} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <StatusPill tone={auditTone}>{audit.passed ? '审计通过' : '审计未通过'}</StatusPill>
+        <StatusPill tone={audit.audit.agent_mediated ? 'warning' : 'success'}>
+          {audit.audit.agent_mediated ? 'Agent mediated' : 'Direct API'}
+        </StatusPill>
+        <StatusPill tone={audit.audit.mcp_tool_calls_used ? 'warning' : 'success'}>
+          {audit.audit.mcp_tool_calls_used ? 'MCP tools used' : 'No MCP tools'}
+        </StatusPill>
+        <StatusPill tone={audit.audit.disclosure_required ? 'warning' : 'success'}>
+          {disclosureLabel}
+        </StatusPill>
+      </div>
+      {checks.length > 0 ? (
+        <div className="rounded-md border border-outline-variant/50 bg-surface-low px-3 py-2">
+          <div className="font-label text-[11px] font-semibold text-foreground/65">机器检查项</div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {checks.map((check) => (
+              <span key={check} className="rounded bg-surface-high px-2 py-1 font-mono text-[10px] text-foreground/60">
+                {check}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {issues.length > 0 ? (
+        <div className="grid gap-2 lg:grid-cols-2">
+          {issues.slice(0, 4).map((issue) => (
+            <article key={`${issue.code}-${issue.message}`} className="rounded-md border border-outline-variant/50 bg-surface-low px-3 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <h4 className="font-mono text-[11px] font-semibold text-foreground">{issue.code}</h4>
+                <StatusPill tone={issue.severity === 'error' ? 'danger' : issue.severity === 'warning' ? 'warning' : 'info'}>
+                  {formatAuditIssueSeverity(issue.severity)}
+                </StatusPill>
+              </div>
+              <p className="mt-1 text-xs leading-5 text-foreground/65">{issue.message}</p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-700 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300">
+          确定性审计未发现阻断项。
+        </div>
+      )}
+      {recommendations.length > 0 ? (
+        <div className="rounded-md border border-outline-variant/50 bg-surface-low px-3 py-2">
+          <div className="font-label text-[11px] font-semibold text-foreground/65">修订建议</div>
+          <ul className="mt-1 space-y-1 text-xs leading-5 text-foreground/65">
+            {recommendations.slice(0, 4).map((recommendation) => (
+              <li key={recommendation}>{recommendation}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+interface JournalStyleAuditPanelProps {
+  activeProfileId: string;
+  detailsOpen: boolean;
+  draft: JournalStyleSpecDraftResponse;
+  isConfirming: boolean;
+  onConfirm: () => void;
+  onToggleDetails: () => void;
+}
+
+function JournalStyleAuditPanel({
+  activeProfileId,
+  detailsOpen,
+  draft,
+  isConfirming,
+  onConfirm,
+  onToggleDetails,
+}: JournalStyleAuditPanelProps) {
+  const detailsId = React.useId();
+  const confirmed = isJournalStyleDraftConfirmed(draft, activeProfileId);
+  const sourceName = sanitizeDisplayFilename(draft.source.filename);
+  const sourceKind = draft.source.kind === 'upload' ? '上传文件' : '粘贴文本';
+  const profile = draft.profile;
+  const margins = profile.margins_cm;
+
+  return (
+    <section
+      aria-label="期刊规范抽取审计"
+      className="mt-3 rounded-md border border-outline-variant/60 bg-surface-low px-3 py-3"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate font-label text-xs font-semibold text-foreground">
+              {profile.journal_name}
+            </h3>
+            <StatusPill tone={confirmed ? 'success' : 'warning'}>
+              {confirmed ? '已确认用于导出' : '待人工确认'}
+            </StatusPill>
+          </div>
+          <dl className="mt-2 grid gap-2 text-[11px] text-foreground/60 sm:grid-cols-2 xl:grid-cols-4">
+            <JournalStyleFact label="来源" value={`${sourceKind} · ${sourceName}`} />
+            <JournalStyleFact label="文件大小" value={formatByteCount(draft.source.bytes)} />
+            <JournalStyleFact label="Profile" value={profile.profile_id} />
+            <JournalStyleFact label="引用体例" value={formatCitationStyle(profile.citation_style)} />
+          </dl>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleDetails}
+            aria-expanded={detailsOpen}
+            aria-controls={detailsId}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-3 font-label text-xs font-medium text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary"
+          >
+            <ChevronDown size={13} className={cn('transition-transform', detailsOpen ? 'rotate-180' : '')} />
+            抽取详情
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isConfirming || confirmed}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 font-label text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isConfirming ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+            {confirmed ? '已确认' : '确认用于导出'}
+          </button>
+        </div>
+      </div>
+
+      <div id={detailsId} hidden={!detailsOpen} className="mt-3">
+        <div className="grid gap-2 text-[11px] text-foreground/60 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric label="正文字号" value={`${profile.body_pt} pt`} />
+          <Metric label="标题字号" value={`${profile.title_pt} pt`} />
+          <Metric label="拉丁字体" value={profile.latin_font} />
+          <Metric label="中文字体" value={profile.cjk_font} />
+          <Metric label="上边距" value={`${margins.top} cm`} />
+          <Metric label="下边距" value={`${margins.bottom} cm`} />
+          <Metric label="左边距" value={`${margins.left} cm`} />
+          <Metric label="右边距" value={`${margins.right} cm`} />
+          <Metric label="图题位置" value={formatCaptionPosition(profile.figure_caption_position)} />
+          <Metric label="表题位置" value={formatCaptionPosition(profile.table_caption_position)} />
+        </div>
+        {draft.warnings.length > 0 ? (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
+            <div className="font-label font-semibold">需人工复核</div>
+            <ul className="mt-1 space-y-1">
+              {draft.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function JournalStyleFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] text-foreground/45">{label}</dt>
+      <dd className="mt-0.5 truncate font-medium text-foreground/75" title={value}>{value}</dd>
+    </div>
+  );
+}
+
+function buildChecks(
+  dataset: ReviewDataset,
+  activeProjectId: string,
+  journalRules: string,
+  journalStyle: JournalStyleReviewState,
+): CheckItem[] {
   if (!activeProjectId) {
     return [
       { id: 'project', label: '项目上下文', description: '需要先激活一个手稿项目。', status: 'fail' },
@@ -756,10 +1478,24 @@ function buildChecks(dataset: ReviewDataset, activeProjectId: string, journalRul
       description: normalizeText(journalRules) ? '已提供可编辑审稿标准。' : '未提供期刊规则，将按通用学术审稿标准处理。',
       status: normalizeText(journalRules) ? 'pass' : 'warn',
     },
+    {
+      id: 'journal-style-profile',
+      label: '导出规范',
+      description: journalStyle.confirmed
+        ? `已确认 Word 导出规范 ${journalStyle.activeProfileId || journalStyle.draftProfileId}。`
+        : journalStyle.hasDraft
+          ? '已抽取期刊规范，但还未确认用于 Word 导出和最终审稿。'
+          : '未确认期刊导出规范；Word 导出将使用默认样式。',
+      status: journalStyle.confirmed ? 'pass' : (journalStyle.hasDraft ? 'warn' : 'pending'),
+    },
   ];
 }
 
-function buildReviewFindings(dataset: ReviewDataset, journalRules: string): ReviewFinding[] {
+function buildReviewFindings(
+  dataset: ReviewDataset,
+  journalRules: string,
+  journalStyle: JournalStyleReviewState,
+): ReviewFinding[] {
   const findings: ReviewFinding[] = [];
   const draftCharacters = countDraftCharacters(dataset.drafts);
   const citationCount = countCitations(dataset.citations);
@@ -824,6 +1560,24 @@ function buildReviewFindings(dataset: ReviewDataset, journalRules: string): Revi
       title: '未提供目标期刊规则',
       detail: 'AI 会按通用标准审查，但无法检查具体字数、结构、图表、引用格式和数据开放要求。',
       recommendation: '粘贴目标期刊作者指南，或保留通用标准做早期质量审查。',
+    });
+  }
+  if (journalStyle.hasDraft && !journalStyle.confirmed) {
+    findings.push({
+      id: 'unconfirmed-journal-style',
+      severity: 'format',
+      title: '期刊规范尚未确认',
+      detail: '当前已有抽取出的期刊样式 profile，但还没有确认用于 Word 导出和最终审稿。',
+      recommendation: '展开抽取详情，复核字体、字号、页边距、引用体例和图表题注位置后确认。',
+      anchor: journalStyle.draftProfileId,
+    });
+  } else if (!journalStyle.confirmed && normalizeText(journalRules)) {
+    findings.push({
+      id: 'missing-journal-style-profile',
+      severity: 'format',
+      title: '未确认导出规范',
+      detail: '已提供期刊规则文本，但 Word 导出仍未绑定确认后的期刊样式 profile。',
+      recommendation: '使用“草拟”或“上传草拟”生成可复核 profile，并确认后再做最终导出。',
     });
   }
   for (const exportFinding of dataset.exportFindings) {

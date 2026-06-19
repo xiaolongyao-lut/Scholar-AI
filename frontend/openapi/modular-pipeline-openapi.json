@@ -1,6 +1,523 @@
 {
   "components": {
     "schemas": {
+      "AcademicWritingAuditContext": {
+        "description": "Caller-supplied provenance for writing-quality audit.\n\nArgs:\n    invocation_surface: Stable caller class. Unknown custom values are\n        rejected to keep audit dashboards machine-filterable.\n    agent_host: Optional external agent or chat surface identifier.\n    source: Optional workflow source label.\n    project_id: Optional Literature Assistant project id.\n    tool_chain: Ordered high-level steps used before linting.\n    used_mcp_tools: Tool names already invoked by the agent/tool loop.\n    retrieval_diagnostics: Prior retrieval visibility payload, typically\n        copied from an evidence-pack response.\n    reasoning_trace: Safe, user-visible reasoning summary. This is not\n        private model chain-of-thought.",
+        "properties": {
+          "agent_host": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Host"
+          },
+          "invocation_surface": {
+            "default": "direct_api",
+            "enum": [
+              "direct_api",
+              "external_mcp",
+              "api_chat_local_tools",
+              "unknown"
+            ],
+            "title": "Invocation Surface",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "reasoning_trace": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Reasoning Trace",
+            "type": "array"
+          },
+          "retrieval_diagnostics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Diagnostics"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "tool_chain": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Tool Chain",
+            "type": "array"
+          },
+          "used_mcp_tools": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Used Mcp Tools",
+            "type": "array"
+          }
+        },
+        "title": "AcademicWritingAuditContext",
+        "type": "object"
+      },
+      "AcademicWritingAuditTrail": {
+        "description": "Machine-readable audit trail for one writing-quality gate run.",
+        "properties": {
+          "agent_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Host"
+          },
+          "agent_mediated": {
+            "title": "Agent Mediated",
+            "type": "boolean"
+          },
+          "checks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "disclosure_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disclosure Note"
+          },
+          "disclosure_required": {
+            "title": "Disclosure Required",
+            "type": "boolean"
+          },
+          "evidence_pack_ref_count": {
+            "minimum": 0.0,
+            "title": "Evidence Pack Ref Count",
+            "type": "integer"
+          },
+          "evidence_ref_count": {
+            "minimum": 0.0,
+            "title": "Evidence Ref Count",
+            "type": "integer"
+          },
+          "invocation_surface": {
+            "enum": [
+              "direct_api",
+              "external_mcp",
+              "api_chat_local_tools",
+              "unknown"
+            ],
+            "title": "Invocation Surface",
+            "type": "string"
+          },
+          "mcp_tool_calls_used": {
+            "title": "Mcp Tool Calls Used",
+            "type": "boolean"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "quality_gate": {
+            "enum": [
+              "passed",
+              "failed"
+            ],
+            "title": "Quality Gate",
+            "type": "string"
+          },
+          "reasoning_trace": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoning Trace",
+            "type": "array"
+          },
+          "retrieval_diagnostics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Diagnostics"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "style_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Profile"
+          },
+          "tool_chain": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tool Chain",
+            "type": "array"
+          },
+          "used_mcp_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Used Mcp Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "invocation_surface",
+          "agent_mediated",
+          "mcp_tool_calls_used",
+          "evidence_ref_count",
+          "evidence_pack_ref_count",
+          "quality_gate",
+          "disclosure_required"
+        ],
+        "title": "AcademicWritingAuditTrail",
+        "type": "object"
+      },
+      "AcademicWritingLintIssue": {
+        "description": "One deterministic writing-quality finding.\n\nArgs:\n    code: Stable machine-readable issue code.\n    severity: Impact level used for pass/fail and score penalties.\n    message: Human-readable remediation target.\n    span: Optional compact location hint; offsets refer to normalized text.",
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "span": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "AcademicWritingLintIssue",
+        "type": "object"
+      },
+      "AcademicWritingLintMetrics": {
+        "description": "Observable writing metrics used by the linter response.",
+        "properties": {
+          "academic_connector_count": {
+            "minimum": 0.0,
+            "title": "Academic Connector Count",
+            "type": "integer"
+          },
+          "char_count": {
+            "minimum": 0.0,
+            "title": "Char Count",
+            "type": "integer"
+          },
+          "citation_count": {
+            "minimum": 0.0,
+            "title": "Citation Count",
+            "type": "integer"
+          },
+          "conversational_phrase_count": {
+            "minimum": 0.0,
+            "title": "Conversational Phrase Count",
+            "type": "integer"
+          },
+          "equation_ref_count": {
+            "minimum": 0.0,
+            "title": "Equation Ref Count",
+            "type": "integer"
+          },
+          "evidence_ref_count": {
+            "minimum": 0.0,
+            "title": "Evidence Ref Count",
+            "type": "integer"
+          },
+          "figure_ref_count": {
+            "minimum": 0.0,
+            "title": "Figure Ref Count",
+            "type": "integer"
+          },
+          "section_count": {
+            "minimum": 0.0,
+            "title": "Section Count",
+            "type": "integer"
+          },
+          "table_ref_count": {
+            "minimum": 0.0,
+            "title": "Table Ref Count",
+            "type": "integer"
+          },
+          "word_count": {
+            "minimum": 0.0,
+            "title": "Word Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "char_count",
+          "word_count",
+          "section_count",
+          "citation_count",
+          "evidence_ref_count",
+          "figure_ref_count",
+          "table_ref_count",
+          "equation_ref_count",
+          "academic_connector_count",
+          "conversational_phrase_count"
+        ],
+        "title": "AcademicWritingLintMetrics",
+        "type": "object"
+      },
+      "AcademicWritingLintRequest": {
+        "description": "Input for deterministic academic writing lint.\n\nArgs:\n    text: Plain Markdown/text manuscript content.\n    html: Optional HTML manuscript content; headings/tables/captions are\n        recognized before tags are stripped.\n    content_type: Expected scholarly unit being checked.\n    language: ``auto`` derives Chinese/English from Unicode/script counts.\n    required_sections: Section labels that must appear as headings or\n        standalone section labels.\n    require_evidence_refs: Whether citation/evidence anchors are required.\n    require_figure_table_formula_refs: Whether figure, table, and equation\n        references must all be present.\n    style_profile: Optional journal/export style profile expectation.\n    audit_context: Optional caller provenance used to distinguish direct\n        API checks from MCP/agent-mediated writing checks.",
+        "properties": {
+          "audit_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AcademicWritingAuditContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content_type": {
+            "default": "manuscript",
+            "enum": [
+              "review",
+              "introduction",
+              "manuscript",
+              "section"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "html": {
+            "anyOf": [
+              {
+                "maxLength": 300000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Html"
+          },
+          "language": {
+            "default": "auto",
+            "enum": [
+              "zh",
+              "en",
+              "auto"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
+          "require_evidence_refs": {
+            "default": true,
+            "title": "Require Evidence Refs",
+            "type": "boolean"
+          },
+          "require_figure_table_formula_refs": {
+            "default": false,
+            "title": "Require Figure Table Formula Refs",
+            "type": "boolean"
+          },
+          "required_sections": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Required Sections",
+            "type": "array"
+          },
+          "style_profile": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Profile"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 300000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "title": "AcademicWritingLintRequest",
+        "type": "object"
+      },
+      "AcademicWritingLintResponse": {
+        "description": "Deterministic academic writing quality result.",
+        "properties": {
+          "audit": {
+            "$ref": "#/components/schemas/AcademicWritingAuditTrail"
+          },
+          "content_type": {
+            "enum": [
+              "review",
+              "introduction",
+              "manuscript",
+              "section"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/AcademicWritingLintIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "language": {
+            "enum": [
+              "zh",
+              "en"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/AcademicWritingLintMetrics"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "recommendations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "score": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "passed",
+          "score",
+          "content_type",
+          "language",
+          "metrics",
+          "audit"
+        ],
+        "title": "AcademicWritingLintResponse",
+        "type": "object"
+      },
       "AddHighlightRequest": {
         "properties": {
           "highlight": {
@@ -53,6 +570,545 @@
           "page"
         ],
         "title": "AddNoteRequest",
+        "type": "object"
+      },
+      "AgentBridgeRequestPayload": {
+        "description": "Public response for one agent bridge request.",
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/AgentRequestEnvelope"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobPayload"
+          },
+          "poll": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Poll",
+            "type": "object"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionPayload"
+          }
+        },
+        "required": [
+          "request_id",
+          "session",
+          "job",
+          "poll",
+          "envelope"
+        ],
+        "title": "AgentBridgeRequestPayload",
+        "type": "object"
+      },
+      "AgentBridgeResourcePayload": {
+        "description": "Bounded resource payload returned to external agents.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_chars": {
+            "maximum": 20000.0,
+            "minimum": 100.0,
+            "title": "Max Chars",
+            "type": "integer"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "ref_id": {
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "total_chars": {
+            "minimum": 0.0,
+            "title": "Total Chars",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref_id",
+          "kind",
+          "content",
+          "truncated",
+          "max_chars",
+          "total_chars"
+        ],
+        "title": "AgentBridgeResourcePayload",
+        "type": "object"
+      },
+      "AgentBridgeResultPayload": {
+        "description": "Response after an agent writes a terminal result.",
+        "properties": {
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactPayload"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobPayload"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "job"
+        ],
+        "title": "AgentBridgeResultPayload",
+        "type": "object"
+      },
+      "AgentBridgeStatusPayload": {
+        "description": "Agent bridge status visible to MCP and frontend clients.",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "pending_count": {
+            "minimum": 0.0,
+            "title": "Pending Count",
+            "type": "integer"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/JobPayload"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "running_count": {
+            "minimum": 0.0,
+            "title": "Running Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending_count",
+          "running_count"
+        ],
+        "title": "AgentBridgeStatusPayload",
+        "type": "object"
+      },
+      "AgentContextBudget": {
+        "description": "Token-control envelope for external agent requests.",
+        "properties": {
+          "include_full_text": {
+            "default": false,
+            "title": "Include Full Text",
+            "type": "boolean"
+          },
+          "max_chars": {
+            "default": 12000,
+            "maximum": 40000.0,
+            "minimum": 100.0,
+            "title": "Max Chars",
+            "type": "integer"
+          },
+          "max_chunks": {
+            "default": 12,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Chunks",
+            "type": "integer"
+          }
+        },
+        "title": "AgentContextBudget",
+        "type": "object"
+      },
+      "AgentFailRequest": {
+        "description": "Failure payload written by an external agent.",
+        "properties": {
+          "error": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "AgentFailRequest",
+        "type": "object"
+      },
+      "AgentOutputTargets": {
+        "description": "Where an agent result should be surfaced after completion.",
+        "properties": {
+          "agent_workspace": {
+            "default": true,
+            "title": "Agent Workspace",
+            "type": "boolean"
+          },
+          "evolution_capture": {
+            "default": true,
+            "title": "Evolution Capture",
+            "type": "boolean"
+          },
+          "graph_candidate": {
+            "default": false,
+            "title": "Graph Candidate",
+            "type": "boolean"
+          },
+          "runtime_job": {
+            "default": true,
+            "title": "Runtime Job",
+            "type": "boolean"
+          },
+          "smart_read_conversation": {
+            "default": false,
+            "title": "Smart Read Conversation",
+            "type": "boolean"
+          },
+          "wiki_candidate": {
+            "default": false,
+            "title": "Wiki Candidate",
+            "type": "boolean"
+          }
+        },
+        "title": "AgentOutputTargets",
+        "type": "object"
+      },
+      "AgentProgressRequest": {
+        "description": "Progress delta written by an external agent.",
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "message": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "stage": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "message"
+        ],
+        "title": "AgentProgressRequest",
+        "type": "object"
+      },
+      "AgentRequestEnvelope": {
+        "description": "Request shape for work delegated to Codex, Claude, or another agent.",
+        "properties": {
+          "agent_host": {
+            "default": "unknown",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Agent Host",
+            "type": "string"
+          },
+          "chat_session_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Session Id"
+          },
+          "context_budget": {
+            "$ref": "#/components/schemas/AgentContextBudget"
+          },
+          "intent": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Intent",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "output_targets": {
+            "$ref": "#/components/schemas/AgentOutputTargets"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "resource_refs": {
+            "items": {
+              "$ref": "#/components/schemas/AgentResourceRef"
+            },
+            "maxItems": 50,
+            "title": "Resource Refs",
+            "type": "array"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route"
+          },
+          "runtime_session_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Session Id"
+          },
+          "source": {
+            "default": "mcp",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "user_text": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "User Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "intent"
+        ],
+        "title": "AgentRequestEnvelope",
+        "type": "object"
+      },
+      "AgentResourceRef": {
+        "description": "Small reference to context an agent can fetch through bounded readers.",
+        "properties": {
+          "kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "read_endpoint": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Endpoint"
+          },
+          "ref_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "ref_id",
+          "kind"
+        ],
+        "title": "AgentResourceRef",
+        "type": "object"
+      },
+      "AgentResultRequest": {
+        "description": "Final result payload written by an external agent.",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 200,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "graph_patch_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 100,
+            "title": "Graph Patch Refs",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 120000,
+            "title": "Text",
+            "type": "string"
+          },
+          "wiki_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 100,
+            "title": "Wiki Refs",
+            "type": "array"
+          }
+        },
+        "title": "AgentResultRequest",
         "type": "object"
       },
       "AgentRole": {
@@ -387,6 +1443,11 @@
             "title": "Job Id",
             "type": "string"
           },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
           "mime_type": {
             "default": "application/json",
             "title": "Mime Type",
@@ -707,6 +1768,34 @@
           "goal"
         ],
         "title": "BatchProcessRequest",
+        "type": "object"
+      },
+      "Body_post_api_export_journal_style_specs_upload": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "journal_name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Journal Name",
+            "type": "string"
+          },
+          "project_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "journal_name",
+          "file"
+        ],
+        "title": "Body_post_api_export_journal_style_specs_upload",
         "type": "object"
       },
       "Body_post_resources_upload": {
@@ -1561,6 +2650,12 @@
             ],
             "description": "Tool/function definitions for skill calling",
             "title": "Tools"
+          },
+          "use_local_literature_tools": {
+            "default": false,
+            "description": "Expose the built-in Literature Assistant source and writing tool surface to source-launched chat with the same guarded boundaries as the stdio MCP agent.",
+            "title": "Use Local Literature Tools",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2091,6 +3186,27 @@
             ],
             "description": "LLM config (optional; backend resolves if absent)"
           },
+          "mcp_allow_high_risk_tools": {
+            "default": false,
+            "description": "Kept for schema parity with ChatRequest; streaming tool-use is not dispatched.",
+            "title": "Mcp Allow High Risk Tools",
+            "type": "boolean"
+          },
+          "mcp_server_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MCP service scope. Streaming tool-use is rejected instead of silently ignored.",
+            "title": "Mcp Server Ids"
+          },
           "project_id": {
             "anyOf": [
               {
@@ -2148,6 +3264,12 @@
             "default": true,
             "description": "启用流式输出",
             "title": "Stream",
+            "type": "boolean"
+          },
+          "use_local_literature_tools": {
+            "default": false,
+            "description": "Kept for schema parity with ChatRequest; streaming tool-use is not dispatched.",
+            "title": "Use Local Literature Tools",
             "type": "boolean"
           }
         },
@@ -2271,6 +3393,159 @@
           "material_id"
         ],
         "title": "ChunkLocatorPayload",
+        "type": "object"
+      },
+      "ChunkSearchRefMetadataPayload": {
+        "description": "Whitelisted provenance metadata for token-bounded chunk refs.\n\nArgs:\n    material_id: Material that owns the matched chunk.\n    title: Human-readable source title when available.\n    page: One-based page number when the chunk store records it.\n    chunk_type: Optional chunk classifier from the extraction pipeline.\n    source_relative_path: Project-local source-file path when persisted.\n    locator: Optional compact locator payload suitable for reader jumps.",
+        "properties": {
+          "chunk_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Type"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "source_relative_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Relative Path"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "material_id"
+        ],
+        "title": "ChunkSearchRefMetadataPayload",
+        "type": "object"
+      },
+      "ChunkSearchRefPayload": {
+        "description": "Small search hit returned to MCP clients without source text content.\n\nArgs:\n    chunk_id: Stable chunk identifier in the project chunk store.\n    ref_id: Agent bridge ref id in ``kind:id`` form.\n    summary: Short display-safe preview derived from local metadata/text.\n    lexical_score: Score from the local lexical matcher.\n    rerank_score: Reserved rerank score; mirrors lexical score until a\n        deterministic reranker is wired into this read-only endpoint.\n    metadata: Whitelisted provenance fields only.\n    read_endpoint: Bounded reader endpoint for fetching full content later.",
+        "properties": {
+          "chunk_id": {
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "lexical_score": {
+            "minimum": 0.0,
+            "title": "Lexical Score",
+            "type": "number"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChunkSearchRefMetadataPayload"
+          },
+          "read_endpoint": {
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "rerank_score": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Score"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "ref_id",
+          "summary",
+          "lexical_score",
+          "metadata",
+          "read_endpoint"
+        ],
+        "title": "ChunkSearchRefPayload",
+        "type": "object"
+      },
+      "ChunkSearchRefsResponse": {
+        "description": "Read-only chunk ref search response for MCP-first retrieval.\n\nArgs:\n    project_id: Project searched.\n    query: Query string after FastAPI validation.\n    total_refs: Number of refs in ``refs``.\n    refs: Token-bounded refs with no chunk body fields.",
+        "properties": {
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkSearchRefPayload"
+            },
+            "title": "Refs",
+            "type": "array"
+          },
+          "total_refs": {
+            "minimum": 0.0,
+            "title": "Total Refs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "query",
+          "total_refs"
+        ],
+        "title": "ChunkSearchRefsResponse",
         "type": "object"
       },
       "CitationAnchorPayload": {
@@ -6188,6 +7463,272 @@
         "title": "EvidenceGraphScope",
         "type": "object"
       },
+      "EvidencePackBuildRequest": {
+        "description": "Request to build a query-scoped evidence pack from project chunks.\n\nArgs:\n    project_id: Project whose already-indexed chunk store is searched.\n    query: Non-empty research question or section-local retrieval query.\n    section_id: Optional draft/outline section id kept for traceability.\n    top_k: Maximum evidence refs returned by the lexical fallback path.",
+        "properties": {
+          "project_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "section_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Id"
+          },
+          "top_k": {
+            "default": 10,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "query"
+        ],
+        "title": "EvidencePackBuildRequest",
+        "type": "object"
+      },
+      "EvidencePackBuildResponse": {
+        "description": "Response for the evidence-pack builder endpoint.\n\nArgs:\n    evidence_pack_ref: Stable ref id for this deterministic build result.\n    project_id: Project searched.\n    query: Query string used for retrieval.\n    section_id: Optional section id carried from the request.\n    retrieval_method: Actual retrieval method used by the backend.\n    rerank_status: Whether reranking actively ran, was skipped, or unavailable.\n    total: Number of evidence refs returned after truncation.\n    truncated: Whether more positive lexical hits existed than returned.\n    retrieval_diagnostics: Explicit embedding/rerank visibility for agents.\n    evidence_refs: MCP-safe evidence refs with no raw chunk body fields.",
+        "properties": {
+          "evidence_pack_ref": {
+            "minLength": 1,
+            "title": "Evidence Pack Ref",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidencePackReferencePayload"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "query": {
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "rerank_status": {
+            "default": "unavailable",
+            "enum": [
+              "active",
+              "skipped",
+              "unavailable"
+            ],
+            "title": "Rerank Status",
+            "type": "string"
+          },
+          "retrieval_diagnostics": {
+            "$ref": "#/components/schemas/EvidenceRetrievalDiagnosticsPayload"
+          },
+          "retrieval_method": {
+            "default": "lexical",
+            "enum": [
+              "lexical",
+              "hybrid",
+              "hybrid_rerank"
+            ],
+            "title": "Retrieval Method",
+            "type": "string"
+          },
+          "section_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Id"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "evidence_pack_ref",
+          "project_id",
+          "query",
+          "total"
+        ],
+        "title": "EvidencePackBuildResponse",
+        "type": "object"
+      },
+      "EvidencePackReferencePayload": {
+        "description": "MCP-safe evidence ref derived from a backend search ref.\n\nArgs:\n    project_id: Project that owns the chunk ref.\n    source_type: Evidence source family; wiki refs are bounded resources\n        and are not copied into project chunks.\n    ref_id: Agent bridge resource id in ``kind:id`` form.\n    read_endpoint: Bounded reader endpoint with explicit project scope.\n    chunk_id: Stable chunk identifier in the project chunk store.\n    material_id: Material that owns the chunk.\n    page: One-based source page when persisted in metadata.\n    lexical_score: Score from the local lexical retrieval path.\n    rerank_score: Optional rerank score; ``None`` when rerank did not run.\n    citation_anchor: Stable local citation anchor for draft traceability.\n    figure_candidate: Optional future figure/table candidate id.\n    summary: Bounded summary safe for model context.\n    suitable_for_body: Whether the ref is safe to cite in body prose.\n    source_title: Optional display title for non-project resources.\n    source_path: Optional bounded source path for non-project resources.\n    joint_score: Optional fused project/wiki score from weighted RRF.",
+        "properties": {
+          "chunk_id": {
+            "minLength": 1,
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "citation_anchor": {
+            "maxLength": 260,
+            "minLength": 1,
+            "title": "Citation Anchor",
+            "type": "string"
+          },
+          "figure_candidate": {
+            "anyOf": [
+              {
+                "maxLength": 260,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Candidate"
+          },
+          "joint_score": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joint Score"
+          },
+          "lexical_score": {
+            "minimum": 0.0,
+            "title": "Lexical Score",
+            "type": "number"
+          },
+          "material_id": {
+            "minLength": 1,
+            "title": "Material Id",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "read_endpoint": {
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "rerank_score": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Score"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "source_title": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title"
+          },
+          "source_type": {
+            "default": "project",
+            "enum": [
+              "project",
+              "wiki"
+            ],
+            "title": "Source Type",
+            "type": "string"
+          },
+          "suitable_for_body": {
+            "default": true,
+            "title": "Suitable For Body",
+            "type": "boolean"
+          },
+          "summary": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "ref_id",
+          "read_endpoint",
+          "chunk_id",
+          "material_id",
+          "lexical_score",
+          "citation_anchor",
+          "summary"
+        ],
+        "title": "EvidencePackReferencePayload",
+        "type": "object"
+      },
       "EvidenceRef": {
         "properties": {
           "bbox": {
@@ -6588,6 +8129,84 @@
         "title": "EvidenceRefsResponse",
         "type": "object"
       },
+      "EvidenceRetrievalDiagnosticsPayload": {
+        "description": "Machine-readable retrieval provenance for writing/evidence audits.\n\nArgs:\n    retrieval_method: Effective retrieval path used for this response.\n    embedding_status: Whether dense embeddings were used, skipped, or unavailable.\n    rerank_status: Whether reranking was active, skipped, or unavailable.\n    fallback_reason: Short reason when the path degraded to lexical retrieval.\n    project_weight: Weight assigned to project-local chunks in this build.\n    wiki_weight: Weight assigned to wiki recall in this build.\n    joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are\n        reported here without being coerced into project chunk refs.\n    reasoning_trace: Auditable retrieval-decision summary, not private\n        model chain-of-thought.\n    notes: Bounded operational notes safe to show in chat/tool transcripts.",
+        "properties": {
+          "embedding_status": {
+            "default": "unavailable",
+            "enum": [
+              "active",
+              "skipped",
+              "unavailable"
+            ],
+            "title": "Embedding Status",
+            "type": "string"
+          },
+          "fallback_reason": {
+            "default": "",
+            "maxLength": 240,
+            "title": "Fallback Reason",
+            "type": "string"
+          },
+          "joint_recall": {
+            "additionalProperties": true,
+            "title": "Joint Recall",
+            "type": "object"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Notes",
+            "type": "array"
+          },
+          "project_weight": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Project Weight",
+            "type": "number"
+          },
+          "reasoning_trace": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Reasoning Trace",
+            "type": "array"
+          },
+          "rerank_status": {
+            "default": "unavailable",
+            "enum": [
+              "active",
+              "skipped",
+              "unavailable"
+            ],
+            "title": "Rerank Status",
+            "type": "string"
+          },
+          "retrieval_method": {
+            "default": "lexical",
+            "enum": [
+              "lexical",
+              "hybrid",
+              "hybrid_rerank"
+            ],
+            "title": "Retrieval Method",
+            "type": "string"
+          },
+          "wiki_weight": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Wiki Weight",
+            "type": "number"
+          }
+        },
+        "title": "EvidenceRetrievalDiagnosticsPayload",
+        "type": "object"
+      },
       "EvolutionAuditPayload": {
         "description": "Read-only experience review summary for the audit panel.\n\nCounts and recent decisions are bounded so the panel can explain review\nactivity without exposing full candidate text.",
         "properties": {
@@ -6925,15 +8544,29 @@
             ],
             "title": "Json"
           },
-          "style_profile": {
+          "project_id": {
             "anyOf": [
               {
+                "maxLength": 128,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
+            "title": "Project Id"
+          },
+          "style_profile": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "gb_t_7714_review",
             "title": "Style Profile"
           },
           "title": {
@@ -6941,6 +8574,11 @@
             "maxLength": 200,
             "title": "Title",
             "type": "string"
+          },
+          "verify_with_word": {
+            "default": false,
+            "title": "Verify With Word",
+            "type": "boolean"
           }
         },
         "required": [
@@ -6970,6 +8608,19 @@
           "project_id": {
             "title": "Project Id",
             "type": "string"
+          },
+          "style_profile": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional built-in or confirmed project-scoped journal style profile for Word export.",
+            "title": "Style Profile"
           }
         },
         "required": [
@@ -8325,6 +9976,27 @@
             "description": "When the user is reading a specific paper in the Workbench, anchor retrieval to that material's chunks first so the answer stays grounded in 'the paper I'm looking at' rather than project-wide RAG. Empty / null = project-wide retrieval as before.",
             "title": "Material Id"
           },
+          "mcp_allow_high_risk_tools": {
+            "default": false,
+            "description": "Allow write/filesystem/destructive MCP tools for this turn only. Default False keeps high-risk tools in-band blocked.",
+            "title": "Mcp Allow High Risk Tools",
+            "type": "boolean"
+          },
+          "mcp_server_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional MCP service scope forwarded to the lower chat tool-use runner. Omitted means the normal chat path.",
+            "title": "Mcp Server Ids"
+          },
           "mode": {
             "anyOf": [
               {
@@ -8399,6 +10071,12 @@
             ],
             "title": "Tier",
             "type": "string"
+          },
+          "use_local_literature_tools": {
+            "default": false,
+            "description": "Expose the built-in guarded Literature Assistant source and writing tool surface to source-launched SmartRead.",
+            "title": "Use Local Literature Tools",
+            "type": "boolean"
           }
         },
         "required": [
@@ -8452,6 +10130,19 @@
             },
             "title": "Evidence Refs",
             "type": "array"
+          },
+          "mcp_run": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Local/MCP tool-use transcript surfaced for SmartRead auditability. Populated only when the lower chat path executes guarded tools.",
+            "title": "Mcp Run"
           },
           "response": {
             "title": "Response",
@@ -8772,6 +10463,65 @@
           "is_cancelled"
         ],
         "title": "JobStatusPayload",
+        "type": "object"
+      },
+      "JournalStyleSpecConfirmRequest": {
+        "description": "Confirm a project-scoped style profile draft for future exports.",
+        "properties": {
+          "confirmed_by": {
+            "default": "user",
+            "maxLength": 120,
+            "title": "Confirmed By",
+            "type": "string"
+          },
+          "draft_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "project_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "draft_id"
+        ],
+        "title": "JournalStyleSpecConfirmRequest",
+        "type": "object"
+      },
+      "JournalStyleSpecDraftRequest": {
+        "description": "Text-based official journal requirements submitted for profile drafting.",
+        "properties": {
+          "journal_name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Journal Name",
+            "type": "string"
+          },
+          "project_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "spec_text": {
+            "maxLength": 120000,
+            "minLength": 20,
+            "title": "Spec Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "journal_name",
+          "spec_text"
+        ],
+        "title": "JournalStyleSpecDraftRequest",
         "type": "object"
       },
       "LLMConfig": {
@@ -12007,6 +13757,16 @@
             ],
             "title": "Project Id"
           },
+          "rendered_writing_audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AcademicWritingLintResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "review_findings": {
             "items": {
               "$ref": "#/components/schemas/ProjectExportReviewFindingPayload"
@@ -12020,6 +13780,16 @@
             },
             "title": "Sections",
             "type": "array"
+          },
+          "writing_audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AcademicWritingLintResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -12193,6 +13963,16 @@
             "default": "",
             "title": "Source Folder",
             "type": "string"
+          },
+          "source_folder_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceFolderRefPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "title": "Status",
@@ -15072,6 +16852,28 @@
         "title": "SkillUninstallResponse",
         "type": "object"
       },
+      "SourceFolderRefPayload": {
+        "description": "Privacy-safe project source-folder binding metadata.\n\nThe backend stores the real local path for guarded scans, but public\nclients should use this shape when they only need to show binding state.",
+        "properties": {
+          "bound_at": {
+            "default": "",
+            "title": "Bound At",
+            "type": "string"
+          },
+          "bound_by": {
+            "default": "",
+            "title": "Bound By",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "title": "SourceFolderRefPayload",
+        "type": "object"
+      },
       "SourceLabelPayload": {
         "description": "Source label for filtering evidence references.",
         "properties": {
@@ -17665,6 +19467,483 @@
         "summary": "List Tools",
         "tags": [
           "Agent"
+        ]
+      }
+    },
+    "/api/agent-bridge/request": {
+      "post": {
+        "description": "Create a runtime-visible job for external agent work.",
+        "operationId": "post_api_agent_bridge_request",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRequestEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBridgeRequestPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Agent Request",
+        "tags": [
+          "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-bridge/request/{request_id}": {
+      "get": {
+        "description": "Return the runtime job linked to an agent request id.",
+        "operationId": "get_api_agent_bridge_request_request_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Request",
+        "tags": [
+          "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-bridge/request/{request_id}/fail": {
+      "post": {
+        "description": "Mark a linked runtime job as failed.",
+        "operationId": "post_api_agent_bridge_request_request_id_fail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentFailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fail Agent Request",
+        "tags": [
+          "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-bridge/request/{request_id}/progress": {
+      "post": {
+        "description": "Write a progress event into the linked runtime job.",
+        "operationId": "post_api_agent_bridge_request_request_id_progress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Agent Progress",
+        "tags": [
+          "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-bridge/request/{request_id}/result": {
+      "post": {
+        "description": "Store final agent output as runtime artifacts and complete the job.",
+        "operationId": "post_api_agent_bridge_request_request_id_result",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentResultRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBridgeResultPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Agent Result",
+        "tags": [
+          "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-bridge/requests": {
+      "get": {
+        "description": "List runtime jobs created through the agent bridge.",
+        "operationId": "get_api_agent_bridge_requests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobPayload"
+                  },
+                  "title": "Response Get Api Agent Bridge Requests",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agent Requests",
+        "tags": [
+          "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-bridge/resource/{ref_id}": {
+      "get": {
+        "description": "Resolve a stable resource ref into a hard-bounded text payload.",
+        "operationId": "get_api_agent_bridge_resource_ref_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref_id",
+            "required": true,
+            "schema": {
+              "title": "Ref Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_chars",
+            "required": false,
+            "schema": {
+              "default": 6000,
+              "maximum": 20000,
+              "minimum": 100,
+              "title": "Max Chars",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBridgeResourcePayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Agent Resource",
+        "tags": [
+          "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-bridge/status": {
+      "get": {
+        "description": "Return a small runtime-backed agent bridge status.",
+        "operationId": "get_api_agent_bridge_status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBridgeStatusPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Bridge Status",
+        "tags": [
+          "Agent Bridge"
         ]
       }
     },
@@ -21620,6 +23899,48 @@
         ]
       }
     },
+    "/api/evidence-pack/build": {
+      "post": {
+        "description": "Build a query-scoped evidence pack from existing project chunks.\n\nThe current production-safe implementation is explicit lexical fallback:\nit reuses the same white-listed search-ref projection as MCP retrieval and\nreports rerank as unavailable rather than implying hybrid retrieval ran.",
+        "operationId": "post_api_evidence_pack_build",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidencePackBuildRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePackBuildResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Evidence Pack",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
     "/api/evidence_refs": {
       "get": {
         "description": "Get evidence references with optional source_labels filtering.\n\nSupports filtering by project_id, material_id, and source_labels.",
@@ -21866,6 +24187,138 @@
           }
         },
         "summary": "Export Docx",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/api/export/journal-style-specs/confirm": {
+      "post": {
+        "description": "Confirm a reviewable style draft for project-scoped DOCX export.",
+        "operationId": "post_api_export_journal_style_specs_confirm",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JournalStyleSpecConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Export Journal Style Specs Confirm",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Journal Style Spec",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/api/export/journal-style-specs/draft": {
+      "post": {
+        "description": "Create a reviewable journal style profile draft from bounded text.",
+        "operationId": "post_api_export_journal_style_specs_draft",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JournalStyleSpecDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Export Journal Style Specs Draft",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft Journal Style Spec",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/api/export/journal-style-specs/upload": {
+      "post": {
+        "description": "Create a reviewable journal style profile draft from a small text file.",
+        "operationId": "post_api_export_journal_style_specs_upload",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_api_export_journal_style_specs_upload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Export Journal Style Specs Upload",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Journal Style Spec",
         "tags": [
           "Export"
         ]
@@ -22401,6 +24854,48 @@
         "summary": "Source Vault Search",
         "tags": [
           "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/linter/academic-writing": {
+      "post": {
+        "description": "Check scholarly writing structure, evidence, tone, and references.",
+        "operationId": "post_api_linter_academic_writing",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcademicWritingLintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademicWritingLintResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lint Academic Writing Endpoint",
+        "tags": [
+          "Linter"
         ]
       }
     },
@@ -26168,7 +28663,7 @@
     },
     "/api/writing/outline/generate": {
       "post": {
-        "description": "Generate outline via AI based on topic and materials.\n\nUses project materials and focus areas to generate structured outline.",
+        "description": "Generate an evidence-grounded outline from project materials.\n\nWhy:\n    Academic outlines should be constrained by project-owned source\n    summaries rather than topic-only generation. The endpoint fails when no\n    usable material context exists, preventing plausible but unsupported\n    outlines from entering downstream MCP writing workflows.",
         "operationId": "post_api_writing_outline_generate",
         "requestBody": {
           "content": {
@@ -29167,6 +31662,77 @@
         ]
       }
     },
+    "/resources/chunks/search-refs": {
+      "get": {
+        "description": "Search existing project chunks and return refs without body content.\n\nArgs:\n    request: FastAPI request used to reject legacy side-effect flags.\n    project_id: Project whose already-indexed chunk store is searched.\n    query: Non-empty lexical query.\n    top_k: Maximum number of positive-scoring refs returned.\n\nReturns:\n    ``ChunkSearchRefsResponse`` with ref metadata only. The endpoint is\n    pure read: it never calls ingestion helpers and rejects flags that\n    imply write-through search behavior.",
+        "operationId": "get_resources_chunks_search_refs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "搜索词",
+            "in": "query",
+            "name": "query",
+            "required": true,
+            "schema": {
+              "description": "搜索词",
+              "minLength": 1,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "description": "返回最相关的引用数",
+            "in": "query",
+            "name": "top_k",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "返回最相关的引用数",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top K",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunkSearchRefsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Chunk Refs",
+        "tags": [
+          "Resources",
+          "Resources"
+        ]
+      }
+    },
     "/resources/chunks/{chunk_id}/locator": {
       "get": {
         "description": "Resolve a chunk_id to {material_id, chunk_id, page, chunk_index}.\n\nRead-only over the existing chunk store. Returns:\n  - 200 with the locator dict on success.\n  - 404 when chunk_id is not present in the project chunk store.\n  - 422 when project_id is missing or blank (FastAPI Query validation).",
@@ -30336,6 +32902,49 @@
               "default": "markdown",
               "description": "导出格式"
             }
+          },
+          {
+            "description": "Include evidence/review appendices in text/json payloads",
+            "in": "query",
+            "name": "include_evidence",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Include evidence/review appendices in text/json payloads",
+              "title": "Include Evidence",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Include citation-chain appendices in text/json payloads",
+            "in": "query",
+            "name": "include_citations",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Include citation-chain appendices in text/json payloads",
+              "title": "Include Citations",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Optional journal style profile for Word export",
+            "in": "query",
+            "name": "style_profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional journal style profile for Word export",
+              "title": "Style Profile"
+            }
           }
         ],
         "responses": {
@@ -30516,7 +33125,7 @@
     },
     "/resources/project/{project_id}/scan-folder": {
       "post": {
-        "description": "Scan the project's source_folder and ingest all literature files.\n\nReads all supported files (.pdf, .docx, .doc, .txt, .md) from the project's\nsource_folder and indexes them into the knowledge base.  Already-indexed\nfiles (same filename) are skipped.  Returns a summary of what was processed.",
+        "description": "Scan the project's source_folder and ingest all literature files.\n\nReads all supported files (.pdf, .docx, .doc, .txt, .md) from the project's\nsource_folder and indexes them into the knowledge base. Already-indexed\nfiles are skipped. Set ``async_job=true`` to submit the scan as a runtime\njob that can be polled through ``/runtime/job/{id}/snapshot``.",
         "operationId": "post_resources_project_project_id_scan_folder",
         "parameters": [
           {
@@ -30566,6 +33175,18 @@
               "minimum": 1,
               "title": "Max Workers",
               "type": "integer"
+            }
+          },
+          {
+            "description": "为 MCP/任务中心提交 runtime job，而不是同步等待扫描完成",
+            "in": "query",
+            "name": "async_job",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "为 MCP/任务中心提交 runtime job，而不是同步等待扫描完成",
+              "title": "Async Job",
+              "type": "boolean"
             }
           }
         ],

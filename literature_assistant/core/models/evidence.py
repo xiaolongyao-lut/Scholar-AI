@@ -1,7 +1,7 @@
 """Evidence chain and source label models for API."""
 
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -197,6 +197,121 @@ class DiscussionEvidencePackPayload(BaseModel):
     created_at: str
     snippets: List[dict] = Field(default_factory=list)
     source_labels: List[str] = Field(default_factory=list)
+
+
+class EvidencePackBuildRequest(BaseModel):
+    """Request to build a query-scoped evidence pack from project chunks.
+
+    Args:
+        project_id: Project whose already-indexed chunk store is searched.
+        query: Non-empty research question or section-local retrieval query.
+        section_id: Optional draft/outline section id kept for traceability.
+        top_k: Maximum evidence refs returned by the lexical fallback path.
+    """
+
+    project_id: str = Field(min_length=1, max_length=128)
+    query: str = Field(min_length=1, max_length=4096)
+    section_id: Optional[str] = Field(default=None, max_length=128)
+    top_k: int = Field(default=10, ge=1, le=50)
+
+
+class EvidencePackReferencePayload(BaseModel):
+    """MCP-safe evidence ref derived from a backend search ref.
+
+    Args:
+        project_id: Project that owns the chunk ref.
+        source_type: Evidence source family; wiki refs are bounded resources
+            and are not copied into project chunks.
+        ref_id: Agent bridge resource id in ``kind:id`` form.
+        read_endpoint: Bounded reader endpoint with explicit project scope.
+        chunk_id: Stable chunk identifier in the project chunk store.
+        material_id: Material that owns the chunk.
+        page: One-based source page when persisted in metadata.
+        lexical_score: Score from the local lexical retrieval path.
+        rerank_score: Optional rerank score; ``None`` when rerank did not run.
+        citation_anchor: Stable local citation anchor for draft traceability.
+        figure_candidate: Optional future figure/table candidate id.
+        summary: Bounded summary safe for model context.
+        suitable_for_body: Whether the ref is safe to cite in body prose.
+        source_title: Optional display title for non-project resources.
+        source_path: Optional bounded source path for non-project resources.
+        joint_score: Optional fused project/wiki score from weighted RRF.
+    """
+
+    project_id: str = Field(min_length=1)
+    source_type: Literal["project", "wiki"] = "project"
+    ref_id: str = Field(min_length=1)
+    read_endpoint: str = Field(min_length=1)
+    chunk_id: str = Field(min_length=1)
+    material_id: str = Field(min_length=1)
+    page: Optional[int] = Field(default=None, ge=1)
+    lexical_score: float = Field(ge=0.0)
+    rerank_score: Optional[float] = Field(default=None, ge=0.0)
+    citation_anchor: str = Field(min_length=1, max_length=260)
+    figure_candidate: Optional[str] = Field(default=None, max_length=260)
+    summary: str = Field(min_length=1, max_length=300)
+    suitable_for_body: bool = True
+    source_title: Optional[str] = Field(default=None, max_length=160)
+    source_path: Optional[str] = Field(default=None, max_length=240)
+    joint_score: Optional[float] = Field(default=None, ge=0.0)
+
+
+class EvidenceRetrievalDiagnosticsPayload(BaseModel):
+    """Machine-readable retrieval provenance for writing/evidence audits.
+
+    Args:
+        retrieval_method: Effective retrieval path used for this response.
+        embedding_status: Whether dense embeddings were used, skipped, or unavailable.
+        rerank_status: Whether reranking was active, skipped, or unavailable.
+        fallback_reason: Short reason when the path degraded to lexical retrieval.
+        project_weight: Weight assigned to project-local chunks in this build.
+        wiki_weight: Weight assigned to wiki recall in this build.
+        joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are
+            reported here without being coerced into project chunk refs.
+        reasoning_trace: Auditable retrieval-decision summary, not private
+            model chain-of-thought.
+        notes: Bounded operational notes safe to show in chat/tool transcripts.
+    """
+
+    retrieval_method: Literal["lexical", "hybrid", "hybrid_rerank"] = "lexical"
+    embedding_status: Literal["active", "skipped", "unavailable"] = "unavailable"
+    rerank_status: Literal["active", "skipped", "unavailable"] = "unavailable"
+    fallback_reason: str = Field(default="", max_length=240)
+    project_weight: float = Field(default=1.0, ge=0.0, le=1.0)
+    wiki_weight: float = Field(default=0.0, ge=0.0, le=1.0)
+    joint_recall: dict[str, Any] = Field(default_factory=dict)
+    reasoning_trace: List[str] = Field(default_factory=list, max_length=16)
+    notes: List[str] = Field(default_factory=list, max_length=12)
+
+
+class EvidencePackBuildResponse(BaseModel):
+    """Response for the evidence-pack builder endpoint.
+
+    Args:
+        evidence_pack_ref: Stable ref id for this deterministic build result.
+        project_id: Project searched.
+        query: Query string used for retrieval.
+        section_id: Optional section id carried from the request.
+        retrieval_method: Actual retrieval method used by the backend.
+        rerank_status: Whether reranking actively ran, was skipped, or unavailable.
+        total: Number of evidence refs returned after truncation.
+        truncated: Whether more positive lexical hits existed than returned.
+        retrieval_diagnostics: Explicit embedding/rerank visibility for agents.
+        evidence_refs: MCP-safe evidence refs with no raw chunk body fields.
+    """
+
+    evidence_pack_ref: str = Field(min_length=1)
+    project_id: str = Field(min_length=1)
+    query: str = Field(min_length=1)
+    section_id: Optional[str] = None
+    retrieval_method: Literal["lexical", "hybrid", "hybrid_rerank"] = "lexical"
+    rerank_status: Literal["active", "skipped", "unavailable"] = "unavailable"
+    total: int = Field(ge=0)
+    truncated: bool = False
+    retrieval_diagnostics: EvidenceRetrievalDiagnosticsPayload = Field(
+        default_factory=EvidenceRetrievalDiagnosticsPayload
+    )
+    evidence_refs: List[EvidencePackReferencePayload] = Field(default_factory=list)
 
 
 class CitationOverlapPayload(BaseModel):

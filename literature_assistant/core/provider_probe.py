@@ -376,6 +376,24 @@ class DiscoverResult:
     body: str = ""
 
 
+@dataclass
+class ToolCallingProbeResult:
+    """Three-stage OpenAI-compatible tool-calling capability probe result."""
+
+    ok: bool
+    models_ok: bool = False
+    chat_ok: bool = False
+    forced_tool_choice_ok: bool = False
+    protocol: str = "openai_chat_completions"
+    model: str = ""
+    models_url: str = ""
+    chat_url: str = ""
+    stage: str = ""
+    status_code: int | None = None
+    error: str = ""
+    provider_message: str | None = None
+
+
 async def discover_models(
     base_url: str,
     api_key: str,
@@ -439,10 +457,266 @@ async def discover_models(
         )
 
 
+def _ordinary_chat_probe_payload(model: str) -> dict[str, Any]:
+    """Return a real-model one-token chat payload for capability probes."""
+
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a non-empty string")
+    return {
+        "model": model.strip(),
+        "messages": [{"role": "user", "content": "Reply with ok."}],
+        "max_tokens": 8,
+        "temperature": 0,
+    }
+
+
+def _forced_tool_choice_probe_payload(model: str) -> dict[str, Any]:
+    """Return an OpenAI-compatible forced function-call probe payload."""
+
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a non-empty string")
+    return {
+        "model": model.strip(),
+        "messages": [
+            {
+                "role": "user",
+                "content": "Call capability_probe with status=ok.",
+            }
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "capability_probe",
+                    "description": "Reports whether forced tool calls reach the model.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "status": {
+                                "type": "string",
+                                "enum": ["ok"],
+                            }
+                        },
+                        "required": ["status"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+        ],
+        "tool_choice": {
+            "type": "function",
+            "function": {"name": "capability_probe"},
+        },
+        "max_tokens": 32,
+        "temperature": 0,
+    }
+
+
+def _json_object_response(response: httpx.Response) -> dict[str, Any] | None:
+    """Decode an HTTP response body only when it is a JSON object."""
+
+    try:
+        data = response.json()
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _contains_forced_tool_call(payload: dict[str, Any], tool_name: str) -> bool:
+    """Detect whether an OpenAI-compatible response returned a named tool call."""
+
+    if not isinstance(payload, dict):
+        return False
+    choices = payload.get("choices")
+    if not isinstance(choices, list):
+        return False
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            continue
+        tool_calls = message.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for call in tool_calls:
+                if not isinstance(call, dict):
+                    continue
+                function = call.get("function")
+                if isinstance(function, dict) and function.get("name") == tool_name:
+                    return True
+        function_call = message.get("function_call")
+        if isinstance(function_call, dict) and function_call.get("name") == tool_name:
+            return True
+    return False
+
+
+def _probe_failure(
+    result: ToolCallingProbeResult,
+    *,
+    stage: str,
+    status_code: int | None = None,
+    error: str,
+    provider_message: str | None = None,
+) -> ToolCallingProbeResult:
+    """Fill a probe result failure without leaking credentials."""
+
+    result.ok = False
+    result.stage = stage
+    result.status_code = status_code
+    result.error = _redact_secrets(error)[:320]
+    result.provider_message = _redact_secrets(provider_message)[:240] if provider_message else None
+    return result
+
+
+def probe_openai_tool_calling_capability(
+    base_url: str,
+    api_key: str,
+    model: str,
+    *,
+    protocol: str = "openai_chat_completions",
+    timeout_s: float = 10.0,
+) -> ToolCallingProbeResult:
+    """Probe whether an OpenAI-compatible provider truly supports tools.
+
+    Args:
+        base_url: Provider base URL, typically ending in `/v1`.
+        api_key: Secret used only in the Authorization header.
+        model: Real configured model id; fake model probes cannot prove tools.
+        protocol: Currently only `openai_chat_completions` is supported.
+        timeout_s: Per-client timeout for the three short HTTP calls.
+
+    Returns:
+        A redacted result for `/v1/models`, ordinary chat, and forced
+        `tool_choice` with a tiny function schema.
+    """
+
+    normalized_base = (base_url or "").strip()
+    normalized_model = (model or "").strip()
+    normalized_protocol = (protocol or "").strip().lower()
+    result = ToolCallingProbeResult(
+        ok=False,
+        protocol=normalized_protocol or protocol,
+        model=normalized_model,
+        models_url=_build_models_url(normalized_base),
+        chat_url=_chat_probe_url(normalized_base, normalized_protocol) or "",
+    )
+
+    if not normalized_base:
+        return _probe_failure(result, stage="configuration", error="base_url is required")
+    if not normalized_model:
+        return _probe_failure(result, stage="configuration", error="model is required")
+    if normalized_protocol != "openai_chat_completions":
+        return _probe_failure(
+            result,
+            stage="configuration",
+            error=f"unsupported protocol: {normalized_protocol or protocol}",
+        )
+    if not result.models_url or not result.chat_url:
+        return _probe_failure(result, stage="configuration", error="invalid provider endpoint")
+
+    try:
+        validate_outbound_endpoint(
+            normalized_base,
+            "tool_calling_probe",
+            strict=False,
+            allow_loopback_http=True,
+        )
+    except ValueError as exc:
+        return _probe_failure(result, stage="endpoint_validation", error=str(exc))
+
+    headers = {
+        **_build_auth_headers(api_key, normalized_protocol),
+        "Content-Type": "application/json",
+        "User-Agent": "literature-assistant-provider-tool-probe/1.0",
+    }
+    try:
+        with httpx.Client(timeout=timeout_s, follow_redirects=False) as client:
+            models_response = client.get(result.models_url, headers=headers)
+            result.status_code = models_response.status_code
+            result.stage = "models"
+            if not 200 <= models_response.status_code < 400:
+                provider_message = _extract_provider_error_message(models_response.text or "")
+                return _probe_failure(
+                    result,
+                    stage="models",
+                    status_code=models_response.status_code,
+                    error=f"HTTP {models_response.status_code}" + (f": {provider_message}" if provider_message else ""),
+                    provider_message=provider_message,
+                )
+            result.models_ok = True
+
+            chat_response = client.post(
+                result.chat_url,
+                json=_ordinary_chat_probe_payload(normalized_model),
+                headers=headers,
+            )
+            result.status_code = chat_response.status_code
+            result.stage = "ordinary_chat"
+            if not 200 <= chat_response.status_code < 400:
+                provider_message = _extract_provider_error_message(chat_response.text or "")
+                return _probe_failure(
+                    result,
+                    stage="ordinary_chat",
+                    status_code=chat_response.status_code,
+                    error=f"HTTP {chat_response.status_code}" + (f": {provider_message}" if provider_message else ""),
+                    provider_message=provider_message,
+                )
+            result.chat_ok = True
+
+            tool_response = client.post(
+                result.chat_url,
+                json=_forced_tool_choice_probe_payload(normalized_model),
+                headers=headers,
+            )
+            result.status_code = tool_response.status_code
+            result.stage = "forced_tool_choice"
+            if not 200 <= tool_response.status_code < 400:
+                provider_message = _extract_provider_error_message(tool_response.text or "")
+                return _probe_failure(
+                    result,
+                    stage="forced_tool_choice",
+                    status_code=tool_response.status_code,
+                    error=f"HTTP {tool_response.status_code}" + (f": {provider_message}" if provider_message else ""),
+                    provider_message=provider_message,
+                )
+            data = _json_object_response(tool_response)
+            if data is None or not _contains_forced_tool_call(data, "capability_probe"):
+                provider_message = _extract_provider_error_message(tool_response.text or "")
+                return _probe_failure(
+                    result,
+                    stage="forced_tool_choice",
+                    status_code=tool_response.status_code,
+                    error="forced_tool_choice_not_returned",
+                    provider_message=provider_message,
+                )
+            result.forced_tool_choice_ok = True
+            result.ok = True
+            return result
+    except httpx.TimeoutException:
+        return _probe_failure(result, stage=result.stage or "transport", error="timeout")
+    except httpx.ConnectError:
+        return _probe_failure(result, stage=result.stage or "transport", error="connect_error")
+    except httpx.HTTPError as exc:
+        return _probe_failure(
+            result,
+            stage=result.stage or "transport",
+            error=f"http_error:{type(exc).__name__}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("provider tool probe unexpected failure: %s", type(exc).__name__)
+        return _probe_failure(
+            result,
+            stage=result.stage or "unexpected",
+            error=f"unexpected:{type(exc).__name__}",
+        )
+
+
 __all__ = [
     "ProbeResult",
     "DiscoverResult",
+    "ToolCallingProbeResult",
     "validate_outbound_endpoint",
     "probe_endpoint_reachability",
+    "probe_openai_tool_calling_capability",
     "discover_models",
 ]

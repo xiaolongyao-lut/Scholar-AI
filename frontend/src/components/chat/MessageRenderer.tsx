@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AlertTriangle, ChevronDown, ChevronRight, GitFork, Pencil } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, GitFork, Network, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import { AnalysisChainPanel } from '@/components/analysis_chain/AnalysisChainPanel';
@@ -56,6 +56,36 @@ export interface ChatMessageDiagnostics {
   insufficient?: boolean;
   /** Chunk ids mentioned inline in the answer body. */
   chunkRefs?: string[];
+  /** Wiki + project recall fusion visibility from evidence-pack / writing audit. */
+  retrieval?: ChatRetrievalDiagnostics;
+}
+
+export interface ChatRetrievalDiagnostics {
+  retrieval_method?: string;
+  embedding_status?: string;
+  rerank_status?: string;
+  joint_recall?: ChatJointRecallDiagnostics;
+}
+
+export interface ChatJointRecallDiagnostics {
+  status?: string;
+  fusion?: string;
+  project_weight?: number;
+  wiki_weight?: number;
+  project_hit_count?: number;
+  wiki_hit_count?: number;
+  fused_count?: number;
+  wiki_share_after_fusion?: number;
+  max_wiki_share_after_fusion?: number;
+  top_doc_ids?: string[];
+  wiki_summaries?: ChatJointRecallWikiSummary[];
+}
+
+export interface ChatJointRecallWikiSummary {
+  title?: string;
+  summary?: string;
+  ref_id?: string;
+  read_endpoint?: string;
 }
 
 export interface ChatMessageMetadata {
@@ -331,6 +361,7 @@ function MessageDiagnostics({ diagnostics }: { diagnostics: ChatMessageDiagnosti
         </div>
       )}
       <MessageContextDetails diagnostics={diagnostics} />
+      <MessageJointRecallDetails diagnostics={diagnostics} />
       <MessageSourceRefs chunkRefs={diagnostics.chunkRefs} />
       <MessageDiagnosticsRow diagnostics={diagnostics} />
     </>
@@ -372,6 +403,70 @@ function MessageContextDetails({ diagnostics }: { diagnostics: ChatMessageDiagno
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MessageJointRecallDetails({ diagnostics }: { diagnostics: ChatMessageDiagnostics }) {
+  const [expanded, setExpanded] = useState(false);
+  const joint = diagnostics.retrieval?.joint_recall;
+  if (!joint || joint.status === 'unavailable') return null;
+  const projectHits = safeCount(joint.project_hit_count);
+  const wikiHits = safeCount(joint.wiki_hit_count);
+  const wikiShare = safePercent(joint.wiki_share_after_fusion);
+  const maxWikiShare = safePercent(joint.max_wiki_share_after_fusion);
+  const projectWeight = safeWeight(joint.project_weight);
+  const wikiWeight = safeWeight(joint.wiki_weight);
+  const fusion = sanitizeDiagnosticLabel(joint.fusion, 'weighted_rrf');
+  const summaries = (joint.wiki_summaries ?? []).slice(0, 3);
+  return (
+    <div className="mt-3 border-t border-outline-variant/40 pt-2">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+        className="flex min-w-0 items-center gap-1 text-xs text-foreground/55 transition-colors hover:text-foreground/75"
+      >
+        {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+        <Network className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="truncate">
+          联合召回 · 项目 {projectHits} · Wiki {wikiHits} · {wikiShare}
+        </span>
+      </button>
+      {expanded && (
+        <div className="mt-2 rounded border border-outline-variant/50 bg-surface-lowest p-2 text-xs text-foreground/65">
+          <div className="grid gap-1 sm:grid-cols-2">
+            <span>融合: {fusion}</span>
+            <span>权重: 项目 {projectWeight} / Wiki {wikiWeight}</span>
+            <span>Wiki 占比: {wikiShare}</span>
+            <span>上限: {maxWikiShare}</span>
+          </div>
+          {summaries.length > 0 ? (
+            <div className="mt-2 grid gap-1.5">
+              {summaries.map((item, index) => (
+                <div
+                  key={`${item.ref_id ?? item.read_endpoint ?? index}`}
+                  className="rounded border border-outline-variant/40 bg-surface-low px-2 py-1.5"
+                >
+                  <div className="truncate font-medium text-foreground/80">
+                    {sanitizeDiagnosticText(item.title ?? '', 'Wiki 摘要')}
+                  </div>
+                  {item.summary ? (
+                    <div className="mt-0.5 line-clamp-2 text-[11px] leading-5 text-foreground/55">
+                      {sanitizeDiagnosticText(item.summary, '摘要已隐藏')}
+                    </div>
+                  ) : null}
+                  {item.ref_id ? (
+                    <div className="mt-1 truncate font-mono text-[10px] text-foreground/35">
+                      {sanitizeDiagnosticRef(item.ref_id)}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
     </div>
@@ -445,6 +540,18 @@ function MessageDiagnosticsRow({ diagnostics }: { diagnostics: ChatMessageDiagno
       </span>,
     );
   }
+  const retrieval = diagnostics.retrieval;
+  if (retrieval?.retrieval_method) {
+    const method = sanitizeDiagnosticLabel(retrieval.retrieval_method, '检索');
+    const embedding = sanitizeDiagnosticLabel(retrieval.embedding_status, '');
+    const rerank = sanitizeDiagnosticLabel(retrieval.rerank_status, '');
+    const tip = [embedding ? `Embedding ${embedding}` : '', rerank ? `Rerank ${rerank}` : ''].filter(Boolean).join(' / ');
+    items.push(
+      <span key="retrieval" title={tip || '检索诊断'}>
+        {method}
+      </span>,
+    );
+  }
   if (diagnostics.insufficient) {
     items.push(
       <span key="insufficient" className="text-amber-700 dark:text-amber-300" title="未检索到相关上下文">
@@ -463,6 +570,38 @@ function MessageDiagnosticsRow({ diagnostics }: { diagnostics: ChatMessageDiagno
       ))}
     </div>
   );
+}
+
+function safeCount(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? String(Math.trunc(value))
+    : '0';
+}
+
+function safePercent(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? `${Math.round(Math.min(value, 1) * 100)}%`
+    : '0%';
+}
+
+function safeWeight(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value.toFixed(1)
+    : '0.0';
+}
+
+function sanitizeDiagnosticLabel(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const raw = value.trim();
+  if (!raw || raw.length > 48 || DIAGNOSTIC_INTERNAL_TEXT_PATTERN.test(raw)) return fallback;
+  return raw.replace(/_/g, ' ');
+}
+
+function sanitizeDiagnosticRef(value: string): string {
+  const raw = value.trim();
+  if (!raw || raw.length > 120) return 'ref';
+  if (!/^(?:wiki|chunk|evidence_pack):[a-zA-Z0-9/_:.-]+$/.test(raw)) return 'ref';
+  return raw;
 }
 
 function sanitizeDiagnosticText(value: string, fallback: string): string {

@@ -36,7 +36,7 @@ def test_codex_config_example_points_to_shared_wrapper() -> None:
     assert GENERIC_WRAPPER in server["args"]
     assert server["cwd"] == GENERIC_REPO_ROOT
     assert server["env"]["LITERATURE_ASSISTANT_REPO_ROOT"] == GENERIC_REPO_ROOT
-    assert server["env"]["LITERATURE_ASSISTANT_BASE_URL"] == "http://127.0.0.1:8000"
+    assert "LITERATURE_ASSISTANT_BASE_URL" not in server["env"]
     assert server["env"]["LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS"] == "1"
     assert server["default_tools_approval_mode"] == "prompt"
 
@@ -49,7 +49,7 @@ def test_claude_desktop_config_example_points_to_shared_wrapper() -> None:
     assert server["command"] == "powershell"
     assert GENERIC_WRAPPER in server["args"]
     assert server["env"]["LITERATURE_ASSISTANT_REPO_ROOT"] == GENERIC_REPO_ROOT
-    assert server["env"]["LITERATURE_ASSISTANT_BASE_URL"] == "http://127.0.0.1:8000"
+    assert "LITERATURE_ASSISTANT_BASE_URL" not in server["env"]
     assert server["env"]["LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS"] == "1"
 
 
@@ -167,4 +167,4 @@ def test_wrapper_self_test_registers_expected_tools() -> None:
     )
 
     assert "lit-assistant-mcp self-test ok" in completed.stdout
-    assert "tool_count=26" in completed.stdout
+    assert "tool_count=44" in completed.stdout

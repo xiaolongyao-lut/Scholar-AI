@@ -135,7 +135,7 @@ function isAbortError(error: unknown): boolean {
 
 function ExportPanel() {
   const { t } = useI18n();
-  const { activeProjectId } = useWriting();
+  const { activeProjectId, activeJournalStyleProfileId } = useWriting();
   const [exportData, setExportData] = React.useState<ProjectExportResponseEnvelope | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -165,6 +165,7 @@ function ExportPanel() {
       const svc = getWritingBackendService();
       const data = await svc.exportProject(activeProjectId, format, {
         signal: abortController.signal,
+        styleProfile: format === 'word' ? activeJournalStyleProfileId : null,
       });
       if (abortController.signal.aborted) return;
       setExportData(data);
@@ -178,7 +179,7 @@ function ExportPanel() {
         setLoading(false);
       }
     }
-  }, [activeProjectId, handleStopExport, t]);
+  }, [activeJournalStyleProfileId, activeProjectId, handleStopExport, t]);
 
   React.useEffect(() => {
     return () => {
@@ -199,13 +200,15 @@ function ExportPanel() {
         exportData,
         format,
         activeProjectId,
-        (projectId, targetFormat) => svc.exportProject(projectId, targetFormat),
+        (projectId, targetFormat) => svc.exportProject(projectId, targetFormat, {
+          styleProfile: targetFormat === 'word' ? activeJournalStyleProfileId : null,
+        }),
       );
       await downloadProjectExportBlob(resolvedExport, format);
     } catch (err) {
       setError(formatReferenceDrawerError(err, t('ref.export_failed')));
     }
-  }, [activeProjectId, exportData, t]);
+  }, [activeJournalStyleProfileId, activeProjectId, exportData, t]);
 
   const handleCopy = React.useCallback(async () => {
     if (!exportData?.content) return;
@@ -269,6 +272,11 @@ function ExportPanel() {
               {loading ? <Square size={12} /> : <Download size={12} />}
               {loading ? '停止' : `生成${selectedOption.label}预览`}
             </button>
+            {selectedFormat === 'word' && activeJournalStyleProfileId ? (
+              <div className="truncate rounded-sm border border-emerald-200/70 bg-emerald-50/60 px-3 py-2 font-label text-[10px] text-emerald-700 dark:border-emerald-700/40 dark:bg-emerald-500/10 dark:text-emerald-300">
+                期刊规范：{activeJournalStyleProfileId}
+              </div>
+            ) : null}
           </div>
 
           {error && (

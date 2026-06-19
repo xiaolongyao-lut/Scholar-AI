@@ -147,6 +147,14 @@ class ChatRequest(BaseModel):
             "approval-blocked record."
         ),
     )
+    use_local_literature_tools: bool = Field(
+        default=False,
+        description=(
+            "Expose the built-in Literature Assistant source and writing tool "
+            "surface to source-launched chat with the same guarded boundaries "
+            "as the stdio MCP agent."
+        ),
+    )
 
 
 class ChatResponse(BaseModel):
@@ -1125,10 +1133,14 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
 
         # ---- Optional MCP tool-use loop ----------------------------------
         mcp_run_dump: dict[str, Any] | None = None
-        if req.mcp_server_ids is not None and chat_mcp_integration.is_mcp_tools_enabled():
+        use_external_mcp = req.mcp_server_ids is not None and chat_mcp_integration.is_mcp_tools_enabled()
+        use_local_literature_tools = bool(req.use_local_literature_tools)
+        if use_external_mcp or use_local_literature_tools:
             try:
-                servers, snapshot = await chat_mcp_integration.collect_enabled_servers_with_catalog(
-                    req.mcp_server_ids
+                servers, snapshot = (
+                    await chat_mcp_integration.collect_enabled_servers_with_catalog(req.mcp_server_ids or [])
+                    if use_external_mcp
+                    else ([], [])
                 )
             except chat_mcp_integration.McpRequestValidationError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1148,10 +1160,16 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
                 provider_key=_provider_key(llm.provider),
                 post_fn=_post_fn,
             )
-            runner = chat_mcp_integration.make_runner(
-                servers=servers,
-                catalog_snapshot=snapshot,
-                allow_high_risk_tools=req.mcp_allow_high_risk_tools,
+            runner = (
+                chat_mcp_integration.make_local_literature_runner(
+                    allow_high_risk_tools=req.mcp_allow_high_risk_tools,
+                )
+                if use_local_literature_tools
+                else chat_mcp_integration.make_runner(
+                    servers=servers,
+                    catalog_snapshot=snapshot,
+                    allow_high_risk_tools=req.mcp_allow_high_risk_tools,
+                )
             )
             run_result = await runner.run(
                 provider=llm.provider,
@@ -1284,6 +1302,18 @@ class ChatStreamRequest(BaseModel):
         default=None,
         description="Per-request override. False disables project reasoning bias injection.",
     )
+    mcp_server_ids: list[str] | None = Field(
+        default=None,
+        description="MCP service scope. Streaming tool-use is rejected instead of silently ignored.",
+    )
+    mcp_allow_high_risk_tools: bool = Field(
+        default=False,
+        description="Kept for schema parity with ChatRequest; streaming tool-use is not dispatched.",
+    )
+    use_local_literature_tools: bool = Field(
+        default=False,
+        description="Kept for schema parity with ChatRequest; streaming tool-use is not dispatched.",
+    )
     stream: bool = Field(True, description="启用流式输出")
 
 
@@ -1297,6 +1327,11 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
       data: {"event":"done"}
       data: {"event":"error","error":"..."}
     """
+    if req.mcp_server_ids is not None or req.use_local_literature_tools:
+        raise HTTPException(
+            status_code=400,
+            detail="Streaming chat does not support MCP tool-use; use POST /chat/ask or /api/chat.",
+        )
     resolved_llm = _resolve_chat_llm(req.llm)
     try:
         llm = _resolve_request_llm_config(resolved_llm, task="chat", sampling=req.sampling)

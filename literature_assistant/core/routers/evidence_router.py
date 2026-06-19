@@ -18,8 +18,15 @@ import re
 import uuid
 
 import routers.resources_router as _resources_router
+from literature_assistant.core.chunk_package_quality import default_joint_recall_policy, weighted_rrf_fuse
+from literature_assistant.core.project_paths import wiki_generated_root, wiki_query_index_path
+from literature_assistant.core.runtime_env import wiki_enabled
+from literature_assistant.core.wiki.page_store import WikiPageStore
+from literature_assistant.core.wiki.query import WikiQueryIndex
 from project_paths import runtime_state_path
 from routers.resources_router.endpoints_search_upload import (
+    _chunk_to_search_ref,
+    _flatten_chunk_store_for_search_refs,
     enrich_chunk_locator_with_pdf,
     find_chunk_locator,
 )
@@ -35,6 +42,10 @@ from models import (
     EvidenceRefsResponse,
     ChunkLocatorPayload,
     DiscussionEvidencePackPayload,
+    EvidencePackBuildRequest,
+    EvidencePackBuildResponse,
+    EvidencePackReferencePayload,
+    EvidenceRetrievalDiagnosticsPayload,
     CitationOverlapPayload,
     CitationVerificationPayload,
     CitationVerificationRequest,
@@ -55,6 +66,7 @@ _EVIDENCE_REFS_VERSION = 1
 _DISCUSSION_EVIDENCE_PACKS_VERSION = 1
 _CITATION_VERIFICATIONS_VERSION = 1
 _EVIDENCE_REFS_EXPORT_VERSION = 1
+_EVIDENCE_PACK_SUMMARY_CHARS = 300
 _EVIDENCE_REFS_EXPORT_CSV_FIELDS: tuple[str, ...] = (
     "ref_id",
     "chunk_id",
@@ -742,6 +754,519 @@ def _refresh_discussion_evidence_pack_store() -> dict[str, DiscussionEvidencePac
     """Merge durable D5 packs into the process cache and return the cache."""
     _discussion_packs_store.update(_load_discussion_evidence_packs())
     return _discussion_packs_store
+
+
+def _bounded_evidence_pack_summary(value: str) -> str:
+    """Return a citation-safe summary that cannot dominate model context."""
+
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return "Matched evidence chunk"
+    if len(text) <= _EVIDENCE_PACK_SUMMARY_CHARS:
+        return text
+    return f"{text[: _EVIDENCE_PACK_SUMMARY_CHARS - 1].rstrip()}…"
+
+
+def _citation_anchor_from_ref(ref_id: str, material_id: str, chunk_id: str) -> str:
+    """Return a deterministic local citation anchor for evidence traceability."""
+
+    source = f"{material_id}_{chunk_id}_{ref_id}"
+    normalized = re.sub(r"[^A-Za-z0-9_\-]+", "_", source).strip("_")
+    return normalized[:240] or f"chunk_{uuid.uuid4().hex[:12]}"
+
+
+def _evidence_pack_ref(project_id: str, query: str, section_id: str | None) -> str:
+    """Return a stable opaque pack id for one deterministic lexical build."""
+
+    seed = json.dumps(
+        {"project_id": project_id, "query": query, "section_id": section_id or ""},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return f"evidence_pack:{uuid.uuid5(uuid.NAMESPACE_URL, seed).hex}"
+
+
+def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackReferencePayload | None:
+    """Project one search ref into the evidence-pack contract.
+
+    Args:
+        project_id: Project searched by the evidence-pack builder.
+        ref: ``ChunkSearchRefPayload`` returned by the backend search-ref helper.
+
+    Returns:
+        A validated evidence-pack ref, or ``None`` when the search ref is not
+        safe enough for public MCP output.
+    """
+
+    if ref is None:
+        return None
+    material_id = str(getattr(ref.metadata, "material_id", "") or "").strip()
+    chunk_id = str(getattr(ref, "chunk_id", "") or "").strip()
+    ref_id = str(getattr(ref, "ref_id", "") or "").strip()
+    read_endpoint = str(getattr(ref, "read_endpoint", "") or "").strip()
+    if not project_id.strip() or not material_id or not chunk_id or not ref_id or not read_endpoint:
+        return None
+
+    summary = _bounded_evidence_pack_summary(str(getattr(ref, "summary", "") or ""))
+    page = getattr(ref.metadata, "page", None)
+    lexical_score = float(getattr(ref, "lexical_score", 0.0) or 0.0)
+    rerank_score = getattr(ref, "rerank_score", None)
+    return EvidencePackReferencePayload(
+        project_id=project_id,
+        ref_id=ref_id,
+        read_endpoint=read_endpoint,
+        chunk_id=chunk_id,
+        material_id=material_id,
+        page=page,
+        lexical_score=lexical_score,
+        rerank_score=rerank_score,
+        citation_anchor=_citation_anchor_from_ref(ref_id, material_id, chunk_id),
+        figure_candidate=None,
+        summary=summary,
+        suitable_for_body=bool(summary.strip()),
+    )
+
+
+def _resolve_hybrid_retriever_class() -> Any | None:
+    """Return the existing hybrid retriever class, or ``None`` if unavailable."""
+
+    try:
+        from layers.r_layer_hybrid_retriever import HybridRetrieverWithRerank
+    except ImportError:
+        return None
+    return HybridRetrieverWithRerank
+
+
+def _resolve_wiki_joint_recall_searcher() -> Any | None:
+    """Return a bounded wiki searcher for joint recall diagnostics.
+
+    The searcher returns wiki-ranked refs for diagnostics only. Evidence refs
+    remain project chunk refs until the agent resource reader supports wiki
+    page refs as a first-class bounded resource.
+    """
+
+    if not wiki_enabled():
+        return None
+    index_path = wiki_query_index_path()
+    if not index_path.exists():
+        return None
+
+    def _search(query: str, limit: int) -> list[dict[str, Any]]:
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("query must be a non-empty string")
+        if limit < 1 or limit > 100:
+            raise ValueError("limit must be between 1 and 100")
+        index = WikiQueryIndex(index_path)
+        store = WikiPageStore(wiki_generated_root(), create=False)
+        try:
+            results = index.search(query, limit=limit)
+            hits: list[dict[str, Any]] = []
+            for result in results:
+                if store.read_page(result.page_path) is None:
+                    continue
+                hits.append(
+                    {
+                        "doc_id": f"wiki:{result.page_path.as_posix()}",
+                        "ref_id": f"wiki:{result.page_path.as_posix()}",
+                        "title": result.title,
+                        "summary": _bounded_evidence_pack_summary(result.snippet),
+                        "page_path": result.page_path.as_posix(),
+                        "read_endpoint": f"/api/agent-bridge/resource/wiki:{result.page_path.as_posix()}",
+                        "source": result.source,
+                    }
+                )
+            return hits
+        finally:
+            index.close()
+
+    return _search
+
+
+def _project_hits_for_joint_recall(
+    evidence_refs: list[EvidencePackReferencePayload],
+) -> list[dict[str, Any]]:
+    """Convert evidence refs into ranked project hits for fusion diagnostics."""
+
+    hits: list[dict[str, Any]] = []
+    for ref in evidence_refs:
+        hits.append(
+            {
+                "doc_id": ref.ref_id,
+                "chunk_id": ref.chunk_id,
+                "title": ref.material_id,
+                "summary": ref.summary,
+                "source": "project",
+            }
+        )
+    return hits
+
+
+def _wiki_hit_to_evidence_ref(project_id: str, hit: dict[str, Any]) -> EvidencePackReferencePayload | None:
+    """Project one bounded wiki hit into the evidence-pack ref contract.
+
+    Wiki refs stay as agent-bridge resources and are not copied into project
+    chunk stores. The project_id only scopes the evidence-pack build that
+    selected the wiki evidence.
+    """
+
+    if not project_id.strip() or not isinstance(hit, dict):
+        return None
+    ref_id = str(hit.get("ref_id") or hit.get("doc_id") or "").strip()
+    read_endpoint = str(hit.get("read_endpoint") or "").strip()
+    summary = _bounded_evidence_pack_summary(str(hit.get("summary") or ""))
+    if not ref_id.startswith("wiki:") or not read_endpoint or not summary.strip():
+        return None
+    source_path = str(hit.get("page_path") or ref_id.removeprefix("wiki:")).strip()[:240]
+    stable_id = ref_id.removeprefix("wiki:").strip() or source_path or ref_id
+    chunk_id = f"wiki:{stable_id}"
+    return EvidencePackReferencePayload(
+        project_id=project_id,
+        source_type="wiki",
+        ref_id=ref_id,
+        read_endpoint=read_endpoint[:300],
+        chunk_id=chunk_id[:260],
+        material_id="wiki",
+        page=None,
+        lexical_score=0.0,
+        rerank_score=None,
+        citation_anchor=_citation_anchor_from_ref(ref_id, "wiki", stable_id),
+        figure_candidate=None,
+        summary=summary,
+        suitable_for_body=True,
+        source_title=str(hit.get("title") or "")[:160] or None,
+        source_path=source_path or None,
+    )
+
+
+def _evidence_refs_from_fused_joint_hits(
+    *,
+    project_id: str,
+    fused_hits: list[dict[str, Any]],
+    project_refs: list[EvidencePackReferencePayload],
+    top_k: int,
+) -> list[EvidencePackReferencePayload]:
+    """Return project+wiki evidence refs in weighted-RRF order."""
+
+    if top_k < 1:
+        raise ValueError("top_k must be positive")
+    project_by_ref_id = {ref.ref_id: ref for ref in project_refs}
+    output: list[EvidencePackReferencePayload] = []
+    seen: set[str] = set()
+    for fused in fused_hits:
+        if not isinstance(fused, dict):
+            continue
+        doc_id = str(fused.get("doc_id") or "").strip()
+        payload = fused.get("payload") if isinstance(fused.get("payload"), dict) else {}
+        ref: EvidencePackReferencePayload | None = None
+        if doc_id in project_by_ref_id:
+            ref = project_by_ref_id[doc_id]
+        elif str(fused.get("dominant_source") or "") == "wiki":
+            ref = _wiki_hit_to_evidence_ref(project_id, payload)
+        if ref is None or ref.ref_id in seen:
+            continue
+        ref.joint_score = float(fused.get("joint_score") or 0.0)
+        output.append(ref)
+        seen.add(ref.ref_id)
+        if len(output) >= top_k:
+            break
+    if len(output) < top_k:
+        for ref in project_refs:
+            if ref.ref_id in seen:
+                continue
+            output.append(ref)
+            seen.add(ref.ref_id)
+            if len(output) >= top_k:
+                break
+    return output
+
+
+def _joint_recall_diagnostics(
+    *,
+    project_id: str,
+    query: str,
+    project_refs: list[EvidencePackReferencePayload],
+    top_k: int,
+) -> tuple[dict[str, Any], list[EvidencePackReferencePayload]]:
+    """Return wiki+project fusion diagnostics and fused evidence refs."""
+
+    policy = default_joint_recall_policy()
+    searcher = _resolve_wiki_joint_recall_searcher()
+    if searcher is None:
+        return (
+            {
+                "enabled": False,
+                "status": "unavailable",
+                "reason": "wiki disabled or query index unavailable",
+                "fusion_method": policy["fusion"],
+                "project_weight": float(policy["project_weight"]),
+                "wiki_weight": float(policy["wiki_weight"]),
+                "project_hit_count": len(project_refs),
+                "wiki_hit_count": 0,
+                "wiki_share_after_fusion": 0.0,
+                "source_counts": {"project": min(len(project_refs), top_k), "wiki": 0},
+            },
+            project_refs[:top_k],
+        )
+    wiki_hits = searcher(query, max(top_k, int(policy.get("per_source_caps", {}).get("wiki", top_k))))
+    if not isinstance(wiki_hits, list):
+        wiki_hits = []
+    fused = weighted_rrf_fuse(
+        project_hits=_project_hits_for_joint_recall(project_refs),
+        wiki_hits=[hit for hit in wiki_hits if isinstance(hit, dict)],
+        top_k=top_k,
+        policy=policy,
+    )
+    source_counts = {
+        "project": sum(1 for hit in fused["hits"] if hit.get("dominant_source") == "project"),
+        "wiki": sum(1 for hit in fused["hits"] if hit.get("dominant_source") == "wiki"),
+    }
+    evidence_refs = _evidence_refs_from_fused_joint_hits(
+        project_id=project_id,
+        fused_hits=fused["hits"],
+        project_refs=project_refs,
+        top_k=top_k,
+    )
+    return (
+        {
+            "enabled": True,
+            "status": "active" if wiki_hits else "empty",
+            "fusion_method": fused["fusion_method"],
+            "project_weight": fused["project_weight"],
+            "wiki_weight": fused["wiki_weight"],
+            "project_hit_count": fused["project_hit_count"],
+            "wiki_hit_count": fused["wiki_hit_count"],
+            "wiki_share_after_fusion": fused["wiki_share_after_fusion"],
+            "source_counts": source_counts,
+            "top_doc_ids": [str(hit.get("doc_id") or "") for hit in fused["hits"][: min(5, top_k)]],
+            "wiki_summaries": [
+                {
+                    "doc_id": str(hit.get("doc_id") or ""),
+                    "ref_id": str(hit.get("ref_id") or hit.get("doc_id") or ""),
+                    "read_endpoint": str(hit.get("read_endpoint") or "")[:300],
+                    "title": str(hit.get("title") or "")[:160],
+                    "summary": _bounded_evidence_pack_summary(str(hit.get("summary") or "")),
+                    "page_path": str(hit.get("page_path") or "")[:240],
+                    "source": str(hit.get("source") or "wiki")[:80],
+                }
+                for hit in wiki_hits[: min(3, top_k)]
+                if isinstance(hit, dict)
+            ],
+        },
+        evidence_refs,
+    )
+
+
+def _attach_joint_recall_diagnostics(
+    diagnostics: EvidenceRetrievalDiagnosticsPayload,
+    *,
+    project_id: str,
+    query: str,
+    evidence_refs: list[EvidencePackReferencePayload],
+    top_k: int,
+) -> tuple[EvidenceRetrievalDiagnosticsPayload, list[EvidencePackReferencePayload]]:
+    """Attach wiki+project recall diagnostics to an existing provenance payload."""
+
+    joint, fused_refs = _joint_recall_diagnostics(
+        project_id=project_id,
+        query=query,
+        project_refs=evidence_refs,
+        top_k=top_k,
+    )
+    diagnostics.joint_recall = joint
+    if joint.get("enabled"):
+        diagnostics.project_weight = float(joint.get("project_weight", diagnostics.project_weight))
+        diagnostics.wiki_weight = float(joint.get("wiki_weight", diagnostics.wiki_weight))
+        diagnostics.reasoning_trace = [
+            *diagnostics.reasoning_trace,
+            "Computed wiki+project weighted RRF and projected bounded wiki refs without adding wiki pages to project chunks.",
+        ][:16]
+        diagnostics.notes = [
+            *diagnostics.notes,
+            "joint_recall evidence_refs may include source_type=wiki bounded refs alongside project chunk refs.",
+        ][:12]
+    return diagnostics, fused_refs
+
+
+async def _build_hybrid_evidence_refs(
+    *,
+    project_id: str,
+    query: str,
+    top_k: int,
+    all_chunks: list[dict[str, Any]],
+) -> tuple[list[EvidencePackReferencePayload], EvidenceRetrievalDiagnosticsPayload] | None:
+    """Try the existing hybrid retriever and return refs plus diagnostics.
+
+    Args:
+        project_id: Project owning the chunk store.
+        query: Section/query text.
+        top_k: Maximum evidence refs requested.
+        all_chunks: Flattened project chunks already loaded by the caller.
+
+    Returns:
+        ``None`` when hybrid retrieval is unavailable or yields no usable refs;
+        otherwise MCP-safe refs and an explicit diagnostic payload.
+    """
+
+    if not project_id.strip() or not query.strip() or top_k < 1 or not all_chunks:
+        return None
+    retriever_class = _resolve_hybrid_retriever_class()
+    if retriever_class is None:
+        return None
+
+    retriever = retriever_class(use_reranker=None)
+    try:
+        hits = await retriever.search(
+            {"chunks": all_chunks, "claim_index": all_chunks},
+            query=query,
+            top_k=top_k,
+            focus_keywords=None,
+        )
+    except Exception:
+        return None
+    if not hits:
+        return None
+
+    evidence_refs: list[EvidencePackReferencePayload] = []
+    dense_used = False
+    rerank_active = False
+    rerank_fallback = False
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        labels = [str(label).lower() for label in hit.get("source_labels", []) if isinstance(label, str)]
+        dense_used = dense_used or "dense" in labels
+        rerank_active = rerank_active or "rerank" in labels or hit.get("rerank_score") is not None
+        rerank_fallback = rerank_fallback or "rerank_fallback" in labels
+        score = float(hit.get("hybrid_score") or hit.get("rerank_score") or 0.0)
+        search_ref = _chunk_to_search_ref(project_id, score, hit)
+        evidence_ref = _search_ref_to_evidence_ref(project_id, search_ref)
+        if evidence_ref is None:
+            continue
+        if hit.get("rerank_score") is not None:
+            evidence_ref.rerank_score = float(hit.get("rerank_score") or 0.0)
+        evidence_refs.append(evidence_ref)
+        if len(evidence_refs) >= top_k:
+            break
+    if not evidence_refs or not (dense_used or rerank_active):
+        return None
+
+    retrieval_method: Literal["hybrid", "hybrid_rerank"] = "hybrid_rerank" if rerank_active else "hybrid"
+    embedding_status: Literal["active", "skipped", "unavailable"] = "active" if dense_used else "skipped"
+    rerank_status: Literal["active", "skipped", "unavailable"] = (
+        "active" if rerank_active and not rerank_fallback else "skipped"
+    )
+    diagnostics = EvidenceRetrievalDiagnosticsPayload(
+        retrieval_method=retrieval_method,
+        embedding_status=embedding_status,
+        rerank_status=rerank_status,
+        fallback_reason="" if rerank_status == "active" else "Hybrid retrieval ran without an active rerank result.",
+        project_weight=1.0,
+        wiki_weight=0.0,
+        reasoning_trace=[
+            "Loaded persisted project chunk store.",
+            "Ran existing ContextAwareRetriever/HybridRetrieverWithRerank over project chunks.",
+            "Projected hybrid hits into MCP-safe evidence refs without raw content.",
+            "Recorded dense/rerank provenance from retriever source labels and score fields.",
+        ],
+        notes=[
+            "embedding_status=active requires chunk embeddings and query embedding success.",
+            "rerank_status=active requires a returned rerank_score or rerank provenance label.",
+        ],
+    )
+    return evidence_refs, diagnostics
+
+
+def _lexical_evidence_diagnostics() -> EvidenceRetrievalDiagnosticsPayload:
+    """Return the explicit lexical fallback diagnostics used by evidence packs."""
+
+    return EvidenceRetrievalDiagnosticsPayload(
+        retrieval_method="lexical",
+        embedding_status="unavailable",
+        rerank_status="unavailable",
+        fallback_reason=(
+            "Evidence-pack builder used the MCP-safe lexical fallback; "
+            "dense embedding and local/API rerank were not invoked for this result."
+        ),
+        project_weight=1.0,
+        wiki_weight=0.0,
+        reasoning_trace=[
+            "Loaded persisted project chunk store.",
+            "Applied lexical token/sub-string scoring to existing chunks.",
+            "Projected hits into MCP-safe evidence refs without raw content.",
+            "Marked embedding/rerank unavailable because hybrid evidence-pack retrieval did not produce usable refs.",
+        ],
+        notes=[
+            "Use retrieval_method/rerank_status to audit whether embedding or rerank participated.",
+            "Hybrid/rerank evidence-pack retrieval runs only when existing retriever returns usable hits.",
+        ],
+    )
+
+
+@router.post("/api/evidence-pack/build", response_model=EvidencePackBuildResponse)
+async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePackBuildResponse:
+    """Build a query-scoped evidence pack from existing project chunks.
+
+    The current production-safe implementation is explicit lexical fallback:
+    it reuses the same white-listed search-ref projection as MCP retrieval and
+    reports rerank as unavailable rather than implying hybrid retrieval ran.
+    """
+
+    project_id = request.project_id.strip()
+    query = request.query.strip()
+    section_id = request.section_id.strip() if isinstance(request.section_id, str) and request.section_id.strip() else None
+    if not project_id:
+        raise HTTPException(status_code=422, detail="project_id must be non-empty")
+    if not query:
+        raise HTTPException(status_code=422, detail="query must be non-empty")
+
+    chunk_store = _resources_router._load_chunk_store(project_id)
+    all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
+    evidence_refs: list[EvidencePackReferencePayload] = []
+    positive_hit_count = 0
+    retrieval_method: Literal["lexical", "hybrid", "hybrid_rerank"] = "lexical"
+    rerank_status: Literal["active", "skipped", "unavailable"] = "unavailable"
+    diagnostics = _lexical_evidence_diagnostics()
+    if all_chunks:
+        hybrid_result = await _build_hybrid_evidence_refs(
+            project_id=project_id,
+            query=query,
+            top_k=request.top_k,
+            all_chunks=all_chunks,
+        )
+        if hybrid_result is not None:
+            evidence_refs, diagnostics = hybrid_result
+            retrieval_method = diagnostics.retrieval_method
+            rerank_status = diagnostics.rerank_status
+            positive_hit_count = len(evidence_refs)
+        else:
+            scored = _resources_router._score_chunks_for_query(all_chunks, query)
+            positive_hit_count = len([score for score, _chunk in scored if score > 0])
+            for score, chunk in _resources_router._select_diverse_top_chunks(scored, top_k=request.top_k):
+                search_ref = _chunk_to_search_ref(project_id, score, chunk)
+                evidence_ref = _search_ref_to_evidence_ref(project_id, search_ref)
+                if evidence_ref is not None:
+                    evidence_refs.append(evidence_ref)
+
+    diagnostics, evidence_refs = _attach_joint_recall_diagnostics(
+        diagnostics,
+        project_id=project_id,
+        query=query,
+        evidence_refs=evidence_refs,
+        top_k=request.top_k,
+    )
+
+    return EvidencePackBuildResponse(
+        evidence_pack_ref=_evidence_pack_ref(project_id, query, section_id),
+        project_id=project_id,
+        query=query,
+        section_id=section_id,
+        retrieval_method=retrieval_method,
+        rerank_status=rerank_status,
+        total=len(evidence_refs),
+        truncated=positive_hit_count > len(evidence_refs),
+        retrieval_diagnostics=diagnostics,
+        evidence_refs=evidence_refs,
+    )
 
 
 class SaveEvidencePackRequest(BaseModel):

@@ -17,6 +17,7 @@ import threading
 import time
 import uuid
 from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -337,6 +338,27 @@ class IntelligentChatRequest(BaseModel):
         default=None,
         description="Per-request override. False disables project reasoning bias injection for this chat turn.",
     )
+    mcp_server_ids: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional MCP service scope forwarded to the lower chat tool-use "
+            "runner. Omitted means the normal chat path."
+        ),
+    )
+    mcp_allow_high_risk_tools: bool = Field(
+        default=False,
+        description=(
+            "Allow write/filesystem/destructive MCP tools for this turn only. "
+            "Default False keeps high-risk tools in-band blocked."
+        ),
+    )
+    use_local_literature_tools: bool = Field(
+        default=False,
+        description=(
+            "Expose the built-in guarded Literature Assistant source and "
+            "writing tool surface to source-launched SmartRead."
+        ),
+    )
     current_pdf_context: CurrentPdfContextPayload | None = Field(
         default=None,
         description=(
@@ -366,6 +388,16 @@ class InspirationContextPayload(BaseModel):
 IntelligentChatRequest.model_rebuild()
 
 
+@dataclass(frozen=True, slots=True)
+class SmartReadLlmAnswer:
+    """Lower chat-path answer plus optional guarded tool transcript."""
+
+    answer: str
+    usage: "TokenUsagePayload"
+    sampling: "SamplingParamsPayload"
+    mcp_run: dict[str, Any] | None = None
+
+
 class IntelligentChatResponse(BaseModel):
     """Typed Intelligent Chat response matching the frontend contract."""
 
@@ -382,6 +414,13 @@ class IntelligentChatResponse(BaseModel):
         description=(
             "Structured evidence-grounded reasoning summary for the completed "
             "assistant answer. Additive; old clients can ignore it."
+        ),
+    )
+    mcp_run: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Local/MCP tool-use transcript surfaced for SmartRead auditability. "
+            "Populated only when the lower chat path executes guarded tools."
         ),
     )
 
@@ -1749,7 +1788,15 @@ async def _call_llm_answer(
     *,
     project_id: str | None = None,
     project_reasoning_bias_enabled: bool | None = None,
-) -> tuple[str, TokenUsagePayload, SamplingParamsPayload]:
+    mcp_server_ids: list[str] | None = None,
+    mcp_allow_high_risk_tools: bool = False,
+    use_local_literature_tools: bool = False,
+) -> SmartReadLlmAnswer:
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("query must be a non-empty string")
+    if not isinstance(context, list) or not all(isinstance(item, str) for item in context):
+        raise TypeError("context must be a list of strings")
+
     llm = _load_default_llm_config()
     tool_schemas = _load_skill_tool_schemas()
     response = await chat_ask(
@@ -1761,8 +1808,12 @@ async def _call_llm_answer(
             project_id=project_id,
             project_reasoning_bias_enabled=project_reasoning_bias_enabled,
             tools=tool_schemas,
+            mcp_server_ids=mcp_server_ids,
+            mcp_allow_high_risk_tools=mcp_allow_high_risk_tools,
+            use_local_literature_tools=use_local_literature_tools,
         )
     )
+    mcp_run = getattr(response, "mcp_run", None)
 
     tool_calls = getattr(response, "tool_calls", None) or []
     if tool_calls:
@@ -1779,18 +1830,23 @@ async def _call_llm_answer(
                     llm=llm,
                     project_id=project_id,
                     project_reasoning_bias_enabled=project_reasoning_bias_enabled,
+                    mcp_server_ids=mcp_server_ids,
+                    mcp_allow_high_risk_tools=mcp_allow_high_risk_tools,
+                    use_local_literature_tools=use_local_literature_tools,
                 )
             )
+            mcp_run = getattr(response, "mcp_run", None) or mcp_run
 
-    return (
-        response.answer,
-        _usage_from_mapping(response.usage),
-        SamplingParamsPayload(
+    return SmartReadLlmAnswer(
+        answer=response.answer,
+        usage=_usage_from_mapping(response.usage),
+        sampling=SamplingParamsPayload(
             temperature=llm.temperature,
             top_p=llm.top_p,
             top_k=llm.top_k,
             max_tokens=llm.max_tokens,
         ),
+        mcp_run=mcp_run,
     )
 
 
@@ -2480,6 +2536,12 @@ async def intelligent_chat_stream(req: IntelligentChatRequest) -> StreamingRespo
 async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> StreamingResponse | JSONResponse:
     """Build the SmartRead SSE response after pre-stream validation."""
 
+    if req.mcp_server_ids is not None or req.use_local_literature_tools:
+        raise HTTPException(
+            status_code=400,
+            detail="Streaming SmartRead does not support MCP tool-use; use POST /api/chat.",
+        )
+
     project_id = _validate_project_id(req.project_id)
     requested_session_id = (req.session_id or "").strip()
     existing_session: dict[str, Any] | None = None
@@ -2874,28 +2936,32 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
             project_id=project_id,
             context=[],
         )
-        answer, usage, sampling = await _call_llm_answer(
+        llm_answer = await _call_llm_answer(
             llm_query,
             llm_context,
             project_id=project_id,
             project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
+            mcp_server_ids=req.mcp_server_ids,
+            mcp_allow_high_risk_tools=req.mcp_allow_high_risk_tools,
+            use_local_literature_tools=req.use_local_literature_tools,
         )
         analysis_chain = await _maybe_build_smart_read_analysis_chain(
             req=req,
-            answer=answer,
+            answer=llm_answer.answer,
             context_strings=llm_context,
             project_id=project_id,
         )
         response = IntelligentChatResponse(
-            response=answer,
+            response=llm_answer.answer,
             session_id=session_id,
             context_chunks_used=0,
-            tokens_used=usage,
+            tokens_used=llm_answer.usage,
             tier_used=req.tier,
             context_metadata=ContextMetadataPayload(chunks=[], truncated=False),
             evidence_refs=[],
-            actual_sampling_params=sampling,
+            actual_sampling_params=llm_answer.sampling,
             analysis_chain=analysis_chain,
+            mcp_run=llm_answer.mcp_run,
         )
         _persist_turns(
             session_id=session_id,
@@ -3001,13 +3067,21 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
         answer = ragworkflow_answer
         usage = TokenUsagePayload()
         sampling = ragworkflow_sampling
+        mcp_run = None
     else:
-        answer, usage, sampling = await _call_llm_answer(
+        llm_answer = await _call_llm_answer(
             llm_query,
             llm_context,
             project_id=project_id,
             project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
+            mcp_server_ids=req.mcp_server_ids,
+            mcp_allow_high_risk_tools=req.mcp_allow_high_risk_tools,
+            use_local_literature_tools=req.use_local_literature_tools,
         )
+        answer = llm_answer.answer
+        usage = llm_answer.usage
+        sampling = llm_answer.sampling
+        mcp_run = llm_answer.mcp_run
     analysis_chain = await _maybe_build_smart_read_analysis_chain(
         req=req,
         answer=answer,
@@ -3024,6 +3098,7 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
         actual_sampling_params=sampling,
         evidence_refs=evidence_refs,
         analysis_chain=analysis_chain,
+        mcp_run=mcp_run,
     )
     _persist_turns(
         session_id=session_id,

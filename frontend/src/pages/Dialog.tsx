@@ -34,7 +34,12 @@ import { DiscussionPanel } from '@/components/DiscussionPanel';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { formatChatVisibleError, sanitizeChatVisibleText } from '@/components/chat/chatDisplay';
 import type { ChatAttachment, ChatInputSubmitPayload } from '@/components/chat/ChatInput';
-import type { ChatMessageData, ChatMessageDiagnostics } from '@/components/chat/MessageRenderer';
+import type {
+  ChatJointRecallDiagnostics,
+  ChatMessageData,
+  ChatMessageDiagnostics,
+  ChatRetrievalDiagnostics,
+} from '@/components/chat/MessageRenderer';
 import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import type { GraphNavigateTarget } from '@/components/graph/GraphPayloadViewer';
 import { WikiGraphSegmentedView } from '@/components/graph/WikiGraphSegmentedView';
@@ -77,6 +82,7 @@ import type { ProjectChunkResource, WritingMaterialResource, WritingProject } fr
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import {
   encodePdfBboxParam,
+  isPdfBboxUnit,
   normalizePdfUrlBbox,
   parsePdfBboxSearchParam,
   toPdfHighlightRect,
@@ -121,6 +127,7 @@ interface ChatMessage {
   evidenceRefs?: IntelligentChatResponse['evidence_refs'];
   actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
   tokensUsed?: TokenUsage;
+  retrievalDiagnostics?: ChatRetrievalDiagnostics;
   timestamp: Date;
   insufficientContext?: boolean;
   status?: ChatMessageData['status'];
@@ -399,6 +406,87 @@ function coerceContextMetadata(value: unknown): IntelligentChatResponse['context
   };
 }
 
+function readRecordNonNegativeNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = readRecordNumber(record, key);
+  return value !== undefined && value >= 0 ? value : undefined;
+}
+
+function coerceEvidenceRefs(value: unknown): IntelligentChatResponse['evidence_refs'] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const refs = value.flatMap((item): NonNullable<IntelligentChatResponse['evidence_refs']> => {
+    if (!isRecord(item)) return [];
+    const chunkId = readRecordString(item, 'chunk_id') ?? readRecordString(item, 'ref_id');
+    if (!chunkId) return [];
+    const sourceType = readRecordString(item, 'source_type');
+    const sourceTitle = readRecordStringOrNull(item, 'source_title');
+    const source = readRecordString(item, 'source') ?? sourceTitle ?? (sourceType === 'wiki' ? 'Wiki 记忆' : '项目证据');
+    const text = readRecordString(item, 'text') ?? readRecordString(item, 'summary') ?? '';
+    const quote = readRecordString(item, 'quote') ?? text;
+    return [{
+      chunk_id: chunkId,
+      material_id: readRecordStringOrNull(item, 'material_id') ?? undefined,
+      source,
+      text,
+      quote,
+      label: readRecordString(item, 'label'),
+      score: readRecordNonNegativeNumber(item, 'score') ?? readRecordNonNegativeNumber(item, 'lexical_score'),
+      source_labels: readRecordStringArray(item, 'source_labels'),
+      page: readRecordPage(item, 'page'),
+      bbox: Array.isArray(item.bbox) ? item.bbox.filter((part): part is number => typeof part === 'number' && Number.isFinite(part)) : null,
+      bbox_unit: isPdfBboxUnit(item.bbox_unit) ? item.bbox_unit : null,
+      source_hint: readRecordStringOrNull(item, 'source_hint'),
+      source_kind: item.source_kind === 'web' || item.source_kind === 'mcp' || item.source_kind === 'local'
+        ? item.source_kind
+        : sourceType === 'wiki'
+          ? 'mcp'
+          : 'local',
+      source_type: sourceType === 'wiki' ? 'wiki' : 'project',
+      source_title: sourceTitle,
+      source_path: readRecordStringOrNull(item, 'source_path'),
+      joint_score: readRecordNonNegativeNumber(item, 'joint_score') ?? null,
+    }];
+  });
+  return refs.length > 0 ? refs : undefined;
+}
+
+function coerceJointRecallDiagnostics(value: unknown): ChatJointRecallDiagnostics | undefined {
+  if (!isRecord(value)) return undefined;
+  const rawSummaries = Array.isArray(value.wiki_summaries) ? value.wiki_summaries : [];
+  const wikiSummaries = rawSummaries.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    return [{
+      title: readRecordString(item, 'title'),
+      summary: readRecordString(item, 'summary'),
+      ref_id: readRecordString(item, 'ref_id'),
+      read_endpoint: readRecordString(item, 'read_endpoint'),
+    }];
+  }).slice(0, 3);
+  return {
+    status: readRecordString(value, 'status'),
+    fusion: readRecordString(value, 'fusion'),
+    project_weight: readRecordNonNegativeNumber(value, 'project_weight'),
+    wiki_weight: readRecordNonNegativeNumber(value, 'wiki_weight'),
+    project_hit_count: readRecordNonNegativeNumber(value, 'project_hit_count'),
+    wiki_hit_count: readRecordNonNegativeNumber(value, 'wiki_hit_count'),
+    fused_count: readRecordNonNegativeNumber(value, 'fused_count'),
+    wiki_share_after_fusion: readRecordNonNegativeNumber(value, 'wiki_share_after_fusion'),
+    max_wiki_share_after_fusion: readRecordNonNegativeNumber(value, 'max_wiki_share_after_fusion'),
+    top_doc_ids: readRecordStringArray(value, 'top_doc_ids'),
+    wiki_summaries: wikiSummaries.length > 0 ? wikiSummaries : undefined,
+  };
+}
+
+function coerceRetrievalDiagnostics(value: unknown): ChatRetrievalDiagnostics | undefined {
+  if (!isRecord(value)) return undefined;
+  const diagnostics: ChatRetrievalDiagnostics = {
+    retrieval_method: readRecordString(value, 'retrieval_method'),
+    embedding_status: readRecordString(value, 'embedding_status'),
+    rerank_status: readRecordString(value, 'rerank_status'),
+    joint_recall: coerceJointRecallDiagnostics(value.joint_recall),
+  };
+  return Object.values(diagnostics).some((item) => item !== undefined) ? diagnostics : undefined;
+}
+
 function coerceSmartReadResponsePatch(
   content: Record<string, unknown>,
   fallbackTier: ContextTier,
@@ -408,23 +496,24 @@ function coerceSmartReadResponsePatch(
   evidenceRefs?: IntelligentChatResponse['evidence_refs'];
   actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
   tokensUsed?: TokenUsage;
+  retrievalDiagnostics?: ChatRetrievalDiagnostics;
   insufficientContext?: boolean;
 } {
   const contextMetadata = coerceContextMetadata(content.context_metadata);
-  const evidenceRefs = Array.isArray(content.evidence_refs)
-    ? content.evidence_refs as IntelligentChatResponse['evidence_refs']
-    : undefined;
+  const evidenceRefs = coerceEvidenceRefs(content.evidence_refs);
   const actualSamplingParams = isRecord(content.actual_sampling_params)
     ? content.actual_sampling_params as IntelligentChatResponse['actual_sampling_params']
     : undefined;
   const tierUsed = coerceSmartReadTier(content.tier_used, fallbackTier);
   const tokensUsed = coerceTokenUsageRecord(content.tokens_used);
+  const retrievalDiagnostics = coerceRetrievalDiagnostics(content.retrieval_diagnostics);
   return {
     tierUsed,
     contextMetadata,
     evidenceRefs,
     actualSamplingParams,
     tokensUsed,
+    retrievalDiagnostics,
     insufficientContext: contextMetadata ? contextMetadata.chunks.length === 0 : undefined,
   };
 }
@@ -436,6 +525,7 @@ function buildSmartReadDiagnostics(
     evidenceRefs?: IntelligentChatResponse['evidence_refs'];
     actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
     tokensUsed?: TokenUsage;
+    retrievalDiagnostics?: ChatRetrievalDiagnostics;
     insufficientContext?: boolean;
     content: string;
   },
@@ -449,6 +539,7 @@ function buildSmartReadDiagnostics(
     evidenceRefs: patch.evidenceRefs,
     actualSamplingParams: patch.actualSamplingParams,
     tokensUsed: patch.tokensUsed,
+    retrievalDiagnostics: patch.retrievalDiagnostics,
     timestamp: new Date(),
     insufficientContext: patch.insufficientContext,
   });
@@ -472,6 +563,7 @@ function toChatMessage(message: ChatResumeMessage): ChatMessage {
     contextMetadata: message.context_metadata ?? undefined,
     evidenceRefs: message.evidence_refs ?? undefined,
     tokensUsed: message.tokens_used ?? undefined,
+    retrievalDiagnostics: coerceRetrievalDiagnostics((message as { retrieval_diagnostics?: unknown }).retrieval_diagnostics),
     timestamp: parseChatTimestamp(message.timestamp),
     insufficientContext: message.role === 'assistant' && !message.context_metadata,
   };
@@ -509,6 +601,10 @@ function mapChatDataToDialogMessage(message: ChatMessageData): ChatMessage {
       bbox: ref.bbox ?? null,
       bbox_unit: ref.bbox_unit ?? null,
       source_kind: ref.source_kind ?? 'local',
+      source_type: ref.source_type ?? 'project',
+      source_title: ref.source_title ?? null,
+      source_path: ref.source_path ?? null,
+      joint_score: ref.joint_score ?? null,
     })),
     actualSamplingParams: diagnostics?.sampling
       ? {
@@ -525,6 +621,7 @@ function mapChatDataToDialogMessage(message: ChatMessageData): ChatMessage {
           total: diagnostics.tokens.total ?? 0,
         }
       : undefined,
+    retrievalDiagnostics: diagnostics?.retrieval,
     timestamp: message.timestamp ? parseChatTimestamp(message.timestamp) : new Date(),
     insufficientContext: diagnostics?.insufficient,
     status: message.status,
@@ -1048,6 +1145,10 @@ function mapDialogMessageToChatData(message: ChatMessage): ChatMessageData {
       source_hint: ref.source_hint ?? undefined,
       source_labels: ref.source_labels,
       source_kind: ref.source_kind ?? 'local',
+      source_type: ref.source_type ?? 'project',
+      source_title: ref.source_title ?? null,
+      source_path: ref.source_path ?? null,
+      joint_score: ref.joint_score ?? null,
     })),
     timestamp: message.timestamp.toISOString(),
     status: message.status,
@@ -1068,6 +1169,9 @@ function buildDialogDiagnostics(message: ChatMessage): ChatMessageDiagnostics | 
   }
   if (message.tokensUsed) {
     diagnostics.tokens = message.tokensUsed;
+  }
+  if (message.retrievalDiagnostics) {
+    diagnostics.retrieval = message.retrievalDiagnostics;
   }
   if (message.insufficientContext) {
     diagnostics.insufficient = true;

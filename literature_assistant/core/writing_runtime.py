@@ -60,6 +60,22 @@ _RUNTIME_RECOVERABLE_EXCEPTIONS = (
 )
 
 
+def _coerce_job_kind(value: Any) -> tuple[JobKind, str | None]:
+    """Return a supported job kind and the original value when it is unknown.
+
+    Why:
+        Runtime state can outlive one binary version. Falling back keeps older
+        desktops able to load future job records while preserving the raw kind
+        in metadata for diagnostics and UI labels.
+    """
+
+    raw_kind = str(value or JobKind.PROMPT_ACTION.value)
+    try:
+        return JobKind(raw_kind), None
+    except ValueError:
+        return JobKind.PROMPT_ACTION, raw_kind
+
+
 def _is_http_like_exception(exc: BaseException) -> bool:
     """Return True for FastAPI/Starlette HTTPException-like errors.
 
@@ -999,11 +1015,44 @@ class WritingRuntime:
         self._autosave_if_enabled()
         return job
 
-    async def complete_job(self, job_id: str, result: Any | None = None) -> WritingJob:
+    def update_job_metadata(self, job_id: str, updates: dict[str, Any]) -> WritingJob:
+        """Merge JSON-safe metadata into one runtime job.
+
+        Args:
+            job_id: Existing runtime job identifier.
+            updates: Object-shaped metadata patch. Keys with ``None`` values are
+                preserved because downstream routes use explicit nulls as state.
+
+        Returns:
+            Updated immutable job record.
+
+        Raises:
+            ValueError: If the job does not exist or updates is not an object.
+        """
+        if not isinstance(updates, dict):
+            raise ValueError("updates must be a metadata object")
+        job = self.get_job(job_id)
+        if job is None:
+            raise ValueError(f"Job {job_id} not found")
+        metadata = dict(job.metadata)
+        metadata.update(dict(updates))
+        updated = replace(job, metadata=metadata)
+        self._jobs[job_id] = updated
+        self._autosave_if_enabled()
+        return updated
+
+    async def complete_job(
+        self,
+        job_id: str,
+        result: Any | None = None,
+        artifact_metadata: dict[str, Any] | None = None,
+    ) -> WritingJob:
         """Mark a job as completed."""
         job = self.get_job(job_id)
         if not job:
             raise ValueError(f"Job {job_id} not found")
+        if artifact_metadata is not None and not isinstance(artifact_metadata, dict):
+            raise ValueError("artifact_metadata must be an object")
 
         job = job.with_status(JobStatus.COMPLETED)
         self._jobs[job_id] = job
@@ -1016,6 +1065,7 @@ class WritingRuntime:
                     artifact_type=ArtifactType.TRANSFORMED_TEXT,
                     content=result,
                     created_by="system",
+                    metadata=dict(artifact_metadata or {}),
                 )
             )
 
@@ -1691,10 +1741,14 @@ class WritingRuntime:
         for job_id, payload in jobs_raw.items():
             if not isinstance(payload, dict):
                 raise TypeError("job payload must be a mapping")
+            job_kind, unknown_kind = _coerce_job_kind(payload.get("kind", JobKind.PROMPT_ACTION.value))
+            metadata = dict(payload.get("metadata") or {})
+            if unknown_kind:
+                metadata.setdefault("unknown_job_kind", unknown_kind)
             job = WritingJob(
                 job_id=str(payload["job_id"]),
                 session_id=str(payload["session_id"]),
-                kind=JobKind(str(payload.get("kind", JobKind.PROMPT_ACTION.value))),
+                kind=job_kind,
                 status=JobStatus(str(payload.get("status", JobStatus.CREATED.value))),
                 input_text=str(payload.get("input_text", "")),
                 created_at=str(payload.get("created_at")),
@@ -1706,7 +1760,7 @@ class WritingRuntime:
                 output_mode=None if payload.get("output_mode") in (None, "") else str(payload.get("output_mode")),
                 error=None if payload.get("error") in (None, "") else str(payload.get("error")),
                 tags=[str(tag) for tag in payload.get("tags", [])],
-                metadata=dict(payload.get("metadata") or {}),
+                metadata=metadata,
             )
             jobs[str(job_id)] = job
 

@@ -64,6 +64,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-bridge/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Agent Request
+         * @description Create a runtime-visible job for external agent work.
+         */
+        post: operations["post_api_agent_bridge_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/request/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Request
+         * @description Return the runtime job linked to an agent request id.
+         */
+        get: operations["get_api_agent_bridge_request_request_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/request/{request_id}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fail Agent Request
+         * @description Mark a linked runtime job as failed.
+         */
+        post: operations["post_api_agent_bridge_request_request_id_fail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/request/{request_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write Agent Progress
+         * @description Write a progress event into the linked runtime job.
+         */
+        post: operations["post_api_agent_bridge_request_request_id_progress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/request/{request_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write Agent Result
+         * @description Store final agent output as runtime artifacts and complete the job.
+         */
+        post: operations["post_api_agent_bridge_request_request_id_result"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Requests
+         * @description List runtime jobs created through the agent bridge.
+         */
+        get: operations["get_api_agent_bridge_requests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/resource/{ref_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Agent Resource
+         * @description Resolve a stable resource ref into a hard-bounded text payload.
+         */
+        get: operations["get_api_agent_bridge_resource_ref_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Bridge Status
+         * @description Return a small runtime-backed agent bridge status.
+         */
+        get: operations["get_api_agent_bridge_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-workspace/status": {
         parameters: {
             query?: never;
@@ -1556,6 +1716,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evidence-pack/build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build Evidence Pack
+         * @description Build a query-scoped evidence pack from existing project chunks.
+         *
+         *     The current production-safe implementation is explicit lexical fallback:
+         *     it reuses the same white-listed search-ref projection as MCP retrieval and
+         *     reports rerank as unavailable rather than implying hybrid retrieval ran.
+         */
+        post: operations["post_api_evidence_pack_build"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evidence_refs": {
         parameters: {
             query?: never;
@@ -1624,6 +1808,66 @@ export interface paths {
          * @description Export TipTap content as formatted DOCX.
          */
         post: operations["post_api_export_docx"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/journal-style-specs/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Journal Style Spec
+         * @description Confirm a reviewable style draft for project-scoped DOCX export.
+         */
+        post: operations["post_api_export_journal_style_specs_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/journal-style-specs/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Journal Style Spec
+         * @description Create a reviewable journal style profile draft from bounded text.
+         */
+        post: operations["post_api_export_journal_style_specs_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/journal-style-specs/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Journal Style Spec
+         * @description Create a reviewable journal style profile draft from a small text file.
+         */
+        post: operations["post_api_export_journal_style_specs_upload"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1786,6 +2030,26 @@ export interface paths {
         get: operations["get_api_knowledge_source_vault_search"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/linter/academic-writing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lint Academic Writing Endpoint
+         * @description Check scholarly writing structure, evidence, tone, and references.
+         */
+        post: operations["post_api_linter_academic_writing"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3106,9 +3370,13 @@ export interface paths {
         put?: never;
         /**
          * Generate Outline
-         * @description Generate outline via AI based on topic and materials.
+         * @description Generate an evidence-grounded outline from project materials.
          *
-         *     Uses project materials and focus areas to generate structured outline.
+         *     Why:
+         *         Academic outlines should be constrained by project-owned source
+         *         summaries rather than topic-only generation. The endpoint fails when no
+         *         usable material context exists, preventing plausible but unsupported
+         *         outlines from entering downstream MCP writing workflows.
          */
         post: operations["post_api_writing_outline_generate"];
         delete?: never;
@@ -4266,6 +4534,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/resources/chunks/search-refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Chunk Refs
+         * @description Search existing project chunks and return refs without body content.
+         *
+         *     Args:
+         *         request: FastAPI request used to reject legacy side-effect flags.
+         *         project_id: Project whose already-indexed chunk store is searched.
+         *         query: Non-empty lexical query.
+         *         top_k: Maximum number of positive-scoring refs returned.
+         *
+         *     Returns:
+         *         ``ChunkSearchRefsResponse`` with ref metadata only. The endpoint is
+         *         pure read: it never calls ingestion helpers and rejects flags that
+         *         imply write-through search behavior.
+         */
+        get: operations["get_resources_chunks_search_refs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/resources/chunks/{chunk_id}/locator": {
         parameters: {
             query?: never;
@@ -4756,8 +5055,9 @@ export interface paths {
          * @description Scan the project's source_folder and ingest all literature files.
          *
          *     Reads all supported files (.pdf, .docx, .doc, .txt, .md) from the project's
-         *     source_folder and indexes them into the knowledge base.  Already-indexed
-         *     files (same filename) are skipped.  Returns a summary of what was processed.
+         *     source_folder and indexes them into the knowledge base. Already-indexed
+         *     files are skipped. Set ``async_job=true`` to submit the scan as a runtime
+         *     job that can be polled through ``/runtime/job/{id}/snapshot``.
          */
         post: operations["post_resources_project_project_id_scan_folder"];
         delete?: never;
@@ -5957,6 +6257,224 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AcademicWritingAuditContext
+         * @description Caller-supplied provenance for writing-quality audit.
+         *
+         *     Args:
+         *         invocation_surface: Stable caller class. Unknown custom values are
+         *             rejected to keep audit dashboards machine-filterable.
+         *         agent_host: Optional external agent or chat surface identifier.
+         *         source: Optional workflow source label.
+         *         project_id: Optional Literature Assistant project id.
+         *         tool_chain: Ordered high-level steps used before linting.
+         *         used_mcp_tools: Tool names already invoked by the agent/tool loop.
+         *         retrieval_diagnostics: Prior retrieval visibility payload, typically
+         *             copied from an evidence-pack response.
+         *         reasoning_trace: Safe, user-visible reasoning summary. This is not
+         *             private model chain-of-thought.
+         */
+        AcademicWritingAuditContext: {
+            /** Agent Host */
+            agent_host?: string | null;
+            /**
+             * Invocation Surface
+             * @default direct_api
+             * @enum {string}
+             */
+            invocation_surface: "direct_api" | "external_mcp" | "api_chat_local_tools" | "unknown";
+            /** Project Id */
+            project_id?: string | null;
+            /** Reasoning Trace */
+            reasoning_trace?: string[];
+            /** Retrieval Diagnostics */
+            retrieval_diagnostics?: {
+                [key: string]: unknown;
+            } | null;
+            /** Source */
+            source?: string | null;
+            /** Tool Chain */
+            tool_chain?: string[];
+            /** Used Mcp Tools */
+            used_mcp_tools?: string[];
+        };
+        /**
+         * AcademicWritingAuditTrail
+         * @description Machine-readable audit trail for one writing-quality gate run.
+         */
+        AcademicWritingAuditTrail: {
+            /** Agent Host */
+            agent_host?: string | null;
+            /** Agent Mediated */
+            agent_mediated: boolean;
+            /** Checks */
+            checks?: string[];
+            /** Disclosure Note */
+            disclosure_note?: string | null;
+            /** Disclosure Required */
+            disclosure_required: boolean;
+            /** Evidence Pack Ref Count */
+            evidence_pack_ref_count: number;
+            /** Evidence Ref Count */
+            evidence_ref_count: number;
+            /**
+             * Invocation Surface
+             * @enum {string}
+             */
+            invocation_surface: "direct_api" | "external_mcp" | "api_chat_local_tools" | "unknown";
+            /** Mcp Tool Calls Used */
+            mcp_tool_calls_used: boolean;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Quality Gate
+             * @enum {string}
+             */
+            quality_gate: "passed" | "failed";
+            /** Reasoning Trace */
+            reasoning_trace?: string[];
+            /** Retrieval Diagnostics */
+            retrieval_diagnostics?: {
+                [key: string]: unknown;
+            } | null;
+            /** Source */
+            source?: string | null;
+            /** Style Profile */
+            style_profile?: string | null;
+            /** Tool Chain */
+            tool_chain?: string[];
+            /** Used Mcp Tools */
+            used_mcp_tools?: string[];
+        };
+        /**
+         * AcademicWritingLintIssue
+         * @description One deterministic writing-quality finding.
+         *
+         *     Args:
+         *         code: Stable machine-readable issue code.
+         *         severity: Impact level used for pass/fail and score penalties.
+         *         message: Human-readable remediation target.
+         *         span: Optional compact location hint; offsets refer to normalized text.
+         */
+        AcademicWritingLintIssue: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning" | "info";
+            /** Span */
+            span?: {
+                [key: string]: number | string;
+            } | null;
+        };
+        /**
+         * AcademicWritingLintMetrics
+         * @description Observable writing metrics used by the linter response.
+         */
+        AcademicWritingLintMetrics: {
+            /** Academic Connector Count */
+            academic_connector_count: number;
+            /** Char Count */
+            char_count: number;
+            /** Citation Count */
+            citation_count: number;
+            /** Conversational Phrase Count */
+            conversational_phrase_count: number;
+            /** Equation Ref Count */
+            equation_ref_count: number;
+            /** Evidence Ref Count */
+            evidence_ref_count: number;
+            /** Figure Ref Count */
+            figure_ref_count: number;
+            /** Section Count */
+            section_count: number;
+            /** Table Ref Count */
+            table_ref_count: number;
+            /** Word Count */
+            word_count: number;
+        };
+        /**
+         * AcademicWritingLintRequest
+         * @description Input for deterministic academic writing lint.
+         *
+         *     Args:
+         *         text: Plain Markdown/text manuscript content.
+         *         html: Optional HTML manuscript content; headings/tables/captions are
+         *             recognized before tags are stripped.
+         *         content_type: Expected scholarly unit being checked.
+         *         language: ``auto`` derives Chinese/English from Unicode/script counts.
+         *         required_sections: Section labels that must appear as headings or
+         *             standalone section labels.
+         *         require_evidence_refs: Whether citation/evidence anchors are required.
+         *         require_figure_table_formula_refs: Whether figure, table, and equation
+         *             references must all be present.
+         *         style_profile: Optional journal/export style profile expectation.
+         *         audit_context: Optional caller provenance used to distinguish direct
+         *             API checks from MCP/agent-mediated writing checks.
+         */
+        AcademicWritingLintRequest: {
+            audit_context?: components["schemas"]["AcademicWritingAuditContext"] | null;
+            /**
+             * Content Type
+             * @default manuscript
+             * @enum {string}
+             */
+            content_type: "review" | "introduction" | "manuscript" | "section";
+            /** Html */
+            html?: string | null;
+            /**
+             * Language
+             * @default auto
+             * @enum {string}
+             */
+            language: "zh" | "en" | "auto";
+            /**
+             * Require Evidence Refs
+             * @default true
+             */
+            require_evidence_refs: boolean;
+            /**
+             * Require Figure Table Formula Refs
+             * @default false
+             */
+            require_figure_table_formula_refs: boolean;
+            /** Required Sections */
+            required_sections?: string[];
+            /** Style Profile */
+            style_profile?: string | null;
+            /** Text */
+            text?: string | null;
+        };
+        /**
+         * AcademicWritingLintResponse
+         * @description Deterministic academic writing quality result.
+         */
+        AcademicWritingLintResponse: {
+            audit: components["schemas"]["AcademicWritingAuditTrail"];
+            /**
+             * Content Type
+             * @enum {string}
+             */
+            content_type: "review" | "introduction" | "manuscript" | "section";
+            /** Issues */
+            issues?: components["schemas"]["AcademicWritingLintIssue"][];
+            /**
+             * Language
+             * @enum {string}
+             */
+            language: "zh" | "en";
+            metrics: components["schemas"]["AcademicWritingLintMetrics"];
+            /** Passed */
+            passed: boolean;
+            /** Recommendations */
+            recommendations?: string[];
+            /** Score */
+            score: number;
+        };
         /** AddHighlightRequest */
         AddHighlightRequest: {
             highlight: components["schemas"]["Highlight"];
@@ -5982,6 +6500,252 @@ export interface components {
             page: number;
             /** Tags */
             tags?: string[];
+        };
+        /**
+         * AgentBridgeRequestPayload
+         * @description Public response for one agent bridge request.
+         */
+        AgentBridgeRequestPayload: {
+            envelope: components["schemas"]["AgentRequestEnvelope"];
+            job: components["schemas"]["JobPayload"];
+            /** Poll */
+            poll: {
+                [key: string]: string;
+            };
+            /** Request Id */
+            request_id: string;
+            session: components["schemas"]["SessionPayload"];
+        };
+        /**
+         * AgentBridgeResourcePayload
+         * @description Bounded resource payload returned to external agents.
+         */
+        AgentBridgeResourcePayload: {
+            /** Content */
+            content: string;
+            /** Cursor */
+            cursor?: string | null;
+            /** Kind */
+            kind: string;
+            /** Max Chars */
+            max_chars: number;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Ref Id */
+            ref_id: string;
+            /** Title */
+            title?: string | null;
+            /** Total Chars */
+            total_chars: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * AgentBridgeResultPayload
+         * @description Response after an agent writes a terminal result.
+         */
+        AgentBridgeResultPayload: {
+            /** Artifacts */
+            artifacts?: components["schemas"]["ArtifactPayload"][];
+            job: components["schemas"]["JobPayload"];
+            /** Request Id */
+            request_id: string;
+        };
+        /**
+         * AgentBridgeStatusPayload
+         * @description Agent bridge status visible to MCP and frontend clients.
+         */
+        AgentBridgeStatusPayload: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Pending Count */
+            pending_count: number;
+            /** Recent */
+            recent?: components["schemas"]["JobPayload"][];
+            /** Running Count */
+            running_count: number;
+        };
+        /**
+         * AgentContextBudget
+         * @description Token-control envelope for external agent requests.
+         */
+        AgentContextBudget: {
+            /**
+             * Include Full Text
+             * @default false
+             */
+            include_full_text: boolean;
+            /**
+             * Max Chars
+             * @default 12000
+             */
+            max_chars: number;
+            /**
+             * Max Chunks
+             * @default 12
+             */
+            max_chunks: number;
+        };
+        /**
+         * AgentFailRequest
+         * @description Failure payload written by an external agent.
+         */
+        AgentFailRequest: {
+            /** Error */
+            error: string;
+        };
+        /**
+         * AgentOutputTargets
+         * @description Where an agent result should be surfaced after completion.
+         */
+        AgentOutputTargets: {
+            /**
+             * Agent Workspace
+             * @default true
+             */
+            agent_workspace: boolean;
+            /**
+             * Evolution Capture
+             * @default true
+             */
+            evolution_capture: boolean;
+            /**
+             * Graph Candidate
+             * @default false
+             */
+            graph_candidate: boolean;
+            /**
+             * Runtime Job
+             * @default true
+             */
+            runtime_job: boolean;
+            /**
+             * Smart Read Conversation
+             * @default false
+             */
+            smart_read_conversation: boolean;
+            /**
+             * Wiki Candidate
+             * @default false
+             */
+            wiki_candidate: boolean;
+        };
+        /**
+         * AgentProgressRequest
+         * @description Progress delta written by an external agent.
+         */
+        AgentProgressRequest: {
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            };
+            /** Message */
+            message: string;
+            /** Progress */
+            progress?: number | null;
+            /** Stage */
+            stage: string;
+        };
+        /**
+         * AgentRequestEnvelope
+         * @description Request shape for work delegated to Codex, Claude, or another agent.
+         */
+        AgentRequestEnvelope: {
+            /**
+             * Agent Host
+             * @default unknown
+             */
+            agent_host: string;
+            /** Chat Session Id */
+            chat_session_id?: string | null;
+            context_budget?: components["schemas"]["AgentContextBudget"];
+            /** Intent */
+            intent: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            output_targets?: components["schemas"]["AgentOutputTargets"];
+            /** Project Id */
+            project_id?: string | null;
+            /** Resource Refs */
+            resource_refs?: components["schemas"]["AgentResourceRef"][];
+            /** Route */
+            route?: string | null;
+            /** Runtime Session Id */
+            runtime_session_id?: string | null;
+            /**
+             * Source
+             * @default mcp
+             */
+            source: string;
+            /**
+             * User Text
+             * @default
+             */
+            user_text: string;
+        };
+        /**
+         * AgentResourceRef
+         * @description Small reference to context an agent can fetch through bounded readers.
+         */
+        AgentResourceRef: {
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id?: string | null;
+            /** Read Endpoint */
+            read_endpoint?: string | null;
+            /** Ref Id */
+            ref_id: string;
+            /** Summary */
+            summary?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * AgentResultRequest
+         * @description Final result payload written by an external agent.
+         */
+        AgentResultRequest: {
+            /** Content */
+            content?: {
+                [key: string]: unknown;
+            } | null;
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Graph Patch Refs */
+            graph_patch_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /** Wiki Refs */
+            wiki_refs?: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * AgentRole
@@ -6150,6 +6914,10 @@ export interface components {
             created_by?: string | null;
             /** Job Id */
             job_id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
             /**
              * Mime Type
              * @default application/json
@@ -6326,6 +7094,15 @@ export interface components {
              * @description Path to folder containing PDF files
              */
             pdf_folder: string;
+        };
+        /** Body_post_api_export_journal_style_specs_upload */
+        Body_post_api_export_journal_style_specs_upload: {
+            /** File */
+            file: string;
+            /** Journal Name */
+            journal_name: string;
+            /** Project Id */
+            project_id: string;
         };
         /** Body_post_resources_upload */
         Body_post_resources_upload: {
@@ -6714,6 +7491,12 @@ export interface components {
             tools?: {
                 [key: string]: unknown;
             }[] | null;
+            /**
+             * Use Local Literature Tools
+             * @description Expose the built-in Literature Assistant source and writing tool surface to source-launched chat with the same guarded boundaries as the stdio MCP agent.
+             * @default false
+             */
+            use_local_literature_tools: boolean;
         };
         /** ChatResponse */
         ChatResponse: {
@@ -6930,6 +7713,17 @@ export interface components {
             /** @description LLM config (optional; backend resolves if absent) */
             llm?: components["schemas"]["LLMConfig"] | null;
             /**
+             * Mcp Allow High Risk Tools
+             * @description Kept for schema parity with ChatRequest; streaming tool-use is not dispatched.
+             * @default false
+             */
+            mcp_allow_high_risk_tools: boolean;
+            /**
+             * Mcp Server Ids
+             * @description MCP service scope. Streaming tool-use is rejected instead of silently ignored.
+             */
+            mcp_server_ids?: string[] | null;
+            /**
              * Project Id
              * @description Project id used to resolve project reasoning bias
              */
@@ -6954,6 +7748,12 @@ export interface components {
              * @default true
              */
             stream: boolean;
+            /**
+             * Use Local Literature Tools
+             * @description Kept for schema parity with ChatRequest; streaming tool-use is not dispatched.
+             * @default false
+             */
+            use_local_literature_tools: boolean;
         };
         /**
          * CheckpointPayload
@@ -7005,6 +7805,83 @@ export interface components {
              * @default
              */
             text_preview: string;
+        };
+        /**
+         * ChunkSearchRefMetadataPayload
+         * @description Whitelisted provenance metadata for token-bounded chunk refs.
+         *
+         *     Args:
+         *         material_id: Material that owns the matched chunk.
+         *         title: Human-readable source title when available.
+         *         page: One-based page number when the chunk store records it.
+         *         chunk_type: Optional chunk classifier from the extraction pipeline.
+         *         source_relative_path: Project-local source-file path when persisted.
+         *         locator: Optional compact locator payload suitable for reader jumps.
+         */
+        ChunkSearchRefMetadataPayload: {
+            /** Chunk Type */
+            chunk_type?: string | null;
+            /** Locator */
+            locator?: {
+                [key: string]: unknown;
+            } | null;
+            /** Material Id */
+            material_id: string;
+            /** Page */
+            page?: number | null;
+            /** Source Relative Path */
+            source_relative_path?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * ChunkSearchRefPayload
+         * @description Small search hit returned to MCP clients without source text content.
+         *
+         *     Args:
+         *         chunk_id: Stable chunk identifier in the project chunk store.
+         *         ref_id: Agent bridge ref id in ``kind:id`` form.
+         *         summary: Short display-safe preview derived from local metadata/text.
+         *         lexical_score: Score from the local lexical matcher.
+         *         rerank_score: Reserved rerank score; mirrors lexical score until a
+         *             deterministic reranker is wired into this read-only endpoint.
+         *         metadata: Whitelisted provenance fields only.
+         *         read_endpoint: Bounded reader endpoint for fetching full content later.
+         */
+        ChunkSearchRefPayload: {
+            /** Chunk Id */
+            chunk_id: string;
+            /** Lexical Score */
+            lexical_score: number;
+            metadata: components["schemas"]["ChunkSearchRefMetadataPayload"];
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Rerank Score */
+            rerank_score?: number | null;
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * ChunkSearchRefsResponse
+         * @description Read-only chunk ref search response for MCP-first retrieval.
+         *
+         *     Args:
+         *         project_id: Project searched.
+         *         query: Query string after FastAPI validation.
+         *         total_refs: Number of refs in ``refs``.
+         *         refs: Token-bounded refs with no chunk body fields.
+         */
+        ChunkSearchRefsResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Query */
+            query: string;
+            /** Refs */
+            refs?: components["schemas"]["ChunkSearchRefPayload"][];
+            /** Total Refs */
+            total_refs: number;
         };
         /**
          * CitationAnchorPayload
@@ -8666,6 +9543,141 @@ export interface components {
              */
             ref: string;
         };
+        /**
+         * EvidencePackBuildRequest
+         * @description Request to build a query-scoped evidence pack from project chunks.
+         *
+         *     Args:
+         *         project_id: Project whose already-indexed chunk store is searched.
+         *         query: Non-empty research question or section-local retrieval query.
+         *         section_id: Optional draft/outline section id kept for traceability.
+         *         top_k: Maximum evidence refs returned by the lexical fallback path.
+         */
+        EvidencePackBuildRequest: {
+            /** Project Id */
+            project_id: string;
+            /** Query */
+            query: string;
+            /** Section Id */
+            section_id?: string | null;
+            /**
+             * Top K
+             * @default 10
+             */
+            top_k: number;
+        };
+        /**
+         * EvidencePackBuildResponse
+         * @description Response for the evidence-pack builder endpoint.
+         *
+         *     Args:
+         *         evidence_pack_ref: Stable ref id for this deterministic build result.
+         *         project_id: Project searched.
+         *         query: Query string used for retrieval.
+         *         section_id: Optional section id carried from the request.
+         *         retrieval_method: Actual retrieval method used by the backend.
+         *         rerank_status: Whether reranking actively ran, was skipped, or unavailable.
+         *         total: Number of evidence refs returned after truncation.
+         *         truncated: Whether more positive lexical hits existed than returned.
+         *         retrieval_diagnostics: Explicit embedding/rerank visibility for agents.
+         *         evidence_refs: MCP-safe evidence refs with no raw chunk body fields.
+         */
+        EvidencePackBuildResponse: {
+            /** Evidence Pack Ref */
+            evidence_pack_ref: string;
+            /** Evidence Refs */
+            evidence_refs?: components["schemas"]["EvidencePackReferencePayload"][];
+            /** Project Id */
+            project_id: string;
+            /** Query */
+            query: string;
+            /**
+             * Rerank Status
+             * @default unavailable
+             * @enum {string}
+             */
+            rerank_status: "active" | "skipped" | "unavailable";
+            retrieval_diagnostics?: components["schemas"]["EvidenceRetrievalDiagnosticsPayload"];
+            /**
+             * Retrieval Method
+             * @default lexical
+             * @enum {string}
+             */
+            retrieval_method: "lexical" | "hybrid" | "hybrid_rerank";
+            /** Section Id */
+            section_id?: string | null;
+            /** Total */
+            total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * EvidencePackReferencePayload
+         * @description MCP-safe evidence ref derived from a backend search ref.
+         *
+         *     Args:
+         *         project_id: Project that owns the chunk ref.
+         *         source_type: Evidence source family; wiki refs are bounded resources
+         *             and are not copied into project chunks.
+         *         ref_id: Agent bridge resource id in ``kind:id`` form.
+         *         read_endpoint: Bounded reader endpoint with explicit project scope.
+         *         chunk_id: Stable chunk identifier in the project chunk store.
+         *         material_id: Material that owns the chunk.
+         *         page: One-based source page when persisted in metadata.
+         *         lexical_score: Score from the local lexical retrieval path.
+         *         rerank_score: Optional rerank score; ``None`` when rerank did not run.
+         *         citation_anchor: Stable local citation anchor for draft traceability.
+         *         figure_candidate: Optional future figure/table candidate id.
+         *         summary: Bounded summary safe for model context.
+         *         suitable_for_body: Whether the ref is safe to cite in body prose.
+         *         source_title: Optional display title for non-project resources.
+         *         source_path: Optional bounded source path for non-project resources.
+         *         joint_score: Optional fused project/wiki score from weighted RRF.
+         */
+        EvidencePackReferencePayload: {
+            /** Chunk Id */
+            chunk_id: string;
+            /** Citation Anchor */
+            citation_anchor: string;
+            /** Figure Candidate */
+            figure_candidate?: string | null;
+            /** Joint Score */
+            joint_score?: number | null;
+            /** Lexical Score */
+            lexical_score: number;
+            /** Material Id */
+            material_id: string;
+            /** Page */
+            page?: number | null;
+            /** Project Id */
+            project_id: string;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Rerank Score */
+            rerank_score?: number | null;
+            /** Source Path */
+            source_path?: string | null;
+            /** Source Title */
+            source_title?: string | null;
+            /**
+             * Source Type
+             * @default project
+             * @enum {string}
+             */
+            source_type: "project" | "wiki";
+            /**
+             * Suitable For Body
+             * @default true
+             */
+            suitable_for_body: boolean;
+            /** Summary */
+            summary: string;
+        };
         /** EvidenceRef */
         EvidenceRef: {
             /**
@@ -8802,6 +9814,66 @@ export interface components {
             total: number;
         };
         /**
+         * EvidenceRetrievalDiagnosticsPayload
+         * @description Machine-readable retrieval provenance for writing/evidence audits.
+         *
+         *     Args:
+         *         retrieval_method: Effective retrieval path used for this response.
+         *         embedding_status: Whether dense embeddings were used, skipped, or unavailable.
+         *         rerank_status: Whether reranking was active, skipped, or unavailable.
+         *         fallback_reason: Short reason when the path degraded to lexical retrieval.
+         *         project_weight: Weight assigned to project-local chunks in this build.
+         *         wiki_weight: Weight assigned to wiki recall in this build.
+         *         joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are
+         *             reported here without being coerced into project chunk refs.
+         *         reasoning_trace: Auditable retrieval-decision summary, not private
+         *             model chain-of-thought.
+         *         notes: Bounded operational notes safe to show in chat/tool transcripts.
+         */
+        EvidenceRetrievalDiagnosticsPayload: {
+            /**
+             * Embedding Status
+             * @default unavailable
+             * @enum {string}
+             */
+            embedding_status: "active" | "skipped" | "unavailable";
+            /**
+             * Fallback Reason
+             * @default
+             */
+            fallback_reason: string;
+            /** Joint Recall */
+            joint_recall?: {
+                [key: string]: unknown;
+            };
+            /** Notes */
+            notes?: string[];
+            /**
+             * Project Weight
+             * @default 1
+             */
+            project_weight: number;
+            /** Reasoning Trace */
+            reasoning_trace?: string[];
+            /**
+             * Rerank Status
+             * @default unavailable
+             * @enum {string}
+             */
+            rerank_status: "active" | "skipped" | "unavailable";
+            /**
+             * Retrieval Method
+             * @default lexical
+             * @enum {string}
+             */
+            retrieval_method: "lexical" | "hybrid" | "hybrid_rerank";
+            /**
+             * Wiki Weight
+             * @default 0
+             */
+            wiki_weight: number;
+        };
+        /**
          * EvolutionAuditPayload
          * @description Read-only experience review summary for the audit panel.
          *
@@ -8927,13 +9999,23 @@ export interface components {
             json?: {
                 [key: string]: unknown;
             } | null;
-            /** Style Profile */
-            style_profile?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Style Profile
+             * @default gb_t_7714_review
+             */
+            style_profile: string | null;
             /**
              * Title
              * @default Untitled
              */
             title: string;
+            /**
+             * Verify With Word
+             * @default false
+             */
+            verify_with_word: boolean;
         };
         /**
          * ExportProjectRequest
@@ -8954,6 +10036,11 @@ export interface components {
             include_evidence: boolean;
             /** Project Id */
             project_id: string;
+            /**
+             * Style Profile
+             * @description Optional built-in or confirmed project-scoped journal style profile for Word export.
+             */
+            style_profile?: string | null;
         };
         /**
          * FactInvalidationPayload
@@ -9535,6 +10622,17 @@ export interface components {
              * @description When the user is reading a specific paper in the Workbench, anchor retrieval to that material's chunks first so the answer stays grounded in 'the paper I'm looking at' rather than project-wide RAG. Empty / null = project-wide retrieval as before.
              */
             material_id?: string | null;
+            /**
+             * Mcp Allow High Risk Tools
+             * @description Allow write/filesystem/destructive MCP tools for this turn only. Default False keeps high-risk tools in-band blocked.
+             * @default false
+             */
+            mcp_allow_high_risk_tools: boolean;
+            /**
+             * Mcp Server Ids
+             * @description Optional MCP service scope forwarded to the lower chat tool-use runner. Omitted means the normal chat path.
+             */
+            mcp_server_ids?: string[] | null;
             /** @description Legacy compatibility mode. New callers should omit it or send literature_qa for the unified smart-read path. */
             mode?: components["schemas"]["ChatMode"] | null;
             /** Project Id */
@@ -9556,6 +10654,12 @@ export interface components {
              * @enum {string}
              */
             tier: "fast" | "balanced" | "thorough";
+            /**
+             * Use Local Literature Tools
+             * @description Expose the built-in guarded Literature Assistant source and writing tool surface to source-launched SmartRead.
+             * @default false
+             */
+            use_local_literature_tools: boolean;
         };
         /**
          * IntelligentChatResponse
@@ -9570,6 +10674,13 @@ export interface components {
             context_metadata?: components["schemas"]["ContextMetadataPayload"] | null;
             /** Evidence Refs */
             evidence_refs?: components["schemas"]["EvidenceReferencePayload"][];
+            /**
+             * Mcp Run
+             * @description Local/MCP tool-use transcript surfaced for SmartRead auditability. Populated only when the lower chat path executes guarded tools.
+             */
+            mcp_run?: {
+                [key: string]: unknown;
+            } | null;
             /** Response */
             response: string;
             /** Session Id */
@@ -9694,6 +10805,33 @@ export interface components {
             started_at?: string | null;
             /** Status */
             status: string;
+        };
+        /**
+         * JournalStyleSpecConfirmRequest
+         * @description Confirm a project-scoped style profile draft for future exports.
+         */
+        JournalStyleSpecConfirmRequest: {
+            /**
+             * Confirmed By
+             * @default user
+             */
+            confirmed_by: string;
+            /** Draft Id */
+            draft_id: string;
+            /** Project Id */
+            project_id: string;
+        };
+        /**
+         * JournalStyleSpecDraftRequest
+         * @description Text-based official journal requirements submitted for profile drafting.
+         */
+        JournalStyleSpecDraftRequest: {
+            /** Journal Name */
+            journal_name: string;
+            /** Project Id */
+            project_id: string;
+            /** Spec Text */
+            spec_text: string;
         };
         /** LLMConfig */
         LLMConfig: {
@@ -11091,10 +12229,12 @@ export interface components {
             project?: components["schemas"]["ProjectPayload"] | null;
             /** Project Id */
             project_id?: string | null;
+            rendered_writing_audit?: components["schemas"]["AcademicWritingLintResponse"] | null;
             /** Review Findings */
             review_findings?: components["schemas"]["ProjectExportReviewFindingPayload"][];
             /** Sections */
             sections?: components["schemas"]["SectionPayload"][];
+            writing_audit?: components["schemas"]["AcademicWritingLintResponse"] | null;
         };
         /**
          * ProjectExportReviewFindingPayload
@@ -11166,6 +12306,7 @@ export interface components {
              * @default
              */
             source_folder: string;
+            source_folder_ref?: components["schemas"]["SourceFolderRefPayload"] | null;
             /** Status */
             status: string;
             /** Tags */
@@ -12472,6 +13613,30 @@ export interface components {
             warnings?: string[];
         };
         /**
+         * SourceFolderRefPayload
+         * @description Privacy-safe project source-folder binding metadata.
+         *
+         *     The backend stores the real local path for guarded scans, but public
+         *     clients should use this shape when they only need to show binding state.
+         */
+        SourceFolderRefPayload: {
+            /**
+             * Bound At
+             * @default
+             */
+            bound_at: string;
+            /**
+             * Bound By
+             * @default
+             */
+            bound_by: string;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name: string;
+        };
+        /**
          * SourceLabelPayload
          * @description Source label for filtering evidence references.
          */
@@ -13691,6 +14856,275 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    post_api_agent_bridge_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRequestEnvelope"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBridgeRequestPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_agent_bridge_request_request_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_agent_bridge_request_request_id_fail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentFailRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_agent_bridge_request_request_id_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentProgressRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_agent_bridge_request_request_id_result: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentResultRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBridgeResultPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_agent_bridge_requests: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                project_id?: string | null;
+                source?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_agent_bridge_resource_ref_id: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                max_chars?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                ref_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBridgeResourcePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_agent_bridge_status: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBridgeStatusPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -16392,6 +17826,39 @@ export interface operations {
             };
         };
     };
+    post_api_evidence_pack_build: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidencePackBuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidencePackBuildResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_evidence_refs: {
         parameters: {
             query?: {
@@ -16518,6 +17985,111 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_export_journal_style_specs_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JournalStyleSpecConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_export_journal_style_specs_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JournalStyleSpecDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_export_journal_style_specs_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_post_api_export_journal_style_specs_upload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -16782,6 +18354,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceVaultSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_linter_academic_writing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcademicWritingLintRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicWritingLintResponse"];
                 };
             };
             /** @description Validation Error */
@@ -21251,6 +22856,41 @@ export interface operations {
             };
         };
     };
+    get_resources_chunks_search_refs: {
+        parameters: {
+            query: {
+                project_id: string;
+                /** @description 搜索词 */
+                query: string;
+                /** @description 返回最相关的引用数 */
+                top_k?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkSearchRefsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_resources_chunks_chunk_id_locator: {
         parameters: {
             query: {
@@ -22024,6 +23664,12 @@ export interface operations {
             query?: {
                 /** @description 导出格式 */
                 format?: components["schemas"]["ProjectExportFormat"];
+                /** @description Include evidence/review appendices in text/json payloads */
+                include_evidence?: boolean;
+                /** @description Include citation-chain appendices in text/json payloads */
+                include_citations?: boolean;
+                /** @description Optional journal style profile for Word export */
+                style_profile?: string | null;
             };
             header?: never;
             path: {
@@ -22163,6 +23809,8 @@ export interface operations {
                 batch_size?: number;
                 /** @description fast 模式下并发 worker 数（建议 4-16） */
                 max_workers?: number;
+                /** @description 为 MCP/任务中心提交 runtime job，而不是同步等待扫描完成 */
+                async_job?: boolean;
             };
             header?: never;
             path: {

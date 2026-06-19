@@ -200,6 +200,15 @@ class _GeneratedOutlineItem(TypedDict):
     parent_index: int | None
 
 
+class _OutlineMaterialContext(TypedDict):
+    """Bounded material context used for evidence-grounded outline generation."""
+
+    material_id: str
+    title: str
+    summary: str
+    focus_points: list[str]
+
+
 def _coerce_outline_level(value: Any, default: int = 1) -> int:
     """Return a bounded Markdown heading level for API outline payloads."""
     try:
@@ -222,6 +231,134 @@ def _clean_outline_description(value: Any) -> str:
     text = str(value or "").strip()
     text = re.sub(r"\s+", " ", text).strip()
     return text[:420]
+
+
+def _bounded_outline_text(value: Any, *, max_chars: int) -> str:
+    """Return compact text for outline prompts without unbounded source spill."""
+
+    if not isinstance(max_chars, int) or max_chars < 1:
+        raise ValueError("max_chars must be a positive integer")
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    return text[:max_chars]
+
+
+def _material_outline_summary(material: WritingMaterial, *, max_chars: int = 700) -> str:
+    """Build a bounded source summary from material metadata.
+
+    Args:
+        material: Project-owned material record.
+        max_chars: Maximum characters returned for prompt context.
+
+    Returns:
+        Compact summary text. Empty means the material has no usable summary.
+    """
+
+    parts = [
+        getattr(material, "summary", ""),
+        getattr(material, "summary_en", ""),
+        "；".join(getattr(material, "focus_points", []) or []),
+        "；".join(getattr(material, "focus_points_en", []) or []),
+    ]
+    summary = " ".join(_bounded_outline_text(part, max_chars=max_chars) for part in parts if str(part).strip())
+    return _bounded_outline_text(summary, max_chars=max_chars)
+
+
+def _chunk_outline_summary(project_id: str, material_id: str, *, max_chars: int = 700) -> str:
+    """Return a bounded chunk-derived summary for materials without summaries."""
+
+    if not project_id.strip() or not material_id.strip():
+        return ""
+    try:
+        chunks = resources_router._load_chunk_store(project_id).get(material_id, [])  # type: ignore[attr-defined]
+    except Exception as exc:  # noqa: BLE001 - outline generation must degrade to metadata when chunk store is unavailable.
+        logger.info("Outline chunk context unavailable for material %s: %s", material_id, exc)
+        return ""
+    excerpts: list[str] = []
+    for chunk in chunks[:3]:
+        if not isinstance(chunk, Mapping):
+            continue
+        for key in ("summary", "abstract", "content", "text", "caption"):
+            text = _bounded_outline_text(chunk.get(key), max_chars=260)
+            if text:
+                excerpts.append(text)
+                break
+        if sum(len(item) for item in excerpts) >= max_chars:
+            break
+    return _bounded_outline_text(" ".join(excerpts), max_chars=max_chars)
+
+
+def _collect_outline_material_context(
+    store: Any,
+    request: GenerateOutlineRequest,
+    *,
+    max_materials: int = 12,
+) -> list[_OutlineMaterialContext]:
+    """Collect project-owned material summaries required for grounded outlines.
+
+    Args:
+        store: Writing resource store with ``get_material`` and ``list_materials``.
+        request: Public outline-generation request.
+        max_materials: Maximum source records included in the prompt.
+
+    Returns:
+        Bounded material context rows. The list is empty only when no usable
+        project material evidence exists.
+    """
+
+    if not isinstance(max_materials, int) or max_materials < 1:
+        raise ValueError("max_materials must be a positive integer")
+
+    requested_ids = [str(item).strip() for item in request.existing_materials if str(item).strip()]
+    if requested_ids:
+        materials: list[WritingMaterial] = []
+        for material_id in requested_ids[:max_materials]:
+            material = store.get_material(material_id)
+            if material is None:
+                raise HTTPException(status_code=404, detail=f"Material not found: {material_id}")
+            if material.project_id != request.project_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Material {material_id} does not belong to project {request.project_id}",
+                )
+            materials.append(material)
+    else:
+        materials = list(store.list_materials(request.project_id))[:max_materials]
+
+    context: list[_OutlineMaterialContext] = []
+    for material in materials:
+        summary = _material_outline_summary(material)
+        if not summary:
+            summary = _chunk_outline_summary(request.project_id, material.material_id)
+        title = _bounded_outline_text(material.title or material.title_en, max_chars=180)
+        if not title or not summary:
+            continue
+        context.append(
+            {
+                "material_id": material.material_id,
+                "title": title,
+                "summary": summary,
+                "focus_points": [
+                    _bounded_outline_text(item, max_chars=80)
+                    for item in (material.focus_points or material.focus_points_en or [])
+                    if str(item).strip()
+                ][:6],
+            }
+        )
+    return context
+
+
+def _format_outline_material_context(context: Sequence[_OutlineMaterialContext]) -> str:
+    """Format material rows for an evidence-bounded outline prompt."""
+
+    if not context:
+        raise ValueError("context must contain at least one material row")
+    lines: list[str] = []
+    for index, item in enumerate(context, start=1):
+        focus = f" Focus: {'; '.join(item['focus_points'])}." if item["focus_points"] else ""
+        lines.append(
+            f"{index}. [{item['material_id']}] {item['title']}: {item['summary']}{focus}"
+        )
+    return "\n".join(lines)
 
 
 def _section_to_outline_item(section: Any) -> OutlineItemPayload:
@@ -350,16 +487,22 @@ def _parse_generated_outline(raw_text: str) -> list[_GeneratedOutlineItem]:
     return result[:24]
 
 
-def _fallback_outline_items(request: GenerateOutlineRequest) -> list[_GeneratedOutlineItem]:
-    """Build a deterministic outline when AI is unavailable or unparseable."""
+def _fallback_outline_items(
+    request: GenerateOutlineRequest,
+    material_context: Sequence[_OutlineMaterialContext],
+) -> list[_GeneratedOutlineItem]:
+    """Build a deterministic, evidence-grounded outline when AI is unavailable."""
     topic = request.topic.strip()
     focus_areas = [str(item).strip() for item in request.focus_areas if str(item).strip()]
-    evidence_focus = focus_areas[0] if focus_areas else "关键文献证据"
-    comparison_focus = focus_areas[1] if len(focus_areas) > 1 else "方法与结果差异"
+    primary = material_context[0]
+    secondary = material_context[1] if len(material_context) > 1 else material_context[0]
+    evidence_focus = focus_areas[0] if focus_areas else primary["title"]
+    comparison_focus = focus_areas[1] if len(focus_areas) > 1 else secondary["title"]
+    material_ids = "、".join(item["material_id"] for item in material_context[:4])
     target_note = f"目标篇幅约 {request.target_length} 字。" if request.target_length else "按学术论文常规篇幅组织。"
     rows: list[tuple[str, str]] = [
-        ("研究背景与问题界定", f"说明 {topic} 的研究背景、核心概念、研究对象和写作边界。{target_note}"),
-        ("文献证据与研究现状", f"围绕 {evidence_focus} 汇总已有文献的主要结论、证据强度和不足。"),
+        ("研究背景与问题界定", f"基于材料 {material_ids} 说明 {topic} 的研究背景、核心概念、研究对象和写作边界。{target_note}"),
+        ("文献证据与研究现状", f"围绕 {evidence_focus} 汇总已有文献的主要结论、证据强度和不足，并保留材料锚点。"),
         ("方法、材料与分析框架", f"交代检索、筛选、对比和论证方法，明确 {topic} 的分析框架。"),
         ("关键发现与对比讨论", f"比较 {comparison_focus}，提炼一致结论、分歧来源和可能机制。"),
         ("结论、局限与后续工作", f"总结可支撑的结论，标出证据边界、局限和下一步补证方向。"),
@@ -763,9 +906,13 @@ async def delete_outline_item(item_id: str) -> dict[str, str]:
 
 @router.post("/outline/generate", response_model=OutlinePayload)
 async def generate_outline(request: GenerateOutlineRequest) -> OutlinePayload:
-    """Generate outline via AI based on topic and materials.
+    """Generate an evidence-grounded outline from project materials.
 
-    Uses project materials and focus areas to generate structured outline.
+    Why:
+        Academic outlines should be constrained by project-owned source
+        summaries rather than topic-only generation. The endpoint fails when no
+        usable material context exists, preventing plausible but unsupported
+        outlines from entering downstream MCP writing workflows.
     """
     from routers.resources_router import get_ai_adapter, get_writing_resource_store
 
@@ -773,15 +920,25 @@ async def generate_outline(request: GenerateOutlineRequest) -> OutlinePayload:
     project = store.get_project(request.project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {request.project_id}")
+    topic = request.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=422, detail="topic must be non-empty")
+
+    material_context = _collect_outline_material_context(store, request)
+    if not material_context:
+        raise HTTPException(
+            status_code=400,
+            detail="Outline generation requires at least one project material with summary or chunk text",
+        )
 
     # Build context from existing materials
-    context_parts = [f"Topic: {request.topic}"]
+    context_parts = [f"Topic: {topic}"]
     if request.focus_areas:
         context_parts.append(f"Focus areas: {', '.join(request.focus_areas)}")
     if request.target_length:
         context_parts.append(f"Target length: ~{request.target_length} words")
-
-    # TODO: Fetch material summaries if existing_materials provided
+    context_parts.append("Project materials:")
+    context_parts.append(_format_outline_material_context(material_context))
 
     prompt = f"""Generate a structured outline for a {request.content_type} writing project.
 
@@ -791,6 +948,8 @@ Generate a hierarchical outline with:
 - 3-5 main sections (level 1)
 - 2-4 subsections per main section (level 2)
 - Brief description for each section
+- Every section description must mention at least one material id in square brackets when that section makes a literature claim
+- Do not introduce claims that are not supported by the listed project materials
 
 Format as JSON array of outline items with: title, level, order, description"""
 
@@ -803,7 +962,7 @@ Format as JSON array of outline items with: title, level, order, description"""
         logger.warning("Writing outline AI generation failed; using fallback: %s", exc)
 
     if not generated_items:
-        generated_items = _fallback_outline_items(request)
+        generated_items = _fallback_outline_items(request, material_context)
 
     return _persist_generated_outline_items(store, request, generated_items)
 
@@ -1312,4 +1471,7 @@ async def export_project(request: ExportProjectRequest) -> ProjectExportPayload:
     return await export_project_resource(
         project_id=request.project_id,
         format=export_format,
+        include_evidence=request.include_evidence,
+        include_citations=request.include_citations,
+        style_profile=request.style_profile,
     )

@@ -10,11 +10,15 @@ import hashlib
 import re
 from collections.abc import Mapping
 from pathlib import Path
+from urllib.parse import quote
 from typing import Any
 
-from fastapi import HTTPException, Query, UploadFile, File, Form
+from fastapi import HTTPException, Query, Request, UploadFile, File, Form
 
 from models import (
+    ChunkSearchRefMetadataPayload,
+    ChunkSearchRefPayload,
+    ChunkSearchRefsResponse,
     FigureTableCandidatePayload,
     PdfBboxUnit,
     coerce_pdf_bbox,
@@ -22,6 +26,7 @@ from models import (
 )
 
 import routers.resources_router as _rr
+from routers.resources_router.path_guard import assert_bound_source_folder, assert_safe_source_folder
 
 
 _FIGURE_TABLE_PREFIX_RE = re.compile(
@@ -34,6 +39,8 @@ _MAX_FIGURE_TABLE_CANDIDATES = 96
 _LOCATOR_TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[\u4e00-\u9fff]")
 _LOCATOR_CACHE_MAX = 256
 _LOCATOR_MIN_TEXT_CHARS = 24
+_SEARCH_REF_FORBIDDEN_QUERY_PARAMS = frozenset({"ingest_mode", "include_content"})
+_SEARCH_REF_SUMMARY_CHARS = 300
 _CROPPED_IMAGE_SUFFIX = ".png"
 _FIGURE_ASSET_FILE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 _CHUNK_ASSET_KEY_SOURCES: dict[str, str] = {
@@ -193,6 +200,148 @@ def _coerce_non_negative_int(value: Any) -> int | None:
         parsed = int(value.strip())
         return parsed if parsed >= 0 else None
     return None
+
+
+def _coerce_optional_positive_page(value: Any) -> int | None:
+    """Coerce optional one-based page metadata for public search refs."""
+
+    return _coerce_positive_int(value)
+
+
+def _normalize_search_ref_text(value: Any, *, max_chars: int = _SEARCH_REF_SUMMARY_CHARS) -> str:
+    """Return compact text for a search ref summary or metadata string."""
+
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1].rstrip()}…"
+
+
+def _chunk_search_ref_summary(chunk: dict[str, Any]) -> str:
+    """Return a bounded summary without exposing full chunk dictionaries."""
+
+    for key in ("summary", "caption", "title", "content"):
+        summary = _normalize_search_ref_text(chunk.get(key))
+        if summary:
+            return summary
+    return "Matched chunk"
+
+
+def _chunk_search_ref_locator(chunk: dict[str, Any], *, material_id: str, chunk_id: str) -> dict[str, Any] | None:
+    """Return a compact locator copied only from whitelisted scalar fields."""
+
+    locator = chunk.get("locator")
+    if isinstance(locator, dict):
+        allowed: dict[str, Any] = {}
+        page = _coerce_optional_positive_page(locator.get("page"))
+        chunk_index = _coerce_non_negative_int(locator.get("chunk_index"))
+        if page is not None:
+            allowed["page"] = page
+        if chunk_index is not None:
+            allowed["chunk_index"] = chunk_index
+        bbox_value = locator.get("bbox")
+        if isinstance(bbox_value, list):
+            bbox = [
+                float(item)
+                for item in bbox_value
+                if isinstance(item, (int, float)) and not isinstance(item, bool)
+            ][:4]
+            if len(bbox) == 4:
+                allowed["bbox"] = bbox
+        bbox_unit = _normalize_search_ref_text(locator.get("bbox_unit"), max_chars=80)
+        if bbox_unit:
+            allowed["bbox_unit"] = bbox_unit
+        if allowed:
+            allowed.setdefault("material_id", material_id)
+            allowed.setdefault("chunk_id", chunk_id)
+            return allowed
+
+    page = _coerce_optional_positive_page(chunk.get("page"))
+    chunk_index = _coerce_non_negative_int(chunk.get("chunk_index"))
+    if page is None and chunk_index is None:
+        return None
+    payload: dict[str, Any] = {"material_id": material_id, "chunk_id": chunk_id}
+    if page is not None:
+        payload["page"] = page
+    if chunk_index is not None:
+        payload["chunk_index"] = chunk_index
+    return payload
+
+
+def _chunk_search_ref_metadata(chunk: dict[str, Any], *, material_id: str, chunk_id: str) -> ChunkSearchRefMetadataPayload:
+    """Build the plan-approved metadata whitelist for one chunk ref."""
+
+    title = _normalize_search_ref_text(
+        chunk.get("title") or chunk.get("material_title") or material_id,
+        max_chars=300,
+    )
+    chunk_type = _normalize_search_ref_text(chunk.get("chunk_type"), max_chars=120) or None
+    source_relative_path = _normalize_search_ref_text(chunk.get("source_relative_path"), max_chars=500) or None
+    return ChunkSearchRefMetadataPayload(
+        material_id=material_id,
+        title=title or None,
+        page=_coerce_optional_positive_page(chunk.get("page")),
+        chunk_type=chunk_type,
+        source_relative_path=source_relative_path,
+        locator=_chunk_search_ref_locator(chunk, material_id=material_id, chunk_id=chunk_id),
+    )
+
+
+def _chunk_search_read_endpoint(*, project_id: str, chunk_id: str) -> str:
+    """Return the bounded agent bridge reader URL for a chunk ref."""
+
+    return (
+        f"/api/agent-bridge/resource/chunk:{quote(chunk_id, safe='')}"
+        f"?project_id={quote(project_id, safe='')}"
+    )
+
+
+def _chunk_to_search_ref(project_id: str, score: float, chunk: dict[str, Any]) -> ChunkSearchRefPayload | None:
+    """Project one scored chunk into the low-token MCP search-ref contract."""
+
+    if not isinstance(chunk, dict):
+        return None
+    material_id = _normalize_search_ref_text(chunk.get("material_id"), max_chars=200)
+    if not material_id:
+        material_id = _normalize_search_ref_text(chunk.get("source_material_id"), max_chars=200)
+    if not material_id:
+        material_id = "unknown_material"
+    chunk_id = _normalize_search_ref_text(chunk.get("chunk_id"), max_chars=200)
+    if not chunk_id:
+        chunk_index = _coerce_non_negative_int(chunk.get("chunk_index"))
+        chunk_id = f"{material_id}_chunk_{chunk_index if chunk_index is not None else 'unknown'}"
+    if not chunk_id:
+        return None
+    rounded_score = round(float(score), 2)
+    return ChunkSearchRefPayload(
+        chunk_id=chunk_id,
+        ref_id=f"chunk:{chunk_id}",
+        summary=_chunk_search_ref_summary(chunk),
+        lexical_score=rounded_score,
+        rerank_score=None,
+        metadata=_chunk_search_ref_metadata(chunk, material_id=material_id, chunk_id=chunk_id),
+        read_endpoint=_chunk_search_read_endpoint(project_id=project_id, chunk_id=chunk_id),
+    )
+
+
+def _flatten_chunk_store_for_search_refs(chunk_store: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """Flatten chunk-store records without mutating the loaded store."""
+
+    if not isinstance(chunk_store, dict):
+        raise TypeError("chunk_store must be a dictionary")
+    all_chunks: list[dict[str, Any]] = []
+    for material_id, chunks in chunk_store.items():
+        if not isinstance(chunks, list):
+            continue
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                continue
+            cloned = dict(chunk)
+            cloned.setdefault("material_id", str(material_id))
+            all_chunks.append(cloned)
+    return all_chunks
 
 
 def _coerce_bbox(value: Any) -> list[float] | None:
@@ -1413,6 +1562,56 @@ async def locate_chunk(
     return enrich_chunk_locator_with_pdf(project_id, chunk_store, locator)
 
 
+@_rr.router.get("/chunks/search-refs", response_model=ChunkSearchRefsResponse, tags=["Resources"])
+async def search_chunk_refs(
+    request: Request,
+    project_id: str = Query(..., min_length=1),
+    query: str = Query(..., min_length=1, description="搜索词"),
+    top_k: int = Query(10, ge=1, le=50, description="返回最相关的引用数"),
+) -> ChunkSearchRefsResponse:
+    """Search existing project chunks and return refs without body content.
+
+    Args:
+        request: FastAPI request used to reject legacy side-effect flags.
+        project_id: Project whose already-indexed chunk store is searched.
+        query: Non-empty lexical query.
+        top_k: Maximum number of positive-scoring refs returned.
+
+    Returns:
+        ``ChunkSearchRefsResponse`` with ref metadata only. The endpoint is
+        pure read: it never calls ingestion helpers and rejects flags that
+        imply write-through search behavior.
+    """
+
+    forbidden = sorted(_SEARCH_REF_FORBIDDEN_QUERY_PARAMS & set(request.query_params.keys()))
+    if forbidden:
+        raise HTTPException(
+            status_code=400,
+            detail=f"search-refs 不接受参数: {', '.join(forbidden)}",
+        )
+
+    chunk_store = _rr._load_chunk_store(project_id)
+    all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
+    if not all_chunks:
+        return ChunkSearchRefsResponse(project_id=project_id, query=query, total_refs=0, refs=[])
+
+    top = _rr._select_diverse_top_chunks(
+        _rr._score_chunks_for_query(all_chunks, query),
+        top_k=top_k,
+    )
+    refs = [
+        ref
+        for score, chunk in top
+        if score > 0 and (ref := _chunk_to_search_ref(project_id, score, chunk)) is not None
+    ]
+    return ChunkSearchRefsResponse(
+        project_id=project_id,
+        query=query,
+        total_refs=len(refs),
+        refs=refs,
+    )
+
+
 @_rr.router.get("/chunks/search")
 async def search_chunks(
     project_id: str = Query(...),
@@ -1453,7 +1652,9 @@ async def search_chunks(
         source_folder = str((project_obj.metadata.get("source_folder") if project_obj else "") or "").strip()
 
         if source_folder:
-            folder_path = Path(source_folder).expanduser().resolve()
+            folder_path = assert_safe_source_folder(Path(source_folder))
+            ref = project_obj.metadata.get("source_folder_ref") if project_obj else None
+            assert_bound_source_folder(folder_path, ref)
             if folder_path.is_dir():
                 candidate_payload = _rr._collect_pending_scan_candidates(project_id, folder_path)
                 pending_candidates = list(candidate_payload["pending"])

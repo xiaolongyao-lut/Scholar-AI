@@ -8,6 +8,7 @@ type ConnectionState = 'online' | 'degraded' | 'offline';
 type SessionStatus = 'idle' | 'loading' | 'saving' | 'error';
 
 const ACTIVE_PROJECT_STORAGE_KEY = 'literature-assistant:active-project-id';
+const JOURNAL_STYLE_PROFILE_STORAGE_PREFIX = 'literature-assistant:journal-style-profile:';
 
 export interface JobTimelineState {
   jobId: string;
@@ -24,6 +25,8 @@ interface WritingContextType {
   // Data Context
   activeProjectId: string;
   setActiveProjectId: (id: string) => void;
+  activeJournalStyleProfileId: string;
+  setActiveJournalStyleProfileId: (id: string) => void;
   projectDataVersion: number;
   markProjectDataChanged: () => void;
   activeSectionId: string;
@@ -104,9 +107,47 @@ function writeStoredActiveProjectId(projectId: string): void {
   }
 }
 
+function readStoredJournalStyleProfileId(projectId: string): string {
+  const normalizedProjectId = projectId.trim();
+  if (!normalizedProjectId) {
+    return '';
+  }
+  const storage = getLocalStorage();
+  if (!storage) {
+    return '';
+  }
+
+  try {
+    return (storage.getItem(`${JOURNAL_STYLE_PROFILE_STORAGE_PREFIX}${normalizedProjectId}`) ?? '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function writeStoredJournalStyleProfileId(projectId: string, profileId: string): void {
+  const normalizedProjectId = projectId.trim();
+  const storage = getLocalStorage();
+  if (!normalizedProjectId || !storage) {
+    return;
+  }
+
+  try {
+    const key = `${JOURNAL_STYLE_PROFILE_STORAGE_PREFIX}${normalizedProjectId}`;
+    const normalizedProfileId = profileId.trim();
+    if (!normalizedProfileId) {
+      storage.removeItem(key);
+      return;
+    }
+    storage.setItem(key, normalizedProfileId);
+  } catch {
+    // Storage failures must not block manuscript export.
+  }
+}
+
 export const WritingProvider = ({ children }: { children: ReactNode }) => {
   // Data State
   const [activeProjectId, setActiveProjectIdState] = useState<string>(() => readStoredActiveProjectId());
+  const [activeJournalStyleProfileId, setActiveJournalStyleProfileIdState] = useState<string>('');
   const [projectDataVersion, setProjectDataVersion] = useState<number>(0);
   const [activeSectionId, setActiveSectionId] = useState<string>('');
   const [outputMode, setOutputMode] = useState<OutputMode>('markdown');
@@ -138,6 +179,16 @@ export const WritingProvider = ({ children }: { children: ReactNode }) => {
     writeStoredActiveProjectId(normalized);
   }, []);
 
+  const setActiveJournalStyleProfileId = useCallback((id: string) => {
+    if (typeof id !== 'string') {
+      throw new Error('activeJournalStyleProfileId must be a string');
+    }
+
+    const normalized = id.trim();
+    setActiveJournalStyleProfileIdState(normalized);
+    writeStoredJournalStyleProfileId(activeProjectId, normalized);
+  }, [activeProjectId]);
+
   const markProjectDataChanged = useCallback(() => {
     setProjectDataVersion(version => version + 1);
   }, []);
@@ -161,9 +212,14 @@ export const WritingProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
+  useEffect(() => {
+    setActiveJournalStyleProfileIdState(readStoredJournalStyleProfileId(activeProjectId));
+  }, [activeProjectId]);
+
   return (
     <WritingContext.Provider value={{ 
       activeProjectId, setActiveProjectId,
+      activeJournalStyleProfileId, setActiveJournalStyleProfileId,
       projectDataVersion, markProjectDataChanged,
       activeSectionId, setActiveSectionId,
       outputMode, setOutputMode,

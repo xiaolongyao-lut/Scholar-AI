@@ -1,4 +1,4 @@
-import { FileText, Globe, Wrench } from 'lucide-react';
+import { BookOpenText, FileText, Globe, Wrench } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { locateChunk, type ChunkLocator } from '@/services/resourcesApi';
 import { encodePdfBboxParam, type PdfBboxUnit } from '@/lib/pdfAnchor';
@@ -54,6 +54,14 @@ export interface EvidenceRefLike {
    * results (🔧). Default 'local' when absent (older payloads).
    */
   source_kind?: 'local' | 'web' | 'mcp' | null;
+  /** Project/wiki evidence family from mixed retrieval refs. */
+  source_type?: 'project' | 'wiki' | null;
+  /** Bounded display title for wiki or project evidence. */
+  source_title?: string | null;
+  /** Bounded backend path retained for audit, never rendered as visible text. */
+  source_path?: string | null;
+  /** Weighted project/wiki fusion score. */
+  joint_score?: number | null;
   /**
    * 召回路径标签 — 后端给每条 evidence 打的"这条是怎么被选中的"标签
    * (e.g. `sibling` / `dense` / `bm25` / `tolf_text_selector`)。
@@ -190,10 +198,15 @@ export function EvidencePill({
   const label = friendlyLabel(evidence);
   // B2 (0.1.8.2): kind-aware icon + tooltip suffix so users can tell local
   // literature from external web/MCP sources at a glance.
-  const kind = evidence.source_kind ?? 'local';
-  const KindIcon = kind === 'web' ? Globe : kind === 'mcp' ? Wrench : FileText;
+  const sourceType = evidence.source_type ?? 'project';
+  const kind = sourceType === 'wiki' ? 'mcp' : evidence.source_kind ?? 'local';
+  const KindIcon = sourceType === 'wiki' ? BookOpenText : kind === 'web' ? Globe : kind === 'mcp' ? Wrench : FileText;
   const kindHint =
-    kind === 'web' ? '（网络搜索）' : kind === 'mcp' ? '（MCP 工具）' : '';
+    sourceType === 'wiki' ? '（Wiki 记忆）' : kind === 'web' ? '（网络搜索）' : kind === 'mcp' ? '（MCP 工具）' : '';
+  const jointScore =
+    typeof evidence.joint_score === 'number' && Number.isFinite(evidence.joint_score) && evidence.joint_score >= 0
+      ? evidence.joint_score
+      : null;
   // 召回路径: 当 showSourceLabels=true 时挑首个用户可懂的标签作为 inline 小 chip,
   // 同时把全部 labels (中文版) 拼进 tooltip 让用户能看到完整链路。
   const primarySourceLabel = showSourceLabels
@@ -209,10 +222,12 @@ export function EvidencePill({
     if (friendly.length === 0) return '';
     return ` · 来源: ${friendly.join(' / ')}`;
   })();
+  const scoreTooltipSuffix = jointScore === null ? '' : ` · 融合分 ${formatJointScore(jointScore)}`;
   const tooltip =
     (title ?? evidence.text ?? '在文献中打开此证据') +
     kindHint +
-    sourceLabelTooltipSuffix;
+    sourceLabelTooltipSuffix +
+    scoreTooltipSuffix;
 
   return (
     <button
@@ -229,7 +244,9 @@ export function EvidencePill({
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         selected
           ? 'border-primary bg-primary/10 text-primary'
-          : kind === 'web'
+          : sourceType === 'wiki'
+            ? 'border-emerald-400/40 bg-emerald-500/5 text-emerald-700 hover:border-emerald-500/60 hover:bg-emerald-500/10 dark:border-emerald-400/30 dark:text-emerald-300'
+            : kind === 'web'
             ? 'border-sky-400/40 bg-sky-500/5 text-sky-700 hover:border-sky-500/60 hover:bg-sky-500/10 dark:border-sky-400/30 dark:text-sky-300'
             : kind === 'mcp'
               ? 'border-violet-400/40 bg-violet-500/5 text-violet-700 hover:border-violet-500/60 hover:bg-violet-500/10 dark:border-violet-400/30 dark:text-violet-300'
@@ -247,8 +264,24 @@ export function EvidencePill({
           )}
           aria-label={`召回路径: ${primarySourceLabel}`}
           data-source-label={primarySourceLabel}
+      >
+        {primarySourceLabel}
+      </span>
+      )}
+      {sourceType === 'wiki' && (
+        <span
+          className="ml-0.5 inline-flex items-center rounded border border-emerald-400/30 bg-emerald-500/10 px-1 py-px text-[10px] font-normal leading-none text-emerald-700 dark:text-emerald-300"
+          aria-label="证据来源: Wiki"
         >
-          {primarySourceLabel}
+          Wiki
+        </span>
+      )}
+      {jointScore !== null && (
+        <span
+          className="ml-0.5 inline-flex items-center rounded border border-outline-variant/60 bg-surface-low/60 px-1 py-px text-[10px] font-normal leading-none text-foreground/55"
+          aria-label={`融合分: ${formatJointScore(jointScore)}`}
+        >
+          {formatJointScore(jointScore)}
         </span>
       )}
     </button>
@@ -264,6 +297,11 @@ export function EvidencePill({
  *   3. Fallback to "证据" — NEVER raw `chunk_id` / `material_id` (R5).
  */
 function friendlyLabel(ref: EvidenceRefLike): string {
+  const sourceTitle = (ref.source_title ?? '').trim();
+  if (sourceTitle) {
+    if (typeof ref.page === 'number' && ref.page > 0) return `${truncate(sourceTitle, 26)} · p.${ref.page}`;
+    return truncate(sourceTitle, 32);
+  }
   const source = (ref.source ?? '').trim();
   if (source) {
     if (typeof ref.page === 'number' && ref.page > 0) return `${truncate(source, 26)} · p.${ref.page}`;
@@ -277,4 +315,10 @@ function friendlyLabel(ref: EvidenceRefLike): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return `${s.slice(0, max - 1)}…`;
+}
+
+function formatJointScore(value: number): string {
+  if (value >= 1) return value.toFixed(1);
+  if (value >= 0.01) return value.toFixed(2);
+  return value.toFixed(3);
 }

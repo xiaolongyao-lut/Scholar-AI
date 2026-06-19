@@ -128,6 +128,7 @@ class ArtifactPayload(BaseModel):
     content: str | Dict[str, Any]
     created_at: str
     created_by: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     mime_type: str = "application/json"
 
 

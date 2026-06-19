@@ -28,6 +28,11 @@
 - Wiki doctor dry-run：`python run_literature_assistant.py wiki doctor`。
 - 后端开发启动：在仓库根目录执行 `python -m uvicorn literature_assistant.core.python_adapter_server:app --host 127.0.0.1 --port 8000`。
 
+## Agent 源码入口
+
+- 文献写作、综述、引言、证据包、embedding/rerank、analysis chain、图表公式引用和 DOCX/LaTeX 导出任务，先读 `AGENT_SOURCE_MAP.md`。
+- MCP 工具超时或缺工具时，先按 `AGENT_SOURCE_MAP.md` 用源码入口核验能力；不要直接自建 hash embedding、临时 rerank 或旁路写作流水线。
+
 ## 路径工程约定
 
 - 代码入口统一先执行 `literature_assistant.bootstrap.configure_runtime_paths()`，不要依赖用户当前工作目录。

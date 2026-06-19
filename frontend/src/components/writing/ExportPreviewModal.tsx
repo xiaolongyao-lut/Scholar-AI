@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Download, Copy, FileText, Loader2, Check, Square } from 'lucide-react';
+import { X, Download, Copy, FileText, Loader2, Check, Square, ShieldCheck } from 'lucide-react';
 import { useI18n } from '@/contexts/I18nContext';
 import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import { sanitizeRuntimeVisibleText } from '@/components/writing/writingRuntimeDisplay';
+import { useWriting } from '@/contexts/WritingContext';
 import {
   downloadProjectExportBlob,
   getWritingBackendService,
@@ -12,7 +13,7 @@ import {
   type WritingDocumentExportFormat,
   type WritingExportFormat,
 } from '@/services/writingBackend';
-import { ProjectExportResponseEnvelope } from '@/types/resources';
+import type { AcademicWritingLintResponse, ProjectExportResponseEnvelope } from '@/types/resources';
 import {
   DOCUMENT_EXPORT_OPTIONS,
   getDocumentExportOption,
@@ -37,9 +38,150 @@ export function formatExportError(error: unknown, fallback: string): string {
   return sanitizeRuntimeVisibleText(message, fallback);
 }
 
+type ExportAuditIssue = NonNullable<AcademicWritingLintResponse['issues']>[number];
+
+function formatExportAuditSurface(surface: AcademicWritingLintResponse['audit']['invocation_surface']): string {
+  if (surface === 'external_mcp') {
+    return '外部 MCP';
+  }
+  if (surface === 'api_chat_local_tools') {
+    return '本地工具聊天';
+  }
+  if (surface === 'direct_api') {
+    return 'Direct API';
+  }
+  return '未知';
+}
+
+function formatExportAuditIssueSeverity(severity: ExportAuditIssue['severity']): string {
+  if (severity === 'error') {
+    return '错误';
+  }
+  if (severity === 'warning') {
+    return '警告';
+  }
+  return '提示';
+}
+
+function ExportAuditMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-md border border-outline-variant/60 bg-surface-low px-2.5 py-2">
+      <div className="truncate text-[10px] font-medium text-foreground/45">{label}</div>
+      <div className="mt-0.5 truncate text-xs font-semibold text-foreground/80">{value}</div>
+    </div>
+  );
+}
+
+function ExportWritingAuditPanel({
+  audit,
+  title = '导出写作审计',
+}: {
+  audit: AcademicWritingLintResponse | null | undefined;
+  title?: string;
+}) {
+  if (!audit) {
+    return null;
+  }
+
+  const issues = audit.issues ?? [];
+  const topIssues = issues.slice(0, 3);
+  const recommendations = (audit.recommendations ?? []).slice(0, 2);
+  const passed = audit.audit.quality_gate === 'passed';
+  const styleProfile = audit.audit.style_profile || '未绑定';
+
+  return (
+    <section
+      aria-label={title}
+      className="border-b border-outline-variant bg-surface-high px-6 py-3"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={cn(
+              'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border',
+              passed
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300'
+                : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300',
+            )}
+          >
+            <ShieldCheck size={15} aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <h3 className="truncate text-xs font-semibold text-foreground/80">{title}</h3>
+            <p className="truncate text-[11px] text-foreground/45">
+              {formatExportAuditSurface(audit.audit.invocation_surface)}
+              {' · '}
+              {audit.audit.agent_mediated ? 'Agent/MCP mediated' : 'No Agent/MCP disclosure'}
+              {' · '}
+              {styleProfile}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span
+            className={cn(
+              'rounded-md px-2 py-1 font-semibold',
+              passed
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+            )}
+          >
+            {passed ? 'quality gate passed' : 'quality gate failed'}
+          </span>
+          <span className="rounded-md bg-surface-low px-2 py-1 font-mono text-foreground/55">
+            score {Math.round(audit.score)}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <ExportAuditMetric label="章节" value={`${audit.metrics.section_count}`} />
+        <ExportAuditMetric label="引用" value={`${audit.metrics.citation_count}`} />
+        <ExportAuditMetric label="证据锚点" value={`${audit.metrics.evidence_ref_count}`} />
+        <ExportAuditMetric
+          label="图/表/式"
+          value={`${audit.metrics.figure_ref_count}/${audit.metrics.table_ref_count}/${audit.metrics.equation_ref_count}`}
+        />
+        <ExportAuditMetric label="检查项" value={`${(audit.audit.checks ?? []).length}`} />
+      </div>
+
+      {topIssues.length > 0 ? (
+        <div className="mt-3 grid gap-2 lg:grid-cols-3">
+          {topIssues.map((issue) => (
+            <article key={`${issue.code}-${issue.message}`} className="rounded-md border border-outline-variant/60 bg-surface-low px-3 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <h4 className="min-w-0 truncate font-mono text-[11px] font-semibold text-foreground/75">{issue.code}</h4>
+                <span className="shrink-0 rounded bg-surface-high px-1.5 py-0.5 text-[10px] text-foreground/55">
+                  {formatExportAuditIssueSeverity(issue.severity)}
+                </span>
+              </div>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-foreground/60">{issue.message}</p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-700 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300">
+          确定性审计未发现导出阻断项。
+        </div>
+      )}
+
+      {recommendations.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-foreground/55">
+          {recommendations.map((recommendation) => (
+            <span key={recommendation} className="rounded-md bg-surface-low px-2 py-1">
+              {recommendation}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreviewModalProps) {
   const { t } = useI18n();
   const { toast } = useToast();
+  const { activeJournalStyleProfileId } = useWriting();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ProjectExportResponseEnvelope | null>(null);
   const [copied, setCopied] = useState(false);
@@ -72,6 +214,7 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
       const service = getWritingBackendService();
       const result = await service.exportProject(projectId, selectedFormat, {
         signal: abortController.signal,
+        styleProfile: selectedFormat === 'word' ? activeJournalStyleProfileId : null,
       });
       if (abortController.signal.aborted) {
         return;
@@ -88,7 +231,7 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
         setLoading(false);
       }
     }
-  }, [projectId, selectedFormat, stopExport, t, toast]);
+  }, [activeJournalStyleProfileId, projectId, selectedFormat, stopExport, t, toast]);
 
   useEffect(() => {
     if (isOpen && projectId) {
@@ -122,7 +265,9 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
         data,
         format,
         projectId,
-        (targetProjectId, targetFormat) => service.exportProject(targetProjectId, targetFormat),
+        (targetProjectId, targetFormat) => service.exportProject(targetProjectId, targetFormat, {
+          styleProfile: targetFormat === 'word' ? activeJournalStyleProfileId : null,
+        }),
       );
       const savedPath = await downloadProjectExportBlob(exportData, format);
       toast(savedPath ? `已保存：${savedPath}` : t('ref.export_downloaded'), 'success');
@@ -184,6 +329,11 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
                   <span className="rounded-md border border-outline-variant bg-surface-low px-2 py-1 text-[11px] font-medium text-foreground/55">
                     {selectedOption.extension}
                   </span>
+                  {selectedFormat === 'word' && activeJournalStyleProfileId ? (
+                    <span className="max-w-[220px] truncate rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300">
+                      {activeJournalStyleProfileId}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                   <div
@@ -232,6 +382,9 @@ export function ExportPreviewModal({ isOpen, onClose, projectId }: ExportPreview
                   </button>
                 </div>
               </div>
+
+              <ExportWritingAuditPanel audit={data.writing_audit} />
+              <ExportWritingAuditPanel audit={data.rendered_writing_audit} title="最终 DOCX 审计" />
 
               {/* Preview Area */}
               <div className={cn(

@@ -11,7 +11,6 @@
       ],
       "env": {
         "LITERATURE_ASSISTANT_REPO_ROOT": "C:\\path\\to\\Scholar-AI",
-        "LITERATURE_ASSISTANT_BASE_URL": "http://127.0.0.1:8000",
         "LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS": "1"
       }
     }

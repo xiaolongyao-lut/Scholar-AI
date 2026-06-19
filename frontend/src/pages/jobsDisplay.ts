@@ -20,6 +20,8 @@ const JOB_KIND_LABELS: Record<string, string> = {
   discussion: '多智能体讨论',
   ai_review: 'AI 审稿',
   figure_load: '图表加载',
+  agent_request: '智能体任务',
+  resource_ingest: '文献入库',
 };
 
 function compactJobText(value: string): string {

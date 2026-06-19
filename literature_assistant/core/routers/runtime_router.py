@@ -49,6 +49,8 @@ def _build_job_executor(job):
         return _build_ai_review_executor(job)
     if kind == "figure_load":
         return _build_figure_load_executor(job)
+    if kind == "resource_ingest":
+        return _build_resource_ingest_executor(job)
     if not getattr(job, "action_id", None) and not getattr(job, "skill_id", None):
         return None
 
@@ -183,6 +185,68 @@ def _build_figure_load_executor(job):
             "pixel_only": True,
             "render_pdf_fallback": False,
             "figure_loader_version": metadata.get("figure_loader_version") or _FIGURE_LOADER_VERSION,
+        }
+
+    return _executor
+
+
+def _coerce_resource_ingest_int(value: Any, *, default: int, minimum: int, maximum: int) -> int:
+    """Clamp resource-ingest numeric metadata to the route's public bounds."""
+
+    if isinstance(value, bool):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, parsed))
+
+
+def _build_resource_ingest_executor(job):
+    """Build a resource-ingest executor for project source-folder scans."""
+
+    metadata = _normalize_metadata(job)
+
+    async def _executor(current_job):
+        target_job = current_job or job
+        runtime = get_runtime()
+        project_id = str(metadata.get("project_id") or "").strip()
+        if not project_id:
+            raise ValueError("resource_ingest job metadata.project_id must not be empty")
+        scan_mode = str(metadata.get("scan_mode") or "fast").strip().lower()
+        batch_size = _coerce_resource_ingest_int(metadata.get("batch_size"), default=24, minimum=1, maximum=256)
+        max_workers = _coerce_resource_ingest_int(metadata.get("max_workers"), default=8, minimum=1, maximum=64)
+
+        runtime.emit_job_progress(target_job.job_id, stage="prepare", message="正在校验项目文献文件夹", progress=8)
+
+        def _scan_payload() -> dict[str, Any]:
+            from routers.resources_router.endpoints_projects import _run_scan_folder_payload
+
+            return _run_scan_folder_payload(
+                project_id,
+                scan_mode=scan_mode,
+                batch_size=batch_size,
+                max_workers=max_workers,
+                runtime_job_id=target_job.job_id,
+            )
+
+        runtime.emit_job_progress(target_job.job_id, stage="ingest", message="正在扫描并写入项目库", progress=35)
+        payload = await asyncio.to_thread(_scan_payload)
+        runtime.emit_job_progress(
+            target_job.job_id,
+            stage="finalize",
+            message="正在保存文献入库结果",
+            progress=94,
+            data={
+                "indexed": int(payload.get("indexed") or 0),
+                "failed": int(payload.get("failed") or 0),
+                "total_chunks": int(payload.get("total_chunks") or 0),
+            },
+        )
+        return {
+            "status": "completed",
+            "kind": "resource_ingest",
+            **payload,
         }
 
     return _executor

@@ -33,6 +33,12 @@ from models.mcp import (
     McpToolDescriptor,
 )
 from routers import mcp_router as mcp_router_module
+from routers.local_literature_tool_bridge import (
+    LocalLiteratureToolUseRunner,
+    local_literature_catalog,
+    local_literature_catalog_snapshot,
+    local_literature_server_config,
+)
 
 
 logger = logging.getLogger("ChatMcpIntegration")
@@ -104,6 +110,28 @@ def make_runner(
     )
 
 
+def make_local_literature_runner(
+    *,
+    allow_high_risk_tools: bool,
+    caps: RunCaps | None = None,
+) -> LocalLiteratureToolUseRunner:
+    """Return a runner exposing the built-in Literature Assistant tool surface."""
+
+    config = local_literature_server_config()
+    provider_runner = McpToolUseRunner(
+        manager=get_mcp_client_manager(),
+        catalog=local_literature_catalog(),
+        servers=[config],
+        catalog_snapshot=local_literature_catalog_snapshot(),
+        caps=caps,
+        allow_high_risk_tools=allow_high_risk_tools,
+    )
+    return LocalLiteratureToolUseRunner(
+        provider_runner=provider_runner,
+        allow_high_risk_tools=allow_high_risk_tools,
+    )
+
+
 # ChatPostFn(payload) -> raw provider response dict
 ChatPostFn = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
@@ -166,6 +194,7 @@ __all__ = [
     "collect_enabled_servers_with_catalog",
     "is_mcp_tools_enabled",
     "make_chat_call",
+    "make_local_literature_runner",
     "make_runner",
     "transcript_to_dump",
 ]

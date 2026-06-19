@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+DESKTOP_RUNTIME_FILENAME = "desktop-runtime.json"
+
 
 class CircuitState(Enum):
     """Circuit breaker states."""
@@ -23,7 +25,7 @@ class BackendClient:
 
     def __init__(
         self,
-        base_url: str = "http://127.0.0.1:8000",
+        base_url: str | None = None,
         capability_file: str | Path | None = None,
         fail_max: int = 3,
         reset_timeout_sec: int = 30,
@@ -33,15 +35,15 @@ class BackendClient:
         """Initialize backend client.
 
         Args:
-            base_url: Backend base URL
+            base_url: Backend base URL. ``None`` defers to runtime discovery.
             capability_file: Runtime capability JSON file written by the backend
             fail_max: Max consecutive failures before opening circuit
             reset_timeout_sec: Seconds to wait before trying half-open
             connect_timeout_sec: Connection timeout
             read_timeout_sec: Read timeout
         """
-        if not isinstance(base_url, str) or not base_url.strip():
-            raise ValueError("base_url must be a non-empty string")
+        if base_url is not None and (not isinstance(base_url, str) or not base_url.strip()):
+            raise ValueError("base_url must be a non-empty string or None")
         if not isinstance(fail_max, int) or fail_max < 1:
             raise ValueError("fail_max must be an integer >= 1")
         if not isinstance(reset_timeout_sec, int) or reset_timeout_sec < 1:
@@ -51,7 +53,9 @@ class BackendClient:
         if not isinstance(read_timeout_sec, int) or read_timeout_sec < 1:
             raise ValueError("read_timeout_sec must be an integer >= 1")
 
-        self.base_url = base_url.rstrip("/")
+        self._configured_base_url = base_url.rstrip("/") if isinstance(base_url, str) else None
+        self.base_url = ""
+        self._configured_capability_file = capability_file
         self.fail_max = fail_max
         self.reset_timeout_sec = reset_timeout_sec
         self.connect_timeout_sec = connect_timeout_sec
@@ -62,15 +66,37 @@ class BackendClient:
         self.fail_count = 0
         self.last_fail_time: float | None = None
 
+        self.client: httpx.Client | None = None
+
+    def _ensure_client(self) -> tuple[httpx.Client | None, dict[str, Any] | None]:
+        """Return an HTTP client for the current runtime descriptor."""
+        next_base_url = _resolve_backend_base_url(self._configured_base_url)
+        if next_base_url is None:
+            return None, {
+                "is_error": True,
+                "error_code": "backend_unavailable",
+                "message": (
+                    "Literature Assistant backend is not attached. Start the desktop app, then share "
+                    "or set the terminal line LITERATURE_ASSISTANT_BASE_URL=http://127.0.0.1:<port>."
+                ),
+                "data": None,
+            }
+        if self.client is not None and self.base_url == next_base_url:
+            return self.client, None
+        if self.client is not None:
+            self.client.close()
+        self.base_url = next_base_url
+        self.capability_file = _resolve_capability_file(self._configured_capability_file)
         self.client = httpx.Client(
             base_url=self.base_url,
             timeout=httpx.Timeout(
-                connect=connect_timeout_sec,
-                read=read_timeout_sec,
+                connect=self.connect_timeout_sec,
+                read=self.read_timeout_sec,
                 write=5.0,
                 pool=5.0,
             ),
         )
+        return self.client, None
 
     def _capability_headers(self) -> dict[str, str]:
         """Return local API capability headers for loopback backends only."""
@@ -130,9 +156,18 @@ class BackendClient:
                 "message": f"Circuit breaker is open (state={self.state.value})",
                 "data": None,
             }
+        client, setup_error = self._ensure_client()
+        if setup_error is not None or client is None:
+            self._record_failure()
+            return setup_error or {
+                "is_error": True,
+                "error_code": "backend_unavailable",
+                "message": "Backend is not reachable",
+                "data": None,
+            }
 
         try:
-            response = self.client.get(path, params=params, headers=self._capability_headers())
+            response = client.get(path, params=params, headers=self._capability_headers())
             response.raise_for_status()
             self._record_success()
 
@@ -211,9 +246,18 @@ class BackendClient:
                 "message": f"Circuit breaker is open (state={self.state.value})",
                 "data": None,
             }
+        client, setup_error = self._ensure_client()
+        if setup_error is not None or client is None:
+            self._record_failure()
+            return setup_error or {
+                "is_error": True,
+                "error_code": "backend_unavailable",
+                "message": "Backend is not reachable",
+                "data": None,
+            }
 
         try:
-            response = self.client.get(path, params=params, headers=self._capability_headers())
+            response = client.get(path, params=params, headers=self._capability_headers())
             response.raise_for_status()
             self._record_success()
 
@@ -284,9 +328,18 @@ class BackendClient:
                 "message": f"Circuit breaker is open (state={self.state.value})",
                 "data": None,
             }
+        client, setup_error = self._ensure_client()
+        if setup_error is not None or client is None:
+            self._record_failure()
+            return setup_error or {
+                "is_error": True,
+                "error_code": "backend_unavailable",
+                "message": "Backend is not reachable",
+                "data": None,
+            }
 
         try:
-            response = self.client.post(
+            response = client.post(
                 path,
                 params=params,
                 json=payload,
@@ -348,9 +401,103 @@ class BackendClient:
                 "data": None,
             }
 
+    def post_binary(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Perform POST request expecting a binary response.
+
+        Args:
+            path: URL path such as ``/api/export/docx``.
+            payload: JSON object sent to the backend.
+            params: Optional query parameters.
+
+        Returns:
+            Structured result whose data contains bytes and response headers.
+        """
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        should_attempt, error_code = self._should_attempt()
+        if not should_attempt:
+            return {
+                "is_error": True,
+                "error_code": error_code,
+                "message": f"Circuit breaker is open (state={self.state.value})",
+                "data": None,
+            }
+        client, setup_error = self._ensure_client()
+        if setup_error is not None or client is None:
+            self._record_failure()
+            return setup_error or {
+                "is_error": True,
+                "error_code": "backend_unavailable",
+                "message": "Backend is not reachable",
+                "data": None,
+            }
+
+        try:
+            response = client.post(
+                path,
+                params=params,
+                json=payload,
+                headers=self._capability_headers(),
+            )
+            response.raise_for_status()
+            self._record_success()
+            return {
+                "is_error": False,
+                "error_code": None,
+                "message": None,
+                "data": {
+                    "content": response.content,
+                    "headers": dict(response.headers),
+                    "status_code": response.status_code,
+                },
+            }
+
+        except httpx.ConnectError:
+            self._record_failure()
+            return {
+                "is_error": True,
+                "error_code": "backend_unavailable",
+                "message": "Backend is not reachable",
+                "data": None,
+            }
+
+        except httpx.TimeoutException:
+            self._record_failure()
+            return {
+                "is_error": True,
+                "error_code": "backend_timeout",
+                "message": "Backend request timed out",
+                "data": None,
+            }
+
+        except httpx.HTTPStatusError as e:
+            self._record_failure()
+            error_code = _classify_http_error(e.response)
+            return {
+                "is_error": True,
+                "error_code": error_code,
+                "message": f"Backend returned {e.response.status_code}",
+                "data": None,
+            }
+
+        except Exception as e:
+            self._record_failure()
+            return {
+                "is_error": True,
+                "error_code": "backend_unknown_error",
+                "message": str(e),
+                "data": None,
+            }
+
     def close(self) -> None:
         """Close underlying HTTP client."""
-        self.client.close()
+        if self.client is not None:
+            self.client.close()
 
 
 class LocalApiCapability:
@@ -398,25 +545,120 @@ def _find_repo_root(start: Path | None = None) -> Path | None:
     return None
 
 
+def _runtime_state_root() -> Path | None:
+    """Return the configured runtime-state root without importing backend code."""
+    runtime_root = os.environ.get("LITERATURE_ASSISTANT_RUNTIME_STATE_ROOT", "").strip()
+    if runtime_root:
+        return Path(runtime_root).expanduser().resolve()
+
+    user_root = os.environ.get("LITERATURE_ASSISTANT_USER_ROOT", "").strip()
+    if user_root:
+        return Path(user_root).expanduser().resolve() / "runtime_state"
+
+    repo_root = _find_repo_root()
+    if repo_root is None:
+        return None
+    return repo_root / "workspace_artifacts" / "runtime_state"
+
+
+def _descriptor_file() -> Path | None:
+    """Return the desktop-runtime descriptor path used for port discovery."""
+    explicit = os.environ.get("LITASSIST_DESKTOP_RUNTIME_FILE", "").strip()
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    runtime_root = _runtime_state_root()
+    if runtime_root is None:
+        return None
+    return runtime_root / DESKTOP_RUNTIME_FILENAME
+
+
+def _read_runtime_descriptor() -> dict[str, Any] | None:
+    """Read a healthy-enough desktop descriptor for local MCP attachment."""
+    descriptor = _descriptor_file()
+    if descriptor is None or not descriptor.is_file():
+        return None
+    try:
+        payload = json.loads(descriptor.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("ready") is not True or payload.get("process_kind") != "desktop":
+        return None
+    pid = _coerce_pid(payload.get("pid"))
+    if pid is None or not _pid_exists(pid):
+        return None
+    return payload
+
+
+def _resolve_backend_base_url(configured_base_url: str | None) -> str | None:
+    """Resolve the current backend URL from explicit config or runtime state."""
+    if configured_base_url is not None:
+        return configured_base_url.rstrip("/")
+
+    env_base_url = os.environ.get("LITERATURE_ASSISTANT_BASE_URL", "").strip()
+    if env_base_url:
+        return env_base_url.rstrip("/")
+
+    descriptor = _read_runtime_descriptor()
+    if descriptor is None:
+        return None
+    base_url = str(descriptor.get("base_url") or "").strip().rstrip("/")
+    if not base_url or not _is_loopback_http_url(base_url):
+        return None
+    return base_url
+
+
 def _resolve_capability_file(value: str | Path | None) -> Path:
     """Resolve the runtime API capability file used by local launchers."""
     explicit = value if value is not None else os.environ.get("LITASSIST_API_CAPABILITY_FILE", "").strip()
     if explicit:
         return Path(explicit).expanduser().resolve()
 
-    runtime_root = os.environ.get("LITERATURE_ASSISTANT_RUNTIME_STATE_ROOT", "").strip()
-    if runtime_root:
-        return (Path(runtime_root).expanduser().resolve() / "api-capability.json")
+    descriptor = _read_runtime_descriptor()
+    if descriptor is not None:
+        capability_file = str(descriptor.get("capability_file") or "").strip()
+        if capability_file:
+            return Path(capability_file).expanduser().resolve()
 
-    user_root = os.environ.get("LITERATURE_ASSISTANT_USER_ROOT", "").strip()
-    if user_root:
-        return (Path(user_root).expanduser().resolve() / "runtime_state" / "api-capability.json")
-
-    repo_root = _find_repo_root()
-    if repo_root is not None:
-        return repo_root / "workspace_artifacts" / "runtime_state" / "api-capability.json"
+    runtime_root = _runtime_state_root()
+    if runtime_root is not None:
+        return runtime_root / "api-capability.json"
 
     return Path("workspace_artifacts/runtime_state/api-capability.json").resolve()
+
+
+def _coerce_pid(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        pid = int(value)
+    except (TypeError, ValueError):
+        return None
+    return pid if pid > 0 else None
+
+
+def _pid_exists(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+            if not handle:
+                return False
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def _read_capability_file(path: Path) -> LocalApiCapability | None:

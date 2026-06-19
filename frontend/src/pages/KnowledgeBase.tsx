@@ -86,11 +86,6 @@ const _typeColors: Record<KBDocumentType, string> = {
   other: 'text-slate-500 bg-slate-100 dark:bg-slate-500/15 dark:text-slate-300',
 };
 
-const folderPickerProps = {
-  webkitdirectory: '',
-  directory: '',
-} as unknown as React.InputHTMLAttributes<HTMLInputElement>;
-
 const KNOWLEDGE_INTERNAL_TEXT_PATTERN = /(?:\/api\/|\/resources\/|\/runtime\/|\/pipeline\/|\/memory\/|\/skills\/|\/capabilities\/|https?:\/\/|[A-Za-z]:[\\/]|api[_\s-]?key|base[_\s-]?url|authorization|bearer|token|secret|password|credential|env=|env_refs|capability_[a-z0-9_]*|server_id|tool_call_id|credential_id|workspace_root|source_folder|material_id|job_id|session_id|[{}[\]"`])/i;
 const KNOWLEDGE_IDENTIFIER_TEXT_PATTERN = /\b(?:[A-Z][A-Z0-9]+_[A-Z0-9_]+|(?:env|credential|capability|server|tool|workspace|source|material|job|session)_[a-z0-9_]+)\b/;
 const KNOWLEDGE_ERROR_TEXT_LIMIT = 120;
@@ -161,6 +156,31 @@ interface ScanResultItem {
   chunks?: number;
 }
 
+interface SourceFolderRef {
+  display_name: string;
+  bound_at: string;
+  bound_by: string;
+}
+
+interface ProjectSourcePayload {
+  source_folder?: string;
+  source_folder_ref?: SourceFolderRef | null;
+  title?: string;
+}
+
+interface ScanJobResponse {
+  project_id: string;
+  runtime_job_ref: {
+    session_id: string;
+    job_id: string;
+    kind: string;
+    status: string;
+  };
+  status_url: string;
+  job_url: string;
+  artifacts_url: string;
+}
+
 export function KnowledgeBase() {
   const { t } = useI18n();
   const location = useLocation();
@@ -184,13 +204,13 @@ export function KnowledgeBase() {
   const [scanNotice, setScanNotice] = useState('');
   const [_showFailedDetails, setShowFailedDetails] = useState(false);
   const [projectSourceFolder, setProjectSourceFolder] = useState('');
+  const [projectSourceFolderRef, setProjectSourceFolderRef] = useState<SourceFolderRef | null>(null);
   const [projectTitle, setProjectTitle] = useState('');
   const [collectionFilter, setCollectionFilter] = useState<DocumentCollectionFilter>('all');
   const [editingFolder, setEditingFolder] = useState(false);
   const [folderDraft, setFolderDraft] = useState('');
   const [savingFolder, setSavingFolder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const scanAbortControllerRef = useRef<AbortController | null>(null);
   const uploadStopRequestedRef = useRef(false);
@@ -218,15 +238,25 @@ export function KnowledgeBase() {
 
   // Fetch project's source_folder + title when activeProjectId changes
   useEffect(() => {
-    if (!activeProjectId) { setProjectSourceFolder(''); setProjectTitle(''); return; }
+    if (!activeProjectId) {
+      setProjectSourceFolder('');
+      setProjectSourceFolderRef(null);
+      setProjectTitle('');
+      return;
+    }
     const baseUrl = getApiBaseUrl();
     axios.get(`${baseUrl}/resources/project/${activeProjectId}`, { timeout: 8000 })
       .then(res => {
-        const data = res.data as { source_folder?: string; title?: string };
+        const data = res.data as ProjectSourcePayload;
         setProjectSourceFolder(data.source_folder ?? '');
+        setProjectSourceFolderRef(data.source_folder_ref ?? null);
         setProjectTitle(data.title ?? '');
       })
-      .catch(() => { setProjectSourceFolder(''); setProjectTitle(''); });
+      .catch(() => {
+        setProjectSourceFolder('');
+        setProjectSourceFolderRef(null);
+        setProjectTitle('');
+      });
   }, [activeProjectId]);
 
   const loadMaterials = useCallback(async () => {
@@ -323,12 +353,13 @@ export function KnowledgeBase() {
     setSavingFolder(true);
     try {
       const baseUrl = getApiBaseUrl();
-      await axios.put(
+      const { data } = await axios.put<ProjectSourcePayload>(
         `${baseUrl}/resources/project/${activeProjectId}/source-folder`,
         null,
         { params: { source_folder: trimmed }, timeout: 10000 },
       );
-      setProjectSourceFolder(trimmed);
+      setProjectSourceFolder(data.source_folder ?? trimmed);
+      setProjectSourceFolderRef(data.source_folder_ref ?? null);
       setEditingFolder(false);
     } catch (err: unknown) {
       // keep editing mode open on error so user can retry
@@ -337,6 +368,36 @@ export function KnowledgeBase() {
       setSavingFolder(false);
     }
   }, [activeProjectId, folderDraft, savingFolder]);
+
+  const handleChooseSourceFolder = useCallback(async () => {
+    if (!activeProjectId || savingFolder) return;
+    const picker = window.pywebview?.api?.folder_dialog;
+    if (!picker) {
+      setEditingFolder(true);
+      setFolderDraft(projectSourceFolder);
+      return;
+    }
+    setSavingFolder(true);
+    try {
+      const selected = await picker();
+      const nextFolder = selected?.trim();
+      if (!nextFolder) return;
+      const baseUrl = getApiBaseUrl();
+      const { data } = await axios.put<ProjectSourcePayload>(
+        `${baseUrl}/resources/project/${activeProjectId}/source-folder`,
+        null,
+        { params: { source_folder: nextFolder }, timeout: 10000 },
+      );
+      setProjectSourceFolder(data.source_folder ?? nextFolder);
+      setProjectSourceFolderRef(data.source_folder_ref ?? null);
+      setFolderDraft(data.source_folder ?? nextFolder);
+      setEditingFolder(false);
+    } catch (err: unknown) {
+      console.error('选择文献文件夹失败:', formatKnowledgeActionError(err));
+    } finally {
+      setSavingFolder(false);
+    }
+  }, [activeProjectId, projectSourceFolder, savingFolder]);
 
   const handleScanFolder = useCallback(async () => {
     if (!activeProjectId || scanning) return;
@@ -350,18 +411,17 @@ export function KnowledgeBase() {
     setShowFailedDetails(false);
     try {
       const baseUrl = getApiBaseUrl();
-      const { data } = await axios.post(`${baseUrl}/resources/project/${activeProjectId}/scan-folder`, {}, {
-        timeout: 300000,
+      const { data } = await axios.post<ScanJobResponse>(`${baseUrl}/resources/project/${activeProjectId}/scan-folder`, {}, {
+        params: {
+          async_job: true,
+          scan_mode: 'fast',
+          batch_size: 24,
+          max_workers: 8,
+        },
+        timeout: 15000,
         signal: abortController.signal,
       });
-      setScanResult({ 
-        indexed: data.indexed, 
-        skipped: data.skipped, 
-        failed: data.failed, 
-        folder: data.folder,
-        results: data.results 
-      });
-      await loadMaterials();
+      setScanNotice(`已提交文献入库任务，可在 Agent Workspace 查看进度。任务状态：${data.runtime_job_ref.status}`);
     } catch (err: unknown) {
       if (scanStopRequestedRef.current || isAbortLikeError(err)) {
         setScanNotice('已停止扫描。');
@@ -376,7 +436,7 @@ export function KnowledgeBase() {
       scanStopRequestedRef.current = false;
       setScanning(false);
     }
-  }, [activeProjectId, scanning, loadMaterials]);
+  }, [activeProjectId, scanning]);
 
   const handleStopScanFolder = useCallback(() => {
     const controller = scanAbortControllerRef.current;
@@ -444,9 +504,6 @@ export function KnowledgeBase() {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      if (folderInputRef.current) {
-        folderInputRef.current.value = '';
-      }
     }
   }, [activeProjectId, loadMaterials]);
 
@@ -460,9 +517,6 @@ export function KnowledgeBase() {
     setUploadNotice('已停止导入。');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
-    }
-    if (folderInputRef.current) {
-      folderInputRef.current.value = '';
     }
   }, []);
 
@@ -510,17 +564,6 @@ export function KnowledgeBase() {
         aria-label={t('kb.select_files')}
         onChange={(e) => void handleUploadFiles(e.target.files)}
       />
-      <input
-        ref={folderInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        title={t('kb.select_folder')}
-        aria-label={t('kb.select_folder')}
-        onChange={(e) => void handleUploadFiles(e.target.files)}
-        {...folderPickerProps}
-      />
-
       {/* Left — Collections / Tags / Recent (~280px) */}
       <aside className="hidden w-[280px] shrink-0 flex-col border-r border-outline-variant/60 bg-surface-lowest lg:flex">
         <div className="border-b border-outline-variant/40 px-4 py-3">
@@ -594,21 +637,39 @@ export function KnowledgeBase() {
                   </button>
                 </div>
               ) : (
-                <div className="mt-1 flex items-start justify-between gap-1">
-                  <p className="break-all font-mono text-[10px] text-foreground/70">
-                    {projectSourceFolder || <span className="text-foreground/45">未设置</span>}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingFolder(true);
-                      setFolderDraft(projectSourceFolder);
-                    }}
-                    className="shrink-0 rounded p-0.5 text-foreground/50 hover:bg-surface-high hover:text-emerald-600 dark:hover:text-emerald-400"
-                    title="编辑"
-                  >
-                    <Pencil size={10} />
-                  </button>
+                <div className="mt-1 space-y-1.5">
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="min-w-0">
+                      <p className="truncate text-[11px] font-medium text-foreground/75">
+                        {projectSourceFolderRef?.display_name || (projectSourceFolder ? '已绑定' : '未设置')}
+                      </p>
+                      <p className="mt-0.5 truncate text-[10px] text-foreground/40">
+                        {projectSourceFolderRef?.bound_at ? `绑定于 ${new Date(projectSourceFolderRef.bound_at).toLocaleString()}` : '本机确认后可扫描'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleChooseSourceFolder()}
+                      disabled={savingFolder}
+                      className="shrink-0 rounded p-0.5 text-foreground/50 hover:bg-surface-high hover:text-emerald-600 disabled:opacity-50 dark:hover:text-emerald-400"
+                      title="选择文件夹"
+                    >
+                      {savingFolder ? <Loader2 size={10} className="animate-spin" /> : <FolderOpen size={10} />}
+                    </button>
+                  </div>
+                  {!window.pywebview?.api?.folder_dialog && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingFolder(true);
+                        setFolderDraft(projectSourceFolder);
+                      }}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-foreground/50 hover:bg-surface-high hover:text-foreground"
+                    >
+                      <Pencil size={10} />
+                      手动输入
+                    </button>
+                  )}
                 </div>
               )}
               {projectSourceFolder && (
@@ -619,7 +680,7 @@ export function KnowledgeBase() {
                   className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-emerald-400/60 bg-emerald-50/70 px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
                 >
                   {scanning ? <Square size={10} /> : <RefreshCw size={10} />}
-                  {scanning ? '停止扫描' : '扫描文献夹'}
+                  {scanning ? '停止提交' : '入库文献夹'}
                 </button>
               )}
             </div>
@@ -667,7 +728,7 @@ export function KnowledgeBase() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => folderInputRef.current?.click()}
+                  onClick={() => void handleChooseSourceFolder()}
                   disabled={uploading || !activeProjectId}
                   className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-low px-2.5 py-1.5 font-label text-xs text-foreground/75 transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
                 >

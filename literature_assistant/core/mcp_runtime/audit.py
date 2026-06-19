@@ -62,10 +62,17 @@ def _max_lines() -> int:
 
 
 def _record_to_dict(record: ToolResultRecord) -> dict[str, Any]:
-    """Trim raw_content from the audit dump (preview already carries the
-    redacted version)."""
+    """Trim local/full payload fields from the audit dump.
+
+    Why:
+        ``preview`` is the only audit-facing representation. Raw content and
+        LLM payloads may contain bounded source text and must not be copied to
+        persistent audit logs.
+    """
     d = asdict(record)
     d.pop("raw_content", None)
+    d.pop("llm_payload", None)
+    d.pop("llm_payload_truncated", None)
     d["ts"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return d
 

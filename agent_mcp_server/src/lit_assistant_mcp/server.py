@@ -68,7 +68,7 @@ def create_mcp_server(
     )
     runtime = runtime_tools or create_default_runtime_tools(
         audit_root=audit_root,
-        base_url=os.environ.get("LITERATURE_ASSISTANT_BASE_URL", "http://127.0.0.1:8000"),
+        base_url=os.environ.get("LITERATURE_ASSISTANT_BASE_URL") or None,
     )
     experimental = experimental_tools or create_default_experimental_tools(
         repo_root=repo_root,
@@ -88,9 +88,25 @@ def create_mcp_server(
         "literature.list_materials": runtime.list_materials,
         "literature.read_material": runtime.read_material,
         "literature.get_material_chunks": runtime.get_material_chunks,
-        "literature.search_literature": runtime.search_literature,
-        "literature.ingest_then_search": runtime.ingest_then_search,
+        "literature.search_refs": runtime.search_refs,
+        "literature.evidence_pack_build": runtime.evidence_pack_build,
+        "literature.project_scan_folder": runtime.project_scan_folder,
+        "literature.figures_candidates": runtime.figures_candidates,
+        "literature.figures_generate": runtime.figures_generate,
+        "literature.citations_sources": runtime.citations_sources,
+        "literature.citations_detect_overlap": runtime.citations_detect_overlap,
+        "literature.academic_writing_lint": runtime.academic_writing_lint,
+        "literature.outline_generate": runtime.outline_generate,
         "literature.export_annotations_markdown": runtime.export_annotations_markdown,
+        "literature.export_docx": runtime.export_docx,
+        "literature.agent_bridge_status": runtime.agent_bridge_status,
+        "literature.agent_request_create": runtime.agent_request_create,
+        "literature.agent_request_list": runtime.agent_request_list,
+        "literature.agent_request_read": runtime.agent_request_read,
+        "literature.agent_resource_read": runtime.agent_resource_read,
+        "literature.agent_progress": runtime.agent_progress,
+        "literature.agent_result": runtime.agent_result,
+        "literature.agent_fail": runtime.agent_fail,
         "literature.ocr_material": experimental.ocr_material,
         "literature.prepare_visual_review": experimental.prepare_visual_review,
         "literature.translate_pack": experimental.translate_pack,
@@ -202,36 +218,303 @@ def create_mcp_server(
         """Read chunks for a material."""
         return runtime.get_material_chunks(project_id=project_id, material_id=material_id)
 
-    @mcp.tool(name="literature.search_literature", structured_output=True)
-    def literature_search_literature(
+    @mcp.tool(name="literature.search_refs", structured_output=True)
+    def literature_search_refs(
         project_id: str,
         query: str,
         top_k: int = 10,
     ) -> dict[str, Any]:
-        """Search existing project chunks."""
-        return runtime.search_literature(project_id=project_id, query=query, top_k=top_k)
+        """Search existing project chunks and return refs only."""
+        return runtime.search_refs(project_id=project_id, query=query, top_k=top_k)
 
-    @mcp.tool(name="literature.ingest_then_search", structured_output=True)
-    def literature_ingest_then_search(
+    @mcp.tool(name="literature.evidence_pack_build", structured_output=True)
+    def literature_evidence_pack_build(
         project_id: str,
         query: str,
+        section_id: str | None = None,
         top_k: int = 10,
-        ingest_mode: str = "query",
-        ingest_limit: int = 8,
     ) -> dict[str, Any]:
-        """Pre-ingest pending files, then search project chunks."""
-        return runtime.ingest_then_search(
+        """Build a query-scoped evidence pack from project refs."""
+        return runtime.evidence_pack_build(
             project_id=project_id,
             query=query,
+            section_id=section_id,
             top_k=top_k,
-            ingest_mode=ingest_mode,
-            ingest_limit=ingest_limit,
+        )
+
+    @mcp.tool(name="literature.project_scan_folder", structured_output=True)
+    def literature_project_scan_folder(
+        project_id: str,
+        scan_mode: str = "fast",
+        batch_size: int = 24,
+        max_workers: int = 8,
+    ) -> dict[str, Any]:
+        """Submit project source-folder ingestion as a runtime job."""
+        return runtime.project_scan_folder(
+            project_id=project_id,
+            scan_mode=scan_mode,
+            batch_size=batch_size,
+            max_workers=max_workers,
+        )
+
+    @mcp.tool(name="literature.figures_candidates", structured_output=True)
+    def literature_figures_candidates(
+        project_id: str,
+        limit: int = 20,
+        pixel_only: bool = False,
+        render_pdf_fallback: bool = True,
+    ) -> dict[str, Any]:
+        """List backend-derived figure/table candidates."""
+        return runtime.figures_candidates(
+            project_id=project_id,
+            limit=limit,
+            pixel_only=pixel_only,
+            render_pdf_fallback=render_pdf_fallback,
+        )
+
+    @mcp.tool(name="literature.figures_generate", structured_output=True)
+    def literature_figures_generate(
+        project_id: str,
+        candidate_ids: list[str] | None = None,
+        max_items: int = 1,
+        kind: str | None = None,
+        overwrite_existing: bool = False,
+    ) -> dict[str, Any]:
+        """Materialize existing pixel-backed figure/table candidates."""
+        return runtime.figures_generate(
+            project_id=project_id,
+            candidate_ids=candidate_ids,
+            max_items=max_items,
+            kind=kind,
+            overwrite_existing=overwrite_existing,
+        )
+
+    @mcp.tool(name="literature.citations_sources", structured_output=True)
+    def literature_citations_sources(project_id: str) -> dict[str, Any]:
+        """List backend-managed citation source metadata."""
+        return runtime.citations_sources(project_id=project_id)
+
+    @mcp.tool(name="literature.citations_detect_overlap", structured_output=True)
+    def literature_citations_detect_overlap(
+        project_id: str,
+        anchors: list[dict[str, Any]],
+        threshold: float = 0.7,
+        draft_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Detect citation anchors that reuse the same or similar evidence."""
+        return runtime.citations_detect_overlap(
+            project_id=project_id,
+            anchors=anchors,
+            threshold=threshold,
+            draft_id=draft_id,
+        )
+
+    @mcp.tool(name="literature.academic_writing_lint", structured_output=True)
+    def literature_academic_writing_lint(
+        text: str | None = None,
+        html: str | None = None,
+        content_type: str = "manuscript",
+        language: str = "auto",
+        required_sections: list[str] | None = None,
+        require_evidence_refs: bool = True,
+        require_figure_table_formula_refs: bool = False,
+        style_profile: str | None = None,
+        audit_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Check scholarly writing quality before export or submission."""
+        return runtime.academic_writing_lint(
+            text=text,
+            html=html,
+            content_type=content_type,
+            language=language,
+            required_sections=required_sections,
+            require_evidence_refs=require_evidence_refs,
+            require_figure_table_formula_refs=require_figure_table_formula_refs,
+            style_profile=style_profile,
+            audit_context=audit_context,
+        )
+
+    @mcp.tool(name="literature.outline_generate", structured_output=True)
+    def literature_outline_generate(
+        project_id: str,
+        topic: str,
+        content_type: str = "academic",
+        target_length: int | None = None,
+        focus_areas: list[str] | None = None,
+        existing_materials: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Generate an evidence-grounded writing outline."""
+        return runtime.outline_generate(
+            project_id=project_id,
+            topic=topic,
+            content_type=content_type,
+            target_length=target_length,
+            focus_areas=focus_areas,
+            existing_materials=existing_materials,
         )
 
     @mcp.tool(name="literature.export_annotations_markdown", structured_output=True)
     def literature_export_annotations_markdown(material_id: str) -> dict[str, Any]:
         """Export material annotations as Markdown."""
         return runtime.export_annotations_markdown(material_id=material_id)
+
+    @mcp.tool(name="literature.export_docx", structured_output=True)
+    def literature_export_docx(
+        html: str,
+        title: str,
+        style_profile: str = "gb_t_7714_review",
+        verify_with_word: bool = False,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Export scholarly HTML as a DOCX workflow artifact."""
+        return runtime.export_docx(
+            html=html,
+            title=title,
+            style_profile=style_profile,
+            verify_with_word=verify_with_word,
+            project_id=project_id,
+        )
+
+    @mcp.tool(name="literature.journal_style_spec_draft", structured_output=True)
+    def literature_journal_style_spec_draft(
+        project_id: str,
+        journal_name: str,
+        spec_text: str,
+    ) -> dict[str, Any]:
+        """Create a reviewable project-scoped journal style profile draft."""
+        return runtime.journal_style_spec_draft(
+            project_id=project_id,
+            journal_name=journal_name,
+            spec_text=spec_text,
+        )
+
+    @mcp.tool(name="literature.journal_style_spec_confirm", structured_output=True)
+    def literature_journal_style_spec_confirm(
+        project_id: str,
+        draft_id: str,
+        confirmed_by: str = "mcp",
+    ) -> dict[str, Any]:
+        """Confirm a project-scoped journal style profile draft."""
+        return runtime.journal_style_spec_confirm(
+            project_id=project_id,
+            draft_id=draft_id,
+            confirmed_by=confirmed_by,
+        )
+
+    @mcp.tool(name="literature.agent_bridge_status", structured_output=True)
+    def literature_agent_bridge_status(limit: int = 20) -> dict[str, Any]:
+        """Read the runtime-backed agent bridge status."""
+        return runtime.agent_bridge_status(limit=limit)
+
+    @mcp.tool(name="literature.agent_request_create", structured_output=True)
+    def literature_agent_request_create(
+        intent: str,
+        user_text: str = "",
+        project_id: str | None = None,
+        runtime_session_id: str | None = None,
+        chat_session_id: str | None = None,
+        route: str | None = None,
+        resource_refs: list[dict[str, Any]] | None = None,
+        agent_host: str = "mcp",
+        source: str = "mcp",
+        max_chars: int = 12000,
+        max_chunks: int = 12,
+        smart_read_conversation: bool = False,
+        wiki_candidate: bool = False,
+        graph_candidate: bool = False,
+        evolution_capture: bool = True,
+    ) -> dict[str, Any]:
+        """Create a frontend-visible runtime job for external agent work."""
+        return runtime.agent_request_create(
+            intent=intent,
+            user_text=user_text,
+            project_id=project_id,
+            runtime_session_id=runtime_session_id,
+            chat_session_id=chat_session_id,
+            route=route,
+            resource_refs=resource_refs,
+            agent_host=agent_host,
+            source=source,
+            max_chars=max_chars,
+            max_chunks=max_chunks,
+            smart_read_conversation=smart_read_conversation,
+            wiki_candidate=wiki_candidate,
+            graph_candidate=graph_candidate,
+            evolution_capture=evolution_capture,
+        )
+
+    @mcp.tool(name="literature.agent_request_list", structured_output=True)
+    def literature_agent_request_list(
+        status: str | None = None,
+        project_id: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List runtime-visible agent requests."""
+        return runtime.agent_request_list(status=status, project_id=project_id, source=source, limit=limit)
+
+    @mcp.tool(name="literature.agent_request_read", structured_output=True)
+    def literature_agent_request_read(request_id: str) -> dict[str, Any]:
+        """Read one runtime-visible agent request."""
+        return runtime.agent_request_read(request_id=request_id)
+
+    @mcp.tool(name="literature.agent_resource_read", structured_output=True)
+    def literature_agent_resource_read(
+        ref_id: str,
+        project_id: str | None = None,
+        max_chars: int = 6000,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """Read a bounded resource ref for an agent request."""
+        return runtime.agent_resource_read(
+            ref_id=ref_id,
+            project_id=project_id,
+            max_chars=max_chars,
+            cursor=cursor,
+        )
+
+    @mcp.tool(name="literature.agent_progress", structured_output=True)
+    def literature_agent_progress(
+        request_id: str,
+        stage: str,
+        message: str,
+        progress: int | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Write a short progress delta to an agent request job."""
+        return runtime.agent_progress(
+            request_id=request_id,
+            stage=stage,
+            message=message,
+            progress=progress,
+            data=data,
+        )
+
+    @mcp.tool(name="literature.agent_result", structured_output=True)
+    def literature_agent_result(
+        request_id: str,
+        text: str = "",
+        content: dict[str, Any] | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        wiki_refs: list[dict[str, Any]] | None = None,
+        graph_patch_refs: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Write final agent output to runtime artifacts."""
+        return runtime.agent_result(
+            request_id=request_id,
+            text=text,
+            content=content,
+            evidence_refs=evidence_refs,
+            wiki_refs=wiki_refs,
+            graph_patch_refs=graph_patch_refs,
+            metadata=metadata,
+        )
+
+    @mcp.tool(name="literature.agent_fail", structured_output=True)
+    def literature_agent_fail(request_id: str, error: str) -> dict[str, Any]:
+        """Fail a runtime-visible agent request job."""
+        return runtime.agent_fail(request_id=request_id, error=error)
 
     @mcp.tool(name="literature.ocr_material", structured_output=True)
     def literature_ocr_material(

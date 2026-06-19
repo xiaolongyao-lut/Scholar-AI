@@ -19,6 +19,7 @@ interface Window {
       save_dialog?: (defaultName?: string) => Promise<string | null>;
       save_bytes?: (defaultName: string, contentBase64: string) => Promise<string | null>;
       open_dialog?: (fileTypes?: string[]) => Promise<string | null>;
+      folder_dialog?: () => Promise<string | null>;
     };
   };
 }

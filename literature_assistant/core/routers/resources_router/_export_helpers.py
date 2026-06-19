@@ -920,7 +920,10 @@ def _build_project_markdown_export(
     materials: list[Any],
     academic_export: Mapping[str, list[dict[str, Any]]],
 ) -> str:
-    """Render project drafts into the manuscript-only markdown export body."""
+    """Render the public API Markdown export without internal audit appendices."""
+
+    if project is None:
+        raise ValueError("project is required")
     return _build_project_manuscript_markdown(project, sections, drafts, materials)
 
 
@@ -1301,6 +1304,8 @@ def _build_file_export_payload(
     bibliography_entries: list[dict[str, Any]] | None = None,
     review_findings: list[dict[str, Any]] | None = None,
     figure_assets: list[dict[str, Any]] | None = None,
+    writing_audit: Mapping[str, Any] | None = None,
+    rendered_writing_audit: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a JSON-safe file payload containing path metadata and base64."""
     if not file_path.exists() or not file_path.is_file():
@@ -1319,6 +1324,10 @@ def _build_file_export_payload(
         "bibliography_entries": bibliography_entries or [],
         "review_findings": review_findings or [],
         "figure_assets": figure_assets or [],
+        "writing_audit": dict(writing_audit) if isinstance(writing_audit, Mapping) else None,
+        "rendered_writing_audit": (
+            dict(rendered_writing_audit) if isinstance(rendered_writing_audit, Mapping) else None
+        ),
     }
 
 

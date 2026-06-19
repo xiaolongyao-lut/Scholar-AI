@@ -42,6 +42,10 @@ import {
   WritingActionResource,
   ProjectExportFormat,
   ProjectExportResponseEnvelope,
+  AcademicWritingLintRequest,
+  AcademicWritingLintResponse,
+  JournalStyleSpecConfirmResponse,
+  JournalStyleSpecDraftResponse,
   SubmitForReviewRequest,
   SubmissionResponseResource,
   ProjectStats,
@@ -268,6 +272,18 @@ export interface GenerateFigureAssetsResponse {
   message: string;
 }
 
+export interface DraftJournalStyleSpecRequest {
+  project_id: string;
+  journal_name: string;
+  spec_text: string;
+}
+
+export interface ConfirmJournalStyleSpecRequest {
+  project_id: string;
+  draft_id: string;
+  confirmed_by?: string;
+}
+
 export class WritingBackendService {
   private readonly client: AxiosInstance;
 
@@ -361,7 +377,7 @@ export class WritingBackendService {
    */
   async scanProjectFolder(
     projectId: string,
-    options?: { scanMode?: 'fast' | 'legacy'; batchSize?: number; maxWorkers?: number }
+    options?: { scanMode?: 'fast' | 'legacy'; batchSize?: number; maxWorkers?: number; asyncJob?: boolean }
   ): Promise<{
     indexed: number;
     skipped: number;
@@ -370,6 +386,15 @@ export class WritingBackendService {
     queued?: number;
     workers?: number;
     scan_mode?: string;
+    runtime_job_ref?: {
+      session_id: string;
+      job_id: string;
+      kind: string;
+      status: string;
+    };
+    status_url?: string;
+    job_url?: string;
+    artifacts_url?: string;
   }> {
     const response = await this.client.post<{
       indexed: number;
@@ -379,6 +404,15 @@ export class WritingBackendService {
       queued?: number;
       workers?: number;
       scan_mode?: string;
+      runtime_job_ref?: {
+        session_id: string;
+        job_id: string;
+        kind: string;
+        status: string;
+      };
+      status_url?: string;
+      job_url?: string;
+      artifacts_url?: string;
     }>(
       `/resources/project/${projectId}/scan-folder`,
       null,
@@ -387,6 +421,7 @@ export class WritingBackendService {
           scan_mode: options?.scanMode,
           batch_size: options?.batchSize,
           max_workers: options?.maxWorkers,
+          async_job: options?.asyncJob,
         },
       }
     );
@@ -842,7 +877,7 @@ export class WritingBackendService {
   async exportProject(
     projectId: string,
     format: ProjectExportFormat = "markdown",
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; styleProfile?: string | null } = {},
   ): Promise<ProjectExportResponseEnvelope> {
     const response = await this.client.post<ProjectExportResponseEnvelope>(
       "/api/writing/export",
@@ -851,7 +886,95 @@ export class WritingBackendService {
         format,
         include_evidence: true,
         include_citations: true,
+        style_profile: options.styleProfile || null,
       },
+      { signal: options.signal },
+    );
+    return response.data;
+  }
+
+  /**
+   * Create a reviewable journal style profile draft from pasted official requirements.
+   */
+  async draftJournalStyleSpec(
+    request: DraftJournalStyleSpecRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<JournalStyleSpecDraftResponse> {
+    const response = await this.client.post<JournalStyleSpecDraftResponse>(
+      "/api/export/journal-style-specs/draft",
+      request,
+      { signal: options.signal },
+    );
+    return response.data;
+  }
+
+  /**
+   * Create a reviewable journal style profile draft from a bounded text/Markdown file.
+   */
+  async uploadJournalStyleSpec(
+    projectId: string,
+    journalName: string,
+    file: File,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<JournalStyleSpecDraftResponse> {
+    const normalizedProjectId = projectId.trim();
+    const normalizedJournalName = journalName.trim();
+    if (!normalizedProjectId) {
+      throw new Error("projectId is required to upload a journal style spec");
+    }
+    if (!normalizedJournalName) {
+      throw new Error("journalName is required to upload a journal style spec");
+    }
+    if (!(file instanceof File)) {
+      throw new TypeError("file must be a File");
+    }
+
+    const formData = new FormData();
+    formData.append("project_id", normalizedProjectId);
+    formData.append("journal_name", normalizedJournalName);
+    formData.append("file", file, file.name);
+    const response = await this.client.post<JournalStyleSpecDraftResponse>(
+      "/api/export/journal-style-specs/upload",
+      formData,
+      { signal: options.signal },
+    );
+    return response.data;
+  }
+
+  /**
+   * Confirm a project-scoped journal style draft for later Word export.
+   */
+  async confirmJournalStyleSpec(
+    request: ConfirmJournalStyleSpecRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<JournalStyleSpecConfirmResponse> {
+    const response = await this.client.post<JournalStyleSpecConfirmResponse>(
+      "/api/export/journal-style-specs/confirm",
+      {
+        project_id: request.project_id,
+        draft_id: request.draft_id,
+        confirmed_by: request.confirmed_by || "frontend-user",
+      },
+      { signal: options.signal },
+    );
+    return response.data;
+  }
+
+  /**
+   * Run the deterministic academic-writing audit gate before AI review/export.
+   */
+  async lintAcademicWriting(
+    request: AcademicWritingLintRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<AcademicWritingLintResponse> {
+    const text = typeof request.text === "string" ? request.text.trim() : "";
+    const html = typeof request.html === "string" ? request.html.trim() : "";
+    if (!text && !html) {
+      throw new Error("text or html is required to lint academic writing");
+    }
+    const response = await this.client.post<AcademicWritingLintResponse>(
+      "/api/linter/academic-writing",
+      request,
       { signal: options.signal },
     );
     return response.data;

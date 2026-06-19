@@ -415,6 +415,17 @@ class NativeApi:
         )
         return _first_dialog_path(result)
 
+    def folder_dialog(self) -> str | None:
+        """Return one selected local directory path.
+
+        Returns:
+            The selected local directory path, or ``None`` when the user cancels.
+        """
+        import webview
+
+        result = webview.windows[0].create_file_dialog(webview.FOLDER_DIALOG)
+        return _first_dialog_path(result)
+
     def save_bytes(self, default_name: str, content_base64: str) -> str | None:
         """Persist a browser-generated export through the native save dialog.
 
@@ -489,9 +500,10 @@ def main() -> None:
             port = int(arg)
             break
 
+    requested_port = port
     if not _port_available(port):
         port = _find_free_port()
-        print(f"[启动器] 端口 {DEFAULT_PORT} 已被占用，使用 {port}")
+        print(f"[启动器] 端口 {requested_port} 已被占用，使用 {port}")
 
     # Check / build frontend
     if not _frontend_build_is_current():
@@ -513,9 +525,26 @@ def main() -> None:
     # value. Best-effort — never blocks startup.
     try:
         from literature_assistant.core.python_adapter_server import write_api_port_file
+        from literature_assistant.core.runtime_descriptor import (
+            build_desktop_runtime_descriptor,
+            delete_desktop_runtime_closed_marker,
+            write_desktop_runtime_descriptor,
+        )
+
+        delete_desktop_runtime_closed_marker()
         write_api_port_file(port)
+        write_desktop_runtime_descriptor(
+            build_desktop_runtime_descriptor(
+                host=host,
+                port=port,
+                process_kind="desktop",
+                launched_by="start_desktop.py",
+                ready=False,
+                window_title=WINDOW_TITLE,
+            )
+        )
     except Exception as _port_exc:
-        print(f"[启动器] api-port.json 写入失败（忽略）: {_port_exc}")
+        print(f"[启动器] 运行时描述符写入失败（忽略）: {_port_exc}")
 
     def _run_server():
         import uvicorn
@@ -532,7 +561,15 @@ def main() -> None:
         sys.exit(1)
 
     url = f"http://{host}:{port}"
+    try:
+        from literature_assistant.core.runtime_descriptor import refresh_desktop_runtime_descriptor
+
+        refresh_desktop_runtime_descriptor(ready=True)
+    except Exception as _descriptor_exc:
+        print(f"[启动器] 运行时描述符刷新失败（忽略）: {_descriptor_exc}")
     print(f"[启动器] 后端就绪: {url}")
+    print(f"[启动器] LITERATURE_ASSISTANT_BASE_URL={url}")
+    print("[启动器] 如果智能体找不到文献助手端口，请把上一行完整贴给智能体")
 
     # Open pywebview native window (blocks main thread)
     api = NativeApi()
@@ -577,11 +614,23 @@ def main() -> None:
 
         window.events.shown += _install_reload_hotkeys
     print("[启动器] 桌面窗口已打开，关闭窗口将退出程序")
-    webview.start(
-        debug=bool(os.environ.get("LITERATURE_ASSISTANT_DEBUG")),
-        private_mode=False,
-        storage_path=str(DESKTOP_PROFILE_ROOT),
-    )
+    try:
+        webview.start(
+            debug=bool(os.environ.get("LITERATURE_ASSISTANT_DEBUG")),
+            private_mode=False,
+            storage_path=str(DESKTOP_PROFILE_ROOT),
+        )
+    finally:
+        try:
+            from literature_assistant.core.runtime_descriptor import (
+                delete_desktop_runtime_descriptor,
+                write_desktop_runtime_closed_marker,
+            )
+
+            write_desktop_runtime_closed_marker(reason="window_closed")
+            delete_desktop_runtime_descriptor()
+        except Exception:
+            pass
 
     # Window closed → daemon threads auto-terminate with process exit
     print("[启动器] 窗口已关闭，退出")

@@ -6,6 +6,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 try:
+    from literature_assistant.core.academic_writing_linter import (
+        AcademicWritingLintRequest,
+        AcademicWritingLintResponse,
+        lint_academic_writing,
+    )
     from literature_assistant.core.metadata_linter import (
         CaseStyle,
         LinterResult,
@@ -15,6 +20,11 @@ try:
     from literature_assistant.core.linter_adapter import lint_materials_with_new_engine
     from literature_assistant.core.terminal_logger import linter_logger
 except ModuleNotFoundError:
+    from academic_writing_linter import (  # type: ignore[no-redef]
+        AcademicWritingLintRequest,
+        AcademicWritingLintResponse,
+        lint_academic_writing,
+    )
     from metadata_linter import (  # type: ignore[no-redef]
         CaseStyle,
         LinterResult,
@@ -137,6 +147,17 @@ async def lint_single_material(request: LintRequest) -> LinterResult:
             doi=request.doi,
             preferred_case=request.preferred_case,
         )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/academic-writing", response_model=AcademicWritingLintResponse)
+async def lint_academic_writing_endpoint(
+    request: AcademicWritingLintRequest,
+) -> AcademicWritingLintResponse:
+    """Check scholarly writing structure, evidence, tone, and references."""
+    try:
+        return lint_academic_writing(request)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -424,4 +445,3 @@ async def cancel_linter_task(task_id: str) -> dict[str, Any]:
         "task_id": task_id,
         "status": "cancelled",
     }
-

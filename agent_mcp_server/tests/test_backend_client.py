@@ -1,6 +1,7 @@
 """Tests for BackendClient with circuit breaker."""
 
 import json
+import os
 import time
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -9,6 +10,8 @@ import httpx
 import pytest
 
 from lit_assistant_mcp.backend_client import BackendClient, CircuitState
+
+DEFAULT_TEST_BASE_URL = "http://127.0.0.1:8000"
 
 
 @pytest.fixture
@@ -25,7 +28,7 @@ def test_circuit_breaker_opens_after_failures(mock_httpx_client):
     mock_instance.get.side_effect = httpx.ConnectError("Connection refused")
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient(fail_max=3, reset_timeout_sec=30)
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL, fail_max=3, reset_timeout_sec=30)
 
     # First 3 failures should increment fail_count
     for i in range(3):
@@ -50,7 +53,7 @@ def test_circuit_breaker_half_open_after_timeout(mock_httpx_client):
     mock_instance.get.side_effect = httpx.ConnectError("Connection refused")
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient(fail_max=3, reset_timeout_sec=1)
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL, fail_max=3, reset_timeout_sec=1)
 
     # Trigger 3 failures to open circuit
     for _ in range(3):
@@ -81,7 +84,7 @@ def test_backend_timeout_error(mock_httpx_client):
     mock_instance.get.side_effect = httpx.TimeoutException("Request timeout")
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient()
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
     result = client.get("/health")
 
     assert result["is_error"] is True
@@ -98,7 +101,7 @@ def test_backend_http_error(mock_httpx_client):
     )
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient()
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
     result = client.get("/health")
 
     assert result["is_error"] is True
@@ -116,7 +119,7 @@ def test_backend_404_has_specific_error_code(mock_httpx_client):
     )
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient()
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
     result = client.get("/resources/document/mat-1/file_b64")
 
     assert result["is_error"] is True
@@ -133,7 +136,7 @@ def test_backend_413_has_specific_error_code(mock_httpx_client):
     )
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient()
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
     result = client.get("/resources/document/mat-1/file_b64")
 
     assert result["is_error"] is True
@@ -148,12 +151,77 @@ def test_successful_request(mock_httpx_client):
     mock_instance.get.return_value = mock_response
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient()
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
     result = client.get("/health")
 
     assert result["is_error"] is False
     assert result["error_code"] is None
     assert result["data"]["status"] == "healthy"
+
+
+def test_runtime_descriptor_supplies_base_url_when_not_configured(
+    mock_httpx_client,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MCP clients should attach to the visible desktop port without a fixed default."""
+
+    runtime_root = tmp_path / "runtime_state"
+    runtime_root.mkdir()
+    capability_file = runtime_root / "api-capability.json"
+    capability_file.write_text(
+        json.dumps({"header": "X-LitAssist-Capability", "token": "local-token"}),
+        encoding="utf-8",
+    )
+    descriptor_file = runtime_root / "desktop-runtime.json"
+    descriptor_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "pid": os.getpid(),
+                "process_kind": "desktop",
+                "base_url": "http://127.0.0.1:45678",
+                "ready": True,
+                "capability_file": str(capability_file),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LITERATURE_ASSISTANT_RUNTIME_STATE_ROOT", str(runtime_root))
+    monkeypatch.delenv("LITERATURE_ASSISTANT_BASE_URL", raising=False)
+    monkeypatch.delenv("LITASSIST_API_CAPABILITY_FILE", raising=False)
+    mock_instance = Mock()
+    mock_response = Mock()
+    mock_response.json.return_value = {"status": "healthy"}
+    mock_instance.get.return_value = mock_response
+    mock_httpx_client.return_value = mock_instance
+
+    client = BackendClient(base_url=None)
+    result = client.get("/health")
+
+    assert result["is_error"] is False
+    assert mock_httpx_client.call_args.kwargs["base_url"] == "http://127.0.0.1:45678"
+    assert mock_instance.get.call_args.kwargs["headers"] == {
+        "X-LitAssist-Capability": "local-token"
+    }
+
+
+def test_unattached_runtime_has_actionable_message(
+    mock_httpx_client,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing runtime state should ask for a pasted terminal base URL."""
+
+    monkeypatch.setenv("LITERATURE_ASSISTANT_RUNTIME_STATE_ROOT", str(tmp_path / "missing"))
+    monkeypatch.delenv("LITERATURE_ASSISTANT_BASE_URL", raising=False)
+    client = BackendClient(base_url=None)
+    result = client.get("/health")
+
+    assert result["is_error"] is True
+    assert result["error_code"] == "backend_unavailable"
+    assert "LITERATURE_ASSISTANT_BASE_URL" in result["message"]
+    mock_httpx_client.assert_not_called()
 
 
 def test_successful_post_json_request(mock_httpx_client, tmp_path: Path):
@@ -169,7 +237,7 @@ def test_successful_post_json_request(mock_httpx_client, tmp_path: Path):
     mock_instance.post.return_value = mock_response
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient(capability_file=capability_file)
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL, capability_file=capability_file)
     result = client.post_json("/chat/ask", payload={"query": "hello"})
 
     assert result["is_error"] is False
@@ -254,7 +322,7 @@ def test_non_json_response_returns_openapi_mismatch(mock_httpx_client):
     mock_instance.get.return_value = mock_response
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient()
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
     result = client.get("/health")
 
     assert result["is_error"] is True
@@ -276,7 +344,7 @@ def test_capability_required_response_has_specific_error_code(mock_httpx_client)
     )
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient()
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
     result = client.get("/resources/projects")
 
     assert result["is_error"] is True
@@ -291,7 +359,7 @@ def test_successful_text_request(mock_httpx_client):
     mock_instance.get.return_value = mock_response
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient()
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
     result = client.get_text("/api/annotations/mat-1/export.md")
 
     assert result["is_error"] is False
@@ -303,7 +371,7 @@ def test_circuit_recovery_on_success(mock_httpx_client):
     mock_instance = Mock()
     mock_httpx_client.return_value = mock_instance
 
-    client = BackendClient(fail_max=3)
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL, fail_max=3)
 
     # Fail twice
     mock_instance.get.side_effect = httpx.ConnectError("Connection refused")

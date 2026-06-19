@@ -34,6 +34,8 @@ class JobKind(str, Enum):
     DISCUSSION = "discussion"            # Multi-agent discussion run
     AI_REVIEW = "ai_review"              # AI manuscript review
     FIGURE_LOAD = "figure_load"          # Backend figure/table asset loading
+    AGENT_REQUEST = "agent_request"      # External Codex/Claude agent request
+    RESOURCE_INGEST = "resource_ingest"  # Project literature folder ingestion
 
 
 class JobStatus(str, Enum):

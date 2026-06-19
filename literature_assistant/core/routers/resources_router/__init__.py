@@ -248,6 +248,7 @@ from ._export_helpers import (
     _material_excerpt,
     _paragraphs_with_offsets,
     _build_project_academic_export,
+    _build_project_manuscript_markdown,
     _build_project_markdown_export,
     _build_project_latex_export,
     _build_project_docx_export,
@@ -1426,6 +1427,7 @@ from .endpoints_search_upload import (  # noqa: E402,F401
     get_project_chunks,
     derive_figure_table_candidates,
     list_figure_table_candidates,
+    search_chunk_refs,
     search_chunks,
     serve_document_file,
 )
