@@ -96,6 +96,74 @@ _MATERIAL_PROCESSING_OUTPUT_TARGETS = {
 _RESEARCH_PROJECTION_SCHEMA_VERSION = "research_object_projection_v1"
 _RESEARCH_EVENT_SOURCE = "scholar-ai.runtime"
 _RESEARCH_PROJECT_OBJECT_TYPE = "research_project"
+_WORKFLOW_PASSPORT_SCHEMA_VERSION = "scholar_ai_workflow_passport_v1"
+_WORKFLOW_STAGE_DEFINITIONS: tuple[dict[str, Any], ...] = (
+    {
+        "stage_id": "material_ingest",
+        "label": "Material ingest",
+        "required_artifacts": ["material_processing_task", "chunks", "locators"],
+        "object_types": {"research_material"},
+        "event_prefixes": ("material.ingest.", "material.parse.", "material.layout."),
+        "next_action": "Create or complete a material-processing task for source materials.",
+    },
+    {
+        "stage_id": "material_read",
+        "label": "Material read",
+        "required_artifacts": ["chunk_refs", "locator_coverage"],
+        "object_types": {"figure_table_asset"},
+        "event_prefixes": ("figure_table.", "material.read."),
+        "next_action": "Review material chunks and locator coverage before evidence reuse.",
+    },
+    {
+        "stage_id": "evidence_pack",
+        "label": "Evidence pack",
+        "required_artifacts": ["evidence_pack", "locator_coverage", "qrels_status"],
+        "object_types": {"evidence_pack"},
+        "event_prefixes": ("evidence.pack.",),
+        "next_action": "Build an evidence pack with source locators and retrieval diagnostics.",
+    },
+    {
+        "stage_id": "outline",
+        "label": "Outline",
+        "required_artifacts": ["outline"],
+        "object_types": {"writing_job"},
+        "workflow_phases": {"outline", "outline_ready", "planned_outline"},
+        "next_action": "Create a structured outline linked to evidence refs.",
+    },
+    {
+        "stage_id": "draft",
+        "label": "Draft",
+        "required_artifacts": ["draft", "writing_workflow_state"],
+        "object_types": {"writing_job"},
+        "workflow_phases": {"draft", "evidence_bound_draft", "draft_ready"},
+        "next_action": "Persist a draft workflow state with evidence refs and change log.",
+    },
+    {
+        "stage_id": "citation_review",
+        "label": "Citation review",
+        "required_artifacts": ["citation_bank", "lint_report", "integrity_gate"],
+        "object_types": {"writing_job"},
+        "workflow_phases": {"citation_review", "linted_export_ready", "export_ready"},
+        "next_action": "Run citation, overlap, and writing-integrity checks.",
+    },
+    {
+        "stage_id": "export",
+        "label": "Export",
+        "required_artifacts": ["export_manifest", "export_artifact"],
+        "object_types": {"export_artifact"},
+        "event_prefixes": ("writing.export.",),
+        "workflow_phases": {"export_ready", "exported", "linted_export_ready"},
+        "next_action": "Generate an export artifact only after unresolved checks are visible.",
+    },
+    {
+        "stage_id": "agent_handoff",
+        "label": "Agent handoff",
+        "required_artifacts": ["agent_request", "handoff_card"],
+        "object_types": {"agent_request"},
+        "event_prefixes": ("agent.", "approval."),
+        "next_action": "Create a bounded handoff card for the next agent session.",
+    },
+)
 _RESEARCH_PRIVATE_PROJECTION_KEYS = {
     "api_key",
     "authorization",
@@ -628,6 +696,197 @@ def _increment_projection_count(counter: dict[str, int], key: str) -> None:
     if normalized is None:
         return
     counter[normalized] = int(counter.get(normalized, 0)) + 1
+
+
+def _append_unique_text(values: list[str], value: Any, *, max_items: int = 48) -> None:
+    """Append a bounded string only once to a stage ledger list."""
+
+    if len(values) >= max_items:
+        return
+    normalized = _safe_projection_string(value)
+    if normalized is None or normalized in values:
+        return
+    values.append(normalized)
+
+
+def _append_unique_mapping(values: list[dict[str, Any]], value: dict[str, Any], *, max_items: int = 24) -> None:
+    """Append a bounded mapping only once to a stage ledger list."""
+
+    if len(values) >= max_items:
+        return
+    compact = dict(_json_safe_copy(value))
+    if compact in values:
+        return
+    values.append(compact)
+
+
+def _passport_status_from_runtime_status(status: Any) -> str:
+    """Map runtime/object status values to passport stage progress."""
+
+    normalized = str(status or "").strip().lower()
+    if normalized in {"completed", "succeeded", "active", "referenced"}:
+        return "complete"
+    if normalized in {"failed", "approval_rejected", "cancelled"}:
+        return "blocked"
+    if normalized in {"queued", "created", "started", "running", "in_progress", "paused", "approval_pending"}:
+        return "in_progress"
+    return "unresolved"
+
+
+def _passport_status_from_event(event_type: str, status: Any) -> str:
+    """Map domain event facts to passport stage progress."""
+
+    if event_type.endswith(".failed") or event_type.endswith(".rejected"):
+        return "blocked"
+    if event_type.endswith(".completed") or event_type in {
+        "agent.result.accepted",
+        "artifact.created",
+        "evidence.pack.created",
+        "figure_table.assets.loaded",
+        "writing.export.created",
+    }:
+        return "complete"
+    if event_type.endswith(".started") or event_type.endswith(".requested") or event_type.endswith(".progressed"):
+        return "in_progress"
+    return _passport_status_from_runtime_status(status)
+
+
+def _strongest_passport_status(current: str, candidate: str) -> str:
+    """Return the most actionable stage status from two observations."""
+
+    rank = {
+        "not_started": 0,
+        "in_progress": 1,
+        "complete": 2,
+        "unresolved": 3,
+        "warn": 4,
+        "blocked": 5,
+    }
+    return candidate if rank.get(candidate, 0) > rank.get(current, 0) else current
+
+
+def _stage_matches_workflow_state(stage: dict[str, Any], state: dict[str, Any]) -> bool:
+    """Return true when a writing workflow state belongs to one passport stage."""
+
+    phases = stage.get("workflow_phases")
+    if not isinstance(phases, set):
+        return False
+    phase = _safe_projection_string(state.get("phase"))
+    if phase and phase in phases:
+        return True
+    readiness = state.get("readiness")
+    if not isinstance(readiness, dict):
+        return False
+    stage_id = stage.get("stage_id")
+    if stage_id == "draft":
+        return bool(readiness.get("has_evidence_refs"))
+    if stage_id == "citation_review":
+        return bool(readiness.get("has_citation_bank") or readiness.get("has_lint_report"))
+    if stage_id == "export":
+        return bool(readiness.get("has_export_manifest"))
+    return False
+
+
+def _stage_matches_event(stage: dict[str, Any], event_type: str) -> bool:
+    """Return true when an event type belongs to a passport stage."""
+
+    prefixes = stage.get("event_prefixes")
+    if not isinstance(prefixes, tuple):
+        return False
+    return any(event_type.startswith(prefix) for prefix in prefixes)
+
+
+def _material_processing_artifact_refs(task: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return bounded material-processing artifact facts for passport stages."""
+
+    refs: list[dict[str, Any]] = []
+    artifacts = task.get("artifacts")
+    if not isinstance(artifacts, list):
+        return refs
+    for artifact in artifacts[:16]:
+        if not isinstance(artifact, dict):
+            continue
+        ref: dict[str, Any] = {
+            "artifact_type": artifact.get("artifact_type"),
+            "output_target": artifact.get("output_target"),
+        }
+        for key in ("count", "path", "digest"):
+            if artifact.get(key) is not None:
+                ref[key] = artifact.get(key)
+        refs.append(
+            {
+                key: _projection_value(value)
+                for key, value in ref.items()
+                if not _is_blank_projection_value(value)
+            }
+        )
+    return refs
+
+
+def _material_processing_target_count(task: dict[str, Any], output_targets: set[str]) -> int:
+    """Return how many persisted task artifacts match the requested targets."""
+
+    artifacts = task.get("artifacts")
+    if not isinstance(artifacts, list):
+        return 0
+    count = 0
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        target = _safe_projection_string(artifact.get("output_target"))
+        artifact_type = _safe_projection_string(artifact.get("artifact_type"))
+        if target in output_targets or artifact_type in output_targets:
+            count += 1
+    return count
+
+
+def _passport_gate_for_stage(stage: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    """Build a gate row for a workflow passport stage."""
+
+    stage_id = str(stage["stage_id"])
+    evidence: list[dict[str, Any]] = []
+    for object_id in row.get("object_ids", [])[:8]:
+        evidence.append({"ref_type": "research_object", "ref_id": object_id})
+    for event_type in row.get("event_types", [])[:8]:
+        evidence.append({"ref_type": "research_event_type", "ref_id": event_type})
+    blockers = list(row.get("blockers", []))[:12]
+    unresolved = list(row.get("unresolved", []))[:12]
+    requires_user_confirmation = bool(row.get("requires_user_confirmation"))
+    status = str(row.get("status") or "not_started")
+    if requires_user_confirmation:
+        gate_status = "block"
+        severity = "block"
+        reason = "Pending user confirmation blocks this stage."
+    elif blockers:
+        gate_status = "block"
+        severity = "block"
+        reason = blockers[0]
+    elif unresolved:
+        gate_status = "unresolved"
+        severity = "warn"
+        reason = unresolved[0]
+    elif status == "complete":
+        gate_status = "pass"
+        severity = "none"
+        reason = "Required runtime evidence is present for this stage."
+    elif status == "not_started":
+        gate_status = "not_applicable"
+        severity = "note"
+        reason = "No runtime evidence has been recorded for this stage yet."
+    else:
+        gate_status = "unresolved"
+        severity = "note"
+        reason = "Stage is in progress and still needs completion evidence."
+    return {
+        "gate_id": f"{stage_id}.gate",
+        "status": gate_status,
+        "severity": severity,
+        "reason": reason,
+        "evidence": evidence[:16],
+        "blockers": blockers,
+        "unresolved": unresolved,
+        "requires_user_confirmation": requires_user_confirmation,
+    }
 
 
 def _project_id_for_job(job: WritingJob, session: WritingSession | None) -> str | None:
@@ -2500,6 +2759,295 @@ class WritingRuntime:
                     "artifacts": sum(len(self._artifacts.get(job.job_id, [])) for job in jobs),
                     "approvals": len(approval_boundaries),
                 },
+            },
+        }
+
+    def build_workflow_passport(
+        self,
+        *,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Build a read-only stage passport over runtime workflow evidence.
+
+        Args:
+            session_id: Optional runtime session filter.
+            job_id: Optional runtime job filter.
+            project_id: Optional project id filter from job/session metadata.
+            limit: Maximum number of projected events to inspect.
+
+        Returns:
+            JSON-safe passport with ordered stages, gates, and provenance.
+
+        Raises:
+            ValueError: If the projection filters are invalid.
+        """
+
+        projection = self.build_research_projection(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+        stage_rows: dict[str, dict[str, Any]] = {}
+        for stage in _WORKFLOW_STAGE_DEFINITIONS:
+            stage_id = str(stage["stage_id"])
+            stage_rows[stage_id] = {
+                "stage_id": stage_id,
+                "label": stage["label"],
+                "status": "not_started",
+                "required_artifacts": list(stage["required_artifacts"]),
+                "present_artifacts": [],
+                "object_ids": [],
+                "event_types": [],
+                "blockers": [],
+                "unresolved": [],
+                "requires_user_confirmation": False,
+                "next_actions": [str(stage["next_action"])],
+                "updated_at": None,
+            }
+
+        objects = projection.get("objects")
+        if not isinstance(objects, list):
+            raise ValueError("research projection objects must be a list")
+        events = projection.get("events")
+        if not isinstance(events, list):
+            raise ValueError("research projection events must be a list")
+
+        for item in objects:
+            if not isinstance(item, dict):
+                continue
+            object_type = _safe_projection_string(item.get("object_type"))
+            object_id = _safe_projection_string(item.get("object_id"))
+            if object_type is None or object_id is None:
+                continue
+            state = item.get("state") if isinstance(item.get("state"), dict) else {}
+            effects = item.get("effects") if isinstance(item.get("effects"), dict) else {}
+            boundary = item.get("confirmation_boundary") if isinstance(item.get("confirmation_boundary"), dict) else {}
+            for stage in _WORKFLOW_STAGE_DEFINITIONS:
+                object_types = stage.get("object_types")
+                if not isinstance(object_types, set):
+                    continue
+                if object_type not in object_types and not _stage_matches_workflow_state(stage, state):
+                    continue
+                row = stage_rows[str(stage["stage_id"])]
+                _append_unique_text(row["object_ids"], object_id)
+                row["status"] = _strongest_passport_status(
+                    str(row["status"]),
+                    _passport_status_from_runtime_status(item.get("status")),
+                )
+                if item.get("updated_at") and (
+                    not row.get("updated_at") or str(item["updated_at"]) > str(row["updated_at"])
+                ):
+                    row["updated_at"] = item["updated_at"]
+                if boundary.get("requires_user_confirmation"):
+                    row["requires_user_confirmation"] = True
+                    _append_unique_text(row["blockers"], "Pending user confirmation is required.")
+                if object_type == "runtime_artifact" or effects.get("content_shape"):
+                    _append_unique_mapping(
+                        row["present_artifacts"],
+                        {
+                            "ref_type": "research_object",
+                            "ref_id": object_id,
+                            "object_type": object_type,
+                            **_compact_projection_mapping(state, allowed_keys=("artifact_type", "mime_type", "created_by")),
+                        },
+                    )
+                workflow_state = state if _stage_matches_workflow_state(stage, state) else {}
+                if workflow_state:
+                    phase = _safe_projection_string(workflow_state.get("phase"))
+                    _append_unique_mapping(
+                        row["present_artifacts"],
+                        {
+                            "artifact_type": "writing_workflow_state",
+                            "phase": phase,
+                            "ref_type": "research_object",
+                            "ref_id": object_id,
+                        },
+                    )
+
+        selected_job_ids = {
+            str(job.job_id)
+            for job in self._jobs.values()
+            if _safe_projection_string(job_id) in (None, str(job.job_id))
+            and (not _safe_projection_string(session_id) or job.session_id == _safe_projection_string(session_id))
+            and (
+                not _safe_projection_string(project_id)
+                or _project_id_for_job(job, self.get_session(job.session_id)) == _safe_projection_string(project_id)
+            )
+        }
+        for selected_job_id in selected_job_ids:
+            job = self.get_job(selected_job_id)
+            if job is None:
+                continue
+            task = job.metadata.get(_MATERIAL_PROCESSING_TASK_KEY)
+            if isinstance(task, dict):
+                ingest_row = stage_rows["material_ingest"]
+                ingest_row["status"] = _strongest_passport_status(
+                    str(ingest_row["status"]),
+                    _passport_status_from_runtime_status(task.get("status")),
+                )
+                task_request = task.get("request") if isinstance(task.get("request"), dict) else {}
+                material_id = _safe_projection_string(task_request.get("material_id"))
+                if material_id is not None:
+                    _append_unique_text(ingest_row["object_ids"], _research_object_id("research_material", material_id))
+                else:
+                    _append_unique_text(ingest_row["unresolved"], "Material processing task is missing material_id.")
+                _append_unique_mapping(
+                    ingest_row["present_artifacts"],
+                    {
+                        "artifact_type": _MATERIAL_PROCESSING_TASK_KEY,
+                        "status": task.get("status"),
+                        "processing_mode": task_request.get("processing_mode"),
+                        "cache_decision": task.get("cache", {}).get("decision"),
+                        "ref_type": "runtime_job",
+                        "ref_id": selected_job_id,
+                    },
+                )
+                for artifact_ref in _material_processing_artifact_refs(task):
+                    _append_unique_mapping(ingest_row["present_artifacts"], artifact_ref)
+                if task.get("status") in {"failed", "cancelled"}:
+                    _append_unique_text(ingest_row["blockers"], "Material processing did not complete.")
+                elif task.get("status") != "completed":
+                    _append_unique_text(ingest_row["unresolved"], "Material processing is not completed yet.")
+                read_artifact_count = _material_processing_target_count(
+                    task,
+                    {"chunks", "locators", "chunk_index", "locator_index", "evidence_refs"},
+                )
+                if read_artifact_count > 0:
+                    read_row = stage_rows["material_read"]
+                    read_row["status"] = _strongest_passport_status(
+                        str(read_row["status"]),
+                        "complete" if task.get("status") == "completed" else "in_progress",
+                    )
+                    if material_id is not None:
+                        _append_unique_text(read_row["object_ids"], _research_object_id("research_material", material_id))
+                    for artifact_ref in _material_processing_artifact_refs(task):
+                        if artifact_ref.get("output_target") in {"chunks", "locators", "evidence_refs"} or artifact_ref.get(
+                            "artifact_type"
+                        ) in {"chunk_index", "locator_index"}:
+                            _append_unique_mapping(read_row["present_artifacts"], artifact_ref)
+                    if task.get("status") != "completed":
+                        _append_unique_text(read_row["unresolved"], "Material read locators exist but processing is not completed yet.")
+            workflow_state = job.metadata.get(_WRITING_WORKFLOW_STATE_KEY)
+            if isinstance(workflow_state, dict):
+                for stage in _WORKFLOW_STAGE_DEFINITIONS:
+                    if not _stage_matches_workflow_state(stage, workflow_state):
+                        continue
+                    row = stage_rows[str(stage["stage_id"])]
+                    _append_unique_text(row["object_ids"], _research_object_id("writing_job", job.job_id))
+                    row["status"] = _strongest_passport_status(str(row["status"]), "complete")
+                    if workflow_state.get("updated_at") and (
+                        not row.get("updated_at") or str(workflow_state["updated_at"]) > str(row["updated_at"])
+                    ):
+                        row["updated_at"] = workflow_state["updated_at"]
+                    _append_unique_mapping(
+                        row["present_artifacts"],
+                        {
+                            "artifact_type": _WRITING_WORKFLOW_STATE_KEY,
+                            "phase": workflow_state.get("phase"),
+                            "ref_type": "runtime_job",
+                            "ref_id": job.job_id,
+                        },
+                    )
+                    readiness = workflow_state.get("readiness")
+                    if isinstance(readiness, dict):
+                        missing = [
+                            key
+                            for key, value in readiness.items()
+                            if key.startswith("has_") and not bool(value)
+                        ][:8]
+                        for key in missing:
+                            _append_unique_text(row["unresolved"], f"Workflow readiness is missing {key}.")
+
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            event_type = _safe_projection_string(event.get("event_type"))
+            if event_type is None:
+                continue
+            for stage in _WORKFLOW_STAGE_DEFINITIONS:
+                if not _stage_matches_event(stage, event_type):
+                    continue
+                row = stage_rows[str(stage["stage_id"])]
+                _append_unique_text(row["event_types"], event_type)
+                _append_unique_text(row["object_ids"], event.get("object_id"))
+                if event.get("timestamp") and (
+                    not row.get("updated_at") or str(event["timestamp"]) > str(row["updated_at"])
+                ):
+                    row["updated_at"] = event["timestamp"]
+                status = _safe_projection_string(event.get("status"))
+                row["status"] = _strongest_passport_status(
+                    str(row["status"]),
+                    _passport_status_from_event(event_type, status),
+                )
+                boundary = event.get("confirmation_boundary") if isinstance(event.get("confirmation_boundary"), dict) else {}
+                if boundary.get("requires_user_confirmation"):
+                    row["requires_user_confirmation"] = True
+                    _append_unique_text(row["blockers"], "Pending user confirmation is required.")
+
+        stages: list[dict[str, Any]] = []
+        gate_counts: dict[str, int] = {}
+        severity_counts: dict[str, int] = {}
+        for stage in _WORKFLOW_STAGE_DEFINITIONS:
+            row = stage_rows[str(stage["stage_id"])]
+            if row["status"] == "not_started" and (row["object_ids"] or row["event_types"] or row["present_artifacts"]):
+                row["status"] = "unresolved"
+            gate = _passport_gate_for_stage(stage, row)
+            row["gate"] = gate
+            for private_key in ("blockers", "unresolved", "requires_user_confirmation"):
+                row.pop(private_key, None)
+            stages.append(row)
+            _increment_projection_count(gate_counts, gate["status"])
+            _increment_projection_count(severity_counts, gate["severity"])
+
+        current_stage_id = None
+        for row in stages:
+            if row["status"] != "complete":
+                current_stage_id = str(row["stage_id"])
+                break
+        if current_stage_id is None and stages:
+            current_stage_id = str(stages[-1]["stage_id"])
+        return {
+            "schema_version": _WORKFLOW_PASSPORT_SCHEMA_VERSION,
+            "generated_at": utc_now_iso_z(),
+            "scope": dict(projection.get("scope") or {}),
+            "stages": stages,
+            "current_stage_id": current_stage_id,
+            "gate_summary": {
+                "stage_count": len(stages),
+                "gate_counts": gate_counts,
+                "severity_counts": severity_counts,
+                "blocking_stage_ids": [
+                    row["stage_id"]
+                    for row in stages
+                    if row.get("gate", {}).get("status") == "block"
+                ],
+                "unresolved_stage_ids": [
+                    row["stage_id"]
+                    for row in stages
+                    if row.get("gate", {}).get("status") == "unresolved"
+                ],
+                "requires_user_confirmation": any(
+                    row.get("gate", {}).get("requires_user_confirmation")
+                    for row in stages
+                ),
+            },
+            "provenance": {
+                "derived_from": [
+                    "runtime.research_projection",
+                    "runtime.jobs",
+                    "runtime.events",
+                    "runtime.artifacts",
+                    "runtime.approval_requests",
+                    "runtime.material_processing_task",
+                    "runtime.writing_workflow_state",
+                ],
+                "research_projection_schema_version": projection.get("schema_version"),
+                "object_count": len(objects),
+                "event_count": len(events),
             },
         }
 

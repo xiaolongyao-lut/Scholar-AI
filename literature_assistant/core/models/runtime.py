@@ -4,7 +4,7 @@ Runtime-related Pydantic models for REST API.
 Includes models for writing sessions, jobs, events, and artifacts.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -430,6 +430,89 @@ class ResearchProjectionPayload(BaseModel):
     events: List[ResearchEventPayload] = Field(default_factory=list)
     approval_boundaries: List[Dict[str, Any]] = Field(default_factory=list)
     status_projection: Dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowPassportGatePayload(BaseModel):
+    """Stage gate summary for reproducible research workflow state.
+
+    Args:
+        gate_id: Stable gate identifier scoped by stage id.
+        status: Gate state; unresolved must not be rendered as passed.
+        severity: UI/MCP severity for blocking, warning, or note-level items.
+        reason: Human-readable bounded reason for the status.
+        evidence: Bounded refs to runtime objects, events, artifacts, or tasks.
+        blockers: Items that must be resolved before the stage can be complete.
+        unresolved: Checks that still need human, offline, or external review.
+        requires_user_confirmation: Whether a pending approval blocks progress.
+    """
+
+    gate_id: str = Field(min_length=1, max_length=160)
+    status: Literal["pass", "warn", "block", "unresolved", "not_applicable"] = "unresolved"
+    severity: Literal["none", "note", "warn", "block"] = "note"
+    reason: str = Field(min_length=1, max_length=500)
+    evidence: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
+    blockers: List[str] = Field(default_factory=list, max_length=12)
+    unresolved: List[str] = Field(default_factory=list, max_length=12)
+    requires_user_confirmation: bool = False
+
+
+class WorkflowPassportStagePayload(BaseModel):
+    """Read-only stage ledger row for the research workflow passport.
+
+    Args:
+        stage_id: Scholar AI workflow stage id.
+        label: User-facing short label.
+        status: Stage progress derived from existing runtime state.
+        required_artifacts: Artifact families expected for a reproducible stage.
+        present_artifacts: Bounded runtime/material artifacts found locally.
+        object_ids: Research object ids that provide this stage evidence.
+        event_types: Domain events observed for this stage.
+        gate: Integrity/reproducibility gate projection for this stage.
+        next_actions: Bounded local actions that can move the stage forward.
+        updated_at: Latest timestamp observed for this stage.
+    """
+
+    stage_id: Literal[
+        "material_ingest",
+        "material_read",
+        "evidence_pack",
+        "outline",
+        "draft",
+        "citation_review",
+        "export",
+        "agent_handoff",
+    ]
+    label: str = Field(min_length=1, max_length=120)
+    status: Literal["not_started", "in_progress", "complete", "warn", "blocked", "unresolved"]
+    required_artifacts: List[str] = Field(default_factory=list, max_length=16)
+    present_artifacts: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)
+    object_ids: List[str] = Field(default_factory=list, max_length=48)
+    event_types: List[str] = Field(default_factory=list, max_length=48)
+    gate: WorkflowPassportGatePayload
+    next_actions: List[str] = Field(default_factory=list, max_length=12)
+    updated_at: Optional[str] = None
+
+
+class WorkflowPassportPayload(BaseModel):
+    """Read-only workflow passport over runtime objects, events, and artifacts.
+
+    Args:
+        schema_version: Versioned additive API contract.
+        generated_at: UTC generation time for this projection.
+        scope: Runtime filters used to build the passport.
+        stages: Ordered stage ledger rows.
+        current_stage_id: First stage that is not complete, or final stage.
+        gate_summary: Aggregate gate counts and blocking state.
+        provenance: Sources used to derive this read-only passport.
+    """
+
+    schema_version: str = "scholar_ai_workflow_passport_v1"
+    generated_at: str
+    scope: Dict[str, Any] = Field(default_factory=dict)
+    stages: List[WorkflowPassportStagePayload] = Field(default_factory=list)
+    current_stage_id: Optional[str] = None
+    gate_summary: Dict[str, Any] = Field(default_factory=dict)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
 class TimelineItemPayload(BaseModel):

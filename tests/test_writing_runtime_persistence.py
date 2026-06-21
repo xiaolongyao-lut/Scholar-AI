@@ -416,6 +416,107 @@ async def test_research_projection_rebuilds_from_persisted_runtime_state(tmp_pat
     }
 
 
+@pytest.mark.asyncio
+async def test_workflow_passport_rebuilds_from_persisted_runtime_state(tmp_path: Path) -> None:
+    """Workflow passports should remain reproducible after SQLite reload."""
+
+    db_path = tmp_path / "writing_runtime_workflow_passport.sqlite3"
+    runtime = WritingRuntime(database_path=db_path, autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        user_id="passport-persisted-user",
+        metadata={"project_id": "project-persisted-passport", "title": "Persisted Passport"},
+    )
+    material_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.RESOURCE_INGEST,
+        input_text="ingest persisted material",
+        metadata={"project_id": "project-persisted-passport", "material_id": "material-persisted-passport"},
+    )
+    runtime.update_material_processing_task(
+        material_job.job_id,
+        request={
+            "schema_version": "material_processing_task_v1",
+            "project_id": "project-persisted-passport",
+            "material_id": "material-persisted-passport",
+            "input_ref": {
+                "ref_type": "uploaded_source_file",
+                "material_id": "material-persisted-passport",
+                "content_digest": "sha256:persisted-passport",
+            },
+            "processing_mode": "fast_text",
+            "cache": {"policy": "use", "content_digest": "sha256:persisted-passport"},
+            "output_targets": ["chunks", "locators", "text_sidecar"],
+        },
+        status="completed",
+        result={"chunks": 3},
+        artifacts=[
+            {"artifact_type": "chunk_index", "output_target": "chunks", "count": 3},
+            {"artifact_type": "locator_index", "output_target": "locators", "count": 3},
+        ],
+        provenance={"source": "pytest.persisted"},
+    )
+    await runtime.start_job(material_job.job_id)
+    await runtime.complete_job(material_job.job_id, result={"kind": "resource_ingest"})
+
+    writing_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="persisted export",
+        metadata={"project_id": "project-persisted-passport", "export_artifact_id": "export-persisted-passport"},
+    )
+    runtime.update_writing_workflow_state(
+        writing_job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-persisted-passport"},
+        evidence_refs=[{"ref_id": "chunk:persisted"}],
+        citation_bank=[{"citation_id": "cite:persisted"}],
+        lint_report={"passed": True},
+        export_manifest={"format": "docx", "filename": "persisted.docx"},
+        change_log=[{"stage": "export", "summary": "ready"}],
+    )
+
+    loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
+    passport = loaded_runtime.build_workflow_passport(project_id="project-persisted-passport", limit=50)
+
+    stage_by_id = {stage["stage_id"]: stage for stage in passport["stages"]}
+    assert passport["schema_version"] == "scholar_ai_workflow_passport_v1"
+    assert passport["scope"]["project_id"] == "project-persisted-passport"
+    assert stage_by_id["material_ingest"]["status"] == "complete"
+    assert stage_by_id["material_ingest"]["gate"]["status"] == "pass"
+    assert stage_by_id["draft"]["gate"]["status"] == "pass"
+    assert stage_by_id["citation_review"]["gate"]["status"] == "pass"
+    assert stage_by_id["export"]["gate"]["status"] == "pass"
+    assert passport["provenance"]["object_count"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_workflow_passport_does_not_mark_material_read_from_material_identity_only(tmp_path: Path) -> None:
+    """Material read requires locator/chunk evidence, not only a material id."""
+
+    runtime = WritingRuntime(database_path=tmp_path / "workflow_passport_material_only.sqlite3", autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        user_id="passport-material-only-user",
+        metadata={"project_id": "project-material-only"},
+    )
+    material_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.RESOURCE_INGEST,
+        input_text="created but not processed",
+        metadata={"project_id": "project-material-only", "material_id": "material-only"},
+    )
+    await runtime.start_job(material_job.job_id)
+
+    passport = runtime.build_workflow_passport(project_id="project-material-only", limit=50)
+
+    stage_by_id = {stage["stage_id"]: stage for stage in passport["stages"]}
+    assert stage_by_id["material_ingest"]["status"] == "in_progress"
+    assert stage_by_id["material_ingest"]["gate"]["status"] == "unresolved"
+    assert stage_by_id["material_read"]["status"] == "not_started"
+    assert stage_by_id["material_read"]["gate"]["status"] == "not_applicable"
+
+
 def _workspace_paths(tmp_path: Path) -> tuple[Path, Path, Path]:
     workspace_root = tmp_path / "workspace"
     entry_cwd = workspace_root / "notes"

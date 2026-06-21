@@ -19,6 +19,7 @@ from models import (
     MaterialProcessingTaskRequest,
     MaterialProcessingTaskPayload,
     ResearchProjectionPayload,
+    WorkflowPassportPayload,
     TimelinePagePayload,
     CheckpointPayload,
     ResumeSessionPayload,
@@ -764,6 +765,29 @@ async def get_research_projection(
         status_code = 404 if "not found" in str(exc).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return ResearchProjectionPayload(**projection)
+
+
+@router.get("/workflow-passport", response_model=WorkflowPassportPayload)
+async def get_workflow_passport(
+    session_id: str | None = Query(default=None),
+    job_id: str | None = Query(default=None),
+    project_id: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=1000),
+) -> WorkflowPassportPayload:
+    """Return a read-only workflow passport over runtime research state."""
+
+    runtime = get_runtime()
+    try:
+        passport = runtime.build_workflow_passport(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return WorkflowPassportPayload(**passport)
 
 
 @router.get("/job/{job_id}", response_model=JobPayload)

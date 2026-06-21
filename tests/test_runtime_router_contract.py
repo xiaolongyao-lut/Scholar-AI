@@ -869,6 +869,128 @@ def test_runtime_research_projection_projects_objects_events_and_approval_bounda
 
 
 @pytest.mark.persistence_smoke
+def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -> None:
+    """Workflow passport should project stage evidence and blocking approvals."""
+
+    runtime = WritingRuntime(database_path=tmp_path / "workflow-passport.sqlite3", autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        user_id="passport-user",
+        metadata={"project_id": "project-passport", "title": "Passport Project"},
+    )
+    material_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.RESOURCE_INGEST,
+        input_text="ingest material",
+        metadata={"project_id": "project-passport", "material_id": "material-passport"},
+    )
+    runtime.update_material_processing_task(
+        material_job.job_id,
+        request={
+            "schema_version": "material_processing_task_v1",
+            "project_id": "project-passport",
+            "material_id": "material-passport",
+            "input_ref": {"ref_type": "uploaded_source_file", "material_id": "material-passport"},
+            "processing_mode": "fast_text",
+            "output_targets": ["chunks", "locators"],
+        },
+        status="completed",
+        result={"chunks": 2},
+        artifacts=[
+            {"artifact_type": "chunk_index", "output_target": "chunks", "count": 2},
+            {"artifact_type": "locator_index", "output_target": "locators", "count": 2},
+        ],
+        provenance={"source": "pytest"},
+    )
+    evidence_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.SMART_READ,
+        input_text="build evidence",
+        metadata={
+            "project_id": "project-passport",
+            "material_id": "material-passport",
+            "evidence_pack_id": "pack-passport",
+        },
+    )
+    runtime.add_job_artifact(
+        evidence_job.job_id,
+        artifact_type=ArtifactType.METADATA,
+        content={"kind": "evidence_pack", "locator_coverage": {"risk_level": "none"}},
+        created_by="pytest",
+        metadata={"evidence_pack_id": "pack-passport", "project_id": "project-passport"},
+    )
+    asyncio.run(runtime.start_job(evidence_job.job_id))
+    asyncio.run(runtime.complete_job(evidence_job.job_id, {"kind": "evidence_pack"}))
+    draft_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="draft and export",
+        metadata={"project_id": "project-passport", "export_artifact_id": "export-passport"},
+    )
+    runtime.update_writing_workflow_state(
+        draft_job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-passport", "task_type": "draft"},
+        evidence_refs=[{"ref_id": "chunk:1"}],
+        citation_bank=[{"citation_id": "cite:1"}],
+        lint_report={"passed": True},
+        export_manifest={"format": "docx", "filename": "passport.docx"},
+        change_log=[{"stage": "export", "summary": "ready"}],
+    )
+    agent_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="handoff",
+        metadata={"project_id": "project-passport", "agent_request_id": "agent-passport"},
+    )
+    approval = runtime.request_approval(
+        job_id=agent_job.job_id,
+        session_id=session.session_id,
+        reason="Confirm handoff.",
+        metadata={"project_id": "project-passport"},
+    )
+
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    response = client.get("/runtime/workflow-passport", params={"project_id": "project-passport"})
+
+    assert response.status_code == 200
+    passport = response.json()
+    assert passport["schema_version"] == "scholar_ai_workflow_passport_v1"
+    assert passport["scope"]["project_id"] == "project-passport"
+    stage_by_id = {stage["stage_id"]: stage for stage in passport["stages"]}
+    assert list(stage_by_id) == [
+        "material_ingest",
+        "material_read",
+        "evidence_pack",
+        "outline",
+        "draft",
+        "citation_review",
+        "export",
+        "agent_handoff",
+    ]
+    assert stage_by_id["material_ingest"]["status"] == "complete"
+    assert stage_by_id["material_ingest"]["gate"]["status"] == "pass"
+    assert {item["output_target"] for item in stage_by_id["material_ingest"]["present_artifacts"] if "output_target" in item} >= {
+        "chunks",
+        "locators",
+    }
+    assert stage_by_id["evidence_pack"]["status"] == "complete"
+    assert stage_by_id["draft"]["gate"]["status"] == "pass"
+    assert stage_by_id["citation_review"]["gate"]["status"] == "pass"
+    assert stage_by_id["export"]["gate"]["status"] == "pass"
+    assert stage_by_id["agent_handoff"]["gate"]["status"] == "block"
+    assert stage_by_id["agent_handoff"]["gate"]["requires_user_confirmation"] is True
+    assert approval.approval_id in str(stage_by_id["agent_handoff"])
+    assert passport["gate_summary"]["requires_user_confirmation"] is True
+    assert passport["gate_summary"]["blocking_stage_ids"] == ["agent_handoff"]
+    assert "runtime.research_projection" in passport["provenance"]["derived_from"]
+
+
+@pytest.mark.persistence_smoke
 def test_runtime_router_rejects_invalid_session_mode(monkeypatch, tmp_path) -> None:
     """The runtime router should reject invalid session modes."""
     workspace_root = tmp_path / "workspace"
