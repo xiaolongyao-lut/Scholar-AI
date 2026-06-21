@@ -117,7 +117,39 @@ def _model_to_dict(value: Any) -> dict[str, Any]:
     raise TypeError("payload must serialize to a dict")
 
 
-def _writing_workflow_state_summary(job: Any) -> dict[str, Any]:
+def _blocked_workflow_claims(reason: str) -> dict[str, Any]:
+    """Return a conservative claim summary when gate enforcement cannot be rebuilt."""
+
+    message = str(reason or "Workflow readiness enforcement could not be rebuilt.").strip()
+    return {
+        "schema_version": "scholar_ai_workflow_enforcement_v1",
+        "status": "unresolved",
+        "claims": [
+            {
+                "claim_id": "export_readiness",
+                "label": "Export readiness",
+                "status": "unresolved",
+                "reason": message,
+                "required_readiness": ["has_export_manifest"],
+                "missing_readiness": [],
+                "source_gate_status": "unresolved",
+                "blockers": [],
+                "unresolved": [message],
+                "evidence": [],
+            }
+        ],
+        "summary": {
+            "ready": 0,
+            "warning": 0,
+            "unresolved": 1,
+            "blocked": 0,
+            "unresolved_is_ready": False,
+        },
+        "provenance": {"derived_from": ["runtime.router_fallback"]},
+    }
+
+
+def _writing_workflow_state_summary(runtime: Any, job: Any) -> dict[str, Any]:
     """Return a compact workflow-state projection for job lists and snapshots."""
     metadata = _normalize_metadata(job)
     state = metadata.get("writing_workflow_state")
@@ -144,6 +176,11 @@ def _writing_workflow_state_summary(job: Any) -> dict[str, Any]:
         summary["lint_report_present"] = bool(lint_report)
         if isinstance(lint_report.get("passed"), bool):
             summary["lint_passed"] = lint_report["passed"]
+    try:
+        claims = runtime.build_writing_readiness_claims(job.job_id)
+    except Exception as exc:
+        claims = _blocked_workflow_claims(str(exc))
+    summary["readiness_claims"] = claims
     return {
         key: value
         for key, value in summary.items()
@@ -192,10 +229,10 @@ def _material_processing_task_summary(job: Any) -> dict[str, Any]:
     }
 
 
-def _job_payload(job: Any) -> JobPayload:
+def _job_payload(runtime: Any, job: Any) -> JobPayload:
     """Serialize one runtime job with additive UI-safe projections."""
     payload = _model_to_dict(job.to_dict() if hasattr(job, "to_dict") else job)
-    payload["writing_workflow_state_summary"] = _writing_workflow_state_summary(job)
+    payload["writing_workflow_state_summary"] = _writing_workflow_state_summary(runtime, job)
     payload["material_processing_task_summary"] = _material_processing_task_summary(job)
     return JobPayload(**payload)
 
@@ -700,7 +737,7 @@ async def create_job(request: CreateJobRequest) -> JobPayload:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     
-    return _job_payload(job)
+    return _job_payload(runtime, job)
 
 
 @router.get("/jobs", response_model=List[JobPayload])
@@ -743,7 +780,7 @@ async def list_jobs(
             jobs.extend(runtime.list_jobs(session_id=session.session_id, status=parsed_status))
 
     jobs.sort(key=lambda job: job.created_at, reverse=True)
-    return [_job_payload(job) for job in jobs[:limit]]
+    return [_job_payload(runtime, job) for job in jobs[:limit]]
 
 
 @router.get("/research-projection", response_model=ResearchProjectionPayload)
@@ -835,7 +872,7 @@ async def get_job(job_id: str) -> JobPayload:
     job = runtime.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
-    return _job_payload(job)
+    return _job_payload(runtime, job)
 
 
 @router.delete("/job/{job_id}")
@@ -965,7 +1002,7 @@ async def get_job_event_snapshot(
     return JobEventSnapshotPayload(
         job_id=job.job_id,
         session_id=job.session_id,
-        job=_job_payload(job),
+        job=_job_payload(runtime, job),
         status=JobStatusPayload(**status),
         events=[EventPayload(**event.to_dict()) for event in page_events],
         next_after_sequence=next_after_sequence,

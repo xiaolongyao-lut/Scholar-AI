@@ -101,6 +101,41 @@ _WORKFLOW_PASSPORT_SCHEMA_VERSION = "scholar_ai_workflow_passport_v1"
 _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION = "scholar_ai_evidence_integrity_gate_v1"
 _AGENT_HANDOFF_CARD_SCHEMA_VERSION = "scholar_ai_agent_handoff_card_v1"
 _AGENT_HANDOFF_CARD_KEY = "agent_handoff_card"
+_WORKFLOW_ENFORCEMENT_SCHEMA_VERSION = "scholar_ai_workflow_enforcement_v1"
+_READINESS_CLAIM_DEFINITIONS: tuple[dict[str, Any], ...] = (
+    {
+        "claim_id": "export_readiness",
+        "label": "Export readiness",
+        "required_readiness": ("has_export_manifest",),
+        "required_signal_categories": ("export_readiness",),
+        "blocked_by_categories": (
+            "locator",
+            "retrieval_quality",
+            "citation_verification",
+            "citation_overlap",
+            "writing_lint",
+            "export_readiness",
+            "workflow_stage",
+            "approval_boundary",
+        ),
+    },
+    {
+        "claim_id": "handoff_readiness",
+        "label": "Agent handoff readiness",
+        "required_readiness": (),
+        "required_signal_categories": (),
+        "blocked_by_categories": (
+            "locator",
+            "retrieval_quality",
+            "citation_verification",
+            "citation_overlap",
+            "writing_lint",
+            "export_readiness",
+            "workflow_stage",
+            "approval_boundary",
+        ),
+    },
+)
 _WORKFLOW_STAGE_DEFINITIONS: tuple[dict[str, Any], ...] = (
     {
         "stage_id": "material_ingest",
@@ -975,6 +1010,171 @@ def _bounded_signal_evidence(ref_type: str, ref_id: Any, **metadata: Any) -> lis
         },
     }
     return [row]
+
+
+def _signals_for_categories(signals: list[dict[str, Any]], categories: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Return integrity signals matching one claim category set."""
+
+    category_set = set(categories)
+    return [
+        signal
+        for signal in signals
+        if isinstance(signal, dict) and str(signal.get("category") or "") in category_set
+    ]
+
+
+def _merge_claim_signals(*signal_groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a stable union of claim-scoped signals by signal id."""
+
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for signals in signal_groups:
+        for signal in signals:
+            if not isinstance(signal, dict):
+                continue
+            signal_id = str(signal.get("signal_id") or "")
+            if not signal_id or signal_id in seen:
+                continue
+            seen.add(signal_id)
+            merged.append(signal)
+    return merged
+
+
+def _claim_signal_status(signals: list[dict[str, Any]]) -> str:
+    """Return the strongest gate status for claim-scoped signals."""
+
+    return _integrity_gate_status(signals) if signals else "unresolved"
+
+
+def _bounded_claim_messages(signals: list[dict[str, Any]], statuses: set[str], *, max_items: int = 8) -> list[str]:
+    """Return stable bounded messages for claim blockers or unresolved checks."""
+
+    messages: list[str] = []
+    for signal in signals:
+        if str(signal.get("status") or "") not in statuses:
+            continue
+        _append_unique_text(messages, signal.get("message"), max_items=max_items)
+    return messages
+
+
+def _bounded_claim_evidence(signals: list[dict[str, Any]], *, max_items: int = 12) -> list[dict[str, Any]]:
+    """Return bounded evidence refs proving why a readiness claim is held back."""
+
+    evidence: list[dict[str, Any]] = []
+    for signal in signals:
+        signal_id = _safe_projection_string(signal.get("signal_id"))
+        category = _safe_projection_string(signal.get("category"))
+        status = _safe_projection_string(signal.get("status"))
+        if signal_id is None:
+            continue
+        _append_unique_mapping(
+            evidence,
+            {
+                "ref_type": "evidence_integrity_signal",
+                "ref_id": signal_id,
+                "category": category,
+                "status": status,
+            },
+            max_items=max_items,
+        )
+        if len(evidence) >= max_items:
+            break
+    return evidence
+
+
+def _workflow_readiness_claims(
+    *,
+    workflow_state: dict[str, Any] | None,
+    gate: dict[str, Any],
+) -> dict[str, Any]:
+    """Return read-only enforcement state for export and handoff readiness claims."""
+
+    if workflow_state is not None and not isinstance(workflow_state, dict):
+        raise ValueError("workflow_state must be an object when provided")
+    if not isinstance(gate, dict):
+        raise ValueError("gate must be an object")
+    readiness = workflow_state.get("readiness") if isinstance(workflow_state, dict) else {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+    signals = gate.get("signals") if isinstance(gate.get("signals"), list) else []
+    signal_rows = [signal for signal in signals if isinstance(signal, dict)]
+    claims: list[dict[str, Any]] = []
+    for definition in _READINESS_CLAIM_DEFINITIONS:
+        claim_id = str(definition["claim_id"])
+        required_readiness = tuple(str(item) for item in definition.get("required_readiness", ()))
+        missing_readiness = [
+            key
+            for key in required_readiness
+            if not bool(readiness.get(key))
+        ]
+        required_signals = _signals_for_categories(signal_rows, tuple(definition["required_signal_categories"]))
+        blocking_signals = _signals_for_categories(signal_rows, tuple(definition["blocked_by_categories"]))
+        relevant_signals = _merge_claim_signals(
+            required_signals,
+            blocking_signals,
+        )
+        signal_status = _claim_signal_status(relevant_signals)
+        blockers = _bounded_claim_messages(relevant_signals, {"block"})
+        unresolved = _bounded_claim_messages(relevant_signals, {"unresolved"})
+        if missing_readiness:
+            for key in missing_readiness:
+                _append_unique_text(unresolved, f"Workflow readiness is missing {key}.", max_items=8)
+
+        if blockers:
+            status = "blocked"
+            reason = blockers[0]
+        elif signal_status == "unresolved" or missing_readiness or unresolved:
+            status = "unresolved"
+            reason = unresolved[0] if unresolved else "Integrity gate is unresolved for this readiness claim."
+        elif signal_status == "warn":
+            status = "warning"
+            reason = "Integrity gate has warnings for this readiness claim."
+        elif signal_status == "pass":
+            status = "ready"
+            reason = "Required readiness evidence and integrity signals are passing."
+        else:
+            status = "unresolved"
+            reason = "No integrity signal has proven this readiness claim yet."
+
+        claims.append(
+            {
+                "claim_id": claim_id,
+                "label": definition["label"],
+                "status": status,
+                "reason": reason,
+                "required_readiness": list(required_readiness),
+                "missing_readiness": missing_readiness,
+                "source_gate_status": gate.get("status"),
+                "blockers": blockers,
+                "unresolved": unresolved,
+                "evidence": _bounded_claim_evidence(relevant_signals),
+            }
+        )
+
+    status_rank = {"ready": 0, "warning": 1, "unresolved": 2, "blocked": 3}
+    overall = "ready"
+    for claim in claims:
+        if status_rank.get(str(claim.get("status") or ""), 0) > status_rank[overall]:
+            overall = str(claim["status"])
+    return {
+        "schema_version": _WORKFLOW_ENFORCEMENT_SCHEMA_VERSION,
+        "status": overall,
+        "claims": claims,
+        "summary": {
+            "ready": sum(1 for claim in claims if claim["status"] == "ready"),
+            "warning": sum(1 for claim in claims if claim["status"] == "warning"),
+            "unresolved": sum(1 for claim in claims if claim["status"] == "unresolved"),
+            "blocked": sum(1 for claim in claims if claim["status"] == "blocked"),
+            "unresolved_is_ready": False,
+        },
+        "provenance": {
+            "derived_from": [
+                "runtime.writing_workflow_state",
+                "runtime.evidence_integrity_gate",
+            ],
+            "evidence_integrity_gate_schema_version": gate.get("schema_version"),
+        },
+    }
 
 
 def _iter_runtime_metadata_dicts(jobs: list[WritingJob]) -> list[tuple[str, dict[str, Any]]]:
@@ -2666,6 +2866,40 @@ class WritingRuntime:
             raise ValueError("writing_workflow_state metadata must be an object")
         return dict(_json_safe_copy(state))
 
+    def build_writing_readiness_claims(self, job_id: str) -> dict[str, Any]:
+        """Build gate-derived readiness claims for one writing workflow job.
+
+        Args:
+            job_id: Runtime job id whose workflow-state summary is being read.
+
+        Returns:
+            Read-only claim state derived from the Evidence Integrity Gate.
+
+        Raises:
+            ValueError: If the job id is blank or unknown.
+        """
+
+        normalized = str(job_id or "").strip()
+        if not normalized:
+            raise ValueError("job_id must not be empty")
+        job = self.get_job(normalized)
+        if job is None:
+            raise ValueError(f"Job {normalized} not found")
+        workflow_state = job.metadata.get(_WRITING_WORKFLOW_STATE_KEY)
+        if workflow_state is not None and not isinstance(workflow_state, dict):
+            workflow_state = None
+        session = self.get_session(job.session_id)
+        gate = self.build_evidence_integrity_gate(
+            session_id=job.session_id,
+            job_id=job.job_id,
+            project_id=_project_id_for_job(job, session),
+            limit=500,
+        )
+        return _workflow_readiness_claims(
+            workflow_state=workflow_state,
+            gate=gate,
+        )
+
     def update_material_processing_task(
         self,
         job_id: str,
@@ -3836,7 +4070,13 @@ class WritingRuntime:
             for signal in deduped_signals
             if signal.get("status") == "unresolved"
         ][:16]
-        return {
+        workflow_states = [
+            job.metadata.get(_WRITING_WORKFLOW_STATE_KEY)
+            for job in jobs
+            if isinstance(job.metadata.get(_WRITING_WORKFLOW_STATE_KEY), dict)
+        ]
+        primary_workflow_state = workflow_states[0] if workflow_states else None
+        gate_payload = {
             "schema_version": _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION,
             "generated_at": utc_now_iso_z(),
             "scope": dict(passport.get("scope") or {}),
@@ -3867,6 +4107,13 @@ class WritingRuntime:
                 ],
                 "workflow_passport_schema_version": passport.get("schema_version"),
             },
+        }
+        gate_payload["enforcement"] = _workflow_readiness_claims(
+            workflow_state=primary_workflow_state,
+            gate=gate_payload,
+        )
+        return {
+            **gate_payload,
         }
 
     def build_agent_handoff_card(
@@ -3957,6 +4204,23 @@ class WritingRuntime:
             _append_unique_text(blockers, f"Agent request failed: {str(job.error)[:500]}", max_items=16)
         elif status in {"cancelled", "paused"}:
             _append_unique_text(unresolved, f"Agent request is {status}; inspect current job state before resuming.", max_items=16)
+        readiness_claims = _workflow_readiness_claims(
+            workflow_state=metadata.get(_WRITING_WORKFLOW_STATE_KEY) if isinstance(metadata.get(_WRITING_WORKFLOW_STATE_KEY), dict) else None,
+            gate=gate,
+        )
+        handoff_claim = next(
+            (
+                claim
+                for claim in readiness_claims.get("claims", [])
+                if isinstance(claim, dict) and claim.get("claim_id") == "handoff_readiness"
+            ),
+            None,
+        )
+        if isinstance(handoff_claim, dict):
+            for message in handoff_claim.get("blockers") or []:
+                _append_unique_text(blockers, message, max_items=16)
+            for message in handoff_claim.get("unresolved") or []:
+                _append_unique_text(unresolved, message, max_items=16)
 
         artifacts = _bounded_handoff_artifacts(self.get_job_artifacts(job.job_id))
         resource_refs = _bounded_handoff_refs(metadata.get("resource_refs"), max_items=50)
@@ -4014,6 +4278,7 @@ class WritingRuntime:
             "completed_evidence": completed_evidence[:24],
             "blockers": blockers[:16],
             "unresolved": unresolved[:16],
+            "readiness_claims": readiness_claims,
             "resource_refs": resource_refs[:50],
             "artifacts": artifacts[:24],
             "resume_probes": resume_probes[:16],

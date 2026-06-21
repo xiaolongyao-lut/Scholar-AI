@@ -599,6 +599,15 @@ def test_runtime_jobs_project_writing_workflow_state_summary(monkeypatch, tmp_pa
     assert summary["readiness"]["has_export_manifest"] is True
     assert summary["export_format"] == "json"
     assert summary["export_filename"] == "paper.json"
+    claims = summary["readiness_claims"]
+    assert claims["schema_version"] == "scholar_ai_workflow_enforcement_v1"
+    export_claim = next(
+        claim
+        for claim in claims["claims"]
+        if claim["claim_id"] == "export_readiness"
+    )
+    assert export_claim["status"] == "unresolved"
+    assert claims["summary"]["unresolved_is_ready"] is False
     assert "citation_bank" not in summary
     assert "evidence_refs" not in summary
 

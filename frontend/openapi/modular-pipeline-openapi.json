@@ -897,6 +897,11 @@
             "title": "Provenance",
             "type": "object"
           },
+          "readiness_claims": {
+            "additionalProperties": true,
+            "title": "Readiness Claims",
+            "type": "object"
+          },
           "request_id": {
             "anyOf": [
               {
@@ -7648,6 +7653,11 @@
             "maxItems": 16,
             "title": "Blockers",
             "type": "array"
+          },
+          "enforcement": {
+            "additionalProperties": true,
+            "title": "Enforcement",
+            "type": "object"
           },
           "generated_at": {
             "title": "Generated At",

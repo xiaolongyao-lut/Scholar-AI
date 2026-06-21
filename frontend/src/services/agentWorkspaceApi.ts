@@ -104,6 +104,29 @@ export interface EvidenceIntegritySignal {
   metadata: Record<string, unknown>;
 }
 
+export type WorkflowReadinessClaimStatus = 'ready' | 'warning' | 'unresolved' | 'blocked';
+
+export interface WorkflowReadinessClaim {
+  claim_id: string;
+  label: string;
+  status: WorkflowReadinessClaimStatus;
+  reason: string;
+  required_readiness: string[];
+  missing_readiness: string[];
+  source_gate_status: string | null;
+  blockers: string[];
+  unresolved: string[];
+  evidence: Record<string, unknown>[];
+}
+
+export interface WorkflowReadinessClaimsProjection {
+  schema_version: 'scholar_ai_workflow_enforcement_v1';
+  status: WorkflowReadinessClaimStatus;
+  claims: WorkflowReadinessClaim[];
+  summary: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+}
+
 export interface EvidenceIntegrityGateProjection {
   schema_version: 'scholar_ai_evidence_integrity_gate_v1';
   generated_at: string;
@@ -113,6 +136,7 @@ export interface EvidenceIntegrityGateProjection {
   summary: Record<string, unknown>;
   blockers: string[];
   unresolved: string[];
+  enforcement?: WorkflowReadinessClaimsProjection;
   provenance: Record<string, unknown>;
 }
 
@@ -130,6 +154,7 @@ export interface AgentHandoffCardProjection {
   completed_evidence: Record<string, unknown>[];
   blockers: string[];
   unresolved: string[];
+  readiness_claims?: WorkflowReadinessClaimsProjection;
   resource_refs: Record<string, unknown>[];
   artifacts: Record<string, unknown>[];
   resume_probes: Record<string, unknown>[];

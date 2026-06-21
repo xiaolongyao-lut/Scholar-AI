@@ -503,6 +503,44 @@ describe('AgentWorkspace', () => {
       },
       blockers: ['Unsupported citation anchors block export readiness.'],
       unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+      enforcement: {
+        schema_version: 'scholar_ai_workflow_enforcement_v1',
+        status: 'blocked',
+        claims: [
+          {
+            claim_id: 'export_readiness',
+            label: 'Export readiness',
+            status: 'blocked',
+            reason: 'Unsupported citation anchors block export readiness.',
+            required_readiness: ['has_export_manifest'],
+            missing_readiness: [],
+            source_gate_status: 'block',
+            blockers: ['Unsupported citation anchors block export readiness.'],
+            unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+            evidence: [{ ref_type: 'evidence_integrity_signal', ref_id: 'citation_verification:unsupported:1' }],
+          },
+          {
+            claim_id: 'handoff_readiness',
+            label: 'Agent handoff readiness',
+            status: 'unresolved',
+            reason: 'Evidence refs exist, but retrieval qrels status is not recorded.',
+            required_readiness: [],
+            missing_readiness: [],
+            source_gate_status: 'block',
+            blockers: [],
+            unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+            evidence: [{ ref_type: 'evidence_integrity_signal', ref_id: 'retrieval_quality:missing_qrels_status:1' }],
+          },
+        ],
+        summary: {
+          ready: 0,
+          warning: 0,
+          unresolved: 1,
+          blocked: 1,
+          unresolved_is_ready: false,
+        },
+        provenance: { derived_from: ['runtime.evidence_integrity_gate'] },
+      },
       provenance: { derived_from: ['runtime.workflow_passport'] },
     });
     mockedGetAgentHandoffCard.mockResolvedValue({
@@ -519,6 +557,32 @@ describe('AgentWorkspace', () => {
       completed_evidence: [{ ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' }],
       blockers: [],
       unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+      readiness_claims: {
+        schema_version: 'scholar_ai_workflow_enforcement_v1',
+        status: 'unresolved',
+        claims: [
+          {
+            claim_id: 'handoff_readiness',
+            label: 'Agent handoff readiness',
+            status: 'unresolved',
+            reason: 'Evidence refs exist, but retrieval qrels status is not recorded.',
+            required_readiness: [],
+            missing_readiness: [],
+            source_gate_status: 'unresolved',
+            blockers: [],
+            unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+            evidence: [{ ref_type: 'evidence_integrity_signal', ref_id: 'retrieval_quality:missing_qrels_status:1' }],
+          },
+        ],
+        summary: {
+          ready: 0,
+          warning: 0,
+          unresolved: 1,
+          blocked: 0,
+          unresolved_is_ready: false,
+        },
+        provenance: { derived_from: ['runtime.agent_handoff_card'] },
+      },
       resource_refs: [{ ref_id: 'material:1', kind: 'material' }],
       artifacts: [],
       resume_probes: [{ label: 'Read workflow passport' }, { label: 'Read evidence integrity gate' }],
@@ -533,10 +597,14 @@ describe('AgentWorkspace', () => {
     expect(screen.getByRole('heading', { name: '研究流程' })).toBeInTheDocument();
     expect(screen.getByText('Workflow Passport')).toBeInTheDocument();
     expect(screen.getByText('Evidence Integrity Gate')).toBeInTheDocument();
+    expect(screen.getByText('Readiness Claims')).toBeInTheDocument();
     expect(screen.getByText('Agent Handoff')).toBeInTheDocument();
     expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
+    expect(screen.getByText('Export readiness')).toBeInTheDocument();
+    expect(screen.getByText('Agent handoff readiness')).toBeInTheDocument();
     expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('unresolved 1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('blocked').length).toBeGreaterThan(0);
     expect(screen.getByText('behavior eval 1')).toBeInTheDocument();
     await waitFor(() => {
       expect(mockedGetAgentHandoffCard).toHaveBeenCalledWith('job_agent_handoff_1');
@@ -544,5 +612,6 @@ describe('AgentWorkspace', () => {
     expect(await screen.findByText('in_progress · refs 1 · probes 2')).toBeInTheDocument();
     expect(screen.queryByText(/\/runtime\/workflow-passport/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^integrity 通过$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Export readiness ready$/)).not.toBeInTheDocument();
   });
 });

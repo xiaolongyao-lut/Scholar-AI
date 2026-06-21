@@ -652,6 +652,59 @@ async def test_evidence_integrity_gate_blocks_unsupported_and_keeps_unresolved_v
     assert gate["summary"]["status_counts"]["unresolved"] >= 2
     assert gate["blockers"]
     assert gate["unresolved"]
+    assert gate["enforcement"]["schema_version"] == "scholar_ai_workflow_enforcement_v1"
+    export_claim = next(
+        claim
+        for claim in gate["enforcement"]["claims"]
+        if claim["claim_id"] == "export_readiness"
+    )
+    assert export_claim["status"] == "blocked"
+    assert export_claim["blockers"]
+    assert gate["enforcement"]["summary"]["unresolved_is_ready"] is False
+
+
+@pytest.mark.persistence_smoke
+def test_writing_readiness_claims_do_not_treat_export_ready_as_ready_without_integrity(tmp_path: Path) -> None:
+    """Legacy export_ready phase remains persisted, but gate-derived claims block readiness."""
+
+    db_path = tmp_path / "readiness_claims.sqlite3"
+    runtime = WritingRuntime(database_path=db_path, autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-readiness-claims"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="export paper",
+        metadata={"project_id": "project-readiness-claims"},
+    )
+    state = runtime.update_writing_workflow_state(
+        job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-readiness-claims"},
+        evidence_refs=[{"ref_id": "chunk:claim"}],
+        citation_bank=[{"citation_id": "cite:claim"}],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "claim.docx"},
+        change_log=[{"stage": "export", "summary": "export manifest exists"}],
+    )
+
+    assert state["phase"] == "export_ready"
+    assert state["readiness"]["has_export_manifest"] is True
+
+    claims = runtime.build_writing_readiness_claims(job.job_id)
+    export_claim = next(
+        claim
+        for claim in claims["claims"]
+        if claim["claim_id"] == "export_readiness"
+    )
+
+    assert claims["schema_version"] == "scholar_ai_workflow_enforcement_v1"
+    assert export_claim["status"] == "unresolved"
+    assert export_claim["source_gate_status"] == "unresolved"
+    assert export_claim["unresolved"]
+    assert claims["summary"]["unresolved_is_ready"] is False
 
 
 @pytest.mark.asyncio

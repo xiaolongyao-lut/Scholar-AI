@@ -6942,6 +6942,10 @@ export interface components {
             provenance?: {
                 [key: string]: unknown;
             };
+            /** Readiness Claims */
+            readiness_claims?: {
+                [key: string]: unknown;
+            };
             /** Request Id */
             request_id?: string | null;
             /** Resource Refs */
@@ -9927,6 +9931,10 @@ export interface components {
         EvidenceIntegrityGatePayload: {
             /** Blockers */
             blockers?: string[];
+            /** Enforcement */
+            enforcement?: {
+                [key: string]: unknown;
+            };
             /** Generated At */
             generated_at: string;
             /** Provenance */

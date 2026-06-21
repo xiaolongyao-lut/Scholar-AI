@@ -34,6 +34,8 @@ import {
   type AgentBridgeStatus,
   type EvidenceIntegrityGateProjection,
   type RuntimeJobsStatus,
+  type WorkflowReadinessClaimsProjection,
+  type WorkflowReadinessClaim,
   type WorkflowPassportProjection,
   type WorkflowPassportStage,
   type ZoteroAttachmentHealth,
@@ -381,6 +383,35 @@ function gateStatusLabel(status: string | null | undefined): string {
   return '未读取';
 }
 
+function claimTone(status: string | null | undefined): StatusTone {
+  if (status === 'blocked') {
+    return 'danger';
+  }
+  if (status === 'warning' || status === 'unresolved') {
+    return 'warning';
+  }
+  if (status === 'ready') {
+    return 'success';
+  }
+  return 'neutral';
+}
+
+function claimStatusLabel(status: string | null | undefined): string {
+  if (status === 'ready') {
+    return 'ready';
+  }
+  if (status === 'blocked') {
+    return 'blocked';
+  }
+  if (status === 'warning') {
+    return 'warning';
+  }
+  if (status === 'unresolved') {
+    return 'unresolved';
+  }
+  return 'unknown';
+}
+
 function readRecordField(record: Record<string, unknown>, key: string): Record<string, unknown> {
   const value = record[key];
   return isRecord(value) ? value : {};
@@ -441,6 +472,37 @@ function handoffSummary(card: AgentHandoffCardProjection | null): string {
     return 'handoff card 未读取';
   }
   return `${card.status} · refs ${card.resource_refs.length} · probes ${card.resume_probes.length}`;
+}
+
+function isWorkflowReadinessClaimsProjection(value: unknown): value is WorkflowReadinessClaimsProjection {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return value.schema_version === 'scholar_ai_workflow_enforcement_v1' && Array.isArray(value.claims);
+}
+
+function workflowReadinessClaims(
+  integrityGate: EvidenceIntegrityGateProjection | null,
+  handoffCard: AgentHandoffCardProjection | null,
+): WorkflowReadinessClaimsProjection | null {
+  if (isWorkflowReadinessClaimsProjection(integrityGate?.enforcement)) {
+    return integrityGate.enforcement;
+  }
+  if (isWorkflowReadinessClaimsProjection(handoffCard?.readiness_claims)) {
+    return handoffCard.readiness_claims;
+  }
+  return null;
+}
+
+function readinessClaimSummary(claim: WorkflowReadinessClaim): string {
+  return firstNonEmptyText(
+    [
+      claim.blockers[0],
+      claim.unresolved[0],
+      claim.reason,
+    ],
+    '等待完整性门禁证明该 readiness claim。',
+  );
 }
 
 function isActiveJob(job: WritingJob): boolean {
@@ -802,6 +864,8 @@ export function ResearchWorkflowSpine({
   const behaviorEvalLatest = behaviorEvalArtifacts[0] ?? null;
   const handoffBlocked = (handoffCard?.blockers.length ?? 0) > 0;
   const handoffUnresolved = (handoffCard?.unresolved.length ?? 0) > 0;
+  const readinessClaims = workflowReadinessClaims(integrityGate, handoffCard);
+  const visibleReadinessClaims = readinessClaims?.claims.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
 
   return (
     <section
@@ -906,6 +970,41 @@ export function ResearchWorkflowSpine({
               <StatusPill tone={unresolvedCount > 0 ? 'warning' : 'neutral'}>unresolved {unresolvedCount}</StatusPill>
               <StatusPill tone="neutral">{integrityGate ? summarizeGateCounts(integrityGate.summary) : 'no signals'}</StatusPill>
             </div>
+          </article>
+
+          <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Readiness Claims</h3>
+              <StatusPill tone={claimTone(readinessClaims?.status)}>
+                {readinessClaims ? claimStatusLabel(readinessClaims.status) : '未读取'}
+              </StatusPill>
+            </div>
+            {visibleReadinessClaims.length === 0 ? (
+              <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+                Readiness claim 投影暂未读取。
+              </p>
+            ) : (
+              <div className="mt-2 grid gap-2">
+                {visibleReadinessClaims.map((claim) => (
+                  <div
+                    key={claim.claim_id}
+                    className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2.5 py-2"
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="truncate font-label text-[11px] font-medium text-foreground">
+                        {claim.label || claim.claim_id}
+                      </span>
+                      <StatusPill tone={claimTone(claim.status)}>
+                        {claimStatusLabel(claim.status)}
+                      </StatusPill>
+                    </div>
+                    <p className="mt-1 break-words text-[11px] leading-4 text-foreground/55">
+                      {readinessClaimSummary(claim)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </article>
 
           <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">

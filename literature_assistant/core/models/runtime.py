@@ -573,6 +573,7 @@ class EvidenceIntegrityGatePayload(BaseModel):
     summary: Dict[str, Any] = Field(default_factory=dict)
     blockers: List[str] = Field(default_factory=list, max_length=16)
     unresolved: List[str] = Field(default_factory=list, max_length=16)
+    enforcement: Dict[str, Any] = Field(default_factory=dict)
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -614,6 +615,7 @@ class AgentHandoffCardPayload(BaseModel):
     completed_evidence: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)
     blockers: List[str] = Field(default_factory=list, max_length=16)
     unresolved: List[str] = Field(default_factory=list, max_length=16)
+    readiness_claims: Dict[str, Any] = Field(default_factory=dict)
     resource_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=50)
     artifacts: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)
     resume_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
