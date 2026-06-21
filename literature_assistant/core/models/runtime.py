@@ -617,6 +617,88 @@ class PreflightRefreshReceiptPayload(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkflowReplayReceiptSummaryPayload(BaseModel):
+    """Compact receipt row in a workflow replay lineage.
+
+    Args:
+        ordinal: 1-based position in the replay lineage after time ordering.
+        receipt_id: Stable persisted receipt identifier.
+        generated_at: UTC time when the receipt was generated.
+        action_id: Local action whose preflight was refreshed.
+        required_claim_id: Readiness claim evaluated for the action.
+        status: Action-preflight status after replay.
+        can_proceed: Whether the action was allowed by the receipt.
+        refresh_required: Whether stale/unknown evidence still required refresh.
+        blocker_count: Blocking checks reported by the receipt validation.
+        unresolved_count: Unresolved checks reported by the receipt validation.
+        digest_keys: Projection digest names present in this receipt.
+        projection_digests: Bounded digest map for comparison.
+        external_mutation: Whether the replay performed external mutation.
+        source_material_mutation: Whether source material was mutated.
+    """
+
+    ordinal: int = Field(ge=1)
+    receipt_id: str | None = Field(default=None, max_length=200)
+    generated_at: str | None = None
+    action_id: str | None = Field(default=None, max_length=160)
+    required_claim_id: str | None = Field(default=None, max_length=160)
+    status: Literal["ready", "unresolved", "blocked", "stale"] = "unresolved"
+    can_proceed: bool = False
+    refresh_required: bool = False
+    blocker_count: int = Field(default=0, ge=0)
+    unresolved_count: int = Field(default=0, ge=0)
+    digest_keys: List[str] = Field(default_factory=list, max_length=16)
+    projection_digests: Dict[str, str] = Field(default_factory=dict)
+    external_mutation: bool = False
+    source_material_mutation: bool = False
+
+
+class WorkflowReplayLineagePayload(BaseModel):
+    """Read-only replay lineage for one job's persisted workflow receipts.
+
+    Args:
+        schema_version: Versioned additive API contract.
+        generated_at: UTC generation time for this lineage projection.
+        job_id: Runtime job id that owns the receipts.
+        session_id: Runtime session id for resume probes.
+        project_id: Optional Scholar AI project recovered from runtime scope.
+        scope: Runtime scope used for the projection.
+        receipt_count: Total unique receipts found locally.
+        returned_count: Number of compact receipt rows returned.
+        latest_receipt_id: Latest receipt id after time ordering.
+        latest: Compact summary of the latest receipt.
+        previous: Compact summary of the previous receipt, if any.
+        items: Bounded compact receipt rows in chronological order.
+        comparison: Latest-vs-previous status/count/digest deltas.
+        blockers: Blocking messages that should stop readiness claims.
+        unresolved: Unresolved messages that must remain visible.
+        resume_probes: Read-only calls agents should run before retrying.
+        summary: Aggregate counts and read-only guarantees.
+        provenance: Runtime sources and mature patterns used to derive lineage.
+    """
+
+    schema_version: Literal["scholar_ai_workflow_replay_lineage_v1"] = (
+        "scholar_ai_workflow_replay_lineage_v1"
+    )
+    generated_at: str
+    job_id: str = Field(min_length=1, max_length=160)
+    session_id: str = Field(min_length=1, max_length=160)
+    project_id: str | None = Field(default=None, max_length=200)
+    scope: Dict[str, Any] = Field(default_factory=dict)
+    receipt_count: int = Field(default=0, ge=0)
+    returned_count: int = Field(default=0, ge=0)
+    latest_receipt_id: str | None = Field(default=None, max_length=200)
+    latest: Dict[str, Any] = Field(default_factory=dict)
+    previous: Dict[str, Any] = Field(default_factory=dict)
+    items: List[WorkflowReplayReceiptSummaryPayload] = Field(default_factory=list, max_length=50)
+    comparison: Dict[str, Any] = Field(default_factory=dict)
+    blockers: List[str] = Field(default_factory=list, max_length=8)
+    unresolved: List[str] = Field(default_factory=list, max_length=8)
+    resume_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
 class AgentHandoffCardPayload(BaseModel):
     """Recoverable handoff card for one runtime-visible agent request.
 

@@ -1214,6 +1214,32 @@ class RuntimeTools:
             endpoint,
         )
 
+    def workflow_replay_lineage(
+        self,
+        job_id: str,
+        limit: int = 12,
+    ) -> dict[str, Any]:
+        """Read compact workflow replay lineage for one runtime job.
+
+        Args:
+            job_id: Runtime job that owns persisted preflight refresh receipts.
+            limit: Maximum compact receipt rows returned by the backend.
+        """
+        started = time.perf_counter()
+        normalized_job_id = self._bounded_text(job_id, "job_id", max_chars=160)
+        bounded_limit = self._bounded_int(limit, "limit", minimum=1, maximum=50)
+        params = {"limit": bounded_limit}
+        endpoint = f"/runtime/job/{normalized_job_id}/workflow-replay-lineage"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish(
+            "literature.workflow_replay_lineage",
+            {"job_id": normalized_job_id, "limit": bounded_limit},
+            result,
+            started,
+            endpoint,
+        )
+
     def agent_resource_read(
         self,
         ref_id: str,

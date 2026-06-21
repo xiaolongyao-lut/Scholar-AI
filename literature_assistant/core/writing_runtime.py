@@ -104,6 +104,7 @@ _AGENT_HANDOFF_CARD_SCHEMA_VERSION = "scholar_ai_agent_handoff_card_v1"
 _ACTION_PREFLIGHT_SCHEMA_VERSION = "scholar_ai_action_preflight_v1"
 _ACTION_PREFLIGHT_FRESHNESS_SCHEMA_VERSION = "scholar_ai_action_preflight_freshness_v1"
 _PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION = "scholar_ai_preflight_refresh_receipt_v1"
+_WORKFLOW_REPLAY_LINEAGE_SCHEMA_VERSION = "scholar_ai_workflow_replay_lineage_v1"
 _ACTION_PREFLIGHT_MAX_AGE_SECONDS = 900
 _AGENT_HANDOFF_CARD_KEY = "agent_handoff_card"
 _PREFLIGHT_REFRESH_RECEIPTS_KEY = "preflight_refresh_receipts"
@@ -1686,6 +1687,129 @@ def _workflow_refresh_receipt_payload(
             ],
         },
     }
+
+
+def _receipt_timestamp_key(receipt: dict[str, Any]) -> str:
+    """Return a stable ordering key for replay receipts."""
+
+    generated_at = _safe_projection_string(receipt.get("generated_at"))
+    receipt_id = _safe_projection_string(receipt.get("receipt_id"))
+    return f"{generated_at or ''}\u0000{receipt_id or ''}"
+
+
+def _receipt_validation_counts(receipt: dict[str, Any]) -> dict[str, int]:
+    """Return bounded validation counts used for replay lineage deltas."""
+
+    validation = receipt.get("validation")
+    if not isinstance(validation, dict):
+        validation = {}
+
+    def _count(key: str) -> int:
+        value = validation.get(key)
+        if isinstance(value, bool):
+            return int(value)
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return 0
+        return max(0, parsed)
+
+    return {
+        "blocker_count": _count("blocker_count"),
+        "unresolved_count": _count("unresolved_count"),
+    }
+
+
+def _compact_refresh_receipt_row(receipt: dict[str, Any], *, ordinal: int) -> dict[str, Any]:
+    """Return an agent-safe receipt row without embedding full projections."""
+
+    if not isinstance(receipt, dict):
+        raise ValueError("receipt must be an object")
+    counts = _receipt_validation_counts(receipt)
+    projection_digests = receipt.get("projection_digests")
+    if not isinstance(projection_digests, dict):
+        projection_digests = {}
+    replay = receipt.get("replay")
+    if not isinstance(replay, dict):
+        replay = {}
+    return {
+        "ordinal": ordinal,
+        "receipt_id": _safe_projection_string(receipt.get("receipt_id")),
+        "generated_at": _safe_projection_string(receipt.get("generated_at")),
+        "action_id": _safe_projection_string(receipt.get("action_id")),
+        "required_claim_id": _safe_projection_string(receipt.get("required_claim_id")),
+        "status": _safe_projection_string(receipt.get("status")) or "unresolved",
+        "can_proceed": bool(receipt.get("can_proceed")),
+        "refresh_required": bool(receipt.get("refresh_required")),
+        "blocker_count": counts["blocker_count"],
+        "unresolved_count": counts["unresolved_count"],
+        "digest_keys": sorted(
+            str(key)
+            for key, value in projection_digests.items()
+            if _safe_projection_string(key) is not None and _safe_projection_string(value) is not None
+        )[:16],
+        "projection_digests": {
+            str(key): str(value)
+            for key, value in sorted(projection_digests.items(), key=lambda item: str(item[0]))[:16]
+            if _safe_projection_string(key) is not None and _safe_projection_string(value) is not None
+        },
+        "external_mutation": bool(replay.get("external_mutation")),
+        "source_material_mutation": bool(replay.get("source_material_mutation")),
+    }
+
+
+def _receipt_delta(latest: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+    """Compare latest receipt state against the previous replay receipt."""
+
+    latest_counts = _receipt_validation_counts(latest)
+    previous_counts = _receipt_validation_counts(previous) if isinstance(previous, dict) else {
+        "blocker_count": 0,
+        "unresolved_count": 0,
+    }
+    latest_digests = latest.get("projection_digests") if isinstance(latest.get("projection_digests"), dict) else {}
+    previous_digests = previous.get("projection_digests") if isinstance(previous, dict) and isinstance(previous.get("projection_digests"), dict) else {}
+    changed_digest_keys = sorted(
+        {
+            str(key)
+            for key in set(latest_digests.keys()) | set(previous_digests.keys())
+            if latest_digests.get(key) != previous_digests.get(key)
+        }
+    )
+    return {
+        "status_changed": (
+            _safe_projection_string(latest.get("status"))
+            != (_safe_projection_string(previous.get("status")) if isinstance(previous, dict) else None)
+        ),
+        "can_proceed_changed": (
+            bool(latest.get("can_proceed"))
+            != (bool(previous.get("can_proceed")) if isinstance(previous, dict) else False)
+        ),
+        "refresh_required_changed": (
+            bool(latest.get("refresh_required"))
+            != (bool(previous.get("refresh_required")) if isinstance(previous, dict) else False)
+        ),
+        "blocker_count_delta": latest_counts["blocker_count"] - previous_counts["blocker_count"],
+        "unresolved_count_delta": latest_counts["unresolved_count"] - previous_counts["unresolved_count"],
+        "changed_digest_keys": changed_digest_keys[:16],
+    }
+
+
+def _append_receipt_candidate(
+    receipts: list[dict[str, Any]],
+    seen_receipt_ids: set[str],
+    candidate: Any,
+) -> None:
+    """Append a valid receipt candidate while preserving first-seen evidence."""
+
+    if not isinstance(candidate, dict):
+        return
+    if candidate.get("schema_version") != _PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION:
+        return
+    receipt_id = _safe_projection_string(candidate.get("receipt_id"))
+    if receipt_id is None or receipt_id in seen_receipt_ids:
+        return
+    receipts.append(dict(_json_safe_copy(candidate)))
+    seen_receipt_ids.add(receipt_id)
 
 
 def _iter_runtime_metadata_dicts(jobs: list[WritingJob]) -> list[tuple[str, dict[str, Any]]]:
@@ -3661,6 +3785,159 @@ class WritingRuntime:
             if normalized_receipt_id is None or candidate.get("receipt_id") == normalized_receipt_id:
                 return dict(_json_safe_copy(candidate))
         return None
+
+    def build_workflow_replay_lineage(
+        self,
+        job_id: str,
+        *,
+        limit: int = 12,
+    ) -> dict[str, Any]:
+        """Build a compact replay lineage for one job's preflight receipts.
+
+        Args:
+            job_id: Existing runtime job identifier.
+            limit: Maximum compact receipt rows returned, from 1 through 50.
+
+        Returns:
+            Read-only lineage projection comparing latest and prior receipts.
+
+        Raises:
+            ValueError: If the job id is blank, unknown, or limit is invalid.
+        """
+
+        normalized_job_id = str(job_id or "").strip()
+        if not normalized_job_id:
+            raise ValueError("job_id must not be empty")
+        if isinstance(limit, bool):
+            raise ValueError("limit must be an integer")
+        try:
+            normalized_limit = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("limit must be an integer") from exc
+        if normalized_limit < 1 or normalized_limit > 50:
+            raise ValueError("limit must be between 1 and 50")
+
+        job = self.get_job(normalized_job_id)
+        if job is None:
+            raise ValueError(f"Job {normalized_job_id} not found")
+
+        receipts: list[dict[str, Any]] = []
+        seen_receipt_ids: set[str] = set()
+        metadata = dict(job.metadata)
+        _append_receipt_candidate(receipts, seen_receipt_ids, metadata.get("latest_preflight_refresh_receipt"))
+        stored = metadata.get(_PREFLIGHT_REFRESH_RECEIPTS_KEY)
+        if isinstance(stored, list):
+            for item in stored:
+                _append_receipt_candidate(receipts, seen_receipt_ids, item)
+
+        artifact_count = 0
+        for artifact in self.get_job_artifacts(normalized_job_id, ArtifactType.METADATA):
+            if artifact.metadata.get("kind") != "preflight_refresh_receipt":
+                continue
+            artifact_count += 1
+            _append_receipt_candidate(receipts, seen_receipt_ids, artifact.content)
+
+        receipts.sort(key=_receipt_timestamp_key)
+        latest = receipts[-1] if receipts else None
+        previous = receipts[-2] if len(receipts) > 1 else None
+        latest_row = _compact_refresh_receipt_row(latest, ordinal=len(receipts)) if latest is not None else None
+        previous_row = _compact_refresh_receipt_row(previous, ordinal=len(receipts) - 1) if previous is not None else None
+        bounded_receipts = receipts[-normalized_limit:]
+        items = [
+            _compact_refresh_receipt_row(receipt, ordinal=(len(receipts) - len(bounded_receipts) + index + 1))
+            for index, receipt in enumerate(bounded_receipts)
+        ]
+
+        blockers: list[str] = []
+        unresolved: list[str] = []
+        if latest is not None:
+            latest_counts = _receipt_validation_counts(latest)
+            latest_status = _safe_projection_string(latest.get("status")) or "unresolved"
+            if latest_status == "blocked" or latest_counts["blocker_count"] > 0:
+                _append_unique_text(
+                    blockers,
+                    f"Latest replay receipt reports {latest_counts['blocker_count']} blocking checks.",
+                    max_items=8,
+                )
+            if latest_status in {"unresolved", "stale"} or latest_counts["unresolved_count"] > 0:
+                _append_unique_text(
+                    unresolved,
+                    f"Latest replay receipt reports {latest_counts['unresolved_count']} unresolved checks.",
+                    max_items=8,
+                )
+            if bool(latest.get("refresh_required")):
+                _append_unique_text(
+                    unresolved,
+                    "Latest replay still requires a Workflow Passport and Evidence Integrity Gate refresh.",
+                    max_items=8,
+                )
+
+        session = self.get_session(job.session_id)
+        project_id = _project_id_for_job(job, session)
+        scope = {
+            "session_id": job.session_id,
+            "job_id": job.job_id,
+            "project_id": project_id,
+        }
+        resume_probes = [
+            _handoff_resume_probe("Read runtime job", f"/runtime/job/{job.job_id}"),
+            _handoff_resume_probe("Read runtime snapshot", f"/runtime/job/{job.job_id}/snapshot"),
+            _handoff_resume_probe("Read workflow replay lineage", f"/runtime/job/{job.job_id}/workflow-replay-lineage"),
+        ]
+        if latest_row and latest_row.get("receipt_id"):
+            resume_probes.append(
+                _handoff_resume_probe(
+                    "Read latest workflow refresh receipt",
+                    f"/runtime/job/{job.job_id}/preflight-refresh-receipt",
+                    {"receipt_id": str(latest_row["receipt_id"])},
+                )
+            )
+
+        lineage = {
+            "schema_version": _WORKFLOW_REPLAY_LINEAGE_SCHEMA_VERSION,
+            "generated_at": utc_now_iso_z(),
+            "job_id": job.job_id,
+            "session_id": job.session_id,
+            "project_id": project_id,
+            "scope": scope,
+            "receipt_count": len(receipts),
+            "returned_count": len(items),
+            "latest_receipt_id": latest_row.get("receipt_id") if latest_row else None,
+            "latest": latest_row or {},
+            "previous": previous_row or {},
+            "items": items,
+            "comparison": _receipt_delta(latest, previous) if latest is not None else {},
+            "blockers": blockers[:8],
+            "unresolved": unresolved[:8],
+            "resume_probes": resume_probes[:8],
+            "summary": {
+                "has_receipts": bool(receipts),
+                "latest_status": latest_row.get("status") if latest_row else None,
+                "latest_can_proceed": latest_row.get("can_proceed") if latest_row else None,
+                "latest_refresh_required": latest_row.get("refresh_required") if latest_row else None,
+                "latest_blocker_count": latest_row.get("blocker_count") if latest_row else 0,
+                "latest_unresolved_count": latest_row.get("unresolved_count") if latest_row else 0,
+                "metadata_receipt_count": len(stored) if isinstance(stored, list) else 0,
+                "artifact_receipt_count": artifact_count,
+                "lineage_is_read_only": True,
+            },
+            "provenance": {
+                "derived_from": [
+                    "runtime.job_metadata.latest_preflight_refresh_receipt",
+                    "runtime.job_metadata.preflight_refresh_receipts",
+                    "runtime.artifacts.preflight_refresh_receipt",
+                ],
+                "standard_patterns": [
+                    "OpenLineage run event lineage",
+                    "W3C PROV activity/entity generation",
+                    "Workflow Run RO-Crate workflow outputs",
+                    "Great Expectations validation result history",
+                ],
+                "source_material_mutation": False,
+                "external_mutation": False,
+            },
+        }
+        return dict(_json_safe_copy(lineage))
 
     def update_material_processing_task(
         self,

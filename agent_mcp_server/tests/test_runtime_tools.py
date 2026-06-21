@@ -1377,6 +1377,43 @@ def test_workflow_refresh_receipt_reads_runtime_receipt(
     )
 
 
+def test_workflow_replay_lineage_reads_bounded_runtime_projection(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Workflow replay lineage should expose receipt history to MCP."""
+
+    backend.set_json(
+        "/runtime/job/job-refresh-1/workflow-replay-lineage",
+        {
+            "schema_version": "scholar_ai_workflow_replay_lineage_v1",
+            "job_id": "job-refresh-1",
+            "receipt_count": 2,
+            "latest_receipt_id": "preflight_refresh:latest",
+            "items": [
+                {
+                    "receipt_id": "preflight_refresh:latest",
+                    "status": "blocked",
+                    "blocker_count": 1,
+                    "unresolved_count": 0,
+                }
+            ],
+            "comparison": {"changed_digest_keys": ["evidence_integrity_gate"]},
+        },
+    )
+
+    result = tools.workflow_replay_lineage(" job-refresh-1 ", limit=7)
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar_ai_workflow_replay_lineage_v1"
+    assert result["data"]["latest_receipt_id"] == "preflight_refresh:latest"
+    assert backend.calls[-1] == (
+        "json",
+        "/runtime/job/job-refresh-1/workflow-replay-lineage",
+        {"limit": 7},
+    )
+
+
 def test_runtime_projection_tools_reject_invalid_bounds_before_backend(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -1391,6 +1428,12 @@ def test_runtime_projection_tools_reject_invalid_bounds_before_backend(
 
     with pytest.raises(ValueError, match="job_id"):
         tools.workflow_refresh_receipt(" " * 4)
+
+    with pytest.raises(ValueError, match="limit"):
+        tools.workflow_replay_lineage("job-1", limit=0)
+
+    with pytest.raises(ValueError, match="job_id"):
+        tools.workflow_replay_lineage(" " * 4)
 
     assert backend.calls == []
 

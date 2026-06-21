@@ -9,6 +9,7 @@ import {
   getAgentWorkspaceStatus,
   getEvidenceIntegrityGate,
   getWorkflowPassport,
+  getWorkflowReplayLineage,
   getZoteroAttachmentHealth,
   listRuntimeJobs,
   type WorkflowActionPreflightProjection,
@@ -22,6 +23,7 @@ vi.mock('@/services/agentWorkspaceApi', () => ({
   getAgentWorkflowHealth: vi.fn(),
   getEvidenceIntegrityGate: vi.fn(),
   getWorkflowPassport: vi.fn(),
+  getWorkflowReplayLineage: vi.fn(),
   getZoteroAttachmentHealth: vi.fn(),
   listRuntimeJobs: vi.fn(),
 }));
@@ -36,6 +38,7 @@ const mockedGetAgentHandoffCard = vi.mocked(getAgentHandoffCard);
 const mockedGetAgentWorkflowHealth = vi.mocked(getAgentWorkflowHealth);
 const mockedGetEvidenceIntegrityGate = vi.mocked(getEvidenceIntegrityGate);
 const mockedGetWorkflowPassport = vi.mocked(getWorkflowPassport);
+const mockedGetWorkflowReplayLineage = vi.mocked(getWorkflowReplayLineage);
 const mockedGetZoteroAttachmentHealth = vi.mocked(getZoteroAttachmentHealth);
 const mockedListRuntimeJobs = vi.mocked(listRuntimeJobs);
 const mockedGetWikiReview = vi.mocked(getWikiReview);
@@ -162,6 +165,7 @@ describe('AgentWorkspace', () => {
       provenance: {},
     });
     mockedGetAgentHandoffCard.mockRejectedValue(new Error('handoff not found'));
+    mockedGetWorkflowReplayLineage.mockRejectedValue(new Error('lineage not found'));
   });
 
   it('renders writing export runtime jobs with workflow summary badges', async () => {
@@ -658,6 +662,83 @@ describe('AgentWorkspace', () => {
       resume_prompt: 'Read /runtime/workflow-passport before mutating local files.',
       provenance: { derived_from: ['runtime.job'] },
     });
+    mockedGetWorkflowReplayLineage.mockResolvedValue({
+      schema_version: 'scholar_ai_workflow_replay_lineage_v1',
+      generated_at: '2026-06-21T03:00:02Z',
+      job_id: 'job_agent_handoff_1',
+      session_id: 'session_agent_handoff_1',
+      project_id: 'project-1',
+      scope: { project_id: 'project-1', job_id: 'job_agent_handoff_1' },
+      receipt_count: 2,
+      returned_count: 2,
+      latest_receipt_id: 'preflight_refresh:test123',
+      latest: {
+        receipt_id: 'preflight_refresh:test123',
+        status: 'blocked',
+        blocker_count: 1,
+        unresolved_count: 1,
+      },
+      previous: {
+        receipt_id: 'preflight_refresh:older',
+        status: 'unresolved',
+        blocker_count: 0,
+        unresolved_count: 1,
+      },
+      items: [
+        {
+          ordinal: 1,
+          receipt_id: 'preflight_refresh:older',
+          generated_at: '2026-06-21T02:55:00Z',
+          action_id: 'writing.export_project',
+          required_claim_id: 'export_readiness',
+          status: 'unresolved',
+          can_proceed: false,
+          refresh_required: false,
+          blocker_count: 0,
+          unresolved_count: 1,
+          digest_keys: ['workflow_passport'],
+          projection_digests: { workflow_passport: 'sha256:old-passport' },
+          external_mutation: false,
+          source_material_mutation: false,
+        },
+        {
+          ordinal: 2,
+          receipt_id: 'preflight_refresh:test123',
+          generated_at: '2026-06-21T03:00:01Z',
+          action_id: 'writing.export_project',
+          required_claim_id: 'export_readiness',
+          status: 'blocked',
+          can_proceed: false,
+          refresh_required: false,
+          blocker_count: 1,
+          unresolved_count: 1,
+          digest_keys: ['workflow_passport', 'evidence_integrity_gate'],
+          projection_digests: {
+            workflow_passport: 'sha256:passport',
+            evidence_integrity_gate: 'sha256:gate',
+          },
+          external_mutation: false,
+          source_material_mutation: false,
+        },
+      ],
+      comparison: {
+        status_changed: true,
+        blocker_count_delta: 1,
+        unresolved_count_delta: 0,
+        changed_digest_keys: ['evidence_integrity_gate'],
+      },
+      blockers: ['Latest replay receipt reports 1 blocking checks.'],
+      unresolved: ['Latest replay receipt reports 1 unresolved checks.'],
+      resume_probes: [{ label: 'Read workflow replay lineage' }],
+      summary: {
+        has_receipts: true,
+        latest_status: 'blocked',
+        latest_blocker_count: 1,
+        latest_unresolved_count: 1,
+        lineage_is_read_only: true,
+      },
+      provenance: { derived_from: ['runtime.artifacts.preflight_refresh_receipt'] },
+    });
 
     render(<AgentWorkspace />);
 
@@ -667,6 +748,7 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('Evidence Integrity Gate')).toBeInTheDocument();
     expect(screen.getByText('Readiness Claims')).toBeInTheDocument();
     expect(screen.getByText('Command Preflight')).toBeInTheDocument();
+    expect(screen.getByText('Replay Lineage')).toBeInTheDocument();
     expect(screen.getByText('Agent Handoff')).toBeInTheDocument();
     expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
     expect(screen.getByText('Export readiness')).toBeInTheDocument();
@@ -676,6 +758,9 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('writing.export_project').length).toBeGreaterThan(0);
     expect(screen.getAllByText('receipt preflight_refresh:test123').length).toBeGreaterThan(0);
     expect(screen.getByText('preflight_refresh:test123 · digests 4 · block 1 · unresolved 1')).toBeInTheDocument();
+    expect(await screen.findByText('2 receipts · latest blocked · block 1 · unresolved 1')).toBeInTheDocument();
+    expect(screen.getByText('Latest replay receipt reports 1 blocking checks.')).toBeInTheDocument();
+    expect(screen.getAllByText('preflight_refresh:test123').length).toBeGreaterThan(0);
     expect(screen.getAllByText('preflight blocked').length).toBeGreaterThan(0);
     expect(screen.getAllByText('fresh 0s').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
@@ -684,6 +769,7 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('behavior eval 1')).toBeInTheDocument();
     await waitFor(() => {
       expect(mockedGetAgentHandoffCard).toHaveBeenCalledWith('job_agent_handoff_1');
+      expect(mockedGetWorkflowReplayLineage).toHaveBeenCalledWith('job_agent_handoff_1', { limit: 12 });
     });
     expect(await screen.findByText('in_progress · refs 1 · probes 2')).toBeInTheDocument();
     expect(screen.queryByText(/\/runtime\/workflow-passport/)).not.toBeInTheDocument();

@@ -23,6 +23,7 @@ from models import (
     EvidenceIntegrityGatePayload,
     AgentHandoffCardPayload,
     PreflightRefreshReceiptPayload,
+    WorkflowReplayLineagePayload,
     TimelinePagePayload,
     CheckpointPayload,
     ResumeSessionPayload,
@@ -882,6 +883,22 @@ async def get_preflight_refresh_receipt(
     if receipt is None:
         raise HTTPException(status_code=404, detail="Preflight refresh receipt not found")
     return PreflightRefreshReceiptPayload(**receipt)
+
+
+@router.get("/job/{job_id}/workflow-replay-lineage", response_model=WorkflowReplayLineagePayload)
+async def get_workflow_replay_lineage(
+    job_id: str,
+    limit: int = Query(default=12, ge=1, le=50),
+) -> WorkflowReplayLineagePayload:
+    """Return a read-only replay lineage for persisted workflow receipts."""
+
+    runtime = get_runtime()
+    try:
+        lineage = runtime.build_workflow_replay_lineage(job_id, limit=limit)
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return WorkflowReplayLineagePayload(**lineage)
 
 
 @router.get("/job/{job_id}", response_model=JobPayload)

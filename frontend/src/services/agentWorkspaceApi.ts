@@ -166,6 +166,44 @@ export interface PreflightRefreshReceiptProjection {
   provenance: Record<string, unknown>;
 }
 
+export interface WorkflowReplayReceiptSummary {
+  ordinal: number;
+  receipt_id: string | null;
+  generated_at: string | null;
+  action_id: string | null;
+  required_claim_id: string | null;
+  status: WorkflowActionPreflightStatus;
+  can_proceed: boolean;
+  refresh_required: boolean;
+  blocker_count: number;
+  unresolved_count: number;
+  digest_keys: string[];
+  projection_digests: Record<string, string>;
+  external_mutation: boolean;
+  source_material_mutation: boolean;
+}
+
+export interface WorkflowReplayLineageProjection {
+  schema_version: 'scholar_ai_workflow_replay_lineage_v1';
+  generated_at: string;
+  job_id: string;
+  session_id: string;
+  project_id: string | null;
+  scope: Record<string, unknown>;
+  receipt_count: number;
+  returned_count: number;
+  latest_receipt_id: string | null;
+  latest: Record<string, unknown>;
+  previous: Record<string, unknown>;
+  items: WorkflowReplayReceiptSummary[];
+  comparison: Record<string, unknown>;
+  blockers: string[];
+  unresolved: string[];
+  resume_probes: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+}
+
 export interface WorkflowActionPreflightProjection {
   schema_version: 'scholar_ai_action_preflight_v1';
   generated_at: string;
@@ -304,6 +342,23 @@ export async function getAgentHandoffCard(jobId: string): Promise<AgentHandoffCa
   }
   const response = await client.get<AgentHandoffCardProjection>(
     `/runtime/job/${encodeURIComponent(jobId)}/agent-handoff-card`,
+  );
+  return response.data;
+}
+
+export async function getWorkflowReplayLineage(jobId: string, opts?: {
+  limit?: number;
+}): Promise<WorkflowReplayLineageProjection> {
+  if (!jobId.trim()) {
+    throw new Error('jobId is required to read workflow replay lineage');
+  }
+  const response = await client.get<WorkflowReplayLineageProjection>(
+    `/runtime/job/${encodeURIComponent(jobId)}/workflow-replay-lineage`,
+    {
+      params: {
+        limit: opts?.limit ?? 12,
+      },
+    },
   );
   return response.data;
 }

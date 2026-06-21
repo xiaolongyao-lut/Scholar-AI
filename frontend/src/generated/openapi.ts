@@ -5848,6 +5848,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/job/{job_id}/workflow-replay-lineage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workflow Replay Lineage
+         * @description Return a read-only replay lineage for persisted workflow receipts.
+         */
+        get: operations["get_runtime_job_job_id_workflow_replay_lineage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/job/{job_id}/writing-workflow-state": {
         parameters: {
             query?: never;
@@ -16279,6 +16299,166 @@ export interface components {
             status: "not_started" | "in_progress" | "complete" | "warn" | "blocked" | "unresolved";
             /** Updated At */
             updated_at?: string | null;
+        };
+        /**
+         * WorkflowReplayLineagePayload
+         * @description Read-only replay lineage for one job's persisted workflow receipts.
+         *
+         *     Args:
+         *         schema_version: Versioned additive API contract.
+         *         generated_at: UTC generation time for this lineage projection.
+         *         job_id: Runtime job id that owns the receipts.
+         *         session_id: Runtime session id for resume probes.
+         *         project_id: Optional Scholar AI project recovered from runtime scope.
+         *         scope: Runtime scope used for the projection.
+         *         receipt_count: Total unique receipts found locally.
+         *         returned_count: Number of compact receipt rows returned.
+         *         latest_receipt_id: Latest receipt id after time ordering.
+         *         latest: Compact summary of the latest receipt.
+         *         previous: Compact summary of the previous receipt, if any.
+         *         items: Bounded compact receipt rows in chronological order.
+         *         comparison: Latest-vs-previous status/count/digest deltas.
+         *         blockers: Blocking messages that should stop readiness claims.
+         *         unresolved: Unresolved messages that must remain visible.
+         *         resume_probes: Read-only calls agents should run before retrying.
+         *         summary: Aggregate counts and read-only guarantees.
+         *         provenance: Runtime sources and mature patterns used to derive lineage.
+         */
+        WorkflowReplayLineagePayload: {
+            /** Blockers */
+            blockers?: string[];
+            /** Comparison */
+            comparison?: {
+                [key: string]: unknown;
+            };
+            /** Generated At */
+            generated_at: string;
+            /** Items */
+            items?: components["schemas"]["WorkflowReplayReceiptSummaryPayload"][];
+            /** Job Id */
+            job_id: string;
+            /** Latest */
+            latest?: {
+                [key: string]: unknown;
+            };
+            /** Latest Receipt Id */
+            latest_receipt_id?: string | null;
+            /** Previous */
+            previous?: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id?: string | null;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Receipt Count
+             * @default 0
+             */
+            receipt_count: number;
+            /** Resume Probes */
+            resume_probes?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Returned Count
+             * @default 0
+             */
+            returned_count: number;
+            /**
+             * Schema Version
+             * @default scholar_ai_workflow_replay_lineage_v1
+             * @constant
+             */
+            schema_version: "scholar_ai_workflow_replay_lineage_v1";
+            /** Scope */
+            scope?: {
+                [key: string]: unknown;
+            };
+            /** Session Id */
+            session_id: string;
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /** Unresolved */
+            unresolved?: string[];
+        };
+        /**
+         * WorkflowReplayReceiptSummaryPayload
+         * @description Compact receipt row in a workflow replay lineage.
+         *
+         *     Args:
+         *         ordinal: 1-based position in the replay lineage after time ordering.
+         *         receipt_id: Stable persisted receipt identifier.
+         *         generated_at: UTC time when the receipt was generated.
+         *         action_id: Local action whose preflight was refreshed.
+         *         required_claim_id: Readiness claim evaluated for the action.
+         *         status: Action-preflight status after replay.
+         *         can_proceed: Whether the action was allowed by the receipt.
+         *         refresh_required: Whether stale/unknown evidence still required refresh.
+         *         blocker_count: Blocking checks reported by the receipt validation.
+         *         unresolved_count: Unresolved checks reported by the receipt validation.
+         *         digest_keys: Projection digest names present in this receipt.
+         *         projection_digests: Bounded digest map for comparison.
+         *         external_mutation: Whether the replay performed external mutation.
+         *         source_material_mutation: Whether source material was mutated.
+         */
+        WorkflowReplayReceiptSummaryPayload: {
+            /** Action Id */
+            action_id?: string | null;
+            /**
+             * Blocker Count
+             * @default 0
+             */
+            blocker_count: number;
+            /**
+             * Can Proceed
+             * @default false
+             */
+            can_proceed: boolean;
+            /** Digest Keys */
+            digest_keys?: string[];
+            /**
+             * External Mutation
+             * @default false
+             */
+            external_mutation: boolean;
+            /** Generated At */
+            generated_at?: string | null;
+            /** Ordinal */
+            ordinal: number;
+            /** Projection Digests */
+            projection_digests?: {
+                [key: string]: string;
+            };
+            /** Receipt Id */
+            receipt_id?: string | null;
+            /**
+             * Refresh Required
+             * @default false
+             */
+            refresh_required: boolean;
+            /** Required Claim Id */
+            required_claim_id?: string | null;
+            /**
+             * Source Material Mutation
+             * @default false
+             */
+            source_material_mutation: boolean;
+            /**
+             * Status
+             * @default unresolved
+             * @enum {string}
+             */
+            status: "ready" | "unresolved" | "blocked" | "stale";
+            /**
+             * Unresolved Count
+             * @default 0
+             */
+            unresolved_count: number;
         };
         /**
          * WritingActionPayload
@@ -27091,6 +27271,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobStatusPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_job_job_id_workflow_replay_lineage: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowReplayLineagePayload"];
                 };
             };
             /** @description Validation Error */

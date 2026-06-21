@@ -827,6 +827,91 @@ def test_action_preflight_persists_refresh_receipt_for_replay_evidence(tmp_path:
     assert receipt_artifacts[-1].content["receipt_id"] == receipt["receipt_id"]
 
 
+@pytest.mark.persistence_smoke
+def test_workflow_replay_lineage_compares_persisted_refresh_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Replay lineage should summarize receipt history without mutating runtime state."""
+
+    import writing_runtime as writing_runtime_module
+
+    db_path = tmp_path / "workflow_replay_lineage.sqlite3"
+    runtime = WritingRuntime(database_path=db_path, autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-replay-lineage"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="export lineage paper",
+        metadata={"project_id": "project-replay-lineage"},
+    )
+    state = runtime.update_writing_workflow_state(
+        job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-replay-lineage"},
+        evidence_refs=[{"ref_id": "chunk:lineage", "material_id": "material-lineage"}],
+        citation_bank=[{"citation_id": "cite:lineage", "ref_id": "chunk:lineage"}],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "lineage.docx"},
+        change_log=[{"stage": "export", "summary": "export manifest exists"}],
+    )
+
+    monkeypatch.setattr(writing_runtime_module, "utc_now_iso_z", lambda: "2026-06-22T00:00:00Z")
+    first_preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=job.job_id,
+        project_id="project-replay-lineage",
+        require_ready=False,
+        workflow_state=state,
+        persist_refresh_receipt=True,
+    )
+    first_receipt = dict(first_preflight["refresh_receipt"])
+    second_receipt = {
+        **first_receipt,
+        "receipt_id": "preflight_refresh:manual-second",
+        "generated_at": "2026-06-22T00:05:00Z",
+        "status": "blocked",
+        "can_proceed": False,
+        "validation": {
+            **dict(first_receipt["validation"]),
+            "blocker_count": 2,
+            "unresolved_count": 1,
+        },
+        "projection_digests": {
+            **dict(first_receipt["projection_digests"]),
+            "evidence_integrity_gate": "sha256:changed-gate",
+        },
+    }
+    runtime.persist_preflight_refresh_receipt(job.job_id, second_receipt)
+
+    lineage = runtime.build_workflow_replay_lineage(job.job_id)
+
+    assert lineage["schema_version"] == "scholar_ai_workflow_replay_lineage_v1"
+    assert lineage["job_id"] == job.job_id
+    assert lineage["project_id"] == "project-replay-lineage"
+    assert lineage["receipt_count"] == 2
+    assert lineage["returned_count"] == 2
+    assert lineage["latest_receipt_id"] == "preflight_refresh:manual-second"
+    assert lineage["latest"]["status"] == "blocked"
+    assert lineage["previous"]["receipt_id"] == first_receipt["receipt_id"]
+    assert lineage["comparison"]["status_changed"] is True
+    assert lineage["comparison"]["blocker_count_delta"] == 2 - first_receipt["validation"]["blocker_count"]
+    assert "evidence_integrity_gate" in lineage["comparison"]["changed_digest_keys"]
+    assert lineage["summary"]["lineage_is_read_only"] is True
+    assert any(probe["endpoint"].endswith("/workflow-replay-lineage") for probe in lineage["resume_probes"])
+    assert any("blocking checks" in message for message in lineage["blockers"])
+
+    loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
+    loaded_lineage = loaded_runtime.build_workflow_replay_lineage(job.job_id)
+    assert loaded_lineage["latest_receipt_id"] == "preflight_refresh:manual-second"
+    assert loaded_lineage["summary"]["artifact_receipt_count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path: Path) -> None:
     """Agent handoff cards should survive runtime reload as metadata and artifact."""

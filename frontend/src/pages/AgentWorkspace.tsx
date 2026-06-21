@@ -24,6 +24,7 @@ import {
   getAgentWorkspaceStatus,
   getEvidenceIntegrityGate,
   getWorkflowPassport,
+  getWorkflowReplayLineage,
   getZoteroAttachmentHealth,
   listRuntimeJobs,
   type AgentHandoffCardProjection,
@@ -37,6 +38,7 @@ import {
   type RuntimeJobsStatus,
   type WorkflowReadinessClaimsProjection,
   type WorkflowReadinessClaim,
+  type WorkflowReplayLineageProjection,
   type WorkflowPassportProjection,
   type WorkflowPassportStage,
   type ZoteroAttachmentHealth,
@@ -556,6 +558,41 @@ function preflightReceiptStatus(preflight: WorkflowActionPreflightProjection | n
   return `receipt ${receipt.status}${gateStatus || claimStatus ? ` · gate ${gateStatus || 'unknown'} · claim ${claimStatus || 'unknown'}` : ''}`;
 }
 
+function workflowReplayLineageSummary(lineage: WorkflowReplayLineageProjection | null): string {
+  if (!lineage) {
+    return 'lineage 未读取';
+  }
+  if (lineage.receipt_count === 0) {
+    return 'lineage 0 receipts';
+  }
+  const latest = isRecord(lineage.latest) ? lineage.latest : {};
+  const status = readTextField(latest, 'status') || 'unknown';
+  const blockers = readNumberField(latest, 'blocker_count');
+  const unresolved = readNumberField(latest, 'unresolved_count');
+  return `${lineage.receipt_count} receipts · latest ${status} · block ${blockers} · unresolved ${unresolved}`;
+}
+
+function workflowReplayLineageDelta(lineage: WorkflowReplayLineageProjection | null): string {
+  if (!lineage) {
+    return 'Replay lineage 暂未读取。';
+  }
+  if (lineage.receipt_count === 0) {
+    return '当前 job 还没有持久化 refresh receipt。';
+  }
+  const comparison = isRecord(lineage.comparison) ? lineage.comparison : {};
+  const changed = Array.isArray(comparison.changed_digest_keys)
+    ? comparison.changed_digest_keys.filter((item): item is string => typeof item === 'string')
+    : [];
+  const blockerDelta = readNumberField(comparison, 'blocker_count_delta');
+  const unresolvedDelta = readNumberField(comparison, 'unresolved_count_delta');
+  if (changed.length > 0) {
+    return `Digest changed: ${changed.slice(0, 3).join(', ')} · block Δ ${blockerDelta} · unresolved Δ ${unresolvedDelta}`;
+  }
+  const latest = isRecord(lineage.latest) ? lineage.latest : {};
+  const latestId = readTextField(latest, 'receipt_id') || lineage.latest_receipt_id || 'unknown';
+  return `Latest receipt ${latestId} · block Δ ${blockerDelta} · unresolved Δ ${unresolvedDelta}`;
+}
+
 function workflowReadinessClaims(
   integrityGate: EvidenceIntegrityGateProjection | null,
   handoffCard: AgentHandoffCardProjection | null,
@@ -992,6 +1029,7 @@ export function ResearchWorkflowSpine({
   integrityGate,
   handoffCard,
   actionPreflight,
+  workflowReplayLineage,
   behaviorEvalArtifacts,
   density = 'default',
 }: {
@@ -1000,6 +1038,7 @@ export function ResearchWorkflowSpine({
   integrityGate: EvidenceIntegrityGateProjection | null;
   handoffCard: AgentHandoffCardProjection | null;
   actionPreflight: WorkflowActionPreflightProjection | null;
+  workflowReplayLineage: WorkflowReplayLineageProjection | null;
   behaviorEvalArtifacts: AgentWorkspaceArtifact[];
   density?: WorkflowSpineDensity;
 }) {
@@ -1019,6 +1058,8 @@ export function ResearchWorkflowSpine({
   const preflightBlocked = actionPreflight?.status === 'blocked' || actionPreflight?.can_proceed === false;
   const preflightUnresolved = actionPreflight?.status === 'unresolved';
   const preflightRefreshRequired = actionPreflight?.refresh_required === true || actionPreflight?.freshness?.refresh_required === true;
+  const lineageBlocked = (workflowReplayLineage?.blockers.length ?? 0) > 0;
+  const lineageUnresolved = (workflowReplayLineage?.unresolved.length ?? 0) > 0;
 
   return (
     <section
@@ -1058,6 +1099,9 @@ export function ResearchWorkflowSpine({
           </StatusPill>
           <StatusPill tone={actionPreflight ? claimTone(actionPreflight.status) : 'neutral'}>
             preflight {preflightStatusLabel(actionPreflight?.status)}
+          </StatusPill>
+          <StatusPill tone={lineageBlocked ? 'danger' : lineageUnresolved ? 'warning' : workflowReplayLineage ? 'info' : 'neutral'}>
+            replay {workflowReplayLineage ? workflowReplayLineage.receipt_count : '未读取'}
           </StatusPill>
         </div>
       </div>
@@ -1191,6 +1235,27 @@ export function ResearchWorkflowSpine({
               {actionPreflight ? <StatusPill tone={claimTone(actionPreflight.claim_status)}>{actionPreflight.required_claim_id}</StatusPill> : null}
               {actionPreflight?.refresh_receipt_id ? <StatusPill tone="info">receipt {actionPreflight.refresh_receipt_id}</StatusPill> : null}
               {actionPreflight && preflightUnresolved ? <StatusPill tone="warning">needs gate proof</StatusPill> : null}
+            </div>
+          </article>
+
+          <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Replay Lineage</h3>
+              <StatusPill tone={lineageBlocked ? 'danger' : lineageUnresolved ? 'warning' : workflowReplayLineage ? 'info' : 'neutral'}>
+                {workflowReplayLineage ? `${workflowReplayLineage.receipt_count} receipts` : '未读取'}
+              </StatusPill>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+              {workflowReplayLineage?.blockers[0]
+                || workflowReplayLineage?.unresolved[0]
+                || workflowReplayLineageDelta(workflowReplayLineage)}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone="neutral">{workflowReplayLineageSummary(workflowReplayLineage)}</StatusPill>
+              <StatusPill tone="neutral">{workflowReplayLineage ? `returned ${workflowReplayLineage.returned_count}` : 'returned unknown'}</StatusPill>
+              {workflowReplayLineage?.latest_receipt_id ? (
+                <StatusPill tone="info">{workflowReplayLineage.latest_receipt_id}</StatusPill>
+              ) : null}
             </div>
           </article>
 
@@ -1361,6 +1426,7 @@ export function AgentWorkspace() {
   const [workflowPassport, setWorkflowPassport] = useState<WorkflowPassportProjection | null>(null);
   const [integrityGate, setIntegrityGate] = useState<EvidenceIntegrityGateProjection | null>(null);
   const [handoffCard, setHandoffCard] = useState<AgentHandoffCardProjection | null>(null);
+  const [workflowReplayLineage, setWorkflowReplayLineage] = useState<WorkflowReplayLineageProjection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>('agents');
@@ -1422,6 +1488,7 @@ export function AgentWorkspace() {
       setWorkflowPassport(null);
       setIntegrityGate(null);
       setHandoffCard(null);
+      setWorkflowReplayLineage(null);
     } finally {
       setLoading(false);
     }
@@ -1462,6 +1529,30 @@ export function AgentWorkspace() {
     () => (status?.artifacts ?? []).filter(isBehaviorEvalArtifact),
     [status],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedAgentJob) {
+      setWorkflowReplayLineage(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    getWorkflowReplayLineage(selectedAgentJob.job_id, { limit: 12 })
+      .then((lineage) => {
+        if (!cancelled) {
+          setWorkflowReplayLineage(lineage);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWorkflowReplayLineage(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAgentJob]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1536,6 +1627,7 @@ export function AgentWorkspace() {
           integrityGate={integrityGate}
           handoffCard={handoffCard}
           actionPreflight={selectedActionPreflight}
+          workflowReplayLineage={workflowReplayLineage}
           behaviorEvalArtifacts={behaviorEvalArtifacts}
         />
 

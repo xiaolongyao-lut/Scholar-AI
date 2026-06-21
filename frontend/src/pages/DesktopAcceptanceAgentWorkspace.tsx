@@ -427,6 +427,7 @@ export function DesktopAcceptanceAgentWorkspace() {
           integrityGate={ACCEPTANCE_INTEGRITY_GATE}
           handoffCard={ACCEPTANCE_HANDOFF_CARD}
           actionPreflight={ACCEPTANCE_EXPORT_PREFLIGHT}
+          workflowReplayLineage={null}
           behaviorEvalArtifacts={[]}
           density="desktop-acceptance"
         />

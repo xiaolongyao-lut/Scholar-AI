@@ -1160,6 +1160,69 @@ def test_runtime_preflight_refresh_receipt_route_reads_persisted_replay_evidence
     assert missing_response.status_code == 404
 
 
+def test_runtime_workflow_replay_lineage_route_lists_receipt_history(monkeypatch) -> None:
+    """Runtime route should expose bounded receipt lineage for retry decisions."""
+
+    runtime = WritingRuntime(autosave=False)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-lineage-route"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="export lineage route",
+        metadata={"project_id": "project-lineage-route"},
+    )
+    state = runtime.update_writing_workflow_state(
+        job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-lineage-route"},
+        evidence_refs=[{"ref_id": "chunk:lineage-route", "material_id": "material-lineage-route"}],
+        citation_bank=[{"citation_id": "cite:lineage-route", "ref_id": "chunk:lineage-route"}],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "lineage-route.docx"},
+        change_log=[{"stage": "export", "summary": "export manifest exists"}],
+    )
+    preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=job.job_id,
+        project_id="project-lineage-route",
+        workflow_state=state,
+        persist_refresh_receipt=True,
+    )
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        f"/runtime/job/{job.job_id}/workflow-replay-lineage",
+        params={"limit": 5},
+    )
+
+    assert response.status_code == 200
+    lineage = response.json()
+    assert lineage["schema_version"] == "scholar_ai_workflow_replay_lineage_v1"
+    assert lineage["receipt_count"] == 1
+    assert lineage["returned_count"] == 1
+    assert lineage["latest_receipt_id"] == preflight["refresh_receipt_id"]
+    assert lineage["items"][0]["receipt_id"] == preflight["refresh_receipt_id"]
+    assert lineage["summary"]["lineage_is_read_only"] is True
+    assert any(probe["endpoint"].endswith("/workflow-replay-lineage") for probe in lineage["resume_probes"])
+
+    invalid_response = client.get(
+        f"/runtime/job/{job.job_id}/workflow-replay-lineage",
+        params={"limit": 0},
+    )
+    assert invalid_response.status_code == 422
+
+    missing_response = client.get("/runtime/job/job_missing/workflow-replay-lineage")
+    assert missing_response.status_code == 404
+
+
 @pytest.mark.persistence_smoke
 def test_runtime_router_rejects_invalid_session_mode(monkeypatch, tmp_path) -> None:
     """The runtime router should reject invalid session modes."""

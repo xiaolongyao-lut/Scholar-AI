@@ -21508,6 +21508,259 @@
         "title": "WorkflowPassportStagePayload",
         "type": "object"
       },
+      "WorkflowReplayLineagePayload": {
+        "description": "Read-only replay lineage for one job's persisted workflow receipts.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this lineage projection.\n    job_id: Runtime job id that owns the receipts.\n    session_id: Runtime session id for resume probes.\n    project_id: Optional Scholar AI project recovered from runtime scope.\n    scope: Runtime scope used for the projection.\n    receipt_count: Total unique receipts found locally.\n    returned_count: Number of compact receipt rows returned.\n    latest_receipt_id: Latest receipt id after time ordering.\n    latest: Compact summary of the latest receipt.\n    previous: Compact summary of the previous receipt, if any.\n    items: Bounded compact receipt rows in chronological order.\n    comparison: Latest-vs-previous status/count/digest deltas.\n    blockers: Blocking messages that should stop readiness claims.\n    unresolved: Unresolved messages that must remain visible.\n    resume_probes: Read-only calls agents should run before retrying.\n    summary: Aggregate counts and read-only guarantees.\n    provenance: Runtime sources and mature patterns used to derive lineage.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Blockers",
+            "type": "array"
+          },
+          "comparison": {
+            "additionalProperties": true,
+            "title": "Comparison",
+            "type": "object"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowReplayReceiptSummaryPayload"
+            },
+            "maxItems": 50,
+            "title": "Items",
+            "type": "array"
+          },
+          "job_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Job Id",
+            "type": "string"
+          },
+          "latest": {
+            "additionalProperties": true,
+            "title": "Latest",
+            "type": "object"
+          },
+          "latest_receipt_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Receipt Id"
+          },
+          "previous": {
+            "additionalProperties": true,
+            "title": "Previous",
+            "type": "object"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "receipt_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Receipt Count",
+            "type": "integer"
+          },
+          "resume_probes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 8,
+            "title": "Resume Probes",
+            "type": "array"
+          },
+          "returned_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Returned Count",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "scholar_ai_workflow_replay_lineage_v1",
+            "default": "scholar_ai_workflow_replay_lineage_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "title": "Scope",
+            "type": "object"
+          },
+          "session_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Unresolved",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "job_id",
+          "session_id"
+        ],
+        "title": "WorkflowReplayLineagePayload",
+        "type": "object"
+      },
+      "WorkflowReplayReceiptSummaryPayload": {
+        "description": "Compact receipt row in a workflow replay lineage.\n\nArgs:\n    ordinal: 1-based position in the replay lineage after time ordering.\n    receipt_id: Stable persisted receipt identifier.\n    generated_at: UTC time when the receipt was generated.\n    action_id: Local action whose preflight was refreshed.\n    required_claim_id: Readiness claim evaluated for the action.\n    status: Action-preflight status after replay.\n    can_proceed: Whether the action was allowed by the receipt.\n    refresh_required: Whether stale/unknown evidence still required refresh.\n    blocker_count: Blocking checks reported by the receipt validation.\n    unresolved_count: Unresolved checks reported by the receipt validation.\n    digest_keys: Projection digest names present in this receipt.\n    projection_digests: Bounded digest map for comparison.\n    external_mutation: Whether the replay performed external mutation.\n    source_material_mutation: Whether source material was mutated.",
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          },
+          "blocker_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Blocker Count",
+            "type": "integer"
+          },
+          "can_proceed": {
+            "default": false,
+            "title": "Can Proceed",
+            "type": "boolean"
+          },
+          "digest_keys": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Digest Keys",
+            "type": "array"
+          },
+          "external_mutation": {
+            "default": false,
+            "title": "External Mutation",
+            "type": "boolean"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "ordinal": {
+            "minimum": 1.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "projection_digests": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Projection Digests",
+            "type": "object"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "refresh_required": {
+            "default": false,
+            "title": "Refresh Required",
+            "type": "boolean"
+          },
+          "required_claim_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Claim Id"
+          },
+          "source_material_mutation": {
+            "default": false,
+            "title": "Source Material Mutation",
+            "type": "boolean"
+          },
+          "status": {
+            "default": "unresolved",
+            "enum": [
+              "ready",
+              "unresolved",
+              "blocked",
+              "stale"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unresolved_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unresolved Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ordinal"
+        ],
+        "title": "WorkflowReplayReceiptSummaryPayload",
+        "type": "object"
+      },
       "WritingActionPayload": {
         "description": "Legacy-compatible writing action payload.",
         "properties": {
@@ -38139,6 +38392,61 @@
           }
         },
         "summary": "Get Job Status",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/job/{job_id}/workflow-replay-lineage": {
+      "get": {
+        "description": "Return a read-only replay lineage for persisted workflow receipts.",
+        "operationId": "get_runtime_job_job_id_workflow_replay_lineage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowReplayLineagePayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow Replay Lineage",
         "tags": [
           "Runtime"
         ]
