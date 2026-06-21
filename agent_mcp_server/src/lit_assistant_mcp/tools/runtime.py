@@ -1,11 +1,13 @@
 """Runtime Literature Assistant tools backed by the local HTTP API."""
 
+import json
 import time
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
 from ..audit import AuditLog
+from ..behavior_eval import build_behavior_eval_pack
 from ..backend_client import BackendClient
 from ..result import safe_result
 
@@ -1091,6 +1093,41 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.agent_handoff_card", {**args, "job_id": job_id}, result, started, endpoint)
 
+    def behavior_eval_pack(
+        self,
+        observations: list[dict[str, Any]] | None = None,
+        include_cases: bool = True,
+        write_record: bool = True,
+    ) -> dict[str, Any]:
+        """Run deterministic local behavior evals for MCP and agent outputs.
+
+        Args:
+            observations: Optional agent/MCP output objects. When omitted, the
+                tool runs built-in unsafe canaries to verify the red-flag suite.
+            include_cases: Whether to include the case manifest in the output.
+            write_record: Whether to persist a local run record under
+                ``workspace_artifacts`` when an audit root is configured.
+        """
+        started = time.perf_counter()
+        bounded_observations = self._behavior_eval_observations(observations)
+        payload = build_behavior_eval_pack(
+            bounded_observations,
+            include_cases=bool(include_cases),
+        )
+        record_path: str | None = None
+        if write_record and self.audit is not None:
+            record_path = self._write_behavior_eval_record(payload)
+            payload["run_record"] = {"path": record_path}
+        args = {
+            "mode": payload["mode"],
+            "observation_count": payload["summary"]["observation_count"],
+            "include_cases": bool(include_cases),
+            "write_record": bool(write_record),
+            "record_path": record_path,
+        }
+        result = safe_result(payload)
+        return self._finish("literature.behavior_eval_pack", args, result, started, "local://behavior-eval-pack")
+
     def agent_resource_read(
         self,
         ref_id: str,
@@ -1685,6 +1722,35 @@ class RuntimeTools:
                 raise ValueError(f"{name} items must be at most {max_chars} characters")
             cleaned.append(text)
         return cleaned
+
+    def _behavior_eval_observations(
+        self,
+        observations: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]] | None:
+        """Return bounded behavior-eval observations for local deterministic checks."""
+
+        if observations is None:
+            return None
+        items = self._dict_list(observations, "observations", maximum=50)
+        bounded: list[dict[str, Any]] = []
+        for index, item in enumerate(items):
+            serialized = json.dumps(item, ensure_ascii=False, sort_keys=True, default=str)
+            if len(serialized) > 50000:
+                raise ValueError(f"observations[{index}] must serialize to at most 50000 characters")
+            bounded.append(item)
+        return bounded
+
+    def _write_behavior_eval_record(self, payload: dict[str, Any]) -> str:
+        """Persist one local behavior-eval run record under workspace artifacts."""
+
+        if self.audit is None:
+            raise ValueError("audit root is required to persist behavior eval records")
+        root = self.audit.audit_root.parent / "behavior_eval_runs"
+        root.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        path = root / f"behavior-eval-{stamp}-{uuid4().hex[:8]}.json"
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        return str(path)
 
     def _citation_overlap_anchors(self, value: list[dict[str, Any]]) -> list[dict[str, str]]:
         if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):

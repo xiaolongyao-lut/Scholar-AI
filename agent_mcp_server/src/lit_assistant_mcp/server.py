@@ -108,6 +108,7 @@ def create_mcp_server(
         "literature.agent_request_list": runtime.agent_request_list,
         "literature.agent_request_read": runtime.agent_request_read,
         "literature.agent_handoff_card": runtime.agent_handoff_card,
+        "literature.behavior_eval_pack": runtime.behavior_eval_pack,
         "literature.agent_resource_read": runtime.agent_resource_read,
         "literature.agent_progress": runtime.agent_progress,
         "literature.agent_result": runtime.agent_result,
@@ -539,6 +540,19 @@ def create_mcp_server(
     def literature_agent_handoff_card(request_id: str) -> dict[str, Any]:
         """Read a resumable handoff card for one runtime-visible agent request."""
         return runtime.agent_handoff_card(request_id=request_id)
+
+    @mcp.tool(name="literature.behavior_eval_pack", structured_output=True)
+    def literature_behavior_eval_pack(
+        observations: list[dict[str, Any]] | None = None,
+        include_cases: bool = True,
+        write_record: bool = True,
+    ) -> dict[str, Any]:
+        """Run deterministic local red-flag evals for MCP and agent outputs."""
+        return runtime.behavior_eval_pack(
+            observations=observations,
+            include_cases=include_cases,
+            write_record=write_record,
+        )
 
     @mcp.tool(name="literature.agent_resource_read", structured_output=True)
     def literature_agent_resource_read(
