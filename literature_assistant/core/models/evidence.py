@@ -230,6 +230,8 @@ class EvidencePackReferencePayload(BaseModel):
         chunk_id: Stable chunk identifier in the project chunk store.
         material_id: Material that owns the chunk.
         page: One-based source page when persisted in metadata.
+        locator: Optional compact locator that can jump back to a material,
+            page, and bbox without exposing source text.
         lexical_score: Score from the local lexical retrieval path.
         rerank_score: Optional rerank score; ``None`` when rerank did not run.
         citation_anchor: Stable local citation anchor for draft traceability.
@@ -248,6 +250,7 @@ class EvidencePackReferencePayload(BaseModel):
     chunk_id: str = Field(min_length=1)
     material_id: str = Field(min_length=1)
     page: Optional[int] = Field(default=None, ge=1)
+    locator: Optional[dict[str, Any]] = None
     lexical_score: float = Field(ge=0.0)
     rerank_score: Optional[float] = Field(default=None, ge=0.0)
     citation_anchor: str = Field(min_length=1, max_length=260)
@@ -257,6 +260,71 @@ class EvidencePackReferencePayload(BaseModel):
     source_title: Optional[str] = Field(default=None, max_length=160)
     source_path: Optional[str] = Field(default=None, max_length=240)
     joint_score: Optional[float] = Field(default=None, ge=0.0)
+
+
+class EvidenceLocatorCoveragePayload(BaseModel):
+    """Coverage summary for refs that should be recoverable in source layout.
+
+    Args:
+        total_refs: All refs in the response, including non-project bounded refs.
+        project_ref_count: Project-local chunk refs that can carry PDF locators.
+        non_project_ref_count: Bounded refs outside the project chunk store.
+        material_locator_count: Project refs with material_id and chunk_id.
+        page_locator_count: Project refs with a one-based source page.
+        bbox_locator_count: Project refs with a valid bbox tied to a page.
+        missing_locator_count: Project refs missing the material/chunk locator.
+        page_coverage_ratio: Page-locator coverage over project refs.
+        bbox_coverage_ratio: Bbox-locator coverage over project refs.
+        coverage_state: Coarse state for workflow-passport and integrity gates.
+        risk_level: Local diagnostic severity; it records risk but does not
+            mutate or block workflows by itself.
+        sample_missing_ref_ids: Bounded examples for repair without leaking text.
+        notes: Bounded reviewer/agent hints.
+    """
+
+    schema_version: Literal["scholar-ai-evidence-locator-coverage/v1"] = (
+        "scholar-ai-evidence-locator-coverage/v1"
+    )
+    total_refs: int = Field(default=0, ge=0)
+    project_ref_count: int = Field(default=0, ge=0)
+    non_project_ref_count: int = Field(default=0, ge=0)
+    material_locator_count: int = Field(default=0, ge=0)
+    page_locator_count: int = Field(default=0, ge=0)
+    bbox_locator_count: int = Field(default=0, ge=0)
+    missing_locator_count: int = Field(default=0, ge=0)
+    page_coverage_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    bbox_coverage_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    coverage_state: Literal[
+        "no_refs",
+        "missing",
+        "material_only",
+        "page_located",
+        "layout_partial",
+        "layout_complete",
+    ] = "no_refs"
+    risk_level: Literal["none", "warn", "block"] = "none"
+    sample_missing_ref_ids: List[str] = Field(default_factory=list, max_length=8)
+    notes: List[str] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def _validate_counts(self) -> "EvidenceLocatorCoveragePayload":
+        """Reject impossible coverage counts so gates can trust this payload."""
+
+        if self.project_ref_count + self.non_project_ref_count != self.total_refs:
+            raise ValueError("project/non-project locator counts must sum to total_refs")
+        for value in (
+            self.material_locator_count,
+            self.page_locator_count,
+            self.bbox_locator_count,
+            self.missing_locator_count,
+        ):
+            if value > self.project_ref_count:
+                raise ValueError("locator counts cannot exceed project_ref_count")
+        if self.bbox_locator_count > self.page_locator_count:
+            raise ValueError("bbox locator count cannot exceed page locator count")
+        if self.page_locator_count > self.material_locator_count:
+            raise ValueError("page locator count cannot exceed material locator count")
+        return self
 
 
 class RetrievalQrelsStatusPayload(BaseModel):
@@ -311,6 +379,7 @@ class EvidenceRetrievalDiagnosticsPayload(BaseModel):
         wiki_weight: Weight assigned to wiki recall in this build.
         joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are
             reported here without being coerced into project chunk refs.
+        locator_coverage: Layout-aware source locator coverage for returned refs.
         qrels_status: Whether retrieval quality can be claimed from canonical
             qrels, or is still blocked by missing/candidate/reviewed labels.
         reasoning_trace: Auditable retrieval-decision summary, not private
@@ -325,6 +394,9 @@ class EvidenceRetrievalDiagnosticsPayload(BaseModel):
     project_weight: float = Field(default=1.0, ge=0.0, le=1.0)
     wiki_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     joint_recall: dict[str, Any] = Field(default_factory=dict)
+    locator_coverage: EvidenceLocatorCoveragePayload = Field(
+        default_factory=EvidenceLocatorCoveragePayload
+    )
     qrels_status: RetrievalQrelsStatusPayload = Field(default_factory=RetrievalQrelsStatusPayload)
     reasoning_trace: List[str] = Field(default_factory=list, max_length=16)
     notes: List[str] = Field(default_factory=list, max_length=12)

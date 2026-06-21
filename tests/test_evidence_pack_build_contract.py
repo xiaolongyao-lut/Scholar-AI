@@ -102,6 +102,22 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
     assert "not invoked" in diagnostics["fallback_reason"]
     assert diagnostics["project_weight"] == 1.0
     assert diagnostics["wiki_weight"] == 0.0
+    assert diagnostics["locator_coverage"] == {
+        "schema_version": "scholar-ai-evidence-locator-coverage/v1",
+        "total_refs": 1,
+        "project_ref_count": 1,
+        "non_project_ref_count": 0,
+        "material_locator_count": 1,
+        "page_locator_count": 1,
+        "bbox_locator_count": 1,
+        "missing_locator_count": 0,
+        "page_coverage_ratio": 1.0,
+        "bbox_coverage_ratio": 1.0,
+        "coverage_state": "layout_complete",
+        "risk_level": "none",
+        "sample_missing_ref_ids": [],
+        "notes": ["Every project ref has material, page, and bbox locators."],
+    }
     assert diagnostics["reasoning_trace"]
     assert any("lexical" in item.lower() for item in diagnostics["reasoning_trace"])
     assert diagnostics["notes"]
@@ -120,6 +136,9 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
     assert attempts["retrieval"]["metadata"]["returned_ref_count"] == 1
     assert attempts["rerank"]["status"] == "skipped"
     assert attempts["rerank"]["error_class"] == "rerank_unavailable"
+    assert attempts["locator_coverage"]["status"] == "success"
+    assert attempts["locator_coverage"]["metadata"]["coverage_state"] == "layout_complete"
+    assert attempts["locator_coverage"]["metadata"]["bbox_coverage_ratio"] == 1.0
     assert attempts["qrels_quality_gate"]["status"] == "skipped"
     assert payload["total"] == 1
     assert payload["truncated"] is False
@@ -132,6 +151,7 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
         "chunk_id",
         "material_id",
         "page",
+        "locator",
         "lexical_score",
         "rerank_score",
         "citation_anchor",
@@ -149,6 +169,14 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
     assert ref["chunk_id"] == "pack_chunk_1"
     assert ref["material_id"] == "mat_pack"
     assert ref["page"] == 9
+    assert ref["locator"] == {
+        "material_id": "mat_pack",
+        "chunk_id": "pack_chunk_1",
+        "page": 9,
+        "chunk_index": 1,
+        "bbox": [0.11, 0.22, 0.33, 0.44],
+        "bbox_unit": "normalized_ratio",
+    }
     assert ref["lexical_score"] > 0
     assert ref["rerank_score"] is None
     assert ref["citation_anchor"]
@@ -300,6 +328,11 @@ def test_evidence_pack_build_reports_wiki_project_joint_recall(
     assert joint["wiki_summaries"][0]["read_endpoint"] == "/api/agent-bridge/resource/wiki:synthesis/alsi10mg-1.md"
     assert diagnostics["project_weight"] == 0.4
     assert diagnostics["wiki_weight"] == 0.6
+    locator_coverage = diagnostics["locator_coverage"]
+    assert locator_coverage["project_ref_count"] == 1
+    assert locator_coverage["non_project_ref_count"] == len(payload["evidence_refs"]) - 1
+    assert locator_coverage["coverage_state"] == "layout_complete"
+    assert locator_coverage["bbox_coverage_ratio"] == 1.0
     assert any("wiki+project" in item.lower() for item in diagnostics["reasoning_trace"])
     refs = payload["evidence_refs"]
     assert any(ref["ref_id"] == "chunk:pack_chunk_1" and ref["source_type"] == "project" for ref in refs)
@@ -313,6 +346,7 @@ def test_evidence_pack_build_reports_wiki_project_joint_recall(
     assert wiki_refs[0]["source_title"].startswith("AlSi10Mg wiki note")
     assert wiki_refs[0]["source_path"].startswith("synthesis/alsi10mg-")
     assert wiki_refs[0]["joint_score"] is not None
+    assert wiki_refs[0]["locator"] is None
     assert len(wiki_refs[0]["summary"]) <= 300
     serialized = str(payload)
     assert "Wiki note 1" in serialized
@@ -420,6 +454,8 @@ def test_evidence_pack_build_empty_store_is_stable() -> None:
     assert payload["rerank_status"] == "unavailable"
     assert payload["retrieval_diagnostics"]["embedding_status"] == "unavailable"
     assert payload["retrieval_diagnostics"]["rerank_status"] == "unavailable"
+    assert payload["retrieval_diagnostics"]["locator_coverage"]["coverage_state"] == "no_refs"
+    assert payload["retrieval_diagnostics"]["locator_coverage"]["risk_level"] == "none"
     assert payload["total"] == 0
     assert payload["truncated"] is False
     outcome = payload["outcome"]
@@ -430,6 +466,8 @@ def test_evidence_pack_build_empty_store_is_stable() -> None:
     attempts = {attempt["stage"]: attempt for attempt in outcome["attempts"]}
     assert attempts["chunk_load"]["status"] == "skipped"
     assert attempts["chunk_load"]["error_class"] == "ingest_needed"
+    assert attempts["locator_coverage"]["status"] == "success"
+    assert attempts["locator_coverage"]["metadata"]["coverage_state"] == "no_refs"
     assert payload["evidence_refs"] == []
 
 

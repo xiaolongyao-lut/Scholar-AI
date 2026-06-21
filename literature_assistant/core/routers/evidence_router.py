@@ -25,6 +25,7 @@ from literature_assistant.core.wiki.page_store import WikiPageStore
 from literature_assistant.core.wiki.query import WikiQueryIndex
 from project_paths import project_data_path, runtime_state_path
 from routers.resources_router.endpoints_search_upload import (
+    build_locator_coverage,
     _chunk_to_search_ref,
     _flatten_chunk_store_for_search_refs,
     enrich_chunk_locator_with_pdf,
@@ -961,6 +962,9 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
 
     summary = _bounded_evidence_pack_summary(str(getattr(ref, "summary", "") or ""))
     page = getattr(ref.metadata, "page", None)
+    locator = getattr(ref.metadata, "locator", None)
+    if not isinstance(locator, dict):
+        locator = None
     lexical_score = float(getattr(ref, "lexical_score", 0.0) or 0.0)
     rerank_score = getattr(ref, "rerank_score", None)
     return EvidencePackReferencePayload(
@@ -970,6 +974,7 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
         chunk_id=chunk_id,
         material_id=material_id,
         page=page,
+        locator=locator,
         lexical_score=lexical_score,
         rerank_score=rerank_score,
         citation_anchor=_citation_anchor_from_ref(ref_id, material_id, chunk_id),
@@ -1394,6 +1399,34 @@ def _evidence_pack_qrels_attempt(qrels_status: RetrievalQrelsStatusPayload) -> T
     )
 
 
+def _evidence_pack_locator_attempt(diagnostics: EvidenceRetrievalDiagnosticsPayload) -> ToolAttempt:
+    """Return a locator-coverage attempt for workflow and integrity gates."""
+
+    coverage = diagnostics.locator_coverage
+    status = "success" if coverage.risk_level == "none" else "blocked" if coverage.risk_level == "block" else "degraded"
+    reason_by_state: dict[str, str] = {
+        "no_refs": "No project refs were returned for source locator coverage.",
+        "missing": "Returned project refs are missing material/chunk locators.",
+        "material_only": "Returned project refs identify chunks but lack source pages.",
+        "page_located": "Returned project refs can jump to pages but not exact layout boxes.",
+        "layout_partial": "Some returned project refs include page+bbox locators.",
+        "layout_complete": "Every returned project ref includes material, page, and bbox locators.",
+    }
+    recommendation = ""
+    if coverage.risk_level == "block":
+        recommendation = "Run or repair material processing before treating these refs as fully auditable evidence."
+    elif coverage.risk_level == "warn":
+        recommendation = "Use page locators for review and add bbox-capable extraction before layout-sensitive claims."
+    return ToolAttempt(
+        stage="locator_coverage",
+        status=status,
+        reason=reason_by_state.get(coverage.coverage_state, "Locator coverage was computed."),
+        error_class="" if coverage.risk_level == "none" else f"locator_coverage_{coverage.coverage_state}",
+        recommendation=recommendation,
+        metadata=coverage.model_dump(mode="json"),
+    )
+
+
 def _evidence_pack_next_action(
     *,
     project_id: str,
@@ -1506,6 +1539,7 @@ def _evidence_pack_outcome(
             },
         )
     )
+    attempts.append(_evidence_pack_locator_attempt(diagnostics))
     attempts.append(_evidence_pack_qrels_attempt(qrels_status))
 
     if evidence_refs:
@@ -1587,6 +1621,7 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
         evidence_refs=evidence_refs,
         top_k=request.top_k,
     )
+    diagnostics.locator_coverage = build_locator_coverage(evidence_refs)
     qrels_status = _project_qrels_status(project_id)
     diagnostics.qrels_status = qrels_status
     outcome = _evidence_pack_outcome(

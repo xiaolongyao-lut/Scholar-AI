@@ -11,7 +11,7 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import quote
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException, Query, Request, UploadFile, File, Form
 
@@ -19,6 +19,7 @@ from models import (
     ChunkSearchRefMetadataPayload,
     ChunkSearchRefPayload,
     ChunkSearchRefsResponse,
+    EvidenceLocatorCoveragePayload,
     FigureTableCandidatePayload,
     PdfBboxUnit,
     coerce_pdf_bbox,
@@ -234,40 +235,257 @@ def _chunk_search_ref_locator(chunk: dict[str, Any], *, material_id: str, chunk_
 
     locator = chunk.get("locator")
     if isinstance(locator, dict):
-        allowed: dict[str, Any] = {}
-        page = _coerce_optional_positive_page(locator.get("page"))
+        page = _coerce_optional_positive_page(locator.get("page")) or _coerce_optional_positive_page(chunk.get("page"))
         chunk_index = _coerce_non_negative_int(locator.get("chunk_index"))
-        if page is not None:
-            allowed["page"] = page
-        if chunk_index is not None:
-            allowed["chunk_index"] = chunk_index
-        bbox_value = locator.get("bbox")
-        if isinstance(bbox_value, list):
-            bbox = [
-                float(item)
-                for item in bbox_value
-                if isinstance(item, (int, float)) and not isinstance(item, bool)
-            ][:4]
-            if len(bbox) == 4:
-                allowed["bbox"] = bbox
-        bbox_unit = _normalize_search_ref_text(locator.get("bbox_unit"), max_chars=80)
-        if bbox_unit:
-            allowed["bbox_unit"] = bbox_unit
-        if allowed:
-            allowed.setdefault("material_id", material_id)
-            allowed.setdefault("chunk_id", chunk_id)
-            return allowed
+        if chunk_index is None:
+            chunk_index = _coerce_non_negative_int(chunk.get("chunk_index"))
+        payload = _layout_locator_payload(
+            material_id=material_id,
+            chunk_id=chunk_id,
+            page=page,
+            chunk_index=chunk_index,
+            bbox=locator.get("bbox"),
+            bbox_unit=locator.get("bbox_unit"),
+        )
+        if payload is not None:
+            return payload
 
     page = _coerce_optional_positive_page(chunk.get("page"))
     chunk_index = _coerce_non_negative_int(chunk.get("chunk_index"))
-    if page is None and chunk_index is None:
+    return _layout_locator_payload(
+        material_id=material_id,
+        chunk_id=chunk_id,
+        page=page,
+        chunk_index=chunk_index,
+        bbox=chunk.get("bbox"),
+        bbox_unit=chunk.get("bbox_unit"),
+    )
+
+
+def _layout_locator_payload(
+    *,
+    material_id: str,
+    chunk_id: str,
+    page: int | None,
+    chunk_index: int | None,
+    bbox: Any,
+    bbox_unit: Any,
+) -> dict[str, Any] | None:
+    """Return a normalized layout locator for source recovery diagnostics."""
+
+    normalized_material_id = _normalize_search_ref_text(material_id, max_chars=200)
+    normalized_chunk_id = _normalize_search_ref_text(chunk_id, max_chars=200)
+    if not normalized_material_id or not normalized_chunk_id:
         return None
-    payload: dict[str, Any] = {"material_id": material_id, "chunk_id": chunk_id}
+    normalized_bbox = coerce_pdf_bbox(bbox)
+    normalized_unit: PdfBboxUnit | None = None
+    if normalized_bbox is not None:
+        raw_unit = _normalize_search_ref_text(bbox_unit, max_chars=80)
+        try:
+            normalized_unit = PdfBboxUnit(raw_unit) if raw_unit else PdfBboxUnit.NORMALIZED_RATIO
+        except ValueError:
+            normalized_unit = None
+        if normalized_unit is None or not pdf_bbox_matches_unit(normalized_bbox, normalized_unit):
+            normalized_bbox = None
+            normalized_unit = None
+        if page is None:
+            normalized_bbox = None
+            normalized_unit = None
+    if page is None and chunk_index is None and normalized_bbox is None:
+        return None
+    payload: dict[str, Any] = {
+        "material_id": normalized_material_id,
+        "chunk_id": normalized_chunk_id,
+    }
     if page is not None:
         payload["page"] = page
     if chunk_index is not None:
         payload["chunk_index"] = chunk_index
+    if normalized_bbox is not None and normalized_unit is not None:
+        payload["bbox"] = normalized_bbox
+        payload["bbox_unit"] = normalized_unit.value
     return payload
+
+
+def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
+    """Summarize whether returned refs can be located back in source layout."""
+
+    if not isinstance(refs, list):
+        raise ValueError("refs must be a list")
+    total_refs = len(refs)
+    project_ref_count = 0
+    non_project_ref_count = 0
+    material_locator_count = 0
+    page_locator_count = 0
+    bbox_locator_count = 0
+    missing_ref_ids: list[str] = []
+    for ref in refs:
+        source_type = _ref_source_type(ref)
+        if source_type and source_type != "project":
+            non_project_ref_count += 1
+            continue
+        project_ref_count += 1
+        locator = _ref_locator(ref)
+        ref_id = _normalize_search_ref_text(_ref_attr(ref, "ref_id"), max_chars=200) or _normalize_search_ref_text(
+            _ref_attr(ref, "chunk_id"), max_chars=200
+        )
+        if not _locator_has_identity(locator):
+            if ref_id and len(missing_ref_ids) < 8:
+                missing_ref_ids.append(ref_id)
+            continue
+        material_locator_count += 1
+        if _coerce_optional_positive_page(locator.get("page")) is not None:
+            page_locator_count += 1
+            bbox = coerce_pdf_bbox(locator.get("bbox"))
+            bbox_unit = locator.get("bbox_unit")
+            try:
+                unit = PdfBboxUnit(str(bbox_unit)) if bbox_unit else PdfBboxUnit.NORMALIZED_RATIO
+            except ValueError:
+                unit = PdfBboxUnit.NORMALIZED_RATIO
+            if bbox is not None and pdf_bbox_matches_unit(bbox, unit):
+                bbox_locator_count += 1
+
+    missing_locator_count = max(project_ref_count - material_locator_count, 0)
+    page_ratio = _coverage_ratio(page_locator_count, project_ref_count)
+    bbox_ratio = _coverage_ratio(bbox_locator_count, project_ref_count)
+    coverage_state = _locator_coverage_state(
+        total_refs=total_refs,
+        project_ref_count=project_ref_count,
+        material_locator_count=material_locator_count,
+        page_locator_count=page_locator_count,
+        bbox_locator_count=bbox_locator_count,
+    )
+    risk_level = _locator_coverage_risk(coverage_state)
+    return EvidenceLocatorCoveragePayload(
+        total_refs=total_refs,
+        project_ref_count=project_ref_count,
+        non_project_ref_count=non_project_ref_count,
+        material_locator_count=material_locator_count,
+        page_locator_count=page_locator_count,
+        bbox_locator_count=bbox_locator_count,
+        missing_locator_count=missing_locator_count,
+        page_coverage_ratio=page_ratio,
+        bbox_coverage_ratio=bbox_ratio,
+        coverage_state=coverage_state,
+        risk_level=risk_level,
+        sample_missing_ref_ids=missing_ref_ids,
+        notes=_locator_coverage_notes(
+            coverage_state=coverage_state,
+            project_ref_count=project_ref_count,
+            non_project_ref_count=non_project_ref_count,
+        ),
+    )
+
+
+def _ref_attr(ref: Any, field_name: str) -> Any:
+    """Read a field from either a Pydantic model or a plain dict."""
+
+    if isinstance(ref, dict):
+        return ref.get(field_name)
+    return getattr(ref, field_name, None)
+
+
+def _ref_source_type(ref: Any) -> str:
+    """Return the bounded source type for a ref."""
+
+    return _normalize_search_ref_text(_ref_attr(ref, "source_type"), max_chars=80)
+
+
+def _ref_locator(ref: Any) -> dict[str, Any]:
+    """Return a locator dict from supported search/evidence ref shapes."""
+
+    locator = _ref_attr(ref, "locator")
+    if isinstance(locator, dict):
+        return locator
+    metadata = _ref_attr(ref, "metadata")
+    if isinstance(metadata, dict):
+        locator = metadata.get("locator")
+        return locator if isinstance(locator, dict) else {}
+    locator = getattr(metadata, "locator", None)
+    return locator if isinstance(locator, dict) else {}
+
+
+def _locator_has_identity(locator: dict[str, Any]) -> bool:
+    """Return true when a locator can at least identify material and chunk."""
+
+    return bool(
+        _normalize_search_ref_text(locator.get("material_id"), max_chars=200)
+        and _normalize_search_ref_text(locator.get("chunk_id"), max_chars=200)
+    )
+
+
+def _coverage_ratio(count: int, total: int) -> float:
+    """Return a stable four-decimal ratio for API diagnostics."""
+
+    if total <= 0:
+        return 0.0
+    return round(count / total, 4)
+
+
+def _locator_coverage_state(
+    *,
+    total_refs: int,
+    project_ref_count: int,
+    material_locator_count: int,
+    page_locator_count: int,
+    bbox_locator_count: int,
+) -> Literal[
+    "no_refs",
+    "missing",
+    "material_only",
+    "page_located",
+    "layout_partial",
+    "layout_complete",
+]:
+    """Classify locator coverage for workflow-passport gate projection."""
+
+    if total_refs == 0 or project_ref_count == 0:
+        return "no_refs"
+    if material_locator_count == 0:
+        return "missing"
+    if page_locator_count == 0:
+        return "material_only"
+    if bbox_locator_count == 0:
+        return "page_located"
+    if bbox_locator_count < project_ref_count:
+        return "layout_partial"
+    return "layout_complete"
+
+
+def _locator_coverage_risk(coverage_state: str) -> str:
+    """Map locator state to an integrity-gate-friendly risk level."""
+
+    if coverage_state in {"missing", "material_only"}:
+        return "block"
+    if coverage_state in {"page_located", "layout_partial"}:
+        return "warn"
+    return "none"
+
+
+def _locator_coverage_notes(
+    *,
+    coverage_state: str,
+    project_ref_count: int,
+    non_project_ref_count: int,
+) -> list[str]:
+    """Return bounded hints without leaking chunk text or local paths."""
+
+    notes: list[str] = []
+    if non_project_ref_count:
+        notes.append("Non-project refs are bounded resources and are excluded from PDF locator coverage ratios.")
+    if project_ref_count == 0:
+        notes.append("No project chunk refs were returned for locator coverage.")
+    elif coverage_state == "layout_complete":
+        notes.append("Every project ref has material, page, and bbox locators.")
+    elif coverage_state == "layout_partial":
+        notes.append("Some project refs have bbox locators; remaining refs need layout extraction or review.")
+    elif coverage_state == "page_located":
+        notes.append("Project refs can jump to source pages but not exact layout boxes.")
+    elif coverage_state == "material_only":
+        notes.append("Project refs identify source chunks but cannot jump to a source page yet.")
+    else:
+        notes.append("Project refs are missing source locators; run or repair material processing before evidence reuse.")
+    return notes[:8]
 
 
 def _chunk_search_ref_metadata(chunk: dict[str, Any], *, material_id: str, chunk_id: str) -> ChunkSearchRefMetadataPayload:
@@ -1593,7 +1811,13 @@ async def search_chunk_refs(
     chunk_store = _rr._load_chunk_store(project_id)
     all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
     if not all_chunks:
-        return ChunkSearchRefsResponse(project_id=project_id, query=query, total_refs=0, refs=[])
+        return ChunkSearchRefsResponse(
+            project_id=project_id,
+            query=query,
+            total_refs=0,
+            locator_coverage=build_locator_coverage([]),
+            refs=[],
+        )
 
     top = _rr._select_diverse_top_chunks(
         _rr._score_chunks_for_query(all_chunks, query),
@@ -1608,6 +1832,7 @@ async def search_chunk_refs(
         project_id=project_id,
         query=query,
         total_refs=len(refs),
+        locator_coverage=build_locator_coverage(refs),
         refs=refs,
     )
 

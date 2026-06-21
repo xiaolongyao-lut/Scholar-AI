@@ -9,6 +9,7 @@ except ModuleNotFoundError:
     from academic_writing_linter import AcademicWritingLintResponse  # type: ignore[no-redef]
 
 from .evidence import PdfAnchorFields, PdfBboxUnit
+from .evidence import EvidenceLocatorCoveragePayload
 from .project_reasoning_bias import ProjectReasoningBiasPayload
 
 
@@ -130,12 +131,16 @@ class ChunkSearchRefsResponse(BaseModel):
         project_id: Project searched.
         query: Query string after FastAPI validation.
         total_refs: Number of refs in ``refs``.
+        locator_coverage: Layout-aware source locator coverage for returned refs.
         refs: Token-bounded refs with no chunk body fields.
     """
 
     project_id: str
     query: str
     total_refs: int = Field(ge=0)
+    locator_coverage: EvidenceLocatorCoveragePayload = Field(
+        default_factory=EvidenceLocatorCoveragePayload
+    )
     refs: List[ChunkSearchRefPayload] = Field(default_factory=list)
 
 
