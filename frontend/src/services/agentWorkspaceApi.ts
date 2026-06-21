@@ -204,6 +204,49 @@ export interface WorkflowReplayLineageProjection {
   provenance: Record<string, unknown>;
 }
 
+export interface WorkflowReplayIndexItem {
+  ordinal: number;
+  job_id: string;
+  session_id: string;
+  project_id: string | null;
+  job_kind: string;
+  job_status: string;
+  session_title: string | null;
+  receipt_count: number;
+  latest_receipt_id: string | null;
+  latest_generated_at: string | null;
+  latest_status: WorkflowActionPreflightStatus;
+  latest_action_id: string | null;
+  latest_required_claim_id: string | null;
+  latest_can_proceed: boolean;
+  latest_refresh_required: boolean;
+  latest_blocker_count: number;
+  latest_unresolved_count: number;
+  changed_digest_keys: string[];
+  comparison: Record<string, unknown>;
+  recovery_priority: number;
+  metadata_receipt_count: number;
+  artifact_receipt_count: number;
+  resume_probes: Record<string, unknown>[];
+  read_only: boolean;
+}
+
+export interface WorkflowReplayIndexProjection {
+  schema_version: 'scholar_ai_workflow_replay_index_v1';
+  generated_at: string;
+  scope: Record<string, unknown>;
+  total_jobs_scanned: number;
+  total_receipts_seen: number;
+  matching_job_count: number;
+  returned_count: number;
+  items: WorkflowReplayIndexItem[];
+  blockers: string[];
+  unresolved: string[];
+  resume_probes: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+}
+
 export interface WorkflowActionPreflightProjection {
   schema_version: 'scholar_ai_action_preflight_v1';
   generated_at: string;
@@ -360,6 +403,25 @@ export async function getWorkflowReplayLineage(jobId: string, opts?: {
       },
     },
   );
+  return response.data;
+}
+
+export async function getWorkflowReplayIndex(opts?: {
+  projectId?: string | null;
+  sessionId?: string | null;
+  status?: WorkflowActionPreflightStatus | null;
+  actionId?: string | null;
+  limit?: number;
+}): Promise<WorkflowReplayIndexProjection> {
+  const response = await client.get<WorkflowReplayIndexProjection>('/runtime/workflow-replay-index', {
+    params: {
+      project_id: opts?.projectId ?? undefined,
+      session_id: opts?.sessionId ?? undefined,
+      status: opts?.status ?? undefined,
+      action_id: opts?.actionId ?? undefined,
+      limit: opts?.limit ?? 25,
+    },
+  });
   return response.data;
 }
 

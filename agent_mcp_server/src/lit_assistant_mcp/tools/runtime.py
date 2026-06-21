@@ -1240,6 +1240,51 @@ class RuntimeTools:
             endpoint,
         )
 
+    def workflow_replay_index(
+        self,
+        project_id: str | None = None,
+        session_id: str | None = None,
+        status: str | None = None,
+        action_id: str | None = None,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        """Read a bounded cross-job workflow replay index.
+
+        Args:
+            project_id: Optional Scholar AI project filter.
+            session_id: Optional runtime session filter.
+            status: Optional latest receipt status filter.
+            action_id: Optional action id filter.
+            limit: Maximum index rows returned by the backend.
+        """
+        started = time.perf_counter()
+        bounded_limit = self._bounded_int(limit, "limit", minimum=1, maximum=50)
+        params: dict[str, Any] = {"limit": bounded_limit}
+        if isinstance(project_id, str) and project_id.strip():
+            params["project_id"] = self._bounded_text(project_id, "project_id", max_chars=200)
+        if isinstance(session_id, str) and session_id.strip():
+            params["session_id"] = self._bounded_text(session_id, "session_id", max_chars=160)
+        if isinstance(status, str) and status.strip():
+            params["status"] = self._bounded_text(status, "status", max_chars=40)
+        if isinstance(action_id, str) and action_id.strip():
+            params["action_id"] = self._bounded_text(action_id, "action_id", max_chars=160)
+        endpoint = "/runtime/workflow-replay-index"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish(
+            "literature.workflow_replay_index",
+            {
+                "project_id": params.get("project_id"),
+                "session_id": params.get("session_id"),
+                "status": params.get("status"),
+                "action_id": params.get("action_id"),
+                "limit": bounded_limit,
+            },
+            result,
+            started,
+            endpoint,
+        )
+
     def agent_resource_read(
         self,
         ref_id: str,

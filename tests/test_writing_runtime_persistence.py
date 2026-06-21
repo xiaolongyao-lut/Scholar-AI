@@ -912,6 +912,143 @@ def test_workflow_replay_lineage_compares_persisted_refresh_receipts(
     assert loaded_lineage["summary"]["artifact_receipt_count"] >= 2
 
 
+@pytest.mark.persistence_smoke
+def test_workflow_replay_index_discovers_blocked_receipts_without_job_id(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Replay index should recover blocked attempts across jobs without mutation."""
+
+    import writing_runtime as writing_runtime_module
+
+    db_path = tmp_path / "workflow_replay_index.sqlite3"
+    runtime = WritingRuntime(database_path=db_path, autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-replay-index", "title": "Replay Index Project"},
+    )
+    export_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="export replay index",
+        metadata={"project_id": "project-replay-index"},
+    )
+    handoff_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="handoff replay index",
+        metadata={"project_id": "project-replay-index"},
+    )
+    other_session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-other-index"},
+    )
+    other_job = runtime.create_job(
+        session_id=other_session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="other export",
+        metadata={"project_id": "project-other-index"},
+    )
+    state = runtime.update_writing_workflow_state(
+        export_job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-replay-index"},
+        evidence_refs=[{"ref_id": "chunk:index", "material_id": "material-index"}],
+        citation_bank=[{"citation_id": "cite:index", "ref_id": "chunk:index"}],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "index.docx"},
+        change_log=[{"stage": "export", "summary": "export manifest exists"}],
+    )
+
+    monkeypatch.setattr(writing_runtime_module, "utc_now_iso_z", lambda: "2026-06-22T00:10:00Z")
+    first_preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=export_job.job_id,
+        project_id="project-replay-index",
+        require_ready=False,
+        workflow_state=state,
+        persist_refresh_receipt=True,
+    )
+    blocked_receipt = {
+        **dict(first_preflight["refresh_receipt"]),
+        "receipt_id": "preflight_refresh:index-blocked",
+        "generated_at": "2026-06-22T00:15:00Z",
+        "status": "blocked",
+        "can_proceed": False,
+        "validation": {
+            **dict(first_preflight["refresh_receipt"]["validation"]),
+            "blocker_count": 3,
+            "unresolved_count": 1,
+        },
+        "projection_digests": {
+            **dict(first_preflight["refresh_receipt"]["projection_digests"]),
+            "evidence_integrity_gate": "sha256:index-blocked",
+        },
+    }
+    runtime.persist_preflight_refresh_receipt(export_job.job_id, blocked_receipt)
+
+    handoff_receipt = {
+        **blocked_receipt,
+        "receipt_id": "preflight_refresh:index-handoff-unresolved",
+        "generated_at": "2026-06-22T00:11:00Z",
+        "action_id": "agent.handoff_card",
+        "required_claim_id": "handoff_readiness",
+        "status": "unresolved",
+        "validation": {
+            **dict(blocked_receipt["validation"]),
+            "blocker_count": 0,
+            "unresolved_count": 2,
+        },
+    }
+    runtime.persist_preflight_refresh_receipt(handoff_job.job_id, handoff_receipt)
+    other_receipt = {
+        **blocked_receipt,
+        "receipt_id": "preflight_refresh:index-other-ready",
+        "generated_at": "2026-06-22T00:12:00Z",
+        "scope": {"project_id": "project-other-index", "job_id": other_job.job_id, "session_id": other_session.session_id},
+        "status": "ready",
+        "can_proceed": True,
+        "validation": {**dict(blocked_receipt["validation"]), "blocker_count": 0, "unresolved_count": 0},
+    }
+    runtime.persist_preflight_refresh_receipt(other_job.job_id, other_receipt)
+    job_count_before = len(runtime._jobs)
+    artifact_count_before = sum(len(items) for items in runtime._artifacts.values())
+
+    replay_index = runtime.build_workflow_replay_index(project_id="project-replay-index", limit=10)
+
+    assert replay_index["schema_version"] == "scholar_ai_workflow_replay_index_v1"
+    assert replay_index["scope"]["project_id"] == "project-replay-index"
+    assert replay_index["matching_job_count"] == 2
+    assert replay_index["returned_count"] == 2
+    assert replay_index["summary"]["requires_exact_job_id"] is False
+    assert replay_index["summary"]["index_is_read_only"] is True
+    assert replay_index["summary"]["blocked_job_count"] == 1
+    assert replay_index["items"][0]["job_id"] == export_job.job_id
+    assert replay_index["items"][0]["latest_status"] == "blocked"
+    assert replay_index["items"][0]["latest_blocker_count"] == 3
+    assert any(probe["endpoint"] == f"/runtime/job/{export_job.job_id}/workflow-replay-lineage" for probe in replay_index["items"][0]["resume_probes"])
+    assert all(item["project_id"] == "project-replay-index" for item in replay_index["items"])
+    assert len(runtime._jobs) == job_count_before
+    assert sum(len(items) for items in runtime._artifacts.values()) == artifact_count_before
+
+    unresolved_index = runtime.build_workflow_replay_index(
+        session_id=session.session_id,
+        status="unresolved",
+        action_id="agent.handoff_card",
+        limit=5,
+    )
+    assert unresolved_index["matching_job_count"] == 1
+    assert unresolved_index["items"][0]["job_id"] == handoff_job.job_id
+    assert unresolved_index["items"][0]["latest_required_claim_id"] == "handoff_readiness"
+
+    loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
+    loaded_index = loaded_runtime.build_workflow_replay_index(project_id="project-replay-index", limit=10)
+    assert loaded_index["matching_job_count"] == 2
+    assert loaded_index["items"][0]["latest_receipt_id"] == "preflight_refresh:index-blocked"
+
+
 @pytest.mark.asyncio
 async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path: Path) -> None:
     """Agent handoff cards should survive runtime reload as metadata and artifact."""

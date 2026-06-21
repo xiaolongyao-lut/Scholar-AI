@@ -6148,6 +6148,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/workflow-replay-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workflow Replay Index
+         * @description Return a read-only cross-job replay index for recovery handoff.
+         */
+        get: operations["get_runtime_workflow_replay_index"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sampling": {
         parameters: {
             query?: never;
@@ -16299,6 +16319,192 @@ export interface components {
             status: "not_started" | "in_progress" | "complete" | "warn" | "blocked" | "unresolved";
             /** Updated At */
             updated_at?: string | null;
+        };
+        /**
+         * WorkflowReplayIndexItemPayload
+         * @description Compact cross-job replay-index row for agent recovery.
+         *
+         *     Args:
+         *         ordinal: 1-based position after recovery-priority ordering.
+         *         job_id: Runtime job that owns the replay receipts.
+         *         session_id: Runtime session that owns the job.
+         *         project_id: Optional Scholar AI project id recovered from scope.
+         *         job_kind: Runtime job kind for scan context.
+         *         job_status: Runtime job lifecycle state.
+         *         session_title: Optional session title for human recovery.
+         *         receipt_count: Unique receipts found for this job.
+         *         latest_receipt_id: Latest receipt id after time ordering.
+         *         latest_generated_at: Latest receipt timestamp.
+         *         latest_status: Latest action preflight state.
+         *         latest_action_id: Local action evaluated by the latest receipt.
+         *         latest_required_claim_id: Readiness claim evaluated by the receipt.
+         *         latest_can_proceed: Whether the latest receipt allowed action execution.
+         *         latest_refresh_required: Whether refreshed projections are still stale.
+         *         latest_blocker_count: Blocking checks reported by latest receipt.
+         *         latest_unresolved_count: Unresolved checks reported by latest receipt.
+         *         changed_digest_keys: Projection digest keys changed since prior receipt.
+         *         comparison: Latest-vs-previous delta summary.
+         *         recovery_priority: Deterministic ordering score for recovery triage.
+         *         metadata_receipt_count: Receipt rows found in job metadata.
+         *         artifact_receipt_count: Receipt artifacts found for the job.
+         *         resume_probes: Read-only calls a resumed agent should run first.
+         *         read_only: Whether this row was derived without mutation.
+         */
+        WorkflowReplayIndexItemPayload: {
+            /**
+             * Artifact Receipt Count
+             * @default 0
+             */
+            artifact_receipt_count: number;
+            /** Changed Digest Keys */
+            changed_digest_keys?: string[];
+            /** Comparison */
+            comparison?: {
+                [key: string]: unknown;
+            };
+            /** Job Id */
+            job_id: string;
+            /** Job Kind */
+            job_kind: string;
+            /** Job Status */
+            job_status: string;
+            /** Latest Action Id */
+            latest_action_id?: string | null;
+            /**
+             * Latest Blocker Count
+             * @default 0
+             */
+            latest_blocker_count: number;
+            /**
+             * Latest Can Proceed
+             * @default false
+             */
+            latest_can_proceed: boolean;
+            /** Latest Generated At */
+            latest_generated_at?: string | null;
+            /** Latest Receipt Id */
+            latest_receipt_id?: string | null;
+            /**
+             * Latest Refresh Required
+             * @default false
+             */
+            latest_refresh_required: boolean;
+            /** Latest Required Claim Id */
+            latest_required_claim_id?: string | null;
+            /**
+             * Latest Status
+             * @default unresolved
+             * @enum {string}
+             */
+            latest_status: "ready" | "unresolved" | "blocked" | "stale";
+            /**
+             * Latest Unresolved Count
+             * @default 0
+             */
+            latest_unresolved_count: number;
+            /**
+             * Metadata Receipt Count
+             * @default 0
+             */
+            metadata_receipt_count: number;
+            /** Ordinal */
+            ordinal: number;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /**
+             * Receipt Count
+             * @default 0
+             */
+            receipt_count: number;
+            /**
+             * Recovery Priority
+             * @default 0
+             */
+            recovery_priority: number;
+            /** Resume Probes */
+            resume_probes?: {
+                [key: string]: unknown;
+            }[];
+            /** Session Id */
+            session_id: string;
+            /** Session Title */
+            session_title?: string | null;
+        };
+        /**
+         * WorkflowReplayIndexPayload
+         * @description Read-only project/session index over persisted workflow replay receipts.
+         *
+         *     Args:
+         *         schema_version: Versioned additive API contract.
+         *         generated_at: UTC generation time for this index projection.
+         *         scope: Runtime filters used to build the index.
+         *         total_jobs_scanned: Runtime jobs scanned after session/project filters.
+         *         total_receipts_seen: Unique receipts seen before status/action filters.
+         *         matching_job_count: Jobs with receipts after status/action filters.
+         *         returned_count: Bounded index rows returned.
+         *         items: Recovery-prioritized replay index rows.
+         *         blockers: Blocking messages that should stop readiness claims.
+         *         unresolved: Unresolved messages that must remain visible.
+         *         resume_probes: Read-only calls agents should run before retrying.
+         *         summary: Aggregate counts and read-only guarantees.
+         *         provenance: Runtime sources and mature patterns used to derive index.
+         */
+        WorkflowReplayIndexPayload: {
+            /** Blockers */
+            blockers?: string[];
+            /** Generated At */
+            generated_at: string;
+            /** Items */
+            items?: components["schemas"]["WorkflowReplayIndexItemPayload"][];
+            /**
+             * Matching Job Count
+             * @default 0
+             */
+            matching_job_count: number;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Resume Probes */
+            resume_probes?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Returned Count
+             * @default 0
+             */
+            returned_count: number;
+            /**
+             * Schema Version
+             * @default scholar_ai_workflow_replay_index_v1
+             * @constant
+             */
+            schema_version: "scholar_ai_workflow_replay_index_v1";
+            /** Scope */
+            scope?: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Total Jobs Scanned
+             * @default 0
+             */
+            total_jobs_scanned: number;
+            /**
+             * Total Receipts Seen
+             * @default 0
+             */
+            total_receipts_seen: number;
+            /** Unresolved */
+            unresolved?: string[];
         };
         /**
          * WorkflowReplayLineagePayload
@@ -27799,6 +28005,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowPassportPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_workflow_replay_index: {
+        parameters: {
+            query?: {
+                session_id?: string | null;
+                project_id?: string | null;
+                status?: string | null;
+                action_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowReplayIndexPayload"];
                 };
             };
             /** @description Validation Error */

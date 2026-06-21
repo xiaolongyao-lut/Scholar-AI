@@ -113,6 +113,7 @@ def create_mcp_server(
         "literature.evidence_integrity_gate": runtime.evidence_integrity_gate,
         "literature.workflow_refresh_receipt": runtime.workflow_refresh_receipt,
         "literature.workflow_replay_lineage": runtime.workflow_replay_lineage,
+        "literature.workflow_replay_index": runtime.workflow_replay_index,
         "literature.agent_resource_read": runtime.agent_resource_read,
         "literature.agent_progress": runtime.agent_progress,
         "literature.agent_result": runtime.agent_result,
@@ -605,6 +606,23 @@ def create_mcp_server(
     ) -> dict[str, Any]:
         """Read compact workflow replay lineage for one runtime job."""
         return runtime.workflow_replay_lineage(job_id=job_id, limit=limit)
+
+    @mcp.tool(name="literature.workflow_replay_index", structured_output=True)
+    def literature_workflow_replay_index(
+        project_id: str | None = None,
+        session_id: str | None = None,
+        status: str | None = None,
+        action_id: str | None = None,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        """Read a bounded cross-job workflow replay index for recovery."""
+        return runtime.workflow_replay_index(
+            project_id=project_id,
+            session_id=session_id,
+            status=status,
+            action_id=action_id,
+            limit=limit,
+        )
 
     @mcp.tool(name="literature.agent_resource_read", structured_output=True)
     def literature_agent_resource_read(

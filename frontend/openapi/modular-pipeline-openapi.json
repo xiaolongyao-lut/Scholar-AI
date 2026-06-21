@@ -21508,6 +21508,296 @@
         "title": "WorkflowPassportStagePayload",
         "type": "object"
       },
+      "WorkflowReplayIndexItemPayload": {
+        "description": "Compact cross-job replay-index row for agent recovery.\n\nArgs:\n    ordinal: 1-based position after recovery-priority ordering.\n    job_id: Runtime job that owns the replay receipts.\n    session_id: Runtime session that owns the job.\n    project_id: Optional Scholar AI project id recovered from scope.\n    job_kind: Runtime job kind for scan context.\n    job_status: Runtime job lifecycle state.\n    session_title: Optional session title for human recovery.\n    receipt_count: Unique receipts found for this job.\n    latest_receipt_id: Latest receipt id after time ordering.\n    latest_generated_at: Latest receipt timestamp.\n    latest_status: Latest action preflight state.\n    latest_action_id: Local action evaluated by the latest receipt.\n    latest_required_claim_id: Readiness claim evaluated by the receipt.\n    latest_can_proceed: Whether the latest receipt allowed action execution.\n    latest_refresh_required: Whether refreshed projections are still stale.\n    latest_blocker_count: Blocking checks reported by latest receipt.\n    latest_unresolved_count: Unresolved checks reported by latest receipt.\n    changed_digest_keys: Projection digest keys changed since prior receipt.\n    comparison: Latest-vs-previous delta summary.\n    recovery_priority: Deterministic ordering score for recovery triage.\n    metadata_receipt_count: Receipt rows found in job metadata.\n    artifact_receipt_count: Receipt artifacts found for the job.\n    resume_probes: Read-only calls a resumed agent should run first.\n    read_only: Whether this row was derived without mutation.",
+        "properties": {
+          "artifact_receipt_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Artifact Receipt Count",
+            "type": "integer"
+          },
+          "changed_digest_keys": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Changed Digest Keys",
+            "type": "array"
+          },
+          "comparison": {
+            "additionalProperties": true,
+            "title": "Comparison",
+            "type": "object"
+          },
+          "job_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Job Kind",
+            "type": "string"
+          },
+          "job_status": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Job Status",
+            "type": "string"
+          },
+          "latest_action_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Action Id"
+          },
+          "latest_blocker_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Latest Blocker Count",
+            "type": "integer"
+          },
+          "latest_can_proceed": {
+            "default": false,
+            "title": "Latest Can Proceed",
+            "type": "boolean"
+          },
+          "latest_generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Generated At"
+          },
+          "latest_receipt_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Receipt Id"
+          },
+          "latest_refresh_required": {
+            "default": false,
+            "title": "Latest Refresh Required",
+            "type": "boolean"
+          },
+          "latest_required_claim_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Required Claim Id"
+          },
+          "latest_status": {
+            "default": "unresolved",
+            "enum": [
+              "ready",
+              "unresolved",
+              "blocked",
+              "stale"
+            ],
+            "title": "Latest Status",
+            "type": "string"
+          },
+          "latest_unresolved_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Latest Unresolved Count",
+            "type": "integer"
+          },
+          "metadata_receipt_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Metadata Receipt Count",
+            "type": "integer"
+          },
+          "ordinal": {
+            "minimum": 1.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "read_only": {
+            "default": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "receipt_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Receipt Count",
+            "type": "integer"
+          },
+          "recovery_priority": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Recovery Priority",
+            "type": "integer"
+          },
+          "resume_probes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 8,
+            "title": "Resume Probes",
+            "type": "array"
+          },
+          "session_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "session_title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Title"
+          }
+        },
+        "required": [
+          "ordinal",
+          "job_id",
+          "session_id",
+          "job_kind",
+          "job_status"
+        ],
+        "title": "WorkflowReplayIndexItemPayload",
+        "type": "object"
+      },
+      "WorkflowReplayIndexPayload": {
+        "description": "Read-only project/session index over persisted workflow replay receipts.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this index projection.\n    scope: Runtime filters used to build the index.\n    total_jobs_scanned: Runtime jobs scanned after session/project filters.\n    total_receipts_seen: Unique receipts seen before status/action filters.\n    matching_job_count: Jobs with receipts after status/action filters.\n    returned_count: Bounded index rows returned.\n    items: Recovery-prioritized replay index rows.\n    blockers: Blocking messages that should stop readiness claims.\n    unresolved: Unresolved messages that must remain visible.\n    resume_probes: Read-only calls agents should run before retrying.\n    summary: Aggregate counts and read-only guarantees.\n    provenance: Runtime sources and mature patterns used to derive index.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Blockers",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowReplayIndexItemPayload"
+            },
+            "maxItems": 50,
+            "title": "Items",
+            "type": "array"
+          },
+          "matching_job_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Matching Job Count",
+            "type": "integer"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "resume_probes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 10,
+            "title": "Resume Probes",
+            "type": "array"
+          },
+          "returned_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Returned Count",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "scholar_ai_workflow_replay_index_v1",
+            "default": "scholar_ai_workflow_replay_index_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "title": "Scope",
+            "type": "object"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "total_jobs_scanned": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total Jobs Scanned",
+            "type": "integer"
+          },
+          "total_receipts_seen": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total Receipts Seen",
+            "type": "integer"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Unresolved",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at"
+        ],
+        "title": "WorkflowReplayIndexPayload",
+        "type": "object"
+      },
       "WorkflowReplayLineagePayload": {
         "description": "Read-only replay lineage for one job's persisted workflow receipts.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this lineage projection.\n    job_id: Runtime job id that owns the receipts.\n    session_id: Runtime session id for resume probes.\n    project_id: Optional Scholar AI project recovered from runtime scope.\n    scope: Runtime scope used for the projection.\n    receipt_count: Total unique receipts found locally.\n    returned_count: Number of compact receipt rows returned.\n    latest_receipt_id: Latest receipt id after time ordering.\n    latest: Compact summary of the latest receipt.\n    previous: Compact summary of the previous receipt, if any.\n    items: Bounded compact receipt rows in chronological order.\n    comparison: Latest-vs-previous status/count/digest deltas.\n    blockers: Blocking messages that should stop readiness claims.\n    unresolved: Unresolved messages that must remain visible.\n    resume_probes: Read-only calls agents should run before retrying.\n    summary: Aggregate counts and read-only guarantees.\n    provenance: Runtime sources and mature patterns used to derive lineage.",
         "properties": {
@@ -39358,6 +39648,116 @@
           }
         },
         "summary": "Get Workflow Passport",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/workflow-replay-index": {
+      "get": {
+        "description": "Return a read-only cross-job replay index for recovery handoff.",
+        "operationId": "get_runtime_workflow_replay_index",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowReplayIndexPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow Replay Index",
         "tags": [
           "Runtime"
         ]

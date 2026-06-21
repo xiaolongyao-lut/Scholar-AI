@@ -96,6 +96,8 @@ from .runtime import (
     PreflightRefreshReceiptPayload,
     WorkflowReplayReceiptSummaryPayload,
     WorkflowReplayLineagePayload,
+    WorkflowReplayIndexItemPayload,
+    WorkflowReplayIndexPayload,
     AgentHandoffCardPayload,
     TimelineItemPayload,
     TimelinePagePayload,

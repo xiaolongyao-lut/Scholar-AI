@@ -24,6 +24,7 @@ from models import (
     AgentHandoffCardPayload,
     PreflightRefreshReceiptPayload,
     WorkflowReplayLineagePayload,
+    WorkflowReplayIndexPayload,
     TimelinePagePayload,
     CheckpointPayload,
     ResumeSessionPayload,
@@ -899,6 +900,31 @@ async def get_workflow_replay_lineage(
         status_code = 404 if "not found" in str(exc).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return WorkflowReplayLineagePayload(**lineage)
+
+
+@router.get("/workflow-replay-index", response_model=WorkflowReplayIndexPayload)
+async def get_workflow_replay_index(
+    session_id: str | None = Query(default=None),
+    project_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    action_id: str | None = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=50),
+) -> WorkflowReplayIndexPayload:
+    """Return a read-only cross-job replay index for recovery handoff."""
+
+    runtime = get_runtime()
+    try:
+        replay_index = runtime.build_workflow_replay_index(
+            session_id=session_id,
+            project_id=project_id,
+            status=status,
+            action_id=action_id,
+            limit=limit,
+        )
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return WorkflowReplayIndexPayload(**replay_index)
 
 
 @router.get("/job/{job_id}", response_model=JobPayload)

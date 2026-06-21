@@ -1223,6 +1223,76 @@ def test_runtime_workflow_replay_lineage_route_lists_receipt_history(monkeypatch
     assert missing_response.status_code == 404
 
 
+def test_runtime_workflow_replay_index_route_discovers_receipts_without_job_id(monkeypatch) -> None:
+    """Runtime route should expose bounded project/session replay discovery."""
+
+    runtime = WritingRuntime(autosave=False)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-index-route"},
+    )
+    export_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="export index route",
+        metadata={"project_id": "project-index-route"},
+    )
+    state = runtime.update_writing_workflow_state(
+        export_job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-index-route"},
+        evidence_refs=[{"ref_id": "chunk:index-route", "material_id": "material-index-route"}],
+        citation_bank=[{"citation_id": "cite:index-route", "ref_id": "chunk:index-route"}],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "index-route.docx"},
+        change_log=[{"stage": "export", "summary": "export manifest exists"}],
+    )
+    preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=export_job.job_id,
+        project_id="project-index-route",
+        workflow_state=state,
+        persist_refresh_receipt=True,
+    )
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/runtime/workflow-replay-index",
+        params={"project_id": "project-index-route", "limit": 5},
+    )
+
+    assert response.status_code == 200
+    replay_index = response.json()
+    assert replay_index["schema_version"] == "scholar_ai_workflow_replay_index_v1"
+    assert replay_index["scope"]["project_id"] == "project-index-route"
+    assert replay_index["matching_job_count"] == 1
+    assert replay_index["returned_count"] == 1
+    assert replay_index["total_receipts_seen"] == 1
+    assert replay_index["items"][0]["job_id"] == export_job.job_id
+    assert replay_index["items"][0]["latest_receipt_id"] == preflight["refresh_receipt_id"]
+    assert replay_index["summary"]["requires_exact_job_id"] is False
+    assert replay_index["summary"]["index_is_read_only"] is True
+    assert any(probe["endpoint"] == f"/runtime/job/{export_job.job_id}/workflow-replay-lineage" for probe in replay_index["items"][0]["resume_probes"])
+
+    status_response = client.get(
+        "/runtime/workflow-replay-index",
+        params={"session_id": session.session_id, "status": replay_index["items"][0]["latest_status"], "limit": 5},
+    )
+    assert status_response.status_code == 200
+    assert status_response.json()["matching_job_count"] == 1
+
+    invalid_response = client.get("/runtime/workflow-replay-index", params={"limit": 0})
+    assert invalid_response.status_code == 422
+
+    missing_response = client.get("/runtime/workflow-replay-index", params={"session_id": "session_missing"})
+    assert missing_response.status_code == 404
+
+
 @pytest.mark.persistence_smoke
 def test_runtime_router_rejects_invalid_session_mode(monkeypatch, tmp_path) -> None:
     """The runtime router should reject invalid session modes."""

@@ -24,6 +24,7 @@ import {
   getAgentWorkspaceStatus,
   getEvidenceIntegrityGate,
   getWorkflowPassport,
+  getWorkflowReplayIndex,
   getWorkflowReplayLineage,
   getZoteroAttachmentHealth,
   listRuntimeJobs,
@@ -38,6 +39,7 @@ import {
   type RuntimeJobsStatus,
   type WorkflowReadinessClaimsProjection,
   type WorkflowReadinessClaim,
+  type WorkflowReplayIndexProjection,
   type WorkflowReplayLineageProjection,
   type WorkflowPassportProjection,
   type WorkflowPassportStage,
@@ -593,6 +595,37 @@ function workflowReplayLineageDelta(lineage: WorkflowReplayLineageProjection | n
   return `Latest receipt ${latestId} · block Δ ${blockerDelta} · unresolved Δ ${unresolvedDelta}`;
 }
 
+function workflowReplayIndexSummary(index: WorkflowReplayIndexProjection | null): string {
+  if (!index) {
+    return 'index 未读取';
+  }
+  if (index.matching_job_count === 0) {
+    return 'index 0 jobs';
+  }
+  const summary = isRecord(index.summary) ? index.summary : {};
+  const blocked = readNumberField(summary, 'blocked_job_count');
+  const unresolved = readNumberField(summary, 'unresolved_job_count');
+  const stale = readNumberField(summary, 'stale_job_count');
+  return `${index.matching_job_count} jobs · block ${blocked} · unresolved ${unresolved} · stale ${stale}`;
+}
+
+function workflowReplayIndexRecovery(index: WorkflowReplayIndexProjection | null): string {
+  if (!index) {
+    return 'Replay index 暂未读取。';
+  }
+  if (index.blockers.length > 0) {
+    return index.blockers[0];
+  }
+  if (index.unresolved.length > 0) {
+    return index.unresolved[0];
+  }
+  const first = index.items[0];
+  if (!first) {
+    return '没有跨 job refresh receipt，可从 selected job lineage 继续。';
+  }
+  return `${first.job_id} · ${first.latest_status} · block ${first.latest_blocker_count} · unresolved ${first.latest_unresolved_count}`;
+}
+
 function workflowReadinessClaims(
   integrityGate: EvidenceIntegrityGateProjection | null,
   handoffCard: AgentHandoffCardProjection | null,
@@ -1029,6 +1062,7 @@ export function ResearchWorkflowSpine({
   integrityGate,
   handoffCard,
   actionPreflight,
+  workflowReplayIndex,
   workflowReplayLineage,
   behaviorEvalArtifacts,
   density = 'default',
@@ -1038,6 +1072,7 @@ export function ResearchWorkflowSpine({
   integrityGate: EvidenceIntegrityGateProjection | null;
   handoffCard: AgentHandoffCardProjection | null;
   actionPreflight: WorkflowActionPreflightProjection | null;
+  workflowReplayIndex: WorkflowReplayIndexProjection | null;
   workflowReplayLineage: WorkflowReplayLineageProjection | null;
   behaviorEvalArtifacts: AgentWorkspaceArtifact[];
   density?: WorkflowSpineDensity;
@@ -1058,6 +1093,8 @@ export function ResearchWorkflowSpine({
   const preflightBlocked = actionPreflight?.status === 'blocked' || actionPreflight?.can_proceed === false;
   const preflightUnresolved = actionPreflight?.status === 'unresolved';
   const preflightRefreshRequired = actionPreflight?.refresh_required === true || actionPreflight?.freshness?.refresh_required === true;
+  const replayIndexBlocked = (workflowReplayIndex?.blockers.length ?? 0) > 0;
+  const replayIndexUnresolved = (workflowReplayIndex?.unresolved.length ?? 0) > 0;
   const lineageBlocked = (workflowReplayLineage?.blockers.length ?? 0) > 0;
   const lineageUnresolved = (workflowReplayLineage?.unresolved.length ?? 0) > 0;
 
@@ -1102,6 +1139,9 @@ export function ResearchWorkflowSpine({
           </StatusPill>
           <StatusPill tone={lineageBlocked ? 'danger' : lineageUnresolved ? 'warning' : workflowReplayLineage ? 'info' : 'neutral'}>
             replay {workflowReplayLineage ? workflowReplayLineage.receipt_count : '未读取'}
+          </StatusPill>
+          <StatusPill tone={replayIndexBlocked ? 'danger' : replayIndexUnresolved ? 'warning' : workflowReplayIndex ? 'info' : 'neutral'}>
+            replay index {workflowReplayIndex ? workflowReplayIndex.matching_job_count : '未读取'}
           </StatusPill>
         </div>
       </div>
@@ -1256,6 +1296,24 @@ export function ResearchWorkflowSpine({
               {workflowReplayLineage?.latest_receipt_id ? (
                 <StatusPill tone="info">{workflowReplayLineage.latest_receipt_id}</StatusPill>
               ) : null}
+            </div>
+          </article>
+
+          <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Replay Index</h3>
+              <StatusPill tone={replayIndexBlocked ? 'danger' : replayIndexUnresolved ? 'warning' : workflowReplayIndex ? 'info' : 'neutral'}>
+                {workflowReplayIndex ? `${workflowReplayIndex.matching_job_count} jobs` : '未读取'}
+              </StatusPill>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+              {workflowReplayIndexRecovery(workflowReplayIndex)}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone="neutral">{workflowReplayIndexSummary(workflowReplayIndex)}</StatusPill>
+              <StatusPill tone="neutral">{workflowReplayIndex ? `receipts ${workflowReplayIndex.total_receipts_seen}` : 'receipts unknown'}</StatusPill>
+              <StatusPill tone="neutral">{workflowReplayIndex ? `returned ${workflowReplayIndex.returned_count}` : 'returned unknown'}</StatusPill>
+              {workflowReplayIndex?.items[0]?.job_id ? <StatusPill tone="info">{workflowReplayIndex.items[0].job_id}</StatusPill> : null}
             </div>
           </article>
 
@@ -1426,6 +1484,7 @@ export function AgentWorkspace() {
   const [workflowPassport, setWorkflowPassport] = useState<WorkflowPassportProjection | null>(null);
   const [integrityGate, setIntegrityGate] = useState<EvidenceIntegrityGateProjection | null>(null);
   const [handoffCard, setHandoffCard] = useState<AgentHandoffCardProjection | null>(null);
+  const [workflowReplayIndex, setWorkflowReplayIndex] = useState<WorkflowReplayIndexProjection | null>(null);
   const [workflowReplayLineage, setWorkflowReplayLineage] = useState<WorkflowReplayLineageProjection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1439,7 +1498,7 @@ export function AgentWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const [next, bridge, runtimeJobs, workflowHealth, zotero, review, passport, gate] = await Promise.all([
+      const [next, bridge, runtimeJobs, workflowHealth, zotero, review, passport, gate, replayIndex] = await Promise.all([
         getAgentWorkspaceStatus(),
         getAgentBridgeStatus({ limit: 50 }).catch(() => null),
         listRuntimeJobs({ limit: 100 }).catch(() => null),
@@ -1448,6 +1507,7 @@ export function AgentWorkspace() {
         getWikiReview().catch(() => null),
         getWorkflowPassport({ limit: 500 }).catch(() => null),
         getEvidenceIntegrityGate({ limit: 500 }).catch(() => null),
+        getWorkflowReplayIndex({ limit: 25 }).catch(() => null),
       ]);
       setStatus(next);
       setBridgeStatus(bridge);
@@ -1457,6 +1517,7 @@ export function AgentWorkspace() {
       setWikiReview(review);
       setWorkflowPassport(passport);
       setIntegrityGate(gate);
+      setWorkflowReplayIndex(replayIndex);
       setSelectedArtifactPath((current) => {
         if (current && next.artifacts.some((artifact) => artifact.path === current)) {
           return current;
@@ -1488,6 +1549,7 @@ export function AgentWorkspace() {
       setWorkflowPassport(null);
       setIntegrityGate(null);
       setHandoffCard(null);
+      setWorkflowReplayIndex(null);
       setWorkflowReplayLineage(null);
     } finally {
       setLoading(false);
@@ -1627,6 +1689,7 @@ export function AgentWorkspace() {
           integrityGate={integrityGate}
           handoffCard={handoffCard}
           actionPreflight={selectedActionPreflight}
+          workflowReplayIndex={workflowReplayIndex}
           workflowReplayLineage={workflowReplayLineage}
           behaviorEvalArtifacts={behaviorEvalArtifacts}
         />

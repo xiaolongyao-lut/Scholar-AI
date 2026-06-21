@@ -699,6 +699,98 @@ class WorkflowReplayLineagePayload(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkflowReplayIndexItemPayload(BaseModel):
+    """Compact cross-job replay-index row for agent recovery.
+
+    Args:
+        ordinal: 1-based position after recovery-priority ordering.
+        job_id: Runtime job that owns the replay receipts.
+        session_id: Runtime session that owns the job.
+        project_id: Optional Scholar AI project id recovered from scope.
+        job_kind: Runtime job kind for scan context.
+        job_status: Runtime job lifecycle state.
+        session_title: Optional session title for human recovery.
+        receipt_count: Unique receipts found for this job.
+        latest_receipt_id: Latest receipt id after time ordering.
+        latest_generated_at: Latest receipt timestamp.
+        latest_status: Latest action preflight state.
+        latest_action_id: Local action evaluated by the latest receipt.
+        latest_required_claim_id: Readiness claim evaluated by the receipt.
+        latest_can_proceed: Whether the latest receipt allowed action execution.
+        latest_refresh_required: Whether refreshed projections are still stale.
+        latest_blocker_count: Blocking checks reported by latest receipt.
+        latest_unresolved_count: Unresolved checks reported by latest receipt.
+        changed_digest_keys: Projection digest keys changed since prior receipt.
+        comparison: Latest-vs-previous delta summary.
+        recovery_priority: Deterministic ordering score for recovery triage.
+        metadata_receipt_count: Receipt rows found in job metadata.
+        artifact_receipt_count: Receipt artifacts found for the job.
+        resume_probes: Read-only calls a resumed agent should run first.
+        read_only: Whether this row was derived without mutation.
+    """
+
+    ordinal: int = Field(ge=1)
+    job_id: str = Field(min_length=1, max_length=160)
+    session_id: str = Field(min_length=1, max_length=160)
+    project_id: str | None = Field(default=None, max_length=200)
+    job_kind: str = Field(min_length=1, max_length=80)
+    job_status: str = Field(min_length=1, max_length=80)
+    session_title: str | None = Field(default=None, max_length=200)
+    receipt_count: int = Field(default=0, ge=0)
+    latest_receipt_id: str | None = Field(default=None, max_length=200)
+    latest_generated_at: str | None = None
+    latest_status: Literal["ready", "unresolved", "blocked", "stale"] = "unresolved"
+    latest_action_id: str | None = Field(default=None, max_length=160)
+    latest_required_claim_id: str | None = Field(default=None, max_length=160)
+    latest_can_proceed: bool = False
+    latest_refresh_required: bool = False
+    latest_blocker_count: int = Field(default=0, ge=0)
+    latest_unresolved_count: int = Field(default=0, ge=0)
+    changed_digest_keys: List[str] = Field(default_factory=list, max_length=16)
+    comparison: Dict[str, Any] = Field(default_factory=dict)
+    recovery_priority: int = Field(default=0, ge=0)
+    metadata_receipt_count: int = Field(default=0, ge=0)
+    artifact_receipt_count: int = Field(default=0, ge=0)
+    resume_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
+    read_only: bool = True
+
+
+class WorkflowReplayIndexPayload(BaseModel):
+    """Read-only project/session index over persisted workflow replay receipts.
+
+    Args:
+        schema_version: Versioned additive API contract.
+        generated_at: UTC generation time for this index projection.
+        scope: Runtime filters used to build the index.
+        total_jobs_scanned: Runtime jobs scanned after session/project filters.
+        total_receipts_seen: Unique receipts seen before status/action filters.
+        matching_job_count: Jobs with receipts after status/action filters.
+        returned_count: Bounded index rows returned.
+        items: Recovery-prioritized replay index rows.
+        blockers: Blocking messages that should stop readiness claims.
+        unresolved: Unresolved messages that must remain visible.
+        resume_probes: Read-only calls agents should run before retrying.
+        summary: Aggregate counts and read-only guarantees.
+        provenance: Runtime sources and mature patterns used to derive index.
+    """
+
+    schema_version: Literal["scholar_ai_workflow_replay_index_v1"] = (
+        "scholar_ai_workflow_replay_index_v1"
+    )
+    generated_at: str
+    scope: Dict[str, Any] = Field(default_factory=dict)
+    total_jobs_scanned: int = Field(default=0, ge=0)
+    total_receipts_seen: int = Field(default=0, ge=0)
+    matching_job_count: int = Field(default=0, ge=0)
+    returned_count: int = Field(default=0, ge=0)
+    items: List[WorkflowReplayIndexItemPayload] = Field(default_factory=list, max_length=50)
+    blockers: List[str] = Field(default_factory=list, max_length=12)
+    unresolved: List[str] = Field(default_factory=list, max_length=12)
+    resume_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=10)
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
 class AgentHandoffCardPayload(BaseModel):
     """Recoverable handoff card for one runtime-visible agent request.
 

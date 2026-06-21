@@ -105,6 +105,7 @@ _ACTION_PREFLIGHT_SCHEMA_VERSION = "scholar_ai_action_preflight_v1"
 _ACTION_PREFLIGHT_FRESHNESS_SCHEMA_VERSION = "scholar_ai_action_preflight_freshness_v1"
 _PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION = "scholar_ai_preflight_refresh_receipt_v1"
 _WORKFLOW_REPLAY_LINEAGE_SCHEMA_VERSION = "scholar_ai_workflow_replay_lineage_v1"
+_WORKFLOW_REPLAY_INDEX_SCHEMA_VERSION = "scholar_ai_workflow_replay_index_v1"
 _ACTION_PREFLIGHT_MAX_AGE_SECONDS = 900
 _AGENT_HANDOFF_CARD_KEY = "agent_handoff_card"
 _PREFLIGHT_REFRESH_RECEIPTS_KEY = "preflight_refresh_receipts"
@@ -1810,6 +1811,101 @@ def _append_receipt_candidate(
         return
     receipts.append(dict(_json_safe_copy(candidate)))
     seen_receipt_ids.add(receipt_id)
+
+
+def _collect_job_preflight_receipts(
+    job: WritingJob,
+    artifacts: list[WritingArtifact],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Collect unique persisted preflight receipts for a job.
+
+    Why:
+        Replay lineage and cross-job indexes must agree on receipt identity and
+        ordering without expanding full projection payloads or mutating runtime
+        state.
+    """
+
+    receipts: list[dict[str, Any]] = []
+    seen_receipt_ids: set[str] = set()
+    metadata = dict(job.metadata)
+    _append_receipt_candidate(receipts, seen_receipt_ids, metadata.get("latest_preflight_refresh_receipt"))
+    stored = metadata.get(_PREFLIGHT_REFRESH_RECEIPTS_KEY)
+    if isinstance(stored, list):
+        for item in stored:
+            _append_receipt_candidate(receipts, seen_receipt_ids, item)
+
+    artifact_count = 0
+    for artifact in artifacts:
+        if artifact.artifact_type != ArtifactType.METADATA:
+            continue
+        if artifact.metadata.get("kind") != "preflight_refresh_receipt":
+            continue
+        artifact_count += 1
+        _append_receipt_candidate(receipts, seen_receipt_ids, artifact.content)
+
+    receipts.sort(key=_receipt_timestamp_key)
+    return receipts, {
+        "metadata_receipt_count": len(stored) if isinstance(stored, list) else 0,
+        "artifact_receipt_count": artifact_count,
+    }
+
+
+def _workflow_replay_index_row(
+    *,
+    job: WritingJob,
+    session: WritingSession | None,
+    project_id: str | None,
+    receipts: list[dict[str, Any]],
+    receipt_counts: dict[str, int],
+    ordinal: int,
+) -> dict[str, Any]:
+    """Return one compact cross-job replay-index row."""
+
+    latest = receipts[-1]
+    previous = receipts[-2] if len(receipts) > 1 else None
+    latest_row = _compact_refresh_receipt_row(latest, ordinal=len(receipts))
+    comparison = _receipt_delta(latest, previous)
+    status = str(latest_row.get("status") or "unresolved")
+    counts = _receipt_validation_counts(latest)
+    recovery_priority = 0
+    if status == "blocked" or counts["blocker_count"] > 0:
+        recovery_priority += 100
+    if status in {"unresolved", "stale"} or counts["unresolved_count"] > 0:
+        recovery_priority += 50
+    if bool(latest_row.get("refresh_required")):
+        recovery_priority += 25
+    if not bool(latest_row.get("can_proceed")):
+        recovery_priority += 10
+    return {
+        "ordinal": ordinal,
+        "job_id": job.job_id,
+        "session_id": job.session_id,
+        "project_id": project_id,
+        "job_kind": job.kind.value,
+        "job_status": job.status.value,
+        "session_title": _safe_projection_string((session.metadata if session else {}).get("title")) if session else None,
+        "receipt_count": len(receipts),
+        "latest_receipt_id": latest_row.get("receipt_id"),
+        "latest_generated_at": latest_row.get("generated_at"),
+        "latest_status": status,
+        "latest_action_id": latest_row.get("action_id"),
+        "latest_required_claim_id": latest_row.get("required_claim_id"),
+        "latest_can_proceed": bool(latest_row.get("can_proceed")),
+        "latest_refresh_required": bool(latest_row.get("refresh_required")),
+        "latest_blocker_count": latest_row.get("blocker_count") or 0,
+        "latest_unresolved_count": latest_row.get("unresolved_count") or 0,
+        "changed_digest_keys": list(comparison.get("changed_digest_keys") or [])[:16],
+        "comparison": comparison,
+        "recovery_priority": recovery_priority,
+        "metadata_receipt_count": receipt_counts.get("metadata_receipt_count", 0),
+        "artifact_receipt_count": receipt_counts.get("artifact_receipt_count", 0),
+        "resume_probes": [
+            _handoff_resume_probe("Read runtime job", f"/runtime/job/{job.job_id}"),
+            _handoff_resume_probe("Read workflow replay lineage", f"/runtime/job/{job.job_id}/workflow-replay-lineage"),
+            _handoff_resume_probe("Read latest workflow refresh receipt", f"/runtime/job/{job.job_id}/preflight-refresh-receipt"),
+        ],
+        "read_only": True,
+    }
 
 
 def _iter_runtime_metadata_dicts(jobs: list[WritingJob]) -> list[tuple[str, dict[str, Any]]]:
@@ -3821,21 +3917,10 @@ class WritingRuntime:
         if job is None:
             raise ValueError(f"Job {normalized_job_id} not found")
 
-        receipts: list[dict[str, Any]] = []
-        seen_receipt_ids: set[str] = set()
-        metadata = dict(job.metadata)
-        _append_receipt_candidate(receipts, seen_receipt_ids, metadata.get("latest_preflight_refresh_receipt"))
-        stored = metadata.get(_PREFLIGHT_REFRESH_RECEIPTS_KEY)
-        if isinstance(stored, list):
-            for item in stored:
-                _append_receipt_candidate(receipts, seen_receipt_ids, item)
-
-        artifact_count = 0
-        for artifact in self.get_job_artifacts(normalized_job_id, ArtifactType.METADATA):
-            if artifact.metadata.get("kind") != "preflight_refresh_receipt":
-                continue
-            artifact_count += 1
-            _append_receipt_candidate(receipts, seen_receipt_ids, artifact.content)
+        receipts, receipt_counts = _collect_job_preflight_receipts(
+            job,
+            self.get_job_artifacts(normalized_job_id),
+        )
 
         receipts.sort(key=_receipt_timestamp_key)
         latest = receipts[-1] if receipts else None
@@ -3917,8 +4002,8 @@ class WritingRuntime:
                 "latest_refresh_required": latest_row.get("refresh_required") if latest_row else None,
                 "latest_blocker_count": latest_row.get("blocker_count") if latest_row else 0,
                 "latest_unresolved_count": latest_row.get("unresolved_count") if latest_row else 0,
-                "metadata_receipt_count": len(stored) if isinstance(stored, list) else 0,
-                "artifact_receipt_count": artifact_count,
+                "metadata_receipt_count": receipt_counts["metadata_receipt_count"],
+                "artifact_receipt_count": receipt_counts["artifact_receipt_count"],
                 "lineage_is_read_only": True,
             },
             "provenance": {
@@ -3938,6 +4023,213 @@ class WritingRuntime:
             },
         }
         return dict(_json_safe_copy(lineage))
+
+    def build_workflow_replay_index(
+        self,
+        *,
+        session_id: str | None = None,
+        project_id: str | None = None,
+        status: str | None = None,
+        action_id: str | None = None,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        """Build a bounded cross-job index of workflow replay receipts.
+
+        Args:
+            session_id: Optional runtime session scope.
+            project_id: Optional Scholar AI project scope.
+            status: Optional latest receipt status filter.
+            action_id: Optional action id filter, such as ``writing.export_project``.
+            limit: Maximum index rows returned, from 1 through 50.
+
+        Returns:
+            Read-only replay index that lets agents recover workflow attempts
+            without knowing a specific job id first.
+
+        Raises:
+            ValueError: If filters are blank, unknown, or outside safe bounds.
+        """
+
+        normalized_session_id = str(session_id or "").strip() if session_id is not None else None
+        normalized_project_id = str(project_id or "").strip() if project_id is not None else None
+        normalized_status = str(status or "").strip().lower() if status is not None else None
+        normalized_action_id = str(action_id or "").strip() if action_id is not None else None
+        if session_id is not None and not normalized_session_id:
+            raise ValueError("session_id must not be empty")
+        if project_id is not None and not normalized_project_id:
+            raise ValueError("project_id must not be empty")
+        if status is not None and normalized_status not in {"ready", "unresolved", "blocked", "stale"}:
+            raise ValueError("status must be one of ready, unresolved, blocked, stale")
+        if action_id is not None and not normalized_action_id:
+            raise ValueError("action_id must not be empty")
+        if isinstance(limit, bool):
+            raise ValueError("limit must be an integer")
+        try:
+            normalized_limit = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("limit must be an integer") from exc
+        if normalized_limit < 1 or normalized_limit > 50:
+            raise ValueError("limit must be between 1 and 50")
+        if normalized_session_id is not None and self.get_session(normalized_session_id) is None:
+            raise ValueError(f"Session {normalized_session_id} not found")
+
+        rows: list[dict[str, Any]] = []
+        total_jobs_scanned = 0
+        total_receipts_seen = 0
+        filtered_out = 0
+        status_counts: dict[str, int] = {}
+        project_ids: set[str] = set()
+        session_ids: set[str] = set()
+        blockers: list[str] = []
+        unresolved: list[str] = []
+
+        for job in self._jobs.values():
+            if normalized_session_id is not None and job.session_id != normalized_session_id:
+                continue
+            session = self.get_session(job.session_id)
+            job_project_id = _project_id_for_job(job, session)
+            if normalized_project_id is not None and job_project_id != normalized_project_id:
+                continue
+            total_jobs_scanned += 1
+            receipts, receipt_counts = _collect_job_preflight_receipts(job, self.get_job_artifacts(job.job_id))
+            if not receipts:
+                continue
+            total_receipts_seen += len(receipts)
+            latest = receipts[-1]
+            latest_status = _safe_projection_string(latest.get("status")) or "unresolved"
+            latest_action_id = _safe_projection_string(latest.get("action_id"))
+            if normalized_status is not None and latest_status != normalized_status:
+                filtered_out += 1
+                continue
+            if normalized_action_id is not None and latest_action_id != normalized_action_id:
+                filtered_out += 1
+                continue
+            row = _workflow_replay_index_row(
+                job=job,
+                session=session,
+                project_id=job_project_id,
+                receipts=receipts,
+                receipt_counts=receipt_counts,
+                ordinal=0,
+            )
+            rows.append(row)
+            status_counts[latest_status] = status_counts.get(latest_status, 0) + 1
+            session_ids.add(job.session_id)
+            if job_project_id:
+                project_ids.add(job_project_id)
+            if row["latest_status"] == "blocked" or row["latest_blocker_count"] > 0:
+                _append_unique_text(
+                    blockers,
+                    f"Job {job.job_id} latest replay receipt reports {row['latest_blocker_count']} blocking checks.",
+                    max_items=12,
+                )
+            if row["latest_status"] in {"unresolved", "stale"} or row["latest_unresolved_count"] > 0:
+                _append_unique_text(
+                    unresolved,
+                    f"Job {job.job_id} latest replay receipt reports {row['latest_unresolved_count']} unresolved checks.",
+                    max_items=12,
+                )
+            if row["latest_refresh_required"]:
+                _append_unique_text(
+                    unresolved,
+                    f"Job {job.job_id} still requires refreshed workflow projections before retry.",
+                    max_items=12,
+                )
+
+        rows.sort(
+            key=lambda row: (
+                int(row.get("recovery_priority") or 0),
+                str(row.get("latest_generated_at") or ""),
+                str(row.get("job_id") or ""),
+            ),
+            reverse=True,
+        )
+        bounded_rows = [
+            {
+                **row,
+                "ordinal": index + 1,
+            }
+            for index, row in enumerate(rows[:normalized_limit])
+        ]
+        resume_probes = [
+            _handoff_resume_probe("List workflow replay index", "/runtime/workflow-replay-index"),
+            _handoff_resume_probe("Read workflow passport", "/runtime/workflow-passport"),
+            _handoff_resume_probe("Read evidence integrity gate", "/runtime/evidence-integrity-gate"),
+        ]
+        if normalized_session_id:
+            resume_probes.append(
+                _handoff_resume_probe(
+                    "List session-scoped workflow replay index",
+                    "/runtime/workflow-replay-index",
+                    {"session_id": normalized_session_id},
+                )
+            )
+        if normalized_project_id:
+            resume_probes.append(
+                _handoff_resume_probe(
+                    "List project-scoped workflow replay index",
+                    "/runtime/workflow-replay-index",
+                    {"project_id": normalized_project_id},
+                )
+            )
+        if bounded_rows:
+            first = bounded_rows[0]
+            resume_probes.append(
+                _handoff_resume_probe(
+                    "Read highest-priority replay lineage",
+                    f"/runtime/job/{first['job_id']}/workflow-replay-lineage",
+                )
+            )
+
+        index = {
+            "schema_version": _WORKFLOW_REPLAY_INDEX_SCHEMA_VERSION,
+            "generated_at": utc_now_iso_z(),
+            "scope": {
+                "session_id": normalized_session_id,
+                "project_id": normalized_project_id,
+                "status": normalized_status,
+                "action_id": normalized_action_id,
+                "limit": normalized_limit,
+            },
+            "total_jobs_scanned": total_jobs_scanned,
+            "total_receipts_seen": total_receipts_seen,
+            "matching_job_count": len(rows),
+            "returned_count": len(bounded_rows),
+            "items": bounded_rows,
+            "blockers": blockers[:12],
+            "unresolved": unresolved[:12],
+            "resume_probes": resume_probes[:10],
+            "summary": {
+                "has_replay_evidence": bool(rows),
+                "blocked_job_count": status_counts.get("blocked", 0),
+                "unresolved_job_count": status_counts.get("unresolved", 0),
+                "stale_job_count": status_counts.get("stale", 0),
+                "ready_job_count": status_counts.get("ready", 0),
+                "status_counts": status_counts,
+                "project_ids": sorted(project_ids)[:24],
+                "session_ids": sorted(session_ids)[:24],
+                "filtered_out_count": filtered_out,
+                "index_is_read_only": True,
+                "requires_exact_job_id": False,
+            },
+            "provenance": {
+                "derived_from": [
+                    "runtime.jobs",
+                    "runtime.job_metadata.latest_preflight_refresh_receipt",
+                    "runtime.job_metadata.preflight_refresh_receipts",
+                    "runtime.artifacts.preflight_refresh_receipt",
+                ],
+                "standard_patterns": [
+                    "Temporal Visibility workflow listing and search attributes",
+                    "OpenLineage run event lineage",
+                    "W3C PROV activity/entity generation",
+                    "Workflow Run RO-Crate workflow outputs",
+                ],
+                "source_material_mutation": False,
+                "external_mutation": False,
+            },
+        }
+        return dict(_json_safe_copy(index))
 
     def update_material_processing_task(
         self,

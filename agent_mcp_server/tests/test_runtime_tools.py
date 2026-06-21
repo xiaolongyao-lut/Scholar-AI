@@ -1414,6 +1414,54 @@ def test_workflow_replay_lineage_reads_bounded_runtime_projection(
     )
 
 
+def test_workflow_replay_index_reads_bounded_runtime_projection(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Workflow replay index should expose cross-job recovery discovery to MCP."""
+
+    backend.set_json(
+        "/runtime/workflow-replay-index",
+        {
+            "schema_version": "scholar_ai_workflow_replay_index_v1",
+            "matching_job_count": 1,
+            "returned_count": 1,
+            "items": [
+                {
+                    "job_id": "job-refresh-1",
+                    "latest_receipt_id": "preflight_refresh:latest",
+                    "latest_status": "blocked",
+                    "latest_blocker_count": 1,
+                }
+            ],
+            "summary": {"requires_exact_job_id": False, "index_is_read_only": True},
+        },
+    )
+
+    result = tools.workflow_replay_index(
+        project_id=" project-1 ",
+        session_id=" session-1 ",
+        status=" blocked ",
+        action_id=" writing.export_project ",
+        limit=9,
+    )
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar_ai_workflow_replay_index_v1"
+    assert result["data"]["summary"]["requires_exact_job_id"] is False
+    assert backend.calls[-1] == (
+        "json",
+        "/runtime/workflow-replay-index",
+        {
+            "limit": 9,
+            "project_id": "project-1",
+            "session_id": "session-1",
+            "status": "blocked",
+            "action_id": "writing.export_project",
+        },
+    )
+
+
 def test_runtime_projection_tools_reject_invalid_bounds_before_backend(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -1434,6 +1482,9 @@ def test_runtime_projection_tools_reject_invalid_bounds_before_backend(
 
     with pytest.raises(ValueError, match="job_id"):
         tools.workflow_replay_lineage(" " * 4)
+
+    with pytest.raises(ValueError, match="limit"):
+        tools.workflow_replay_index(limit=0)
 
     assert backend.calls == []
 

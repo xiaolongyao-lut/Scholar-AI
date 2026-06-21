@@ -9,6 +9,7 @@ import {
   getAgentWorkspaceStatus,
   getEvidenceIntegrityGate,
   getWorkflowPassport,
+  getWorkflowReplayIndex,
   getWorkflowReplayLineage,
   getZoteroAttachmentHealth,
   listRuntimeJobs,
@@ -23,6 +24,7 @@ vi.mock('@/services/agentWorkspaceApi', () => ({
   getAgentWorkflowHealth: vi.fn(),
   getEvidenceIntegrityGate: vi.fn(),
   getWorkflowPassport: vi.fn(),
+  getWorkflowReplayIndex: vi.fn(),
   getWorkflowReplayLineage: vi.fn(),
   getZoteroAttachmentHealth: vi.fn(),
   listRuntimeJobs: vi.fn(),
@@ -38,6 +40,7 @@ const mockedGetAgentHandoffCard = vi.mocked(getAgentHandoffCard);
 const mockedGetAgentWorkflowHealth = vi.mocked(getAgentWorkflowHealth);
 const mockedGetEvidenceIntegrityGate = vi.mocked(getEvidenceIntegrityGate);
 const mockedGetWorkflowPassport = vi.mocked(getWorkflowPassport);
+const mockedGetWorkflowReplayIndex = vi.mocked(getWorkflowReplayIndex);
 const mockedGetWorkflowReplayLineage = vi.mocked(getWorkflowReplayLineage);
 const mockedGetZoteroAttachmentHealth = vi.mocked(getZoteroAttachmentHealth);
 const mockedListRuntimeJobs = vi.mocked(listRuntimeJobs);
@@ -162,6 +165,25 @@ describe('AgentWorkspace', () => {
       },
       blockers: [],
       unresolved: ['Stage is in progress and still needs completion evidence.'],
+      provenance: {},
+    });
+    mockedGetWorkflowReplayIndex.mockResolvedValue({
+      schema_version: 'scholar_ai_workflow_replay_index_v1',
+      generated_at: '2026-06-21T01:00:01Z',
+      scope: {},
+      total_jobs_scanned: 0,
+      total_receipts_seen: 0,
+      matching_job_count: 0,
+      returned_count: 0,
+      items: [],
+      blockers: [],
+      unresolved: [],
+      resume_probes: [],
+      summary: {
+        has_replay_evidence: false,
+        index_is_read_only: true,
+        requires_exact_job_id: false,
+      },
       provenance: {},
     });
     mockedGetAgentHandoffCard.mockRejectedValue(new Error('handoff not found'));
@@ -739,6 +761,56 @@ describe('AgentWorkspace', () => {
       },
       provenance: { derived_from: ['runtime.artifacts.preflight_refresh_receipt'] },
     });
+    mockedGetWorkflowReplayIndex.mockResolvedValue({
+      schema_version: 'scholar_ai_workflow_replay_index_v1',
+      generated_at: '2026-06-21T03:00:03Z',
+      scope: { limit: 25 },
+      total_jobs_scanned: 2,
+      total_receipts_seen: 3,
+      matching_job_count: 2,
+      returned_count: 2,
+      items: [
+        {
+          ordinal: 1,
+          job_id: 'job_agent_handoff_1',
+          session_id: 'session_agent_handoff_1',
+          project_id: 'project-1',
+          job_kind: 'agent_request',
+          job_status: 'in_progress',
+          session_title: 'Agent handoff',
+          receipt_count: 2,
+          latest_receipt_id: 'preflight_refresh:test123',
+          latest_generated_at: '2026-06-21T03:00:01Z',
+          latest_status: 'blocked',
+          latest_action_id: 'writing.export_project',
+          latest_required_claim_id: 'export_readiness',
+          latest_can_proceed: false,
+          latest_refresh_required: false,
+          latest_blocker_count: 1,
+          latest_unresolved_count: 1,
+          changed_digest_keys: ['evidence_integrity_gate'],
+          comparison: { blocker_count_delta: 1 },
+          recovery_priority: 160,
+          metadata_receipt_count: 2,
+          artifact_receipt_count: 2,
+          resume_probes: [{ label: 'Read workflow replay lineage' }],
+          read_only: true,
+        },
+      ],
+      blockers: ['Job job_agent_handoff_1 latest replay receipt reports 1 blocking checks.'],
+      unresolved: ['Job job_agent_handoff_1 latest replay receipt reports 1 unresolved checks.'],
+      resume_probes: [{ label: 'List workflow replay index' }],
+      summary: {
+        has_replay_evidence: true,
+        blocked_job_count: 1,
+        unresolved_job_count: 1,
+        stale_job_count: 0,
+        ready_job_count: 0,
+        index_is_read_only: true,
+        requires_exact_job_id: false,
+      },
+      provenance: { derived_from: ['runtime.jobs'] },
+    });
 
     render(<AgentWorkspace />);
 
@@ -749,6 +821,7 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('Readiness Claims')).toBeInTheDocument();
     expect(screen.getByText('Command Preflight')).toBeInTheDocument();
     expect(screen.getByText('Replay Lineage')).toBeInTheDocument();
+    expect(screen.getByText('Replay Index')).toBeInTheDocument();
     expect(screen.getByText('Agent Handoff')).toBeInTheDocument();
     expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
     expect(screen.getByText('Export readiness')).toBeInTheDocument();
@@ -760,6 +833,8 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('preflight_refresh:test123 · digests 4 · block 1 · unresolved 1')).toBeInTheDocument();
     expect(await screen.findByText('2 receipts · latest blocked · block 1 · unresolved 1')).toBeInTheDocument();
     expect(screen.getByText('Latest replay receipt reports 1 blocking checks.')).toBeInTheDocument();
+    expect(screen.getByText('2 jobs · block 1 · unresolved 1 · stale 0')).toBeInTheDocument();
+    expect(screen.getByText('Job job_agent_handoff_1 latest replay receipt reports 1 blocking checks.')).toBeInTheDocument();
     expect(screen.getAllByText('preflight_refresh:test123').length).toBeGreaterThan(0);
     expect(screen.getAllByText('preflight blocked').length).toBeGreaterThan(0);
     expect(screen.getAllByText('fresh 0s').length).toBeGreaterThan(0);
@@ -848,6 +923,7 @@ describe('AgentWorkspace', () => {
     });
     mockedGetWorkflowPassport.mockResolvedValue(null as unknown as Awaited<ReturnType<typeof getWorkflowPassport>>);
     mockedGetEvidenceIntegrityGate.mockResolvedValue(null as unknown as Awaited<ReturnType<typeof getEvidenceIntegrityGate>>);
+    mockedGetWorkflowReplayIndex.mockResolvedValue(null as unknown as Awaited<ReturnType<typeof getWorkflowReplayIndex>>);
     mockedGetAgentHandoffCard.mockRejectedValue(new Error('handoff not found'));
 
     render(<AgentWorkspace />);
