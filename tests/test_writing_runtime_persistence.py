@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from harness_protocols import ArtifactType, EventType, JobKind, JobStatus, SessionMode
+from routers import agent_bridge_router
 from writing_runtime import WritingRuntime
 
 pytestmark = pytest.mark.persistence_full
@@ -651,6 +652,130 @@ async def test_evidence_integrity_gate_blocks_unsupported_and_keeps_unresolved_v
     assert gate["summary"]["status_counts"]["unresolved"] >= 2
     assert gate["blockers"]
     assert gate["unresolved"]
+
+
+@pytest.mark.asyncio
+async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path: Path) -> None:
+    """Agent handoff cards should survive runtime reload as metadata and artifact."""
+
+    db_path = tmp_path / "agent_handoff_card.sqlite3"
+    runtime = WritingRuntime(database_path=db_path, autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        user_id="handoff-user",
+        metadata={"project_id": "project-handoff", "title": "Handoff Project"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="read this paper",
+        metadata={
+            "agent_bridge": True,
+            "agent_request_id": "agentreq_persisted",
+            "agent_host": "codex",
+            "intent": "single_paper_deep_read",
+            "project_id": "project-handoff",
+            "resource_refs": [
+                {
+                    "ref_id": "material:handoff",
+                    "kind": "material",
+                    "project_id": "project-handoff",
+                    "read_endpoint": "/api/agent-bridge/resource/material:handoff",
+                }
+            ],
+        },
+    )
+    await runtime.start_job(job.job_id)
+    await runtime.complete_job(
+        job.job_id,
+        result={"kind": "agent_result", "text": "done", "request_id": "agentreq_persisted"},
+        artifact_metadata={"agent_request_id": "agentreq_persisted"},
+    )
+
+    card = runtime.build_agent_handoff_card(job.job_id, persist=True)
+
+    assert card["request_id"] == "agentreq_persisted"
+    loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
+    loaded_job = loaded_runtime.get_job(job.job_id)
+    assert loaded_job is not None
+    loaded_card = loaded_job.metadata["agent_handoff_card"]
+    assert loaded_card["schema_version"] == "scholar_ai_agent_handoff_card_v1"
+    assert loaded_card["resource_refs"][0]["ref_id"] == "material:handoff"
+    assert any(probe["endpoint"] == "/runtime/workflow-passport" for probe in loaded_card["resume_probes"])
+    artifacts = loaded_runtime.get_job_artifacts(job.job_id, ArtifactType.METADATA)
+    card_artifacts = [artifact for artifact in artifacts if artifact.metadata.get("kind") == "agent_handoff_card"]
+    assert card_artifacts
+    assert card_artifacts[-1].content["request_id"] == "agentreq_persisted"
+
+
+@pytest.mark.asyncio
+async def test_agent_bridge_result_and_failure_persist_agent_handoff_cards(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Terminal agent bridge writes should leave recoverable handoff cards."""
+
+    runtime = WritingRuntime(autosave=False)
+    monkeypatch.setattr(agent_bridge_router, "get_runtime", lambda: (runtime, SessionMode))
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-agent-bridge"},
+    )
+    result_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="read material",
+        metadata={
+            "agent_bridge": True,
+            "agent_request_id": "agentreq_result",
+            "agent_host": "codex",
+            "intent": "single_paper_deep_read",
+            "project_id": "project-agent-bridge",
+            "resource_refs": [
+                {
+                    "ref_id": "material:agent-bridge",
+                    "kind": "material",
+                    "project_id": "project-agent-bridge",
+                    "read_endpoint": "/api/agent-bridge/resource/material:agent-bridge",
+                }
+            ],
+        },
+    )
+    failure_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="failing material",
+        metadata={
+            "agent_bridge": True,
+            "agent_request_id": "agentreq_failure",
+            "agent_host": "codex",
+            "intent": "diagnose_failure",
+            "project_id": "project-agent-bridge",
+        },
+    )
+
+    result_payload = await agent_bridge_router.write_agent_result(
+        "agentreq_result",
+        agent_bridge_router.AgentResultRequest(
+            text="done",
+            evidence_refs=[{"ref_id": "chunk:1", "page": 2}],
+        ),
+    )
+    failure_payload = await agent_bridge_router.fail_agent_request(
+        "agentreq_failure",
+        agent_bridge_router.AgentFailRequest(error="agent stopped by test"),
+    )
+
+    result_card = result_payload.job.metadata["agent_handoff_card"]
+    failure_card = failure_payload.metadata["agent_handoff_card"]
+    assert result_card["schema_version"] == "scholar_ai_agent_handoff_card_v1"
+    assert result_card["status"] == "completed"
+    assert result_card["resource_refs"][0]["ref_id"] == "material:agent-bridge"
+    assert any(probe["endpoint"] == "/runtime/evidence-integrity-gate" for probe in result_card["resume_probes"])
+    assert any("PDFMathTranslate" in action for action in result_card["forbidden_actions"])
+    assert failure_card["status"] == "failed"
+    assert any("agent stopped by test" in blocker for blocker in failure_card["blockers"])
+    result_artifacts = runtime.get_job_artifacts(result_job.job_id, ArtifactType.METADATA)
+    failure_artifacts = runtime.get_job_artifacts(failure_job.job_id, ArtifactType.METADATA)
+    assert any(artifact.metadata.get("kind") == "agent_handoff_card" for artifact in result_artifacts)
+    assert any(artifact.metadata.get("kind") == "agent_handoff_card" for artifact in failure_artifacts)
 
 
 def _workspace_paths(tmp_path: Path) -> tuple[Path, Path, Path]:

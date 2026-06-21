@@ -21,6 +21,7 @@ from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlencode
 
 from datetime_utils import utc_now_iso_z
 from repositories.writing_runtime_repository import WritingRuntimeRepository
@@ -98,6 +99,8 @@ _RESEARCH_EVENT_SOURCE = "scholar-ai.runtime"
 _RESEARCH_PROJECT_OBJECT_TYPE = "research_project"
 _WORKFLOW_PASSPORT_SCHEMA_VERSION = "scholar_ai_workflow_passport_v1"
 _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION = "scholar_ai_evidence_integrity_gate_v1"
+_AGENT_HANDOFF_CARD_SCHEMA_VERSION = "scholar_ai_agent_handoff_card_v1"
+_AGENT_HANDOFF_CARD_KEY = "agent_handoff_card"
 _WORKFLOW_STAGE_DEFINITIONS: tuple[dict[str, Any], ...] = (
     {
         "stage_id": "material_ingest",
@@ -1015,6 +1018,96 @@ def _iter_artifact_dicts(jobs: list[WritingJob], artifacts_by_job: dict[str, lis
             if metadata:
                 rows.append((f"runtime.artifact:{artifact.artifact_id}:metadata", metadata))
     return rows
+
+
+def _bounded_handoff_refs(values: Any, *, max_items: int = 24) -> list[dict[str, Any]]:
+    """Return compact JSON-safe refs for agent handoff artifacts."""
+
+    if not isinstance(values, list):
+        return []
+    refs: list[dict[str, Any]] = []
+    for item in values[:max_items]:
+        if not isinstance(item, dict):
+            continue
+        ref = _compact_projection_mapping(
+            item,
+            allowed_keys=(
+                "ref_id",
+                "kind",
+                "project_id",
+                "material_id",
+                "chunk_id",
+                "title",
+                "summary",
+                "read_endpoint",
+                "page",
+                "bbox",
+                "bbox_unit",
+                "status",
+                "source",
+            ),
+        )
+        if ref:
+            _append_unique_mapping(refs, ref, max_items=max_items)
+    return refs
+
+
+def _bounded_handoff_artifacts(artifacts: list[WritingArtifact], *, max_items: int = 24) -> list[dict[str, Any]]:
+    """Return compact artifact summaries without expanding large artifact bodies."""
+
+    rows: list[dict[str, Any]] = []
+    for artifact in artifacts[:max_items]:
+        content_kind: str | None = None
+        if isinstance(artifact.content, dict):
+            content_kind = _safe_projection_string(artifact.content.get("kind"))
+        row = {
+            "artifact_id": artifact.artifact_id,
+            "artifact_type": artifact.artifact_type.value,
+            "created_at": artifact.created_at,
+            "created_by": artifact.created_by,
+            "mime_type": artifact.mime_type,
+            "content_shape": "object" if isinstance(artifact.content, dict) else "text",
+            "content_kind": content_kind,
+            "metadata": _compact_projection_mapping(dict(artifact.metadata)),
+        }
+        _append_unique_mapping(
+            rows,
+            {
+                key: _projection_value(value)
+                for key, value in row.items()
+                if not _is_blank_projection_value(value)
+            },
+            max_items=max_items,
+        )
+    return rows
+
+
+def _handoff_status_from_job_status(status: Any) -> str:
+    """Return a stable handoff lifecycle string for one runtime job."""
+
+    normalized = str(getattr(status, "value", status) or "").strip().lower()
+    if normalized in {"completed", "failed", "cancelled", "paused"}:
+        return normalized
+    if normalized in {"started", "in_progress", "queued", "created", "approval_pending"}:
+        return normalized
+    return "unresolved"
+
+
+def _handoff_resume_probe(label: str, endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return one read-only probe a resumed agent should run first."""
+
+    query = {
+        str(key): str(value)
+        for key, value in (params or {}).items()
+        if _safe_projection_string(value) is not None
+    }
+    return {
+        "label": label,
+        "method": "GET",
+        "endpoint": endpoint,
+        "url": f"{endpoint}?{urlencode(query)}" if query else endpoint,
+        "read_only": True,
+    }
 
 
 def _collect_nested_dicts(value: Any, *, max_items: int = 128) -> list[dict[str, Any]]:
@@ -3775,6 +3868,241 @@ class WritingRuntime:
                 "workflow_passport_schema_version": passport.get("schema_version"),
             },
         }
+
+    def build_agent_handoff_card(
+        self,
+        job_id: str,
+        *,
+        persist: bool = False,
+    ) -> dict[str, Any]:
+        """Build a bounded resume card for one runtime-visible agent job.
+
+        Args:
+            job_id: Runtime job id that owns the agent request.
+            persist: When true, store the card as job metadata and a metadata
+                artifact for later MCP/Agent Workspace reads.
+
+        Returns:
+            JSON-safe handoff card with probes, blockers, and resume prompt.
+
+        Raises:
+            ValueError: If the job is missing or not an agent request.
+        """
+
+        normalized_job_id = str(job_id or "").strip()
+        if not normalized_job_id:
+            raise ValueError("job_id must not be empty")
+        job = self.get_job(normalized_job_id)
+        if job is None:
+            raise ValueError(f"Job {normalized_job_id} not found")
+        kind_value = str(getattr(job.kind, "value", job.kind))
+        if kind_value != JobKind.AGENT_REQUEST.value and not bool(job.metadata.get("agent_bridge")):
+            raise ValueError("agent handoff card requires an agent request job")
+
+        session = self.get_session(job.session_id)
+        metadata = dict(job.metadata)
+        request_id = _metadata_string(metadata, ("agent_request_id", "request_id", "runtime_request_id"))
+        project_id = _project_id_for_job(job, session)
+        agent_host = _metadata_string(metadata, ("agent_host",))
+        intent = _metadata_string(metadata, ("intent", "task_goal", "target_document"))
+        status = _handoff_status_from_job_status(job.status)
+        passport = self.build_workflow_passport(
+            session_id=job.session_id,
+            job_id=job.job_id,
+            project_id=project_id,
+            limit=500,
+        )
+        gate = self.build_evidence_integrity_gate(
+            session_id=job.session_id,
+            job_id=job.job_id,
+            project_id=project_id,
+            limit=500,
+        )
+        current_stage_id = _safe_projection_string(passport.get("current_stage_id"))
+        stages = passport.get("stages") if isinstance(passport.get("stages"), list) else []
+        stage_by_id = {
+            str(stage.get("stage_id")): stage
+            for stage in stages
+            if isinstance(stage, dict) and _safe_projection_string(stage.get("stage_id")) is not None
+        }
+        current_stage = stage_by_id.get(str(current_stage_id)) if current_stage_id else None
+        completed_evidence: list[dict[str, Any]] = []
+        for stage in stages:
+            if not isinstance(stage, dict):
+                continue
+            if stage.get("status") != "complete":
+                continue
+            for artifact_ref in list(stage.get("present_artifacts") or [])[:8]:
+                if isinstance(artifact_ref, dict):
+                    _append_unique_mapping(
+                        completed_evidence,
+                        {
+                            "stage_id": stage.get("stage_id"),
+                            "stage_label": stage.get("label"),
+                            **_compact_projection_mapping(artifact_ref),
+                        },
+                    )
+
+        blockers = [
+            str(item)
+            for item in list(gate.get("blockers") or [])[:16]
+            if _safe_projection_string(item) is not None
+        ]
+        unresolved = [
+            str(item)
+            for item in list(gate.get("unresolved") or [])[:16]
+            if _safe_projection_string(item) is not None
+        ]
+        if status == "failed" and job.error:
+            _append_unique_text(blockers, f"Agent request failed: {str(job.error)[:500]}", max_items=16)
+        elif status in {"cancelled", "paused"}:
+            _append_unique_text(unresolved, f"Agent request is {status}; inspect current job state before resuming.", max_items=16)
+
+        artifacts = _bounded_handoff_artifacts(self.get_job_artifacts(job.job_id))
+        resource_refs = _bounded_handoff_refs(metadata.get("resource_refs"), max_items=50)
+        resume_probe_params = {
+            "session_id": job.session_id,
+            "job_id": job.job_id,
+            "project_id": project_id,
+        }
+        resume_probes = [
+            _handoff_resume_probe(
+                "Read linked agent request",
+                f"/api/agent-bridge/request/{request_id}",
+            )
+            if request_id
+            else _handoff_resume_probe("Read runtime job", f"/runtime/job/{job.job_id}"),
+            _handoff_resume_probe("Read runtime snapshot", f"/runtime/job/{job.job_id}/snapshot"),
+            _handoff_resume_probe("Read workflow passport", "/runtime/workflow-passport", resume_probe_params),
+            _handoff_resume_probe("Read evidence integrity gate", "/runtime/evidence-integrity-gate", resume_probe_params),
+            _handoff_resume_probe("Read job artifacts", f"/runtime/job/{job.job_id}/artifacts"),
+        ]
+        forbidden_actions = [
+            "Do not push, tag, release, publish, deploy, or upload external artifacts without explicit user authorization.",
+            "Do not create Codex skills, Feishu/Lark integrations, or standalone installer/package surfaces from this handoff.",
+            "Do not copy, vendor, embed, or translate AGPL PDFMathTranslate code into Scholar AI.",
+            "Do not directly write, repair, download, or relink Zotero databases or attachments.",
+            "Do not modify github/ reference repositories.",
+            "Do not treat unresolved integrity checks as passed or verified.",
+        ]
+        current_stage_label = str(current_stage.get("label") or current_stage_id or "agent_handoff") if current_stage else str(
+            current_stage_id or "agent_handoff"
+        )
+        resume_prompt_lines = [
+            "Resume Scholar AI / 文献助手 MCP-first local work from this handoff card.",
+            f"Request id: {request_id or 'unknown'}; runtime job id: {job.job_id}; status: {status}.",
+            f"Current stage: {current_stage_label}.",
+            "Before any mutating action, run the read-only resume probes listed in this card and re-check git status plus rollback discipline.",
+            "Keep unresolved evidence/integrity checks visible; only proceed with local code, docs, tests, and runtime artifacts inside the authorized boundaries.",
+        ]
+        if blockers:
+            resume_prompt_lines.append("Blocking risks: " + "; ".join(blockers[:3]))
+        if unresolved:
+            resume_prompt_lines.append("Unresolved checks: " + "; ".join(unresolved[:3]))
+
+        card = {
+            "schema_version": _AGENT_HANDOFF_CARD_SCHEMA_VERSION,
+            "generated_at": utc_now_iso_z(),
+            "request_id": request_id,
+            "job_id": job.job_id,
+            "session_id": job.session_id,
+            "project_id": project_id,
+            "status": status,
+            "agent_host": agent_host,
+            "intent": intent,
+            "current_stage_id": current_stage_id,
+            "completed_evidence": completed_evidence[:24],
+            "blockers": blockers[:16],
+            "unresolved": unresolved[:16],
+            "resource_refs": resource_refs[:50],
+            "artifacts": artifacts[:24],
+            "resume_probes": resume_probes[:16],
+            "forbidden_actions": forbidden_actions,
+            "resume_prompt": "\n".join(resume_prompt_lines),
+            "provenance": {
+                "derived_from": [
+                    "runtime.job_metadata",
+                    "runtime.artifacts",
+                    "runtime.workflow_passport",
+                    "runtime.evidence_integrity_gate",
+                ],
+                "workflow_passport_schema_version": passport.get("schema_version"),
+                "evidence_integrity_gate_schema_version": gate.get("schema_version"),
+                "artifact_count": len(artifacts),
+                "resource_ref_count": len(resource_refs),
+            },
+        }
+        if persist:
+            return self.persist_agent_handoff_card(job.job_id, card)
+        return card
+
+    def persist_agent_handoff_card(
+        self,
+        job_id: str,
+        card: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Persist one handoff card as job metadata and metadata artifact.
+
+        Args:
+            job_id: Runtime job id that owns the card.
+            card: Optional prebuilt card. When omitted, a fresh card is built.
+
+        Returns:
+            The card content after persistence.
+
+        Raises:
+            ValueError: If the job is missing or the card is malformed.
+        """
+
+        normalized_job_id = str(job_id or "").strip()
+        if not normalized_job_id:
+            raise ValueError("job_id must not be empty")
+        if card is None:
+            return self.build_agent_handoff_card(normalized_job_id, persist=True)
+        if not isinstance(card, dict):
+            raise ValueError("agent handoff card must be an object")
+        job = self.get_job(normalized_job_id)
+        if job is None:
+            raise ValueError(f"Job {normalized_job_id} not found")
+        normalized_card = dict(_json_safe_copy(card))
+        if normalized_card.get("schema_version") != _AGENT_HANDOFF_CARD_SCHEMA_VERSION:
+            raise ValueError("agent handoff card schema_version is invalid")
+        metadata = dict(job.metadata)
+        metadata[_AGENT_HANDOFF_CARD_KEY] = normalized_card
+        updated = replace(job, metadata=metadata)
+        self._jobs[normalized_job_id] = updated
+        self._store_artifact(
+            WritingArtifact.create(
+                job_id=job.job_id,
+                session_id=job.session_id,
+                artifact_type=ArtifactType.METADATA,
+                content=normalized_card,
+                created_by="runtime",
+                metadata={
+                    "kind": _AGENT_HANDOFF_CARD_KEY,
+                    "schema_version": _AGENT_HANDOFF_CARD_SCHEMA_VERSION,
+                    "agent_request_id": normalized_card.get("request_id"),
+                    "project_id": normalized_card.get("project_id"),
+                    "current_stage_id": normalized_card.get("current_stage_id"),
+                    "status": normalized_card.get("status"),
+                },
+                mime_type="application/json",
+            )
+        )
+        self.emit_job_progress(
+            job.job_id,
+            stage="agent_handoff",
+            message="Agent handoff card recorded for resumable local workflow.",
+            progress=100 if normalized_card.get("status") in {"completed", "failed", "cancelled"} else None,
+            data={
+                "request_id": normalized_card.get("request_id"),
+                "handoff_card_recorded": True,
+                "blocker_count": len(normalized_card.get("blockers") or []),
+                "unresolved_count": len(normalized_card.get("unresolved") or []),
+            },
+        )
+        self._autosave_if_enabled()
+        return normalized_card
 
     async def complete_job(
         self,

@@ -1069,6 +1069,37 @@ def test_agent_request_create_posts_bounded_envelope(
     assert payload["payload"]["output_targets"]["evolution_capture"] is True
 
 
+def test_agent_handoff_card_reads_runtime_card_by_request_id(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Agent handoff card reads the request job before fetching the runtime card."""
+
+    backend.set_json(
+        "/api/agent-bridge/request/agentreq_1",
+        {
+            "job_id": "job_agent_1",
+            "metadata": {"agent_request_id": "agentreq_1"},
+        },
+    )
+    backend.set_json(
+        "/runtime/job/job_agent_1/agent-handoff-card",
+        {
+            "schema_version": "scholar_ai_agent_handoff_card_v1",
+            "request_id": "agentreq_1",
+            "job_id": "job_agent_1",
+            "resume_probes": [{"endpoint": "/runtime/job/job_agent_1/snapshot"}],
+        },
+    )
+
+    result = tools.agent_handoff_card("agentreq_1")
+
+    assert result["is_error"] is False
+    assert result["data"]["job_id"] == "job_agent_1"
+    assert backend.calls[-2] == ("json", "/api/agent-bridge/request/agentreq_1", None)
+    assert backend.calls[-1] == ("json", "/runtime/job/job_agent_1/agent-handoff-card", None)
+
+
 def test_single_paper_task_create_posts_local_task_payload(
     tools: RuntimeTools,
     backend: FakeBackend,

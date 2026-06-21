@@ -586,6 +586,10 @@ async def write_agent_result(request_id: str, request: AgentResultRequest) -> Ag
     consumer_metadata = _consume_agent_result(request_id, runtime, job.job_id, routing_metadata, content)
     if consumer_metadata:
         runtime.update_job_metadata(job.job_id, {"knowledge_consumers": consumer_metadata})
+    try:
+        runtime.build_agent_handoff_card(job.job_id, persist=True)
+    except ValueError:
+        logger.exception("Failed to persist agent handoff card for request %s", request_id)
     current_job = runtime.get_job(job.job_id) or job
     artifacts = runtime.get_job_artifacts(job.job_id)
     return AgentBridgeResultPayload(
@@ -602,6 +606,11 @@ async def fail_agent_request(request_id: str, request: AgentFailRequest) -> JobP
     runtime, _ = get_runtime()
     job = _require_request_job(runtime, request_id)
     failed = await runtime.fail_job(job.job_id, request.error)
+    try:
+        runtime.build_agent_handoff_card(job.job_id, persist=True)
+    except ValueError:
+        logger.exception("Failed to persist failed-agent handoff card for request %s", request_id)
+    failed = runtime.get_job(job.job_id) or failed
     return JobPayload(**failed.to_dict())
 
 

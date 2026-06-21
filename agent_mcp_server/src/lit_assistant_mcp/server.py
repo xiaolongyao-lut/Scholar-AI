@@ -107,6 +107,7 @@ def create_mcp_server(
         "literature.single_paper_completion_check": runtime.single_paper_completion_check,
         "literature.agent_request_list": runtime.agent_request_list,
         "literature.agent_request_read": runtime.agent_request_read,
+        "literature.agent_handoff_card": runtime.agent_handoff_card,
         "literature.agent_resource_read": runtime.agent_resource_read,
         "literature.agent_progress": runtime.agent_progress,
         "literature.agent_result": runtime.agent_result,
@@ -533,6 +534,11 @@ def create_mcp_server(
     def literature_agent_request_read(request_id: str) -> dict[str, Any]:
         """Read one runtime-visible agent request."""
         return runtime.agent_request_read(request_id=request_id)
+
+    @mcp.tool(name="literature.agent_handoff_card", structured_output=True)
+    def literature_agent_handoff_card(request_id: str) -> dict[str, Any]:
+        """Read a resumable handoff card for one runtime-visible agent request."""
+        return runtime.agent_handoff_card(request_id=request_id)
 
     @mcp.tool(name="literature.agent_resource_read", structured_output=True)
     def literature_agent_resource_read(

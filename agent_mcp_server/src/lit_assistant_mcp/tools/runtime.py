@@ -1072,6 +1072,25 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.agent_request_read", args, result, started, endpoint)
 
+    def agent_handoff_card(self, request_id: str) -> dict[str, Any]:
+        """Read the resumable handoff card for one runtime-visible agent job."""
+        started = time.perf_counter()
+        request_id = self._bounded_text(request_id, "request_id", max_chars=120)
+        args = {"request_id": request_id}
+        request_endpoint = f"/api/agent-bridge/request/{request_id}"
+        request_result = self.backend.get(request_endpoint)
+        wrapped_request = self._wrap_backend_result(request_result)
+        if wrapped_request.get("is_error") is True:
+            return self._finish("literature.agent_handoff_card", args, wrapped_request, started, request_endpoint)
+        request_data = wrapped_request.get("data")
+        if not isinstance(request_data, dict):
+            raise ValueError("agent request response must be an object")
+        job_id = self._bounded_text(request_data.get("job_id"), "job_id", max_chars=160)
+        endpoint = f"/runtime/job/{job_id}/agent-handoff-card"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_handoff_card", {**args, "job_id": job_id}, result, started, endpoint)
+
     def agent_resource_read(
         self,
         ref_id: str,

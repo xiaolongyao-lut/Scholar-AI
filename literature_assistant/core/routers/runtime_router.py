@@ -21,6 +21,7 @@ from models import (
     ResearchProjectionPayload,
     WorkflowPassportPayload,
     EvidenceIntegrityGatePayload,
+    AgentHandoffCardPayload,
     TimelinePagePayload,
     CheckpointPayload,
     ResumeSessionPayload,
@@ -812,6 +813,19 @@ async def get_evidence_integrity_gate(
         status_code = 404 if "not found" in str(exc).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return EvidenceIntegrityGatePayload(**gate)
+
+
+@router.get("/job/{job_id}/agent-handoff-card", response_model=AgentHandoffCardPayload)
+async def get_agent_handoff_card(job_id: str) -> AgentHandoffCardPayload:
+    """Return a recoverable handoff card for one runtime-visible agent job."""
+
+    runtime = get_runtime()
+    try:
+        card = runtime.build_agent_handoff_card(job_id)
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return AgentHandoffCardPayload(**card)
 
 
 @router.get("/job/{job_id}", response_model=JobPayload)

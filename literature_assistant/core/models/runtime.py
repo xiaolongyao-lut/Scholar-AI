@@ -576,6 +576,52 @@ class EvidenceIntegrityGatePayload(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentHandoffCardPayload(BaseModel):
+    """Recoverable handoff card for one runtime-visible agent request.
+
+    Args:
+        schema_version: Versioned additive API contract.
+        generated_at: UTC generation time for this card.
+        request_id: Agent bridge request id when present.
+        job_id: Runtime job id that owns the handoff card.
+        session_id: Runtime session id used for resume probes.
+        project_id: Optional project id recovered from job/session metadata.
+        status: Terminal or current job lifecycle state.
+        current_stage_id: Workflow passport stage that should be inspected next.
+        completed_evidence: Bounded refs to completed runtime evidence.
+        blockers: Block-level integrity or lifecycle messages.
+        unresolved: Review/offline checks that must remain visible.
+        resource_refs: Bounded resource refs supplied to the delegated agent.
+        artifacts: Bounded artifacts attached to the runtime job.
+        resume_probes: Read-only calls a new agent should run before mutating.
+        forbidden_actions: Actions that remain outside the local handoff boundary.
+        resume_prompt: Compact instruction block for the next agent session.
+        provenance: Runtime sources used to derive the card.
+    """
+
+    schema_version: Literal["scholar_ai_agent_handoff_card_v1"] = (
+        "scholar_ai_agent_handoff_card_v1"
+    )
+    generated_at: str
+    request_id: str | None = None
+    job_id: str = Field(min_length=1, max_length=160)
+    session_id: str = Field(min_length=1, max_length=160)
+    project_id: str | None = Field(default=None, max_length=200)
+    status: str = Field(min_length=1, max_length=80)
+    agent_host: str | None = Field(default=None, max_length=80)
+    intent: str | None = Field(default=None, max_length=160)
+    current_stage_id: str | None = Field(default=None, max_length=120)
+    completed_evidence: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)
+    blockers: List[str] = Field(default_factory=list, max_length=16)
+    unresolved: List[str] = Field(default_factory=list, max_length=16)
+    resource_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=50)
+    artifacts: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)
+    resume_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
+    forbidden_actions: List[str] = Field(default_factory=list, max_length=16)
+    resume_prompt: str = Field(min_length=1, max_length=4000)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
 class TimelineItemPayload(BaseModel):
     """Append-only transcript event payload."""
 
