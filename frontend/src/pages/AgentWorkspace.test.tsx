@@ -4,8 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentWorkspace } from './AgentWorkspace';
 import {
   getAgentBridgeStatus,
+  getAgentHandoffCard,
   getAgentWorkflowHealth,
   getAgentWorkspaceStatus,
+  getEvidenceIntegrityGate,
+  getWorkflowPassport,
   getZoteroAttachmentHealth,
   listRuntimeJobs,
 } from '@/services/agentWorkspaceApi';
@@ -14,7 +17,10 @@ import { getWikiReview } from '@/services/wikiApi';
 vi.mock('@/services/agentWorkspaceApi', () => ({
   getAgentWorkspaceStatus: vi.fn(),
   getAgentBridgeStatus: vi.fn(),
+  getAgentHandoffCard: vi.fn(),
   getAgentWorkflowHealth: vi.fn(),
+  getEvidenceIntegrityGate: vi.fn(),
+  getWorkflowPassport: vi.fn(),
   getZoteroAttachmentHealth: vi.fn(),
   listRuntimeJobs: vi.fn(),
 }));
@@ -25,7 +31,10 @@ vi.mock('@/services/wikiApi', () => ({
 
 const mockedGetAgentWorkspaceStatus = vi.mocked(getAgentWorkspaceStatus);
 const mockedGetAgentBridgeStatus = vi.mocked(getAgentBridgeStatus);
+const mockedGetAgentHandoffCard = vi.mocked(getAgentHandoffCard);
 const mockedGetAgentWorkflowHealth = vi.mocked(getAgentWorkflowHealth);
+const mockedGetEvidenceIntegrityGate = vi.mocked(getEvidenceIntegrityGate);
+const mockedGetWorkflowPassport = vi.mocked(getWorkflowPassport);
 const mockedGetZoteroAttachmentHealth = vi.mocked(getZoteroAttachmentHealth);
 const mockedListRuntimeJobs = vi.mocked(listRuntimeJobs);
 const mockedGetWikiReview = vi.mocked(getWikiReview);
@@ -90,6 +99,68 @@ describe('AgentWorkspace', () => {
       items: [],
     });
     mockedListRuntimeJobs.mockResolvedValue({ recent: [] });
+    mockedGetWorkflowPassport.mockResolvedValue({
+      schema_version: 'scholar_ai_workflow_passport_v1',
+      generated_at: '2026-06-21T01:00:00Z',
+      scope: {},
+      current_stage_id: 'material_ingest',
+      gate_summary: {
+        gate_counts: { pass: 0, unresolved: 1, block: 0 },
+        severity_counts: { warn: 1 },
+      },
+      provenance: {},
+      stages: [
+        {
+          stage_id: 'material_ingest',
+          label: 'Material ingest',
+          status: 'in_progress',
+          required_artifacts: ['material_processing_task'],
+          present_artifacts: [],
+          object_ids: [],
+          event_types: [],
+          next_actions: ['Create or complete a material-processing task for source materials.'],
+          updated_at: null,
+          gate: {
+            gate_id: 'material_ingest.gate',
+            status: 'unresolved',
+            severity: 'warn',
+            reason: 'Stage is in progress and still needs completion evidence.',
+            evidence: [],
+            blockers: [],
+            unresolved: ['Stage is in progress and still needs completion evidence.'],
+            requires_user_confirmation: false,
+          },
+        },
+      ],
+    });
+    mockedGetEvidenceIntegrityGate.mockResolvedValue({
+      schema_version: 'scholar_ai_evidence_integrity_gate_v1',
+      generated_at: '2026-06-21T01:00:00Z',
+      scope: {},
+      status: 'unresolved',
+      signals: [
+        {
+          signal_id: 'workflow_stage:material_ingest',
+          category: 'workflow_stage',
+          status: 'unresolved',
+          severity: 'note',
+          message: 'Stage is in progress and still needs completion evidence.',
+          evidence: [],
+          next_actions: ['Complete material ingest evidence.'],
+          metadata: {},
+        },
+      ],
+      summary: {
+        signal_count: 1,
+        status_counts: { unresolved: 1 },
+        severity_counts: { note: 1 },
+        unresolved_is_pass: false,
+      },
+      blockers: [],
+      unresolved: ['Stage is in progress and still needs completion evidence.'],
+      provenance: {},
+    });
+    mockedGetAgentHandoffCard.mockRejectedValue(new Error('handoff not found'));
   });
 
   it('renders writing export runtime jobs with workflow summary badges', async () => {
@@ -277,5 +348,201 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('进入 Wiki 工作台复核待审页面。')).toBeInTheDocument();
     expect(screen.getByText('打开任务详情检查待补充哨兵和 evidence refs。')).toBeInTheDocument();
     expect(screen.queryByText('C:/private/Zotero')).not.toBeInTheDocument();
+  });
+
+  it('renders workflow passport, integrity gate, handoff card, and behavior eval visibility', async () => {
+    mockedGetAgentWorkspaceStatus.mockResolvedValue({
+      artifact_root: 'workspace_artifacts/agent_mcp_workflows',
+      artifact_count: 1,
+      audit_count: 0,
+      total_artifact_bytes: 256,
+      latest_activity_at: '2026-06-21T03:00:00.000Z',
+      artifacts: [
+        {
+          path: 'behavior_eval_runs/behavior-eval-20260621.json',
+          name: 'behavior-eval-20260621.json',
+          kind: 'json',
+          size_bytes: 256,
+          modified_at: '2026-06-21T03:00:00.000Z',
+          preview: '{"schema_version":"scholar_ai_behavior_eval_pack_v1"}',
+          truncated: false,
+        },
+      ],
+      audit_records: [],
+    });
+    mockedListRuntimeJobs.mockResolvedValue({
+      recent: [
+        {
+          job_id: 'job_agent_handoff_1',
+          session_id: 'session_agent_handoff_1',
+          kind: 'agent_request',
+          status: 'in_progress',
+          input_text: '单篇精读：证据链检查',
+          created_at: '2026-06-21T03:00:00.000Z',
+          started_at: '2026-06-21T03:00:01.000Z',
+          completed_at: null,
+          action_id: null,
+          skill_id: null,
+          tags: [],
+          metadata: { intent: 'single_paper_deep_read', agent_host: 'codex' },
+          writing_workflow_state_summary: { phase: 'evidence_pack' },
+        },
+      ],
+    });
+    mockedGetWorkflowPassport.mockResolvedValue({
+      schema_version: 'scholar_ai_workflow_passport_v1',
+      generated_at: '2026-06-21T03:00:00Z',
+      scope: { project_id: 'project-1' },
+      current_stage_id: 'evidence_pack',
+      gate_summary: {
+        gate_counts: { pass: 1, unresolved: 1, block: 1 },
+        severity_counts: { none: 1, warn: 1, block: 1 },
+        blocking_stage_ids: ['citation_review'],
+        unresolved_stage_ids: ['evidence_pack'],
+        requires_user_confirmation: true,
+      },
+      provenance: { derived_from: ['runtime.research_projection'] },
+      stages: [
+        {
+          stage_id: 'material_ingest',
+          label: 'Material ingest',
+          status: 'complete',
+          required_artifacts: ['material_processing_task'],
+          present_artifacts: [{ kind: 'material_processing_task' }],
+          object_ids: ['research_material:1'],
+          event_types: ['material.ingest.completed'],
+          next_actions: [],
+          updated_at: '2026-06-21T03:00:00Z',
+          gate: {
+            gate_id: 'material_ingest.gate',
+            status: 'pass',
+            severity: 'none',
+            reason: 'Required runtime evidence is present for this stage.',
+            evidence: [{ ref_type: 'research_object', ref_id: 'research_material:1' }],
+            blockers: [],
+            unresolved: [],
+            requires_user_confirmation: false,
+          },
+        },
+        {
+          stage_id: 'evidence_pack',
+          label: 'Evidence pack',
+          status: 'in_progress',
+          required_artifacts: ['evidence_pack', 'qrels_status'],
+          present_artifacts: [{ kind: 'evidence_pack' }],
+          object_ids: ['evidence_pack:1'],
+          event_types: ['evidence.pack.created'],
+          next_actions: ['Record qrels_status before making retrieval-quality claims.'],
+          updated_at: '2026-06-21T03:01:00Z',
+          gate: {
+            gate_id: 'evidence_pack.gate',
+            status: 'unresolved',
+            severity: 'warn',
+            reason: 'Stage is in progress and still needs completion evidence.',
+            evidence: [{ ref_type: 'research_object', ref_id: 'evidence_pack:1' }],
+            blockers: [],
+            unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+            requires_user_confirmation: false,
+          },
+        },
+        {
+          stage_id: 'citation_review',
+          label: 'Citation review',
+          status: 'blocked',
+          required_artifacts: ['citation_bank'],
+          present_artifacts: [],
+          object_ids: [],
+          event_types: ['approval.required'],
+          next_actions: ['Resolve unsupported citation anchors before export.'],
+          updated_at: '2026-06-21T03:02:00Z',
+          gate: {
+            gate_id: 'citation_review.gate',
+            status: 'block',
+            severity: 'block',
+            reason: 'Unsupported citation anchors block export readiness.',
+            evidence: [{ ref_type: 'research_event_type', ref_id: 'approval.required' }],
+            blockers: ['Unsupported citation anchors block export readiness.'],
+            unresolved: [],
+            requires_user_confirmation: true,
+          },
+        },
+      ],
+    });
+    mockedGetEvidenceIntegrityGate.mockResolvedValue({
+      schema_version: 'scholar_ai_evidence_integrity_gate_v1',
+      generated_at: '2026-06-21T03:00:00Z',
+      scope: { project_id: 'project-1' },
+      status: 'block',
+      signals: [
+        {
+          signal_id: 'citation_verification:unsupported:1',
+          category: 'citation_verification',
+          status: 'block',
+          severity: 'block',
+          message: 'Unsupported citation anchors block export readiness.',
+          evidence: [{ ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' }],
+          next_actions: ['Run citation verification and attach locator evidence.'],
+          metadata: { unsupported_count: 1 },
+        },
+        {
+          signal_id: 'retrieval_quality:missing_qrels_status:1',
+          category: 'retrieval_quality',
+          status: 'unresolved',
+          severity: 'note',
+          message: 'Evidence refs exist, but retrieval qrels status is not recorded.',
+          evidence: [{ ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' }],
+          next_actions: ['Record qrels_status before making retrieval-quality claims.'],
+          metadata: { evidence_ref_count: 2 },
+        },
+      ],
+      summary: {
+        signal_count: 2,
+        status_counts: { block: 1, unresolved: 1 },
+        severity_counts: { block: 1, note: 1 },
+        unresolved_is_pass: false,
+      },
+      blockers: ['Unsupported citation anchors block export readiness.'],
+      unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+      provenance: { derived_from: ['runtime.workflow_passport'] },
+    });
+    mockedGetAgentHandoffCard.mockResolvedValue({
+      schema_version: 'scholar_ai_agent_handoff_card_v1',
+      generated_at: '2026-06-21T03:00:00Z',
+      request_id: 'agent_request_1',
+      job_id: 'job_agent_handoff_1',
+      session_id: 'session_agent_handoff_1',
+      project_id: 'project-1',
+      status: 'in_progress',
+      agent_host: 'codex',
+      intent: 'single_paper_deep_read',
+      current_stage_id: 'evidence_pack',
+      completed_evidence: [{ ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' }],
+      blockers: [],
+      unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+      resource_refs: [{ ref_id: 'material:1', kind: 'material' }],
+      artifacts: [],
+      resume_probes: [{ label: 'Read workflow passport' }, { label: 'Read evidence integrity gate' }],
+      forbidden_actions: ['Do not treat unresolved integrity checks as passed or verified.'],
+      resume_prompt: 'Read /runtime/workflow-passport before mutating local files.',
+      provenance: { derived_from: ['runtime.job'] },
+    });
+
+    render(<AgentWorkspace />);
+
+    expect(await screen.findByRole('region', { name: '研究流程主干' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '研究流程' })).toBeInTheDocument();
+    expect(screen.getByText('Workflow Passport')).toBeInTheDocument();
+    expect(screen.getByText('Evidence Integrity Gate')).toBeInTheDocument();
+    expect(screen.getByText('Agent Handoff')).toBeInTheDocument();
+    expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('unresolved 1').length).toBeGreaterThan(0);
+    expect(screen.getByText('behavior eval 1')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockedGetAgentHandoffCard).toHaveBeenCalledWith('job_agent_handoff_1');
+    });
+    expect(await screen.findByText('in_progress · refs 1 · probes 2')).toBeInTheDocument();
+    expect(screen.queryByText(/\/runtime\/workflow-passport/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^integrity 通过$/)).not.toBeInTheDocument();
   });
 });

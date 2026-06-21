@@ -19,16 +19,23 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { StatusPill, type StatusTone } from '@/components/common/StatusPill';
 import {
   getAgentBridgeStatus,
+  getAgentHandoffCard,
   getAgentWorkflowHealth,
   getAgentWorkspaceStatus,
+  getEvidenceIntegrityGate,
+  getWorkflowPassport,
   getZoteroAttachmentHealth,
   listRuntimeJobs,
+  type AgentHandoffCardProjection,
   type AgentWorkflowHealthCheck,
   type AgentWorkspaceArtifact,
   type AgentWorkspaceAuditRecord,
   type AgentWorkspaceStatus,
   type AgentBridgeStatus,
+  type EvidenceIntegrityGateProjection,
   type RuntimeJobsStatus,
+  type WorkflowPassportProjection,
+  type WorkflowPassportStage,
   type ZoteroAttachmentHealth,
 } from '@/services/agentWorkspaceApi';
 import { getWikiReview } from '@/services/wikiApi';
@@ -246,6 +253,11 @@ function isVisibleRuntimeJob(job: WritingJob): boolean {
   return Boolean(summary && typeof summary === 'object' && Object.keys(summary).length > 0);
 }
 
+function isBehaviorEvalArtifact(artifact: AgentWorkspaceArtifact): boolean {
+  const text = `${artifact.path} ${artifact.name}`.toLowerCase();
+  return text.includes('behavior_eval') || text.includes('behavior-eval');
+}
+
 const ACTIVE_JOB_STATUSES = new Set(['queued', 'started', 'in_progress', 'paused', 'approval_pending']);
 
 interface ToolNextActionLike {
@@ -270,6 +282,8 @@ interface ReadinessCard {
 }
 
 type ReadinessPanelDensity = 'default' | 'desktop-acceptance';
+
+type WorkflowSpineDensity = 'default' | 'desktop-acceptance';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -324,6 +338,109 @@ function healthStatusLabel(status: string | null | undefined): string {
     return '需配置';
   }
   return '未读取';
+}
+
+function gateTone(status: string | null | undefined, severity?: string | null): StatusTone {
+  if (status === 'block' || severity === 'block') {
+    return 'danger';
+  }
+  if (status === 'warn' || status === 'unresolved' || severity === 'warn') {
+    return 'warning';
+  }
+  if (status === 'pass' || status === 'complete') {
+    return 'success';
+  }
+  if (status === 'in_progress') {
+    return 'info';
+  }
+  return 'neutral';
+}
+
+function gateStatusLabel(status: string | null | undefined): string {
+  if (status === 'pass' || status === 'complete') {
+    return '通过';
+  }
+  if (status === 'block' || status === 'blocked') {
+    return '阻断';
+  }
+  if (status === 'warn') {
+    return '警告';
+  }
+  if (status === 'unresolved') {
+    return '未决';
+  }
+  if (status === 'in_progress') {
+    return '进行中';
+  }
+  if (status === 'not_started') {
+    return '未开始';
+  }
+  if (status === 'not_applicable') {
+    return '暂不适用';
+  }
+  return '未读取';
+}
+
+function readRecordField(record: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = record[key];
+  return isRecord(value) ? value : {};
+}
+
+function firstNonEmptyText(values: Array<string | null | undefined>, fallback: string): string {
+  const found = values.find((value) => typeof value === 'string' && value.trim().length > 0);
+  return found?.trim() || fallback;
+}
+
+function compactStageLabel(stage: WorkflowPassportStage): string {
+  const label = stage.label.trim();
+  return label || stage.stage_id;
+}
+
+function buildStageReason(stage: WorkflowPassportStage): string {
+  return firstNonEmptyText(
+    [
+      stage.gate.blockers[0],
+      stage.gate.unresolved[0],
+      stage.gate.reason,
+      stage.next_actions[0],
+    ],
+    '等待更多本地流程证据。',
+  );
+}
+
+function findCurrentStage(passport: WorkflowPassportProjection | null): WorkflowPassportStage | null {
+  const stages = passport?.stages ?? [];
+  if (stages.length === 0) {
+    return null;
+  }
+  return stages.find((stage) => stage.stage_id === passport?.current_stage_id) ?? stages[0] ?? null;
+}
+
+function summarizeGateCounts(value: Record<string, unknown>): string {
+  const statusCounts = readRecordField(value, 'status_counts');
+  const gateCounts = readRecordField(value, 'gate_counts');
+  const source = Object.keys(statusCounts).length > 0 ? statusCounts : gateCounts;
+  const summary = summarizeStatusCounts(source);
+  return summary || 'no signals';
+}
+
+function workflowGateSummary(passport: WorkflowPassportProjection | null): string {
+  if (!passport) {
+    return 'passport 未读取';
+  }
+  const gateSummary = passport.gate_summary;
+  const gateCounts = readRecordField(gateSummary, 'gate_counts');
+  const blocking = readNumberField(gateCounts, 'block');
+  const unresolved = readNumberField(gateCounts, 'unresolved');
+  const pass = readNumberField(gateCounts, 'pass');
+  return `pass ${pass} · unresolved ${unresolved} · block ${blocking}`;
+}
+
+function handoffSummary(card: AgentHandoffCardProjection | null): string {
+  if (!card) {
+    return 'handoff card 未读取';
+  }
+  return `${card.status} · refs ${card.resource_refs.length} · probes ${card.resume_probes.length}`;
 }
 
 function isActiveJob(job: WritingJob): boolean {
@@ -659,6 +776,165 @@ function DetailPanel({
   );
 }
 
+export function ResearchWorkflowSpine({
+  loading,
+  passport,
+  integrityGate,
+  handoffCard,
+  behaviorEvalArtifacts,
+  density = 'default',
+}: {
+  loading: boolean;
+  passport: WorkflowPassportProjection | null;
+  integrityGate: EvidenceIntegrityGateProjection | null;
+  handoffCard: AgentHandoffCardProjection | null;
+  behaviorEvalArtifacts: AgentWorkspaceArtifact[];
+  density?: WorkflowSpineDensity;
+}) {
+  const isDesktopAcceptance = density === 'desktop-acceptance';
+  const stages = passport?.stages ?? [];
+  const visibleStages = isDesktopAcceptance ? stages.slice(0, 4) : stages;
+  const currentStage = findCurrentStage(passport);
+  const statusCounts = integrityGate ? readRecordField(integrityGate.summary, 'status_counts') : {};
+  const unresolvedCount = integrityGate?.unresolved.length ?? readNumberField(statusCounts, 'unresolved');
+  const blockerCount = integrityGate?.blockers.length ?? readNumberField(statusCounts, 'block');
+  const firstSignal = integrityGate?.signals[0] ?? null;
+  const behaviorEvalLatest = behaviorEvalArtifacts[0] ?? null;
+  const handoffBlocked = (handoffCard?.blockers.length ?? 0) > 0;
+  const handoffUnresolved = (handoffCard?.unresolved.length ?? 0) > 0;
+
+  return (
+    <section
+      aria-label="研究流程主干"
+      className={cn(
+        'min-w-0 max-w-full overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest',
+        isDesktopAcceptance ? 'mb-0 px-3 py-2' : 'mb-4 px-4 py-3',
+      )}
+      data-density={density}
+    >
+      <div className={cn(
+        'flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between',
+        isDesktopAcceptance ? 'mb-2' : 'mb-3',
+      )}>
+        <div className="min-w-0">
+          <h2 className="font-display text-sm font-semibold text-foreground">研究流程</h2>
+          <p className={cn(
+            'mt-0.5 break-words text-foreground/50',
+            isDesktopAcceptance ? 'text-[11px] leading-4' : 'text-xs leading-5',
+          )}>
+            {currentStage
+              ? `当前阶段：${compactStageLabel(currentStage)} · ${buildStageReason(currentStage)}`
+              : loading
+              ? '正在读取 workflow passport 和 integrity gate。'
+              : '尚未读取到 workflow passport。'}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-1.5">
+          <StatusPill tone={gateTone(currentStage?.gate.status, currentStage?.gate.severity)}>
+            {gateStatusLabel(currentStage?.gate.status)}
+          </StatusPill>
+          <StatusPill tone={integrityGate ? gateTone(integrityGate.status) : 'neutral'}>
+            integrity {integrityGate ? gateStatusLabel(integrityGate.status) : '未读取'}
+          </StatusPill>
+          <StatusPill tone={handoffBlocked ? 'danger' : handoffUnresolved ? 'warning' : handoffCard ? 'success' : 'neutral'}>
+            handoff {handoffCard ? gateStatusLabel(handoffBlocked ? 'block' : handoffUnresolved ? 'unresolved' : 'pass') : '未读取'}
+          </StatusPill>
+        </div>
+      </div>
+
+      <div className={cn(
+        'grid gap-2',
+        isDesktopAcceptance ? 'grid-cols-2' : 'xl:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.8fr)]',
+      )}>
+        <div className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+            <h3 className="truncate font-label text-xs font-semibold text-foreground">Workflow Passport</h3>
+            <StatusPill tone="neutral">{workflowGateSummary(passport)}</StatusPill>
+          </div>
+          {visibleStages.length === 0 ? (
+            <p className="break-words text-xs leading-5 text-foreground/55">
+              {loading ? '正在读取阶段账本。' : '还没有阶段账本。'}
+            </p>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2">
+              {visibleStages.map((stage) => {
+                const isCurrent = stage.stage_id === currentStage?.stage_id;
+                return (
+                  <article
+                    key={stage.stage_id}
+                    className={cn(
+                      'min-w-0 rounded-md border px-2.5 py-2',
+                      isCurrent ? 'border-primary/35 bg-primary/5' : 'border-outline-variant/35 bg-surface-lowest',
+                    )}
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <h4 className="truncate font-label text-xs font-medium text-foreground">{compactStageLabel(stage)}</h4>
+                      <StatusPill tone={gateTone(stage.gate.status, stage.gate.severity)}>
+                        {gateStatusLabel(stage.gate.status)}
+                      </StatusPill>
+                    </div>
+                    <p className="mt-1 min-h-[32px] break-words text-[11px] leading-4 text-foreground/55">
+                      {buildStageReason(stage)}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      <StatusPill tone="neutral">artifacts {stage.present_artifacts.length}</StatusPill>
+                      <StatusPill tone="neutral">events {stage.event_types.length}</StatusPill>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="grid min-w-0 gap-2">
+          <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Evidence Integrity Gate</h3>
+              <StatusPill tone={integrityGate ? gateTone(integrityGate.status) : 'neutral'}>
+                {integrityGate ? gateStatusLabel(integrityGate.status) : '未读取'}
+              </StatusPill>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+              {firstSignal?.message
+                || integrityGate?.unresolved[0]
+                || integrityGate?.blockers[0]
+                || (integrityGate ? '当前未返回阻断信号。' : 'integrity gate 暂未读取。')}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone={blockerCount > 0 ? 'danger' : 'neutral'}>block {blockerCount}</StatusPill>
+              <StatusPill tone={unresolvedCount > 0 ? 'warning' : 'neutral'}>unresolved {unresolvedCount}</StatusPill>
+              <StatusPill tone="neutral">{integrityGate ? summarizeGateCounts(integrityGate.summary) : 'no signals'}</StatusPill>
+            </div>
+          </article>
+
+          <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Agent Handoff</h3>
+              <StatusPill tone={handoffBlocked ? 'danger' : handoffUnresolved ? 'warning' : handoffCard ? 'success' : 'neutral'}>
+                {handoffCard ? handoffCard.status : '未读取'}
+              </StatusPill>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+              {handoffCard?.blockers[0]
+                || handoffCard?.unresolved[0]
+                || (handoffCard ? 'Handoff card 已生成，当前状态与完整性门禁待复核。' : '')
+                || 'Handoff card 暂无可显示记录。'}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone="neutral">{handoffSummary(handoffCard)}</StatusPill>
+              <StatusPill tone={behaviorEvalLatest ? 'success' : 'neutral'}>
+                behavior eval {behaviorEvalArtifacts.length}
+              </StatusPill>
+              {behaviorEvalLatest ? <StatusPill tone="info">{behaviorEvalLatest.name}</StatusPill> : null}
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function ReadinessPanel({
   loading,
   error,
@@ -793,6 +1069,9 @@ export function AgentWorkspace() {
   const [healthCheck, setHealthCheck] = useState<AgentWorkflowHealthCheck | null>(null);
   const [zoteroHealth, setZoteroHealth] = useState<ZoteroAttachmentHealth | null>(null);
   const [wikiReview, setWikiReview] = useState<WikiReviewListModel | null>(null);
+  const [workflowPassport, setWorkflowPassport] = useState<WorkflowPassportProjection | null>(null);
+  const [integrityGate, setIntegrityGate] = useState<EvidenceIntegrityGateProjection | null>(null);
+  const [handoffCard, setHandoffCard] = useState<AgentHandoffCardProjection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>('agents');
@@ -805,13 +1084,15 @@ export function AgentWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const [next, bridge, runtimeJobs, workflowHealth, zotero, review] = await Promise.all([
+      const [next, bridge, runtimeJobs, workflowHealth, zotero, review, passport, gate] = await Promise.all([
         getAgentWorkspaceStatus(),
         getAgentBridgeStatus({ limit: 50 }).catch(() => null),
         listRuntimeJobs({ limit: 100 }).catch(() => null),
         getAgentWorkflowHealth({ includeLive: false }).catch(() => null),
         getZoteroAttachmentHealth({ maxItems: 20, writeReports: false }).catch(() => null),
         getWikiReview().catch(() => null),
+        getWorkflowPassport({ limit: 500 }).catch(() => null),
+        getEvidenceIntegrityGate({ limit: 500 }).catch(() => null),
       ]);
       setStatus(next);
       setBridgeStatus(bridge);
@@ -819,6 +1100,8 @@ export function AgentWorkspace() {
       setHealthCheck(workflowHealth);
       setZoteroHealth(zotero);
       setWikiReview(review);
+      setWorkflowPassport(passport);
+      setIntegrityGate(gate);
       setSelectedArtifactPath((current) => {
         if (current && next.artifacts.some((artifact) => artifact.path === current)) {
           return current;
@@ -847,6 +1130,9 @@ export function AgentWorkspace() {
       setHealthCheck(null);
       setZoteroHealth(null);
       setWikiReview(null);
+      setWorkflowPassport(null);
+      setIntegrityGate(null);
+      setHandoffCard(null);
     } finally {
       setLoading(false);
     }
@@ -882,6 +1168,34 @@ export function AgentWorkspace() {
   const selectedArtifact = artifacts.find((artifact) => artifact.path === selectedArtifactPath) ?? artifacts[0] ?? null;
   const selectedRecord = auditRecords[selectedAuditIndex] ?? auditRecords[0] ?? null;
   const selectedAgentJob = agentJobs.find((job) => job.job_id === selectedAgentJobId) ?? agentJobs[0] ?? null;
+  const behaviorEvalArtifacts = useMemo(
+    () => (status?.artifacts ?? []).filter(isBehaviorEvalArtifact),
+    [status],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedAgentJob || selectedAgentJob.kind !== 'agent_request') {
+      setHandoffCard(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    getAgentHandoffCard(selectedAgentJob.job_id)
+      .then((card) => {
+        if (!cancelled) {
+          setHandoffCard(card);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHandoffCard(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAgentJob]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
@@ -924,6 +1238,14 @@ export function AgentWorkspace() {
           wikiReview={wikiReview}
           agentJobs={agentJobs}
           auditRecords={status?.audit_records ?? []}
+        />
+
+        <ResearchWorkflowSpine
+          loading={loading}
+          passport={workflowPassport}
+          integrityGate={integrityGate}
+          handoffCard={handoffCard}
+          behaviorEvalArtifacts={behaviorEvalArtifacts}
         />
 
         <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">

@@ -1,13 +1,16 @@
 import { TerminalSquare } from 'lucide-react';
 
 import { PageHeader } from '@/components/common/PageHeader';
-import { ReadinessPanel } from './AgentWorkspace';
+import { ReadinessPanel, ResearchWorkflowSpine } from './AgentWorkspace';
 import type {
+  AgentHandoffCardProjection,
   AgentBridgeStatus,
   AgentWorkflowHealthCheck,
   AgentWorkspaceAuditRecord,
   AgentWorkspaceStatus,
+  EvidenceIntegrityGateProjection,
   RuntimeJobsStatus,
+  WorkflowPassportProjection,
   ZoteroAttachmentHealth,
 } from '@/services/agentWorkspaceApi';
 import type { WikiReviewListModel } from '@/types/wiki';
@@ -157,6 +160,146 @@ const ACCEPTANCE_REVIEW: WikiReviewListModel = {
   ],
 };
 
+const ACCEPTANCE_WORKFLOW_PASSPORT: WorkflowPassportProjection = {
+  schema_version: 'scholar_ai_workflow_passport_v1',
+  generated_at: '2026-06-21T04:00:00.000Z',
+  scope: { project_id: 'desktop-acceptance' },
+  current_stage_id: 'evidence_pack',
+  gate_summary: {
+    gate_counts: { pass: 1, unresolved: 2, block: 1 },
+    severity_counts: { none: 1, warn: 2, block: 1 },
+    blocking_stage_ids: ['citation_review'],
+    unresolved_stage_ids: ['evidence_pack', 'draft'],
+    requires_user_confirmation: true,
+  },
+  provenance: { derived_from: ['runtime.research_projection', 'runtime.jobs'] },
+  stages: [
+    {
+      stage_id: 'material_ingest',
+      label: 'Material ingest',
+      status: 'complete',
+      required_artifacts: ['material_processing_task', 'chunks', 'locators'],
+      present_artifacts: [{ kind: 'material_processing_task' }],
+      object_ids: ['research_material:acceptance'],
+      event_types: ['material.ingest.completed'],
+      next_actions: [],
+      updated_at: '2026-06-21T04:00:00.000Z',
+      gate: {
+        gate_id: 'material_ingest.gate',
+        status: 'pass',
+        severity: 'none',
+        reason: 'Required runtime evidence is present for this stage.',
+        evidence: [{ ref_type: 'research_object', ref_id: 'research_material:acceptance' }],
+        blockers: [],
+        unresolved: [],
+        requires_user_confirmation: false,
+      },
+    },
+    {
+      stage_id: 'evidence_pack',
+      label: 'Evidence pack',
+      status: 'in_progress',
+      required_artifacts: ['evidence_pack', 'locator_coverage', 'qrels_status'],
+      present_artifacts: [{ kind: 'evidence_pack' }],
+      object_ids: ['evidence_pack:acceptance'],
+      event_types: ['evidence.pack.created'],
+      next_actions: ['Record qrels_status before making retrieval-quality claims.'],
+      updated_at: '2026-06-21T04:01:00.000Z',
+      gate: {
+        gate_id: 'evidence_pack.gate',
+        status: 'unresolved',
+        severity: 'warn',
+        reason: 'Stage is in progress and still needs completion evidence.',
+        evidence: [{ ref_type: 'research_object', ref_id: 'evidence_pack:acceptance' }],
+        blockers: [],
+        unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+        requires_user_confirmation: false,
+      },
+    },
+    {
+      stage_id: 'citation_review',
+      label: 'Citation review',
+      status: 'blocked',
+      required_artifacts: ['citation_bank', 'lint_report', 'integrity_gate'],
+      present_artifacts: [],
+      object_ids: [],
+      event_types: ['approval.required'],
+      next_actions: ['Resolve unsupported citation anchors before export.'],
+      updated_at: '2026-06-21T04:02:00.000Z',
+      gate: {
+        gate_id: 'citation_review.gate',
+        status: 'block',
+        severity: 'block',
+        reason: 'Unsupported citation anchors block export readiness.',
+        evidence: [{ ref_type: 'research_event_type', ref_id: 'approval.required' }],
+        blockers: ['Unsupported citation anchors block export readiness.'],
+        unresolved: [],
+        requires_user_confirmation: true,
+      },
+    },
+  ],
+};
+
+const ACCEPTANCE_INTEGRITY_GATE: EvidenceIntegrityGateProjection = {
+  schema_version: 'scholar_ai_evidence_integrity_gate_v1',
+  generated_at: '2026-06-21T04:00:00.000Z',
+  scope: { project_id: 'desktop-acceptance' },
+  status: 'block',
+  signals: [
+    {
+      signal_id: 'citation_verification:unsupported:acceptance',
+      category: 'citation_verification',
+      status: 'block',
+      severity: 'block',
+      message: 'Unsupported citation anchors block export readiness.',
+      evidence: [{ ref_type: 'runtime_job', ref_id: 'job_export_acceptance' }],
+      next_actions: ['Run citation verification and attach locator evidence.'],
+      metadata: { unsupported_count: 1 },
+    },
+    {
+      signal_id: 'retrieval_quality:missing_qrels_status:acceptance',
+      category: 'retrieval_quality',
+      status: 'unresolved',
+      severity: 'note',
+      message: 'Evidence refs exist, but retrieval qrels status is not recorded.',
+      evidence: [{ ref_type: 'runtime_job', ref_id: 'job_single_paper_acceptance' }],
+      next_actions: ['Record qrels_status before making retrieval-quality claims.'],
+      metadata: { evidence_ref_count: 2 },
+    },
+  ],
+  summary: {
+    signal_count: 2,
+    status_counts: { block: 1, unresolved: 1 },
+    severity_counts: { block: 1, note: 1 },
+    unresolved_is_pass: false,
+  },
+  blockers: ['Unsupported citation anchors block export readiness.'],
+  unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+  provenance: { derived_from: ['runtime.workflow_passport', 'runtime.jobs'] },
+};
+
+const ACCEPTANCE_HANDOFF_CARD: AgentHandoffCardProjection = {
+  schema_version: 'scholar_ai_agent_handoff_card_v1',
+  generated_at: '2026-06-21T04:00:00.000Z',
+  request_id: 'agent_request_acceptance',
+  job_id: 'job_single_paper_acceptance',
+  session_id: 'session_single_paper_acceptance',
+  project_id: 'desktop-acceptance',
+  status: 'in_progress',
+  agent_host: 'codex',
+  intent: 'single_paper_deep_read',
+  current_stage_id: 'evidence_pack',
+  completed_evidence: [{ ref_type: 'runtime_job', ref_id: 'job_single_paper_acceptance' }],
+  blockers: [],
+  unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+  resource_refs: [{ ref_id: 'material:acceptance', kind: 'material' }],
+  artifacts: [],
+  resume_probes: [{ label: 'Read workflow passport' }, { label: 'Read evidence integrity gate' }],
+  forbidden_actions: ['Do not treat unresolved integrity checks as passed or verified.'],
+  resume_prompt: 'Read current state before mutating local files.',
+  provenance: { derived_from: ['runtime.job', 'runtime.workflow_passport'] },
+};
+
 export function DesktopAcceptanceAgentWorkspace() {
   return (
     <div
@@ -181,6 +324,14 @@ export function DesktopAcceptanceAgentWorkspace() {
           wikiReview={ACCEPTANCE_REVIEW}
           agentJobs={ACCEPTANCE_AGENT_JOBS}
           auditRecords={ACCEPTANCE_WORKSPACE_STATUS.audit_records}
+          density="desktop-acceptance"
+        />
+        <ResearchWorkflowSpine
+          loading={false}
+          passport={ACCEPTANCE_WORKFLOW_PASSPORT}
+          integrityGate={ACCEPTANCE_INTEGRITY_GATE}
+          handoffCard={ACCEPTANCE_HANDOFF_CARD}
+          behaviorEvalArtifacts={[]}
           density="desktop-acceptance"
         />
       </div>

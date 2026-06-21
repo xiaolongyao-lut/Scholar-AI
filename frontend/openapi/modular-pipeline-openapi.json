@@ -797,6 +797,178 @@
         "title": "AgentFailRequest",
         "type": "object"
       },
+      "AgentHandoffCardPayload": {
+        "description": "Recoverable handoff card for one runtime-visible agent request.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this card.\n    request_id: Agent bridge request id when present.\n    job_id: Runtime job id that owns the handoff card.\n    session_id: Runtime session id used for resume probes.\n    project_id: Optional project id recovered from job/session metadata.\n    status: Terminal or current job lifecycle state.\n    current_stage_id: Workflow passport stage that should be inspected next.\n    completed_evidence: Bounded refs to completed runtime evidence.\n    blockers: Block-level integrity or lifecycle messages.\n    unresolved: Review/offline checks that must remain visible.\n    resource_refs: Bounded resource refs supplied to the delegated agent.\n    artifacts: Bounded artifacts attached to the runtime job.\n    resume_probes: Read-only calls a new agent should run before mutating.\n    forbidden_actions: Actions that remain outside the local handoff boundary.\n    resume_prompt: Compact instruction block for the next agent session.\n    provenance: Runtime sources used to derive the card.",
+        "properties": {
+          "agent_host": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Host"
+          },
+          "artifacts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 24,
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Blockers",
+            "type": "array"
+          },
+          "completed_evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 24,
+            "title": "Completed Evidence",
+            "type": "array"
+          },
+          "current_stage_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage Id"
+          },
+          "forbidden_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Forbidden Actions",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "intent": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent"
+          },
+          "job_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Job Id",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "resource_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 50,
+            "title": "Resource Refs",
+            "type": "array"
+          },
+          "resume_probes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 16,
+            "title": "Resume Probes",
+            "type": "array"
+          },
+          "resume_prompt": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Resume Prompt",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "scholar_ai_agent_handoff_card_v1",
+            "default": "scholar_ai_agent_handoff_card_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Unresolved",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "job_id",
+          "session_id",
+          "status",
+          "resume_prompt"
+        ],
+        "title": "AgentHandoffCardPayload",
+        "type": "object"
+      },
       "AgentOutputTargets": {
         "description": "Where an agent result should be surfaced after completion.",
         "properties": {
@@ -3517,8 +3689,11 @@
         "type": "object"
       },
       "ChunkSearchRefsResponse": {
-        "description": "Read-only chunk ref search response for MCP-first retrieval.\n\nArgs:\n    project_id: Project searched.\n    query: Query string after FastAPI validation.\n    total_refs: Number of refs in ``refs``.\n    refs: Token-bounded refs with no chunk body fields.",
+        "description": "Read-only chunk ref search response for MCP-first retrieval.\n\nArgs:\n    project_id: Project searched.\n    query: Query string after FastAPI validation.\n    total_refs: Number of refs in ``refs``.\n    locator_coverage: Layout-aware source locator coverage for returned refs.\n    refs: Token-bounded refs with no chunk body fields.",
         "properties": {
+          "locator_coverage": {
+            "$ref": "#/components/schemas/EvidenceLocatorCoveragePayload"
+          },
           "project_id": {
             "title": "Project Id",
             "type": "string"
@@ -7463,6 +7638,266 @@
         "title": "EvidenceGraphScope",
         "type": "object"
       },
+      "EvidenceIntegrityGatePayload": {
+        "description": "Read-only integrity gate over locators, citations, lint, and workflow state.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this projection.\n    scope: Runtime filters used to build this gate.\n    status: Aggregate gate state; any block or unresolved signal prevents pass.\n    signals: Ordered actionable integrity signals.\n    summary: Counts and source coverage used by agents and UI panels.\n    blockers: Block-level messages that should stop export or handoff claims.\n    unresolved: Offline/human-review checks that must stay visibly unresolved.\n    provenance: Read-only runtime sources used to derive the gate.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Blockers",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "schema_version": {
+            "const": "scholar_ai_evidence_integrity_gate_v1",
+            "default": "scholar_ai_evidence_integrity_gate_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "title": "Scope",
+            "type": "object"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceIntegritySignalPayload"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "warn",
+              "block",
+              "unresolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Unresolved",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "status"
+        ],
+        "title": "EvidenceIntegrityGatePayload",
+        "type": "object"
+      },
+      "EvidenceIntegritySignalPayload": {
+        "description": "One reproducible integrity check signal for evidence-bound workflows.\n\nArgs:\n    signal_id: Stable signal id scoped by category and runtime source.\n    category: Research-integrity area checked by the signal.\n    status: Gate state; unresolved/offline checks must not be counted as pass.\n    severity: UI/MCP severity used for blocking and review ordering.\n    message: Bounded explanation of what the signal means.\n    evidence: Bounded runtime refs or diagnostic excerpts, never full source text.\n    next_actions: Local repair or review actions for this signal.\n    metadata: JSON-safe counters and provenance details for repeatability.",
+        "properties": {
+          "category": {
+            "enum": [
+              "locator",
+              "retrieval_quality",
+              "citation_verification",
+              "citation_overlap",
+              "writing_lint",
+              "export_readiness",
+              "workflow_stage",
+              "approval_boundary"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 16,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "message": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "severity": {
+            "default": "note",
+            "enum": [
+              "none",
+              "note",
+              "warn",
+              "block"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "signal_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Signal Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "unresolved",
+            "enum": [
+              "pass",
+              "warn",
+              "block",
+              "unresolved",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signal_id",
+          "category",
+          "message"
+        ],
+        "title": "EvidenceIntegritySignalPayload",
+        "type": "object"
+      },
+      "EvidenceLocatorCoveragePayload": {
+        "description": "Coverage summary for refs that should be recoverable in source layout.\n\nArgs:\n    total_refs: All refs in the response, including non-project bounded refs.\n    project_ref_count: Project-local chunk refs that can carry PDF locators.\n    non_project_ref_count: Bounded refs outside the project chunk store.\n    material_locator_count: Project refs with material_id and chunk_id.\n    page_locator_count: Project refs with a one-based source page.\n    bbox_locator_count: Project refs with a valid bbox tied to a page.\n    missing_locator_count: Project refs missing the material/chunk locator.\n    page_coverage_ratio: Page-locator coverage over project refs.\n    bbox_coverage_ratio: Bbox-locator coverage over project refs.\n    coverage_state: Coarse state for workflow-passport and integrity gates.\n    risk_level: Local diagnostic severity; it records risk but does not\n        mutate or block workflows by itself.\n    sample_missing_ref_ids: Bounded examples for repair without leaking text.\n    notes: Bounded reviewer/agent hints.",
+        "properties": {
+          "bbox_coverage_ratio": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Bbox Coverage Ratio",
+            "type": "number"
+          },
+          "bbox_locator_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Bbox Locator Count",
+            "type": "integer"
+          },
+          "coverage_state": {
+            "default": "no_refs",
+            "enum": [
+              "no_refs",
+              "missing",
+              "material_only",
+              "page_located",
+              "layout_partial",
+              "layout_complete"
+            ],
+            "title": "Coverage State",
+            "type": "string"
+          },
+          "material_locator_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Material Locator Count",
+            "type": "integer"
+          },
+          "missing_locator_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Missing Locator Count",
+            "type": "integer"
+          },
+          "non_project_ref_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Non Project Ref Count",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Notes",
+            "type": "array"
+          },
+          "page_coverage_ratio": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Page Coverage Ratio",
+            "type": "number"
+          },
+          "page_locator_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Page Locator Count",
+            "type": "integer"
+          },
+          "project_ref_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Project Ref Count",
+            "type": "integer"
+          },
+          "risk_level": {
+            "default": "none",
+            "enum": [
+              "none",
+              "warn",
+              "block"
+            ],
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "sample_missing_ref_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Sample Missing Ref Ids",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "scholar-ai-evidence-locator-coverage/v1",
+            "default": "scholar-ai-evidence-locator-coverage/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "total_refs": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total Refs",
+            "type": "integer"
+          }
+        },
+        "title": "EvidenceLocatorCoveragePayload",
+        "type": "object"
+      },
       "EvidencePackBuildRequest": {
         "description": "Request to build a query-scoped evidence pack from project chunks.\n\nArgs:\n    project_id: Project whose already-indexed chunk store is searched.\n    query: Non-empty research question or section-local retrieval query.\n    section_id: Optional draft/outline section id kept for traceability.\n    top_k: Maximum evidence refs returned by the lexical fallback path.",
         "properties": {
@@ -7595,7 +8030,7 @@
         "type": "object"
       },
       "EvidencePackReferencePayload": {
-        "description": "MCP-safe evidence ref derived from a backend search ref.\n\nArgs:\n    project_id: Project that owns the chunk ref.\n    source_type: Evidence source family; wiki refs are bounded resources\n        and are not copied into project chunks.\n    ref_id: Agent bridge resource id in ``kind:id`` form.\n    read_endpoint: Bounded reader endpoint with explicit project scope.\n    chunk_id: Stable chunk identifier in the project chunk store.\n    material_id: Material that owns the chunk.\n    page: One-based source page when persisted in metadata.\n    lexical_score: Score from the local lexical retrieval path.\n    rerank_score: Optional rerank score; ``None`` when rerank did not run.\n    citation_anchor: Stable local citation anchor for draft traceability.\n    figure_candidate: Optional future figure/table candidate id.\n    summary: Bounded summary safe for model context.\n    suitable_for_body: Whether the ref is safe to cite in body prose.\n    source_title: Optional display title for non-project resources.\n    source_path: Optional bounded source path for non-project resources.\n    joint_score: Optional fused project/wiki score from weighted RRF.",
+        "description": "MCP-safe evidence ref derived from a backend search ref.\n\nArgs:\n    project_id: Project that owns the chunk ref.\n    source_type: Evidence source family; wiki refs are bounded resources\n        and are not copied into project chunks.\n    ref_id: Agent bridge resource id in ``kind:id`` form.\n    read_endpoint: Bounded reader endpoint with explicit project scope.\n    chunk_id: Stable chunk identifier in the project chunk store.\n    material_id: Material that owns the chunk.\n    page: One-based source page when persisted in metadata.\n    locator: Optional compact locator that can jump back to a material,\n        page, and bbox without exposing source text.\n    lexical_score: Score from the local lexical retrieval path.\n    rerank_score: Optional rerank score; ``None`` when rerank did not run.\n    citation_anchor: Stable local citation anchor for draft traceability.\n    figure_candidate: Optional future figure/table candidate id.\n    summary: Bounded summary safe for model context.\n    suitable_for_body: Whether the ref is safe to cite in body prose.\n    source_title: Optional display title for non-project resources.\n    source_path: Optional bounded source path for non-project resources.\n    joint_score: Optional fused project/wiki score from weighted RRF.",
         "properties": {
           "chunk_id": {
             "minLength": 1,
@@ -7636,6 +8071,18 @@
             "minimum": 0.0,
             "title": "Lexical Score",
             "type": "number"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator"
           },
           "material_id": {
             "minLength": 1,
@@ -8140,7 +8587,7 @@
         "type": "object"
       },
       "EvidenceRetrievalDiagnosticsPayload": {
-        "description": "Machine-readable retrieval provenance for writing/evidence audits.\n\nArgs:\n    retrieval_method: Effective retrieval path used for this response.\n    embedding_status: Whether dense embeddings were used, skipped, or unavailable.\n    rerank_status: Whether reranking was active, skipped, or unavailable.\n    fallback_reason: Short reason when the path degraded to lexical retrieval.\n    project_weight: Weight assigned to project-local chunks in this build.\n    wiki_weight: Weight assigned to wiki recall in this build.\n    joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are\n        reported here without being coerced into project chunk refs.\n    qrels_status: Whether retrieval quality can be claimed from canonical\n        qrels, or is still blocked by missing/candidate/reviewed labels.\n    reasoning_trace: Auditable retrieval-decision summary, not private\n        model chain-of-thought.\n    notes: Bounded operational notes safe to show in chat/tool transcripts.",
+        "description": "Machine-readable retrieval provenance for writing/evidence audits.\n\nArgs:\n    retrieval_method: Effective retrieval path used for this response.\n    embedding_status: Whether dense embeddings were used, skipped, or unavailable.\n    rerank_status: Whether reranking was active, skipped, or unavailable.\n    fallback_reason: Short reason when the path degraded to lexical retrieval.\n    project_weight: Weight assigned to project-local chunks in this build.\n    wiki_weight: Weight assigned to wiki recall in this build.\n    joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are\n        reported here without being coerced into project chunk refs.\n    locator_coverage: Layout-aware source locator coverage for returned refs.\n    qrels_status: Whether retrieval quality can be claimed from canonical\n        qrels, or is still blocked by missing/candidate/reviewed labels.\n    reasoning_trace: Auditable retrieval-decision summary, not private\n        model chain-of-thought.\n    notes: Bounded operational notes safe to show in chat/tool transcripts.",
         "properties": {
           "embedding_status": {
             "default": "unavailable",
@@ -8162,6 +8609,9 @@
             "additionalProperties": true,
             "title": "Joint Recall",
             "type": "object"
+          },
+          "locator_coverage": {
+            "$ref": "#/components/schemas/EvidenceLocatorCoveragePayload"
           },
           "notes": {
             "items": {
@@ -20686,6 +21136,234 @@
           "enabled"
         ],
         "title": "WikiTagsResponse",
+        "type": "object"
+      },
+      "WorkflowPassportGatePayload": {
+        "description": "Stage gate summary for reproducible research workflow state.\n\nArgs:\n    gate_id: Stable gate identifier scoped by stage id.\n    status: Gate state; unresolved must not be rendered as passed.\n    severity: UI/MCP severity for blocking, warning, or note-level items.\n    reason: Human-readable bounded reason for the status.\n    evidence: Bounded refs to runtime objects, events, artifacts, or tasks.\n    blockers: Items that must be resolved before the stage can be complete.\n    unresolved: Checks that still need human, offline, or external review.\n    requires_user_confirmation: Whether a pending approval blocks progress.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Blockers",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 16,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "gate_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Gate Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "requires_user_confirmation": {
+            "default": false,
+            "title": "Requires User Confirmation",
+            "type": "boolean"
+          },
+          "severity": {
+            "default": "note",
+            "enum": [
+              "none",
+              "note",
+              "warn",
+              "block"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "default": "unresolved",
+            "enum": [
+              "pass",
+              "warn",
+              "block",
+              "unresolved",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Unresolved",
+            "type": "array"
+          }
+        },
+        "required": [
+          "gate_id",
+          "reason"
+        ],
+        "title": "WorkflowPassportGatePayload",
+        "type": "object"
+      },
+      "WorkflowPassportPayload": {
+        "description": "Read-only workflow passport over runtime objects, events, and artifacts.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this projection.\n    scope: Runtime filters used to build the passport.\n    stages: Ordered stage ledger rows.\n    current_stage_id: First stage that is not complete, or final stage.\n    gate_summary: Aggregate gate counts and blocking state.\n    provenance: Sources used to derive this read-only passport.",
+        "properties": {
+          "current_stage_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage Id"
+          },
+          "gate_summary": {
+            "additionalProperties": true,
+            "title": "Gate Summary",
+            "type": "object"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": "scholar_ai_workflow_passport_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "title": "Scope",
+            "type": "object"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowPassportStagePayload"
+            },
+            "title": "Stages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at"
+        ],
+        "title": "WorkflowPassportPayload",
+        "type": "object"
+      },
+      "WorkflowPassportStagePayload": {
+        "description": "Read-only stage ledger row for the research workflow passport.\n\nArgs:\n    stage_id: Scholar AI workflow stage id.\n    label: User-facing short label.\n    status: Stage progress derived from existing runtime state.\n    required_artifacts: Artifact families expected for a reproducible stage.\n    present_artifacts: Bounded runtime/material artifacts found locally.\n    object_ids: Research object ids that provide this stage evidence.\n    event_types: Domain events observed for this stage.\n    gate: Integrity/reproducibility gate projection for this stage.\n    next_actions: Bounded local actions that can move the stage forward.\n    updated_at: Latest timestamp observed for this stage.",
+        "properties": {
+          "event_types": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 48,
+            "title": "Event Types",
+            "type": "array"
+          },
+          "gate": {
+            "$ref": "#/components/schemas/WorkflowPassportGatePayload"
+          },
+          "label": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 48,
+            "title": "Object Ids",
+            "type": "array"
+          },
+          "present_artifacts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 24,
+            "title": "Present Artifacts",
+            "type": "array"
+          },
+          "required_artifacts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Required Artifacts",
+            "type": "array"
+          },
+          "stage_id": {
+            "enum": [
+              "material_ingest",
+              "material_read",
+              "evidence_pack",
+              "outline",
+              "draft",
+              "citation_review",
+              "export",
+              "agent_handoff"
+            ],
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "not_started",
+              "in_progress",
+              "complete",
+              "warn",
+              "blocked",
+              "unresolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "stage_id",
+          "label",
+          "status",
+          "gate"
+        ],
+        "title": "WorkflowPassportStagePayload",
         "type": "object"
       },
       "WritingActionPayload": {
@@ -36424,6 +37102,100 @@
         ]
       }
     },
+    "/runtime/evidence-integrity-gate": {
+      "get": {
+        "description": "Return a read-only evidence integrity gate over runtime research state.",
+        "operationId": "get_runtime_evidence_integrity_gate",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceIntegrityGatePayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evidence Integrity Gate",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
     "/runtime/job": {
       "post": {
         "description": "Create a new job in a session.",
@@ -36547,6 +37319,49 @@
           }
         },
         "summary": "Get Job",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/job/{job_id}/agent-handoff-card": {
+      "get": {
+        "description": "Return a recoverable handoff card for one runtime-visible agent job.",
+        "operationId": "get_runtime_job_job_id_agent_handoff_card",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentHandoffCardPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Handoff Card",
         "tags": [
           "Runtime"
         ]
@@ -37940,6 +38755,100 @@
           }
         },
         "summary": "List Sessions",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/workflow-passport": {
+      "get": {
+        "description": "Return a read-only workflow passport over runtime research state.",
+        "operationId": "get_runtime_workflow_passport",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowPassportPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow Passport",
         "tags": [
           "Runtime"
         ]

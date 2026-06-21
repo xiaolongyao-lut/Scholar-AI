@@ -47,6 +47,97 @@ export interface RuntimeJobsStatus {
   recent: WritingJob[];
 }
 
+export type WorkflowPassportStageStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'complete'
+  | 'warn'
+  | 'blocked'
+  | 'unresolved';
+
+export type ResearchGateStatus = 'pass' | 'warn' | 'block' | 'unresolved' | 'not_applicable';
+
+export type ResearchGateSeverity = 'none' | 'note' | 'warn' | 'block';
+
+export interface WorkflowPassportGate {
+  gate_id: string;
+  status: ResearchGateStatus;
+  severity: ResearchGateSeverity;
+  reason: string;
+  evidence: Record<string, unknown>[];
+  blockers: string[];
+  unresolved: string[];
+  requires_user_confirmation: boolean;
+}
+
+export interface WorkflowPassportStage {
+  stage_id: string;
+  label: string;
+  status: WorkflowPassportStageStatus;
+  required_artifacts: string[];
+  present_artifacts: Record<string, unknown>[];
+  object_ids: string[];
+  event_types: string[];
+  gate: WorkflowPassportGate;
+  next_actions: string[];
+  updated_at: string | null;
+}
+
+export interface WorkflowPassportProjection {
+  schema_version: string;
+  generated_at: string;
+  scope: Record<string, unknown>;
+  stages: WorkflowPassportStage[];
+  current_stage_id: string | null;
+  gate_summary: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+}
+
+export interface EvidenceIntegritySignal {
+  signal_id: string;
+  category: string;
+  status: Exclude<ResearchGateStatus, 'not_applicable'> | 'not_applicable';
+  severity: ResearchGateSeverity;
+  message: string;
+  evidence: Record<string, unknown>[];
+  next_actions: string[];
+  metadata: Record<string, unknown>;
+}
+
+export interface EvidenceIntegrityGateProjection {
+  schema_version: 'scholar_ai_evidence_integrity_gate_v1';
+  generated_at: string;
+  scope: Record<string, unknown>;
+  status: Exclude<ResearchGateStatus, 'not_applicable'>;
+  signals: EvidenceIntegritySignal[];
+  summary: Record<string, unknown>;
+  blockers: string[];
+  unresolved: string[];
+  provenance: Record<string, unknown>;
+}
+
+export interface AgentHandoffCardProjection {
+  schema_version: 'scholar_ai_agent_handoff_card_v1';
+  generated_at: string;
+  request_id: string | null;
+  job_id: string;
+  session_id: string;
+  project_id: string | null;
+  status: string;
+  agent_host: string | null;
+  intent: string | null;
+  current_stage_id: string | null;
+  completed_evidence: Record<string, unknown>[];
+  blockers: string[];
+  unresolved: string[];
+  resource_refs: Record<string, unknown>[];
+  artifacts: Record<string, unknown>[];
+  resume_probes: Record<string, unknown>[];
+  forbidden_actions: string[];
+  resume_prompt: string;
+  provenance: Record<string, unknown>;
+}
+
 const client = createDefaultApiClient({ timeoutMs: 20_000 });
 
 export async function getAgentWorkspaceStatus(opts?: {
@@ -84,6 +175,50 @@ export async function listRuntimeJobs(opts?: {
     },
   });
   return { recent: response.data };
+}
+
+export async function getWorkflowPassport(opts?: {
+  sessionId?: string | null;
+  jobId?: string | null;
+  projectId?: string | null;
+  limit?: number;
+}): Promise<WorkflowPassportProjection> {
+  const response = await client.get<WorkflowPassportProjection>('/runtime/workflow-passport', {
+    params: {
+      session_id: opts?.sessionId ?? undefined,
+      job_id: opts?.jobId ?? undefined,
+      project_id: opts?.projectId ?? undefined,
+      limit: opts?.limit ?? 500,
+    },
+  });
+  return response.data;
+}
+
+export async function getEvidenceIntegrityGate(opts?: {
+  sessionId?: string | null;
+  jobId?: string | null;
+  projectId?: string | null;
+  limit?: number;
+}): Promise<EvidenceIntegrityGateProjection> {
+  const response = await client.get<EvidenceIntegrityGateProjection>('/runtime/evidence-integrity-gate', {
+    params: {
+      session_id: opts?.sessionId ?? undefined,
+      job_id: opts?.jobId ?? undefined,
+      project_id: opts?.projectId ?? undefined,
+      limit: opts?.limit ?? 500,
+    },
+  });
+  return response.data;
+}
+
+export async function getAgentHandoffCard(jobId: string): Promise<AgentHandoffCardProjection> {
+  if (!jobId.trim()) {
+    throw new Error('jobId is required to read an agent handoff card');
+  }
+  const response = await client.get<AgentHandoffCardProjection>(
+    `/runtime/job/${encodeURIComponent(jobId)}/agent-handoff-card`,
+  );
+  return response.data;
 }
 
 /**

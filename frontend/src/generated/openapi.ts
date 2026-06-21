@@ -5560,6 +5560,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/evidence-integrity-gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evidence Integrity Gate
+         * @description Return a read-only evidence integrity gate over runtime research state.
+         */
+        get: operations["get_runtime_evidence_integrity_gate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/job": {
         parameters: {
             query?: never;
@@ -5599,6 +5619,26 @@ export interface paths {
          * @description Delete a job and clear its events, artifacts, approvals, and queue state.
          */
         delete: operations["delete_runtime_job_job_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/job/{job_id}/agent-handoff-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Handoff Card
+         * @description Return a recoverable handoff card for one runtime-visible agent job.
+         */
+        get: operations["get_runtime_job_job_id_agent_handoff_card"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6040,6 +6080,26 @@ export interface paths {
          * @description List sessions scoped to a workspace binding.
          */
         get: operations["get_runtime_sessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/workflow-passport": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workflow Passport
+         * @description Return a read-only workflow passport over runtime research state.
+         */
+        get: operations["get_runtime_workflow_passport"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6829,6 +6889,83 @@ export interface components {
         AgentFailRequest: {
             /** Error */
             error: string;
+        };
+        /**
+         * AgentHandoffCardPayload
+         * @description Recoverable handoff card for one runtime-visible agent request.
+         *
+         *     Args:
+         *         schema_version: Versioned additive API contract.
+         *         generated_at: UTC generation time for this card.
+         *         request_id: Agent bridge request id when present.
+         *         job_id: Runtime job id that owns the handoff card.
+         *         session_id: Runtime session id used for resume probes.
+         *         project_id: Optional project id recovered from job/session metadata.
+         *         status: Terminal or current job lifecycle state.
+         *         current_stage_id: Workflow passport stage that should be inspected next.
+         *         completed_evidence: Bounded refs to completed runtime evidence.
+         *         blockers: Block-level integrity or lifecycle messages.
+         *         unresolved: Review/offline checks that must remain visible.
+         *         resource_refs: Bounded resource refs supplied to the delegated agent.
+         *         artifacts: Bounded artifacts attached to the runtime job.
+         *         resume_probes: Read-only calls a new agent should run before mutating.
+         *         forbidden_actions: Actions that remain outside the local handoff boundary.
+         *         resume_prompt: Compact instruction block for the next agent session.
+         *         provenance: Runtime sources used to derive the card.
+         */
+        AgentHandoffCardPayload: {
+            /** Agent Host */
+            agent_host?: string | null;
+            /** Artifacts */
+            artifacts?: {
+                [key: string]: unknown;
+            }[];
+            /** Blockers */
+            blockers?: string[];
+            /** Completed Evidence */
+            completed_evidence?: {
+                [key: string]: unknown;
+            }[];
+            /** Current Stage Id */
+            current_stage_id?: string | null;
+            /** Forbidden Actions */
+            forbidden_actions?: string[];
+            /** Generated At */
+            generated_at: string;
+            /** Intent */
+            intent?: string | null;
+            /** Job Id */
+            job_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Request Id */
+            request_id?: string | null;
+            /** Resource Refs */
+            resource_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Resume Probes */
+            resume_probes?: {
+                [key: string]: unknown;
+            }[];
+            /** Resume Prompt */
+            resume_prompt: string;
+            /**
+             * Schema Version
+             * @default scholar_ai_agent_handoff_card_v1
+             * @constant
+             */
+            schema_version: "scholar_ai_agent_handoff_card_v1";
+            /** Session Id */
+            session_id: string;
+            /** Status */
+            status: string;
+            /** Unresolved */
+            unresolved?: string[];
         };
         /**
          * AgentOutputTargets
@@ -8098,9 +8235,11 @@ export interface components {
          *         project_id: Project searched.
          *         query: Query string after FastAPI validation.
          *         total_refs: Number of refs in ``refs``.
+         *         locator_coverage: Layout-aware source locator coverage for returned refs.
          *         refs: Token-bounded refs with no chunk body fields.
          */
         ChunkSearchRefsResponse: {
+            locator_coverage?: components["schemas"]["EvidenceLocatorCoveragePayload"];
             /** Project Id */
             project_id: string;
             /** Query */
@@ -9771,6 +9910,190 @@ export interface components {
             ref: string;
         };
         /**
+         * EvidenceIntegrityGatePayload
+         * @description Read-only integrity gate over locators, citations, lint, and workflow state.
+         *
+         *     Args:
+         *         schema_version: Versioned additive API contract.
+         *         generated_at: UTC generation time for this projection.
+         *         scope: Runtime filters used to build this gate.
+         *         status: Aggregate gate state; any block or unresolved signal prevents pass.
+         *         signals: Ordered actionable integrity signals.
+         *         summary: Counts and source coverage used by agents and UI panels.
+         *         blockers: Block-level messages that should stop export or handoff claims.
+         *         unresolved: Offline/human-review checks that must stay visibly unresolved.
+         *         provenance: Read-only runtime sources used to derive the gate.
+         */
+        EvidenceIntegrityGatePayload: {
+            /** Blockers */
+            blockers?: string[];
+            /** Generated At */
+            generated_at: string;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Schema Version
+             * @default scholar_ai_evidence_integrity_gate_v1
+             * @constant
+             */
+            schema_version: "scholar_ai_evidence_integrity_gate_v1";
+            /** Scope */
+            scope?: {
+                [key: string]: unknown;
+            };
+            /** Signals */
+            signals?: components["schemas"]["EvidenceIntegritySignalPayload"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pass" | "warn" | "block" | "unresolved";
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /** Unresolved */
+            unresolved?: string[];
+        };
+        /**
+         * EvidenceIntegritySignalPayload
+         * @description One reproducible integrity check signal for evidence-bound workflows.
+         *
+         *     Args:
+         *         signal_id: Stable signal id scoped by category and runtime source.
+         *         category: Research-integrity area checked by the signal.
+         *         status: Gate state; unresolved/offline checks must not be counted as pass.
+         *         severity: UI/MCP severity used for blocking and review ordering.
+         *         message: Bounded explanation of what the signal means.
+         *         evidence: Bounded runtime refs or diagnostic excerpts, never full source text.
+         *         next_actions: Local repair or review actions for this signal.
+         *         metadata: JSON-safe counters and provenance details for repeatability.
+         */
+        EvidenceIntegritySignalPayload: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "locator" | "retrieval_quality" | "citation_verification" | "citation_overlap" | "writing_lint" | "export_readiness" | "workflow_stage" | "approval_boundary";
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            }[];
+            /** Message */
+            message: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Next Actions */
+            next_actions?: string[];
+            /**
+             * Severity
+             * @default note
+             * @enum {string}
+             */
+            severity: "none" | "note" | "warn" | "block";
+            /** Signal Id */
+            signal_id: string;
+            /**
+             * Status
+             * @default unresolved
+             * @enum {string}
+             */
+            status: "pass" | "warn" | "block" | "unresolved" | "not_applicable";
+        };
+        /**
+         * EvidenceLocatorCoveragePayload
+         * @description Coverage summary for refs that should be recoverable in source layout.
+         *
+         *     Args:
+         *         total_refs: All refs in the response, including non-project bounded refs.
+         *         project_ref_count: Project-local chunk refs that can carry PDF locators.
+         *         non_project_ref_count: Bounded refs outside the project chunk store.
+         *         material_locator_count: Project refs with material_id and chunk_id.
+         *         page_locator_count: Project refs with a one-based source page.
+         *         bbox_locator_count: Project refs with a valid bbox tied to a page.
+         *         missing_locator_count: Project refs missing the material/chunk locator.
+         *         page_coverage_ratio: Page-locator coverage over project refs.
+         *         bbox_coverage_ratio: Bbox-locator coverage over project refs.
+         *         coverage_state: Coarse state for workflow-passport and integrity gates.
+         *         risk_level: Local diagnostic severity; it records risk but does not
+         *             mutate or block workflows by itself.
+         *         sample_missing_ref_ids: Bounded examples for repair without leaking text.
+         *         notes: Bounded reviewer/agent hints.
+         */
+        EvidenceLocatorCoveragePayload: {
+            /**
+             * Bbox Coverage Ratio
+             * @default 0
+             */
+            bbox_coverage_ratio: number;
+            /**
+             * Bbox Locator Count
+             * @default 0
+             */
+            bbox_locator_count: number;
+            /**
+             * Coverage State
+             * @default no_refs
+             * @enum {string}
+             */
+            coverage_state: "no_refs" | "missing" | "material_only" | "page_located" | "layout_partial" | "layout_complete";
+            /**
+             * Material Locator Count
+             * @default 0
+             */
+            material_locator_count: number;
+            /**
+             * Missing Locator Count
+             * @default 0
+             */
+            missing_locator_count: number;
+            /**
+             * Non Project Ref Count
+             * @default 0
+             */
+            non_project_ref_count: number;
+            /** Notes */
+            notes?: string[];
+            /**
+             * Page Coverage Ratio
+             * @default 0
+             */
+            page_coverage_ratio: number;
+            /**
+             * Page Locator Count
+             * @default 0
+             */
+            page_locator_count: number;
+            /**
+             * Project Ref Count
+             * @default 0
+             */
+            project_ref_count: number;
+            /**
+             * Risk Level
+             * @default none
+             * @enum {string}
+             */
+            risk_level: "none" | "warn" | "block";
+            /** Sample Missing Ref Ids */
+            sample_missing_ref_ids?: string[];
+            /**
+             * Schema Version
+             * @default scholar-ai-evidence-locator-coverage/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-evidence-locator-coverage/v1";
+            /**
+             * Total Refs
+             * @default 0
+             */
+            total_refs: number;
+        };
+        /**
          * EvidencePackBuildRequest
          * @description Request to build a query-scoped evidence pack from project chunks.
          *
@@ -9856,6 +10179,8 @@ export interface components {
          *         chunk_id: Stable chunk identifier in the project chunk store.
          *         material_id: Material that owns the chunk.
          *         page: One-based source page when persisted in metadata.
+         *         locator: Optional compact locator that can jump back to a material,
+         *             page, and bbox without exposing source text.
          *         lexical_score: Score from the local lexical retrieval path.
          *         rerank_score: Optional rerank score; ``None`` when rerank did not run.
          *         citation_anchor: Stable local citation anchor for draft traceability.
@@ -9877,6 +10202,10 @@ export interface components {
             joint_score?: number | null;
             /** Lexical Score */
             lexical_score: number;
+            /** Locator */
+            locator?: {
+                [key: string]: unknown;
+            } | null;
             /** Material Id */
             material_id: string;
             /** Page */
@@ -10055,6 +10384,7 @@ export interface components {
          *         wiki_weight: Weight assigned to wiki recall in this build.
          *         joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are
          *             reported here without being coerced into project chunk refs.
+         *         locator_coverage: Layout-aware source locator coverage for returned refs.
          *         qrels_status: Whether retrieval quality can be claimed from canonical
          *             qrels, or is still blocked by missing/candidate/reviewed labels.
          *         reasoning_trace: Auditable retrieval-decision summary, not private
@@ -10077,6 +10407,7 @@ export interface components {
             joint_recall?: {
                 [key: string]: unknown;
             };
+            locator_coverage?: components["schemas"]["EvidenceLocatorCoveragePayload"];
             /** Notes */
             notes?: string[];
             /**
@@ -15698,6 +16029,134 @@ export interface components {
             enabled: boolean;
             /** Tags */
             tags?: components["schemas"]["WikiTagPayload"][];
+        };
+        /**
+         * WorkflowPassportGatePayload
+         * @description Stage gate summary for reproducible research workflow state.
+         *
+         *     Args:
+         *         gate_id: Stable gate identifier scoped by stage id.
+         *         status: Gate state; unresolved must not be rendered as passed.
+         *         severity: UI/MCP severity for blocking, warning, or note-level items.
+         *         reason: Human-readable bounded reason for the status.
+         *         evidence: Bounded refs to runtime objects, events, artifacts, or tasks.
+         *         blockers: Items that must be resolved before the stage can be complete.
+         *         unresolved: Checks that still need human, offline, or external review.
+         *         requires_user_confirmation: Whether a pending approval blocks progress.
+         */
+        WorkflowPassportGatePayload: {
+            /** Blockers */
+            blockers?: string[];
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            }[];
+            /** Gate Id */
+            gate_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Requires User Confirmation
+             * @default false
+             */
+            requires_user_confirmation: boolean;
+            /**
+             * Severity
+             * @default note
+             * @enum {string}
+             */
+            severity: "none" | "note" | "warn" | "block";
+            /**
+             * Status
+             * @default unresolved
+             * @enum {string}
+             */
+            status: "pass" | "warn" | "block" | "unresolved" | "not_applicable";
+            /** Unresolved */
+            unresolved?: string[];
+        };
+        /**
+         * WorkflowPassportPayload
+         * @description Read-only workflow passport over runtime objects, events, and artifacts.
+         *
+         *     Args:
+         *         schema_version: Versioned additive API contract.
+         *         generated_at: UTC generation time for this projection.
+         *         scope: Runtime filters used to build the passport.
+         *         stages: Ordered stage ledger rows.
+         *         current_stage_id: First stage that is not complete, or final stage.
+         *         gate_summary: Aggregate gate counts and blocking state.
+         *         provenance: Sources used to derive this read-only passport.
+         */
+        WorkflowPassportPayload: {
+            /** Current Stage Id */
+            current_stage_id?: string | null;
+            /** Gate Summary */
+            gate_summary?: {
+                [key: string]: unknown;
+            };
+            /** Generated At */
+            generated_at: string;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Schema Version
+             * @default scholar_ai_workflow_passport_v1
+             */
+            schema_version: string;
+            /** Scope */
+            scope?: {
+                [key: string]: unknown;
+            };
+            /** Stages */
+            stages?: components["schemas"]["WorkflowPassportStagePayload"][];
+        };
+        /**
+         * WorkflowPassportStagePayload
+         * @description Read-only stage ledger row for the research workflow passport.
+         *
+         *     Args:
+         *         stage_id: Scholar AI workflow stage id.
+         *         label: User-facing short label.
+         *         status: Stage progress derived from existing runtime state.
+         *         required_artifacts: Artifact families expected for a reproducible stage.
+         *         present_artifacts: Bounded runtime/material artifacts found locally.
+         *         object_ids: Research object ids that provide this stage evidence.
+         *         event_types: Domain events observed for this stage.
+         *         gate: Integrity/reproducibility gate projection for this stage.
+         *         next_actions: Bounded local actions that can move the stage forward.
+         *         updated_at: Latest timestamp observed for this stage.
+         */
+        WorkflowPassportStagePayload: {
+            /** Event Types */
+            event_types?: string[];
+            gate: components["schemas"]["WorkflowPassportGatePayload"];
+            /** Label */
+            label: string;
+            /** Next Actions */
+            next_actions?: string[];
+            /** Object Ids */
+            object_ids?: string[];
+            /** Present Artifacts */
+            present_artifacts?: {
+                [key: string]: unknown;
+            }[];
+            /** Required Artifacts */
+            required_artifacts?: string[];
+            /**
+             * Stage Id
+             * @enum {string}
+             */
+            stage_id: "material_ingest" | "material_read" | "evidence_pack" | "outline" | "draft" | "citation_review" | "export" | "agent_handoff";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_started" | "in_progress" | "complete" | "warn" | "blocked" | "unresolved";
+            /** Updated At */
+            updated_at?: string | null;
         };
         /**
          * WritingActionPayload
@@ -25996,6 +26455,40 @@ export interface operations {
             };
         };
     };
+    get_runtime_evidence_integrity_gate: {
+        parameters: {
+            query?: {
+                session_id?: string | null;
+                job_id?: string | null;
+                project_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceIntegrityGatePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_runtime_job: {
         parameters: {
             query?: never;
@@ -26080,6 +26573,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_job_job_id_agent_handoff_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentHandoffCardPayload"];
                 };
             };
             /** @description Validation Error */
@@ -26873,6 +27397,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_workflow_passport: {
+        parameters: {
+            query?: {
+                session_id?: string | null;
+                job_id?: string | null;
+                project_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowPassportPayload"];
                 };
             };
             /** @description Validation Error */
