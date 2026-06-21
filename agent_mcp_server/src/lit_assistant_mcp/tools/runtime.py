@@ -664,6 +664,7 @@ class RuntimeTools:
         style_profile: str = "gb_t_7714_review",
         verify_with_word: bool = False,
         project_id: str | None = None,
+        require_action_preflight: bool = False,
     ) -> dict[str, Any]:
         """Export scholarly HTML as a DOCX artifact under MCP workflow storage.
 
@@ -673,6 +674,7 @@ class RuntimeTools:
             style_profile: Journal/profile identifier understood by the backend.
             verify_with_word: Whether to request optional local Word verification.
             project_id: Optional project id required for project-scoped profiles.
+            require_action_preflight: Whether backend export readiness must pass before export.
         """
         started = time.perf_counter()
         html = self._bounded_text(html, "html", max_chars=500000)
@@ -683,6 +685,7 @@ class RuntimeTools:
             "title": title,
             "style_profile": style_profile,
             "verify_with_word": bool(verify_with_word),
+            "require_action_preflight": bool(require_action_preflight),
         }
         if isinstance(project_id, str) and project_id.strip():
             payload["project_id"] = self._bounded_text(project_id, "project_id", max_chars=128)
@@ -692,6 +695,7 @@ class RuntimeTools:
             "style_profile": style_profile,
             "verify_with_word": bool(verify_with_word),
             "project_id": payload.get("project_id"),
+            "require_action_preflight": bool(require_action_preflight),
         }
         endpoint = "/api/export/docx"
         backend_result = self.backend.post_binary(endpoint, payload=payload)
@@ -1894,6 +1898,19 @@ class RuntimeTools:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(bytes(content))
         headers = {str(key).lower(): str(value) for key, value in dict(data.get("headers") or {}).items()}
+        preflight_header = headers.get("x-litassist-action-preflight", "")
+        action_preflight: dict[str, Any] | None = None
+        if preflight_header:
+            try:
+                parsed_preflight = json.loads(preflight_header)
+            except json.JSONDecodeError:
+                parsed_preflight = {
+                    "schema_version": "scholar_ai_action_preflight_v1",
+                    "status": "malformed_header",
+                    "can_proceed": False,
+                }
+            if isinstance(parsed_preflight, dict):
+                action_preflight = parsed_preflight
         return safe_result(
             {
                 "artifact_path": str(output_path),
@@ -1901,6 +1918,7 @@ class RuntimeTools:
                 "style_profile": style_profile,
                 "quality": headers.get("x-litassist-export-quality", ""),
                 "content_type": headers.get("content-type", ""),
+                "action_preflight": action_preflight,
                 "duration_ms": int((time.perf_counter() - started) * 1000),
             }
         )

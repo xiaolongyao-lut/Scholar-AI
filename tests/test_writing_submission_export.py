@@ -259,6 +259,88 @@ class TestProjectExport:
         assert session is not None
         assert session.mode == SessionMode.SKILL
 
+    def test_export_project_action_preflight_blocks_when_required(self, monkeypatch, tmp_path):
+        """Explicit action preflight should block export readiness overclaims."""
+        from literature_assistant.core.python_adapter_server import app
+        from writing_runtime import WritingRuntime
+        import routers.writing_router as writing_router_module
+
+        runtime = WritingRuntime(database_path=tmp_path / "writing-export-preflight.sqlite3", autosave=True)
+        monkeypatch.setattr(writing_router_module, "get_writing_runtime", lambda: runtime)
+
+        client = TestClient(app)
+        created = client.post(
+            "/api/writing/projects",
+            json={
+                "title": "Blocked Export Project",
+                "description": "Regression for action preflight",
+                "user_id": "tester",
+            },
+        )
+        assert created.status_code == 200
+        project_id = created.json()["project_id"]
+
+        blocked = client.post(
+            "/api/writing/export",
+            json={
+                "project_id": project_id,
+                "format": "json",
+                "include_evidence": True,
+                "include_citations": True,
+                "require_action_preflight": True,
+            },
+        )
+
+        assert blocked.status_code == 409
+        detail = blocked.json()
+        assert detail["error"] == "action_preflight_blocked"
+        preflight = detail["action_preflight"]
+        assert preflight["schema_version"] == "scholar_ai_action_preflight_v1"
+        assert preflight["action_id"] == "writing.export_project"
+        assert preflight["required_claim_id"] == "export_readiness"
+        assert preflight["require_ready"] is True
+        assert preflight["can_proceed"] is False
+        assert preflight["status"] in {"blocked", "unresolved"}
+        assert preflight["summary"]["unresolved_is_ready"] is False
+
+    def test_export_project_action_preflight_attaches_when_not_required(self, monkeypatch, tmp_path):
+        """Legacy export remains compatible while exposing the action preflight."""
+        from literature_assistant.core.python_adapter_server import app
+        from writing_runtime import WritingRuntime
+        import routers.writing_router as writing_router_module
+
+        runtime = WritingRuntime(database_path=tmp_path / "writing-export-preflight-observe.sqlite3", autosave=True)
+        monkeypatch.setattr(writing_router_module, "get_writing_runtime", lambda: runtime)
+
+        client = TestClient(app)
+        created = client.post(
+            "/api/writing/projects",
+            json={
+                "title": "Observable Export Project",
+                "description": "Regression for non-blocking action preflight",
+                "user_id": "tester",
+            },
+        )
+        assert created.status_code == 200
+        project_id = created.json()["project_id"]
+
+        exported = client.post(
+            "/api/writing/export",
+            json={
+                "project_id": project_id,
+                "format": "json",
+                "include_evidence": True,
+                "include_citations": True,
+            },
+        )
+
+        assert exported.status_code == 200
+        body = exported.json()
+        assert body["format"] == "json"
+        assert body["action_preflight"]["schema_version"] == "scholar_ai_action_preflight_v1"
+        assert body["action_preflight"]["require_ready"] is False
+        assert body["action_preflight"]["summary"]["unresolved_is_ready"] is False
+
     def test_export_project_post_returns_word_latex_and_pdf(self):
         """POST /api/writing/export returns generated academic export formats."""
         from literature_assistant.core.python_adapter_server import app

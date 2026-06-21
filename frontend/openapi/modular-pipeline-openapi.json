@@ -9029,6 +9029,12 @@
             ],
             "title": "Project Id"
           },
+          "require_action_preflight": {
+            "default": false,
+            "description": "When true, block DOCX export unless project workflow readiness allows export.",
+            "title": "Require Action Preflight",
+            "type": "boolean"
+          },
           "style_profile": {
             "anyOf": [
               {
@@ -9081,6 +9087,12 @@
           "project_id": {
             "title": "Project Id",
             "type": "string"
+          },
+          "require_action_preflight": {
+            "default": false,
+            "description": "When true, block export unless the workflow passport and evidence gate allow the action.",
+            "title": "Require Action Preflight",
+            "type": "boolean"
           },
           "style_profile": {
             "anyOf": [
@@ -14631,6 +14643,18 @@
       "ProjectExportPayload": {
         "description": "Project export response for text and generated file formats.",
         "properties": {
+          "action_preflight": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Preflight"
+          },
           "bibliography_entries": {
             "items": {
               "$ref": "#/components/schemas/ProjectExportBibliographyEntryPayload"

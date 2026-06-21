@@ -10573,6 +10573,12 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             /**
+             * Require Action Preflight
+             * @description When true, block DOCX export unless project workflow readiness allows export.
+             * @default false
+             */
+            require_action_preflight: boolean;
+            /**
              * Style Profile
              * @default gb_t_7714_review
              */
@@ -10607,6 +10613,12 @@ export interface components {
             include_evidence: boolean;
             /** Project Id */
             project_id: string;
+            /**
+             * Require Action Preflight
+             * @description When true, block export unless the workflow passport and evidence gate allow the action.
+             * @default false
+             */
+            require_action_preflight: boolean;
             /**
              * Style Profile
              * @description Optional built-in or confirmed project-scoped journal style profile for Word export.
@@ -13025,6 +13037,10 @@ export interface components {
          * @description Project export response for text and generated file formats.
          */
         ProjectExportPayload: {
+            /** Action Preflight */
+            action_preflight?: {
+                [key: string]: unknown;
+            } | null;
             /** Bibliography Entries */
             bibliography_entries?: components["schemas"]["ProjectExportBibliographyEntryPayload"][];
             /** Citation Chain */

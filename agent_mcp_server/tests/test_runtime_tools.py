@@ -92,6 +92,13 @@ class FakeBackend:
                             "crossrefs=0;formulas=0;"
                             "word_verify=requested_unavailable"
                         ),
+                        "x-litassist-action-preflight": (
+                            '{"action_id":"export.docx","can_proceed":true,'
+                            '"claim_status":"ready","gate_status":"pass",'
+                            '"required_claim_id":"export_readiness",'
+                            '"schema_version":"scholar_ai_action_preflight_v1",'
+                            '"status":"ready"}'
+                        ),
                     },
                     "status_code": 200,
                 },
@@ -804,6 +811,7 @@ def test_export_docx_posts_html_and_writes_artifact(
                 "style_profile": "gb_t_7714_review",
                 "verify_with_word": True,
                 "project_id": "project-1",
+                "require_action_preflight": False,
             },
         },
     )
@@ -816,10 +824,43 @@ def test_export_docx_posts_html_and_writes_artifact(
         "citations=2;tables=1;captions=1;style_profile=gb_t_7714_review;"
         "citation_style=numeric;crossrefs=0;formulas=0;word_verify=requested_unavailable"
     )
+    assert result["data"]["action_preflight"]["schema_version"] == "scholar_ai_action_preflight_v1"
+    assert result["data"]["action_preflight"]["can_proceed"] is True
     assert "content" not in result["data"]
     assert result["outcome"]["schema_version"] == "scholar-ai-tool-outcome/v1"
     assert result["outcome"]["status"] == "success"
     assert result["outcome"]["quality"] == "full"
+
+
+def test_export_docx_can_request_hard_action_preflight(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """export_docx exposes an explicit hard preflight switch for agents."""
+
+    result = tools.export_docx(
+        html="<p>需要导出。</p>",
+        title="Preflighted Review",
+        project_id="project-1",
+        require_action_preflight=True,
+    )
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "post_binary",
+        "/api/export/docx",
+        {
+            "params": None,
+            "payload": {
+                "html": "<p>需要导出。</p>",
+                "title": "Preflighted Review",
+                "style_profile": "gb_t_7714_review",
+                "verify_with_word": False,
+                "require_action_preflight": True,
+                "project_id": "project-1",
+            },
+        },
+    )
 
 
 def test_journal_style_spec_tools_post_reviewable_profile_payloads(

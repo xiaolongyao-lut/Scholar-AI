@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence, TypedDict
 
 from fastapi import APIRouter, Body, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from models import (
     ProjectPayload,
@@ -318,10 +318,22 @@ def _build_project_export_bundle_manifest(
     }
 
 
+def _preflight_http_detail(preflight: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a bounded HTTP error detail for blocked action preflights."""
+
+    if not isinstance(preflight, Mapping):
+        raise TypeError("preflight must be a mapping")
+    return {
+        "error": "action_preflight_blocked",
+        "message": "Workflow passport and evidence integrity gate do not allow this action yet.",
+        "action_preflight": dict(preflight),
+    }
+
+
 async def _record_project_export_workflow_state(
     request: ExportProjectRequest,
     response: ProjectExportPayload,
-) -> None:
+) -> dict[str, Any]:
     """Persist export workflow state while keeping export responses stable.
 
     Args:
@@ -438,6 +450,17 @@ async def _record_project_export_workflow_state(
             }
         ],
     )
+    action_preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=job.job_id,
+        project_id=project_id,
+        require_ready=bool(request.require_action_preflight),
+        workflow_state=state,
+        limit=500,
+    )
+    runtime.update_job_metadata(job.job_id, {"action_preflight": action_preflight})
     await runtime.complete_job(
         job.job_id,
         result={
@@ -445,13 +468,17 @@ async def _record_project_export_workflow_state(
             "format": export_format,
             "filename": response.filename,
             "workflow_phase": state["phase"],
+            "action_preflight": action_preflight,
         },
         artifact_metadata={
             "kind": "writing_export_summary",
             "project_id": project_id,
             "format": export_format,
+            "action_preflight_status": action_preflight.get("status"),
+            "action_preflight_schema_version": action_preflight.get("schema_version"),
         },
     )
+    return action_preflight
 
 
 class _GeneratedOutlineItem(TypedDict):
@@ -1716,7 +1743,7 @@ async def submit_for_review(request: SubmitForReviewRequest) -> SubmissionRespon
 # =========================================================================
 
 @router.post("/export", response_model=ProjectExportPayload)
-async def export_project(request: ExportProjectRequest) -> ProjectExportPayload:
+async def export_project(request: ExportProjectRequest) -> ProjectExportPayload | JSONResponse:
     """Export project in specified format.
 
     Supports JSON, Markdown, Word, LaTeX, and PDF formats.
@@ -1739,8 +1766,13 @@ async def export_project(request: ExportProjectRequest) -> ProjectExportPayload:
         style_profile=request.style_profile,
     )
     response = ProjectExportPayload(**payload)
+    action_preflight: dict[str, Any] | None = None
     try:
-        await _record_project_export_workflow_state(request, response)
+        action_preflight = await _record_project_export_workflow_state(request, response)
     except (RuntimeError, ValueError, TypeError) as exc:
         logger.warning("Writing export workflow-state recording failed: %s", exc)
+    if action_preflight is not None:
+        response.action_preflight = action_preflight
+        if request.require_action_preflight and not bool(action_preflight.get("can_proceed")):
+            return JSONResponse(status_code=409, content=_preflight_http_detail(action_preflight))
     return response

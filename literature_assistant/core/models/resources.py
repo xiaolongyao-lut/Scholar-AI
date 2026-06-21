@@ -347,6 +347,7 @@ class ProjectExportPayload(BaseModel):
     figure_assets: List[ProjectExportFigureAssetPayload] = Field(default_factory=list)
     writing_audit: Optional[AcademicWritingLintResponse] = None
     rendered_writing_audit: Optional[AcademicWritingLintResponse] = None
+    action_preflight: Optional[Dict[str, Any]] = None
 
 
 class AssociationSignalPayload(BaseModel):
@@ -680,6 +681,10 @@ class ExportProjectRequest(BaseModel):
         default=None,
         max_length=80,
         description="Optional built-in or confirmed project-scoped journal style profile for Word export.",
+    )
+    require_action_preflight: bool = Field(
+        default=False,
+        description="When true, block export unless the workflow passport and evidence gate allow the action.",
     )
 
 

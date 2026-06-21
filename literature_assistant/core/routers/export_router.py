@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
@@ -75,6 +75,85 @@ class ExportDocxRequest(BaseModel):
     style_profile: str | None = Field(default="gb_t_7714_review", max_length=80)
     verify_with_word: bool = False
     project_id: str | None = Field(default=None, max_length=128)
+    require_action_preflight: bool = Field(
+        default=False,
+        description="When true, block DOCX export unless project workflow readiness allows export.",
+    )
+
+
+def _build_docx_action_preflight(req: ExportDocxRequest) -> dict[str, Any] | None | JSONResponse:
+    """Return optional workflow preflight for project-scoped DOCX export.
+
+    Args:
+        req: Validated DOCX export request.
+
+    Returns:
+        Action preflight payload when a project id is available, otherwise None.
+
+    Raises:
+        HTTPException: If hard preflight is requested but no project id exists
+            or the runtime gate blocks export readiness.
+    """
+
+    project_id = str(req.project_id or "").strip()
+    if not project_id:
+        if req.require_action_preflight:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "action_preflight_requires_project_id",
+                    "message": "project_id is required when require_action_preflight is true.",
+                },
+            )
+        return None
+    try:
+        from writing_runtime import get_writing_runtime
+
+        runtime = get_writing_runtime()
+        preflight = runtime.build_action_preflight(
+            action_id="export.docx",
+            required_claim_id="export_readiness",
+            project_id=project_id,
+            require_ready=bool(req.require_action_preflight),
+            limit=500,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if req.require_action_preflight and not bool(preflight.get("can_proceed")):
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "action_preflight_blocked",
+                "message": "Workflow passport and evidence integrity gate do not allow DOCX export yet.",
+                "action_preflight": preflight,
+            },
+        )
+    return preflight
+
+
+def _preflight_header_value(preflight: dict[str, Any] | None) -> str:
+    """Return a compact ASCII JSON header value for optional action preflight."""
+
+    if preflight is None:
+        return json.dumps(
+            {
+                "schema_version": "scholar_ai_action_preflight_v1",
+                "status": "not_requested",
+                "can_proceed": True,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+    header = {
+        "schema_version": preflight.get("schema_version"),
+        "action_id": preflight.get("action_id"),
+        "required_claim_id": preflight.get("required_claim_id"),
+        "status": preflight.get("status"),
+        "can_proceed": bool(preflight.get("can_proceed")),
+        "claim_status": preflight.get("claim_status"),
+        "gate_status": preflight.get("gate_status"),
+    }
+    return json.dumps(header, ensure_ascii=True, sort_keys=True)
 
 
 class JournalStyleSpecDraftRequest(BaseModel):
@@ -1335,6 +1414,9 @@ def _html_to_docx(
 @router.post("/docx")
 async def export_docx(req: ExportDocxRequest):
     """Export TipTap content as formatted DOCX."""
+    action_preflight = _build_docx_action_preflight(req)
+    if isinstance(action_preflight, JSONResponse):
+        return action_preflight
     tmp_dir = Path(tempfile.mkdtemp(prefix="export_docx_"))
     filename = f"{_safe_docx_filename_stem(req.title)}_{uuid.uuid4().hex[:8]}.docx"
     output_path = tmp_dir / filename
@@ -1360,7 +1442,10 @@ async def export_docx(req: ExportDocxRequest):
         path=str(output_path),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=filename,
-        headers={"X-LitAssist-Export-Quality": quality.to_header()},
+        headers={
+            "X-LitAssist-Export-Quality": quality.to_header(),
+            "X-LitAssist-Action-Preflight": _preflight_header_value(action_preflight),
+        },
         background=BackgroundTask(_cleanup_export_tmp_dir, tmp_dir),
     )
 

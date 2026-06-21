@@ -100,6 +100,7 @@ _RESEARCH_PROJECT_OBJECT_TYPE = "research_project"
 _WORKFLOW_PASSPORT_SCHEMA_VERSION = "scholar_ai_workflow_passport_v1"
 _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION = "scholar_ai_evidence_integrity_gate_v1"
 _AGENT_HANDOFF_CARD_SCHEMA_VERSION = "scholar_ai_agent_handoff_card_v1"
+_ACTION_PREFLIGHT_SCHEMA_VERSION = "scholar_ai_action_preflight_v1"
 _AGENT_HANDOFF_CARD_KEY = "agent_handoff_card"
 _WORKFLOW_ENFORCEMENT_SCHEMA_VERSION = "scholar_ai_workflow_enforcement_v1"
 _READINESS_CLAIM_DEFINITIONS: tuple[dict[str, Any], ...] = (
@@ -1173,6 +1174,149 @@ def _workflow_readiness_claims(
                 "runtime.evidence_integrity_gate",
             ],
             "evidence_integrity_gate_schema_version": gate.get("schema_version"),
+        },
+    }
+
+
+def _workflow_claim_by_id(readiness_claims: dict[str, Any], claim_id: str) -> dict[str, Any] | None:
+    """Return a readiness claim by id from a workflow enforcement payload."""
+
+    if not isinstance(readiness_claims, dict):
+        raise ValueError("readiness_claims must be an object")
+    normalized_claim_id = str(claim_id or "").strip()
+    if not normalized_claim_id:
+        raise ValueError("claim_id must not be empty")
+    claims = readiness_claims.get("claims")
+    if not isinstance(claims, list):
+        return None
+    for claim in claims:
+        if isinstance(claim, dict) and str(claim.get("claim_id") or "") == normalized_claim_id:
+            return claim
+    return None
+
+
+def _workflow_action_preflight_payload(
+    *,
+    action_id: str,
+    required_claim_id: str,
+    passport: dict[str, Any],
+    gate: dict[str, Any],
+    readiness_claims: dict[str, Any],
+    require_ready: bool,
+    workflow_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a read-only action preflight over passport, gate, and readiness claims.
+
+    Args:
+        action_id: Stable local action identifier.
+        required_claim_id: Claim that must be ready when hard enforcement is on.
+        passport: Current workflow passport projection.
+        gate: Current evidence integrity gate projection.
+        readiness_claims: Current workflow enforcement projection.
+        require_ready: Whether non-ready claims should block the action.
+        workflow_state: Optional writing workflow state used for provenance only.
+
+    Returns:
+        JSON-safe action preflight payload.
+
+    Raises:
+        ValueError: If required objects are not mappings or identifiers are blank.
+    """
+
+    normalized_action_id = str(action_id or "").strip()
+    normalized_claim_id = str(required_claim_id or "").strip()
+    if not normalized_action_id:
+        raise ValueError("action_id must not be empty")
+    if not normalized_claim_id:
+        raise ValueError("required_claim_id must not be empty")
+    if not isinstance(passport, dict):
+        raise ValueError("passport must be an object")
+    if not isinstance(gate, dict):
+        raise ValueError("gate must be an object")
+    if not isinstance(readiness_claims, dict):
+        raise ValueError("readiness_claims must be an object")
+    if workflow_state is not None and not isinstance(workflow_state, dict):
+        raise ValueError("workflow_state must be an object when provided")
+
+    claim = _workflow_claim_by_id(readiness_claims, normalized_claim_id)
+    claim_status = str((claim or {}).get("status") or "unresolved").strip() or "unresolved"
+    gate_status = str(gate.get("status") or "unresolved").strip() or "unresolved"
+    current_stage_id = _safe_projection_string(passport.get("current_stage_id"))
+    stage_summary = passport.get("gate_summary") if isinstance(passport.get("gate_summary"), dict) else {}
+    readiness_ok = claim_status in {"ready", "warning"}
+    hard_blocked = bool(require_ready and not readiness_ok)
+
+    blockers: list[str] = []
+    unresolved: list[str] = []
+    for message in (claim or {}).get("blockers") or []:
+        _append_unique_text(blockers, message, max_items=12)
+    for message in (claim or {}).get("unresolved") or []:
+        _append_unique_text(unresolved, message, max_items=12)
+    for message in gate.get("blockers") or []:
+        _append_unique_text(blockers, message, max_items=12)
+    for message in gate.get("unresolved") or []:
+        _append_unique_text(unresolved, message, max_items=12)
+    if claim is None:
+        _append_unique_text(unresolved, f"Readiness claim {normalized_claim_id} was not found.", max_items=12)
+    if hard_blocked and not blockers and claim_status == "blocked":
+        _append_unique_text(blockers, "Required readiness claim is blocked.", max_items=12)
+    if hard_blocked and not unresolved and claim_status != "blocked":
+        _append_unique_text(unresolved, "Required readiness claim is not ready.", max_items=12)
+
+    evidence: list[dict[str, Any]] = []
+    if isinstance(claim, dict):
+        for item in claim.get("evidence") or []:
+            if isinstance(item, dict):
+                _append_unique_mapping(evidence, _compact_projection_mapping(item), max_items=16)
+    _append_unique_mapping(
+        evidence,
+        {
+            "ref_type": "workflow_passport",
+            "schema_version": passport.get("schema_version"),
+            "current_stage_id": current_stage_id,
+        },
+        max_items=16,
+    )
+    _append_unique_mapping(
+        evidence,
+        {
+            "ref_type": "evidence_integrity_gate",
+            "schema_version": gate.get("schema_version"),
+            "status": gate_status,
+        },
+        max_items=16,
+    )
+
+    return {
+        "schema_version": _ACTION_PREFLIGHT_SCHEMA_VERSION,
+        "generated_at": utc_now_iso_z(),
+        "action_id": normalized_action_id,
+        "required_claim_id": normalized_claim_id,
+        "require_ready": bool(require_ready),
+        "status": "blocked" if hard_blocked else ("ready" if readiness_ok else "unresolved"),
+        "can_proceed": not hard_blocked,
+        "claim_status": claim_status,
+        "gate_status": gate_status,
+        "current_stage_id": current_stage_id,
+        "blockers": blockers[:12],
+        "unresolved": unresolved[:12],
+        "evidence": evidence[:16],
+        "summary": {
+            "hard_blocked": hard_blocked,
+            "unresolved_is_ready": False,
+            "readiness_ok": readiness_ok,
+            "workflow_gate_summary": dict(stage_summary),
+            "workflow_state_phase": workflow_state.get("phase") if isinstance(workflow_state, dict) else None,
+        },
+        "provenance": {
+            "derived_from": [
+                "runtime.workflow_passport",
+                "runtime.evidence_integrity_gate",
+                "runtime.workflow_readiness_claims",
+            ],
+            "workflow_passport_schema_version": passport.get("schema_version"),
+            "evidence_integrity_gate_schema_version": gate.get("schema_version"),
+            "readiness_claims_schema_version": readiness_claims.get("schema_version"),
         },
     }
 
@@ -2900,6 +3044,76 @@ class WritingRuntime:
             gate=gate,
         )
 
+    def build_action_preflight(
+        self,
+        *,
+        action_id: str,
+        required_claim_id: str,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        require_ready: bool = False,
+        workflow_state: dict[str, Any] | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Build a read-only preflight projection before export or handoff actions.
+
+        Args:
+            action_id: Stable local action identifier.
+            required_claim_id: Workflow readiness claim that represents the action.
+            session_id: Optional runtime session scope.
+            job_id: Optional runtime job scope.
+            project_id: Optional project scope.
+            require_ready: Whether a non-ready claim blocks the action.
+            workflow_state: Optional just-built workflow state for new export jobs.
+            limit: Maximum runtime rows used by the projections.
+
+        Returns:
+            Versioned action preflight payload with passport, gate, and claim refs.
+
+        Raises:
+            ValueError: If ids are blank or scoped runtime records are missing.
+        """
+
+        normalized_action_id = str(action_id or "").strip()
+        normalized_claim_id = str(required_claim_id or "").strip()
+        if not normalized_action_id:
+            raise ValueError("action_id must not be empty")
+        if not normalized_claim_id:
+            raise ValueError("required_claim_id must not be empty")
+        if workflow_state is not None and not isinstance(workflow_state, dict):
+            raise ValueError("workflow_state must be an object when provided")
+        passport = self.build_workflow_passport(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+        gate = self.build_evidence_integrity_gate(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+        if workflow_state is None and job_id:
+            try:
+                workflow_state = self.get_writing_workflow_state(job_id)
+            except ValueError:
+                workflow_state = None
+        readiness_claims = _workflow_readiness_claims(
+            workflow_state=workflow_state,
+            gate=gate,
+        )
+        return _workflow_action_preflight_payload(
+            action_id=normalized_action_id,
+            required_claim_id=normalized_claim_id,
+            passport=passport,
+            gate=gate,
+            readiness_claims=readiness_claims,
+            require_ready=bool(require_ready),
+            workflow_state=workflow_state,
+        )
+
     def update_material_processing_task(
         self,
         job_id: str,
@@ -4208,6 +4422,17 @@ class WritingRuntime:
             workflow_state=metadata.get(_WRITING_WORKFLOW_STATE_KEY) if isinstance(metadata.get(_WRITING_WORKFLOW_STATE_KEY), dict) else None,
             gate=gate,
         )
+        action_preflight = _workflow_action_preflight_payload(
+            action_id="agent.handoff_card",
+            required_claim_id="handoff_readiness",
+            passport=passport,
+            gate=gate,
+            readiness_claims=readiness_claims,
+            require_ready=False,
+            workflow_state=metadata.get(_WRITING_WORKFLOW_STATE_KEY)
+            if isinstance(metadata.get(_WRITING_WORKFLOW_STATE_KEY), dict)
+            else None,
+        )
         handoff_claim = next(
             (
                 claim
@@ -4221,6 +4446,10 @@ class WritingRuntime:
                 _append_unique_text(blockers, message, max_items=16)
             for message in handoff_claim.get("unresolved") or []:
                 _append_unique_text(unresolved, message, max_items=16)
+        for message in action_preflight.get("blockers") or []:
+            _append_unique_text(blockers, message, max_items=16)
+        for message in action_preflight.get("unresolved") or []:
+            _append_unique_text(unresolved, message, max_items=16)
 
         artifacts = _bounded_handoff_artifacts(self.get_job_artifacts(job.job_id))
         resource_refs = _bounded_handoff_refs(metadata.get("resource_refs"), max_items=50)
@@ -4279,6 +4508,7 @@ class WritingRuntime:
             "blockers": blockers[:16],
             "unresolved": unresolved[:16],
             "readiness_claims": readiness_claims,
+            "action_preflight": action_preflight,
             "resource_refs": resource_refs[:50],
             "artifacts": artifacts[:24],
             "resume_probes": resume_probes[:16],
@@ -4290,9 +4520,11 @@ class WritingRuntime:
                     "runtime.artifacts",
                     "runtime.workflow_passport",
                     "runtime.evidence_integrity_gate",
+                    "runtime.action_preflight",
                 ],
                 "workflow_passport_schema_version": passport.get("schema_version"),
                 "evidence_integrity_gate_schema_version": gate.get("schema_version"),
+                "action_preflight_schema_version": action_preflight.get("schema_version"),
                 "artifact_count": len(artifacts),
                 "resource_ref_count": len(resource_refs),
             },

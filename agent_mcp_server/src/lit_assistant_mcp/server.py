@@ -395,6 +395,7 @@ def create_mcp_server(
         style_profile: str = "gb_t_7714_review",
         verify_with_word: bool = False,
         project_id: str | None = None,
+        require_action_preflight: bool = False,
     ) -> dict[str, Any]:
         """Export scholarly HTML as a DOCX workflow artifact."""
         return runtime.export_docx(
@@ -403,6 +404,7 @@ def create_mcp_server(
             style_profile=style_profile,
             verify_with_word=verify_with_word,
             project_id=project_id,
+            require_action_preflight=require_action_preflight,
         )
 
     @mcp.tool(name="literature.journal_style_spec_draft", structured_output=True)
