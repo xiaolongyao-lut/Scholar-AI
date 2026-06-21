@@ -22,6 +22,7 @@ from models import (
     WorkflowPassportPayload,
     EvidenceIntegrityGatePayload,
     AgentHandoffCardPayload,
+    PreflightRefreshReceiptPayload,
     TimelinePagePayload,
     CheckpointPayload,
     ResumeSessionPayload,
@@ -863,6 +864,24 @@ async def get_agent_handoff_card(job_id: str) -> AgentHandoffCardPayload:
         status_code = 404 if "not found" in str(exc).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return AgentHandoffCardPayload(**card)
+
+
+@router.get("/job/{job_id}/preflight-refresh-receipt", response_model=PreflightRefreshReceiptPayload)
+async def get_preflight_refresh_receipt(
+    job_id: str,
+    receipt_id: str | None = Query(default=None),
+) -> PreflightRefreshReceiptPayload:
+    """Return a persisted workflow refresh/replay receipt for one runtime job."""
+
+    runtime = get_runtime()
+    try:
+        receipt = runtime.get_preflight_refresh_receipt(job_id, receipt_id=receipt_id)
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="Preflight refresh receipt not found")
+    return PreflightRefreshReceiptPayload(**receipt)
 
 
 @router.get("/job/{job_id}", response_model=JobPayload)

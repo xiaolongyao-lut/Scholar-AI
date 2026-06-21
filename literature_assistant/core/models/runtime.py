@@ -577,6 +577,46 @@ class EvidenceIntegrityGatePayload(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class PreflightRefreshReceiptPayload(BaseModel):
+    """Replay receipt for refreshed action-preflight workflow projections.
+
+    Args:
+        schema_version: Versioned additive contract for local replay evidence.
+        receipt_id: Stable id derived from refreshed projection evidence.
+        generated_at: UTC time when the refresh/replay receipt was generated.
+        action_id: Local action whose preflight was refreshed.
+        required_claim_id: Readiness claim evaluated for the action.
+        scope: Runtime filters used to rebuild the projections.
+        status: Action-preflight status after replay.
+        can_proceed: Whether hard command execution may proceed.
+        refresh_required: Whether the replay still reports stale/unknown inputs.
+        projection_digests: Stable digests for rebuilt projections.
+        projection_refs: Bounded refs to rebuilt projection outputs.
+        freshness: Freshness diagnostics copied from action preflight.
+        validation: Gate/checkpoint-like validation summary.
+        replay: Local replay steps and mutation guarantees.
+        provenance: Standards and runtime projections used to derive the receipt.
+    """
+
+    schema_version: Literal["scholar_ai_preflight_refresh_receipt_v1"] = (
+        "scholar_ai_preflight_refresh_receipt_v1"
+    )
+    receipt_id: str = Field(min_length=1, max_length=200)
+    generated_at: str
+    action_id: str = Field(min_length=1, max_length=160)
+    required_claim_id: str = Field(min_length=1, max_length=160)
+    scope: Dict[str, Any] = Field(default_factory=dict)
+    status: Literal["ready", "unresolved", "blocked", "stale"]
+    can_proceed: bool
+    refresh_required: bool
+    projection_digests: Dict[str, str] = Field(default_factory=dict)
+    projection_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
+    freshness: Dict[str, Any] = Field(default_factory=dict)
+    validation: Dict[str, Any] = Field(default_factory=dict)
+    replay: Dict[str, Any] = Field(default_factory=dict)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
 class AgentHandoffCardPayload(BaseModel):
     """Recoverable handoff card for one runtime-visible agent request.
 
@@ -616,6 +656,7 @@ class AgentHandoffCardPayload(BaseModel):
     blockers: List[str] = Field(default_factory=list, max_length=16)
     unresolved: List[str] = Field(default_factory=list, max_length=16)
     readiness_claims: Dict[str, Any] = Field(default_factory=dict)
+    action_preflight: Dict[str, Any] = Field(default_factory=dict)
     resource_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=50)
     artifacts: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)
     resume_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)

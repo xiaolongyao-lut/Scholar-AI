@@ -1347,6 +1347,36 @@ def test_evidence_integrity_gate_reads_runtime_projection(
     )
 
 
+def test_workflow_refresh_receipt_reads_runtime_receipt(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Workflow refresh receipt should expose replay evidence to MCP."""
+
+    backend.set_json(
+        "/runtime/job/job-refresh-1/preflight-refresh-receipt",
+        {
+            "schema_version": "scholar_ai_preflight_refresh_receipt_v1",
+            "receipt_id": "preflight_refresh:abc123",
+            "action_id": "writing.export_project",
+            "status": "unresolved",
+            "projection_digests": {"workflow_passport": "sha256:passport"},
+            "validation": {"unresolved_count": 1},
+        },
+    )
+
+    result = tools.workflow_refresh_receipt(" job-refresh-1 ", receipt_id=" preflight_refresh:abc123 ")
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar_ai_preflight_refresh_receipt_v1"
+    assert result["data"]["receipt_id"] == "preflight_refresh:abc123"
+    assert backend.calls[-1] == (
+        "json",
+        "/runtime/job/job-refresh-1/preflight-refresh-receipt",
+        {"receipt_id": "preflight_refresh:abc123"},
+    )
+
+
 def test_runtime_projection_tools_reject_invalid_bounds_before_backend(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -1358,6 +1388,9 @@ def test_runtime_projection_tools_reject_invalid_bounds_before_backend(
 
     with pytest.raises(ValueError, match="project_id"):
         tools.evidence_integrity_gate(project_id=" " * 4)
+
+    with pytest.raises(ValueError, match="job_id"):
+        tools.workflow_refresh_receipt(" " * 4)
 
     assert backend.calls == []
 

@@ -1106,6 +1106,60 @@ def test_runtime_evidence_integrity_gate_route_keeps_unresolved_separate(monkeyp
     assert missing_response.status_code == 404
 
 
+def test_runtime_preflight_refresh_receipt_route_reads_persisted_replay_evidence(monkeypatch) -> None:
+    """Runtime route should expose persisted workflow refresh receipts."""
+
+    runtime = WritingRuntime(autosave=False)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-receipt-route"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="export receipt route",
+        metadata={"project_id": "project-receipt-route"},
+    )
+    state = runtime.update_writing_workflow_state(
+        job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-receipt-route"},
+        evidence_refs=[{"ref_id": "chunk:receipt-route", "material_id": "material-receipt-route"}],
+        citation_bank=[{"citation_id": "cite:receipt-route", "ref_id": "chunk:receipt-route"}],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "receipt-route.docx"},
+        change_log=[{"stage": "export", "summary": "export manifest exists"}],
+    )
+    preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=job.job_id,
+        project_id="project-receipt-route",
+        workflow_state=state,
+        persist_refresh_receipt=True,
+    )
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    response = client.get(f"/runtime/job/{job.job_id}/preflight-refresh-receipt")
+
+    assert response.status_code == 200
+    receipt = response.json()
+    assert receipt["schema_version"] == "scholar_ai_preflight_refresh_receipt_v1"
+    assert receipt["receipt_id"] == preflight["refresh_receipt_id"]
+    assert receipt["validation"]["preflight_schema_version"] == "scholar_ai_action_preflight_v1"
+    assert receipt["replay"]["external_mutation"] is False
+
+    missing_response = client.get(
+        f"/runtime/job/{job.job_id}/preflight-refresh-receipt",
+        params={"receipt_id": "preflight_refresh:missing"},
+    )
+    assert missing_response.status_code == 404
+
+
 @pytest.mark.persistence_smoke
 def test_runtime_router_rejects_invalid_session_mode(monkeypatch, tmp_path) -> None:
     """The runtime router should reject invalid session modes."""

@@ -5748,6 +5748,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/job/{job_id}/preflight-refresh-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preflight Refresh Receipt
+         * @description Return a persisted workflow refresh/replay receipt for one runtime job.
+         */
+        get: operations["get_runtime_job_job_id_preflight_refresh_receipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/job/{job_id}/resume": {
         parameters: {
             query?: never;
@@ -6914,6 +6934,10 @@ export interface components {
          *         provenance: Runtime sources used to derive the card.
          */
         AgentHandoffCardPayload: {
+            /** Action Preflight */
+            action_preflight?: {
+                [key: string]: unknown;
+            };
             /** Agent Host */
             agent_host?: string | null;
             /** Artifacts */
@@ -12862,6 +12886,80 @@ export interface components {
              * @description Policy status
              */
             status: string;
+        };
+        /**
+         * PreflightRefreshReceiptPayload
+         * @description Replay receipt for refreshed action-preflight workflow projections.
+         *
+         *     Args:
+         *         schema_version: Versioned additive contract for local replay evidence.
+         *         receipt_id: Stable id derived from refreshed projection evidence.
+         *         generated_at: UTC time when the refresh/replay receipt was generated.
+         *         action_id: Local action whose preflight was refreshed.
+         *         required_claim_id: Readiness claim evaluated for the action.
+         *         scope: Runtime filters used to rebuild the projections.
+         *         status: Action-preflight status after replay.
+         *         can_proceed: Whether hard command execution may proceed.
+         *         refresh_required: Whether the replay still reports stale/unknown inputs.
+         *         projection_digests: Stable digests for rebuilt projections.
+         *         projection_refs: Bounded refs to rebuilt projection outputs.
+         *         freshness: Freshness diagnostics copied from action preflight.
+         *         validation: Gate/checkpoint-like validation summary.
+         *         replay: Local replay steps and mutation guarantees.
+         *         provenance: Standards and runtime projections used to derive the receipt.
+         */
+        PreflightRefreshReceiptPayload: {
+            /** Action Id */
+            action_id: string;
+            /** Can Proceed */
+            can_proceed: boolean;
+            /** Freshness */
+            freshness?: {
+                [key: string]: unknown;
+            };
+            /** Generated At */
+            generated_at: string;
+            /** Projection Digests */
+            projection_digests?: {
+                [key: string]: string;
+            };
+            /** Projection Refs */
+            projection_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Receipt Id */
+            receipt_id: string;
+            /** Refresh Required */
+            refresh_required: boolean;
+            /** Replay */
+            replay?: {
+                [key: string]: unknown;
+            };
+            /** Required Claim Id */
+            required_claim_id: string;
+            /**
+             * Schema Version
+             * @default scholar_ai_preflight_refresh_receipt_v1
+             * @constant
+             */
+            schema_version: "scholar_ai_preflight_refresh_receipt_v1";
+            /** Scope */
+            scope?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "unresolved" | "blocked" | "stale";
+            /** Validation */
+            validation?: {
+                [key: string]: unknown;
+            };
         };
         /** ProbeResult */
         ProbeResult: {
@@ -26827,6 +26925,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_job_job_id_preflight_refresh_receipt: {
+        parameters: {
+            query?: {
+                receipt_id?: string | null;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreflightRefreshReceiptPayload"];
                 };
             };
             /** @description Validation Error */

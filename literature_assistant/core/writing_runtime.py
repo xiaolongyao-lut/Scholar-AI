@@ -103,8 +103,10 @@ _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION = "scholar_ai_evidence_integrity_gate_v1
 _AGENT_HANDOFF_CARD_SCHEMA_VERSION = "scholar_ai_agent_handoff_card_v1"
 _ACTION_PREFLIGHT_SCHEMA_VERSION = "scholar_ai_action_preflight_v1"
 _ACTION_PREFLIGHT_FRESHNESS_SCHEMA_VERSION = "scholar_ai_action_preflight_freshness_v1"
+_PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION = "scholar_ai_preflight_refresh_receipt_v1"
 _ACTION_PREFLIGHT_MAX_AGE_SECONDS = 900
 _AGENT_HANDOFF_CARD_KEY = "agent_handoff_card"
+_PREFLIGHT_REFRESH_RECEIPTS_KEY = "preflight_refresh_receipts"
 _WORKFLOW_ENFORCEMENT_SCHEMA_VERSION = "scholar_ai_workflow_enforcement_v1"
 _READINESS_CLAIM_DEFINITIONS: tuple[dict[str, Any], ...] = (
     {
@@ -1535,6 +1537,153 @@ def _workflow_action_preflight_payload(
             "workflow_passport_schema_version": passport.get("schema_version"),
             "evidence_integrity_gate_schema_version": gate.get("schema_version"),
             "readiness_claims_schema_version": readiness_claims.get("schema_version"),
+        },
+    }
+
+
+def _workflow_refresh_receipt_payload(
+    *,
+    action_preflight: dict[str, Any],
+    passport: dict[str, Any],
+    gate: dict[str, Any],
+    readiness_claims: dict[str, Any],
+    session_id: str | None,
+    job_id: str | None,
+    project_id: str | None,
+) -> dict[str, Any]:
+    """Build a bounded replay receipt for refreshed workflow projections.
+
+    Args:
+        action_preflight: The action preflight generated from rebuilt projections.
+        passport: Workflow Passport projection used for the preflight.
+        gate: Evidence Integrity Gate projection used for the preflight.
+        readiness_claims: Gate-derived readiness claims used for the preflight.
+        session_id: Optional runtime session scope.
+        job_id: Optional runtime job scope.
+        project_id: Optional project scope.
+
+    Returns:
+        JSON-safe receipt that proves which local projections were replayed.
+
+    Raises:
+        ValueError: If any projection payload is not object-shaped.
+    """
+
+    if not isinstance(action_preflight, dict):
+        raise ValueError("action_preflight must be an object")
+    if not isinstance(passport, dict):
+        raise ValueError("passport must be an object")
+    if not isinstance(gate, dict):
+        raise ValueError("gate must be an object")
+    if not isinstance(readiness_claims, dict):
+        raise ValueError("readiness_claims must be an object")
+
+    normalized_action_id = _require_non_empty_string(
+        action_preflight.get("action_id"),
+        field_name="action_preflight.action_id",
+        max_length=160,
+    )
+    normalized_claim_id = _require_non_empty_string(
+        action_preflight.get("required_claim_id"),
+        field_name="action_preflight.required_claim_id",
+        max_length=160,
+    )
+    generated_at = utc_now_iso_z()
+    scope = {
+        "session_id": _safe_projection_string(session_id),
+        "job_id": _safe_projection_string(job_id),
+        "project_id": _safe_projection_string(project_id),
+    }
+    projection_digests = {
+        "workflow_passport": _digest_json_payload(passport),
+        "evidence_integrity_gate": _digest_json_payload(gate),
+        "workflow_readiness_claims": _digest_json_payload(readiness_claims),
+        "action_preflight": _digest_json_payload(action_preflight),
+    }
+    status = str(action_preflight.get("status") or "unresolved").strip() or "unresolved"
+    refresh_required = bool(action_preflight.get("refresh_required"))
+    can_proceed = bool(action_preflight.get("can_proceed"))
+    receipt_seed = {
+        "schema_version": _PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION,
+        "generated_at": generated_at,
+        "action_id": normalized_action_id,
+        "required_claim_id": normalized_claim_id,
+        "scope": scope,
+        "projection_digests": projection_digests,
+        "status": status,
+        "can_proceed": can_proceed,
+    }
+    receipt_id = f"preflight_refresh:{hashlib.sha256(_digest_json_payload(receipt_seed).encode('utf-8')).hexdigest()[:24]}"
+    return {
+        "schema_version": _PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION,
+        "receipt_id": receipt_id,
+        "generated_at": generated_at,
+        "action_id": normalized_action_id,
+        "required_claim_id": normalized_claim_id,
+        "scope": scope,
+        "status": status,
+        "can_proceed": can_proceed,
+        "refresh_required": refresh_required,
+        "projection_digests": projection_digests,
+        "projection_refs": [
+            {
+                "ref_type": "workflow_passport",
+                "schema_version": passport.get("schema_version"),
+                "generated_at": passport.get("generated_at"),
+                "current_stage_id": passport.get("current_stage_id"),
+            },
+            {
+                "ref_type": "evidence_integrity_gate",
+                "schema_version": gate.get("schema_version"),
+                "generated_at": gate.get("generated_at"),
+                "status": gate.get("status"),
+            },
+            {
+                "ref_type": "workflow_readiness_claims",
+                "schema_version": readiness_claims.get("schema_version"),
+                "status": readiness_claims.get("status"),
+            },
+            {
+                "ref_type": "action_preflight",
+                "schema_version": action_preflight.get("schema_version"),
+                "generated_at": action_preflight.get("generated_at"),
+                "status": status,
+            },
+        ],
+        "freshness": dict(action_preflight.get("freshness") or {}),
+        "validation": {
+            "passport_schema_version": passport.get("schema_version"),
+            "evidence_integrity_gate_schema_version": gate.get("schema_version"),
+            "readiness_claims_schema_version": readiness_claims.get("schema_version"),
+            "preflight_schema_version": action_preflight.get("schema_version"),
+            "gate_status": action_preflight.get("gate_status"),
+            "claim_status": action_preflight.get("claim_status"),
+            "blocker_count": len(action_preflight.get("blockers") or []),
+            "unresolved_count": len(action_preflight.get("unresolved") or []),
+            "refresh_required": refresh_required,
+        },
+        "replay": {
+            "kind": "workflow_projection_refresh",
+            "steps": [
+                "Rebuilt Workflow Passport from local runtime jobs, events, artifacts, approvals, and material-processing task records.",
+                "Rebuilt Evidence Integrity Gate from the refreshed passport and bounded runtime diagnostics.",
+                "Rebuilt workflow readiness claims and action preflight from the refreshed gate.",
+            ],
+            "external_mutation": False,
+            "source_material_mutation": False,
+        },
+        "provenance": {
+            "derived_from": [
+                "runtime.workflow_passport",
+                "runtime.evidence_integrity_gate",
+                "runtime.workflow_readiness_claims",
+                "runtime.action_preflight",
+            ],
+            "standard_patterns": [
+                "W3C PROV activity/entity generation",
+                "Workflow Run RO-Crate workflow run outputs",
+                "checkpointed workflow replay",
+            ],
         },
     }
 
@@ -3272,6 +3421,7 @@ class WritingRuntime:
         project_id: str | None = None,
         require_ready: bool = False,
         workflow_state: dict[str, Any] | None = None,
+        persist_refresh_receipt: bool = False,
         limit: int = 500,
     ) -> dict[str, Any]:
         """Build a read-only preflight projection before export or handoff actions.
@@ -3284,6 +3434,8 @@ class WritingRuntime:
             project_id: Optional project scope.
             require_ready: Whether a non-ready claim blocks the action.
             workflow_state: Optional just-built workflow state for new export jobs.
+            persist_refresh_receipt: Whether to attach a local refresh/replay
+                receipt to the owning job when ``job_id`` is available.
             limit: Maximum runtime rows used by the projections.
 
         Returns:
@@ -3322,7 +3474,7 @@ class WritingRuntime:
             workflow_state=workflow_state,
             gate=gate,
         )
-        return _workflow_action_preflight_payload(
+        preflight = _workflow_action_preflight_payload(
             action_id=normalized_action_id,
             required_claim_id=normalized_claim_id,
             passport=passport,
@@ -3331,6 +3483,184 @@ class WritingRuntime:
             require_ready=bool(require_ready),
             workflow_state=workflow_state,
         )
+        receipt = _workflow_refresh_receipt_payload(
+            action_preflight=preflight,
+            passport=passport,
+            gate=gate,
+            readiness_claims=readiness_claims,
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+        )
+        receipt_ref = {
+            "ref_type": "preflight_refresh_receipt",
+            "ref_id": receipt["receipt_id"],
+            "schema_version": receipt["schema_version"],
+            "generated_at": receipt["generated_at"],
+            "status": receipt["status"],
+        }
+        evidence = list(preflight.get("evidence") or [])
+        _append_unique_mapping(evidence, receipt_ref, max_items=16)
+        preflight = {
+            **preflight,
+            "refresh_receipt_id": receipt["receipt_id"],
+            "refresh_receipt": receipt,
+            "evidence": evidence[:16],
+            "summary": {
+                **dict(preflight.get("summary") or {}),
+                "refresh_receipt_id": receipt["receipt_id"],
+            },
+            "provenance": {
+                **dict(preflight.get("provenance") or {}),
+                "refresh_receipt_schema_version": receipt["schema_version"],
+            },
+        }
+        if persist_refresh_receipt and job_id:
+            persisted_receipt = self.persist_preflight_refresh_receipt(job_id, receipt)
+            preflight = {
+                **preflight,
+                "refresh_receipt": persisted_receipt,
+                "refresh_receipt_id": persisted_receipt["receipt_id"],
+            }
+        return preflight
+
+    def persist_preflight_refresh_receipt(
+        self,
+        job_id: str,
+        receipt: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Persist one preflight refresh receipt as local replay evidence.
+
+        Args:
+            job_id: Existing runtime job that owns the command or handoff.
+            receipt: Versioned receipt returned by the action-preflight builder.
+
+        Returns:
+            JSON-safe receipt content after metadata and artifact persistence.
+
+        Raises:
+            ValueError: If the job is missing or receipt shape is invalid.
+        """
+
+        normalized_job_id = str(job_id or "").strip()
+        if not normalized_job_id:
+            raise ValueError("job_id must not be empty")
+        if not isinstance(receipt, dict):
+            raise ValueError("preflight refresh receipt must be an object")
+        job = self.get_job(normalized_job_id)
+        if job is None:
+            raise ValueError(f"Job {normalized_job_id} not found")
+        normalized_receipt = dict(_json_safe_copy(receipt))
+        if normalized_receipt.get("schema_version") != _PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION:
+            raise ValueError("preflight refresh receipt schema_version is invalid")
+        receipt_id = _require_non_empty_string(
+            normalized_receipt.get("receipt_id"),
+            field_name="preflight_refresh_receipt.receipt_id",
+            max_length=200,
+        )
+
+        metadata = dict(job.metadata)
+        prior_receipts = metadata.get(_PREFLIGHT_REFRESH_RECEIPTS_KEY)
+        receipts = (
+            [
+                dict(item)
+                for item in prior_receipts
+                if isinstance(item, dict) and item.get("receipt_id") != receipt_id
+            ]
+            if isinstance(prior_receipts, list)
+            else []
+        )
+        receipts.append(normalized_receipt)
+        metadata[_PREFLIGHT_REFRESH_RECEIPTS_KEY] = receipts[-12:]
+        metadata["latest_preflight_refresh_receipt"] = normalized_receipt
+        updated = replace(job, metadata=metadata)
+        self._jobs[normalized_job_id] = updated
+        self._store_artifact(
+            WritingArtifact.create(
+                job_id=job.job_id,
+                session_id=job.session_id,
+                artifact_type=ArtifactType.METADATA,
+                content=normalized_receipt,
+                created_by="runtime",
+                metadata={
+                    "kind": "preflight_refresh_receipt",
+                    "schema_version": _PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION,
+                    "receipt_id": receipt_id,
+                    "action_id": normalized_receipt.get("action_id"),
+                    "project_id": (normalized_receipt.get("scope") or {}).get("project_id")
+                    if isinstance(normalized_receipt.get("scope"), dict)
+                    else None,
+                    "status": normalized_receipt.get("status"),
+                    "refresh_required": bool(normalized_receipt.get("refresh_required")),
+                },
+                mime_type="application/json",
+            )
+        )
+        self._emit_event(
+            job.session_id,
+            WritingEvent.create(
+                job_id=job.job_id,
+                session_id=job.session_id,
+                event_type=EventType.JOB_PROGRESS,
+                data={
+                    "preflight_refresh_receipt_recorded": True,
+                    "receipt_id": receipt_id,
+                    "action_id": normalized_receipt.get("action_id"),
+                    "status": normalized_receipt.get("status"),
+                },
+            ),
+        )
+        self._autosave_if_enabled()
+        return normalized_receipt
+
+    def get_preflight_refresh_receipt(
+        self,
+        job_id: str,
+        receipt_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Return a persisted preflight refresh receipt for one runtime job.
+
+        Args:
+            job_id: Existing runtime job identifier.
+            receipt_id: Optional receipt id. When omitted, the latest receipt is
+                returned from job metadata.
+
+        Returns:
+            Detached receipt object, or None when no matching receipt exists.
+
+        Raises:
+            ValueError: If the job id is blank, unknown, or receipt metadata is corrupt.
+        """
+
+        normalized_job_id = str(job_id or "").strip()
+        if not normalized_job_id:
+            raise ValueError("job_id must not be empty")
+        normalized_receipt_id = str(receipt_id or "").strip() if receipt_id is not None else None
+        job = self.get_job(normalized_job_id)
+        if job is None:
+            raise ValueError(f"Job {normalized_job_id} not found")
+        candidates: list[dict[str, Any]] = []
+        latest = job.metadata.get("latest_preflight_refresh_receipt")
+        if isinstance(latest, dict):
+            candidates.append(dict(latest))
+        stored = job.metadata.get(_PREFLIGHT_REFRESH_RECEIPTS_KEY)
+        if isinstance(stored, list):
+            for item in stored:
+                if isinstance(item, dict):
+                    candidates.append(dict(item))
+        for artifact in reversed(self.get_job_artifacts(normalized_job_id, ArtifactType.METADATA)):
+            if artifact.metadata.get("kind") != "preflight_refresh_receipt":
+                continue
+            if isinstance(artifact.content, dict):
+                candidates.append(dict(artifact.content))
+        if not candidates:
+            return None
+        for candidate in candidates:
+            if candidate.get("schema_version") != _PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION:
+                continue
+            if normalized_receipt_id is None or candidate.get("receipt_id") == normalized_receipt_id:
+                return dict(_json_safe_copy(candidate))
+        return None
 
     def update_material_processing_task(
         self,
@@ -4651,6 +4981,38 @@ class WritingRuntime:
             if isinstance(metadata.get(_WRITING_WORKFLOW_STATE_KEY), dict)
             else None,
         )
+        refresh_receipt = _workflow_refresh_receipt_payload(
+            action_preflight=action_preflight,
+            passport=passport,
+            gate=gate,
+            readiness_claims=readiness_claims,
+            session_id=job.session_id,
+            job_id=job.job_id,
+            project_id=project_id,
+        )
+        receipt_ref = {
+            "ref_type": "preflight_refresh_receipt",
+            "ref_id": refresh_receipt["receipt_id"],
+            "schema_version": refresh_receipt["schema_version"],
+            "generated_at": refresh_receipt["generated_at"],
+            "status": refresh_receipt["status"],
+        }
+        action_preflight_evidence = list(action_preflight.get("evidence") or [])
+        _append_unique_mapping(action_preflight_evidence, receipt_ref, max_items=16)
+        action_preflight = {
+            **action_preflight,
+            "refresh_receipt_id": refresh_receipt["receipt_id"],
+            "refresh_receipt": refresh_receipt,
+            "evidence": action_preflight_evidence[:16],
+            "summary": {
+                **dict(action_preflight.get("summary") or {}),
+                "refresh_receipt_id": refresh_receipt["receipt_id"],
+            },
+            "provenance": {
+                **dict(action_preflight.get("provenance") or {}),
+                "refresh_receipt_schema_version": refresh_receipt["schema_version"],
+            },
+        }
         handoff_claim = next(
             (
                 claim
@@ -4668,6 +5030,7 @@ class WritingRuntime:
             _append_unique_text(blockers, message, max_items=16)
         for message in action_preflight.get("unresolved") or []:
             _append_unique_text(unresolved, message, max_items=16)
+        _append_unique_mapping(completed_evidence, receipt_ref, max_items=24)
 
         artifacts = _bounded_handoff_artifacts(self.get_job_artifacts(job.job_id))
         resource_refs = _bounded_handoff_refs(metadata.get("resource_refs"), max_items=50)
@@ -4688,6 +5051,14 @@ class WritingRuntime:
             _handoff_resume_probe("Read evidence integrity gate", "/runtime/evidence-integrity-gate", resume_probe_params),
             _handoff_resume_probe("Read job artifacts", f"/runtime/job/{job.job_id}/artifacts"),
         ]
+        if refresh_receipt.get("receipt_id"):
+            resume_probes.append(
+                _handoff_resume_probe(
+                    "Inspect preflight refresh receipt",
+                    f"/runtime/job/{job.job_id}/preflight-refresh-receipt",
+                    {"receipt_id": refresh_receipt["receipt_id"]},
+                )
+            )
         forbidden_actions = [
             "Do not push, tag, release, publish, deploy, or upload external artifacts without explicit user authorization.",
             "Do not create Codex skills, Feishu/Lark integrations, or standalone installer/package surfaces from this handoff.",
@@ -4737,15 +5108,18 @@ class WritingRuntime:
                     "runtime.job_metadata",
                     "runtime.artifacts",
                     "runtime.workflow_passport",
-                    "runtime.evidence_integrity_gate",
-                    "runtime.action_preflight",
-                ],
-                "workflow_passport_schema_version": passport.get("schema_version"),
-                "evidence_integrity_gate_schema_version": gate.get("schema_version"),
-                "action_preflight_schema_version": action_preflight.get("schema_version"),
-                "artifact_count": len(artifacts),
-                "resource_ref_count": len(resource_refs),
-            },
+                "runtime.evidence_integrity_gate",
+                "runtime.action_preflight",
+                "runtime.preflight_refresh_receipt",
+            ],
+            "workflow_passport_schema_version": passport.get("schema_version"),
+            "evidence_integrity_gate_schema_version": gate.get("schema_version"),
+            "action_preflight_schema_version": action_preflight.get("schema_version"),
+            "preflight_refresh_receipt_schema_version": refresh_receipt.get("schema_version"),
+            "preflight_refresh_receipt_id": refresh_receipt.get("receipt_id"),
+            "artifact_count": len(artifacts),
+            "resource_ref_count": len(resource_refs),
+        },
         }
         if persist:
             return self.persist_agent_handoff_card(job.job_id, card)
@@ -4782,6 +5156,12 @@ class WritingRuntime:
         normalized_card = dict(_json_safe_copy(card))
         if normalized_card.get("schema_version") != _AGENT_HANDOFF_CARD_SCHEMA_VERSION:
             raise ValueError("agent handoff card schema_version is invalid")
+        action_preflight = normalized_card.get("action_preflight")
+        if isinstance(action_preflight, dict) and isinstance(action_preflight.get("refresh_receipt"), dict):
+            self.persist_preflight_refresh_receipt(job.job_id, dict(action_preflight["refresh_receipt"]))
+            refreshed_job = self.get_job(normalized_job_id)
+            if refreshed_job is not None:
+                job = refreshed_job
         metadata = dict(job.metadata)
         metadata[_AGENT_HANDOFF_CARD_KEY] = normalized_card
         updated = replace(job, metadata=metadata)

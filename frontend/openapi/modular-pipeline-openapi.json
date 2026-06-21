@@ -800,6 +800,11 @@
       "AgentHandoffCardPayload": {
         "description": "Recoverable handoff card for one runtime-visible agent request.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this card.\n    request_id: Agent bridge request id when present.\n    job_id: Runtime job id that owns the handoff card.\n    session_id: Runtime session id used for resume probes.\n    project_id: Optional project id recovered from job/session metadata.\n    status: Terminal or current job lifecycle state.\n    current_stage_id: Workflow passport stage that should be inspected next.\n    completed_evidence: Bounded refs to completed runtime evidence.\n    blockers: Block-level integrity or lifecycle messages.\n    unresolved: Review/offline checks that must remain visible.\n    resource_refs: Bounded resource refs supplied to the delegated agent.\n    artifacts: Bounded artifacts attached to the runtime job.\n    resume_probes: Read-only calls a new agent should run before mutating.\n    forbidden_actions: Actions that remain outside the local handoff boundary.\n    resume_prompt: Compact instruction block for the next agent session.\n    provenance: Runtime sources used to derive the card.",
         "properties": {
+          "action_preflight": {
+            "additionalProperties": true,
+            "title": "Action Preflight",
+            "type": "object"
+          },
           "agent_host": {
             "anyOf": [
               {
@@ -14168,6 +14173,109 @@
           "status"
         ],
         "title": "PolicyInfo",
+        "type": "object"
+      },
+      "PreflightRefreshReceiptPayload": {
+        "description": "Replay receipt for refreshed action-preflight workflow projections.\n\nArgs:\n    schema_version: Versioned additive contract for local replay evidence.\n    receipt_id: Stable id derived from refreshed projection evidence.\n    generated_at: UTC time when the refresh/replay receipt was generated.\n    action_id: Local action whose preflight was refreshed.\n    required_claim_id: Readiness claim evaluated for the action.\n    scope: Runtime filters used to rebuild the projections.\n    status: Action-preflight status after replay.\n    can_proceed: Whether hard command execution may proceed.\n    refresh_required: Whether the replay still reports stale/unknown inputs.\n    projection_digests: Stable digests for rebuilt projections.\n    projection_refs: Bounded refs to rebuilt projection outputs.\n    freshness: Freshness diagnostics copied from action preflight.\n    validation: Gate/checkpoint-like validation summary.\n    replay: Local replay steps and mutation guarantees.\n    provenance: Standards and runtime projections used to derive the receipt.",
+        "properties": {
+          "action_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Action Id",
+            "type": "string"
+          },
+          "can_proceed": {
+            "title": "Can Proceed",
+            "type": "boolean"
+          },
+          "freshness": {
+            "additionalProperties": true,
+            "title": "Freshness",
+            "type": "object"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "projection_digests": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Projection Digests",
+            "type": "object"
+          },
+          "projection_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 16,
+            "title": "Projection Refs",
+            "type": "array"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "receipt_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "refresh_required": {
+            "title": "Refresh Required",
+            "type": "boolean"
+          },
+          "replay": {
+            "additionalProperties": true,
+            "title": "Replay",
+            "type": "object"
+          },
+          "required_claim_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Required Claim Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "scholar_ai_preflight_refresh_receipt_v1",
+            "default": "scholar_ai_preflight_refresh_receipt_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "title": "Scope",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "unresolved",
+              "blocked",
+              "stale"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validation": {
+            "additionalProperties": true,
+            "title": "Validation",
+            "type": "object"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "generated_at",
+          "action_id",
+          "required_claim_id",
+          "status",
+          "can_proceed",
+          "refresh_required"
+        ],
+        "title": "PreflightRefreshReceiptPayload",
         "type": "object"
       },
       "ProbeResult": {
@@ -37735,6 +37843,65 @@
           }
         },
         "summary": "Pause Job",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/job/{job_id}/preflight-refresh-receipt": {
+      "get": {
+        "description": "Return a persisted workflow refresh/replay receipt for one runtime job.",
+        "operationId": "get_runtime_job_job_id_preflight_refresh_receipt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "receipt_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Receipt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightRefreshReceiptPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Preflight Refresh Receipt",
         "tags": [
           "Runtime"
         ]

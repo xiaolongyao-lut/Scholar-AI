@@ -458,6 +458,7 @@ async def _record_project_export_workflow_state(
         project_id=project_id,
         require_ready=bool(request.require_action_preflight),
         workflow_state=state,
+        persist_refresh_receipt=True,
         limit=500,
     )
     runtime.update_job_metadata(job.job_id, {"action_preflight": action_preflight})

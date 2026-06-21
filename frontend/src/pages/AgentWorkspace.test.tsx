@@ -378,6 +378,29 @@ describe('AgentWorkspace', () => {
         sources: [],
       },
       refresh_required: false,
+      refresh_receipt_id: 'preflight_refresh:test123',
+      refresh_receipt: {
+        schema_version: 'scholar_ai_preflight_refresh_receipt_v1',
+        receipt_id: 'preflight_refresh:test123',
+        generated_at: '2026-06-21T03:00:01Z',
+        action_id: 'writing.export_project',
+        required_claim_id: 'export_readiness',
+        scope: { project_id: 'project-1', job_id: 'job_agent_handoff_1' },
+        status: 'blocked',
+        can_proceed: false,
+        refresh_required: false,
+        projection_digests: {
+          workflow_passport: 'sha256:passport',
+          evidence_integrity_gate: 'sha256:gate',
+          workflow_readiness_claims: 'sha256:claims',
+          action_preflight: 'sha256:preflight',
+        },
+        projection_refs: [{ ref_type: 'workflow_passport' }, { ref_type: 'evidence_integrity_gate' }],
+        freshness: { status: 'fresh' },
+        validation: { gate_status: 'block', claim_status: 'blocked', blocker_count: 1, unresolved_count: 1 },
+        replay: { external_mutation: false, source_material_mutation: false },
+        provenance: { derived_from: ['runtime.action_preflight'] },
+      },
       blockers: ['Unsupported citation anchors block export readiness.'],
       unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
       evidence: [{ ref_type: 'evidence_integrity_signal', ref_id: 'citation_verification:unsupported:1' }],
@@ -651,6 +674,8 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('can proceed false').length).toBeGreaterThan(0);
     expect(screen.getAllByText('require ready true').length).toBeGreaterThan(0);
     expect(screen.getAllByText('writing.export_project').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('receipt preflight_refresh:test123').length).toBeGreaterThan(0);
+    expect(screen.getByText('preflight_refresh:test123 · digests 4 · block 1 · unresolved 1')).toBeInTheDocument();
     expect(screen.getAllByText('preflight blocked').length).toBeGreaterThan(0);
     expect(screen.getAllByText('fresh 0s').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);

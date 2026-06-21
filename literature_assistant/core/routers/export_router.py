@@ -153,6 +153,7 @@ def _preflight_header_value(preflight: dict[str, Any] | None) -> str:
         "claim_status": preflight.get("claim_status"),
         "gate_status": preflight.get("gate_status"),
         "refresh_required": bool(preflight.get("refresh_required")),
+        "refresh_receipt_id": preflight.get("refresh_receipt_id"),
         "freshness_status": (preflight.get("freshness") or {}).get("status")
         if isinstance(preflight.get("freshness"), dict)
         else None,

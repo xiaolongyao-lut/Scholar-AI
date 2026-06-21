@@ -148,6 +148,24 @@ export interface WorkflowActionPreflightFreshness {
   newest_source?: string;
 }
 
+export interface PreflightRefreshReceiptProjection {
+  schema_version: 'scholar_ai_preflight_refresh_receipt_v1';
+  receipt_id: string;
+  generated_at: string;
+  action_id: string;
+  required_claim_id: string;
+  scope: Record<string, unknown>;
+  status: WorkflowActionPreflightStatus;
+  can_proceed: boolean;
+  refresh_required: boolean;
+  projection_digests: Record<string, string>;
+  projection_refs: Record<string, unknown>[];
+  freshness: Record<string, unknown>;
+  validation: Record<string, unknown>;
+  replay: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+}
+
 export interface WorkflowActionPreflightProjection {
   schema_version: 'scholar_ai_action_preflight_v1';
   generated_at: string;
@@ -161,6 +179,8 @@ export interface WorkflowActionPreflightProjection {
   current_stage_id: string | null;
   freshness?: WorkflowActionPreflightFreshness;
   refresh_required?: boolean;
+  refresh_receipt_id?: string;
+  refresh_receipt?: PreflightRefreshReceiptProjection;
   blockers: string[];
   unresolved: string[];
   evidence: Record<string, unknown>[];

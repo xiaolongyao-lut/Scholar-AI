@@ -763,6 +763,70 @@ def test_action_preflight_requires_refresh_for_stale_workflow_evidence(
     assert any(action.startswith("Rebuild the Workflow Passport") for action in preflight["freshness"]["refresh_actions"])
 
 
+@pytest.mark.persistence_smoke
+def test_action_preflight_persists_refresh_receipt_for_replay_evidence(tmp_path: Path) -> None:
+    """Action preflight refresh should leave a bounded replay receipt."""
+
+    db_path = tmp_path / "action_preflight_refresh_receipt.sqlite3"
+    runtime = WritingRuntime(database_path=db_path, autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-refresh-receipt"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="export receipt paper",
+        metadata={"project_id": "project-refresh-receipt"},
+    )
+    state = runtime.update_writing_workflow_state(
+        job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-refresh-receipt"},
+        evidence_refs=[{"ref_id": "chunk:receipt", "material_id": "material-receipt"}],
+        citation_bank=[{"citation_id": "cite:receipt", "ref_id": "chunk:receipt"}],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "receipt.docx"},
+        change_log=[{"stage": "export", "summary": "export manifest exists"}],
+    )
+
+    preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=job.job_id,
+        project_id="project-refresh-receipt",
+        require_ready=False,
+        workflow_state=state,
+        persist_refresh_receipt=True,
+    )
+
+    receipt = preflight["refresh_receipt"]
+    assert receipt["schema_version"] == "scholar_ai_preflight_refresh_receipt_v1"
+    assert receipt["action_id"] == "writing.export_project"
+    assert receipt["scope"]["project_id"] == "project-refresh-receipt"
+    assert receipt["status"] in {"ready", "blocked", "unresolved", "stale"}
+    assert receipt["validation"]["passport_schema_version"] == "scholar_ai_workflow_passport_v1"
+    assert receipt["validation"]["evidence_integrity_gate_schema_version"] == "scholar_ai_evidence_integrity_gate_v1"
+    assert receipt["validation"]["preflight_schema_version"] == "scholar_ai_action_preflight_v1"
+    assert receipt["projection_digests"]["workflow_passport"].startswith("sha256:")
+    assert receipt["projection_digests"]["evidence_integrity_gate"].startswith("sha256:")
+    assert preflight["refresh_receipt_id"] == receipt["receipt_id"]
+    assert any(item.get("ref_type") == "preflight_refresh_receipt" for item in preflight["evidence"])
+
+    loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
+    loaded_job = loaded_runtime.get_job(job.job_id)
+    assert loaded_job is not None
+    assert loaded_job.metadata["preflight_refresh_receipts"][-1]["receipt_id"] == receipt["receipt_id"]
+    receipt_artifacts = [
+        artifact
+        for artifact in loaded_runtime.get_job_artifacts(job.job_id, ArtifactType.METADATA)
+        if artifact.metadata.get("kind") == "preflight_refresh_receipt"
+    ]
+    assert receipt_artifacts
+    assert receipt_artifacts[-1].content["receipt_id"] == receipt["receipt_id"]
+
+
 @pytest.mark.asyncio
 async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path: Path) -> None:
     """Agent handoff cards should survive runtime reload as metadata and artifact."""
@@ -804,6 +868,12 @@ async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path
     card = runtime.build_agent_handoff_card(job.job_id, persist=True)
 
     assert card["request_id"] == "agentreq_persisted"
+    assert card["action_preflight"]["refresh_receipt"]["schema_version"] == "scholar_ai_preflight_refresh_receipt_v1"
+    assert card["action_preflight"]["refresh_receipt_id"] == card["action_preflight"]["refresh_receipt"]["receipt_id"]
+    assert any(
+        item.get("ref_type") == "preflight_refresh_receipt"
+        for item in card["completed_evidence"]
+    )
     loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
     loaded_job = loaded_runtime.get_job(job.job_id)
     assert loaded_job is not None
@@ -811,6 +881,13 @@ async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path
     assert loaded_card["schema_version"] == "scholar_ai_agent_handoff_card_v1"
     assert loaded_card["resource_refs"][0]["ref_id"] == "material:handoff"
     assert any(probe["endpoint"] == "/runtime/workflow-passport" for probe in loaded_card["resume_probes"])
+    receipt_probe = next(
+        probe
+        for probe in loaded_card["resume_probes"]
+        if probe["label"] == "Inspect preflight refresh receipt"
+    )
+    assert receipt_probe["endpoint"] == f"/runtime/job/{job.job_id}/preflight-refresh-receipt"
+    assert "receipt_id=preflight_refresh%3A" in receipt_probe["url"]
     artifacts = loaded_runtime.get_job_artifacts(job.job_id, ArtifactType.METADATA)
     card_artifacts = [artifact for artifact in artifacts if artifact.metadata.get("kind") == "agent_handoff_card"]
     assert card_artifacts

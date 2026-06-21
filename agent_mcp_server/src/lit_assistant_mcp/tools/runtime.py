@@ -1186,6 +1186,34 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.evidence_integrity_gate", params, result, started, endpoint)
 
+    def workflow_refresh_receipt(
+        self,
+        job_id: str,
+        receipt_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Read a persisted workflow refresh/replay receipt for one runtime job.
+
+        Args:
+            job_id: Runtime job that owns the persisted preflight refresh receipt.
+            receipt_id: Optional receipt id. When omitted, backend returns the
+                latest receipt for the job.
+        """
+        started = time.perf_counter()
+        normalized_job_id = self._bounded_text(job_id, "job_id", max_chars=160)
+        params: dict[str, Any] = {}
+        if isinstance(receipt_id, str) and receipt_id.strip():
+            params["receipt_id"] = self._bounded_text(receipt_id, "receipt_id", max_chars=200)
+        endpoint = f"/runtime/job/{normalized_job_id}/preflight-refresh-receipt"
+        backend_result = self.backend.get(endpoint, params=params or None)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish(
+            "literature.workflow_refresh_receipt",
+            {"job_id": normalized_job_id, "receipt_id": params.get("receipt_id")},
+            result,
+            started,
+            endpoint,
+        )
+
     def agent_resource_read(
         self,
         ref_id: str,

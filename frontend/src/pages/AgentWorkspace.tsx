@@ -297,6 +297,11 @@ function readNumberField(record: Record<string, unknown>, key: string): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+function readTextField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function actionMessage(action: ToolNextActionLike | null | undefined): string {
   const message = action?.message?.trim();
   if (message) {
@@ -526,6 +531,29 @@ function isWorkflowActionPreflightProjection(value: unknown): value is WorkflowA
     && typeof value.status === 'string'
     && typeof value.can_proceed === 'boolean'
   );
+}
+
+function preflightReceiptSummary(preflight: WorkflowActionPreflightProjection | null): string {
+  const receipt = preflight?.refresh_receipt;
+  if (!receipt) {
+    return 'refresh receipt 未记录';
+  }
+  const validation = isRecord(receipt.validation) ? receipt.validation : {};
+  const digests = isRecord(receipt.projection_digests) ? receipt.projection_digests : {};
+  const blockerCount = readNumberField(validation, 'blocker_count');
+  const unresolvedCount = readNumberField(validation, 'unresolved_count');
+  return `${receipt.receipt_id} · digests ${Object.keys(digests).length} · block ${blockerCount} · unresolved ${unresolvedCount}`;
+}
+
+function preflightReceiptStatus(preflight: WorkflowActionPreflightProjection | null): string {
+  const receipt = preflight?.refresh_receipt;
+  if (!receipt) {
+    return 'receipt missing';
+  }
+  const validation = isRecord(receipt.validation) ? receipt.validation : {};
+  const gateStatus = readTextField(validation, 'gate_status');
+  const claimStatus = readTextField(validation, 'claim_status');
+  return `receipt ${receipt.status}${gateStatus || claimStatus ? ` · gate ${gateStatus || 'unknown'} · claim ${claimStatus || 'unknown'}` : ''}`;
 }
 
 function workflowReadinessClaims(
@@ -1145,6 +1173,9 @@ export function ResearchWorkflowSpine({
             <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
               {actionPreflightSummary(actionPreflight)}
             </p>
+            <p className="mt-1 break-words text-[11px] leading-4 text-foreground/50">
+              {preflightReceiptStatus(actionPreflight)}
+            </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <StatusPill tone={preflightBlocked ? 'danger' : actionPreflight ? 'success' : 'neutral'}>
                 can proceed {actionPreflight ? String(actionPreflight.can_proceed) : 'unknown'}
@@ -1158,6 +1189,7 @@ export function ResearchWorkflowSpine({
               {preflightRefreshRequired ? <StatusPill tone="warning">refresh required</StatusPill> : null}
               {actionPreflight ? <StatusPill tone="neutral">{actionPreflight.action_id}</StatusPill> : null}
               {actionPreflight ? <StatusPill tone={claimTone(actionPreflight.claim_status)}>{actionPreflight.required_claim_id}</StatusPill> : null}
+              {actionPreflight?.refresh_receipt_id ? <StatusPill tone="info">receipt {actionPreflight.refresh_receipt_id}</StatusPill> : null}
               {actionPreflight && preflightUnresolved ? <StatusPill tone="warning">needs gate proof</StatusPill> : null}
             </div>
           </article>
@@ -1177,6 +1209,9 @@ export function ResearchWorkflowSpine({
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <StatusPill tone="neutral">{handoffSummary(handoffCard)}</StatusPill>
+              <StatusPill tone={actionPreflight?.refresh_receipt ? 'info' : 'neutral'}>
+                {preflightReceiptSummary(actionPreflight)}
+              </StatusPill>
               <StatusPill tone={behaviorEvalLatest ? 'success' : 'neutral'}>
                 behavior eval {behaviorEvalArtifacts.length}
               </StatusPill>

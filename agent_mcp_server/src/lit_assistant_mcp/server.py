@@ -111,6 +111,7 @@ def create_mcp_server(
         "literature.behavior_eval_pack": runtime.behavior_eval_pack,
         "literature.workflow_passport": runtime.workflow_passport,
         "literature.evidence_integrity_gate": runtime.evidence_integrity_gate,
+        "literature.workflow_refresh_receipt": runtime.workflow_refresh_receipt,
         "literature.agent_resource_read": runtime.agent_resource_read,
         "literature.agent_progress": runtime.agent_progress,
         "literature.agent_result": runtime.agent_result,
@@ -587,6 +588,14 @@ def create_mcp_server(
             project_id=project_id,
             limit=limit,
         )
+
+    @mcp.tool(name="literature.workflow_refresh_receipt", structured_output=True)
+    def literature_workflow_refresh_receipt(
+        job_id: str,
+        receipt_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Read a persisted workflow refresh/replay receipt for one runtime job."""
+        return runtime.workflow_refresh_receipt(job_id=job_id, receipt_id=receipt_id)
 
     @mcp.tool(name="literature.agent_resource_read", structured_output=True)
     def literature_agent_resource_read(
