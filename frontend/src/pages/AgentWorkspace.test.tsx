@@ -11,6 +11,7 @@ import {
   getWorkflowPassport,
   getZoteroAttachmentHealth,
   listRuntimeJobs,
+  type WorkflowActionPreflightProjection,
 } from '@/services/agentWorkspaceApi';
 import { getWikiReview } from '@/services/wikiApi';
 
@@ -351,6 +352,34 @@ describe('AgentWorkspace', () => {
   });
 
   it('renders workflow passport, integrity gate, handoff card, and behavior eval visibility', async () => {
+    const blockedActionPreflight: WorkflowActionPreflightProjection = {
+      schema_version: 'scholar_ai_action_preflight_v1',
+      generated_at: '2026-06-21T03:00:00Z',
+      action_id: 'writing.export_project',
+      required_claim_id: 'export_readiness',
+      require_ready: true,
+      status: 'blocked',
+      can_proceed: false,
+      claim_status: 'blocked',
+      gate_status: 'block',
+      current_stage_id: 'citation_review',
+      blockers: ['Unsupported citation anchors block export readiness.'],
+      unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+      evidence: [{ ref_type: 'evidence_integrity_signal', ref_id: 'citation_verification:unsupported:1' }],
+      summary: {
+        hard_blocked: true,
+        unresolved_is_ready: false,
+        readiness_ok: false,
+        workflow_state_phase: 'export_failed',
+      },
+      provenance: {
+        derived_from: [
+          'runtime.workflow_passport',
+          'runtime.evidence_integrity_gate',
+          'runtime.workflow_readiness_claims',
+        ],
+      },
+    };
     mockedGetAgentWorkspaceStatus.mockResolvedValue({
       artifact_root: 'workspace_artifacts/agent_mcp_workflows',
       artifact_count: 1,
@@ -384,7 +413,7 @@ describe('AgentWorkspace', () => {
           action_id: null,
           skill_id: null,
           tags: [],
-          metadata: { intent: 'single_paper_deep_read', agent_host: 'codex' },
+          metadata: { intent: 'single_paper_deep_read', agent_host: 'codex', action_preflight: blockedActionPreflight },
           writing_workflow_state_summary: { phase: 'evidence_pack' },
         },
       ],
@@ -557,6 +586,7 @@ describe('AgentWorkspace', () => {
       completed_evidence: [{ ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' }],
       blockers: [],
       unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+      action_preflight: blockedActionPreflight,
       readiness_claims: {
         schema_version: 'scholar_ai_workflow_enforcement_v1',
         status: 'unresolved',
@@ -598,10 +628,15 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('Workflow Passport')).toBeInTheDocument();
     expect(screen.getByText('Evidence Integrity Gate')).toBeInTheDocument();
     expect(screen.getByText('Readiness Claims')).toBeInTheDocument();
+    expect(screen.getByText('Command Preflight')).toBeInTheDocument();
     expect(screen.getByText('Agent Handoff')).toBeInTheDocument();
     expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
     expect(screen.getByText('Export readiness')).toBeInTheDocument();
     expect(screen.getByText('Agent handoff readiness')).toBeInTheDocument();
+    expect(screen.getAllByText('can proceed false').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('require ready true').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('writing.export_project').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('preflight blocked').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('unresolved 1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('blocked').length).toBeGreaterThan(0);
@@ -613,5 +648,6 @@ describe('AgentWorkspace', () => {
     expect(screen.queryByText(/\/runtime\/workflow-passport/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^integrity 通过$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Export readiness ready$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^preflight ready$/)).not.toBeInTheDocument();
   });
 });

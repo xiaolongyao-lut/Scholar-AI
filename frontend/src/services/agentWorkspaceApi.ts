@@ -127,6 +127,26 @@ export interface WorkflowReadinessClaimsProjection {
   provenance: Record<string, unknown>;
 }
 
+export type WorkflowActionPreflightStatus = 'ready' | 'unresolved' | 'blocked';
+
+export interface WorkflowActionPreflightProjection {
+  schema_version: 'scholar_ai_action_preflight_v1';
+  generated_at: string;
+  action_id: string;
+  required_claim_id: string;
+  require_ready: boolean;
+  status: WorkflowActionPreflightStatus;
+  can_proceed: boolean;
+  claim_status: string;
+  gate_status: string;
+  current_stage_id: string | null;
+  blockers: string[];
+  unresolved: string[];
+  evidence: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+}
+
 export interface EvidenceIntegrityGateProjection {
   schema_version: 'scholar_ai_evidence_integrity_gate_v1';
   generated_at: string;
@@ -155,6 +175,7 @@ export interface AgentHandoffCardProjection {
   blockers: string[];
   unresolved: string[];
   readiness_claims?: WorkflowReadinessClaimsProjection;
+  action_preflight?: WorkflowActionPreflightProjection;
   resource_refs: Record<string, unknown>[];
   artifacts: Record<string, unknown>[];
   resume_probes: Record<string, unknown>[];

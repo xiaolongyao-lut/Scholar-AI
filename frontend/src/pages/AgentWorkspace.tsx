@@ -33,6 +33,7 @@ import {
   type AgentWorkspaceStatus,
   type AgentBridgeStatus,
   type EvidenceIntegrityGateProjection,
+  type WorkflowActionPreflightProjection,
   type RuntimeJobsStatus,
   type WorkflowReadinessClaimsProjection,
   type WorkflowReadinessClaim,
@@ -412,6 +413,19 @@ function claimStatusLabel(status: string | null | undefined): string {
   return 'unknown';
 }
 
+function preflightStatusLabel(status: string | null | undefined): string {
+  if (status === 'ready') {
+    return 'ready';
+  }
+  if (status === 'blocked') {
+    return 'blocked';
+  }
+  if (status === 'unresolved') {
+    return 'unresolved';
+  }
+  return '未读取';
+}
+
 function readRecordField(record: Record<string, unknown>, key: string): Record<string, unknown> {
   const value = record[key];
   return isRecord(value) ? value : {};
@@ -481,6 +495,19 @@ function isWorkflowReadinessClaimsProjection(value: unknown): value is WorkflowR
   return value.schema_version === 'scholar_ai_workflow_enforcement_v1' && Array.isArray(value.claims);
 }
 
+function isWorkflowActionPreflightProjection(value: unknown): value is WorkflowActionPreflightProjection {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    value.schema_version === 'scholar_ai_action_preflight_v1'
+    && typeof value.action_id === 'string'
+    && typeof value.required_claim_id === 'string'
+    && typeof value.status === 'string'
+    && typeof value.can_proceed === 'boolean'
+  );
+}
+
 function workflowReadinessClaims(
   integrityGate: EvidenceIntegrityGateProjection | null,
   handoffCard: AgentHandoffCardProjection | null,
@@ -492,6 +519,51 @@ function workflowReadinessClaims(
     return handoffCard.readiness_claims;
   }
   return null;
+}
+
+function actionPreflightFromJob(job: WritingJob | null): WorkflowActionPreflightProjection | null {
+  if (!job) {
+    return null;
+  }
+  const metadataPreflight = job.metadata?.action_preflight;
+  if (isWorkflowActionPreflightProjection(metadataPreflight)) {
+    return metadataPreflight;
+  }
+  const summaryPreflight = job.writing_workflow_state_summary?.action_preflight;
+  if (isWorkflowActionPreflightProjection(summaryPreflight)) {
+    return summaryPreflight;
+  }
+  return null;
+}
+
+function workflowActionPreflight(
+  selectedJob: WritingJob | null,
+  jobs: WritingJob[],
+  handoffCard: AgentHandoffCardProjection | null,
+): WorkflowActionPreflightProjection | null {
+  const selectedPreflight = actionPreflightFromJob(selectedJob);
+  if (selectedPreflight) {
+    return selectedPreflight;
+  }
+  const jobPreflight = jobs.map(actionPreflightFromJob).find((item): item is WorkflowActionPreflightProjection => item !== null);
+  if (jobPreflight) {
+    return jobPreflight;
+  }
+  return isWorkflowActionPreflightProjection(handoffCard?.action_preflight) ? handoffCard.action_preflight : null;
+}
+
+function actionPreflightSummary(preflight: WorkflowActionPreflightProjection | null): string {
+  if (!preflight) {
+    return '尚未读取到 action preflight；命令执行前仍需当前 Workflow Passport 与 Evidence Integrity Gate。';
+  }
+  return firstNonEmptyText(
+    [
+      preflight.blockers[0],
+      preflight.unresolved[0],
+      `Action ${preflight.action_id} requires ${preflight.required_claim_id}: ${preflight.status}.`,
+    ],
+    'Action preflight 已读取，但仍需复核当前门禁。'
+  );
 }
 
 function readinessClaimSummary(claim: WorkflowReadinessClaim): string {
@@ -689,6 +761,7 @@ function AgentJobRow({
   const workflowPhase = workflowSummaryText(job, 'phase');
   const exportFilename = workflowSummaryText(job, 'export_filename');
   const exportFormat = workflowSummaryText(job, 'export_format');
+  const actionPreflight = actionPreflightFromJob(job);
   return (
     <button
       type="button"
@@ -710,6 +783,11 @@ function AgentJobRow({
           <StatusPill tone={jobStatusTone(job)}>{job.status}</StatusPill>
           {isWritingExport ? <StatusPill tone="info">写作导出</StatusPill> : null}
           {workflowPhase ? <StatusPill tone="neutral">{workflowPhase}</StatusPill> : null}
+          {actionPreflight ? (
+            <StatusPill tone={claimTone(actionPreflight.status)}>
+              preflight {preflightStatusLabel(actionPreflight.status)}
+            </StatusPill>
+          ) : null}
           {exportFormat ? <StatusPill tone="neutral">{exportFormat}</StatusPill> : null}
           {exportFilename ? <StatusPill tone="info">{exportFilename}</StatusPill> : null}
           {jobMetadataText(job, 'progress_message') ? (
@@ -737,6 +815,7 @@ function DetailPanel({
       return <EmptyState title="没有选中任务" icon={<Bot size={36} />} className="h-full" />;
     }
     const metadata = job.metadata ?? {};
+    const actionPreflight = actionPreflightFromJob(job);
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 border-b border-outline-variant/50 px-4 py-3">
@@ -756,6 +835,21 @@ function DetailPanel({
           </div>
         </div>
         <div className="custom-scrollbar min-h-0 flex-1 overflow-auto px-4 py-3">
+          {actionPreflight ? (
+            <section className="mb-4">
+              <h3 className="mb-1.5 font-label text-[11px] font-semibold uppercase text-foreground/40">Action Preflight</h3>
+              <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusPill tone={claimTone(actionPreflight.status)}>{preflightStatusLabel(actionPreflight.status)}</StatusPill>
+                  <StatusPill tone={actionPreflight.can_proceed ? 'success' : 'danger'}>can proceed {String(actionPreflight.can_proceed)}</StatusPill>
+                  <StatusPill tone={actionPreflight.require_ready ? 'warning' : 'neutral'}>require ready {String(actionPreflight.require_ready)}</StatusPill>
+                </div>
+                <p className="mt-2 break-words text-xs leading-5 text-foreground/70">
+                  {actionPreflightSummary(actionPreflight)}
+                </p>
+              </div>
+            </section>
+          ) : null}
           <section className="mb-4">
             <h3 className="mb-1.5 font-label text-[11px] font-semibold uppercase text-foreground/40">Progress</h3>
             <p className="break-words rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2 text-xs leading-5 text-foreground/70">
@@ -843,6 +937,7 @@ export function ResearchWorkflowSpine({
   passport,
   integrityGate,
   handoffCard,
+  actionPreflight,
   behaviorEvalArtifacts,
   density = 'default',
 }: {
@@ -850,6 +945,7 @@ export function ResearchWorkflowSpine({
   passport: WorkflowPassportProjection | null;
   integrityGate: EvidenceIntegrityGateProjection | null;
   handoffCard: AgentHandoffCardProjection | null;
+  actionPreflight: WorkflowActionPreflightProjection | null;
   behaviorEvalArtifacts: AgentWorkspaceArtifact[];
   density?: WorkflowSpineDensity;
 }) {
@@ -866,6 +962,8 @@ export function ResearchWorkflowSpine({
   const handoffUnresolved = (handoffCard?.unresolved.length ?? 0) > 0;
   const readinessClaims = workflowReadinessClaims(integrityGate, handoffCard);
   const visibleReadinessClaims = readinessClaims?.claims.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
+  const preflightBlocked = actionPreflight?.status === 'blocked' || actionPreflight?.can_proceed === false;
+  const preflightUnresolved = actionPreflight?.status === 'unresolved';
 
   return (
     <section
@@ -902,6 +1000,9 @@ export function ResearchWorkflowSpine({
           </StatusPill>
           <StatusPill tone={handoffBlocked ? 'danger' : handoffUnresolved ? 'warning' : handoffCard ? 'success' : 'neutral'}>
             handoff {handoffCard ? gateStatusLabel(handoffBlocked ? 'block' : handoffUnresolved ? 'unresolved' : 'pass') : '未读取'}
+          </StatusPill>
+          <StatusPill tone={actionPreflight ? claimTone(actionPreflight.status) : 'neutral'}>
+            preflight {preflightStatusLabel(actionPreflight?.status)}
           </StatusPill>
         </div>
       </div>
@@ -1005,6 +1106,29 @@ export function ResearchWorkflowSpine({
                 ))}
               </div>
             )}
+          </article>
+
+          <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Command Preflight</h3>
+              <StatusPill tone={actionPreflight ? claimTone(actionPreflight.status) : 'neutral'}>
+                {preflightStatusLabel(actionPreflight?.status)}
+              </StatusPill>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+              {actionPreflightSummary(actionPreflight)}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone={preflightBlocked ? 'danger' : actionPreflight ? 'success' : 'neutral'}>
+                can proceed {actionPreflight ? String(actionPreflight.can_proceed) : 'unknown'}
+              </StatusPill>
+              <StatusPill tone={actionPreflight?.require_ready ? 'warning' : 'neutral'}>
+                require ready {actionPreflight ? String(actionPreflight.require_ready) : 'unknown'}
+              </StatusPill>
+              {actionPreflight ? <StatusPill tone="neutral">{actionPreflight.action_id}</StatusPill> : null}
+              {actionPreflight ? <StatusPill tone={claimTone(actionPreflight.claim_status)}>{actionPreflight.required_claim_id}</StatusPill> : null}
+              {actionPreflight && preflightUnresolved ? <StatusPill tone="warning">needs gate proof</StatusPill> : null}
+            </div>
           </article>
 
           <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
@@ -1267,6 +1391,7 @@ export function AgentWorkspace() {
   const selectedArtifact = artifacts.find((artifact) => artifact.path === selectedArtifactPath) ?? artifacts[0] ?? null;
   const selectedRecord = auditRecords[selectedAuditIndex] ?? auditRecords[0] ?? null;
   const selectedAgentJob = agentJobs.find((job) => job.job_id === selectedAgentJobId) ?? agentJobs[0] ?? null;
+  const selectedActionPreflight = workflowActionPreflight(selectedAgentJob, agentJobs, handoffCard);
   const behaviorEvalArtifacts = useMemo(
     () => (status?.artifacts ?? []).filter(isBehaviorEvalArtifact),
     [status],
@@ -1344,6 +1469,7 @@ export function AgentWorkspace() {
           passport={workflowPassport}
           integrityGate={integrityGate}
           handoffCard={handoffCard}
+          actionPreflight={selectedActionPreflight}
           behaviorEvalArtifacts={behaviorEvalArtifacts}
         />
 

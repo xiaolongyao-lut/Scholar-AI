@@ -10,6 +10,7 @@ import type {
   AgentWorkspaceStatus,
   EvidenceIntegrityGateProjection,
   RuntimeJobsStatus,
+  WorkflowActionPreflightProjection,
   WorkflowPassportProjection,
   ZoteroAttachmentHealth,
 } from '@/services/agentWorkspaceApi';
@@ -44,6 +45,35 @@ const ACCEPTANCE_BRIDGE_STATUS: AgentBridgeStatus = {
   recent: [],
 };
 
+const ACCEPTANCE_EXPORT_PREFLIGHT: WorkflowActionPreflightProjection = {
+  schema_version: 'scholar_ai_action_preflight_v1',
+  generated_at: '2026-06-21T04:01:05.000Z',
+  action_id: 'writing.export_project',
+  required_claim_id: 'export_readiness',
+  require_ready: true,
+  status: 'blocked',
+  can_proceed: false,
+  claim_status: 'blocked',
+  gate_status: 'block',
+  current_stage_id: 'citation_review',
+  blockers: ['Unsupported citation anchors block export readiness.'],
+  unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+  evidence: [{ ref_type: 'evidence_integrity_signal', ref_id: 'citation_verification:unsupported:acceptance' }],
+  summary: {
+    hard_blocked: true,
+    unresolved_is_ready: false,
+    readiness_ok: false,
+    workflow_state_phase: 'export_failed',
+  },
+  provenance: {
+    derived_from: [
+      'runtime.workflow_passport',
+      'runtime.evidence_integrity_gate',
+      'runtime.workflow_readiness_claims',
+    ],
+  },
+};
+
 const ACCEPTANCE_AGENT_JOBS: WritingJob[] = [
   {
     job_id: 'job_single_paper_acceptance',
@@ -75,7 +105,7 @@ const ACCEPTANCE_AGENT_JOBS: WritingJob[] = [
     action_id: 'api.writing.export',
     skill_id: null,
     tags: ['writing_export'],
-    metadata: { project_id: 'desktop-acceptance' },
+    metadata: { project_id: 'desktop-acceptance', action_preflight: ACCEPTANCE_EXPORT_PREFLIGHT },
     writing_workflow_state_summary: { phase: 'export_failed', export_format: 'docx' },
   },
 ];
@@ -330,6 +360,7 @@ const ACCEPTANCE_HANDOFF_CARD: AgentHandoffCardProjection = {
   completed_evidence: [{ ref_type: 'runtime_job', ref_id: 'job_single_paper_acceptance' }],
   blockers: [],
   unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+  action_preflight: ACCEPTANCE_EXPORT_PREFLIGHT,
   readiness_claims: {
     schema_version: 'scholar_ai_workflow_enforcement_v1',
     status: 'unresolved',
@@ -395,6 +426,7 @@ export function DesktopAcceptanceAgentWorkspace() {
           passport={ACCEPTANCE_WORKFLOW_PASSPORT}
           integrityGate={ACCEPTANCE_INTEGRITY_GATE}
           handoffCard={ACCEPTANCE_HANDOFF_CARD}
+          actionPreflight={ACCEPTANCE_EXPORT_PREFLIGHT}
           behaviorEvalArtifacts={[]}
           density="desktop-acceptance"
         />
