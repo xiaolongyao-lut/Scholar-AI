@@ -515,6 +515,67 @@ class WorkflowPassportPayload(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class EvidenceIntegritySignalPayload(BaseModel):
+    """One reproducible integrity check signal for evidence-bound workflows.
+
+    Args:
+        signal_id: Stable signal id scoped by category and runtime source.
+        category: Research-integrity area checked by the signal.
+        status: Gate state; unresolved/offline checks must not be counted as pass.
+        severity: UI/MCP severity used for blocking and review ordering.
+        message: Bounded explanation of what the signal means.
+        evidence: Bounded runtime refs or diagnostic excerpts, never full source text.
+        next_actions: Local repair or review actions for this signal.
+        metadata: JSON-safe counters and provenance details for repeatability.
+    """
+
+    signal_id: str = Field(min_length=1, max_length=200)
+    category: Literal[
+        "locator",
+        "retrieval_quality",
+        "citation_verification",
+        "citation_overlap",
+        "writing_lint",
+        "export_readiness",
+        "workflow_stage",
+        "approval_boundary",
+    ]
+    status: Literal["pass", "warn", "block", "unresolved", "not_applicable"] = "unresolved"
+    severity: Literal["none", "note", "warn", "block"] = "note"
+    message: str = Field(min_length=1, max_length=600)
+    evidence: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
+    next_actions: List[str] = Field(default_factory=list, max_length=8)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class EvidenceIntegrityGatePayload(BaseModel):
+    """Read-only integrity gate over locators, citations, lint, and workflow state.
+
+    Args:
+        schema_version: Versioned additive API contract.
+        generated_at: UTC generation time for this projection.
+        scope: Runtime filters used to build this gate.
+        status: Aggregate gate state; any block or unresolved signal prevents pass.
+        signals: Ordered actionable integrity signals.
+        summary: Counts and source coverage used by agents and UI panels.
+        blockers: Block-level messages that should stop export or handoff claims.
+        unresolved: Offline/human-review checks that must stay visibly unresolved.
+        provenance: Read-only runtime sources used to derive the gate.
+    """
+
+    schema_version: Literal["scholar_ai_evidence_integrity_gate_v1"] = (
+        "scholar_ai_evidence_integrity_gate_v1"
+    )
+    generated_at: str
+    scope: Dict[str, Any] = Field(default_factory=dict)
+    status: Literal["pass", "warn", "block", "unresolved"]
+    signals: List[EvidenceIntegritySignalPayload] = Field(default_factory=list)
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    blockers: List[str] = Field(default_factory=list, max_length=16)
+    unresolved: List[str] = Field(default_factory=list, max_length=16)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
 class TimelineItemPayload(BaseModel):
     """Append-only transcript event payload."""
 

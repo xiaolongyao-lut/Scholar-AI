@@ -517,6 +517,142 @@ async def test_workflow_passport_does_not_mark_material_read_from_material_ident
     assert stage_by_id["material_read"]["gate"]["status"] == "not_applicable"
 
 
+@pytest.mark.asyncio
+async def test_evidence_integrity_gate_blocks_unsupported_and_keeps_unresolved_visible(tmp_path: Path) -> None:
+    """Integrity gate must not render missing/offline checks as passed."""
+
+    db_path = tmp_path / "evidence_integrity_gate.sqlite3"
+    runtime = WritingRuntime(database_path=db_path, autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        user_id="integrity-user",
+        metadata={"project_id": "project-integrity", "title": "Integrity Project"},
+    )
+    material_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.RESOURCE_INGEST,
+        input_text="ingest material without locators",
+        metadata={"project_id": "project-integrity", "material_id": "material-integrity"},
+    )
+    await runtime.start_job(material_job.job_id)
+    await runtime.complete_job(material_job.job_id, result={"kind": "resource_ingest"})
+
+    writing_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="export evidence-bound draft",
+        metadata={"project_id": "project-integrity", "export_artifact_id": "export-integrity"},
+    )
+    runtime.update_writing_workflow_state(
+        writing_job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-integrity"},
+        evidence_refs=[{"ref_id": "chunk:missing-locator", "claim": "Unsupported claim"}],
+        citation_bank=[{"citation_id": "cite:unsupported", "ref_id": "chunk:missing-locator"}],
+        lint_report={
+            "passed": False,
+            "score": 65,
+            "issues": [
+                {
+                    "code": "missing_evidence_refs",
+                    "severity": "error",
+                    "message": "Evidence refs are missing.",
+                }
+            ],
+        },
+        export_manifest={"format": "docx", "filename": "integrity.docx"},
+        change_log=[{"stage": "export", "summary": "ready"}],
+    )
+    runtime.add_job_artifact(
+        writing_job.job_id,
+        artifact_type=ArtifactType.METADATA,
+        content={
+            "kind": "integrity_diagnostics",
+            "retrieval_diagnostics": {
+                "locator_coverage": {
+                    "schema_version": "scholar-ai-evidence-locator-coverage/v1",
+                    "total_refs": 1,
+                    "project_ref_count": 1,
+                    "non_project_ref_count": 0,
+                    "material_locator_count": 0,
+                    "page_locator_count": 0,
+                    "bbox_locator_count": 0,
+                    "missing_locator_count": 1,
+                    "page_coverage_ratio": 0.0,
+                    "bbox_coverage_ratio": 0.0,
+                    "coverage_state": "missing",
+                    "risk_level": "block",
+                    "sample_missing_ref_ids": ["chunk:missing-locator"],
+                    "notes": ["No page locator is available."],
+                },
+                "qrels_status": {
+                    "schema_version": "retrieval-qrels-status/v1",
+                    "status": "candidate",
+                    "candidate_qrels_count": 2,
+                    "reviewed_qrels_count": 0,
+                    "canonical_qrels_count": 0,
+                    "semantic_quality_claim_allowed": False,
+                    "quality_claim": "candidate_qrels_review_required",
+                    "notes": ["Candidate qrels require review."],
+                },
+            },
+            "citation_verifications": [
+                {
+                    "verification_id": "verify-unsupported",
+                    "project_id": "project-integrity",
+                    "citation_id": "cite:unsupported",
+                    "status": "unsupported",
+                    "rationale": "Claim and evidence do not overlap.",
+                    "source_kind": "local",
+                    "source_labels": ["local-pdf"],
+                },
+                {
+                    "verification_id": "verify-needs-review",
+                    "project_id": "project-integrity",
+                    "citation_id": "cite:needs-review",
+                    "status": "needs_review",
+                    "rationale": "Offline source requires human review.",
+                    "source_kind": "local",
+                },
+            ],
+        },
+        created_by="pytest",
+        metadata={"project_id": "project-integrity"},
+    )
+
+    loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
+    gate = loaded_runtime.build_evidence_integrity_gate(project_id="project-integrity", limit=50)
+
+    assert gate["schema_version"] == "scholar_ai_evidence_integrity_gate_v1"
+    assert gate["status"] == "block"
+    assert gate["summary"]["unresolved_is_pass"] is False
+    signals = {signal["signal_id"]: signal for signal in gate["signals"]}
+    assert any(
+        signal["category"] == "locator" and signal["status"] == "block"
+        for signal in signals.values()
+    )
+    assert any(
+        signal["category"] == "citation_verification" and signal["status"] == "block"
+        for signal in signals.values()
+    )
+    assert any(
+        signal["category"] == "citation_verification" and signal["status"] == "unresolved"
+        for signal in signals.values()
+    )
+    assert any(
+        signal["category"] == "retrieval_quality" and signal["status"] == "unresolved"
+        for signal in signals.values()
+    )
+    assert any(
+        signal["category"] == "writing_lint" and signal["status"] == "block"
+        for signal in signals.values()
+    )
+    assert gate["summary"]["status_counts"]["block"] >= 3
+    assert gate["summary"]["status_counts"]["unresolved"] >= 2
+    assert gate["blockers"]
+    assert gate["unresolved"]
+
+
 def _workspace_paths(tmp_path: Path) -> tuple[Path, Path, Path]:
     workspace_root = tmp_path / "workspace"
     entry_cwd = workspace_root / "notes"

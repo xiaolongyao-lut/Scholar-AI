@@ -20,6 +20,7 @@ from models import (
     MaterialProcessingTaskPayload,
     ResearchProjectionPayload,
     WorkflowPassportPayload,
+    EvidenceIntegrityGatePayload,
     TimelinePagePayload,
     CheckpointPayload,
     ResumeSessionPayload,
@@ -788,6 +789,29 @@ async def get_workflow_passport(
         status_code = 404 if "not found" in str(exc).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return WorkflowPassportPayload(**passport)
+
+
+@router.get("/evidence-integrity-gate", response_model=EvidenceIntegrityGatePayload)
+async def get_evidence_integrity_gate(
+    session_id: str | None = Query(default=None),
+    job_id: str | None = Query(default=None),
+    project_id: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=1000),
+) -> EvidenceIntegrityGatePayload:
+    """Return a read-only evidence integrity gate over runtime research state."""
+
+    runtime = get_runtime()
+    try:
+        gate = runtime.build_evidence_integrity_gate(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return EvidenceIntegrityGatePayload(**gate)
 
 
 @router.get("/job/{job_id}", response_model=JobPayload)

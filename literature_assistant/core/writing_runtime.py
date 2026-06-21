@@ -97,6 +97,7 @@ _RESEARCH_PROJECTION_SCHEMA_VERSION = "research_object_projection_v1"
 _RESEARCH_EVENT_SOURCE = "scholar-ai.runtime"
 _RESEARCH_PROJECT_OBJECT_TYPE = "research_project"
 _WORKFLOW_PASSPORT_SCHEMA_VERSION = "scholar_ai_workflow_passport_v1"
+_EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION = "scholar_ai_evidence_integrity_gate_v1"
 _WORKFLOW_STAGE_DEFINITIONS: tuple[dict[str, Any], ...] = (
     {
         "stage_id": "material_ingest",
@@ -887,6 +888,510 @@ def _passport_gate_for_stage(stage: dict[str, Any], row: dict[str, Any]) -> dict
         "unresolved": unresolved,
         "requires_user_confirmation": requires_user_confirmation,
     }
+
+
+def _integrity_signal(
+    *,
+    signal_id: str,
+    category: str,
+    status: str,
+    severity: str,
+    message: str,
+    evidence: list[dict[str, Any]] | None = None,
+    next_actions: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return one bounded evidence-integrity signal."""
+
+    normalized_id = _require_non_empty_string(signal_id, field_name="signal_id", max_length=200)
+    normalized_message = _require_non_empty_string(message, field_name="message", max_length=600)
+    return {
+        "signal_id": normalized_id,
+        "category": category,
+        "status": status,
+        "severity": severity,
+        "message": normalized_message,
+        "evidence": list(evidence or [])[:16],
+        "next_actions": list(next_actions or [])[:8],
+        "metadata": dict(_json_safe_copy(metadata or {})),
+    }
+
+
+def _integrity_status_rank(status: str) -> int:
+    """Return aggregate severity rank for integrity gate states."""
+
+    return {
+        "not_applicable": 0,
+        "pass": 1,
+        "warn": 2,
+        "unresolved": 3,
+        "block": 4,
+    }.get(status, 0)
+
+
+def _integrity_gate_status(signals: list[dict[str, Any]]) -> str:
+    """Return aggregate gate status without treating unresolved as pass."""
+
+    if not signals:
+        return "unresolved"
+    statuses = [str(signal.get("status") or "unresolved") for signal in signals]
+    if "block" in statuses:
+        return "block"
+    if "unresolved" in statuses:
+        return "unresolved"
+    if "warn" in statuses:
+        return "warn"
+    if any(status == "pass" for status in statuses):
+        return "pass"
+    return "unresolved"
+
+
+def _integrity_signal_sort_key(signal: dict[str, Any]) -> tuple[int, str, str]:
+    """Sort integrity signals by actionability and stable identity."""
+
+    return (
+        -_integrity_status_rank(str(signal.get("status") or "")),
+        str(signal.get("category") or ""),
+        str(signal.get("signal_id") or ""),
+    )
+
+
+def _bounded_signal_evidence(ref_type: str, ref_id: Any, **metadata: Any) -> list[dict[str, Any]]:
+    """Return one compact evidence ref for a gate signal."""
+
+    normalized_ref_id = _safe_projection_string(ref_id)
+    if normalized_ref_id is None:
+        return []
+    row = {
+        "ref_type": ref_type,
+        "ref_id": normalized_ref_id,
+        **{
+            str(key): _projection_value(value)
+            for key, value in metadata.items()
+            if not _is_blank_projection_value(value)
+        },
+    }
+    return [row]
+
+
+def _iter_runtime_metadata_dicts(jobs: list[WritingJob]) -> list[tuple[str, dict[str, Any]]]:
+    """Return metadata-bearing objects attached to selected runtime jobs."""
+
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for job in jobs:
+        metadata = dict(job.metadata)
+        for key in (
+            _WRITING_WORKFLOW_STATE_KEY,
+            _MATERIAL_PROCESSING_TASK_KEY,
+            "retrieval_diagnostics",
+            "locator_coverage",
+            "qrels_status",
+            "citation_verifications",
+            "citation_overlap",
+            "citation_overlaps",
+            "academic_writing_lint",
+            "lint_report",
+            "export_manifest",
+        ):
+            value = metadata.get(key)
+            if isinstance(value, dict):
+                rows.append((f"runtime.job_metadata:{job.job_id}:{key}", value))
+            elif isinstance(value, list):
+                for index, item in enumerate(value[:32]):
+                    if isinstance(item, dict):
+                        rows.append((f"runtime.job_metadata:{job.job_id}:{key}:{index}", item))
+    return rows
+
+
+def _iter_artifact_dicts(jobs: list[WritingJob], artifacts_by_job: dict[str, list[WritingArtifact]]) -> list[tuple[str, dict[str, Any]]]:
+    """Return object-shaped runtime artifact content and metadata rows."""
+
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for job in jobs:
+        for artifact in artifacts_by_job.get(job.job_id, []):
+            if isinstance(artifact.content, dict):
+                rows.append((f"runtime.artifact:{artifact.artifact_id}:content", dict(artifact.content)))
+            metadata = dict(artifact.metadata)
+            if metadata:
+                rows.append((f"runtime.artifact:{artifact.artifact_id}:metadata", metadata))
+    return rows
+
+
+def _collect_nested_dicts(value: Any, *, max_items: int = 128) -> list[dict[str, Any]]:
+    """Return bounded nested mappings for integrity-signal discovery."""
+
+    collected: list[dict[str, Any]] = []
+
+    def _visit(candidate: Any) -> None:
+        if len(collected) >= max_items:
+            return
+        if isinstance(candidate, dict):
+            collected.append(candidate)
+            for nested in candidate.values():
+                _visit(nested)
+            return
+        if isinstance(candidate, list):
+            for nested in candidate:
+                _visit(nested)
+
+    _visit(value)
+    return collected
+
+
+def _find_first_nested_dict(value: Any, keys: set[str]) -> dict[str, Any] | None:
+    """Return the first nested mapping that contains any requested key."""
+
+    for item in _collect_nested_dicts(value):
+        if any(key in item for key in keys):
+            return item
+    return None
+
+
+def _extract_locator_payloads(source_id: str, payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return locator coverage payloads discovered in a runtime object."""
+
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for item in _collect_nested_dicts(payload):
+        if "coverage_state" in item and "risk_level" in item and (
+            "page_coverage_ratio" in item or "bbox_coverage_ratio" in item
+        ):
+            matches.append((source_id, item))
+    return matches[:16]
+
+
+def _extract_qrels_payloads(source_id: str, payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return retrieval-qrels status payloads discovered in a runtime object."""
+
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for item in _collect_nested_dicts(payload):
+        if "semantic_quality_claim_allowed" in item and "quality_claim" in item:
+            matches.append((source_id, item))
+    return matches[:16]
+
+
+def _extract_citation_verification_payloads(source_id: str, payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return citation verification payloads discovered in a runtime object."""
+
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for item in _collect_nested_dicts(payload):
+        if "citation_id" in item and "status" in item and (
+            "verification_id" in item or "rationale" in item or "source_anchor" in item
+        ):
+            matches.append((source_id, item))
+    return matches[:32]
+
+
+def _extract_citation_overlap_payloads(source_id: str, payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return citation overlap payloads discovered in a runtime object."""
+
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for item in _collect_nested_dicts(payload):
+        if "overlap_score" in item and (
+            "anchor_id" in item or "overlapping_anchors" in item or "recommendation" in item
+        ):
+            matches.append((source_id, item))
+    return matches[:32]
+
+
+def _extract_lint_payloads(source_id: str, payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return academic-writing lint payloads discovered in a runtime object."""
+
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for item in _collect_nested_dicts(payload):
+        if "passed" in item and ("issues" in item or "quality_gate" in item or "metrics" in item):
+            matches.append((source_id, item))
+    return matches[:16]
+
+
+def _extract_export_payloads(source_id: str, payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return export manifest payloads discovered in a runtime object."""
+
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for item in _collect_nested_dicts(payload):
+        if ("format" in item and "filename" in item) or (
+            "citation_chain" in item or "review_findings" in item or "evidence_rows" in item
+        ):
+            matches.append((source_id, item))
+    return matches[:16]
+
+
+def _locator_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert locator coverage into a blocking/warning integrity signal."""
+
+    coverage_state = str(payload.get("coverage_state") or "missing")
+    risk_level = str(payload.get("risk_level") or "warn")
+    project_ref_count = int(payload.get("project_ref_count") or 0)
+    if risk_level == "block":
+        status = "block"
+        severity = "block"
+        message = "Evidence refs are missing source locators required for traceable review."
+    elif risk_level == "warn":
+        status = "warn"
+        severity = "warn"
+        message = "Evidence refs are only partially layout-located and need review before strong claims."
+    elif project_ref_count == 0 and coverage_state == "no_refs":
+        status = "not_applicable"
+        severity = "note"
+        message = "No project evidence refs are present for locator integrity checks."
+    else:
+        status = "pass"
+        severity = "none"
+        message = "Evidence refs have sufficient source locator coverage for this gate."
+    return _integrity_signal(
+        signal_id=f"locator:{source_id}",
+        category="locator",
+        status=status,
+        severity=severity,
+        message=message,
+        evidence=_bounded_signal_evidence(
+            "runtime_payload",
+            source_id,
+            coverage_state=coverage_state,
+            risk_level=risk_level,
+        ),
+        next_actions=[
+            "Rebuild evidence refs with page and bbox locators before export or agent handoff."
+        ] if status == "block" else [],
+        metadata=_compact_projection_mapping(
+            payload,
+            allowed_keys=(
+                "coverage_state",
+                "risk_level",
+                "total_refs",
+                "project_ref_count",
+                "page_coverage_ratio",
+                "bbox_coverage_ratio",
+                "missing_locator_count",
+                "sample_missing_ref_ids",
+                "notes",
+            ),
+        ),
+    )
+
+
+def _qrels_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert retrieval qrels state into semantic-quality gate signal."""
+
+    status_value = str(payload.get("status") or "missing")
+    allowed = bool(payload.get("semantic_quality_claim_allowed"))
+    if allowed:
+        status = "pass"
+        severity = "none"
+        message = "Canonical qrels are available for retrieval-quality claims."
+    elif status_value in {"candidate", "reviewed"}:
+        status = "unresolved"
+        severity = "warn"
+        message = "Retrieval quality labels exist but are not canonical proof yet."
+    else:
+        status = "unresolved"
+        severity = "note"
+        message = "Retrieval quality claims remain unresolved because canonical qrels are missing."
+    return _integrity_signal(
+        signal_id=f"retrieval_quality:{source_id}",
+        category="retrieval_quality",
+        status=status,
+        severity=severity,
+        message=message,
+        evidence=_bounded_signal_evidence(
+            "runtime_payload",
+            source_id,
+            qrels_status=status_value,
+            quality_claim=payload.get("quality_claim"),
+        ),
+        next_actions=[
+            "Promote reviewed qrels before claiming semantic retrieval quality."
+        ] if status == "unresolved" else [],
+        metadata=_compact_projection_mapping(
+            payload,
+            allowed_keys=(
+                "status",
+                "candidate_qrels_count",
+                "reviewed_qrels_count",
+                "canonical_qrels_count",
+                "semantic_quality_claim_allowed",
+                "quality_claim",
+                "notes",
+            ),
+        ),
+    )
+
+
+def _citation_verification_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert citation verification state into pass/block/unresolved signal."""
+
+    status_value = str(payload.get("status") or "needs_review")
+    citation_id = _safe_projection_string(payload.get("citation_id")) or "unknown"
+    if status_value == "verified":
+        status = "pass"
+        severity = "none"
+        message = "Citation source anchor is verified."
+    elif status_value == "unsupported":
+        status = "block"
+        severity = "block"
+        message = "Citation is unsupported by its recorded source anchor."
+    else:
+        status = "unresolved"
+        severity = "warn"
+        message = "Citation source verification needs review and must not be shown as verified."
+    return _integrity_signal(
+        signal_id=f"citation_verification:{citation_id}:{source_id}",
+        category="citation_verification",
+        status=status,
+        severity=severity,
+        message=message,
+        evidence=_bounded_signal_evidence(
+            "citation_verification",
+            payload.get("verification_id") or citation_id,
+            citation_id=citation_id,
+            source_kind=payload.get("source_kind"),
+        ),
+        next_actions=[
+            "Attach a source anchor and verify the citation before export."
+        ] if status != "pass" else [],
+        metadata=_compact_projection_mapping(
+            payload,
+            allowed_keys=("verification_id", "citation_id", "status", "rationale", "source_kind", "source_labels"),
+        ),
+    )
+
+
+def _citation_overlap_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert citation overlap diagnostics into review signal."""
+
+    try:
+        overlap_score = float(payload.get("overlap_score") or 0.0)
+    except (TypeError, ValueError):
+        overlap_score = 0.0
+    anchor_id = _safe_projection_string(payload.get("anchor_id")) or "unknown"
+    if overlap_score >= 0.92:
+        status = "block"
+        severity = "block"
+        message = "Citation anchors overlap too strongly and need deduplication or source review."
+    elif overlap_score >= 0.75:
+        status = "warn"
+        severity = "warn"
+        message = "Citation anchors may reuse the same evidence and should be reviewed."
+    else:
+        status = "pass"
+        severity = "none"
+        message = "Citation overlap is within the local review threshold."
+    return _integrity_signal(
+        signal_id=f"citation_overlap:{anchor_id}:{source_id}",
+        category="citation_overlap",
+        status=status,
+        severity=severity,
+        message=message,
+        evidence=_bounded_signal_evidence(
+            "citation_overlap",
+            anchor_id,
+            overlap_score=round(overlap_score, 4),
+        ),
+        next_actions=[
+            "Deduplicate overlapping citation anchors or justify distinct claims."
+        ] if status in {"warn", "block"} else [],
+        metadata=_compact_projection_mapping(
+            {
+                **payload,
+                "overlap_score": round(overlap_score, 4),
+            },
+            allowed_keys=("anchor_id", "material_id", "chunk_id", "overlap_score", "overlapping_anchors", "recommendation"),
+        ),
+    )
+
+
+def _lint_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert academic-writing lint output into integrity gate signal."""
+
+    passed = bool(payload.get("passed"))
+    issues = payload.get("issues") if isinstance(payload.get("issues"), list) else []
+    issue_severities = [
+        str(item.get("severity") or "")
+        for item in issues
+        if isinstance(item, dict)
+    ]
+    if passed:
+        status = "pass"
+        severity = "none"
+        message = "Academic writing lint passed."
+    elif "error" in issue_severities:
+        status = "block"
+        severity = "block"
+        message = "Academic writing lint reported error-level integrity issues."
+    elif issues:
+        status = "warn"
+        severity = "warn"
+        message = "Academic writing lint reported warning-level issues."
+    else:
+        status = "unresolved"
+        severity = "note"
+        message = "Academic writing lint result is incomplete and needs rerun."
+    return _integrity_signal(
+        signal_id=f"writing_lint:{source_id}",
+        category="writing_lint",
+        status=status,
+        severity=severity,
+        message=message,
+        evidence=_bounded_signal_evidence(
+            "runtime_payload",
+            source_id,
+            issue_count=len(issues),
+        ),
+        next_actions=[
+            "Resolve lint issues or rerun the writing lint before export readiness is claimed."
+        ] if status != "pass" else [],
+        metadata={
+            "passed": passed,
+            "issue_count": len(issues),
+            "issue_severities": sorted(set(filter(None, issue_severities))),
+            **_compact_projection_mapping(payload, allowed_keys=("score", "quality_gate", "recommendations")),
+        },
+    )
+
+
+def _export_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert export manifest facts into readiness signal."""
+
+    review_findings = payload.get("review_findings") if isinstance(payload.get("review_findings"), list) else []
+    blocking_findings = [
+        item
+        for item in review_findings
+        if isinstance(item, dict) and str(item.get("severity") or "").lower() in {"error", "block", "critical"}
+    ]
+    citation_chain = payload.get("citation_chain") if isinstance(payload.get("citation_chain"), list) else []
+    if blocking_findings:
+        status = "block"
+        severity = "block"
+        message = "Export manifest contains blocking review findings."
+    elif not citation_chain and not payload.get("evidence_rows"):
+        status = "unresolved"
+        severity = "warn"
+        message = "Export manifest lacks citation-chain or evidence-row proof."
+    else:
+        status = "pass"
+        severity = "none"
+        message = "Export manifest includes reviewable citation or evidence provenance."
+    return _integrity_signal(
+        signal_id=f"export_readiness:{source_id}",
+        category="export_readiness",
+        status=status,
+        severity=severity,
+        message=message,
+        evidence=_bounded_signal_evidence(
+            "runtime_payload",
+            source_id,
+            format=payload.get("format"),
+            filename=payload.get("filename"),
+        ),
+        next_actions=[
+            "Regenerate export evidence rows and clear blocking review findings."
+        ] if status != "pass" else [],
+        metadata={
+            "review_finding_count": len(review_findings),
+            "blocking_finding_count": len(blocking_findings),
+            "citation_chain_count": len(citation_chain),
+            **_compact_projection_mapping(payload, allowed_keys=("format", "filename", "media_type")),
+        },
+    )
 
 
 def _project_id_for_job(job: WritingJob, session: WritingSession | None) -> str | None:
@@ -3048,6 +3553,226 @@ class WritingRuntime:
                 "research_projection_schema_version": projection.get("schema_version"),
                 "object_count": len(objects),
                 "event_count": len(events),
+            },
+        }
+
+    def build_evidence_integrity_gate(
+        self,
+        *,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Build a read-only integrity gate over runtime evidence signals.
+
+        Args:
+            session_id: Optional runtime session filter.
+            job_id: Optional runtime job filter.
+            project_id: Optional project id filter from job/session metadata.
+            limit: Maximum number of projected events to inspect.
+
+        Returns:
+            JSON-safe gate payload with pass/warn/block/unresolved signals.
+
+        Raises:
+            ValueError: If the projection filters are invalid.
+        """
+
+        normalized_session_id = _safe_projection_string(session_id)
+        normalized_job_id = _safe_projection_string(job_id)
+        normalized_project_id = _safe_projection_string(project_id)
+        passport = self.build_workflow_passport(
+            session_id=normalized_session_id,
+            job_id=normalized_job_id,
+            project_id=normalized_project_id,
+            limit=limit,
+        )
+        jobs = list(self._jobs.values())
+        if normalized_job_id:
+            selected_job = self.get_job(normalized_job_id)
+            if selected_job is None:
+                raise ValueError(f"Job {normalized_job_id} not found")
+            jobs = [selected_job]
+        if normalized_session_id:
+            jobs = [job for job in jobs if job.session_id == normalized_session_id]
+        if normalized_project_id:
+            jobs = [
+                job
+                for job in jobs
+                if _project_id_for_job(job, self.get_session(job.session_id)) == normalized_project_id
+            ]
+
+        signals: list[dict[str, Any]] = []
+        for stage in passport.get("stages", []):
+            if not isinstance(stage, dict):
+                continue
+            gate = stage.get("gate") if isinstance(stage.get("gate"), dict) else {}
+            gate_status = str(gate.get("status") or "unresolved")
+            if gate_status not in {"block", "unresolved", "warn"}:
+                continue
+            stage_id = str(stage.get("stage_id") or "unknown")
+            signals.append(
+                _integrity_signal(
+                    signal_id=f"workflow_stage:{stage_id}",
+                    category="workflow_stage",
+                    status=gate_status,
+                    severity=str(gate.get("severity") or "note"),
+                    message=f"Workflow stage {stage_id}: {gate.get('reason') or 'stage requires review.'}",
+                    evidence=list(gate.get("evidence") or [])[:12],
+                    next_actions=list(stage.get("next_actions") or [])[:4],
+                    metadata={
+                        "stage_id": stage_id,
+                        "stage_status": stage.get("status"),
+                        "required_artifacts": list(stage.get("required_artifacts") or []),
+                    },
+                )
+            )
+
+        artifact_rows = _iter_artifact_dicts(jobs, self._artifacts)
+        payload_rows = _iter_runtime_metadata_dicts(jobs) + artifact_rows
+        locator_signal_count = 0
+        qrels_signal_count = 0
+        citation_signal_count = 0
+        for source_id, payload in payload_rows:
+            for locator_source_id, locator_payload in _extract_locator_payloads(source_id, payload):
+                signals.append(_locator_integrity_signal(locator_source_id, locator_payload))
+                locator_signal_count += 1
+            for qrels_source_id, qrels_payload in _extract_qrels_payloads(source_id, payload):
+                signals.append(_qrels_integrity_signal(qrels_source_id, qrels_payload))
+                qrels_signal_count += 1
+            for verification_source_id, verification_payload in _extract_citation_verification_payloads(source_id, payload):
+                signals.append(_citation_verification_integrity_signal(verification_source_id, verification_payload))
+                citation_signal_count += 1
+            for overlap_source_id, overlap_payload in _extract_citation_overlap_payloads(source_id, payload):
+                signals.append(_citation_overlap_integrity_signal(overlap_source_id, overlap_payload))
+            for lint_source_id, lint_payload in _extract_lint_payloads(source_id, payload):
+                signals.append(_lint_integrity_signal(lint_source_id, lint_payload))
+            for export_source_id, export_payload in _extract_export_payloads(source_id, payload):
+                signals.append(_export_integrity_signal(export_source_id, export_payload))
+
+        for job in jobs:
+            workflow_state = job.metadata.get(_WRITING_WORKFLOW_STATE_KEY)
+            if not isinstance(workflow_state, dict):
+                continue
+            evidence_refs = workflow_state.get("evidence_refs")
+            if isinstance(evidence_refs, list) and evidence_refs and locator_signal_count == 0:
+                signals.append(
+                    _integrity_signal(
+                        signal_id=f"locator:missing_coverage:{job.job_id}",
+                        category="locator",
+                        status="unresolved",
+                        severity="warn",
+                        message="Evidence refs exist, but locator coverage diagnostics are missing.",
+                        evidence=_bounded_signal_evidence(
+                            "runtime_job",
+                            job.job_id,
+                            evidence_ref_count=len(evidence_refs),
+                        ),
+                        next_actions=[
+                            "Rebuild evidence pack or search refs so locator_coverage is recorded."
+                        ],
+                        metadata={"evidence_ref_count": len(evidence_refs)},
+                    )
+                )
+            citation_bank = workflow_state.get("citation_bank")
+            if isinstance(citation_bank, list) and citation_bank and citation_signal_count == 0:
+                signals.append(
+                    _integrity_signal(
+                        signal_id=f"citation_verification:missing_records:{job.job_id}",
+                        category="citation_verification",
+                        status="unresolved",
+                        severity="warn",
+                        message="Citation bank exists, but citation verification records are missing.",
+                        evidence=_bounded_signal_evidence(
+                            "runtime_job",
+                            job.job_id,
+                            citation_count=len(citation_bank),
+                        ),
+                        next_actions=[
+                            "Run citation source verification before marking citations as verified."
+                        ],
+                        metadata={"citation_count": len(citation_bank)},
+                    )
+                )
+            if qrels_signal_count == 0 and isinstance(evidence_refs, list) and evidence_refs:
+                signals.append(
+                    _integrity_signal(
+                        signal_id=f"retrieval_quality:missing_qrels_status:{job.job_id}",
+                        category="retrieval_quality",
+                        status="unresolved",
+                        severity="note",
+                        message="Evidence refs exist, but retrieval qrels status is not recorded.",
+                        evidence=_bounded_signal_evidence(
+                            "runtime_job",
+                            job.job_id,
+                            evidence_ref_count=len(evidence_refs),
+                        ),
+                        next_actions=[
+                            "Record qrels_status before making retrieval-quality claims."
+                        ],
+                        metadata={"evidence_ref_count": len(evidence_refs)},
+                    )
+                )
+
+        deduped_by_id: dict[str, dict[str, Any]] = {}
+        for signal in signals:
+            signal_id = str(signal.get("signal_id") or "")
+            existing = deduped_by_id.get(signal_id)
+            if existing is None or _integrity_status_rank(str(signal.get("status") or "")) > _integrity_status_rank(
+                str(existing.get("status") or "")
+            ):
+                deduped_by_id[signal_id] = signal
+        deduped_signals = sorted(deduped_by_id.values(), key=_integrity_signal_sort_key)
+
+        status_counts: dict[str, int] = {}
+        severity_counts: dict[str, int] = {}
+        category_counts: dict[str, int] = {}
+        for signal in deduped_signals:
+            _increment_projection_count(status_counts, str(signal.get("status") or "unknown"))
+            _increment_projection_count(severity_counts, str(signal.get("severity") or "unknown"))
+            _increment_projection_count(category_counts, str(signal.get("category") or "unknown"))
+
+        blockers = [
+            str(signal.get("message"))
+            for signal in deduped_signals
+            if signal.get("status") == "block"
+        ][:16]
+        unresolved = [
+            str(signal.get("message"))
+            for signal in deduped_signals
+            if signal.get("status") == "unresolved"
+        ][:16]
+        return {
+            "schema_version": _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION,
+            "generated_at": utc_now_iso_z(),
+            "scope": dict(passport.get("scope") or {}),
+            "status": _integrity_gate_status(deduped_signals),
+            "signals": deduped_signals,
+            "summary": {
+                "signal_count": len(deduped_signals),
+                "status_counts": status_counts,
+                "severity_counts": severity_counts,
+                "category_counts": category_counts,
+                "runtime_job_count": len(jobs),
+                "artifact_payload_count": len(artifact_rows),
+                "workflow_passport_status": passport.get("gate_summary"),
+                "unresolved_is_pass": False,
+            },
+            "blockers": blockers,
+            "unresolved": unresolved,
+            "provenance": {
+                "derived_from": [
+                    "runtime.workflow_passport",
+                    "runtime.jobs",
+                    "runtime.artifacts",
+                    "runtime.writing_workflow_state",
+                    "runtime.evidence_retrieval_diagnostics",
+                    "runtime.citation_verifications",
+                    "runtime.academic_writing_lint",
+                    "runtime.export_manifest",
+                ],
+                "workflow_passport_schema_version": passport.get("schema_version"),
             },
         }
 

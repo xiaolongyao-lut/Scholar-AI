@@ -991,6 +991,113 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
 
 
 @pytest.mark.persistence_smoke
+def test_runtime_evidence_integrity_gate_route_keeps_unresolved_separate(monkeypatch) -> None:
+    """The integrity gate route should expose block and unresolved states distinctly."""
+
+    runtime = WritingRuntime()
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        user_id="integrity-route-user",
+        metadata={"project_id": "project-integrity-route"},
+    )
+    writing_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="route export",
+        metadata={"project_id": "project-integrity-route", "export_artifact_id": "export-route"},
+    )
+    runtime.update_writing_workflow_state(
+        writing_job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-integrity-route"},
+        evidence_refs=[{"ref_id": "chunk:route"}],
+        citation_bank=[{"citation_id": "cite:route"}],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "route.docx"},
+        change_log=[{"stage": "export"}],
+    )
+    runtime.add_job_artifact(
+        writing_job.job_id,
+        artifact_type=ArtifactType.METADATA,
+        content={
+            "kind": "route_integrity",
+            "retrieval_diagnostics": {
+                "locator_coverage": {
+                    "schema_version": "scholar-ai-evidence-locator-coverage/v1",
+                    "total_refs": 1,
+                    "project_ref_count": 1,
+                    "non_project_ref_count": 0,
+                    "material_locator_count": 1,
+                    "page_locator_count": 1,
+                    "bbox_locator_count": 0,
+                    "missing_locator_count": 0,
+                    "page_coverage_ratio": 1.0,
+                    "bbox_coverage_ratio": 0.0,
+                    "coverage_state": "page_located",
+                    "risk_level": "warn",
+                    "sample_missing_ref_ids": [],
+                    "notes": ["Page locator exists but bbox is absent."],
+                },
+                "qrels_status": {
+                    "schema_version": "retrieval-qrels-status/v1",
+                    "status": "missing",
+                    "candidate_qrels_count": 0,
+                    "reviewed_qrels_count": 0,
+                    "canonical_qrels_count": 0,
+                    "semantic_quality_claim_allowed": False,
+                    "quality_claim": "no_qrels_available",
+                    "notes": ["No canonical qrels."],
+                },
+            },
+            "citation_verifications": [
+                {
+                    "verification_id": "verify-route",
+                    "project_id": "project-integrity-route",
+                    "citation_id": "cite:route",
+                    "status": "needs_review",
+                    "rationale": "Offline review required.",
+                    "source_kind": "local",
+                }
+            ],
+        },
+        created_by="pytest",
+        metadata={"project_id": "project-integrity-route"},
+    )
+
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/runtime/evidence-integrity-gate",
+        params={"project_id": "project-integrity-route"},
+    )
+
+    assert response.status_code == 200
+    gate = response.json()
+    assert gate["schema_version"] == "scholar_ai_evidence_integrity_gate_v1"
+    assert gate["status"] == "unresolved"
+    assert gate["summary"]["unresolved_is_pass"] is False
+    assert any(
+        signal["category"] == "citation_verification" and signal["status"] == "unresolved"
+        for signal in gate["signals"]
+    )
+    assert any(
+        signal["category"] == "retrieval_quality" and signal["status"] == "unresolved"
+        for signal in gate["signals"]
+    )
+    assert not gate["blockers"]
+    assert gate["unresolved"]
+
+    missing_response = client.get(
+        "/runtime/evidence-integrity-gate",
+        params={"job_id": "job_missing"},
+    )
+    assert missing_response.status_code == 404
+
+
+@pytest.mark.persistence_smoke
 def test_runtime_router_rejects_invalid_session_mode(monkeypatch, tmp_path) -> None:
     """The runtime router should reject invalid session modes."""
     workspace_root = tmp_path / "workspace"
