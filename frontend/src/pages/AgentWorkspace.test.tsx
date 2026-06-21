@@ -363,6 +363,21 @@ describe('AgentWorkspace', () => {
       claim_status: 'blocked',
       gate_status: 'block',
       current_stage_id: 'citation_review',
+      freshness: {
+        schema_version: 'scholar_ai_action_preflight_freshness_v1',
+        status: 'fresh',
+        refresh_required: false,
+        max_age_seconds: 900,
+        age_seconds: 0,
+        oldest_evidence_at: '2026-06-21T03:00:00Z',
+        newest_evidence_at: '2026-06-21T03:00:00Z',
+        expires_at: '2026-06-21T03:15:00Z',
+        checked_at: '2026-06-21T03:00:00Z',
+        reasons: ['Action preflight evidence is within the freshness window.'],
+        refresh_actions: [],
+        sources: [],
+      },
+      refresh_required: false,
       blockers: ['Unsupported citation anchors block export readiness.'],
       unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
       evidence: [{ ref_type: 'evidence_integrity_signal', ref_id: 'citation_verification:unsupported:1' }],
@@ -637,6 +652,7 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('require ready true').length).toBeGreaterThan(0);
     expect(screen.getAllByText('writing.export_project').length).toBeGreaterThan(0);
     expect(screen.getAllByText('preflight blocked').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('fresh 0s').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('unresolved 1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('blocked').length).toBeGreaterThan(0);
@@ -648,6 +664,88 @@ describe('AgentWorkspace', () => {
     expect(screen.queryByText(/\/runtime\/workflow-passport/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^integrity 通过$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Export readiness ready$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^preflight ready$/)).not.toBeInTheDocument();
+  });
+
+  it('renders stale action preflight as refresh-required command guardrail', async () => {
+    const staleActionPreflight: WorkflowActionPreflightProjection = {
+      schema_version: 'scholar_ai_action_preflight_v1',
+      generated_at: '2026-06-21T03:30:01Z',
+      action_id: 'writing.export_project',
+      required_claim_id: 'export_readiness',
+      require_ready: true,
+      status: 'stale',
+      can_proceed: false,
+      claim_status: 'ready',
+      gate_status: 'pass',
+      current_stage_id: 'export',
+      freshness: {
+        schema_version: 'scholar_ai_action_preflight_freshness_v1',
+        status: 'stale',
+        refresh_required: true,
+        max_age_seconds: 900,
+        age_seconds: 1801,
+        oldest_evidence_at: '2026-06-21T03:00:00Z',
+        newest_evidence_at: '2026-06-21T03:00:00Z',
+        expires_at: '2026-06-21T03:15:00Z',
+        checked_at: '2026-06-21T03:30:01Z',
+        reasons: ['Oldest preflight evidence is 1801 seconds old, exceeding 900 seconds.'],
+        refresh_actions: ['Rebuild the Workflow Passport and Evidence Integrity Gate before executing this command.'],
+        sources: [{ label: 'workflow_passport.generated_at', timestamp: '2026-06-21T03:00:00Z' }],
+      },
+      refresh_required: true,
+      blockers: [],
+      unresolved: ['Oldest preflight evidence is 1801 seconds old, exceeding 900 seconds.'],
+      evidence: [{ ref_type: 'workflow_passport', current_stage_id: 'export' }],
+      summary: {
+        hard_blocked: true,
+        unresolved_is_ready: false,
+        readiness_ok: true,
+        refresh_required: true,
+        freshness_status: 'stale',
+        workflow_state_phase: 'export_ready',
+      },
+      provenance: { derived_from: ['runtime.action_preflight'] },
+    };
+    mockedGetAgentWorkspaceStatus.mockResolvedValue({
+      artifact_root: 'workspace_artifacts/agent_mcp_workflows',
+      artifact_count: 0,
+      audit_count: 0,
+      total_artifact_bytes: 0,
+      latest_activity_at: null,
+      artifacts: [],
+      audit_records: [],
+    });
+    mockedListRuntimeJobs.mockResolvedValue({
+      recent: [
+        {
+          job_id: 'job_stale_preflight',
+          session_id: 'session_stale_preflight',
+          kind: 'artifact_export',
+          status: 'completed',
+          input_text: 'export with stale preflight',
+          created_at: '2026-06-21T03:00:00.000Z',
+          started_at: '2026-06-21T03:00:01.000Z',
+          completed_at: '2026-06-21T03:00:02.000Z',
+          action_id: 'api.writing.export',
+          skill_id: null,
+          tags: ['writing_export'],
+          metadata: { project_id: 'project-stale-preflight', action_preflight: staleActionPreflight },
+          writing_workflow_state_summary: { phase: 'export_ready', action_preflight: staleActionPreflight },
+        },
+      ],
+    });
+    mockedGetWorkflowPassport.mockResolvedValue(null as unknown as Awaited<ReturnType<typeof getWorkflowPassport>>);
+    mockedGetEvidenceIntegrityGate.mockResolvedValue(null as unknown as Awaited<ReturnType<typeof getEvidenceIntegrityGate>>);
+    mockedGetAgentHandoffCard.mockRejectedValue(new Error('handoff not found'));
+
+    render(<AgentWorkspace />);
+
+    expect(await screen.findByRole('region', { name: '研究流程主干' })).toBeInTheDocument();
+    expect(screen.getAllByText('preflight stale').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('refresh required').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('stale 1801s').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Oldest preflight evidence is 1801 seconds old, exceeding 900 seconds.').length).toBeGreaterThan(0);
     expect(screen.queryByText(/^preflight ready$/)).not.toBeInTheDocument();
   });
 });

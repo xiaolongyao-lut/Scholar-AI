@@ -127,7 +127,26 @@ export interface WorkflowReadinessClaimsProjection {
   provenance: Record<string, unknown>;
 }
 
-export type WorkflowActionPreflightStatus = 'ready' | 'unresolved' | 'blocked';
+export type WorkflowActionPreflightStatus = 'ready' | 'unresolved' | 'blocked' | 'stale';
+
+export type WorkflowActionPreflightFreshnessStatus = 'fresh' | 'stale' | 'unknown';
+
+export interface WorkflowActionPreflightFreshness {
+  schema_version: 'scholar_ai_action_preflight_freshness_v1';
+  status: WorkflowActionPreflightFreshnessStatus;
+  refresh_required: boolean;
+  max_age_seconds: number;
+  age_seconds: number | null;
+  oldest_evidence_at: string | null;
+  newest_evidence_at?: string | null;
+  expires_at: string | null;
+  checked_at: string;
+  reasons: string[];
+  refresh_actions: string[];
+  sources: Record<string, unknown>[];
+  oldest_source?: string;
+  newest_source?: string;
+}
 
 export interface WorkflowActionPreflightProjection {
   schema_version: 'scholar_ai_action_preflight_v1';
@@ -140,6 +159,8 @@ export interface WorkflowActionPreflightProjection {
   claim_status: string;
   gate_status: string;
   current_stage_id: string | null;
+  freshness?: WorkflowActionPreflightFreshness;
+  refresh_required?: boolean;
   blockers: string[];
   unresolved: string[];
   evidence: Record<string, unknown>[];

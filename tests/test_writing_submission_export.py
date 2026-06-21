@@ -302,6 +302,8 @@ class TestProjectExport:
         assert preflight["can_proceed"] is False
         assert preflight["status"] in {"blocked", "unresolved"}
         assert preflight["summary"]["unresolved_is_ready"] is False
+        assert preflight["freshness"]["schema_version"] == "scholar_ai_action_preflight_freshness_v1"
+        assert preflight["refresh_required"] is False
 
     def test_export_project_action_preflight_attaches_when_not_required(self, monkeypatch, tmp_path):
         """Legacy export remains compatible while exposing the action preflight."""
@@ -340,6 +342,8 @@ class TestProjectExport:
         assert body["action_preflight"]["schema_version"] == "scholar_ai_action_preflight_v1"
         assert body["action_preflight"]["require_ready"] is False
         assert body["action_preflight"]["summary"]["unresolved_is_ready"] is False
+        assert body["action_preflight"]["freshness"]["schema_version"] == "scholar_ai_action_preflight_freshness_v1"
+        assert body["action_preflight"]["refresh_required"] is False
 
     def test_export_project_post_returns_word_latex_and_pdf(self):
         """POST /api/writing/export returns generated academic export formats."""

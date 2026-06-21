@@ -388,7 +388,7 @@ function claimTone(status: string | null | undefined): StatusTone {
   if (status === 'blocked') {
     return 'danger';
   }
-  if (status === 'warning' || status === 'unresolved') {
+  if (status === 'warning' || status === 'unresolved' || status === 'stale') {
     return 'warning';
   }
   if (status === 'ready') {
@@ -403,6 +403,9 @@ function claimStatusLabel(status: string | null | undefined): string {
   }
   if (status === 'blocked') {
     return 'blocked';
+  }
+  if (status === 'stale') {
+    return 'stale';
   }
   if (status === 'warning') {
     return 'warning';
@@ -420,10 +423,27 @@ function preflightStatusLabel(status: string | null | undefined): string {
   if (status === 'blocked') {
     return 'blocked';
   }
+  if (status === 'stale') {
+    return 'stale';
+  }
   if (status === 'unresolved') {
     return 'unresolved';
   }
   return '未读取';
+}
+
+function preflightFreshnessLabel(preflight: WorkflowActionPreflightProjection | null): string {
+  const freshness = preflight?.freshness;
+  if (!freshness) {
+    return 'freshness unknown';
+  }
+  if (freshness.status === 'fresh' && freshness.age_seconds !== null) {
+    return `fresh ${freshness.age_seconds}s`;
+  }
+  if (freshness.status === 'stale' && freshness.age_seconds !== null) {
+    return `stale ${freshness.age_seconds}s`;
+  }
+  return `freshness ${freshness.status}`;
 }
 
 function readRecordField(record: Record<string, unknown>, key: string): Record<string, unknown> {
@@ -558,6 +578,7 @@ function actionPreflightSummary(preflight: WorkflowActionPreflightProjection | n
   }
   return firstNonEmptyText(
     [
+      preflight.refresh_required ? preflight.freshness?.reasons[0] : null,
       preflight.blockers[0],
       preflight.unresolved[0],
       `Action ${preflight.action_id} requires ${preflight.required_claim_id}: ${preflight.status}.`,
@@ -788,6 +809,7 @@ function AgentJobRow({
               preflight {preflightStatusLabel(actionPreflight.status)}
             </StatusPill>
           ) : null}
+          {actionPreflight?.refresh_required ? <StatusPill tone="warning">refresh required</StatusPill> : null}
           {exportFormat ? <StatusPill tone="neutral">{exportFormat}</StatusPill> : null}
           {exportFilename ? <StatusPill tone="info">{exportFilename}</StatusPill> : null}
           {jobMetadataText(job, 'progress_message') ? (
@@ -843,6 +865,10 @@ function DetailPanel({
                   <StatusPill tone={claimTone(actionPreflight.status)}>{preflightStatusLabel(actionPreflight.status)}</StatusPill>
                   <StatusPill tone={actionPreflight.can_proceed ? 'success' : 'danger'}>can proceed {String(actionPreflight.can_proceed)}</StatusPill>
                   <StatusPill tone={actionPreflight.require_ready ? 'warning' : 'neutral'}>require ready {String(actionPreflight.require_ready)}</StatusPill>
+                  <StatusPill tone={actionPreflight.refresh_required ? 'warning' : actionPreflight.freshness?.status === 'fresh' ? 'success' : 'neutral'}>
+                    {preflightFreshnessLabel(actionPreflight)}
+                  </StatusPill>
+                  {actionPreflight.refresh_required ? <StatusPill tone="warning">refresh required</StatusPill> : null}
                 </div>
                 <p className="mt-2 break-words text-xs leading-5 text-foreground/70">
                   {actionPreflightSummary(actionPreflight)}
@@ -964,6 +990,7 @@ export function ResearchWorkflowSpine({
   const visibleReadinessClaims = readinessClaims?.claims.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
   const preflightBlocked = actionPreflight?.status === 'blocked' || actionPreflight?.can_proceed === false;
   const preflightUnresolved = actionPreflight?.status === 'unresolved';
+  const preflightRefreshRequired = actionPreflight?.refresh_required === true || actionPreflight?.freshness?.refresh_required === true;
 
   return (
     <section
@@ -1125,6 +1152,10 @@ export function ResearchWorkflowSpine({
               <StatusPill tone={actionPreflight?.require_ready ? 'warning' : 'neutral'}>
                 require ready {actionPreflight ? String(actionPreflight.require_ready) : 'unknown'}
               </StatusPill>
+              <StatusPill tone={preflightRefreshRequired ? 'warning' : actionPreflight?.freshness?.status === 'fresh' ? 'success' : 'neutral'}>
+                {preflightFreshnessLabel(actionPreflight)}
+              </StatusPill>
+              {preflightRefreshRequired ? <StatusPill tone="warning">refresh required</StatusPill> : null}
               {actionPreflight ? <StatusPill tone="neutral">{actionPreflight.action_id}</StatusPill> : null}
               {actionPreflight ? <StatusPill tone={claimTone(actionPreflight.claim_status)}>{actionPreflight.required_claim_id}</StatusPill> : null}
               {actionPreflight && preflightUnresolved ? <StatusPill tone="warning">needs gate proof</StatusPill> : null}

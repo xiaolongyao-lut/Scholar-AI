@@ -152,6 +152,10 @@ def _preflight_header_value(preflight: dict[str, Any] | None) -> str:
         "can_proceed": bool(preflight.get("can_proceed")),
         "claim_status": preflight.get("claim_status"),
         "gate_status": preflight.get("gate_status"),
+        "refresh_required": bool(preflight.get("refresh_required")),
+        "freshness_status": (preflight.get("freshness") or {}).get("status")
+        if isinstance(preflight.get("freshness"), dict)
+        else None,
     }
     return json.dumps(header, ensure_ascii=True, sort_keys=True)
 
@@ -1444,6 +1448,7 @@ async def export_docx(req: ExportDocxRequest):
         filename=filename,
         headers={
             "X-LitAssist-Export-Quality": quality.to_header(),
+            "X-Scholar-AI-Action-Preflight": _preflight_header_value(action_preflight),
             "X-LitAssist-Action-Preflight": _preflight_header_value(action_preflight),
         },
         background=BackgroundTask(_cleanup_export_tmp_dir, tmp_dir),

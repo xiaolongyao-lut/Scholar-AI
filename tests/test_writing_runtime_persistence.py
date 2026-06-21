@@ -707,6 +707,62 @@ def test_writing_readiness_claims_do_not_treat_export_ready_as_ready_without_int
     assert claims["summary"]["unresolved_is_ready"] is False
 
 
+@pytest.mark.persistence_smoke
+def test_action_preflight_requires_refresh_for_stale_workflow_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Command preflight should block stale gate snapshots before export actions."""
+
+    import writing_runtime as writing_runtime_module
+
+    db_path = tmp_path / "action_preflight_freshness.sqlite3"
+    runtime = WritingRuntime(database_path=db_path, autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-preflight-freshness"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="export stale paper",
+        metadata={"project_id": "project-preflight-freshness"},
+    )
+    monkeypatch.setattr(writing_runtime_module, "utc_now_iso_z", lambda: "2026-06-21T00:00:00Z")
+    state = runtime.update_writing_workflow_state(
+        job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-preflight-freshness"},
+        evidence_refs=[{"ref_id": "chunk:freshness", "material_id": "material-freshness"}],
+        citation_bank=[{"citation_id": "cite:freshness", "ref_id": "chunk:freshness"}],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "freshness.docx"},
+        change_log=[{"stage": "export", "summary": "export manifest exists"}],
+    )
+
+    monkeypatch.setattr(writing_runtime_module, "utc_now_iso_z", lambda: "2026-06-21T00:30:01Z")
+    preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=job.job_id,
+        project_id="project-preflight-freshness",
+        require_ready=True,
+        workflow_state=state,
+    )
+
+    assert preflight["schema_version"] == "scholar_ai_action_preflight_v1"
+    assert preflight["freshness"]["schema_version"] == "scholar_ai_action_preflight_freshness_v1"
+    assert preflight["freshness"]["status"] == "stale"
+    assert preflight["freshness"]["refresh_required"] is True
+    assert preflight["refresh_required"] is True
+    assert preflight["can_proceed"] is False
+    assert preflight["summary"]["refresh_required"] is True
+    assert preflight["summary"]["freshness_status"] == "stale"
+    assert any("exceeding" in item for item in preflight["unresolved"])
+    assert any(action.startswith("Rebuild the Workflow Passport") for action in preflight["freshness"]["refresh_actions"])
+
+
 @pytest.mark.asyncio
 async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path: Path) -> None:
     """Agent handoff cards should survive runtime reload as metadata and artifact."""

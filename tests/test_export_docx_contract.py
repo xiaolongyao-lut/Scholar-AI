@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 
@@ -172,3 +173,26 @@ def test_export_docx_action_preflight_blocks_when_required() -> None:
     assert preflight["require_ready"] is True
     assert preflight["can_proceed"] is False
     assert preflight["summary"]["unresolved_is_ready"] is False
+    assert preflight["freshness"]["schema_version"] == "scholar_ai_action_preflight_freshness_v1"
+    assert preflight["refresh_required"] is False
+
+
+def test_export_docx_action_preflight_header_exposes_freshness_when_observing() -> None:
+    """Non-blocking DOCX export should still expose command-preflight freshness."""
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/export/docx",
+        json={
+            "title": "Observable DOCX",
+            "html": "<p>Draft body.</p>",
+            "project_id": "project-docx-preflight-observe",
+        },
+    )
+
+    assert response.status_code == 200
+    header = json.loads(response.headers["x-scholar-ai-action-preflight"])
+    assert header["schema_version"] == "scholar_ai_action_preflight_v1"
+    assert header["action_id"] == "export.docx"
+    assert header["refresh_required"] is False
+    assert header["freshness_status"] in {"fresh", "unknown", "stale"}

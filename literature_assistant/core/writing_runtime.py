@@ -18,6 +18,7 @@ import logging
 import os
 import sqlite3
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
@@ -101,6 +102,8 @@ _WORKFLOW_PASSPORT_SCHEMA_VERSION = "scholar_ai_workflow_passport_v1"
 _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION = "scholar_ai_evidence_integrity_gate_v1"
 _AGENT_HANDOFF_CARD_SCHEMA_VERSION = "scholar_ai_agent_handoff_card_v1"
 _ACTION_PREFLIGHT_SCHEMA_VERSION = "scholar_ai_action_preflight_v1"
+_ACTION_PREFLIGHT_FRESHNESS_SCHEMA_VERSION = "scholar_ai_action_preflight_freshness_v1"
+_ACTION_PREFLIGHT_MAX_AGE_SECONDS = 900
 _AGENT_HANDOFF_CARD_KEY = "agent_handoff_card"
 _WORKFLOW_ENFORCEMENT_SCHEMA_VERSION = "scholar_ai_workflow_enforcement_v1"
 _READINESS_CLAIM_DEFINITIONS: tuple[dict[str, Any], ...] = (
@@ -1195,6 +1198,192 @@ def _workflow_claim_by_id(readiness_claims: dict[str, Any], claim_id: str) -> di
     return None
 
 
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    """Parse bounded ISO 8601 timestamps used by runtime projections.
+
+    Args:
+        value: Candidate timestamp string in UTC ``Z`` or offset form.
+
+    Returns:
+        A timezone-aware UTC datetime, or ``None`` when the value is absent or
+        malformed. Malformed timestamps are intentionally treated as freshness
+        risk instead of raising through export paths.
+    """
+
+    if not isinstance(value, str):
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _iso_from_utc(value: datetime) -> str:
+    """Return a compact UTC ISO timestamp for freshness diagnostics."""
+
+    if not isinstance(value, datetime):
+        raise TypeError("value must be a datetime")
+    normalized = value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return normalized.isoformat().replace("+00:00", "Z")
+
+
+def _collect_projection_timestamps(
+    *,
+    passport: dict[str, Any],
+    gate: dict[str, Any],
+    readiness_claims: dict[str, Any],
+    workflow_state: dict[str, Any] | None,
+    generated_at: str,
+) -> list[tuple[str, datetime]]:
+    """Collect timestamps that bound how fresh an action preflight can be."""
+
+    rows: list[tuple[str, datetime]] = []
+    for label, payload in (
+        ("action_preflight.generated_at", {"generated_at": generated_at}),
+        ("workflow_passport.generated_at", passport),
+        ("evidence_integrity_gate.generated_at", gate),
+    ):
+        parsed = _parse_iso_datetime(payload.get("generated_at") if isinstance(payload, dict) else None)
+        if parsed is not None:
+            rows.append((label, parsed))
+    if isinstance(workflow_state, dict):
+        parsed_state = _parse_iso_datetime(workflow_state.get("updated_at"))
+        if parsed_state is not None:
+            rows.append(("writing_workflow_state.updated_at", parsed_state))
+    for index, claim in enumerate(readiness_claims.get("claims") if isinstance(readiness_claims.get("claims"), list) else []):
+        if not isinstance(claim, dict):
+            continue
+        for evidence_index, evidence in enumerate(claim.get("evidence") if isinstance(claim.get("evidence"), list) else []):
+            if not isinstance(evidence, dict):
+                continue
+            for key in ("updated_at", "created_at", "timestamp", "generated_at"):
+                parsed_evidence = _parse_iso_datetime(evidence.get(key))
+                if parsed_evidence is not None:
+                    rows.append((f"readiness_claims.{index}.evidence.{evidence_index}.{key}", parsed_evidence))
+                    break
+    return rows
+
+
+def _action_preflight_freshness(
+    *,
+    passport: dict[str, Any],
+    gate: dict[str, Any],
+    readiness_claims: dict[str, Any],
+    workflow_state: dict[str, Any] | None,
+    generated_at: str,
+    max_age_seconds: int = _ACTION_PREFLIGHT_MAX_AGE_SECONDS,
+) -> dict[str, Any]:
+    """Return staleness diagnostics for command preflight projections.
+
+    Args:
+        passport: Workflow passport projection used by the action preflight.
+        gate: Evidence integrity gate projection used by the action preflight.
+        readiness_claims: Gate-derived readiness claims.
+        workflow_state: Optional just-built writing state attached to export
+            commands.
+        generated_at: Action preflight generation timestamp.
+        max_age_seconds: Maximum allowed age for command-preflight evidence.
+
+    Returns:
+        JSON-safe freshness payload. ``refresh_required`` is true when the
+        projection is stale or has no trustworthy timestamp evidence.
+    """
+
+    if not isinstance(passport, dict):
+        raise ValueError("passport must be an object")
+    if not isinstance(gate, dict):
+        raise ValueError("gate must be an object")
+    if not isinstance(readiness_claims, dict):
+        raise ValueError("readiness_claims must be an object")
+    if workflow_state is not None and not isinstance(workflow_state, dict):
+        raise ValueError("workflow_state must be an object when provided")
+    if max_age_seconds <= 0:
+        raise ValueError("max_age_seconds must be positive")
+
+    generated_dt = _parse_iso_datetime(generated_at)
+    if generated_dt is None:
+        return {
+            "schema_version": _ACTION_PREFLIGHT_FRESHNESS_SCHEMA_VERSION,
+            "status": "unknown",
+            "refresh_required": True,
+            "max_age_seconds": int(max_age_seconds),
+            "age_seconds": None,
+            "oldest_evidence_at": None,
+            "expires_at": None,
+            "checked_at": generated_at,
+            "reasons": ["Action preflight generated_at is missing or invalid."],
+            "refresh_actions": [
+                "Rebuild the Workflow Passport and Evidence Integrity Gate before executing this command."
+            ],
+            "sources": [],
+        }
+
+    timestamp_rows = _collect_projection_timestamps(
+        passport=passport,
+        gate=gate,
+        readiness_claims=readiness_claims,
+        workflow_state=workflow_state,
+        generated_at=generated_at,
+    )
+    if not timestamp_rows:
+        return {
+            "schema_version": _ACTION_PREFLIGHT_FRESHNESS_SCHEMA_VERSION,
+            "status": "unknown",
+            "refresh_required": True,
+            "max_age_seconds": int(max_age_seconds),
+            "age_seconds": None,
+            "oldest_evidence_at": None,
+            "expires_at": None,
+            "checked_at": generated_at,
+            "reasons": ["No timestamped workflow evidence was available for command preflight freshness."],
+            "refresh_actions": [
+                "Rebuild the Workflow Passport and Evidence Integrity Gate before executing this command."
+            ],
+            "sources": [],
+        }
+
+    oldest_label, oldest_dt = min(timestamp_rows, key=lambda item: item[1])
+    newest_label, newest_dt = max(timestamp_rows, key=lambda item: item[1])
+    age_seconds = max(0, int((generated_dt - oldest_dt).total_seconds()))
+    expires_dt = oldest_dt + timedelta(seconds=int(max_age_seconds))
+    status = "stale" if age_seconds > max_age_seconds else "fresh"
+    refresh_required = status != "fresh"
+    reasons: list[str] = []
+    if refresh_required:
+        reasons.append(
+            f"Oldest preflight evidence is {age_seconds} seconds old, exceeding {max_age_seconds} seconds."
+        )
+    else:
+        reasons.append("Action preflight evidence is within the freshness window.")
+    return {
+        "schema_version": _ACTION_PREFLIGHT_FRESHNESS_SCHEMA_VERSION,
+        "status": status,
+        "refresh_required": refresh_required,
+        "max_age_seconds": int(max_age_seconds),
+        "age_seconds": age_seconds,
+        "oldest_evidence_at": _iso_from_utc(oldest_dt),
+        "newest_evidence_at": _iso_from_utc(newest_dt),
+        "expires_at": _iso_from_utc(expires_dt),
+        "checked_at": generated_at,
+        "reasons": reasons,
+        "refresh_actions": [
+            "Rebuild the Workflow Passport and Evidence Integrity Gate before executing this command."
+        ] if refresh_required else [],
+        "sources": [
+            {"label": label, "timestamp": _iso_from_utc(timestamp)}
+            for label, timestamp in sorted(timestamp_rows, key=lambda item: item[0])[:16]
+        ],
+        "oldest_source": oldest_label,
+        "newest_source": newest_label,
+    }
+
+
 def _workflow_action_preflight_payload(
     *,
     action_id: str,
@@ -1244,7 +1433,16 @@ def _workflow_action_preflight_payload(
     current_stage_id = _safe_projection_string(passport.get("current_stage_id"))
     stage_summary = passport.get("gate_summary") if isinstance(passport.get("gate_summary"), dict) else {}
     readiness_ok = claim_status in {"ready", "warning"}
-    hard_blocked = bool(require_ready and not readiness_ok)
+    generated_at = utc_now_iso_z()
+    freshness = _action_preflight_freshness(
+        passport=passport,
+        gate=gate,
+        readiness_claims=readiness_claims,
+        workflow_state=workflow_state,
+        generated_at=generated_at,
+    )
+    refresh_required = bool(freshness.get("refresh_required"))
+    hard_blocked = bool(require_ready and (not readiness_ok or refresh_required))
 
     blockers: list[str] = []
     unresolved: list[str] = []
@@ -1258,6 +1456,12 @@ def _workflow_action_preflight_payload(
         _append_unique_text(unresolved, message, max_items=12)
     if claim is None:
         _append_unique_text(unresolved, f"Readiness claim {normalized_claim_id} was not found.", max_items=12)
+    if refresh_required:
+        refresh_reason = next(
+            (str(reason) for reason in freshness.get("reasons", []) if _safe_projection_string(reason) is not None),
+            "Action preflight evidence must be refreshed before command execution.",
+        )
+        _append_unique_text(unresolved, refresh_reason, max_items=12)
     if hard_blocked and not blockers and claim_status == "blocked":
         _append_unique_text(blockers, "Required readiness claim is blocked.", max_items=12)
     if hard_blocked and not unresolved and claim_status != "blocked":
@@ -1287,17 +1491,28 @@ def _workflow_action_preflight_payload(
         max_items=16,
     )
 
+    if claim_status == "blocked" or blockers:
+        status = "blocked"
+    elif refresh_required:
+        status = "stale"
+    elif readiness_ok:
+        status = "ready"
+    else:
+        status = "unresolved"
+
     return {
         "schema_version": _ACTION_PREFLIGHT_SCHEMA_VERSION,
-        "generated_at": utc_now_iso_z(),
+        "generated_at": generated_at,
         "action_id": normalized_action_id,
         "required_claim_id": normalized_claim_id,
         "require_ready": bool(require_ready),
-        "status": "blocked" if hard_blocked else ("ready" if readiness_ok else "unresolved"),
+        "status": status,
         "can_proceed": not hard_blocked,
         "claim_status": claim_status,
         "gate_status": gate_status,
         "current_stage_id": current_stage_id,
+        "freshness": freshness,
+        "refresh_required": refresh_required,
         "blockers": blockers[:12],
         "unresolved": unresolved[:12],
         "evidence": evidence[:16],
@@ -1305,6 +1520,9 @@ def _workflow_action_preflight_payload(
             "hard_blocked": hard_blocked,
             "unresolved_is_ready": False,
             "readiness_ok": readiness_ok,
+            "refresh_required": refresh_required,
+            "freshness_status": freshness.get("status"),
+            "freshness_max_age_seconds": freshness.get("max_age_seconds"),
             "workflow_gate_summary": dict(stage_summary),
             "workflow_state_phase": workflow_state.get("phase") if isinstance(workflow_state, dict) else None,
         },
