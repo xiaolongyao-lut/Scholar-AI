@@ -109,6 +109,8 @@ def create_mcp_server(
         "literature.agent_request_read": runtime.agent_request_read,
         "literature.agent_handoff_card": runtime.agent_handoff_card,
         "literature.behavior_eval_pack": runtime.behavior_eval_pack,
+        "literature.workflow_passport": runtime.workflow_passport,
+        "literature.evidence_integrity_gate": runtime.evidence_integrity_gate,
         "literature.agent_resource_read": runtime.agent_resource_read,
         "literature.agent_progress": runtime.agent_progress,
         "literature.agent_result": runtime.agent_result,
@@ -552,6 +554,36 @@ def create_mcp_server(
             observations=observations,
             include_cases=include_cases,
             write_record=write_record,
+        )
+
+    @mcp.tool(name="literature.workflow_passport", structured_output=True)
+    def literature_workflow_passport(
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Read the runtime workflow passport projection."""
+        return runtime.workflow_passport(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+
+    @mcp.tool(name="literature.evidence_integrity_gate", structured_output=True)
+    def literature_evidence_integrity_gate(
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Read the runtime evidence integrity gate projection."""
+        return runtime.evidence_integrity_gate(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
         )
 
     @mcp.tool(name="literature.agent_resource_read", structured_output=True)

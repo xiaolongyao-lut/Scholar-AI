@@ -1242,6 +1242,85 @@ def test_behavior_eval_pack_rejects_unbounded_observation_payload(
     assert backend.calls == []
 
 
+def test_workflow_passport_reads_runtime_projection(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Workflow passport should expose the backend read-only stage ledger to MCP."""
+
+    backend.set_json(
+        "/runtime/workflow-passport",
+        {
+            "schema_version": "scholar_ai_workflow_passport_v1",
+            "scope": {"project_id": "project-1"},
+            "stages": [],
+            "gate_summary": {"blocking_stage_ids": []},
+        },
+    )
+
+    result = tools.workflow_passport(project_id=" project-1 ", limit=12)
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar_ai_workflow_passport_v1"
+    assert backend.calls[-1] == (
+        "json",
+        "/runtime/workflow-passport",
+        {"limit": 12, "project_id": "project-1"},
+    )
+
+
+def test_evidence_integrity_gate_reads_runtime_projection(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Evidence integrity gate should expose pass/warn/block/unresolved state to MCP."""
+
+    backend.set_json(
+        "/runtime/evidence-integrity-gate",
+        {
+            "schema_version": "scholar_ai_evidence_integrity_gate_v1",
+            "status": "unresolved",
+            "summary": {"unresolved_is_pass": False},
+            "signals": [],
+        },
+    )
+
+    result = tools.evidence_integrity_gate(
+        session_id=" session-1 ",
+        job_id=" job-1 ",
+        project_id=" project-1 ",
+        limit=25,
+    )
+
+    assert result["is_error"] is False
+    assert result["data"]["status"] == "unresolved"
+    assert backend.calls[-1] == (
+        "json",
+        "/runtime/evidence-integrity-gate",
+        {
+            "limit": 25,
+            "session_id": "session-1",
+            "job_id": "job-1",
+            "project_id": "project-1",
+        },
+    )
+
+
+def test_runtime_projection_tools_reject_invalid_bounds_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Projection tools should bound filters before hitting backend routes."""
+
+    with pytest.raises(ValueError, match="limit"):
+        tools.workflow_passport(limit=0)
+
+    with pytest.raises(ValueError, match="project_id"):
+        tools.evidence_integrity_gate(project_id=" " * 4)
+
+    assert backend.calls == []
+
+
 def test_single_paper_task_create_posts_local_task_payload(
     tools: RuntimeTools,
     backend: FakeBackend,

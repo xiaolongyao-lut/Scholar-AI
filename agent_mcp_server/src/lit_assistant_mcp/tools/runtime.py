@@ -1128,6 +1128,60 @@ class RuntimeTools:
         result = safe_result(payload)
         return self._finish("literature.behavior_eval_pack", args, result, started, "local://behavior-eval-pack")
 
+    def workflow_passport(
+        self,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Read the workflow passport projection for runtime research state.
+
+        Args:
+            session_id: Optional runtime session filter.
+            job_id: Optional runtime job filter.
+            project_id: Optional Scholar AI project filter.
+            limit: Maximum runtime records considered by the backend.
+        """
+        started = time.perf_counter()
+        params = self._runtime_projection_params(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+        endpoint = "/runtime/workflow-passport"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.workflow_passport", params, result, started, endpoint)
+
+    def evidence_integrity_gate(
+        self,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Read the evidence integrity gate projection for runtime research state.
+
+        Args:
+            session_id: Optional runtime session filter.
+            job_id: Optional runtime job filter.
+            project_id: Optional Scholar AI project filter.
+            limit: Maximum runtime records considered by the backend.
+        """
+        started = time.perf_counter()
+        params = self._runtime_projection_params(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+        endpoint = "/runtime/evidence-integrity-gate"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.evidence_integrity_gate", params, result, started, endpoint)
+
     def agent_resource_read(
         self,
         ref_id: str,
@@ -1751,6 +1805,29 @@ class RuntimeTools:
         path = root / f"behavior-eval-{stamp}-{uuid4().hex[:8]}.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
         return str(path)
+
+    def _runtime_projection_params(
+        self,
+        *,
+        session_id: str | None,
+        job_id: str | None,
+        project_id: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        """Return bounded query params for read-only runtime projections."""
+
+        params: dict[str, Any] = {
+            "limit": self._bounded_int(limit, "limit", minimum=1, maximum=1000),
+        }
+        for key, value in {
+            "session_id": session_id,
+            "job_id": job_id,
+            "project_id": project_id,
+        }.items():
+            if value is None:
+                continue
+            params[key] = self._bounded_text(str(value), key, max_chars=200)
+        return params
 
     def _citation_overlap_anchors(self, value: list[dict[str, Any]]) -> list[dict[str, str]]:
         if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
