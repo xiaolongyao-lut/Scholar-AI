@@ -19,15 +19,21 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { StatusPill, type StatusTone } from '@/components/common/StatusPill';
 import {
   getAgentBridgeStatus,
+  getAgentWorkflowHealth,
   getAgentWorkspaceStatus,
+  getZoteroAttachmentHealth,
   listRuntimeJobs,
+  type AgentWorkflowHealthCheck,
   type AgentWorkspaceArtifact,
   type AgentWorkspaceAuditRecord,
   type AgentWorkspaceStatus,
   type AgentBridgeStatus,
   type RuntimeJobsStatus,
+  type ZoteroAttachmentHealth,
 } from '@/services/agentWorkspaceApi';
+import { getWikiReview } from '@/services/wikiApi';
 import type { WritingJob } from '@/types/runtime';
+import type { WikiReviewListModel } from '@/types/wiki';
 
 type WorkspaceTab = 'agents' | 'artifacts' | 'audit';
 
@@ -223,6 +229,270 @@ function jobMetadataText(job: WritingJob, key: string): string {
   return typeof value === 'string' ? value : '';
 }
 
+function workflowSummaryText(job: WritingJob, key: string): string {
+  const summary = job.writing_workflow_state_summary;
+  if (!summary || typeof summary !== 'object') {
+    return '';
+  }
+  const value = summary[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function isVisibleRuntimeJob(job: WritingJob): boolean {
+  if (job.kind === 'resource_ingest' || job.kind === 'artifact_export') {
+    return true;
+  }
+  const summary = job.writing_workflow_state_summary;
+  return Boolean(summary && typeof summary === 'object' && Object.keys(summary).length > 0);
+}
+
+const ACTIVE_JOB_STATUSES = new Set(['queued', 'started', 'in_progress', 'paused', 'approval_pending']);
+
+interface ToolNextActionLike {
+  kind?: string | null;
+  message?: string | null;
+}
+
+interface ToolOutcomeLike {
+  reason?: string | null;
+  next_action?: ToolNextActionLike | null;
+}
+
+interface ReadinessCard {
+  id: string;
+  label: string;
+  statusLabel: string;
+  tone: StatusTone;
+  icon: React.ReactNode;
+  summary: string;
+  nextAction: string;
+  metrics: string[];
+}
+
+type ReadinessPanelDensity = 'default' | 'desktop-acceptance';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readNumberField(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function actionMessage(action: ToolNextActionLike | null | undefined): string {
+  const message = action?.message?.trim();
+  if (message) {
+    return message;
+  }
+  const kind = action?.kind?.trim();
+  return kind && kind !== 'none' ? kind : '';
+}
+
+function outcomeReason(outcome: ToolOutcomeLike | null | undefined, fallback: string): string {
+  const reason = outcome?.reason?.trim();
+  return reason || fallback;
+}
+
+function healthTone(status: string | null | undefined): StatusTone {
+  if (status === 'ok' || status === 'success') {
+    return 'success';
+  }
+  if (status === 'blocked' || status === 'failed' || status === 'auth_required' || status === 'config_needed') {
+    return 'danger';
+  }
+  if (status === 'degraded' || status === 'partial') {
+    return 'warning';
+  }
+  return 'neutral';
+}
+
+function healthStatusLabel(status: string | null | undefined): string {
+  if (status === 'ok' || status === 'success') {
+    return '已就绪';
+  }
+  if (status === 'blocked') {
+    return '阻塞';
+  }
+  if (status === 'degraded' || status === 'partial') {
+    return '需处理';
+  }
+  if (status === 'failed') {
+    return '失败';
+  }
+  if (status === 'config_needed') {
+    return '需配置';
+  }
+  return '未读取';
+}
+
+function isActiveJob(job: WritingJob): boolean {
+  return ACTIVE_JOB_STATUSES.has(String(job.status));
+}
+
+function isSinglePaperJob(job: WritingJob): boolean {
+  const intent = jobMetadataText(job, 'intent').toLowerCase();
+  const taskGoal = jobMetadataText(job, 'task_goal').toLowerCase();
+  const input = String(job.input_text || '').toLowerCase();
+  return [intent, taskGoal, input].some((text) => (
+    text.includes('single_paper')
+    || text.includes('single-paper')
+    || text.includes('deep_read')
+    || text.includes('单篇')
+    || text.includes('精读')
+  ));
+}
+
+function summarizeStatusCounts(value: unknown): string {
+  if (!isRecord(value)) {
+    return '';
+  }
+  const entries = Object.entries(value)
+    .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && entry[1] > 0)
+    .slice(0, 4);
+  return entries.map(([status, count]) => `${status} ${count}`).join(' · ');
+}
+
+function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
+  const recommendation = healthCheck?.recommendations?.find((item) => actionMessage(item));
+  return actionMessage(recommendation)
+    || actionMessage(healthCheck?.outcome.next_action)
+    || '继续当前本地流程。';
+}
+
+function buildReadinessCards({
+  workspaceStatus,
+  bridgeStatus,
+  runtimeJobsStatus,
+  healthCheck,
+  zoteroHealth,
+  wikiReview,
+  agentJobs,
+  auditRecords,
+}: {
+  workspaceStatus: AgentWorkspaceStatus | null;
+  bridgeStatus: AgentBridgeStatus | null;
+  runtimeJobsStatus: RuntimeJobsStatus | null;
+  healthCheck: AgentWorkflowHealthCheck | null;
+  zoteroHealth: ZoteroAttachmentHealth | null;
+  wikiReview: WikiReviewListModel | null;
+  agentJobs: WritingJob[];
+  auditRecords: AgentWorkspaceAuditRecord[];
+}): ReadinessCard[] {
+  const visibleRuntimeJobs = (runtimeJobsStatus?.recent ?? []).filter(isVisibleRuntimeJob);
+  const runtimeBlocked = bridgeStatus?.enabled === false;
+  const runtimeRead = bridgeStatus !== null || runtimeJobsStatus !== null;
+  const exportJobs = visibleRuntimeJobs.filter((job) => job.kind === 'artifact_export');
+  const exportFailed = exportJobs.filter((job) => job.status === 'failed').length;
+  const exportActive = exportJobs.filter(isActiveJob).length;
+  const exportCompleted = exportJobs.filter((job) => job.status === 'completed').length;
+  const singlePaperJobs = agentJobs.filter(isSinglePaperJob);
+  const singlePaperFailed = singlePaperJobs.filter((job) => job.status === 'failed').length;
+  const singlePaperActive = singlePaperJobs.filter(isActiveJob).length;
+  const auditErrors = auditRecords.filter((record) => record.error_code).length;
+  const blockedAudit = auditRecords.filter((record) => record.allow_block_reason.toLowerCase().includes('block')).length;
+  const reviewItems = wikiReview?.items ?? [];
+  const pendingReviewCount = reviewItems.filter((item) => item.status === 'pending').length;
+  const zoteroSummary = isRecord(zoteroHealth?.summary) ? zoteroHealth.summary : {};
+  const zoteroStatusCounts = summarizeStatusCounts(zoteroSummary.status_counts);
+  const inspectedItems = readNumberField(zoteroSummary, 'inspected_item_count');
+
+  return [
+    {
+      id: 'runtime',
+      label: '本地运行时',
+      statusLabel: runtimeBlocked ? '阻塞' : runtimeRead ? '已就绪' : '未读取',
+      tone: runtimeBlocked ? 'danger' : runtimeRead ? 'success' : 'neutral',
+      icon: <CheckCircle2 size={15} />,
+      summary: runtimeBlocked
+        ? 'Agent bridge 当前不可用。'
+        : `${bridgeStatus?.running_count ?? 0} 个运行中 · ${bridgeStatus?.pending_count ?? 0} 个等待 · ${visibleRuntimeJobs.length} 个本地任务`,
+      nextAction: runtimeBlocked ? '刷新或重启本地后端后再创建任务。' : '继续跟踪智能体和运行时任务。',
+      metrics: [
+        `agent ${bridgeStatus?.enabled === false ? 'disabled' : 'enabled'}`,
+        `jobs ${visibleRuntimeJobs.length}`,
+      ],
+    },
+    {
+      id: 'workflow-health',
+      label: '工作流检查',
+      statusLabel: healthStatusLabel(healthCheck?.status),
+      tone: healthTone(healthCheck?.status),
+      icon: <Activity size={15} />,
+      summary: outcomeReason(healthCheck?.outcome, '被动健康检查暂未返回。'),
+      nextAction: firstRecommendationMessage(healthCheck),
+      metrics: [
+        `checks ${healthCheck?.checks?.length ?? 0}`,
+        `actions ${healthCheck?.recommendations?.length ?? 0}`,
+      ],
+    },
+    {
+      id: 'zotero',
+      label: 'Zotero 附件',
+      statusLabel: healthStatusLabel(zoteroHealth?.status),
+      tone: healthTone(zoteroHealth?.status),
+      icon: <FileText size={15} />,
+      summary: zoteroHealth
+        ? inspectedItems > 0
+          ? `${inspectedItems} 条文献 · ${zoteroStatusCounts || zoteroHealth.status}`
+          : outcomeReason(zoteroHealth.outcome, 'Zotero 数据目录尚未配置或不可读。')
+        : 'Zotero 附件健康暂未读取。',
+      nextAction: actionMessage(zoteroHealth?.outcome.next_action) || '在设置中提供 Zotero data directory 后重新检查。',
+      metrics: [
+        `snapshot ${zoteroHealth?.snapshot_used ? 'yes' : 'no'}`,
+        `returned ${readNumberField(zoteroSummary, 'returned_item_count')}`,
+      ],
+    },
+    {
+      id: 'single-paper',
+      label: '单篇精读',
+      statusLabel: singlePaperFailed > 0 ? '失败' : singlePaperActive > 0 ? '进行中' : singlePaperJobs.length > 0 ? '已就绪' : '待创建',
+      tone: singlePaperFailed > 0 ? 'danger' : singlePaperActive > 0 ? 'warning' : singlePaperJobs.length > 0 ? 'success' : 'neutral',
+      icon: <Bot size={15} />,
+      summary: singlePaperJobs.length > 0
+        ? `${singlePaperJobs.length} 个精读任务 · ${singlePaperActive} 个进行中 · ${singlePaperFailed} 个失败`
+        : '还没有可见的单篇精读任务。',
+      nextAction: singlePaperJobs.length > 0 ? '打开任务详情检查待补充哨兵和 evidence refs。' : '从材料记录创建单篇精读任务。',
+      metrics: [
+        `active ${singlePaperActive}`,
+        `failed ${singlePaperFailed}`,
+      ],
+    },
+    {
+      id: 'review',
+      label: 'Review Queue',
+      statusLabel: pendingReviewCount > 0 ? '待处理' : wikiReview ? '已清空' : '未读取',
+      tone: pendingReviewCount > 0 ? 'warning' : wikiReview ? 'success' : 'neutral',
+      icon: <TerminalSquare size={15} />,
+      summary: wikiReview
+        ? `${pendingReviewCount} 个待审 · ${reviewItems.length} 个总项`
+        : 'Wiki ReviewQueue 暂未读取。',
+      nextAction: pendingReviewCount > 0 ? '进入 Wiki 工作台复核待审页面。' : '继续让 wiki 候选进入人工复核队列。',
+      metrics: [
+        `pending ${pendingReviewCount}`,
+        `items ${reviewItems.length}`,
+      ],
+    },
+    {
+      id: 'export-audit',
+      label: '导出与审计',
+      statusLabel: auditErrors > 0 || exportFailed > 0 ? '需处理' : exportActive > 0 ? '进行中' : exportCompleted > 0 ? '已就绪' : '待生成',
+      tone: auditErrors > 0 || exportFailed > 0 ? 'danger' : exportActive > 0 ? 'warning' : exportCompleted > 0 ? 'success' : 'neutral',
+      icon: <FolderOpen size={15} />,
+      summary: `${exportCompleted} 个导出完成 · ${exportActive} 个进行中 · ${auditErrors + blockedAudit} 条审计需看`,
+      nextAction: auditErrors > 0 || exportFailed > 0
+        ? '先处理失败导出或审计错误，再生成交付产物。'
+        : workspaceStatus?.artifact_count
+        ? '检查本地产物预览和写作导出清单。'
+        : '完成写作导出后在这里检查 artifact readiness。',
+      metrics: [
+        `artifacts ${workspaceStatus?.artifact_count ?? 0}`,
+        `audit ${auditRecords.length}`,
+      ],
+    },
+  ];
+}
+
 function AgentJobRow({
   job,
   selected,
@@ -236,6 +506,10 @@ function AgentJobRow({
   const host = jobMetadataText(job, 'agent_host') || 'agent';
   const label = job.input_text?.trim() || intent;
   const isResourceIngest = job.kind === 'resource_ingest';
+  const isWritingExport = job.kind === 'artifact_export';
+  const workflowPhase = workflowSummaryText(job, 'phase');
+  const exportFilename = workflowSummaryText(job, 'export_filename');
+  const exportFormat = workflowSummaryText(job, 'export_format');
   return (
     <button
       type="button"
@@ -251,10 +525,14 @@ function AgentJobRow({
       <span className="min-w-0 flex-1">
         <span className="block truncate font-label text-sm font-medium text-foreground">{label}</span>
         <span className="mt-0.5 block truncate text-[11px] text-foreground/45">
-          {isResourceIngest ? 'runtime job · resource_ingest' : `${intent} · ${host}`}
+          {isResourceIngest ? 'runtime job · resource_ingest' : isWritingExport ? 'runtime job · artifact_export' : `${intent} · ${host}`}
         </span>
         <span className="mt-1 flex flex-wrap items-center gap-1.5">
           <StatusPill tone={jobStatusTone(job)}>{job.status}</StatusPill>
+          {isWritingExport ? <StatusPill tone="info">写作导出</StatusPill> : null}
+          {workflowPhase ? <StatusPill tone="neutral">{workflowPhase}</StatusPill> : null}
+          {exportFormat ? <StatusPill tone="neutral">{exportFormat}</StatusPill> : null}
+          {exportFilename ? <StatusPill tone="info">{exportFilename}</StatusPill> : null}
           {jobMetadataText(job, 'progress_message') ? (
             <StatusPill tone="info">{jobMetadataText(job, 'progress_message')}</StatusPill>
           ) : null}
@@ -381,10 +659,140 @@ function DetailPanel({
   );
 }
 
+export function ReadinessPanel({
+  loading,
+  error,
+  workspaceStatus,
+  bridgeStatus,
+  runtimeJobsStatus,
+  healthCheck,
+  zoteroHealth,
+  wikiReview,
+  agentJobs,
+  auditRecords,
+  density = 'default',
+}: {
+  loading: boolean;
+  error: string | null;
+  workspaceStatus: AgentWorkspaceStatus | null;
+  bridgeStatus: AgentBridgeStatus | null;
+  runtimeJobsStatus: RuntimeJobsStatus | null;
+  healthCheck: AgentWorkflowHealthCheck | null;
+  zoteroHealth: ZoteroAttachmentHealth | null;
+  wikiReview: WikiReviewListModel | null;
+  agentJobs: WritingJob[];
+  auditRecords: AgentWorkspaceAuditRecord[];
+  density?: ReadinessPanelDensity;
+}) {
+  const cards = buildReadinessCards({
+    workspaceStatus,
+    bridgeStatus,
+    runtimeJobsStatus,
+    healthCheck,
+    zoteroHealth,
+    wikiReview,
+    agentJobs,
+    auditRecords,
+  });
+  const isDesktopAcceptance = density === 'desktop-acceptance';
+
+  return (
+    <section
+      aria-label="本地就绪面板"
+      className={cn(
+        'min-w-0 max-w-full overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest',
+        isDesktopAcceptance ? 'mb-0 px-3 py-2' : 'mb-4 px-4 py-3',
+      )}
+      data-density={density}
+    >
+      <div className={cn(
+        'flex flex-col sm:flex-row sm:items-start sm:justify-between',
+        isDesktopAcceptance ? 'mb-2 gap-1.5' : 'mb-3 gap-2',
+      )}>
+        <div className="min-w-0">
+          <h2 className="font-display text-sm font-semibold text-foreground">本地就绪</h2>
+          <p className={cn(
+            'mt-0.5 text-foreground/50',
+            isDesktopAcceptance ? 'text-[11px] leading-4' : 'text-xs leading-5',
+          )}>
+            {error ? '主状态加载失败，保留最近一次可读诊断。' : '把任务、健康检查、Zotero、ReviewQueue、导出和审计汇成下一步。'}
+          </p>
+        </div>
+        <div role="status" className="flex shrink-0 items-center gap-1.5 text-xs text-foreground/45">
+          {loading ? (
+            <>
+              <Loader2 size={13} className="animate-spin" />
+              正在刷新本地诊断
+            </>
+          ) : error ? (
+            <>
+              <XCircle size={13} />
+              诊断需重试
+            </>
+          ) : (
+            <>
+              <CheckCircle2 size={13} />
+              已读取
+            </>
+          )}
+        </div>
+      </div>
+      <div className={cn(
+        'grid w-full max-w-full gap-2',
+        isDesktopAcceptance ? 'grid-cols-2' : 'md:grid-cols-2 xl:grid-cols-3',
+      )}>
+        {cards.map((card) => (
+          <article
+            key={card.id}
+            className={cn(
+              'min-w-0 overflow-hidden rounded-md border border-outline-variant/45 bg-surface-low',
+              isDesktopAcceptance ? 'px-2.5 py-2' : 'px-3 py-3',
+            )}
+          >
+            <div className={cn(
+              'flex min-w-0 items-center justify-between gap-2',
+              isDesktopAcceptance ? 'mb-1.5' : 'mb-2',
+            )}>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={cn(
+                  'flex shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary',
+                  isDesktopAcceptance ? 'h-6 w-6' : 'h-7 w-7',
+                )}>
+                  {card.icon}
+                </span>
+                <h3 className="truncate font-label text-xs font-semibold text-foreground">{card.label}</h3>
+              </div>
+              <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>
+            </div>
+            <p className={cn(
+              'break-words text-foreground/65',
+              isDesktopAcceptance ? 'min-h-[30px] text-[11px] leading-4' : 'min-h-[40px] text-xs leading-5',
+            )}>{card.summary}</p>
+            <p className={cn(
+              'break-words rounded-md border border-outline-variant/35 bg-surface-lowest px-2 text-foreground/55',
+              isDesktopAcceptance ? 'mt-1.5 py-1 text-[10px] leading-3' : 'mt-2 py-1.5 text-[11px] leading-4',
+            )}>
+              {card.nextAction}
+            </p>
+            <div className={cn('flex flex-wrap gap-1.5', isDesktopAcceptance ? 'mt-1.5' : 'mt-2')}>
+              {card.metrics.map((metric) => (
+                <StatusPill key={metric} tone="neutral">{metric}</StatusPill>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function AgentWorkspace() {
   const [status, setStatus] = useState<AgentWorkspaceStatus | null>(null);
   const [bridgeStatus, setBridgeStatus] = useState<AgentBridgeStatus | null>(null);
   const [runtimeJobsStatus, setRuntimeJobsStatus] = useState<RuntimeJobsStatus | null>(null);
+  const [healthCheck, setHealthCheck] = useState<AgentWorkflowHealthCheck | null>(null);
+  const [zoteroHealth, setZoteroHealth] = useState<ZoteroAttachmentHealth | null>(null);
+  const [wikiReview, setWikiReview] = useState<WikiReviewListModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>('agents');
@@ -397,14 +805,20 @@ export function AgentWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const [next, bridge, runtimeJobs] = await Promise.all([
+      const [next, bridge, runtimeJobs, workflowHealth, zotero, review] = await Promise.all([
         getAgentWorkspaceStatus(),
         getAgentBridgeStatus({ limit: 50 }).catch(() => null),
         listRuntimeJobs({ limit: 100 }).catch(() => null),
+        getAgentWorkflowHealth({ includeLive: false }).catch(() => null),
+        getZoteroAttachmentHealth({ maxItems: 20, writeReports: false }).catch(() => null),
+        getWikiReview().catch(() => null),
       ]);
       setStatus(next);
       setBridgeStatus(bridge);
       setRuntimeJobsStatus(runtimeJobs);
+      setHealthCheck(workflowHealth);
+      setZoteroHealth(zotero);
+      setWikiReview(review);
       setSelectedArtifactPath((current) => {
         if (current && next.artifacts.some((artifact) => artifact.path === current)) {
           return current;
@@ -414,7 +828,7 @@ export function AgentWorkspace() {
       setSelectedAgentJobId((current) => {
         const visibleJobs = [
           ...(bridge?.recent ?? []),
-          ...((runtimeJobs?.recent ?? []).filter((job) => job.kind === 'resource_ingest')),
+          ...((runtimeJobs?.recent ?? []).filter(isVisibleRuntimeJob)),
         ];
         if (current && visibleJobs.some((job) => job.job_id === current)) {
           return current;
@@ -430,6 +844,9 @@ export function AgentWorkspace() {
       setStatus(null);
       setBridgeStatus(null);
       setRuntimeJobsStatus(null);
+      setHealthCheck(null);
+      setZoteroHealth(null);
+      setWikiReview(null);
     } finally {
       setLoading(false);
     }
@@ -451,7 +868,7 @@ export function AgentWorkspace() {
     () => {
       const seen = new Set<string>();
       const merged = [
-        ...((runtimeJobsStatus?.recent ?? []).filter((job) => job.kind === 'resource_ingest')),
+        ...((runtimeJobsStatus?.recent ?? []).filter(isVisibleRuntimeJob)),
         ...(bridgeStatus?.recent ?? []),
       ].filter((job) => {
         if (seen.has(job.job_id)) return false;
@@ -492,9 +909,22 @@ export function AgentWorkspace() {
         <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <StatTile label="Agent Running" value={String(bridgeStatus?.running_count ?? 0)} icon={<Bot size={16} />} />
           <StatTile label="Agent Pending" value={String(bridgeStatus?.pending_count ?? 0)} icon={<Clock size={16} />} />
-          <StatTile label="Resource Ingest" value={String((runtimeJobsStatus?.recent ?? []).filter((job) => job.kind === 'resource_ingest').length)} icon={<FolderOpen size={16} />} />
+          <StatTile label="Runtime Jobs" value={String((runtimeJobsStatus?.recent ?? []).filter(isVisibleRuntimeJob).length)} icon={<FolderOpen size={16} />} />
           <StatTile label="Artifacts" value={String(status?.artifact_count ?? 0)} icon={<FolderOpen size={16} />} />
         </div>
+
+        <ReadinessPanel
+          loading={loading}
+          error={error}
+          workspaceStatus={status}
+          bridgeStatus={bridgeStatus}
+          runtimeJobsStatus={runtimeJobsStatus}
+          healthCheck={healthCheck}
+          zoteroHealth={zoteroHealth}
+          wikiReview={wikiReview}
+          agentJobs={agentJobs}
+          auditRecords={status?.audit_records ?? []}
+        />
 
         <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="inline-flex w-fit rounded-md border border-outline-variant/60 bg-surface-lowest p-1">

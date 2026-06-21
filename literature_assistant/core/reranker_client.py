@@ -465,19 +465,6 @@ def _resolve_rerank_targets(
     siliconflow_model = env_value("SILICONFLOW_RERANK_MODEL")
     dashscope_model = env_value("DASHSCOPE_RERANK_MODEL")
     legacy_model = env_value("RERANK_MODEL")
-    env_has_explicit_rerank_target = any(
-        value is not None
-        for value in (
-            siliconflow_specific_api_key,
-            dashscope_specific_api_key,
-            legacy_base_url,
-            legacy_model,
-            siliconflow_base_url,
-            siliconflow_model,
-            dashscope_base_url,
-            dashscope_model,
-        )
-    )
 
     # Runtime override (Settings UI) takes precedence over .env for users
     # who configured a local BGE rerank server or a different SiliconFlow
@@ -486,9 +473,9 @@ def _resolve_rerank_targets(
     try:
         from rerank_runtime_config import get_resolved_field as _rerank_override
 
-        override_provider = None if env_has_explicit_rerank_target else _rerank_override("provider")
-        override_base_url = None if env_has_explicit_rerank_target else _rerank_override("base_url")
-        override_model = None if env_has_explicit_rerank_target else _rerank_override("model")
+        override_provider = _rerank_override("provider")
+        override_base_url = _rerank_override("base_url")
+        override_model = _rerank_override("model")
     except Exception:
         override_provider = override_base_url = override_model = None
 
@@ -500,7 +487,7 @@ def _resolve_rerank_targets(
     # selection downstream still picks the right candidate.
     try:
         from rerank_runtime_config import get_resolved_field as _rerank_override
-        override_api_key = None if env_has_explicit_rerank_target else _rerank_override("api_key")
+        override_api_key = _rerank_override("api_key")
     except Exception:
         override_api_key = None
     if override_api_key:
@@ -529,7 +516,12 @@ def _resolve_rerank_targets(
         value is not None for value in (dashscope_base_url, dashscope_model)
     )
     use_legacy_siliconflow = provider == "siliconflow" and not any(
-        value is not None for value in (siliconflow_base_url, siliconflow_model)
+        value is not None for value in (
+            explicit_base_url,
+            explicit_model,
+            siliconflow_base_url,
+            siliconflow_model,
+        )
     )
 
     dashscope_target_base_url = (
@@ -786,10 +778,12 @@ def resolve_rerank_config(
         "RERANK_API_KEY",
         "RERANK_BASE_URL",
         "RERANK_MODEL",
+        "SILICONFLOW_API_KEY",
         "SILICONFLOW_RERANK_API_KEY",
         "SILICONFLOW_RERANK_BASE_URL",
         "SILICONFLOW_RERANK_MODEL",
         "DASHSCOPE_RERANK_API_KEY",
+        "DASHSCOPE_API_KEY",
         "DASHSCOPE_RERANK_BASE_URL",
         "DASHSCOPE_RERANK_MODEL",
     )

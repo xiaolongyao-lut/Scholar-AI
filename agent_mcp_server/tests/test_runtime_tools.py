@@ -125,6 +125,83 @@ def test_config_status_calls_health(tools: RuntimeTools, backend: FakeBackend) -
     assert backend.calls[-1] == ("json", "/health", None)
 
 
+def test_health_check_calls_passive_health_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """health_check should request passive diagnostics unless live is explicit."""
+
+    backend.set_json(
+        "/api/health/check",
+        {"schema_version": "scholar-ai-health-check/v1", "status": "degraded"},
+    )
+
+    result = tools.health_check()
+
+    assert result["is_error"] is False
+    assert result["data"]["status"] == "degraded"
+    assert backend.calls[-1] == ("json", "/api/health/check", {"include_live": False})
+
+
+def test_health_check_forwards_explicit_live_flag(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Explicit live intent is forwarded as a bounded boolean query param."""
+
+    tools.health_check(include_live=True)
+
+    assert backend.calls[-1] == ("json", "/api/health/check", {"include_live": True})
+
+
+def test_zotero_attachment_health_calls_read_only_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """zotero_attachment_health should delegate inspection to the backend route."""
+
+    backend.set_json(
+        "/api/zotero/attachment-health",
+        {"schema_version": "scholar-ai-zotero-attachment-health/v1", "status": "degraded"},
+    )
+
+    result = tools.zotero_attachment_health(
+        zotero_data_dir=" C:/Users/xiao/Zotero ",
+        allowed_root=" C:/Users/xiao/Zotero ",
+        min_text_chars=50,
+        max_items=20,
+        write_reports=False,
+    )
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "json",
+        "/api/zotero/attachment-health",
+        {
+            "zotero_data_dir": "C:/Users/xiao/Zotero",
+            "allowed_root": "C:/Users/xiao/Zotero",
+            "min_text_chars": 50,
+            "max_items": 20,
+            "write_reports": False,
+        },
+    )
+
+
+def test_zotero_attachment_health_rejects_invalid_bounds_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """MCP Zotero diagnostics should reject malformed bounds locally."""
+
+    with pytest.raises(ValueError, match="zotero_data_dir"):
+        tools.zotero_attachment_health("")
+
+    with pytest.raises(ValueError, match="max_items"):
+        tools.zotero_attachment_health("C:/Users/xiao/Zotero", max_items=0)
+
+    assert backend.calls == []
+
+
 def test_list_projects_uses_resources_prefix(tools: RuntimeTools, backend: FakeBackend) -> None:
     """list_projects calls the public /resources path."""
     backend.set_json("/resources/projects", [{"id": "p1"}])
@@ -454,6 +531,25 @@ def test_figures_candidates_uses_writing_alias_endpoint(
     )
 
 
+def test_figures_candidates_adds_actionable_empty_outcome(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Empty figure candidates should keep list data and add an outcome."""
+
+    backend.set_json("/api/writing/figures/candidates", [])
+
+    result = tools.figures_candidates("project-1")
+
+    assert result["is_error"] is False
+    assert result["data"] == []
+    assert result["outcome"]["schema_version"] == "scholar-ai-tool-outcome/v1"
+    assert result["outcome"]["status"] == "empty"
+    assert result["outcome"]["quality"] == "none"
+    assert result["outcome"]["next_action"]["kind"] == "scan_folder"
+    assert result["outcome"]["next_action"]["tool_name"] == "literature.project_scan_folder"
+
+
 def test_figures_generate_posts_synchronous_materialization_payload(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -473,6 +569,8 @@ def test_figures_generate_posts_synchronous_materialization_payload(
     )
 
     assert result["is_error"] is False
+    assert result["outcome"]["status"] == "success"
+    assert result["outcome"]["quality"] == "full"
     assert backend.calls[-1] == (
         "post_json",
         "/api/writing/figures/generate",
@@ -489,6 +587,31 @@ def test_figures_generate_posts_synchronous_materialization_payload(
     )
 
 
+def test_figures_generate_adds_next_action_when_no_assets_created(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Zero generated assets should be actionable without changing backend data."""
+
+    backend.set_json(
+        "/api/writing/figures/generate",
+        {
+            "project_id": "project-1",
+            "generated_count": 0,
+            "generated_assets": [],
+            "skipped_candidate_ids": [],
+            "message": "none",
+        },
+    )
+
+    result = tools.figures_generate("project-1")
+
+    assert result["data"]["generated_count"] == 0
+    assert result["outcome"]["status"] == "empty"
+    assert result["outcome"]["next_action"]["kind"] == "call_tool"
+    assert result["outcome"]["next_action"]["tool_name"] == "literature.figures_candidates"
+
+
 def test_citations_sources_uses_writing_metadata_endpoint(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -501,6 +624,22 @@ def test_citations_sources_uses_writing_metadata_endpoint(
         "/api/writing/citations/sources",
         {"project_id": "project-1"},
     )
+
+
+def test_citations_sources_adds_metadata_outcome(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Citation source listings should carry ToolOutcome-style diagnostics."""
+
+    backend.set_json("/api/writing/citations/sources", [{"source_id": "src-1"}])
+
+    result = tools.citations_sources("project-1")
+
+    assert result["data"] == [{"source_id": "src-1"}]
+    assert result["outcome"]["status"] == "success"
+    assert result["outcome"]["quality"] == "metadata_only"
+    assert result["outcome"]["attempts"][0]["metadata"]["item_count"] == 1
 
 
 def test_citations_detect_overlap_posts_bounded_anchor_payload(
@@ -550,6 +689,21 @@ def test_citations_detect_overlap_posts_bounded_anchor_payload(
             },
         },
     )
+
+
+def test_citations_detect_overlap_empty_result_is_successful(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """No overlap is a successful diagnostic result, not a blocked state."""
+
+    backend.set_json("/api/citations/detect_overlap", [])
+
+    result = tools.citations_detect_overlap("project-1", anchors=[])
+
+    assert result["data"] == []
+    assert result["outcome"]["status"] == "success"
+    assert result["outcome"]["reason"] == "No overlapping citation anchors were detected."
 
 
 def test_outline_generate_posts_evidence_grounded_request(
@@ -663,6 +817,9 @@ def test_export_docx_posts_html_and_writes_artifact(
         "citation_style=numeric;crossrefs=0;formulas=0;word_verify=requested_unavailable"
     )
     assert "content" not in result["data"]
+    assert result["outcome"]["schema_version"] == "scholar-ai-tool-outcome/v1"
+    assert result["outcome"]["status"] == "success"
+    assert result["outcome"]["quality"] == "full"
 
 
 def test_journal_style_spec_tools_post_reviewable_profile_payloads(
@@ -910,6 +1067,134 @@ def test_agent_request_create_posts_bounded_envelope(
     assert payload["payload"]["output_targets"]["wiki_candidate"] is True
     assert payload["payload"]["output_targets"]["graph_candidate"] is True
     assert payload["payload"]["output_targets"]["evolution_capture"] is True
+
+
+def test_single_paper_task_create_posts_local_task_payload(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Single-paper task creation must stay local to Scholar AI workflows."""
+
+    backend.set_json(
+        "/api/agent-bridge/single-paper-task",
+        {
+            "task_id": "paper_task_1",
+            "schema_version": "scholar-ai-single-paper-task/v1",
+            "outcome": {"status": "success"},
+        },
+    )
+
+    result = tools.single_paper_task_create(
+        project_id=" project-1 ",
+        material_id=" material-1 ",
+        task_goal=" 提炼论文写作方法 ",
+        output_language="bilingual",
+        target_document="deep_summary",
+        create_agent_request=False,
+        max_chars=8000,
+        max_chunks=6,
+    )
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/agent-bridge/single-paper-task",
+        {
+            "params": None,
+            "payload": {
+                "project_id": "project-1",
+                "material_id": "material-1",
+                "task_goal": "提炼论文写作方法",
+                "output_language": "bilingual",
+                "target_document": "deep_summary",
+                "create_agent_request": False,
+                "agent_host": "mcp",
+                "source": "mcp",
+                "max_chars": 8000,
+                "max_chunks": 6,
+            },
+        },
+    )
+    assert "feishu" not in str(backend.calls[-1]).lower()
+    assert "cloud_target" not in str(backend.calls[-1])
+
+
+def test_single_paper_task_create_rejects_external_upload_target(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Old cloud/export target names should be rejected before backend calls."""
+
+    with pytest.raises(ValueError, match="target_document"):
+        tools.single_paper_task_create("project-1", "material-1", target_document="feishu_draft")
+
+    assert backend.calls == []
+
+
+def test_single_paper_completion_check_posts_local_completion_payload(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Single-paper completion checks should post only local diagnostic fields."""
+
+    backend.set_json(
+        "/api/agent-bridge/single-paper-task/completion-check",
+        {
+            "schema_version": "scholar-ai-single-paper-completion-check/v1",
+            "completion_state": "complete",
+            "outcome": {"status": "success"},
+        },
+    )
+
+    result = tools.single_paper_completion_check(
+        output_text=" ## 论文元数据与附件健康检查\n完成 ",
+        task_manifest={
+            "task_id": "paper_task_1",
+            "required_output_sections": ["论文元数据与附件健康检查"],
+        },
+        evidence_refs=[{"ref_id": "chunk:1", "kind": "chunk"}],
+        figure_table_refs=[{"ref_id": "figure:1", "kind": "figure"}],
+        lint_passed=True,
+        docx_artifact_path="workspace_artifacts/generated/output/paper.docx",
+    )
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/agent-bridge/single-paper-task/completion-check",
+        {
+            "params": None,
+            "payload": {
+                "output_text": "## 论文元数据与附件健康检查\n完成",
+                "task_manifest": {
+                    "task_id": "paper_task_1",
+                    "required_output_sections": ["论文元数据与附件健康检查"],
+                },
+                "evidence_refs": [{"ref_id": "chunk:1", "kind": "chunk"}],
+                "figure_table_refs": [{"ref_id": "figure:1", "kind": "figure"}],
+                "lint_passed": True,
+                "sentinel": "待补充",
+                "docx_artifact_path": "workspace_artifacts/generated/output/paper.docx",
+            },
+        },
+    )
+    assert "feishu" not in str(backend.calls[-1]).lower()
+    assert "cloud_target" not in str(backend.calls[-1])
+
+
+def test_single_paper_completion_check_rejects_empty_manifest(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Completion checks need the task manifest returned by task creation."""
+
+    with pytest.raises(ValueError, match="task_manifest"):
+        tools.single_paper_completion_check(
+            output_text="draft",
+            task_manifest={},
+        )
+
+    assert backend.calls == []
 
 
 def test_agent_request_list_uses_small_query_params(

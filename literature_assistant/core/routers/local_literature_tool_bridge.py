@@ -687,6 +687,13 @@ class LocalLiteratureToolUseRunner:
             manager=manager,
         )
 
+    @property
+    def offered_tool_count(self) -> int:
+        """Return provider-facing local tool count for router diagnostics."""
+
+        count = getattr(self._provider_runner, "offered_tool_count", 0)
+        return max(0, int(count))
+
     async def run(
         self,
         *,

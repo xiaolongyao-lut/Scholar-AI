@@ -99,6 +99,26 @@ def test_list_tree_only_includes_allowed_files(tools: SourceTools) -> None:
     assert all("workspace_artifacts/runtime_state" not in path for path in paths)
 
 
+def test_list_tree_blocks_parent_directory_root(tools: SourceTools) -> None:
+    """Directory roots must not escape the repository before allowlist checks."""
+    result = tools.list_tree("..", max_depth=2, max_entries=50)
+
+    assert result["is_error"] is True
+    assert result["error_code"] == "path_blocked"
+    assert result["data"] == []
+
+
+def test_list_tree_workspace_root_hides_denied_directories(tools: SourceTools) -> None:
+    """Workspace listings should show only visible source-policy directories."""
+    result = tools.list_tree(".", max_depth=4, max_entries=50)
+
+    assert result["is_error"] is False
+    paths = {entry["path"] for entry in result["data"]["entries"]}
+    assert "workspace_artifacts" not in paths
+    assert all(not path.startswith("workspace_artifacts/") for path in paths)
+    assert "literature_assistant/core/routers/chat_router.py" in paths
+
+
 def test_audit_log_is_written(source_repo: Path, tools: SourceTools) -> None:
     """Source tool calls write a redacted audit event."""
     tools.read_file("literature_assistant/core/routers/chat_router.py")

@@ -84,6 +84,8 @@ def create_mcp_server(
         "source.find_references": source.find_references,
         "source.explain_entrypoints": source.explain_entrypoints,
         "literature.config_status": runtime.config_status,
+        "literature.health_check": runtime.health_check,
+        "literature.zotero_attachment_health": runtime.zotero_attachment_health,
         "literature.list_projects": runtime.list_projects,
         "literature.list_materials": runtime.list_materials,
         "literature.read_material": runtime.read_material,
@@ -101,6 +103,8 @@ def create_mcp_server(
         "literature.export_docx": runtime.export_docx,
         "literature.agent_bridge_status": runtime.agent_bridge_status,
         "literature.agent_request_create": runtime.agent_request_create,
+        "literature.single_paper_task_create": runtime.single_paper_task_create,
+        "literature.single_paper_completion_check": runtime.single_paper_completion_check,
         "literature.agent_request_list": runtime.agent_request_list,
         "literature.agent_request_read": runtime.agent_request_read,
         "literature.agent_resource_read": runtime.agent_resource_read,
@@ -197,6 +201,28 @@ def create_mcp_server(
     def literature_config_status() -> dict[str, Any]:
         """Return Literature Assistant backend health."""
         return runtime.config_status()
+
+    @mcp.tool(name="literature.health_check", structured_output=True)
+    def literature_health_check(include_live: bool = False) -> dict[str, Any]:
+        """Return passive Scholar AI workflow readiness diagnostics."""
+        return runtime.health_check(include_live=include_live)
+
+    @mcp.tool(name="literature.zotero_attachment_health", structured_output=True)
+    def literature_zotero_attachment_health(
+        zotero_data_dir: str,
+        allowed_root: str | None = None,
+        min_text_chars: int = 200,
+        max_items: int = 500,
+        write_reports: bool = True,
+    ) -> dict[str, Any]:
+        """Return read-only Zotero attachment health diagnostics."""
+        return runtime.zotero_attachment_health(
+            zotero_data_dir=zotero_data_dir,
+            allowed_root=allowed_root,
+            min_text_chars=min_text_chars,
+            max_items=max_items,
+            write_reports=write_reports,
+        )
 
     @mcp.tool(name="literature.list_projects", structured_output=True)
     def literature_list_projects() -> dict[str, Any]:
@@ -441,6 +467,56 @@ def create_mcp_server(
             wiki_candidate=wiki_candidate,
             graph_candidate=graph_candidate,
             evolution_capture=evolution_capture,
+        )
+
+    @mcp.tool(name="literature.single_paper_task_create", structured_output=True)
+    def literature_single_paper_task_create(
+        project_id: str,
+        material_id: str,
+        task_goal: str = "生成单篇论文深度精读、写作借鉴要点、可导出 Word 的结构化草稿",
+        output_language: str = "zh",
+        target_document: str = "word_draft",
+        create_agent_request: bool = True,
+        agent_host: str = "mcp",
+        source: str = "mcp",
+        max_chars: int = 12000,
+        max_chunks: int = 12,
+    ) -> dict[str, Any]:
+        """Create a dynamic single-paper deep-reading task instance."""
+        return runtime.single_paper_task_create(
+            project_id=project_id,
+            material_id=material_id,
+            task_goal=task_goal,
+            output_language=output_language,
+            target_document=target_document,
+            create_agent_request=create_agent_request,
+            agent_host=agent_host,
+            source=source,
+            max_chars=max_chars,
+            max_chunks=max_chunks,
+        )
+
+    @mcp.tool(name="literature.single_paper_completion_check", structured_output=True)
+    def literature_single_paper_completion_check(
+        output_text: str,
+        task_manifest: dict[str, Any],
+        required_output_sections: list[str] | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        figure_table_refs: list[dict[str, Any]] | None = None,
+        lint_passed: bool = False,
+        docx_artifact_path: str | None = None,
+        sentinel: str = "待补充",
+    ) -> dict[str, Any]:
+        """Validate a completed single-paper deep-reading draft."""
+        return runtime.single_paper_completion_check(
+            output_text=output_text,
+            task_manifest=task_manifest,
+            required_output_sections=required_output_sections,
+            evidence_refs=evidence_refs,
+            figure_table_refs=figure_table_refs,
+            lint_passed=lint_passed,
+            docx_artifact_path=docx_artifact_path,
+            sentinel=sentinel,
         )
 
     @mcp.tool(name="literature.agent_request_list", structured_output=True)

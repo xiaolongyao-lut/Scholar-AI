@@ -19,8 +19,11 @@ import sys
 import threading
 import time
 import urllib.request
+import urllib.parse
 import base64
+import hashlib
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Final
 from pathlib import Path
 
@@ -105,11 +108,43 @@ DEFAULT_PORT = 8000
 WINDOW_TITLE = "文献助手"
 WINDOW_WIDTH = 1440
 WINDOW_HEIGHT = 900
+WINDOW_MIN_WIDTH = 960
+WINDOW_MIN_HEIGHT = 700
+WINDOW_SCREEN_MARGIN = 32
 BROWSER_CACHE_VERSION_FILE: Final[str] = ".frontend_cache_version"
 LIGHT_APP_BACKGROUND: Final[str] = "#F7F9FB"
 LIGHT_TITLE_TEXT: Final[str] = "#2A3245"
 DARK_APP_BACKGROUND: Final[str] = "#111827"
 DARK_TITLE_TEXT: Final[str] = "#F8FAFC"
+_DESKTOP_SINGLE_INSTANCE_MUTEX_HANDLE: object | None = None
+
+
+@dataclass(frozen=True)
+class DesktopRect:
+    """Native desktop rectangle using left/top/right/bottom coordinates."""
+
+    left: int
+    top: int
+    right: int
+    bottom: int
+
+    @property
+    def width(self) -> int:
+        return max(0, self.right - self.left)
+
+    @property
+    def height(self) -> int:
+        return max(0, self.bottom - self.top)
+
+
+@dataclass(frozen=True)
+class DesktopWindowGeometry:
+    """pywebview window geometry chosen to fit inside a visible work area."""
+
+    width: int
+    height: int
+    x: int | None
+    y: int | None
 
 
 def _show_startup_error(title: str, message: str) -> None:
@@ -132,6 +167,68 @@ def _show_startup_error(title: str, message: str) -> None:
         root.destroy()
     except Exception:
         return
+
+
+def _desktop_single_instance_mutex_name(root: Path) -> str:
+    """Return a repository-scoped Windows mutex name for the desktop app.
+
+    Args:
+        root: Repository root used to disambiguate local checkouts.
+
+    Returns:
+        A Windows local-session mutex name containing only stable ASCII
+        characters.
+    """
+
+    if not isinstance(root, Path):
+        raise TypeError("root must be a pathlib.Path")
+    digest = hashlib.sha256(str(root.resolve()).casefold().encode("utf-8")).hexdigest()[:16]
+    return f"Local\\ScholarAI_Desktop_{digest}"
+
+
+def _acquire_desktop_single_instance(root: Path = ROOT) -> bool:
+    """Acquire the source-desktop single-instance guard.
+
+    Args:
+        root: Repository root whose desktop process should be unique.
+
+    Returns:
+        ``True`` when this process owns the guard, or ``False`` when another
+        instance for the same checkout is already running.
+
+    Why:
+        MCP hosts can restart stdio wrappers concurrently. A Windows mutex keeps
+        those wrapper races from opening multiple native desktop windows.
+    """
+
+    if not isinstance(root, Path):
+        raise TypeError("root must be a pathlib.Path")
+    if sys.platform != "win32":
+        return True
+
+    global _DESKTOP_SINGLE_INSTANCE_MUTEX_HANDLE
+    if _DESKTOP_SINGLE_INSTANCE_MUTEX_HANDLE is not None:
+        return True
+
+    try:
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
+        kernel32.CreateMutexW.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.restype = ctypes.c_bool
+        handle = kernel32.CreateMutexW(None, False, _desktop_single_instance_mutex_name(root))
+        if not handle:
+            return True
+        error_already_exists = 183
+        if ctypes.get_last_error() == error_already_exists:
+            kernel32.CloseHandle(handle)
+            return False
+        _DESKTOP_SINGLE_INSTANCE_MUTEX_HANDLE = handle
+        return True
+    except Exception:
+        return True
 
 
 def _windows_colorref(hex_color: str) -> int:
@@ -161,6 +258,18 @@ def _is_windows_apps_dark_theme() -> bool:
 
 
 def _apply_windows_titlebar_colors(window: object) -> None:
+    """Apply DWM title-bar colors before WinForms exposes async window events.
+
+    Args:
+        window: pywebview window whose native WinForms form is already created.
+
+    Why:
+        pywebview's ordinary window events run Python handlers on separate
+        threads. Touching the WinForms handle from those handlers can surface
+        pythonnet shutdown/conversion failures during close. `before_show` is a
+        synchronous event in the WinForms creation path, so it keeps this native
+        handle access on the GUI-owned path.
+    """
     if sys.platform != "win32":
         return
 
@@ -190,6 +299,216 @@ def _apply_windows_titlebar_colors(window: object) -> None:
             value = ctypes.c_int(_windows_colorref(color))
             dwm.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(value), ctypes.sizeof(value))
     except (AttributeError, OSError, ValueError):
+        return
+
+
+def _fit_desktop_dimension(requested: int, available: int, minimum: int, margin: int) -> int:
+    """Fit one requested window dimension inside an available desktop axis."""
+
+    if requested <= 0:
+        raise ValueError("requested dimension must be positive")
+    if minimum <= 0:
+        raise ValueError("minimum dimension must be positive")
+    if margin < 0:
+        raise ValueError("margin must be non-negative")
+    if available <= 0:
+        return requested
+    usable = max(1, available - (margin * 2))
+    if usable >= minimum:
+        return min(requested, usable)
+    return usable
+
+
+def _center_desktop_window(
+    work_area: DesktopRect,
+    *,
+    requested_width: int = WINDOW_WIDTH,
+    requested_height: int = WINDOW_HEIGHT,
+    minimum_width: int = WINDOW_MIN_WIDTH,
+    minimum_height: int = WINDOW_MIN_HEIGHT,
+    margin: int = WINDOW_SCREEN_MARGIN,
+) -> DesktopWindowGeometry:
+    """Return a pywebview geometry that is centered and fits inside ``work_area``."""
+
+    if work_area.width <= 0 or work_area.height <= 0:
+        raise ValueError("work_area must have positive width and height")
+    width = _fit_desktop_dimension(requested_width, work_area.width, minimum_width, margin)
+    height = _fit_desktop_dimension(requested_height, work_area.height, minimum_height, margin)
+    x = work_area.left + max(0, (work_area.width - width) // 2)
+    y = work_area.top + max(0, (work_area.height - height) // 2)
+    return DesktopWindowGeometry(width=width, height=height, x=x, y=y)
+
+
+def _scale_desktop_rect(rect: DesktopRect, scale: float) -> DesktopRect:
+    """Convert a physical Windows rectangle into pywebview logical coordinates."""
+
+    if scale <= 0:
+        raise ValueError("scale must be positive")
+    return DesktopRect(
+        left=round(rect.left / scale),
+        top=round(rect.top / scale),
+        right=round(rect.right / scale),
+        bottom=round(rect.bottom / scale),
+    )
+
+
+def _windows_dpi_scale() -> float:
+    """Return the Windows DPI scale used by pywebview logical window units."""
+
+    if sys.platform != "win32":
+        return 1.0
+    try:
+        import ctypes
+
+        get_dpi_for_system = ctypes.windll.user32.GetDpiForSystem
+        get_dpi_for_system.restype = ctypes.c_uint
+        dpi = int(get_dpi_for_system())
+    except Exception:
+        dpi = 96
+    if dpi <= 0:
+        return 1.0
+    return max(1.0, dpi / 96.0)
+
+
+def _primary_desktop_work_area() -> DesktopRect | None:
+    """Return the primary Windows work area in pywebview logical coordinates."""
+
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+    except Exception:
+        return None
+
+    class RECT(ctypes.Structure):
+        _fields_ = [
+            ("left", ctypes.c_long),
+            ("top", ctypes.c_long),
+            ("right", ctypes.c_long),
+            ("bottom", ctypes.c_long),
+        ]
+
+    SPI_GETWORKAREA = 0x0030
+    user32 = ctypes.windll.user32
+    rect = RECT()
+    try:
+        ok = bool(user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0))
+    except Exception:
+        ok = False
+    scale = _windows_dpi_scale()
+    if ok and rect.right > rect.left and rect.bottom > rect.top:
+        return _scale_desktop_rect(DesktopRect(
+            left=int(rect.left),
+            top=int(rect.top),
+            right=int(rect.right),
+            bottom=int(rect.bottom),
+        ), scale)
+    try:
+        width = int(user32.GetSystemMetrics(0))
+        height = int(user32.GetSystemMetrics(1))
+    except Exception:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return _scale_desktop_rect(DesktopRect(left=0, top=0, right=width, bottom=height), scale)
+
+
+def _enable_windows_dpi_awareness() -> bool:
+    """Request DPI-aware Win32 coordinates before creating the pywebview window."""
+
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+    except Exception:
+        return False
+
+    error_access_denied = 5
+    try:
+        set_context = ctypes.windll.user32.SetProcessDpiAwarenessContext
+        set_context.argtypes = [ctypes.c_void_p]
+        set_context.restype = ctypes.c_bool
+        if bool(set_context(ctypes.c_void_p(-4))):  # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+            return True
+        if int(ctypes.get_last_error()) == error_access_denied:
+            return True
+    except Exception:
+        pass
+
+    try:
+        set_process_awareness = ctypes.windll.shcore.SetProcessDpiAwareness
+        set_process_awareness.argtypes = [ctypes.c_int]
+        set_process_awareness.restype = ctypes.c_long
+        result = int(set_process_awareness(2))  # PROCESS_PER_MONITOR_DPI_AWARE
+        if result in (0, -2147024891):  # S_OK or E_ACCESSDENIED/already set
+            return True
+    except Exception:
+        pass
+
+    try:
+        set_dpi_aware = ctypes.windll.user32.SetProcessDPIAware
+        set_dpi_aware.restype = ctypes.c_bool
+        if bool(set_dpi_aware()):
+            return True
+        return int(ctypes.get_last_error()) == error_access_denied
+    except Exception:
+        return False
+
+
+def _desktop_window_geometry() -> DesktopWindowGeometry:
+    """Choose the default source-desktop window geometry."""
+
+    work_area = _primary_desktop_work_area()
+    if work_area is None:
+        return DesktopWindowGeometry(width=WINDOW_WIDTH, height=WINDOW_HEIGHT, x=None, y=None)
+    return _center_desktop_window(work_area)
+
+
+def _install_reload_hotkeys(window: object) -> None:
+    """Install desktop reload keybindings after the webview content is ready.
+
+    Args:
+        window: pywebview window object with `events.loaded` and `evaluate_js`.
+
+    Why:
+        `shown` handlers are asynchronous in pywebview. Installing this script
+        from `webview.start(func=...)` avoids keeping extra event callbacks on
+        the close path while still preserving F5/Ctrl+R behavior.
+    """
+    events = getattr(window, "events", None)
+    loaded = getattr(events, "loaded", None)
+    wait = getattr(loaded, "wait", None)
+    if not callable(wait):
+        return
+    if not wait(20):
+        return
+    try:
+        evaluate_js = getattr(window, "evaluate_js")
+    except AttributeError:
+        return
+    try:
+        evaluate_js("""
+        (function(){
+          if (window.__litReloadHotkeyInstalled) return;
+          window.__litReloadHotkeyInstalled = true;
+          function isReload(e){
+            return e.key === 'F5'
+              || (e.key === 'r' && (e.ctrlKey || e.metaKey))
+              || (e.key === 'R' && (e.ctrlKey || e.metaKey));
+          }
+          window.addEventListener('keydown', function(e){
+            if (!isReload(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (window.pywebview && window.pywebview.api && window.pywebview.api.reload_window) {
+              window.pywebview.api.reload_window();
+            } else {
+              window.location.reload();
+            }
+          }, true);
+        })();
+        """)
+    except Exception:
         return
 
 
@@ -346,6 +665,52 @@ def _wait_for_http(host: str, port: int, timeout: float = 30.0) -> bool:
     return False
 
 
+def _normalize_desktop_initial_path(value: str | None) -> str:
+    """Return a safe SPA path for the initial pywebview URL.
+
+    Args:
+        value: Optional path/query string from
+            ``LITERATURE_ASSISTANT_DESKTOP_INITIAL_PATH``.
+
+    Returns:
+        A root-relative path and optional query string.
+
+    Raises:
+        ValueError: If the value is absolute, protocol-relative, contains a
+            fragment, backslashes, traversal segments, or control characters.
+    """
+
+    if value is None or not value.strip():
+        return "/"
+    candidate = value.strip()
+    if "\\" in candidate:
+        raise ValueError("desktop initial path must not contain backslashes")
+    if any(ord(char) < 32 for char in candidate):
+        raise ValueError("desktop initial path must not contain control characters")
+    parsed = urllib.parse.urlsplit(candidate)
+    if parsed.scheme or parsed.netloc:
+        raise ValueError("desktop initial path must be root-relative")
+    if parsed.fragment:
+        raise ValueError("desktop initial path must not contain a fragment")
+    if not parsed.path.startswith("/") or parsed.path.startswith("//"):
+        raise ValueError("desktop initial path must start with a single slash")
+    parts = [part for part in parsed.path.split("/") if part]
+    if any(part in {".", ".."} for part in parts):
+        raise ValueError("desktop initial path must not contain traversal segments")
+    path = parsed.path or "/"
+    return urllib.parse.urlunsplit(("", "", path, parsed.query, ""))
+
+
+def _build_desktop_frontend_url(base_url: str, initial_path: str | None) -> str:
+    """Join a loopback base URL with a safe SPA initial path."""
+
+    normalized_base = base_url.rstrip("/")
+    if not normalized_base.startswith("http://127.0.0.1:"):
+        raise ValueError("desktop base URL must be a loopback URL")
+    path = _normalize_desktop_initial_path(initial_path)
+    return f"{normalized_base}{path}"
+
+
 def _first_dialog_path(result: Sequence[str] | str | None) -> str | None:
     """Normalize pywebview file-dialog results for the JS bridge.
 
@@ -491,7 +856,15 @@ class NativeApi:
 
 
 def main() -> None:
+    if not _acquire_desktop_single_instance():
+        print("[启动器] 已有文献助手桌面实例在运行，本次启动退出")
+        return
+
+    dpi_aware = _enable_windows_dpi_awareness()
     import webview
+
+    if dpi_aware:
+        print("[启动器] Windows DPI awareness 已启用")
 
     # Parse port override
     port = DEFAULT_PORT
@@ -560,62 +933,55 @@ def main() -> None:
         _show_startup_error("启动失败", "后端未在 30 秒内就绪，请检查 runtime_state/logs/backend.log。")
         sys.exit(1)
 
-    url = f"http://{host}:{port}"
+    base_url = f"http://{host}:{port}"
+    try:
+        url = _build_desktop_frontend_url(
+            base_url,
+            os.environ.get("LITERATURE_ASSISTANT_DESKTOP_INITIAL_PATH"),
+        )
+    except ValueError as initial_path_exc:
+        print(f"[启动器] 初始路径无效，已回退首页: {initial_path_exc}")
+        url = base_url
     try:
         from literature_assistant.core.runtime_descriptor import refresh_desktop_runtime_descriptor
 
         refresh_desktop_runtime_descriptor(ready=True)
     except Exception as _descriptor_exc:
         print(f"[启动器] 运行时描述符刷新失败（忽略）: {_descriptor_exc}")
-    print(f"[启动器] 后端就绪: {url}")
-    print(f"[启动器] LITERATURE_ASSISTANT_BASE_URL={url}")
+    print(f"[启动器] 后端就绪: {base_url}")
+    print(f"[启动器] LITERATURE_ASSISTANT_BASE_URL={base_url}")
+    if url != base_url:
+        print(f"[启动器] 桌面初始路径: {url}")
     print("[启动器] 如果智能体找不到文献助手端口，请把上一行完整贴给智能体")
 
     # Open pywebview native window (blocks main thread)
     api = NativeApi()
+    geometry = _desktop_window_geometry()
+    window_kwargs: dict[str, object] = {
+        "width": geometry.width,
+        "height": geometry.height,
+        "frameless": False,
+        "text_select": True,
+        "js_api": api,
+        "background_color": LIGHT_APP_BACKGROUND,
+    }
+    if geometry.x is not None and geometry.y is not None:
+        window_kwargs["x"] = geometry.x
+        window_kwargs["y"] = geometry.y
+        print(f"[启动器] 桌面窗口位置: {geometry.width}x{geometry.height}+{geometry.x}+{geometry.y}")
+    else:
+        print(f"[启动器] 桌面窗口尺寸: {geometry.width}x{geometry.height}")
     window = webview.create_window(
         WINDOW_TITLE, url=url,
-        width=WINDOW_WIDTH, height=WINDOW_HEIGHT,
-        frameless=False,
-        text_select=True, js_api=api, background_color=LIGHT_APP_BACKGROUND,
+        **window_kwargs,
     )
     if window is not None:
-        window.events.shown += _apply_windows_titlebar_colors
-
-        # B13 (2026-06-13): pywebview disables F5 / Ctrl+R by default. Inject a
-        # tiny keydown handler that proxies these (and Ctrl+Shift+R for hard
-        # reload) to the Python-side reload_window API. Captures at window level
-        # before any React handler so reload always wins.
-        def _install_reload_hotkeys(_=None):
-            try:
-                window.evaluate_js("""
-                (function(){
-                  if (window.__litReloadHotkeyInstalled) return;
-                  window.__litReloadHotkeyInstalled = true;
-                  function isReload(e){
-                    return e.key === 'F5'
-                      || (e.key === 'r' && (e.ctrlKey || e.metaKey))
-                      || (e.key === 'R' && (e.ctrlKey || e.metaKey));
-                  }
-                  window.addEventListener('keydown', function(e){
-                    if (!isReload(e)) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.pywebview && window.pywebview.api && window.pywebview.api.reload_window) {
-                      window.pywebview.api.reload_window();
-                    } else {
-                      window.location.reload();
-                    }
-                  }, true);
-                })();
-                """)
-            except Exception:
-                pass
-
-        window.events.shown += _install_reload_hotkeys
+        window.events.before_show += _apply_windows_titlebar_colors
     print("[启动器] 桌面窗口已打开，关闭窗口将退出程序")
     try:
         webview.start(
+            func=_install_reload_hotkeys if window is not None else None,
+            args=(window,) if window is not None else None,
             debug=bool(os.environ.get("LITERATURE_ASSISTANT_DEBUG")),
             private_mode=False,
             storage_path=str(DESKTOP_PROFILE_ROOT),

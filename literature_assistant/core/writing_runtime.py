@@ -10,8 +10,10 @@ Maintains backward compatibility with legacy run_action flows.
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import inspect
+import json
 import logging
 import os
 import sqlite3
@@ -58,6 +60,643 @@ _RUNTIME_RECOVERABLE_EXCEPTIONS = (
     TypeError,
     ValueError,
 )
+_WRITING_WORKFLOW_STATE_KEY = "writing_workflow_state"
+_MATERIAL_PROCESSING_TASK_KEY = "material_processing_task"
+_MATERIAL_PROCESSING_SCHEMA_VERSION = "material_processing_task_v1"
+_MATERIAL_PROCESSING_ALLOWED_MODES = {
+    "fast_text",
+    "layout_aware",
+    "ocr_fallback",
+    "translation_sidecar",
+}
+_MATERIAL_PROCESSING_CACHE_POLICIES = {"use", "refresh", "bypass"}
+_MATERIAL_PROCESSING_CACHE_DECISIONS = {"pending", "hit", "miss", "bypass", "refresh", "invalidated"}
+_MATERIAL_PROCESSING_TASK_STATUSES = {
+    "created",
+    "queued",
+    "started",
+    "running",
+    "in_progress",
+    "paused",
+    "completed",
+    "failed",
+    "cancelled",
+}
+_MATERIAL_PROCESSING_OUTPUT_TARGETS = {
+    "chunks",
+    "locators",
+    "figures",
+    "tables",
+    "layout_sidecar",
+    "text_sidecar",
+    "bilingual_sidecar",
+    "docx",
+    "evidence_refs",
+}
+_RESEARCH_PROJECTION_SCHEMA_VERSION = "research_object_projection_v1"
+_RESEARCH_EVENT_SOURCE = "scholar-ai.runtime"
+_RESEARCH_PROJECT_OBJECT_TYPE = "research_project"
+_RESEARCH_PRIVATE_PROJECTION_KEYS = {
+    "api_key",
+    "authorization",
+    "content",
+    "input_text",
+    "messages",
+    "prompt",
+    "provider_payload",
+    "raw_content",
+    "response",
+    "result",
+    "secret",
+    "text",
+    "token",
+    "trace",
+}
+_RESEARCH_STATE_KEYS = (
+    "agent_request_id",
+    "cache_policy",
+    "chat_session_id",
+    "discussion_run_id",
+    "evidence_pack_id",
+    "export_artifact_id",
+    "figure_asset_id",
+    "input_ref",
+    "language_in",
+    "language_out",
+    "material_id",
+    "mode",
+    "output_targets",
+    "page_range",
+    "preserve",
+    "processing_mode",
+    "project_id",
+    "request_id",
+    "runtime_session_id",
+    "scan_mode",
+    "source",
+    "source_path",
+    "source_paths",
+    "task_manifest_id",
+    "task_type",
+    "title",
+)
+_RESEARCH_EVENT_TYPE_BY_RUNTIME_EVENT = {
+    EventType.JOB_CREATED.value: "research.object.created",
+    EventType.JOB_STARTED.value: "research.object.started",
+    EventType.JOB_PROGRESS.value: "research.object.progressed",
+    EventType.TOOL_REQUESTED.value: "tool.requested",
+    EventType.TOOL_BLOCKED.value: "tool.blocked",
+    EventType.APPROVAL_REQUIRED.value: "approval.required",
+    EventType.APPROVAL_GRANTED.value: "approval.granted",
+    EventType.APPROVAL_REJECTED.value: "approval.rejected",
+    EventType.ARTIFACT_CREATED.value: "artifact.created",
+    EventType.ARTIFACT_UPDATED.value: "artifact.updated",
+    EventType.JOB_PAUSED.value: "research.object.paused",
+    EventType.JOB_RESUMED.value: "research.object.resumed",
+    EventType.JOB_COMPLETED.value: "research.object.completed",
+    EventType.JOB_FAILED.value: "research.object.failed",
+    EventType.JOB_CANCELLED.value: "research.object.cancelled",
+}
+_RESEARCH_JOB_KIND_OBJECT_TYPES = {
+    JobKind.RESOURCE_INGEST.value: "research_material",
+    JobKind.FIGURE_LOAD.value: "figure_table_asset",
+    JobKind.SMART_READ.value: "evidence_pack",
+    JobKind.AGENT_REQUEST.value: "agent_request",
+    JobKind.ARTIFACT_EXPORT.value: "export_artifact",
+    JobKind.AI_REVIEW.value: "writing_job",
+    JobKind.DISCUSSION.value: "writing_job",
+    JobKind.PIPELINE_RUN.value: "writing_job",
+    JobKind.PROMPT_ACTION.value: "writing_job",
+    JobKind.SKILL_ACTION.value: "writing_job",
+    JobKind.APPROVAL.value: "approval_gate",
+}
+_RESEARCH_JOB_EVENT_TYPES = {
+    (JobKind.RESOURCE_INGEST.value, EventType.JOB_CREATED.value): "material.ingest.requested",
+    (JobKind.RESOURCE_INGEST.value, EventType.JOB_STARTED.value): "material.ingest.started",
+    (JobKind.RESOURCE_INGEST.value, EventType.JOB_PROGRESS.value): "material.ingest.progressed",
+    (JobKind.RESOURCE_INGEST.value, EventType.JOB_COMPLETED.value): "material.ingest.completed",
+    (JobKind.FIGURE_LOAD.value, EventType.JOB_COMPLETED.value): "figure_table.assets.loaded",
+    (JobKind.SMART_READ.value, EventType.JOB_COMPLETED.value): "evidence.pack.created",
+    (JobKind.AGENT_REQUEST.value, EventType.JOB_CREATED.value): "agent.request.created",
+    (JobKind.AGENT_REQUEST.value, EventType.JOB_COMPLETED.value): "agent.result.accepted",
+    (JobKind.ARTIFACT_EXPORT.value, EventType.JOB_COMPLETED.value): "writing.export.created",
+}
+_RESEARCH_OBJECT_ID_KEYS = {
+    "agent_request": ("agent_request_id", "request_id", "runtime_request_id"),
+    "approval_gate": ("approval_id",),
+    "evidence_pack": ("evidence_pack_id", "evidence_pack_ref", "pack_id"),
+    "export_artifact": ("export_artifact_id", "artifact_id", "export_id"),
+    "figure_table_asset": ("figure_asset_id", "asset_id", "candidate_id"),
+    "research_material": ("material_id", "source_material_id", "input_ref"),
+    "research_project": ("project_id",),
+    "runtime_artifact": ("artifact_id",),
+    "writing_job": ("writing_job_id", "writing_task_id", "draft_id", "task_manifest_id"),
+}
+
+
+def _json_safe_copy(value: Any) -> Any:
+    """Return a detached JSON-compatible copy of a runtime value."""
+
+    try:
+        return json.loads(json.dumps(copy.deepcopy(value), ensure_ascii=False))
+    except _RUNTIME_RECOVERABLE_EXCEPTIONS as exc:
+        raise ValueError(f"value is not JSON serializable: {type(exc).__name__}") from exc
+
+
+def _require_object(value: Any, *, field_name: str) -> dict[str, Any]:
+    """Return a detached object for workflow-state object fields."""
+
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object")
+    return dict(_json_safe_copy(value))
+
+
+def _require_object_list(value: Any, *, field_name: str) -> list[dict[str, Any]]:
+    """Return detached object rows for workflow-state list fields."""
+
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list")
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"{field_name}[{index}] must be an object")
+        rows.append(dict(_json_safe_copy(item)))
+    return rows
+
+
+def _workflow_readiness(state: dict[str, Any]) -> dict[str, bool]:
+    """Return deterministic readiness flags for writing workflow gates."""
+
+    return {
+        "has_intake": bool(state.get("intake")),
+        "has_evidence_refs": bool(state.get("evidence_refs")),
+        "has_citation_bank": bool(state.get("citation_bank")),
+        "has_lint_report": bool(state.get("lint_report")),
+        "has_export_manifest": bool(state.get("export_manifest")),
+        "has_change_log": bool(state.get("change_log")),
+    }
+
+
+def _digest_json_payload(value: Any) -> str:
+    """Return a stable digest for JSON-shaped runtime contract values."""
+
+    safe_value = _json_safe_copy(value)
+    encoded = json.dumps(
+        safe_value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _require_non_empty_string(value: Any, *, field_name: str, max_length: int | None = None) -> str:
+    """Return a stripped non-empty string for contract identity fields."""
+
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise ValueError(f"{field_name} must be a non-empty string")
+    if max_length is not None and len(normalized) > max_length:
+        raise ValueError(f"{field_name} must be at most {max_length} characters")
+    return normalized
+
+
+def _optional_string(value: Any, *, field_name: str, max_length: int | None = None) -> str | None:
+    """Return a stripped optional string while preserving empty as missing."""
+
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    if max_length is not None and len(normalized) > max_length:
+        raise ValueError(f"{field_name} must be at most {max_length} characters")
+    return normalized
+
+
+def _coerce_non_negative_int(value: Any, *, field_name: str) -> int | None:
+    """Return a non-negative integer for bounded artifact/task counters."""
+
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a non-negative integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a non-negative integer") from exc
+    if parsed < 0:
+        raise ValueError(f"{field_name} must be a non-negative integer")
+    return parsed
+
+
+def _coerce_positive_int(value: Any, *, field_name: str) -> int:
+    """Return a positive 1-based integer for page ranges."""
+
+    parsed = _coerce_non_negative_int(value, field_name=field_name)
+    if parsed is None or parsed < 1:
+        raise ValueError(f"{field_name} must be a positive 1-based integer")
+    return parsed
+
+
+def _coerce_contract_bool(value: Any, *, field_name: str) -> bool:
+    """Return a boolean for explicit material-processing preserve flags."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    raise ValueError(f"{field_name} must be a boolean")
+
+
+def _normalize_contract_choice(
+    value: Any,
+    *,
+    field_name: str,
+    allowed: set[str],
+    default: str | None = None,
+) -> str:
+    """Return a lower-case enum-like string for local runtime contracts."""
+
+    raw = default if value is None or value == "" else value
+    normalized = _require_non_empty_string(raw, field_name=field_name).lower()
+    if normalized not in allowed:
+        raise ValueError(f"{field_name} must be one of {sorted(allowed)}")
+    return normalized
+
+
+def _normalize_material_processing_page_range(value: Any) -> dict[str, Any]:
+    """Return a validated page-selection object for material processing."""
+
+    payload = _require_object(value, field_name="page_range")
+    mode = _normalize_contract_choice(
+        payload.get("mode"),
+        field_name="page_range.mode",
+        allowed={"all", "range", "pages"},
+        default="all",
+    )
+    pages_raw = payload.get("pages") or []
+    if not isinstance(pages_raw, list):
+        raise ValueError("page_range.pages must be a list")
+    pages = sorted(dict.fromkeys(_coerce_positive_int(page, field_name="page_range.pages[]") for page in pages_raw))
+    start_page = (
+        _coerce_positive_int(payload.get("start_page"), field_name="page_range.start_page")
+        if payload.get("start_page") is not None
+        else None
+    )
+    end_page = (
+        _coerce_positive_int(payload.get("end_page"), field_name="page_range.end_page")
+        if payload.get("end_page") is not None
+        else None
+    )
+    if mode == "range":
+        if start_page is None or end_page is None:
+            raise ValueError("page_range range mode requires start_page and end_page")
+        if end_page < start_page:
+            raise ValueError("page_range.end_page must be greater than or equal to start_page")
+    if mode == "pages" and not pages:
+        raise ValueError("page_range pages mode requires at least one page")
+    return {
+        "mode": mode,
+        "start_page": start_page,
+        "end_page": end_page,
+        "pages": pages,
+    }
+
+
+def _normalize_material_processing_preserve(value: Any) -> dict[str, bool]:
+    """Return explicit preservation flags for document features."""
+
+    payload = _require_object(value, field_name="preserve")
+    return {
+        key: _coerce_contract_bool(payload.get(key, True), field_name=f"preserve.{key}")
+        for key in ("formulas", "tables", "figures", "citations", "annotations")
+    }
+
+
+def _normalize_material_processing_input_ref(value: Any, *, material_id: str) -> dict[str, Any]:
+    """Return a bounded local input reference for a material-processing task."""
+
+    payload = _require_object(value, field_name="input_ref")
+    ref_material_id = _require_non_empty_string(
+        payload.get("material_id"),
+        field_name="input_ref.material_id",
+        max_length=200,
+    )
+    if ref_material_id != material_id:
+        raise ValueError("input_ref.material_id must match material_id")
+    return {
+        "ref_type": _require_non_empty_string(payload.get("ref_type", "material"), field_name="input_ref.ref_type", max_length=80),
+        "material_id": ref_material_id,
+        "source_path_label": _optional_string(payload.get("source_path_label"), field_name="input_ref.source_path_label", max_length=500),
+        "content_digest": _optional_string(payload.get("content_digest"), field_name="input_ref.content_digest", max_length=160),
+        "size_bytes": _coerce_non_negative_int(payload.get("size_bytes"), field_name="input_ref.size_bytes"),
+    }
+
+
+def _normalize_material_processing_output_targets(value: Any) -> list[str]:
+    """Return unique output target names supported by the local task contract."""
+
+    raw_targets = value if value is not None else ["chunks"]
+    if not isinstance(raw_targets, list):
+        raise ValueError("output_targets must be a list")
+    targets = [
+        _normalize_contract_choice(target, field_name="output_targets[]", allowed=_MATERIAL_PROCESSING_OUTPUT_TARGETS)
+        for target in raw_targets
+    ]
+    if not targets:
+        raise ValueError("output_targets must contain at least one target")
+    return list(dict.fromkeys(targets))
+
+
+def _normalize_material_processing_cache(
+    value: Any,
+    *,
+    content_digest: str | None,
+    parameter_digest: str,
+) -> dict[str, Any]:
+    """Return cache identity and decision metadata for replay diagnostics."""
+
+    payload = _require_object(value, field_name="cache")
+    policy = _normalize_contract_choice(
+        payload.get("policy"),
+        field_name="cache.policy",
+        allowed=_MATERIAL_PROCESSING_CACHE_POLICIES,
+        default="use",
+    )
+    decision = _normalize_contract_choice(
+        payload.get("decision"),
+        field_name="cache.decision",
+        allowed=_MATERIAL_PROCESSING_CACHE_DECISIONS,
+        default="pending",
+    )
+    digest = _optional_string(payload.get("content_digest"), field_name="cache.content_digest", max_length=160) or content_digest
+    cache_key = _optional_string(payload.get("cache_key"), field_name="cache.cache_key", max_length=240)
+    if cache_key is None:
+        cache_key = f"material_processing:{digest or 'unknown-content'}:{parameter_digest}"
+    return {
+        "policy": policy,
+        "content_digest": digest,
+        "parameter_digest": parameter_digest,
+        "cache_key": cache_key,
+        "decision": decision,
+    }
+
+
+def _normalize_material_processing_request(value: Any) -> dict[str, Any]:
+    """Return a versioned material-processing request with computed cache identity."""
+
+    payload = _require_object(value, field_name="material_processing_task.request")
+    schema_version = _require_non_empty_string(payload.get("schema_version", _MATERIAL_PROCESSING_SCHEMA_VERSION), field_name="schema_version")
+    if schema_version != _MATERIAL_PROCESSING_SCHEMA_VERSION:
+        raise ValueError(f"schema_version must be {_MATERIAL_PROCESSING_SCHEMA_VERSION}")
+    project_id = _require_non_empty_string(payload.get("project_id"), field_name="project_id", max_length=200)
+    material_id = _require_non_empty_string(payload.get("material_id"), field_name="material_id", max_length=200)
+    input_ref = _normalize_material_processing_input_ref(payload.get("input_ref"), material_id=material_id)
+    page_range = _normalize_material_processing_page_range(payload.get("page_range"))
+    preserve = _normalize_material_processing_preserve(payload.get("preserve"))
+    cache_seed = _require_object(payload.get("cache"), field_name="cache")
+    cache_policy = _normalize_contract_choice(
+        cache_seed.get("policy"),
+        field_name="cache.policy",
+        allowed=_MATERIAL_PROCESSING_CACHE_POLICIES,
+        default="use",
+    )
+    output_targets = _normalize_material_processing_output_targets(payload.get("output_targets"))
+    request_without_cache_decisions: dict[str, Any] = {
+        "schema_version": schema_version,
+        "project_id": project_id,
+        "material_id": material_id,
+        "input_ref": input_ref,
+        "page_range": page_range,
+        "processing_mode": _normalize_contract_choice(
+            payload.get("processing_mode"),
+            field_name="processing_mode",
+            allowed=_MATERIAL_PROCESSING_ALLOWED_MODES,
+            default="fast_text",
+        ),
+        "language_in": _optional_string(payload.get("language_in"), field_name="language_in", max_length=40),
+        "language_out": _optional_string(payload.get("language_out"), field_name="language_out", max_length=40),
+        "preserve": preserve,
+        "provider_ref": _optional_string(payload.get("provider_ref"), field_name="provider_ref", max_length=200),
+        "cache": {"policy": cache_policy},
+        "output_targets": output_targets,
+        "metadata": _require_object(payload.get("metadata"), field_name="metadata"),
+    }
+    parameter_digest = _digest_json_payload(request_without_cache_decisions)
+    request_without_cache_decisions["cache"] = _normalize_material_processing_cache(
+        cache_seed,
+        content_digest=input_ref.get("content_digest"),
+        parameter_digest=parameter_digest,
+    )
+    return request_without_cache_decisions
+
+
+def _normalize_material_processing_artifacts(value: Any) -> list[dict[str, Any]]:
+    """Return typed artifact summaries for a material-processing task."""
+
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("artifacts must be a list")
+    artifacts: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        payload = _require_object(item, field_name=f"artifacts[{index}]")
+        output_target = _normalize_contract_choice(
+            payload.get("output_target"),
+            field_name=f"artifacts[{index}].output_target",
+            allowed=_MATERIAL_PROCESSING_OUTPUT_TARGETS,
+        )
+        artifacts.append(
+            {
+                "artifact_type": _require_non_empty_string(
+                    payload.get("artifact_type"),
+                    field_name=f"artifacts[{index}].artifact_type",
+                    max_length=120,
+                ),
+                "output_target": output_target,
+                "count": _coerce_non_negative_int(payload.get("count"), field_name=f"artifacts[{index}].count"),
+                "path": _optional_string(payload.get("path"), field_name=f"artifacts[{index}].path", max_length=1000),
+                "digest": _optional_string(payload.get("digest"), field_name=f"artifacts[{index}].digest", max_length=160),
+                "metadata": _require_object(payload.get("metadata"), field_name=f"artifacts[{index}].metadata"),
+            }
+        )
+    return artifacts
+
+
+def _normalize_material_processing_warnings(value: Any) -> list[str]:
+    """Return bounded warning text rows for a material-processing task."""
+
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("warnings must be a list")
+    warnings: list[str] = []
+    for index, item in enumerate(value):
+        warning = _optional_string(item, field_name=f"warnings[{index}]", max_length=1000)
+        if warning:
+            warnings.append(warning)
+    return warnings
+
+
+def _normalize_material_processing_status(value: Any) -> str:
+    """Return a task status compatible with runtime job lifecycle summaries."""
+
+    return _normalize_contract_choice(
+        value,
+        field_name="material_processing_task.status",
+        allowed=_MATERIAL_PROCESSING_TASK_STATUSES,
+        default="queued",
+    )
+
+
+def _is_blank_projection_value(value: Any) -> bool:
+    """Return True for values that should not become projection facts."""
+
+    return value is None or value == "" or value == [] or value == {}
+
+
+def _safe_projection_string(value: Any) -> str | None:
+    """Return a trimmed string for stable ids and labels."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _metadata_string(metadata: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    """Return the first non-empty string value from runtime metadata."""
+
+    for key in keys:
+        value = _safe_projection_string(metadata.get(key))
+        if value:
+            return value
+    return None
+
+
+def _projection_value(value: Any) -> Any:
+    """Return a bounded JSON-safe value for read-only projection metadata."""
+
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, dict):
+        return {
+            str(key): _projection_value(item)
+            for key, item in value.items()
+            if str(key).lower() not in _RESEARCH_PRIVATE_PROJECTION_KEYS
+        }
+    if isinstance(value, list):
+        if len(value) <= 8 and all(isinstance(item, (str, int, float, bool)) or item is None for item in value):
+            return list(value)
+        return {"count": len(value)}
+    return str(value)
+
+
+def _compact_projection_mapping(mapping: dict[str, Any], *, allowed_keys: tuple[str, ...] | None = None) -> dict[str, Any]:
+    """Return a JSON-safe public subset of metadata for audit projection."""
+
+    keys = allowed_keys or tuple(mapping.keys())
+    compact: dict[str, Any] = {}
+    for key in keys:
+        if key not in mapping:
+            continue
+        normalized_key = str(key)
+        if normalized_key.lower() in _RESEARCH_PRIVATE_PROJECTION_KEYS:
+            continue
+        value = mapping.get(key)
+        if _is_blank_projection_value(value):
+            continue
+        compact[normalized_key] = _projection_value(value)
+    return compact
+
+
+def _increment_projection_count(counter: dict[str, int], key: str) -> None:
+    """Increment a deterministic projection counter."""
+
+    normalized = _safe_projection_string(key)
+    if normalized is None:
+        return
+    counter[normalized] = int(counter.get(normalized, 0)) + 1
+
+
+def _project_id_for_job(job: WritingJob, session: WritingSession | None) -> str | None:
+    """Return the project id attached to a runtime job or its session."""
+
+    metadata = dict(job.metadata)
+    project_id = _metadata_string(metadata, ("project_id", "projectId"))
+    if project_id:
+        return project_id
+    if session is None:
+        return None
+    return _metadata_string(dict(session.metadata), ("project_id", "projectId"))
+
+
+def _research_object_id(object_type: str, raw_id: str) -> str:
+    """Return a stable namespaced research object identifier."""
+
+    normalized_type = _safe_projection_string(object_type)
+    normalized_raw_id = _safe_projection_string(raw_id)
+    if normalized_type is None:
+        raise ValueError("object_type must not be empty")
+    if normalized_raw_id is None:
+        raise ValueError("raw_id must not be empty")
+    return f"{normalized_type}:{normalized_raw_id}"
+
+
+def _research_object_type_for_job(job: WritingJob) -> str:
+    """Return the research object vocabulary term for a runtime job."""
+
+    metadata = dict(job.metadata)
+    explicit_type = _safe_projection_string(metadata.get("research_object_type"))
+    if explicit_type:
+        return explicit_type
+    return _RESEARCH_JOB_KIND_OBJECT_TYPES.get(job.kind.value, "writing_job")
+
+
+def _raw_research_object_id(object_type: str, metadata: dict[str, Any], fallback: str) -> str:
+    """Return the best metadata id for one object type."""
+
+    id_keys = _RESEARCH_OBJECT_ID_KEYS.get(object_type, ())
+    return _metadata_string(metadata, id_keys) or fallback
+
+
+def _research_event_type_for_job_event(job: WritingJob, event: WritingEvent) -> str:
+    """Return the domain event type for a runtime event."""
+
+    event_type = event.event_type.value
+    return _RESEARCH_JOB_EVENT_TYPES.get(
+        (job.kind.value, event_type),
+        _RESEARCH_EVENT_TYPE_BY_RUNTIME_EVENT.get(event_type, f"runtime.{event_type}"),
+    )
+
+
+def _source_refs_from_metadata(metadata: dict[str, Any], *, job_id: str | None = None) -> list[dict[str, Any]]:
+    """Return bounded source references from runtime metadata."""
+
+    refs: list[dict[str, Any]] = []
+    material_id = _metadata_string(metadata, ("material_id", "source_material_id"))
+    if material_id:
+        refs.append({"ref_type": "material", "ref_id": material_id})
+    source_path = _metadata_string(metadata, ("source_path", "input_ref"))
+    if source_path:
+        refs.append({"ref_type": "source_path", "label": source_path})
+    source_paths = metadata.get("source_paths")
+    if isinstance(source_paths, list):
+        refs.append({"ref_type": "source_paths", "count": len(source_paths)})
+    if job_id:
+        refs.append({"ref_type": "runtime_job", "ref_id": job_id})
+    return refs
 
 
 def _coerce_job_kind(value: Any) -> tuple[JobKind, str | None]:
@@ -1041,6 +1680,829 @@ class WritingRuntime:
         self._autosave_if_enabled()
         return updated
 
+    def update_writing_workflow_state(
+        self,
+        job_id: str,
+        *,
+        phase: str,
+        intake: dict[str, Any] | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        citation_bank: list[dict[str, Any]] | None = None,
+        lint_report: dict[str, Any] | None = None,
+        export_manifest: dict[str, Any] | None = None,
+        change_log: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Persist an auditable writing workflow-state snapshot.
+
+        Args:
+            job_id: Existing runtime job identifier.
+            phase: Non-empty workflow phase label owned by writing/runtime code.
+            intake: User-confirmed task, venue, medium, language, and policy facts.
+            evidence_refs: Claim/evidence support rows without full source bodies.
+            citation_bank: Citation-support rows linked to evidence refs.
+            lint_report: Deterministic writing-quality gate output.
+            export_manifest: Medium-specific export artifact metadata.
+            change_log: Ordered workflow-state change summaries.
+
+        Returns:
+            JSON-safe workflow state stored in job metadata and METADATA artifact.
+
+        Raises:
+            ValueError: If the job does not exist or state fields have invalid shapes.
+        """
+
+        normalized_phase = str(phase or "").strip()
+        if not normalized_phase:
+            raise ValueError("phase must be a non-empty string")
+        job = self.get_job(job_id)
+        if job is None:
+            raise ValueError(f"Job {job_id} not found")
+
+        prior = self.get_writing_workflow_state(job_id) or {}
+        state: dict[str, Any] = {
+            **prior,
+            "schema_version": "writing_workflow_state_v1",
+            "job_id": job.job_id,
+            "session_id": job.session_id,
+            "phase": normalized_phase,
+            "updated_at": utc_now_iso_z(),
+        }
+        object_updates = {
+            "intake": intake,
+            "lint_report": lint_report,
+            "export_manifest": export_manifest,
+        }
+        for field_name, value in object_updates.items():
+            if value is not None or field_name not in state:
+                state[field_name] = _require_object(value, field_name=field_name)
+        list_updates = {
+            "evidence_refs": evidence_refs,
+            "citation_bank": citation_bank,
+            "change_log": change_log,
+        }
+        for field_name, value in list_updates.items():
+            if value is not None or field_name not in state:
+                state[field_name] = _require_object_list(value, field_name=field_name)
+        state["readiness"] = _workflow_readiness(state)
+
+        metadata = dict(job.metadata)
+        metadata[_WRITING_WORKFLOW_STATE_KEY] = dict(state)
+        updated_job = replace(job, metadata=metadata)
+        self._jobs[job_id] = updated_job
+
+        self._store_artifact(
+            WritingArtifact.create(
+                job_id=job_id,
+                session_id=job.session_id,
+                artifact_type=ArtifactType.METADATA,
+                content={
+                    "kind": _WRITING_WORKFLOW_STATE_KEY,
+                    "state": dict(state),
+                },
+                created_by="writing_runtime",
+                metadata={
+                    "workflow_phase": normalized_phase,
+                    "schema_version": state["schema_version"],
+                },
+                mime_type="application/json",
+            )
+        )
+        self._emit_event(
+            job.session_id,
+            WritingEvent.create(
+                job_id=job_id,
+                session_id=job.session_id,
+                event_type=EventType.JOB_PROGRESS,
+                data={
+                    "workflow_state_updated": True,
+                    "workflow_phase": normalized_phase,
+                    "readiness": dict(state["readiness"]),
+                },
+            ),
+        )
+        self._autosave_if_enabled()
+        return dict(state)
+
+    def get_writing_workflow_state(self, job_id: str) -> dict[str, Any] | None:
+        """Return the latest persisted writing workflow-state snapshot.
+
+        Args:
+            job_id: Existing runtime job identifier.
+
+        Returns:
+            Detached workflow-state object, or None when the job has no state.
+
+        Raises:
+            ValueError: If ``job_id`` is blank or unknown.
+        """
+
+        normalized = str(job_id or "").strip()
+        if not normalized:
+            raise ValueError("job_id must not be empty")
+        job = self.get_job(normalized)
+        if job is None:
+            raise ValueError(f"Job {normalized} not found")
+        state = job.metadata.get(_WRITING_WORKFLOW_STATE_KEY)
+        if state is None:
+            return None
+        if not isinstance(state, dict):
+            raise ValueError("writing_workflow_state metadata must be an object")
+        return dict(_json_safe_copy(state))
+
+    def update_material_processing_task(
+        self,
+        job_id: str,
+        *,
+        request: dict[str, Any],
+        status: str | None = None,
+        result: dict[str, Any] | None = None,
+        artifacts: list[dict[str, Any]] | None = None,
+        warnings: list[str] | None = None,
+        provenance: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Persist a resumable material-processing task contract.
+
+        Args:
+            job_id: Existing runtime job identifier.
+            request: Versioned material-processing request object.
+            status: Optional task lifecycle state; defaults to prior status or queued.
+            result: Optional bounded processing result summary.
+            artifacts: Optional typed artifact summaries for generated outputs.
+            warnings: Optional bounded warning strings.
+            provenance: Optional audit facts for the writer of this task record.
+
+        Returns:
+            JSON-safe material-processing task record stored in job metadata.
+
+        Raises:
+            ValueError: If the job is missing or the task contract has invalid shape.
+        """
+
+        normalized_job_id = str(job_id or "").strip()
+        if not normalized_job_id:
+            raise ValueError("job_id must not be empty")
+        job = self.get_job(normalized_job_id)
+        if job is None:
+            raise ValueError(f"Job {normalized_job_id} not found")
+
+        prior = self.get_material_processing_task(normalized_job_id) or {}
+        normalized_request = _normalize_material_processing_request(request)
+        normalized_status = _normalize_material_processing_status(
+            status or prior.get("status") or JobStatus.QUEUED.value
+        )
+        normalized_result = (
+            _require_object(result, field_name="result")
+            if result is not None or "result" not in prior
+            else _require_object(prior.get("result"), field_name="result")
+        )
+        normalized_artifacts = (
+            _normalize_material_processing_artifacts(artifacts)
+            if artifacts is not None or "artifacts" not in prior
+            else _normalize_material_processing_artifacts(prior.get("artifacts"))
+        )
+        normalized_warnings = (
+            _normalize_material_processing_warnings(warnings)
+            if warnings is not None or "warnings" not in prior
+            else _normalize_material_processing_warnings(prior.get("warnings"))
+        )
+        normalized_provenance = {
+            "derived_from": "runtime.job_metadata",
+            "runtime_job_id": job.job_id,
+            **_require_object(provenance or prior.get("provenance"), field_name="provenance"),
+        }
+        task_record: dict[str, Any] = {
+            "schema_version": _MATERIAL_PROCESSING_SCHEMA_VERSION,
+            "job_id": job.job_id,
+            "session_id": job.session_id,
+            "status": normalized_status,
+            "created_at": str(prior.get("created_at") or job.created_at),
+            "updated_at": utc_now_iso_z(),
+            "request": normalized_request,
+            "result": normalized_result,
+            "cache": dict(normalized_request["cache"]),
+            "artifacts": normalized_artifacts,
+            "warnings": normalized_warnings,
+            "provenance": normalized_provenance,
+        }
+
+        metadata = dict(job.metadata)
+        metadata[_MATERIAL_PROCESSING_TASK_KEY] = dict(task_record)
+        updated_job = replace(job, metadata=metadata)
+        self._jobs[normalized_job_id] = updated_job
+
+        self._store_artifact(
+            WritingArtifact.create(
+                job_id=job.job_id,
+                session_id=job.session_id,
+                artifact_type=ArtifactType.METADATA,
+                content={
+                    "kind": _MATERIAL_PROCESSING_TASK_KEY,
+                    "state": dict(task_record),
+                },
+                created_by="writing_runtime",
+                metadata={
+                    "kind": _MATERIAL_PROCESSING_TASK_KEY,
+                    "schema_version": _MATERIAL_PROCESSING_SCHEMA_VERSION,
+                    "project_id": normalized_request["project_id"],
+                    "material_id": normalized_request["material_id"],
+                    "processing_mode": normalized_request["processing_mode"],
+                    "cache_key": task_record["cache"].get("cache_key"),
+                },
+                mime_type="application/json",
+            )
+        )
+        self._emit_event(
+            job.session_id,
+            WritingEvent.create(
+                job_id=job.job_id,
+                session_id=job.session_id,
+                event_type=EventType.JOB_PROGRESS,
+                data={
+                    "material_processing_task_updated": True,
+                    "material_processing_status": normalized_status,
+                    "material_id": normalized_request["material_id"],
+                    "processing_mode": normalized_request["processing_mode"],
+                    "cache_decision": task_record["cache"].get("decision"),
+                    "artifact_count": len(normalized_artifacts),
+                },
+            ),
+        )
+        self._autosave_if_enabled()
+        return dict(_json_safe_copy(task_record))
+
+    def record_material_processing_task_result(
+        self,
+        job_id: str,
+        *,
+        status: str,
+        result: dict[str, Any],
+        artifacts: list[dict[str, Any]] | None = None,
+        warnings: list[str] | None = None,
+        cache_decision: str | None = None,
+        provenance: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Update a material-processing task with result/cache/artifact facts.
+
+        Args:
+            job_id: Existing runtime job identifier with a task request.
+            status: Terminal or progress status for the task record.
+            result: Bounded result summary; raw document text must not be stored here.
+            artifacts: Optional typed artifact summaries.
+            warnings: Optional bounded warning strings.
+            cache_decision: Optional cache decision override for this run.
+            provenance: Optional audit facts for the result writer.
+
+        Returns:
+            Updated JSON-safe material-processing task record.
+
+        Raises:
+            ValueError: If no task request exists or result fields are invalid.
+        """
+
+        task = self.get_material_processing_task(job_id)
+        if task is None:
+            raise ValueError(f"Material processing task not found: {job_id}")
+        request = _require_object(task.get("request"), field_name="material_processing_task.request")
+        if cache_decision is not None:
+            cache = _require_object(request.get("cache"), field_name="cache")
+            cache["decision"] = cache_decision
+            request["cache"] = cache
+        return self.update_material_processing_task(
+            job_id,
+            request=request,
+            status=status,
+            result=result,
+            artifacts=artifacts,
+            warnings=warnings,
+            provenance=provenance or task.get("provenance"),
+        )
+
+    def get_material_processing_task(self, job_id: str) -> dict[str, Any] | None:
+        """Return the latest material-processing task record for a runtime job.
+
+        Args:
+            job_id: Existing runtime job identifier.
+
+        Returns:
+            Detached task record, or None when the job has no material task.
+
+        Raises:
+            ValueError: If ``job_id`` is blank, unknown, or metadata is corrupt.
+        """
+
+        normalized = str(job_id or "").strip()
+        if not normalized:
+            raise ValueError("job_id must not be empty")
+        job = self.get_job(normalized)
+        if job is None:
+            raise ValueError(f"Job {normalized} not found")
+        task = job.metadata.get(_MATERIAL_PROCESSING_TASK_KEY)
+        if task is None:
+            return None
+        if not isinstance(task, dict):
+            raise ValueError("material_processing_task metadata must be an object")
+        return dict(_json_safe_copy(task))
+
+    def build_research_projection(
+        self,
+        *,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Build a read-only research object/event projection over runtime state.
+
+        Args:
+            session_id: Optional runtime session filter.
+            job_id: Optional runtime job filter.
+            project_id: Optional project id filter from job/session metadata.
+            limit: Maximum number of projected events to return.
+
+        Returns:
+            JSON-safe projection with object, event, approval, and effect summaries.
+
+        Raises:
+            ValueError: If a filter is malformed or references missing runtime data.
+        """
+
+        normalized_session_id = _safe_projection_string(session_id)
+        normalized_job_id = _safe_projection_string(job_id)
+        normalized_project_id = _safe_projection_string(project_id)
+        if isinstance(limit, bool):
+            raise ValueError("limit must be an integer")
+        if int(limit) < 1:
+            raise ValueError("limit must be greater than zero")
+        event_limit = min(int(limit), 1000)
+
+        if normalized_session_id and self.get_session(normalized_session_id) is None:
+            raise ValueError(f"Session {normalized_session_id} not found")
+        if normalized_job_id and self.get_job(normalized_job_id) is None:
+            raise ValueError(f"Job {normalized_job_id} not found")
+
+        jobs = list(self._jobs.values())
+        if normalized_job_id:
+            selected_job = self.get_job(normalized_job_id)
+            if selected_job is None:
+                raise ValueError(f"Job {normalized_job_id} not found")
+            jobs = [selected_job]
+        if normalized_session_id:
+            jobs = [job for job in jobs if job.session_id == normalized_session_id]
+        if normalized_project_id:
+            jobs = [
+                job
+                for job in jobs
+                if _project_id_for_job(job, self.get_session(job.session_id)) == normalized_project_id
+            ]
+
+        selected_job_ids = {job.job_id for job in jobs}
+        objects_by_id: dict[str, dict[str, Any]] = {}
+        job_object_index: dict[str, tuple[str, str]] = {}
+        approval_boundaries: list[dict[str, Any]] = []
+
+        def _upsert_object(candidate: dict[str, Any]) -> None:
+            object_id = _safe_projection_string(candidate.get("object_id"))
+            object_type = _safe_projection_string(candidate.get("object_type"))
+            status = _safe_projection_string(candidate.get("status"))
+            if object_id is None or object_type is None or status is None:
+                raise ValueError("research object projection requires id, type, and status")
+            candidate["object_id"] = object_id
+            candidate["object_type"] = object_type
+            candidate["status"] = status
+            existing = objects_by_id.get(object_id)
+            if existing is None:
+                objects_by_id[object_id] = {
+                    "object_id": object_id,
+                    "object_type": object_type,
+                    "status": status,
+                    "project_id": candidate.get("project_id"),
+                    "material_id": candidate.get("material_id"),
+                    "title": candidate.get("title"),
+                    "created_at": candidate.get("created_at"),
+                    "updated_at": candidate.get("updated_at"),
+                    "source_refs": list(candidate.get("source_refs") or []),
+                    "provenance": dict(candidate.get("provenance") or {}),
+                    "state": dict(candidate.get("state") or {}),
+                    "confirmation_boundary": dict(candidate.get("confirmation_boundary") or {}),
+                    "effects": dict(candidate.get("effects") or {}),
+                }
+                return
+
+            existing["status"] = status if status != "referenced" else existing.get("status", status)
+            if candidate.get("project_id") and not existing.get("project_id"):
+                existing["project_id"] = candidate["project_id"]
+            if candidate.get("material_id") and not existing.get("material_id"):
+                existing["material_id"] = candidate["material_id"]
+            if candidate.get("title") and not existing.get("title"):
+                existing["title"] = candidate["title"]
+            if candidate.get("created_at") and (
+                not existing.get("created_at") or str(candidate["created_at"]) < str(existing["created_at"])
+            ):
+                existing["created_at"] = candidate["created_at"]
+            if candidate.get("updated_at") and (
+                not existing.get("updated_at") or str(candidate["updated_at"]) > str(existing["updated_at"])
+            ):
+                existing["updated_at"] = candidate["updated_at"]
+            refs = list(existing.get("source_refs") or [])
+            for ref in candidate.get("source_refs") or []:
+                if ref not in refs:
+                    refs.append(ref)
+            existing["source_refs"] = refs
+            existing["provenance"] = {**dict(existing.get("provenance") or {}), **dict(candidate.get("provenance") or {})}
+            existing["state"] = {**dict(existing.get("state") or {}), **dict(candidate.get("state") or {})}
+            existing["confirmation_boundary"] = {
+                **dict(existing.get("confirmation_boundary") or {}),
+                **dict(candidate.get("confirmation_boundary") or {}),
+            }
+            existing["effects"] = {**dict(existing.get("effects") or {}), **dict(candidate.get("effects") or {})}
+
+        for job in jobs:
+            session = self.get_session(job.session_id)
+            metadata = dict(job.metadata)
+            project_id_for_job = _project_id_for_job(job, session)
+            material_id = _metadata_string(metadata, ("material_id", "source_material_id"))
+            object_type = _research_object_type_for_job(job)
+            raw_object_id = _raw_research_object_id(object_type, metadata, job.job_id)
+            object_id = _research_object_id(object_type, raw_object_id)
+            artifacts = list(self._artifacts.get(job.job_id, []))
+            approvals = [
+                approval
+                for approval in self._approval_requests.values()
+                if approval.job_id == job.job_id
+            ]
+            pending_approvals = [
+                approval
+                for approval in approvals
+                if approval.status == ApprovalStatus.PENDING
+            ]
+            events = [
+                event
+                for event in self._events.get(job.session_id, [])
+                if event.job_id == job.job_id
+            ]
+            job_object_index[job.job_id] = (object_id, object_type)
+            _upsert_object(
+                {
+                    "object_id": object_id,
+                    "object_type": object_type,
+                    "status": job.status.value,
+                    "project_id": project_id_for_job,
+                    "material_id": material_id,
+                    "title": _metadata_string(metadata, ("title", "name", "filename", "source_label")),
+                    "created_at": job.created_at,
+                    "updated_at": job.completed_at or job.started_at or job.created_at,
+                    "source_refs": _source_refs_from_metadata(metadata, job_id=job.job_id),
+                    "provenance": {
+                        "derived_from": ["runtime.jobs"],
+                        "runtime_job_id": job.job_id,
+                        "runtime_session_id": job.session_id,
+                        "runtime_job_kind": job.kind.value,
+                    },
+                    "state": {
+                        "job_kind": job.kind.value,
+                        "tags": list(job.tags),
+                        **({"scope": job.scope} if job.scope else {}),
+                        **({"output_mode": job.output_mode} if job.output_mode else {}),
+                        **_compact_projection_mapping(metadata, allowed_keys=_RESEARCH_STATE_KEYS),
+                    },
+                    "confirmation_boundary": {
+                        "requires_user_confirmation": bool(pending_approvals),
+                        "approval_count": len(approvals),
+                        "pending_approval_count": len(pending_approvals),
+                    },
+                    "effects": {
+                        "runtime_event_count": len(events),
+                        "artifact_count": len(artifacts),
+                        "approval_count": len(approvals),
+                    },
+                }
+            )
+            if project_id_for_job:
+                _upsert_object(
+                    {
+                        "object_id": _research_object_id(_RESEARCH_PROJECT_OBJECT_TYPE, project_id_for_job),
+                        "object_type": _RESEARCH_PROJECT_OBJECT_TYPE,
+                        "status": "active",
+                        "project_id": project_id_for_job,
+                        "title": _metadata_string(dict(session.metadata), ("title", "project_title")) if session else None,
+                        "created_at": session.created_at if session else job.created_at,
+                        "updated_at": job.completed_at or job.started_at or job.created_at,
+                        "source_refs": [{"ref_type": "runtime_session", "ref_id": job.session_id}],
+                        "provenance": {"derived_from": ["runtime.sessions", "runtime.jobs"]},
+                        "state": {"session_id": job.session_id},
+                        "confirmation_boundary": {"requires_user_confirmation": False},
+                        "effects": {"linked_job_count": 1},
+                    }
+                )
+            if material_id:
+                _upsert_object(
+                    {
+                        "object_id": _research_object_id("research_material", material_id),
+                        "object_type": "research_material",
+                        "status": job.status.value if object_type == "research_material" else "referenced",
+                        "project_id": project_id_for_job,
+                        "material_id": material_id,
+                        "title": _metadata_string(metadata, ("title", "filename", "source_label")),
+                        "created_at": job.created_at,
+                        "updated_at": job.completed_at or job.started_at or job.created_at,
+                        "source_refs": _source_refs_from_metadata(metadata, job_id=job.job_id),
+                        "provenance": {"derived_from": ["runtime.job_metadata"]},
+                        "state": {"linked_runtime_job_id": job.job_id},
+                        "confirmation_boundary": {"requires_user_confirmation": False},
+                        "effects": {"linked_job_count": 1},
+                    }
+                )
+            evidence_pack_id = _metadata_string(metadata, ("evidence_pack_id", "evidence_pack_ref", "pack_id"))
+            if evidence_pack_id:
+                _upsert_object(
+                    {
+                        "object_id": _research_object_id("evidence_pack", evidence_pack_id),
+                        "object_type": "evidence_pack",
+                        "status": job.status.value if object_type == "evidence_pack" else "referenced",
+                        "project_id": project_id_for_job,
+                        "material_id": material_id,
+                        "created_at": job.created_at,
+                        "updated_at": job.completed_at or job.started_at or job.created_at,
+                        "source_refs": _source_refs_from_metadata(metadata, job_id=job.job_id),
+                        "provenance": {"derived_from": ["runtime.job_metadata"]},
+                        "state": {"linked_runtime_job_id": job.job_id},
+                        "confirmation_boundary": {"requires_user_confirmation": False},
+                        "effects": {"linked_job_count": 1},
+                    }
+                )
+            agent_request_id = _metadata_string(metadata, ("agent_request_id", "request_id", "runtime_request_id"))
+            if agent_request_id:
+                _upsert_object(
+                    {
+                        "object_id": _research_object_id("agent_request", agent_request_id),
+                        "object_type": "agent_request",
+                        "status": job.status.value if object_type == "agent_request" else "referenced",
+                        "project_id": project_id_for_job,
+                        "material_id": material_id,
+                        "created_at": job.created_at,
+                        "updated_at": job.completed_at or job.started_at or job.created_at,
+                        "source_refs": [{"ref_type": "runtime_job", "ref_id": job.job_id}],
+                        "provenance": {"derived_from": ["runtime.job_metadata"]},
+                        "state": {"linked_runtime_job_id": job.job_id},
+                        "confirmation_boundary": {
+                            "requires_user_confirmation": bool(pending_approvals),
+                            "approval_count": len(approvals),
+                            "pending_approval_count": len(pending_approvals),
+                        },
+                        "effects": {"linked_job_count": 1},
+                    }
+                )
+            for artifact in artifacts:
+                artifact_metadata = dict(artifact.metadata)
+                content_kind = None
+                if isinstance(artifact.content, dict):
+                    content_kind = _safe_projection_string(artifact.content.get("kind"))
+                artifact_object_type = "runtime_artifact"
+                artifact_raw_id = artifact.artifact_id
+                artifact_evidence_pack_id = _metadata_string(artifact_metadata, ("evidence_pack_id", "pack_id"))
+                if artifact_evidence_pack_id or content_kind == "evidence_pack":
+                    artifact_object_type = "evidence_pack"
+                    artifact_raw_id = artifact_evidence_pack_id or artifact.artifact_id
+                _upsert_object(
+                    {
+                        "object_id": _research_object_id(artifact_object_type, artifact_raw_id),
+                        "object_type": artifact_object_type,
+                        "status": "created",
+                        "project_id": project_id_for_job,
+                        "material_id": material_id,
+                        "created_at": artifact.created_at,
+                        "updated_at": artifact.created_at,
+                        "source_refs": [{"ref_type": "runtime_job", "ref_id": job.job_id}],
+                        "provenance": {
+                            "derived_from": ["runtime.artifacts"],
+                            "runtime_artifact_id": artifact.artifact_id,
+                            "runtime_job_id": job.job_id,
+                        },
+                        "state": {
+                            "artifact_type": artifact.artifact_type.value,
+                            "mime_type": artifact.mime_type,
+                            "created_by": artifact.created_by,
+                            **_compact_projection_mapping(artifact_metadata, allowed_keys=_RESEARCH_STATE_KEYS),
+                        },
+                        "confirmation_boundary": {"requires_user_confirmation": False},
+                        "effects": {
+                            "content_shape": "object" if isinstance(artifact.content, dict) else "text",
+                        },
+                    }
+                )
+
+        for approval in self._approval_requests.values():
+            if approval.job_id not in selected_job_ids:
+                continue
+            target_job = self.get_job(approval.job_id)
+            if target_job is None:
+                continue
+            session = self.get_session(target_job.session_id)
+            metadata = dict(target_job.metadata)
+            project_id_for_job = _project_id_for_job(target_job, session)
+            material_id = _metadata_string(metadata, ("material_id", "source_material_id"))
+            target_object_id, target_object_type = job_object_index.get(
+                approval.job_id,
+                (_research_object_id("writing_job", approval.job_id), "writing_job"),
+            )
+            approval_object_id = _research_object_id("approval_gate", approval.approval_id)
+            boundary = {
+                "approval_id": approval.approval_id,
+                "object_id": approval_object_id,
+                "target_object_id": target_object_id,
+                "target_object_type": target_object_type,
+                "job_id": approval.job_id,
+                "session_id": approval.session_id,
+                "status": approval.status.value,
+                "reason": approval.reason,
+                "requested_at": approval.requested_at,
+                "responded_at": approval.responded_at,
+                "response_by": approval.response_by,
+                "metadata": _compact_projection_mapping(dict(approval.metadata)),
+            }
+            approval_boundaries.append(boundary)
+            _upsert_object(
+                {
+                    "object_id": approval_object_id,
+                    "object_type": "approval_gate",
+                    "status": approval.status.value,
+                    "project_id": project_id_for_job,
+                    "material_id": material_id,
+                    "created_at": approval.requested_at,
+                    "updated_at": approval.responded_at or approval.requested_at,
+                    "source_refs": [{"ref_type": "runtime_job", "ref_id": approval.job_id}],
+                    "provenance": {
+                        "derived_from": ["runtime.approval_requests"],
+                        "runtime_approval_id": approval.approval_id,
+                    },
+                    "state": {
+                        "reason": approval.reason,
+                        "target_object_id": target_object_id,
+                        **_compact_projection_mapping(dict(approval.metadata)),
+                    },
+                    "confirmation_boundary": {
+                        "requires_user_confirmation": approval.status == ApprovalStatus.PENDING,
+                        "approval_id": approval.approval_id,
+                        "target_object_id": target_object_id,
+                    },
+                    "effects": {
+                        "responded": approval.responded_at is not None,
+                    },
+                }
+            )
+
+        projected_events: list[dict[str, Any]] = []
+        for job in jobs:
+            object_id, object_type = job_object_index.get(
+                job.job_id,
+                (_research_object_id("writing_job", job.job_id), "writing_job"),
+            )
+            for event in self._events.get(job.session_id, []):
+                if event.job_id != job.job_id:
+                    continue
+                event_data = _compact_projection_mapping(dict(event.data))
+                approval_id = _safe_projection_string(event.data.get("approval_id"))
+                projected_events.append(
+                    {
+                        "event_id": event.event_id,
+                        "event_type": _research_event_type_for_job_event(job, event),
+                        "source": _RESEARCH_EVENT_SOURCE,
+                        "subject": object_id,
+                        "object_id": object_id,
+                        "object_type": object_type,
+                        "session_id": event.session_id,
+                        "job_id": event.job_id,
+                        "timestamp": event.timestamp,
+                        "sequence": event.sequence,
+                        "status": job.status.value,
+                        "actor": _safe_projection_string(event.metadata.get("actor")),
+                        "data": event_data,
+                        "provenance": {
+                            "derived_from": "runtime.events",
+                            "runtime_event_id": event.event_id,
+                            "runtime_event_type": event.event_type.value,
+                        },
+                        "confirmation_boundary": {
+                            "requires_user_confirmation": event.event_type == EventType.APPROVAL_REQUIRED,
+                            **({"approval_id": approval_id} if approval_id else {}),
+                        },
+                    }
+                )
+            for artifact in self._artifacts.get(job.job_id, []):
+                artifact_metadata = dict(artifact.metadata)
+                artifact_object_type = "runtime_artifact"
+                artifact_raw_id = artifact.artifact_id
+                artifact_evidence_pack_id = _metadata_string(artifact_metadata, ("evidence_pack_id", "pack_id"))
+                if artifact_evidence_pack_id:
+                    artifact_object_type = "evidence_pack"
+                    artifact_raw_id = artifact_evidence_pack_id
+                projected_events.append(
+                    {
+                        "event_id": f"artifact_{artifact.artifact_id}_created",
+                        "event_type": "evidence.pack.created" if artifact_object_type == "evidence_pack" else "artifact.created",
+                        "source": _RESEARCH_EVENT_SOURCE,
+                        "subject": _research_object_id(artifact_object_type, artifact_raw_id),
+                        "object_id": _research_object_id(artifact_object_type, artifact_raw_id),
+                        "object_type": artifact_object_type,
+                        "session_id": artifact.session_id,
+                        "job_id": artifact.job_id,
+                        "timestamp": artifact.created_at,
+                        "sequence": 0,
+                        "status": "created",
+                        "actor": artifact.created_by,
+                        "data": {
+                            "artifact_type": artifact.artifact_type.value,
+                            "mime_type": artifact.mime_type,
+                        },
+                        "provenance": {
+                            "derived_from": "runtime.artifacts",
+                            "runtime_artifact_id": artifact.artifact_id,
+                        },
+                        "confirmation_boundary": {"requires_user_confirmation": False},
+                    }
+                )
+        for boundary in approval_boundaries:
+            status = str(boundary["status"])
+            event_type = "approval.required" if status == ApprovalStatus.PENDING.value else f"approval.{status}"
+            projected_events.append(
+                {
+                    "event_id": f"approval_{boundary['approval_id']}_{status}",
+                    "event_type": event_type,
+                    "source": _RESEARCH_EVENT_SOURCE,
+                    "subject": str(boundary["object_id"]),
+                    "object_id": str(boundary["object_id"]),
+                    "object_type": "approval_gate",
+                    "session_id": str(boundary["session_id"]),
+                    "job_id": str(boundary["job_id"]),
+                    "timestamp": str(boundary["responded_at"] or boundary["requested_at"]),
+                    "sequence": 0,
+                    "status": status,
+                    "actor": _safe_projection_string(boundary.get("response_by")),
+                    "data": {
+                        "approval_id": boundary["approval_id"],
+                        "target_object_id": boundary["target_object_id"],
+                        "target_object_type": boundary["target_object_type"],
+                    },
+                    "provenance": {
+                        "derived_from": "runtime.approval_requests",
+                        "runtime_approval_id": boundary["approval_id"],
+                    },
+                    "confirmation_boundary": {
+                        "requires_user_confirmation": status == ApprovalStatus.PENDING.value,
+                        "approval_id": boundary["approval_id"],
+                        "target_object_id": boundary["target_object_id"],
+                    },
+                }
+            )
+
+        projected_events.sort(key=lambda item: (str(item.get("timestamp") or ""), int(item.get("sequence") or 0), str(item.get("event_id") or "")))
+        projected_events = projected_events[:event_limit]
+        objects = sorted(objects_by_id.values(), key=lambda item: (str(item["object_type"]), str(item["object_id"])))
+
+        object_type_counts: dict[str, int] = {}
+        event_type_counts: dict[str, int] = {}
+        status_counts: dict[str, int] = {}
+        for item in objects:
+            _increment_projection_count(object_type_counts, str(item.get("object_type") or "unknown"))
+            _increment_projection_count(status_counts, str(item.get("status") or "unknown"))
+        for item in projected_events:
+            _increment_projection_count(event_type_counts, str(item.get("event_type") or "unknown"))
+
+        return {
+            "schema_version": _RESEARCH_PROJECTION_SCHEMA_VERSION,
+            "generated_at": utc_now_iso_z(),
+            "scope": {
+                "session_id": normalized_session_id,
+                "job_id": normalized_job_id,
+                "project_id": normalized_project_id,
+                "event_limit": event_limit,
+            },
+            "objects": objects,
+            "events": projected_events,
+            "approval_boundaries": approval_boundaries,
+            "status_projection": {
+                "object_count": len(objects),
+                "event_count": len(projected_events),
+                "object_type_counts": object_type_counts,
+                "event_type_counts": event_type_counts,
+                "status_counts": status_counts,
+                "pending_approval_count": sum(
+                    1
+                    for boundary in approval_boundaries
+                    if boundary.get("status") == ApprovalStatus.PENDING.value
+                ),
+                "requires_user_confirmation": any(
+                    boundary.get("status") == ApprovalStatus.PENDING.value
+                    for boundary in approval_boundaries
+                ),
+                "effect_counts": {
+                    "jobs": len(jobs),
+                    "artifacts": sum(len(self._artifacts.get(job.job_id, [])) for job in jobs),
+                    "approvals": len(approval_boundaries),
+                },
+            },
+        }
+
     async def complete_job(
         self,
         job_id: str,
@@ -1501,6 +2963,61 @@ class WritingRuntime:
         if artifact_type:
             artifacts = [a for a in artifacts if a.artifact_type == artifact_type]
         return artifacts
+
+    def add_job_artifact(
+        self,
+        job_id: str,
+        *,
+        artifact_type: ArtifactType,
+        content: str | dict[str, Any],
+        created_by: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        mime_type: str = "application/json",
+    ) -> WritingArtifact:
+        """Attach a typed artifact to an existing runtime job.
+
+        Args:
+            job_id: Existing runtime job identifier.
+            artifact_type: Stable artifact category used by runtime consumers.
+            content: JSON object or text payload to store with the job.
+            created_by: Optional actor identifier for audit provenance.
+            metadata: JSON object with lightweight indexable fields.
+            mime_type: MIME type for the artifact content.
+
+        Returns:
+            The immutable artifact record created for the job.
+
+        Raises:
+            ValueError: If the job is missing or the artifact shape is invalid.
+        """
+        normalized_job_id = str(job_id or "").strip()
+        if not normalized_job_id:
+            raise ValueError("job_id must not be empty")
+        job = self.get_job(normalized_job_id)
+        if job is None:
+            raise ValueError(f"Job {normalized_job_id} not found")
+        if not isinstance(artifact_type, ArtifactType):
+            raise ValueError("artifact_type must be an ArtifactType")
+        if not isinstance(content, (str, dict)):
+            raise ValueError("content must be a string or object")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValueError("metadata must be an object")
+        normalized_mime_type = str(mime_type or "").strip()
+        if not normalized_mime_type:
+            raise ValueError("mime_type must not be empty")
+
+        artifact = WritingArtifact.create(
+            job_id=job.job_id,
+            session_id=job.session_id,
+            artifact_type=artifact_type,
+            content=dict(content) if isinstance(content, dict) else content,
+            created_by=created_by,
+            metadata=dict(metadata or {}),
+            mime_type=normalized_mime_type,
+        )
+        self._store_artifact(artifact)
+        self._autosave_if_enabled()
+        return artifact
 
     def _store_artifact(self, artifact: WritingArtifact) -> None:
         """Store an artifact (internal method)."""

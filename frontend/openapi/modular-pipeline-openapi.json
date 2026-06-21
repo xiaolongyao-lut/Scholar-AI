@@ -7506,7 +7506,7 @@
         "type": "object"
       },
       "EvidencePackBuildResponse": {
-        "description": "Response for the evidence-pack builder endpoint.\n\nArgs:\n    evidence_pack_ref: Stable ref id for this deterministic build result.\n    project_id: Project searched.\n    query: Query string used for retrieval.\n    section_id: Optional section id carried from the request.\n    retrieval_method: Actual retrieval method used by the backend.\n    rerank_status: Whether reranking actively ran, was skipped, or unavailable.\n    total: Number of evidence refs returned after truncation.\n    truncated: Whether more positive lexical hits existed than returned.\n    retrieval_diagnostics: Explicit embedding/rerank visibility for agents.\n    evidence_refs: MCP-safe evidence refs with no raw chunk body fields.",
+        "description": "Response for the evidence-pack builder endpoint.\n\nArgs:\n    evidence_pack_ref: Stable ref id for this deterministic build result.\n    project_id: Project searched.\n    query: Query string used for retrieval.\n    section_id: Optional section id carried from the request.\n    retrieval_method: Actual retrieval method used by the backend.\n    rerank_status: Whether reranking actively ran, was skipped, or unavailable.\n    total: Number of evidence refs returned after truncation.\n    truncated: Whether more positive lexical hits existed than returned.\n    retrieval_diagnostics: Explicit embedding/rerank visibility for agents.\n    outcome: Agent-facing status, attempts, and safe next action.\n    evidence_refs: MCP-safe evidence refs with no raw chunk body fields.",
         "properties": {
           "evidence_pack_ref": {
             "minLength": 1,
@@ -7519,6 +7519,16 @@
             },
             "title": "Evidence Refs",
             "type": "array"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "project_id": {
             "minLength": 1,
@@ -8130,7 +8140,7 @@
         "type": "object"
       },
       "EvidenceRetrievalDiagnosticsPayload": {
-        "description": "Machine-readable retrieval provenance for writing/evidence audits.\n\nArgs:\n    retrieval_method: Effective retrieval path used for this response.\n    embedding_status: Whether dense embeddings were used, skipped, or unavailable.\n    rerank_status: Whether reranking was active, skipped, or unavailable.\n    fallback_reason: Short reason when the path degraded to lexical retrieval.\n    project_weight: Weight assigned to project-local chunks in this build.\n    wiki_weight: Weight assigned to wiki recall in this build.\n    joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are\n        reported here without being coerced into project chunk refs.\n    reasoning_trace: Auditable retrieval-decision summary, not private\n        model chain-of-thought.\n    notes: Bounded operational notes safe to show in chat/tool transcripts.",
+        "description": "Machine-readable retrieval provenance for writing/evidence audits.\n\nArgs:\n    retrieval_method: Effective retrieval path used for this response.\n    embedding_status: Whether dense embeddings were used, skipped, or unavailable.\n    rerank_status: Whether reranking was active, skipped, or unavailable.\n    fallback_reason: Short reason when the path degraded to lexical retrieval.\n    project_weight: Weight assigned to project-local chunks in this build.\n    wiki_weight: Weight assigned to wiki recall in this build.\n    joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are\n        reported here without being coerced into project chunk refs.\n    qrels_status: Whether retrieval quality can be claimed from canonical\n        qrels, or is still blocked by missing/candidate/reviewed labels.\n    reasoning_trace: Auditable retrieval-decision summary, not private\n        model chain-of-thought.\n    notes: Bounded operational notes safe to show in chat/tool transcripts.",
         "properties": {
           "embedding_status": {
             "default": "unavailable",
@@ -8167,6 +8177,9 @@
             "minimum": 0.0,
             "title": "Project Weight",
             "type": "number"
+          },
+          "qrels_status": {
+            "$ref": "#/components/schemas/RetrievalQrelsStatusPayload"
           },
           "reasoning_trace": {
             "items": {
@@ -9506,6 +9519,106 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HealthCheckItem": {
+        "description": "One passive readiness check for the local Scholar AI workflow.\n\nArgs:\n    name: Stable check identifier.\n    status: Result for this check.\n    reason: Short non-secret explanation.\n    details: Small JSON-safe diagnostic details.\n    next_action: Optional follow-up that can be rendered by UI or agents.",
+        "properties": {
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolNextAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "degraded",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "HealthCheckItem",
+        "type": "object"
+      },
+      "HealthCheckResponse": {
+        "description": "Current local workflow readiness response.\n\nArgs:\n    schema_version: Versioned response contract.\n    status: Aggregated result across all checks.\n    generated_at: UTC timestamp.\n    include_live: Whether live probes were requested. This endpoint keeps\n        default checks passive and records the flag for explicit live modes.\n    checks: Ordered readiness/dependency checks.\n    recommendations: Deduplicated next actions from degraded/blocked checks.\n    outcome: ToolOutcome envelope for MCP and agent consumers.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/HealthCheckItem"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "include_live": {
+            "default": false,
+            "title": "Include Live",
+            "type": "boolean"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ToolOutcome"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/ToolNextAction"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "scholar-ai-health-check/v1",
+            "default": "scholar-ai-health-check/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "degraded",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "generated_at",
+          "outcome"
+        ],
+        "title": "HealthCheckResponse",
+        "type": "object"
+      },
       "Highlight": {
         "properties": {
           "color": {
@@ -10329,6 +10442,11 @@
             "title": "Kind",
             "type": "string"
           },
+          "material_processing_task_summary": {
+            "additionalProperties": true,
+            "title": "Material Processing Task Summary",
+            "type": "object"
+          },
           "metadata": {
             "additionalProperties": true,
             "title": "Metadata",
@@ -10370,6 +10488,11 @@
             },
             "title": "Tags",
             "type": "array"
+          },
+          "writing_workflow_state_summary": {
+            "additionalProperties": true,
+            "title": "Writing Workflow State Summary",
+            "type": "object"
           }
         },
         "required": [
@@ -11173,6 +11296,430 @@
           "updated_at"
         ],
         "title": "MaterialPayload",
+        "type": "object"
+      },
+      "MaterialProcessingArtifactPayload": {
+        "description": "Typed artifact summary produced by a material-processing task.",
+        "properties": {
+          "artifact_type": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Artifact Type",
+            "type": "string"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "output_target": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Output Target",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "required": [
+          "artifact_type",
+          "output_target"
+        ],
+        "title": "MaterialProcessingArtifactPayload",
+        "type": "object"
+      },
+      "MaterialProcessingCachePayload": {
+        "description": "Replay/cache identity and decision metadata.",
+        "properties": {
+          "cache_key": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Key"
+          },
+          "content_digest": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Digest"
+          },
+          "decision": {
+            "default": "pending",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Decision",
+            "type": "string"
+          },
+          "parameter_digest": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameter Digest"
+          },
+          "policy": {
+            "default": "use",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Policy",
+            "type": "string"
+          }
+        },
+        "title": "MaterialProcessingCachePayload",
+        "type": "object"
+      },
+      "MaterialProcessingInputRefPayload": {
+        "description": "Bounded local input reference for one material-processing task.",
+        "properties": {
+          "content_digest": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Digest"
+          },
+          "material_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Material Id",
+            "type": "string"
+          },
+          "ref_type": {
+            "default": "material",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Ref Type",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "source_path_label": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path Label"
+          }
+        },
+        "required": [
+          "material_id"
+        ],
+        "title": "MaterialProcessingInputRefPayload",
+        "type": "object"
+      },
+      "MaterialProcessingPageRangePayload": {
+        "description": "Explicit page-selection contract for material processing.",
+        "properties": {
+          "end_page": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Page"
+          },
+          "mode": {
+            "default": "all",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Mode",
+            "type": "string"
+          },
+          "pages": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "start_page": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Page"
+          }
+        },
+        "title": "MaterialProcessingPageRangePayload",
+        "type": "object"
+      },
+      "MaterialProcessingPreservePayload": {
+        "description": "Document features the processor should preserve or track.",
+        "properties": {
+          "annotations": {
+            "default": true,
+            "title": "Annotations",
+            "type": "boolean"
+          },
+          "citations": {
+            "default": true,
+            "title": "Citations",
+            "type": "boolean"
+          },
+          "figures": {
+            "default": true,
+            "title": "Figures",
+            "type": "boolean"
+          },
+          "formulas": {
+            "default": true,
+            "title": "Formulas",
+            "type": "boolean"
+          },
+          "tables": {
+            "default": true,
+            "title": "Tables",
+            "type": "boolean"
+          }
+        },
+        "title": "MaterialProcessingPreservePayload",
+        "type": "object"
+      },
+      "MaterialProcessingTaskPayload": {
+        "description": "Runtime-visible material-processing task record.",
+        "properties": {
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialProcessingArtifactPayload"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "cache": {
+            "$ref": "#/components/schemas/MaterialProcessingCachePayload"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "request": {
+            "$ref": "#/components/schemas/MaterialProcessingTaskRequest"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version",
+          "job_id",
+          "session_id",
+          "status",
+          "created_at",
+          "updated_at",
+          "request"
+        ],
+        "title": "MaterialProcessingTaskPayload",
+        "type": "object"
+      },
+      "MaterialProcessingTaskRequest": {
+        "description": "Versioned request contract for resumable material processing.",
+        "properties": {
+          "cache": {
+            "$ref": "#/components/schemas/MaterialProcessingCachePayload"
+          },
+          "input_ref": {
+            "$ref": "#/components/schemas/MaterialProcessingInputRefPayload"
+          },
+          "language_in": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language In"
+          },
+          "language_out": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Out"
+          },
+          "material_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Material Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "output_targets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Targets",
+            "type": "array"
+          },
+          "page_range": {
+            "$ref": "#/components/schemas/MaterialProcessingPageRangePayload"
+          },
+          "preserve": {
+            "$ref": "#/components/schemas/MaterialProcessingPreservePayload"
+          },
+          "processing_mode": {
+            "default": "fast_text",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Processing Mode",
+            "type": "string"
+          },
+          "project_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "provider_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Ref"
+          },
+          "schema_version": {
+            "default": "material_processing_task_v1",
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "material_id",
+          "input_ref"
+        ],
+        "title": "MaterialProcessingTaskRequest",
         "type": "object"
       },
       "McpApprovalState": {
@@ -14678,6 +15225,277 @@
         "title": "RerankProbeResult",
         "type": "object"
       },
+      "ResearchEventPayload": {
+        "description": "CloudEvents/PROV-inspired event projection for research objects.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "confirmation_boundary": {
+            "additionalProperties": true,
+            "title": "Confirmation Boundary",
+            "type": "object"
+          },
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "event_id": {
+            "minLength": 1,
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "minLength": 1,
+            "title": "Event Type",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "object_id": {
+            "minLength": 1,
+            "title": "Object Id",
+            "type": "string"
+          },
+          "object_type": {
+            "minLength": 1,
+            "title": "Object Type",
+            "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "sequence": {
+            "minimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "session_id": {
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source": {
+            "default": "scholar-ai.runtime",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "subject": {
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          },
+          "timestamp": {
+            "minLength": 1,
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "subject",
+          "object_id",
+          "object_type",
+          "session_id",
+          "timestamp",
+          "sequence"
+        ],
+        "title": "ResearchEventPayload",
+        "type": "object"
+      },
+      "ResearchObjectPayload": {
+        "description": "Read-only research-domain object projected from runtime records.",
+        "properties": {
+          "confirmation_boundary": {
+            "additionalProperties": true,
+            "title": "Confirmation Boundary",
+            "type": "object"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "effects": {
+            "additionalProperties": true,
+            "title": "Effects",
+            "type": "object"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
+          },
+          "object_id": {
+            "minLength": 1,
+            "title": "Object Id",
+            "type": "string"
+          },
+          "object_type": {
+            "minLength": 1,
+            "title": "Object Type",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "state": {
+            "additionalProperties": true,
+            "title": "State",
+            "type": "object"
+          },
+          "status": {
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "object_id",
+          "object_type",
+          "status"
+        ],
+        "title": "ResearchObjectPayload",
+        "type": "object"
+      },
+      "ResearchProjectionPayload": {
+        "description": "Read-only research object/event projection over runtime state.",
+        "properties": {
+          "approval_boundaries": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Approval Boundaries",
+            "type": "array"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchEventPayload"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchObjectPayload"
+            },
+            "title": "Objects",
+            "type": "array"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "title": "Scope",
+            "type": "object"
+          },
+          "status_projection": {
+            "additionalProperties": true,
+            "title": "Status Projection",
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema_version",
+          "generated_at"
+        ],
+        "title": "ResearchProjectionPayload",
+        "type": "object"
+      },
       "ResumeSessionPayload": {
         "description": "Session resume response payload.",
         "properties": {
@@ -14729,6 +15547,72 @@
           "session"
         ],
         "title": "ResumeSessionPayload",
+        "type": "object"
+      },
+      "RetrievalQrelsStatusPayload": {
+        "description": "Quality-label gate for retrieval evaluation state.\n\nArgs:\n    status: Highest available local qrels review state for the project.\n    candidate_qrels_count: Candidate TREC qrels rows still awaiting review.\n    reviewed_qrels_count: Reviewed judgment rows available before promotion.\n    canonical_qrels_count: Canonical TREC qrels rows available for metrics.\n    semantic_quality_claim_allowed: True only when canonical qrels exist.\n    quality_claim: Short public claim token for UI/API gating.\n    notes: Bounded reviewer notes explaining why quality claims are gated.",
+        "properties": {
+          "candidate_qrels_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Candidate Qrels Count",
+            "type": "integer"
+          },
+          "canonical_qrels_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Canonical Qrels Count",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Notes",
+            "type": "array"
+          },
+          "quality_claim": {
+            "default": "no_qrels_available",
+            "enum": [
+              "no_qrels_available",
+              "candidate_qrels_review_required",
+              "reviewed_qrels_promotion_required",
+              "canonical_qrels_available"
+            ],
+            "title": "Quality Claim",
+            "type": "string"
+          },
+          "reviewed_qrels_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Reviewed Qrels Count",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "retrieval-qrels-status/v1",
+            "default": "retrieval-qrels-status/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "semantic_quality_claim_allowed": {
+            "default": false,
+            "title": "Semantic Quality Claim Allowed",
+            "type": "boolean"
+          },
+          "status": {
+            "default": "missing",
+            "enum": [
+              "missing",
+              "candidate",
+              "reviewed",
+              "canonical"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RetrievalQrelsStatusPayload",
         "type": "object"
       },
       "RevisionPayload": {
@@ -15991,6 +16875,363 @@
           "source"
         ],
         "title": "SettingsFeatureFlagPayload",
+        "type": "object"
+      },
+      "SinglePaperCompletionCheckPayload": {
+        "description": "Machine-checkable completion report for a single-paper deep-read draft.",
+        "properties": {
+          "completion_state": {
+            "enum": [
+              "complete",
+              "incomplete"
+            ],
+            "title": "Completion State",
+            "type": "string"
+          },
+          "docx_export_ready": {
+            "title": "Docx Export Ready",
+            "type": "boolean"
+          },
+          "evidence_ref_count": {
+            "minimum": 0.0,
+            "title": "Evidence Ref Count",
+            "type": "integer"
+          },
+          "figure_table_ref_count": {
+            "minimum": 0.0,
+            "title": "Figure Table Ref Count",
+            "type": "integer"
+          },
+          "lint_passed": {
+            "title": "Lint Passed",
+            "type": "boolean"
+          },
+          "missing_sections": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Sections",
+            "type": "array"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ToolOutcome"
+          },
+          "present_sections": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Present Sections",
+            "type": "array"
+          },
+          "required_output_sections": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Output Sections",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "scholar-ai-single-paper-completion-check/v1",
+            "default": "scholar-ai-single-paper-completion-check/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sentinel": {
+            "default": "待补充",
+            "title": "Sentinel",
+            "type": "string"
+          },
+          "sentinel_contexts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sentinel Contexts",
+            "type": "array"
+          },
+          "sentinel_count": {
+            "minimum": 0.0,
+            "title": "Sentinel Count",
+            "type": "integer"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "completion_state",
+          "sentinel_count",
+          "evidence_ref_count",
+          "figure_table_ref_count",
+          "lint_passed",
+          "docx_export_ready",
+          "outcome"
+        ],
+        "title": "SinglePaperCompletionCheckPayload",
+        "type": "object"
+      },
+      "SinglePaperCompletionCheckRequest": {
+        "additionalProperties": false,
+        "description": "Validate a completed single-paper deep-read draft against its task manifest.\n\nArgs:\n    output_text: Final Markdown/plain-text draft generated from the task.\n    task_manifest: Manifest returned by ``single-paper-task``.\n    required_output_sections: Optional override for manifest sections.\n    evidence_refs: Evidence anchors used by the draft.\n    figure_table_refs: Figure/table anchors used by the draft.\n    lint_passed: Whether ``literature.academic_writing_lint`` has passed.\n    docx_artifact_path: Optional local DOCX artifact path after export.\n    sentinel: Placeholder token that must not remain in final output.",
+        "properties": {
+          "docx_artifact_path": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docx Artifact Path"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 200,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "figure_table_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 100,
+            "title": "Figure Table Refs",
+            "type": "array"
+          },
+          "lint_passed": {
+            "default": false,
+            "title": "Lint Passed",
+            "type": "boolean"
+          },
+          "output_text": {
+            "maxLength": 120000,
+            "minLength": 1,
+            "title": "Output Text",
+            "type": "string"
+          },
+          "required_output_sections": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 30,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Output Sections"
+          },
+          "sentinel": {
+            "default": "待补充",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Sentinel",
+            "type": "string"
+          },
+          "task_manifest": {
+            "additionalProperties": true,
+            "title": "Task Manifest",
+            "type": "object"
+          }
+        },
+        "required": [
+          "output_text",
+          "task_manifest"
+        ],
+        "title": "SinglePaperCompletionCheckRequest",
+        "type": "object"
+      },
+      "SinglePaperTaskPayload": {
+        "description": "Generated single-paper task instance plus optional runtime job binding.",
+        "properties": {
+          "agent_request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentBridgeRequestPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "health_checks": {
+            "additionalProperties": true,
+            "title": "Health Checks",
+            "type": "object"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Fields",
+            "type": "array"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ToolOutcome"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "resource_refs": {
+            "items": {
+              "$ref": "#/components/schemas/AgentResourceRef"
+            },
+            "title": "Resource Refs",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "scholar-ai-single-paper-task/v1",
+            "default": "scholar-ai-single-paper-task/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sentinel": {
+            "default": "待补充",
+            "title": "Sentinel",
+            "type": "string"
+          },
+          "task_artifact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "task_manifest": {
+            "additionalProperties": true,
+            "title": "Task Manifest",
+            "type": "object"
+          },
+          "task_markdown": {
+            "title": "Task Markdown",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "generated_at",
+          "project_id",
+          "material_id",
+          "task_markdown",
+          "task_manifest",
+          "outcome"
+        ],
+        "title": "SinglePaperTaskPayload",
+        "type": "object"
+      },
+      "SinglePaperTaskRequest": {
+        "additionalProperties": false,
+        "description": "Request one dynamic single-paper reading task instance.\n\nArgs:\n    project_id: Existing Scholar AI project id.\n    material_id: Existing material id that belongs to the project.\n    task_goal: User-facing goal statement embedded in the generated task.\n    output_language: Expected answer language for the external agent.\n    target_document: Intended downstream deliverable.\n    create_agent_request: Whether to create a runtime-visible agent job.\n    agent_host: External agent host label used for audit metadata.\n    source: Invocation source label used for runtime filtering.\n    max_chars: Bounded resource-read budget for the task envelope.\n    max_chunks: Maximum indexed chunks attached as resource refs.",
+        "properties": {
+          "agent_host": {
+            "default": "mcp",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Agent Host",
+            "type": "string"
+          },
+          "create_agent_request": {
+            "default": true,
+            "title": "Create Agent Request",
+            "type": "boolean"
+          },
+          "material_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Material Id",
+            "type": "string"
+          },
+          "max_chars": {
+            "default": 12000,
+            "maximum": 40000.0,
+            "minimum": 100.0,
+            "title": "Max Chars",
+            "type": "integer"
+          },
+          "max_chunks": {
+            "default": 12,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Chunks",
+            "type": "integer"
+          },
+          "output_language": {
+            "default": "zh",
+            "enum": [
+              "zh",
+              "en",
+              "bilingual"
+            ],
+            "title": "Output Language",
+            "type": "string"
+          },
+          "project_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "source": {
+            "default": "mcp",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "target_document": {
+            "default": "word_draft",
+            "enum": [
+              "deep_summary",
+              "word_draft"
+            ],
+            "title": "Target Document",
+            "type": "string"
+          },
+          "task_goal": {
+            "default": "生成单篇论文深度精读、写作借鉴要点、可导出 Word 的结构化草稿",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Task Goal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "material_id"
+        ],
+        "title": "SinglePaperTaskRequest",
         "type": "object"
       },
       "SkillApprovalDecisionCreate": {
@@ -17595,6 +18836,265 @@
         "title": "TokenUsagePayload",
         "type": "object"
       },
+      "ToolAttempt": {
+        "description": "One bounded execution step, safe for audit/UI display.\n\nArgs:\n    stage: Stable phase label such as ``chunk_load`` or ``rerank``.\n    status: Step-level result.\n    reason: Short non-secret explanation.\n    duration_ms: Local elapsed duration in milliseconds.\n    error_class: Optional shared diagnostic class.\n    recommendation: Optional actionable hint.\n    metadata: Bounded JSON-safe details; callers must not include secrets,\n        raw provider payloads, cookies, or full document text.",
+        "properties": {
+          "duration_ms": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "error_class": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Error Class",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 240,
+            "title": "Reason",
+            "type": "string"
+          },
+          "recommendation": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Recommendation",
+            "type": "string"
+          },
+          "stage": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "success",
+              "skipped",
+              "failed",
+              "blocked",
+              "degraded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "status"
+        ],
+        "title": "ToolAttempt",
+        "type": "object"
+      },
+      "ToolCapabilityProbeResult": {
+        "description": "Public result for a chat provider's native tool-call capability probe.",
+        "properties": {
+          "base_url_host": {
+            "default": "",
+            "title": "Base Url Host",
+            "type": "string"
+          },
+          "capability": {
+            "additionalProperties": true,
+            "title": "Capability",
+            "type": "object"
+          },
+          "error": {
+            "default": "",
+            "title": "Error",
+            "type": "string"
+          },
+          "forced_tool_choice_ok": {
+            "default": false,
+            "title": "Forced Tool Choice Ok",
+            "type": "boolean"
+          },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "ordinary_chat_ok": {
+            "default": false,
+            "title": "Ordinary Chat Ok",
+            "type": "boolean"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Message"
+          },
+          "stage": {
+            "default": "",
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "status"
+        ],
+        "title": "ToolCapabilityProbeResult",
+        "type": "object"
+      },
+      "ToolNextAction": {
+        "description": "Machine-actionable next step for agents and UI.\n\nArgs:\n    kind: Closed action class. Use ``none`` when no follow-up is needed.\n    message: Short user/agent visible explanation without secrets.\n    tool_name: Optional MCP tool name to call next.\n    endpoint: Optional backend endpoint for UI/developer follow-up.\n    command_preview: Optional non-secret command preview.\n    args: JSON-safe argument hints for the next action.",
+        "properties": {
+          "args": {
+            "additionalProperties": true,
+            "title": "Args",
+            "type": "object"
+          },
+          "command_preview": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command Preview"
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "maxLength": 260,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint"
+          },
+          "kind": {
+            "default": "none",
+            "enum": [
+              "call_tool",
+              "open_settings",
+              "bind_source_folder",
+              "scan_folder",
+              "read_resource",
+              "configure_provider",
+              "configure_rerank",
+              "obtain_full_text",
+              "review_qrels",
+              "retry_later",
+              "none"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Message",
+            "type": "string"
+          },
+          "tool_name": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Name"
+          }
+        },
+        "title": "ToolNextAction",
+        "type": "object"
+      },
+      "ToolOutcome": {
+        "description": "Common agent-facing outcome envelope for multi-step tools.\n\nArgs:\n    status: Overall result state for the tool invocation.\n    quality: Coarse usefulness of returned data.\n    reason: Short non-secret explanation of the outcome.\n    next_action: Suggested safe follow-up.\n    attempts: Ordered step audit. Keep this concise; raw documents and\n        provider payloads belong in bounded resources, not this envelope.",
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/ToolAttempt"
+            },
+            "maxItems": 32,
+            "title": "Attempts",
+            "type": "array"
+          },
+          "next_action": {
+            "$ref": "#/components/schemas/ToolNextAction"
+          },
+          "quality": {
+            "default": "unknown",
+            "enum": [
+              "full",
+              "partial",
+              "refs_only",
+              "metadata_only",
+              "none",
+              "unknown"
+            ],
+            "title": "Quality",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "scholar-ai-tool-outcome/v1",
+            "default": "scholar-ai-tool-outcome/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "success",
+              "partial",
+              "empty",
+              "blocked",
+              "config_needed",
+              "auth_required",
+              "degraded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ToolOutcome",
+        "type": "object"
+      },
       "UnifiedSettingsPayload": {
         "description": "Single Settings document for UI bootstrap and smoke verification.",
         "properties": {
@@ -18367,6 +19867,57 @@
         "title": "WikiImportResponse",
         "type": "object"
       },
+      "WikiOkfInspectRequest": {
+        "description": "Read-only request to inspect a local OKF zip archive.",
+        "properties": {
+          "archive_path": {
+            "minLength": 1,
+            "title": "Archive Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "archive_path"
+        ],
+        "title": "WikiOkfInspectRequest",
+        "type": "object"
+      },
+      "WikiOkfInspectResponse": {
+        "description": "Read-only OKF inspection response for future import planning.",
+        "properties": {
+          "archive_path": {
+            "default": "",
+            "title": "Archive Path",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "inspection": {
+            "additionalProperties": true,
+            "title": "Inspection",
+            "type": "object"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WikiOkfInspectResponse",
+        "type": "object"
+      },
       "WikiPageCreateRequest": {
         "description": "Request to create a new wiki page (G2 2026-05-26).",
         "properties": {
@@ -18723,6 +20274,143 @@
           "slug"
         ],
         "title": "WikiPageVersionsResponse",
+        "type": "object"
+      },
+      "WikiProjectOkfExportRequest": {
+        "description": "Explicit process artifact records for a local project OKF bundle.",
+        "properties": {
+          "answers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Answers",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "exports": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Exports",
+            "type": "array"
+          },
+          "include_live_project_records": {
+            "default": false,
+            "title": "Include Live Project Records",
+            "type": "boolean"
+          },
+          "materials": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Materials",
+            "type": "array"
+          },
+          "max_live_records": {
+            "default": 200,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Max Live Records",
+            "type": "integer"
+          },
+          "output_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Path"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "reviews": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "tasks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "title": "WikiProjectOkfExportRequest",
+        "type": "object"
+      },
+      "WikiProjectOkfExportResponse": {
+        "description": "Local project OKF export result for explicit process artifact records.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "output_path": {
+            "default": "",
+            "title": "Output Path",
+            "type": "string"
+          },
+          "page_count": {
+            "default": 0,
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "success": {
+            "default": false,
+            "title": "Success",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WikiProjectOkfExportResponse",
         "type": "object"
       },
       "WikiQueryRequest": {
@@ -19163,6 +20851,262 @@
           "memory_hit_count"
         ],
         "title": "WritingAssociationPayload",
+        "type": "object"
+      },
+      "WritingWorkflowStatePayload": {
+        "description": "Writing workflow-state response payload.",
+        "properties": {
+          "change_log": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Change Log",
+            "type": "array"
+          },
+          "citation_bank": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Citation Bank",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "export_manifest": {
+            "additionalProperties": true,
+            "title": "Export Manifest",
+            "type": "object"
+          },
+          "intake": {
+            "additionalProperties": true,
+            "title": "Intake",
+            "type": "object"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "lint_report": {
+            "additionalProperties": true,
+            "title": "Lint Report",
+            "type": "object"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "readiness": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Readiness",
+            "type": "object"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "job_id",
+          "session_id",
+          "phase",
+          "updated_at"
+        ],
+        "title": "WritingWorkflowStatePayload",
+        "type": "object"
+      },
+      "WritingWorkflowStateRequest": {
+        "description": "Request to persist a writing workflow-state snapshot for one runtime job.",
+        "properties": {
+          "change_log": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Change Log",
+            "type": "array"
+          },
+          "citation_bank": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Citation Bank",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "export_manifest": {
+            "additionalProperties": true,
+            "title": "Export Manifest",
+            "type": "object"
+          },
+          "intake": {
+            "additionalProperties": true,
+            "title": "Intake",
+            "type": "object"
+          },
+          "lint_report": {
+            "additionalProperties": true,
+            "title": "Lint Report",
+            "type": "object"
+          },
+          "phase": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Phase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase"
+        ],
+        "title": "WritingWorkflowStateRequest",
+        "type": "object"
+      },
+      "ZoteroAttachmentHealthResponse": {
+        "description": "Versioned read-only Zotero attachment health report.\n\nArgs:\n    schema_version: Stable response contract.\n    status: Aggregate result across inspected rows.\n    generated_at: UTC timestamp.\n    zotero_data_dir: Source Zotero data directory.\n    snapshot_used: Whether the SQLite database was copied before reading.\n    summary: Counts and report metadata.\n    items: Bounded diagnostic rows.\n    reports: Local artifact paths under workspace output.\n    outcome: ToolOutcome envelope for MCP and UI consumers.",
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ZoteroAttachmentItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ToolOutcome"
+          },
+          "reports": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Reports",
+            "type": "object"
+          },
+          "schema_version": {
+            "const": "scholar-ai-zotero-attachment-health/v1",
+            "default": "scholar-ai-zotero-attachment-health/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "snapshot_used": {
+            "title": "Snapshot Used",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "degraded",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "zotero_data_dir": {
+            "title": "Zotero Data Dir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "generated_at",
+          "zotero_data_dir",
+          "snapshot_used",
+          "outcome"
+        ],
+        "title": "ZoteroAttachmentHealthResponse",
+        "type": "object"
+      },
+      "ZoteroAttachmentItem": {
+        "description": "One bounded Zotero attachment diagnostic row.\n\nArgs:\n    item_key: Zotero parent item key.\n    title: Optional parent item title.\n    doi: Optional parent DOI.\n    attachment_key: Optional Zotero attachment item key.\n    status: Closed health status for deterministic filters.\n    reason: Short non-secret explanation.\n    details: Small JSON-safe metadata without full local file content.",
+        "properties": {
+          "attachment_key": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Attachment Key",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "doi": {
+            "default": "",
+            "maxLength": 180,
+            "title": "Doi",
+            "type": "string"
+          },
+          "item_key": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Item Key",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "missing_attachment_row",
+              "missing_file",
+              "linked_file_outside_allowed_root",
+              "non_pdf_attachment",
+              "zero_or_short_extracted_text",
+              "duplicate_doi"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ZoteroAttachmentItem",
         "type": "object"
       },
       "_DiscoverModelsBody": {
@@ -19896,6 +21840,90 @@
           }
         },
         "summary": "Read Agent Resource",
+        "tags": [
+          "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-bridge/single-paper-task": {
+      "post": {
+        "description": "Create a Scholar AI dynamic task instance for one paper.\n\nArgs:\n    request: Task-generation request. It must target a real project material.\n\nReturns:\n    A Markdown task, machine-readable manifest, resource refs, outcome, and\n    optional runtime agent request. This route never creates external skill\n    packages or external uploads.",
+        "operationId": "post_api_agent_bridge_single_paper_task",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SinglePaperTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SinglePaperTaskPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Single Paper Task",
+        "tags": [
+          "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-bridge/single-paper-task/completion-check": {
+      "post": {
+        "description": "Validate a generated single-paper deep-read draft without external calls.\n\nArgs:\n    request: Completed draft text and the manifest from task generation.\n\nReturns:\n    A deterministic completion report with a ToolOutcome next action.",
+        "operationId": "post_api_agent_bridge_single_paper_task_completion_check",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SinglePaperCompletionCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SinglePaperCompletionCheckPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Single Paper Completion",
         "tags": [
           "Agent Bridge"
         ]
@@ -21313,6 +23341,48 @@
           }
         },
         "summary": "Test Chat Endpoint",
+        "tags": [
+          "Chat Config"
+        ]
+      }
+    },
+    "/api/chat/tool-capability/test": {
+      "post": {
+        "description": "Probe and persist native OpenAI-compatible chat tool-call capability.",
+        "operationId": "post_api_chat_tool_capability_test",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolCapabilityProbeResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Chat Tool Capability",
         "tags": [
           "Chat Config"
         ]
@@ -24582,6 +26652,50 @@
         ]
       }
     },
+    "/api/health/check": {
+      "get": {
+        "description": "Return passive Scholar AI workflow readiness.",
+        "operationId": "get_api_health_check",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_live",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Live",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Health Check",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/inspiration/evidence_refs": {
       "get": {
         "description": "Get inspiration evidence references with source_labels filtering.\n\nAlias to /api/evidence_refs with inspiration-specific context.",
@@ -26891,7 +29005,7 @@
     },
     "/api/wiki/export": {
       "post": {
-        "description": "Export all wiki pages as Markdown zip archive (G15 2026-05-26).\n\nArgs:\n    output_path: Optional output zip filename under workspace_artifacts/wiki_exports.\n\nReturns:\n    WikiExportResponse with success/page_count/output_path/errors",
+        "description": "Export wiki pages as a local Markdown or OKF-compatible zip archive.\n\nArgs:\n    output_path: Optional safe output zip filename. Markdown exports use\n        ``workspace_artifacts/wiki_exports`` for compatibility; OKF exports\n        use ``workspace_artifacts/generated/output/wiki-okf``.\n    user_id: Local wiki user whose readable pages are exported.\n    format: ``markdown`` for the existing raw page archive or ``okf`` for\n        Scholar AI's OKF-compatible profile bundle.\n\nReturns:\n    WikiExportResponse with success/page_count/output_path/errors",
         "operationId": "post_api_wiki_export",
         "parameters": [
           {
@@ -26925,6 +29039,16 @@
               ],
               "title": "User Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "markdown",
+              "title": "Format",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -26950,6 +29074,48 @@
           }
         },
         "summary": "Wiki Export",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/export/project-okf": {
+      "post": {
+        "description": "Export explicit process artifact records into a local OKF zip bundle.",
+        "operationId": "post_api_wiki_export_project_okf",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiProjectOkfExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiProjectOkfExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wiki Project Okf Export",
         "tags": [
           "Wiki"
         ]
@@ -27059,6 +29225,48 @@
           }
         },
         "summary": "Wiki Import",
+        "tags": [
+          "Wiki"
+        ]
+      }
+    },
+    "/api/wiki/import/okf/inspect": {
+      "post": {
+        "description": "Inspect a local OKF zip archive without importing or mutating wiki pages.",
+        "operationId": "post_api_wiki_import_okf_inspect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiOkfInspectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiOkfInspectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wiki Okf Import Inspect",
         "tags": [
           "Wiki"
         ]
@@ -29052,6 +31260,106 @@
         "summary": "Submit For Review",
         "tags": [
           "Writing"
+        ]
+      }
+    },
+    "/api/zotero/attachment-health": {
+      "get": {
+        "description": "Return read-only Zotero attachment health diagnostics.",
+        "operationId": "get_api_zotero_attachment_health",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "zotero_data_dir",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Zotero Data Dir"
+            }
+          },
+          {
+            "in": "query",
+            "name": "allowed_root",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Allowed Root"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_text_chars",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Min Text Chars",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_items",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Max Items",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "write_reports",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Write Reports",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZoteroAttachmentHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Zotero Attachment Health",
+        "tags": [
+          "Zotero"
         ]
       }
     },
@@ -34444,6 +36752,100 @@
         ]
       }
     },
+    "/runtime/job/{job_id}/material-processing-task": {
+      "get": {
+        "description": "Return the latest material-processing task record for a runtime job.",
+        "operationId": "get_runtime_job_job_id_material_processing_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialProcessingTaskPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Material Processing Task",
+        "tags": [
+          "Runtime"
+        ]
+      },
+      "post": {
+        "description": "Persist a versioned material-processing task request for a runtime job.",
+        "operationId": "post_runtime_job_job_id_material_processing_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialProcessingTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialProcessingTaskPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Material Processing Task",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
     "/runtime/job/{job_id}/pause": {
       "post": {
         "description": "Pause a running job.",
@@ -34726,6 +37128,100 @@
         ]
       }
     },
+    "/runtime/job/{job_id}/writing-workflow-state": {
+      "get": {
+        "description": "Return the latest writing workflow-state snapshot for a runtime job.",
+        "operationId": "get_runtime_job_job_id_writing_workflow_state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingWorkflowStatePayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Writing Workflow State",
+        "tags": [
+          "Runtime"
+        ]
+      },
+      "post": {
+        "description": "Persist an auditable writing workflow-state snapshot for a runtime job.",
+        "operationId": "post_runtime_job_job_id_writing_workflow_state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WritingWorkflowStateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingWorkflowStatePayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Writing Workflow State",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
     "/runtime/jobs": {
       "get": {
         "description": "List runtime jobs for the task center.\n\nArgs:\n    session_id: Optional session filter. When omitted, jobs across active\n        runtime sessions are returned.\n    status: Optional raw job status value.\n    limit: Maximum number of newest jobs to return.\n\nReturns:\n    Newest jobs first, serialized through the public job payload model.\n\nRaises:\n    HTTPException: If ``status`` is not a known runtime job status.",
@@ -34803,6 +37299,100 @@
           }
         },
         "summary": "List Jobs",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/research-projection": {
+      "get": {
+        "description": "Return a read-only research object/event projection over runtime state.",
+        "operationId": "get_runtime_research_projection",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchProjectionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Research Projection",
         "tags": [
           "Runtime"
         ]

@@ -9,6 +9,8 @@ from unittest.mock import Mock, patch
 
 from lit_assistant_mcp.runtime_attach import (
     DESKTOP_RUNTIME_CLOSED_FILENAME,
+    _creation_flags,
+    _desktop_python_executable,
     ensure_desktop_runtime_attached,
     launch_desktop_runtime,
     read_valid_desktop_runtime,
@@ -146,18 +148,40 @@ def test_force_launch_ignores_closed_marker(tmp_path: Path) -> None:
 
 
 def test_launch_desktop_runtime_runs_start_desktop(tmp_path: Path) -> None:
-    """Desktop launch command should target start_desktop.py, not uvicorn."""
+    """Desktop launch should target start_desktop.py without a terminal wrapper."""
 
     repo_root = _repo_root(tmp_path)
     with patch("lit_assistant_mcp.runtime_attach.subprocess.Popen") as popen:
         launch_desktop_runtime(repo_root=repo_root, python_executable="python-test", env={})
 
     command = popen.call_args.args[0]
-    if os.name == "nt":
-        assert command[:2] == ["cmd.exe", "/k"]
-        assert "python-test" in command[2]
-        assert str(repo_root / "start_desktop.py") in command[2]
-    else:
-        assert command == ["python-test", str(repo_root / "start_desktop.py")]
+    assert command == ["python-test", str(repo_root / "start_desktop.py")]
     assert popen.call_args.kwargs["cwd"] == repo_root
     assert popen.call_args.kwargs["env"]["LITERATURE_ASSISTANT_REPO_ROOT"] == str(repo_root)
+    assert popen.call_args.kwargs["stdin"] is not None
+    assert "desktop_autostart" in str(popen.call_args.kwargs["stdout"].name)
+    assert "desktop_autostart" in str(popen.call_args.kwargs["stderr"].name)
+
+
+def test_windows_desktop_autostart_does_not_request_console() -> None:
+    """A visible pywebview window must not imply a visible Windows terminal."""
+
+    with patch("lit_assistant_mcp.runtime_attach.os.name", "nt"):
+        flags = _creation_flags(visible=True)
+
+    assert flags & int(getattr(__import__("subprocess"), "CREATE_NO_WINDOW", 0))
+    assert not flags & int(getattr(__import__("subprocess"), "CREATE_NEW_CONSOLE", 0))
+
+
+def test_windows_desktop_autostart_prefers_pythonw(tmp_path: Path) -> None:
+    """GUI Python avoids allocating a console for pywebview autostart."""
+
+    python_exe = tmp_path / "python.exe"
+    pythonw_exe = tmp_path / "pythonw.exe"
+    python_exe.write_text("", encoding="utf-8")
+    pythonw_exe.write_text("", encoding="utf-8")
+
+    with patch("lit_assistant_mcp.runtime_attach.os.name", "nt"):
+        executable = _desktop_python_executable(python_exe)
+
+    assert executable == str(pythonw_exe)

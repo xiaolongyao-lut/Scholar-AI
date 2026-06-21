@@ -73,7 +73,11 @@ def test_stdio_wrapper_initialize_list_and_call() -> None:
         assert "source.list_tree" in tool_names
         assert "source.inspect_routes" in tool_names
         assert "literature.config_status" in tool_names
+        assert "literature.health_check" in tool_names
+        assert "literature.zotero_attachment_health" in tool_names
         assert "literature.agent_request_create" in tool_names
+        assert "literature.single_paper_task_create" in tool_names
+        assert "literature.single_paper_completion_check" in tool_names
         assert "workflow.run_json_workflow" in tool_names
         assert "artifact.write_markdown" in tool_names
         assert result.structuredContent is not None

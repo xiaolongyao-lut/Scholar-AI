@@ -28,6 +28,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from typing import Any, Awaitable, Callable
 
 from mcp_runtime import audit as mcp_audit
@@ -69,6 +70,161 @@ DEFAULT_MAX_ROUNDS = 4
 DEFAULT_MAX_TOTAL_SECONDS = 45.0
 DEFAULT_MAX_PARALLEL = 2
 DEFAULT_PER_CALL_TIMEOUT = 20.0
+DEFAULT_MAX_TOOL_PAYLOAD_CHARS = 64_000
+_FAILURE_MESSAGE_CHAR_LIMIT = 240
+_CONTEXT_BUDGET_MESSAGE_LIMIT = 1600
+
+
+class ToolLoopStopReason(str, Enum):
+    """Machine-readable tool-loop stop reasons exposed beside legacy strings."""
+
+    TOOL_LOOP_NOT_STARTED = "tool_loop_not_started"
+    MCP_DISABLED_BY_POLICY = "mcp_disabled_by_policy"
+    PROVIDER_TOOL_PROBE_FAILED = "provider_tool_probe_failed"
+    TOOL_DISCOVERY_FAILED = "tool_discovery_failed"
+    TOOLS_HIDDEN_BY_POLICY = "tools_hidden_by_policy"
+    PROVIDER_NO_TOOL_CALLS = "provider_no_tool_calls"
+    TOOL_LOOP_COMPLETED = "tool_loop_completed"
+    TOOL_LOOP_MAX_ROUNDS = "tool_loop_max_rounds"
+    TOOL_LOOP_TIMEOUT = "tool_loop_timeout"
+    TOOL_LOOP_CANCELLED = "tool_loop_cancelled"
+    ADAPTER_CONVERSION_ERROR = "adapter_conversion_error"
+    CONTEXT_BUDGET_EXCEEDED = "context_budget_exceeded"
+    TOOL_CALL_FAILED_NO_MODEL_PAYLOAD = "tool_call_failed_no_model_payload"
+
+
+class ToolLoopTerminalState(str, Enum):
+    """Run-level terminal bucket independent from assistant answer text."""
+
+    NOT_STARTED = "not_started"
+    COMPLETED = "completed"
+    STOPPED = "stopped"
+    FAILED = "failed"
+
+
+class ToolLoopEventType(str, Enum):
+    """Stable event names for tool-loop projections and tests."""
+
+    TOOL_LOOP_NOT_STARTED = "tool_loop_not_started"
+    MCP_DISABLED_BY_POLICY = "mcp_disabled_by_policy"
+    PROVIDER_TOOL_PROBE_FAILED = "provider_tool_probe_failed"
+    TOOL_LOOP_STARTED = "tool_loop_started"
+    TOOL_DISCOVERY_FAILED = "tool_discovery_failed"
+    TOOLS_HIDDEN_BY_POLICY = "tools_hidden_by_policy"
+    PROVIDER_NO_TOOL_CALLS = "provider_no_tool_calls"
+    TOOL_CALL_RECEIVED = "tool_call_received"
+    TOOL_CALL_DENIED = "tool_call_denied"
+    TOOL_EXECUTION_ERROR_RETURNED = "tool_execution_error_returned"
+    TOOL_CALL_FAILED_NO_MODEL_PAYLOAD = "tool_call_failed_no_model_payload"
+    TOOL_RESULT_RENDERED = "tool_result_rendered"
+    FOLLOW_UP_SENT = "follow_up_sent"
+    TOOL_LOOP_COMPLETED = "tool_loop_completed"
+    TOOL_LOOP_MAX_ROUNDS = "tool_loop_max_rounds"
+    TOOL_LOOP_TIMEOUT = "tool_loop_timeout"
+    TOOL_LOOP_CANCELLED = "tool_loop_cancelled"
+    ADAPTER_CONVERSION_ERROR = "adapter_conversion_error"
+    CONTEXT_BUDGET_EXCEEDED = "context_budget_exceeded"
+
+
+@dataclass(frozen=True)
+class ToolLoopEvent:
+    """One bounded lifecycle event emitted by the provider tool loop.
+
+    Args:
+        event: Stable event name. Values are safe for UI reducers and tests.
+        round_index: One-based provider round index when the event belongs to a round.
+        tool_call_id: Provider tool call id when available.
+        tool_name: Internal tool name when available.
+        is_error: Tool-result error flag when the event represents a result.
+        message: Short diagnostic text without secrets or raw provider payloads.
+        metadata: Small JSON-safe counters or ids needed by projections.
+    """
+
+    event: ToolLoopEventType
+    round_index: int | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    is_error: bool | None = None
+    message: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a compact JSON-safe event payload."""
+
+        payload: dict[str, Any] = {"event": self.event.value}
+        if self.round_index is not None:
+            payload["round_index"] = self.round_index
+        if self.tool_call_id is not None:
+            payload["tool_call_id"] = self.tool_call_id
+        if self.tool_name is not None:
+            payload["tool_name"] = self.tool_name
+        if self.is_error is not None:
+            payload["is_error"] = self.is_error
+        if self.message:
+            payload["message"] = self.message
+        if self.metadata:
+            payload["metadata"] = dict(self.metadata)
+        return payload
+
+
+@dataclass(frozen=True)
+class ToolLoopDiagnostics:
+    """Typed run diagnostics for one bounded provider tool loop.
+
+    Args:
+        terminal_state: Coarse final state independent from answer text.
+        stop_reason: Specific typed stop reason.
+        legacy_stopped_reason: Backward-compatible runner string.
+        rounds: Provider rounds attempted by the loop.
+        offered_tool_count: Number of provider-facing tools in the first round.
+        tool_call_count: Tool result records produced.
+        tool_error_count: Tool result records marked as errors.
+        tool_payloads_used: Number of provider-bound tool payloads produced.
+        tool_payload_chars: Provider-bound tool payload chars actually sent.
+        tool_payload_estimated_tokens: Character-derived token estimate.
+        context_budget_chars: Configured total provider-bound tool payload budget.
+        context_budget_remaining_chars: Remaining provider-bound budget at exit.
+        context_budget_exceeded: Whether any payload was replaced by a budget summary.
+        llm_payload_truncated_count: Provider-facing result payloads truncated.
+        events: Ordered lifecycle events.
+    """
+
+    terminal_state: ToolLoopTerminalState
+    stop_reason: ToolLoopStopReason
+    legacy_stopped_reason: str
+    rounds: int
+    offered_tool_count: int
+    tool_call_count: int
+    tool_error_count: int
+    tool_payloads_used: int
+    tool_payload_chars: int
+    tool_payload_estimated_tokens: int
+    context_budget_chars: int
+    context_budget_remaining_chars: int
+    context_budget_exceeded: bool
+    llm_payload_truncated_count: int
+    events: list[ToolLoopEvent] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the public diagnostics shape used by API transcripts."""
+
+        return {
+            "terminal_state": self.terminal_state.value,
+            "stop_reason": self.stop_reason.value,
+            "legacy_stopped_reason": self.legacy_stopped_reason,
+            "rounds": self.rounds,
+            "offered_tool_count": self.offered_tool_count,
+            "tool_call_count": self.tool_call_count,
+            "tool_error_count": self.tool_error_count,
+            "tool_payloads_used": self.tool_payloads_used,
+            "tool_payload_chars": self.tool_payload_chars,
+            "tool_payload_estimated_tokens": self.tool_payload_estimated_tokens,
+            "context_budget_chars": self.context_budget_chars,
+            "context_budget_remaining_chars": self.context_budget_remaining_chars,
+            "context_budget_exceeded": self.context_budget_exceeded,
+            "llm_payload_truncated_count": self.llm_payload_truncated_count,
+            "events": [event.to_dict() for event in self.events],
+        }
 
 
 def _env_int(name: str, default: int) -> int:
@@ -97,6 +253,7 @@ class RunCaps:
     max_total_seconds: float = field(default_factory=lambda: _env_float("MCP_MAX_TOTAL_TOOL_SECONDS", DEFAULT_MAX_TOTAL_SECONDS))
     max_parallel: int = field(default_factory=lambda: _env_int("MCP_MAX_PARALLEL_TOOLS", DEFAULT_MAX_PARALLEL))
     per_call_timeout: float = field(default_factory=lambda: _env_float("MCP_TOOL_CALL_TIMEOUT_SECONDS", DEFAULT_PER_CALL_TIMEOUT))
+    max_tool_payload_chars: int = field(default_factory=lambda: _env_int("MCP_MAX_TOOL_PAYLOAD_CHARS", DEFAULT_MAX_TOOL_PAYLOAD_CHARS))
 
     def clamp_to_2x_defaults(self) -> "RunCaps":
         if os.environ.get("LITERATURE_MCP_RELAX_CAPS", "").strip() in {"1", "true", "yes", "on"}:
@@ -106,6 +263,10 @@ class RunCaps:
             max_total_seconds=min(self.max_total_seconds, DEFAULT_MAX_TOTAL_SECONDS * 2),
             max_parallel=min(self.max_parallel, DEFAULT_MAX_PARALLEL * 2),
             per_call_timeout=min(self.per_call_timeout, DEFAULT_PER_CALL_TIMEOUT * 2),
+            max_tool_payload_chars=min(
+                self.max_tool_payload_chars,
+                DEFAULT_MAX_TOOL_PAYLOAD_CHARS * 2,
+            ),
         )
 
 
@@ -116,10 +277,32 @@ class ToolUseRunResult:
     rounds: int
     transcript: list[ToolResultRecord]
     stopped_reason: str  # "natural" | "max_rounds" | "max_seconds" | "no_tools"
+    diagnostics: ToolLoopDiagnostics
 
 
 # ChatCall(messages, tools) -> raw provider response dict
 ChatCall = Callable[[list[dict[str, Any]], list[dict[str, Any]] | None], Awaitable[dict[str, Any]]]
+
+
+def _safe_failure_message(exc: BaseException | str) -> str:
+    """Return a short diagnostic string that avoids raw provider payloads."""
+
+    if isinstance(exc, BaseException):
+        text = f"{type(exc).__name__}: {exc}"
+    else:
+        text = str(exc)
+    text = " ".join(text.split())
+    if len(text) <= _FAILURE_MESSAGE_CHAR_LIMIT:
+        return text
+    return text[: _FAILURE_MESSAGE_CHAR_LIMIT - 1].rstrip() + "…"
+
+
+def _estimate_tokens_from_chars(chars: int) -> int:
+    """Return a deterministic token estimate for provider-bound diagnostics."""
+
+    if chars <= 0:
+        return 0
+    return max(1, (chars + 3) // 4)
 
 
 def _provider_key(provider: str) -> str:
@@ -222,6 +405,246 @@ def _build_tool_result_messages(
     return [format_for_openai(r) for r in records]
 
 
+def _tool_error_event_type(record: ToolResultRecord) -> ToolLoopEventType:
+    """Classify a tool error without exposing raw payload text."""
+
+    lowered = record.preview.lower()
+    if (
+        "capability_blocked" in lowered
+        or "user_rejected" in lowered
+        or "pending_call_timeout" in lowered
+        or "approval_blocked" in lowered
+    ):
+        return ToolLoopEventType.TOOL_CALL_DENIED
+    return ToolLoopEventType.TOOL_EXECUTION_ERROR_RETURNED
+
+
+def _terminal_state_for_stop_reason(
+    stop_reason: ToolLoopStopReason,
+) -> ToolLoopTerminalState:
+    """Map a typed stop reason to a coarse terminal state."""
+
+    if stop_reason in {
+        ToolLoopStopReason.PROVIDER_NO_TOOL_CALLS,
+        ToolLoopStopReason.TOOL_LOOP_COMPLETED,
+    }:
+        return ToolLoopTerminalState.COMPLETED
+    if stop_reason in {
+        ToolLoopStopReason.TOOLS_HIDDEN_BY_POLICY,
+        ToolLoopStopReason.TOOL_LOOP_MAX_ROUNDS,
+        ToolLoopStopReason.TOOL_LOOP_TIMEOUT,
+        ToolLoopStopReason.TOOL_LOOP_CANCELLED,
+        ToolLoopStopReason.CONTEXT_BUDGET_EXCEEDED,
+    }:
+        return ToolLoopTerminalState.STOPPED
+    if stop_reason == ToolLoopStopReason.TOOL_LOOP_NOT_STARTED:
+        return ToolLoopTerminalState.NOT_STARTED
+    return ToolLoopTerminalState.FAILED
+
+
+def _diagnostics_from_state(
+    *,
+    terminal_state: ToolLoopTerminalState | None,
+    stop_reason: ToolLoopStopReason,
+    legacy_stopped_reason: str,
+    rounds: int,
+    offered_tool_count: int,
+    context_budget_chars: int = 0,
+    context_budget_remaining_chars: int = 0,
+    context_budget_exceeded: bool = False,
+    transcript: list[ToolResultRecord],
+    events: list[ToolLoopEvent],
+) -> ToolLoopDiagnostics:
+    """Build diagnostics from the runner's current bounded state."""
+
+    if rounds < 0:
+        raise ValueError("rounds must be non-negative")
+    if offered_tool_count < 0:
+        raise ValueError("offered_tool_count must be non-negative")
+    if context_budget_chars < 0:
+        raise ValueError("context_budget_chars must be non-negative")
+    if context_budget_remaining_chars < 0:
+        raise ValueError("context_budget_remaining_chars must be non-negative")
+    payload_chars = sum(max(0, int(record.llm_payload_chars)) for record in transcript)
+
+    return ToolLoopDiagnostics(
+        terminal_state=terminal_state or _terminal_state_for_stop_reason(stop_reason),
+        stop_reason=stop_reason,
+        legacy_stopped_reason=legacy_stopped_reason,
+        rounds=rounds,
+        offered_tool_count=offered_tool_count,
+        tool_call_count=len(transcript),
+        tool_error_count=sum(1 for record in transcript if record.is_error),
+        tool_payloads_used=sum(1 for record in transcript if record.llm_payload),
+        tool_payload_chars=payload_chars,
+        tool_payload_estimated_tokens=sum(
+            max(0, int(record.estimated_tokens)) for record in transcript
+        )
+        or _estimate_tokens_from_chars(payload_chars),
+        context_budget_chars=context_budget_chars,
+        context_budget_remaining_chars=context_budget_remaining_chars,
+        context_budget_exceeded=context_budget_exceeded,
+        llm_payload_truncated_count=sum(
+            1 for record in transcript if record.llm_payload_truncated
+        ),
+        events=events,
+    )
+
+
+def _context_budget_summary_payload(
+    *,
+    record: ToolResultRecord,
+    budget_chars: int,
+    used_chars: int,
+    remaining_chars: int,
+) -> str:
+    """Return a model-visible summary when raw tool text cannot fit."""
+
+    summary = {
+        "tool_result_for_llm": {
+            "tool_name": record.tool_name,
+            "is_error": record.is_error,
+            "context_budget_exceeded": True,
+            "budget_chars": budget_chars,
+            "used_chars_before_record": used_chars,
+            "remaining_chars_before_record": remaining_chars,
+            "payload_chars_omitted": record.llm_payload_chars,
+            "estimated_tokens_omitted": record.estimated_tokens,
+            "budget_class": record.budget_class,
+            "source_provenance": record.source_provenance,
+            "message": (
+                "Tool result body was omitted because the run-level provider "
+                "context budget for tool payloads was exhausted. Re-run with "
+                "a narrower query, lower max_chars/top_k, or read a smaller ref."
+            ),
+        }
+    }
+    text = json.dumps(summary, ensure_ascii=False, sort_keys=True)
+    if len(text) <= _CONTEXT_BUDGET_MESSAGE_LIMIT:
+        return text
+    return text[: _CONTEXT_BUDGET_MESSAGE_LIMIT - 1].rstrip() + "…"
+
+
+def _apply_context_budget_to_records(
+    *,
+    records: list[ToolResultRecord],
+    budget_chars: int,
+    used_chars: int,
+) -> tuple[list[ToolResultRecord], int, bool]:
+    """Apply a per-run provider-bound payload budget to new records."""
+
+    if budget_chars < 0:
+        raise ValueError("budget_chars must be non-negative")
+    if used_chars < 0:
+        raise ValueError("used_chars must be non-negative")
+    if not records:
+        return [], used_chars, False
+
+    out: list[ToolResultRecord] = []
+    exceeded = False
+    for record in records:
+        payload_chars = max(0, int(record.llm_payload_chars or len(record.llm_payload)))
+        remaining = max(0, budget_chars - used_chars)
+        if payload_chars <= remaining:
+            out.append(record)
+            used_chars += payload_chars
+            continue
+        exceeded = True
+        summary_payload = _context_budget_summary_payload(
+            record=record,
+            budget_chars=budget_chars,
+            used_chars=used_chars,
+            remaining_chars=remaining,
+        )
+        budgeted = replace(
+            record,
+            llm_payload=summary_payload,
+            llm_payload_truncated=True,
+            llm_payload_chars=len(summary_payload),
+            estimated_tokens=_estimate_tokens_from_chars(len(summary_payload)),
+            budget_class="context_budget_exceeded",
+        )
+        out.append(budgeted)
+        used_chars += len(summary_payload)
+    return out, used_chars, exceeded
+
+
+def _failure_response(
+    *,
+    error_type: str,
+    message: str,
+    provider_key: str,
+    round_index: int,
+) -> dict[str, Any]:
+    """Return a provider-shaped local failure envelope for downstream parsers."""
+
+    if not error_type.strip():
+        raise ValueError("error_type must be non-empty")
+    response: dict[str, Any] = {
+        "error": {
+            "type": error_type,
+            "message": message,
+            "provider_key": provider_key,
+            "round_index": round_index,
+        }
+    }
+    if provider_key == "claude":
+        response["content"] = []
+    return response
+
+
+def failed_tool_use_run_result(
+    *,
+    stop_reason: ToolLoopStopReason,
+    legacy_stopped_reason: str,
+    message: str,
+    provider: str = "",
+    offered_tool_count: int = 0,
+    metadata: dict[str, Any] | None = None,
+) -> ToolUseRunResult:
+    """Build a failed run result for policy gates outside the runner loop."""
+
+    if stop_reason is ToolLoopStopReason.TOOL_LOOP_NOT_STARTED:
+        terminal_state = ToolLoopTerminalState.NOT_STARTED
+    else:
+        terminal_state = ToolLoopTerminalState.FAILED
+    event_type = ToolLoopEventType(stop_reason.value)
+    provider_key = _provider_key(provider)
+    event_metadata = dict(metadata or {})
+    if provider:
+        event_metadata.setdefault("provider_key", provider_key)
+    safe_message = _safe_failure_message(message)
+    events = [
+        ToolLoopEvent(
+            event=event_type,
+            message=safe_message,
+            metadata=event_metadata,
+        )
+    ]
+    diagnostics = _diagnostics_from_state(
+        terminal_state=terminal_state,
+        stop_reason=stop_reason,
+        legacy_stopped_reason=legacy_stopped_reason,
+        rounds=0,
+        offered_tool_count=max(0, int(offered_tool_count)),
+        transcript=[],
+        events=events,
+    )
+    return ToolUseRunResult(
+        final_text="",
+        final_response=_failure_response(
+            error_type=stop_reason.value,
+            message=safe_message,
+            provider_key=provider_key,
+            round_index=0,
+        ),
+        rounds=0,
+        transcript=[],
+        stopped_reason=legacy_stopped_reason,
+        diagnostics=diagnostics,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -276,6 +699,18 @@ class McpToolUseRunner:
     @property
     def caps(self) -> RunCaps:
         return self._caps
+
+    @property
+    def offered_tool_count(self) -> int:
+        """Return provider-facing tool count for pre-run diagnostics.
+
+        Why:
+            Routers need this count for fail-closed provider-capability
+            diagnostics before ``run()`` executes, without reading private
+            catalog internals.
+        """
+
+        return sum(len(tools) for _config, tools in self._snapshot)
 
     # ---------------------------------------------------------------- gating
 
@@ -476,10 +911,23 @@ class McpToolUseRunner:
         tool_name_aliases = build_provider_tool_name_map(self._snapshot)
         messages = list(initial_messages)
         transcript: list[ToolResultRecord] = []
+        events: list[ToolLoopEvent] = [
+            ToolLoopEvent(
+                event=ToolLoopEventType.TOOL_LOOP_STARTED,
+                metadata={
+                    "provider_key": provider_key,
+                    "offered_tool_count": len(tools_payload),
+                },
+            )
+        ]
         start = time.perf_counter()
         last_data: dict[str, Any] = {}
         rounds = 0
         stopped_reason = "natural"
+        typed_stop_reason = ToolLoopStopReason.TOOL_LOOP_COMPLETED
+        context_budget_chars = max(0, int(self._caps.max_tool_payload_chars))
+        context_budget_used_chars = 0
+        context_budget_exceeded = False
         # Reset remember-for-run cache at run() entry — D-MCPUX-4 forbids
         # cross-session persistence; the cache lives only for this run.
         self._remember_decisions = {}
@@ -489,18 +937,146 @@ class McpToolUseRunner:
             elapsed = time.perf_counter() - start
             if elapsed >= self._caps.max_total_seconds:
                 stopped_reason = "max_seconds"
+                typed_stop_reason = ToolLoopStopReason.TOOL_LOOP_TIMEOUT
+                events.append(
+                    ToolLoopEvent(
+                        event=ToolLoopEventType.TOOL_LOOP_TIMEOUT,
+                        round_index=rounds,
+                        message="max_total_seconds elapsed before provider round",
+                        metadata={"max_total_seconds": self._caps.max_total_seconds},
+                    )
+                )
                 break
 
-            data = await chat_call(messages, tools_payload if tools_payload else None)
+            try:
+                data = await chat_call(messages, tools_payload if tools_payload else None)
+            except Exception as exc:  # noqa: BLE001 - provider call errors become typed run diagnostics.
+                message = _safe_failure_message(exc)
+                stopped_reason = "provider_error"
+                typed_stop_reason = ToolLoopStopReason.TOOL_CALL_FAILED_NO_MODEL_PAYLOAD
+                events.append(
+                    ToolLoopEvent(
+                        event=ToolLoopEventType.TOOL_CALL_FAILED_NO_MODEL_PAYLOAD,
+                        round_index=rounds,
+                        message=message,
+                        metadata={"provider_key": provider_key},
+                    )
+                )
+                last_data = _failure_response(
+                    error_type="provider_call_failed",
+                    message=message,
+                    provider_key=provider_key,
+                    round_index=rounds,
+                )
+                break
+
+            if not isinstance(data, dict):
+                message = _safe_failure_message(
+                    f"provider returned {type(data).__name__}, expected dict"
+                )
+                stopped_reason = "adapter_error"
+                typed_stop_reason = ToolLoopStopReason.ADAPTER_CONVERSION_ERROR
+                events.append(
+                    ToolLoopEvent(
+                        event=ToolLoopEventType.ADAPTER_CONVERSION_ERROR,
+                        round_index=rounds,
+                        message=message,
+                        metadata={"provider_key": provider_key},
+                    )
+                )
+                last_data = _failure_response(
+                    error_type="adapter_conversion_error",
+                    message=message,
+                    provider_key=provider_key,
+                    round_index=rounds,
+                )
+                break
             last_data = data
-            calls = _extract_tool_calls_normalized(data, provider_key, tool_name_aliases)
+            try:
+                calls = _extract_tool_calls_normalized(
+                    data, provider_key, tool_name_aliases
+                )
+            except (AttributeError, KeyError, IndexError, TypeError, ValueError) as exc:
+                message = _safe_failure_message(exc)
+                stopped_reason = "adapter_error"
+                typed_stop_reason = ToolLoopStopReason.ADAPTER_CONVERSION_ERROR
+                events.append(
+                    ToolLoopEvent(
+                        event=ToolLoopEventType.ADAPTER_CONVERSION_ERROR,
+                        round_index=rounds,
+                        message=message,
+                        metadata={"provider_key": provider_key},
+                    )
+                )
+                last_data = _failure_response(
+                    error_type="adapter_conversion_error",
+                    message=message,
+                    provider_key=provider_key,
+                    round_index=rounds,
+                )
+                break
 
             if not calls:
-                stopped_reason = "no_tools" if rounds == 1 else "natural"
+                if not context_budget_exceeded:
+                    stopped_reason = "no_tools" if rounds == 1 else "natural"
+                    typed_stop_reason = (
+                        ToolLoopStopReason.PROVIDER_NO_TOOL_CALLS
+                        if rounds == 1
+                        else ToolLoopStopReason.TOOL_LOOP_COMPLETED
+                    )
+                events.append(
+                    ToolLoopEvent(
+                        event=(
+                            ToolLoopEventType.PROVIDER_NO_TOOL_CALLS
+                            if rounds == 1
+                            else ToolLoopEventType.TOOL_LOOP_COMPLETED
+                        ),
+                        round_index=rounds,
+                        message=(
+                            "provider returned no tool calls on first round"
+                            if rounds == 1
+                            else (
+                                "provider returned final assistant message after context budget exhaustion"
+                                if context_budget_exceeded
+                                else "provider returned final assistant message"
+                            )
+                        ),
+                        metadata={"offered_tool_count": len(tools_payload)},
+                    )
+                )
+                break
+
+            if context_budget_exceeded:
+                stopped_reason = "context_budget_exceeded"
+                typed_stop_reason = ToolLoopStopReason.CONTEXT_BUDGET_EXCEEDED
+                events.append(
+                    ToolLoopEvent(
+                        event=ToolLoopEventType.CONTEXT_BUDGET_EXCEEDED,
+                        round_index=rounds,
+                        message=(
+                            "provider requested more tools after the one-time "
+                            "context budget summary was sent"
+                        ),
+                        metadata={
+                            "requested_tool_count": len(calls),
+                            "context_budget_chars": context_budget_chars,
+                            "tool_payload_chars": context_budget_used_chars,
+                        },
+                    )
+                )
                 break
 
             # Append assistant message before tool results.
             messages.append(_build_assistant_message(data, provider_key))
+            for call in calls:
+                events.append(
+                    ToolLoopEvent(
+                        event=ToolLoopEventType.TOOL_CALL_RECEIVED,
+                        round_index=rounds,
+                        tool_call_id=call.tool_call_id,
+                        tool_name=call.namespaced_name,
+                    )
+                )
 
             # Pending-call gate before dispatch.
             to_dispatch, short_circuits = await self._gate_calls(calls)
@@ -515,21 +1091,95 @@ class McpToolUseRunner:
                 short_circuits.get(c.tool_call_id) or dispatched_by_id[c.tool_call_id]
                 for c in calls
             ]
+            records, context_budget_used_chars, exceeded_now = _apply_context_budget_to_records(
+                records=records,
+                budget_chars=context_budget_chars,
+                used_chars=context_budget_used_chars,
+            )
+            if exceeded_now:
+                context_budget_exceeded = True
+                stopped_reason = "context_budget_exceeded"
+                typed_stop_reason = ToolLoopStopReason.CONTEXT_BUDGET_EXCEEDED
             transcript.extend(records)
+            for record in records:
+                events.append(
+                    ToolLoopEvent(
+                        event=(
+                            _tool_error_event_type(record)
+                            if record.is_error
+                            else ToolLoopEventType.TOOL_RESULT_RENDERED
+                        ),
+                        round_index=rounds,
+                        tool_call_id=record.tool_call_id,
+                        tool_name=record.tool_name,
+                        is_error=record.is_error,
+                        metadata={
+                            "elapsed_ms": record.elapsed_ms,
+                            "llm_payload_truncated": record.llm_payload_truncated,
+                            "llm_payload_chars": record.llm_payload_chars,
+                            "estimated_tokens": record.estimated_tokens,
+                            "budget_class": record.budget_class,
+                        },
+                    )
+                )
+                if record.budget_class == "context_budget_exceeded":
+                    events.append(
+                        ToolLoopEvent(
+                            event=ToolLoopEventType.CONTEXT_BUDGET_EXCEEDED,
+                            round_index=rounds,
+                            tool_call_id=record.tool_call_id,
+                            tool_name=record.tool_name,
+                            message="run-level provider tool payload budget exhausted",
+                            metadata={
+                                "context_budget_chars": context_budget_chars,
+                                "tool_payload_chars": context_budget_used_chars,
+                                "omitted_source_provenance": dict(record.source_provenance),
+                            },
+                        )
+                    )
 
             # Append tool result messages.
             messages.extend(_build_tool_result_messages(records, provider_key))
+            events.append(
+                ToolLoopEvent(
+                    event=ToolLoopEventType.FOLLOW_UP_SENT,
+                    round_index=rounds,
+                    metadata={"tool_result_count": len(records)},
+                )
+            )
         else:
             # Loop exit via while condition (rounds == max_rounds).
             stopped_reason = "max_rounds"
+            typed_stop_reason = ToolLoopStopReason.TOOL_LOOP_MAX_ROUNDS
+            events.append(
+                ToolLoopEvent(
+                    event=ToolLoopEventType.TOOL_LOOP_MAX_ROUNDS,
+                    round_index=rounds,
+                    message="max_rounds reached while provider kept requesting tools",
+                    metadata={"max_rounds": self._caps.max_rounds},
+                )
+            )
 
         final_text = _extract_final_text(last_data, provider_key)
+        diagnostics = _diagnostics_from_state(
+            terminal_state=None,
+            stop_reason=typed_stop_reason,
+            legacy_stopped_reason=stopped_reason,
+            rounds=rounds,
+            offered_tool_count=len(tools_payload),
+            context_budget_chars=context_budget_chars,
+            context_budget_remaining_chars=max(0, context_budget_chars - context_budget_used_chars),
+            context_budget_exceeded=context_budget_exceeded,
+            transcript=transcript,
+            events=events,
+        )
         return ToolUseRunResult(
             final_text=final_text,
             final_response=last_data,
             rounds=rounds,
             transcript=transcript,
             stopped_reason=stopped_reason,
+            diagnostics=diagnostics,
         )
 
 
@@ -541,5 +1191,11 @@ __all__ = [
     "DEFAULT_PER_CALL_TIMEOUT",
     "McpToolUseRunner",
     "RunCaps",
+    "ToolLoopDiagnostics",
+    "ToolLoopEvent",
+    "ToolLoopEventType",
+    "ToolLoopStopReason",
+    "ToolLoopTerminalState",
     "ToolUseRunResult",
+    "failed_tool_use_run_result",
 ]

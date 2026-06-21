@@ -23,7 +23,7 @@ from literature_assistant.core.project_paths import wiki_generated_root, wiki_qu
 from literature_assistant.core.runtime_env import wiki_enabled
 from literature_assistant.core.wiki.page_store import WikiPageStore
 from literature_assistant.core.wiki.query import WikiQueryIndex
-from project_paths import runtime_state_path
+from project_paths import project_data_path, runtime_state_path
 from routers.resources_router.endpoints_search_upload import (
     _chunk_to_search_ref,
     _flatten_chunk_store_for_search_refs,
@@ -46,6 +46,10 @@ from models import (
     EvidencePackBuildResponse,
     EvidencePackReferencePayload,
     EvidenceRetrievalDiagnosticsPayload,
+    RetrievalQrelsStatusPayload,
+    ToolAttempt,
+    ToolNextAction,
+    ToolOutcome,
     CitationOverlapPayload,
     CitationVerificationPayload,
     CitationVerificationRequest,
@@ -87,6 +91,154 @@ _EVIDENCE_REFS_EXPORT_CSV_FIELDS: tuple[str, ...] = (
     "created_at",
     "updated_at",
 )
+_CANDIDATE_QRELS_FILENAMES: tuple[str, ...] = (
+    "qrels_candidate.trec",
+    "candidate.qrels",
+    "candidate_qrels.trec",
+)
+_REVIEWED_QRELS_FILENAMES: tuple[str, ...] = (
+    "goldset_reviewed.jsonl",
+    "reviewed.jsonl",
+    "goldset_review_template.jsonl",
+)
+_CANONICAL_QRELS_FILENAMES: tuple[str, ...] = (
+    "canonical.qrels",
+    "canonical.trec",
+    "qrels.trec",
+    "goldset.qrels",
+)
+
+
+def _count_trec_qrels_rows(path: Path) -> int:
+    """Return non-comment TREC qrels row count from a bounded local file."""
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return 0
+    count = 0
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = stripped.split()
+        if len(parts) >= 4:
+            count += 1
+    return count
+
+
+def _count_reviewed_qrels_rows(path: Path) -> int:
+    """Return reviewed judgment rows that no longer carry an unknown label."""
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return 0
+    count = 0
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            row = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        judgment = str(row.get("judgment") or "").strip().lower()
+        if judgment and judgment != "unknown":
+            count += 1
+    return count
+
+
+def _sum_named_files(root: Path, filenames: tuple[str, ...], counter: Any) -> int:
+    """Count rows from direct known files without recursive workspace scans."""
+
+    total = 0
+    for filename in filenames:
+        candidate = root / filename
+        if candidate.is_file():
+            total += int(counter(candidate))
+    return total
+
+
+def _project_qrels_status(project_id: str) -> RetrievalQrelsStatusPayload:
+    """Return the highest local qrels review state for evidence-pack claims.
+
+    Args:
+        project_id: Project id whose generated qrels sidecars are inspected.
+
+    Returns:
+        A quality-gate payload. It never creates, promotes, deletes, or mutates
+        qrels artifacts; missing/malformed local files degrade to zero counts.
+    """
+
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        raise ValueError("project_id must be non-empty")
+    qrels_root = project_data_path(normalized_project_id, "qrels")
+    candidate_count = _sum_named_files(
+        qrels_root,
+        _CANDIDATE_QRELS_FILENAMES,
+        _count_trec_qrels_rows,
+    )
+    reviewed_count = _sum_named_files(
+        qrels_root,
+        _REVIEWED_QRELS_FILENAMES,
+        _count_reviewed_qrels_rows,
+    )
+    canonical_count = _sum_named_files(
+        qrels_root,
+        _CANONICAL_QRELS_FILENAMES,
+        _count_trec_qrels_rows,
+    )
+    if canonical_count > 0:
+        return RetrievalQrelsStatusPayload(
+            status="canonical",
+            candidate_qrels_count=candidate_count,
+            reviewed_qrels_count=reviewed_count,
+            canonical_qrels_count=canonical_count,
+            semantic_quality_claim_allowed=True,
+            quality_claim="canonical_qrels_available",
+            notes=[
+                "Canonical qrels are available for offline retrieval-quality evaluation.",
+            ],
+        )
+    if reviewed_count > 0:
+        return RetrievalQrelsStatusPayload(
+            status="reviewed",
+            candidate_qrels_count=candidate_count,
+            reviewed_qrels_count=reviewed_count,
+            canonical_qrels_count=0,
+            semantic_quality_claim_allowed=False,
+            quality_claim="reviewed_qrels_promotion_required",
+            notes=[
+                "Reviewed judgments exist but have not been promoted to canonical qrels.",
+            ],
+        )
+    if candidate_count > 0:
+        return RetrievalQrelsStatusPayload(
+            status="candidate",
+            candidate_qrels_count=candidate_count,
+            reviewed_qrels_count=0,
+            canonical_qrels_count=0,
+            semantic_quality_claim_allowed=False,
+            quality_claim="candidate_qrels_review_required",
+            notes=[
+                "Candidate qrels require human review before semantic quality claims.",
+            ],
+        )
+    return RetrievalQrelsStatusPayload(
+        status="missing",
+        candidate_qrels_count=0,
+        reviewed_qrels_count=0,
+        canonical_qrels_count=0,
+        semantic_quality_claim_allowed=False,
+        quality_claim="no_qrels_available",
+        notes=[
+            "No project qrels were found; retrieval method is provenance, not semantic quality proof.",
+        ],
+    )
 
 
 def _evidence_runtime_store_path(filename: str) -> Path:
@@ -1202,6 +1354,187 @@ def _lexical_evidence_diagnostics() -> EvidenceRetrievalDiagnosticsPayload:
     )
 
 
+def _evidence_pack_qrels_attempt(qrels_status: RetrievalQrelsStatusPayload) -> ToolAttempt:
+    """Return a bounded qrels quality-gate attempt for the outcome envelope."""
+
+    if qrels_status.status == "canonical":
+        return ToolAttempt(
+            stage="qrels_quality_gate",
+            status="success",
+            reason="Canonical qrels are available for retrieval-quality evaluation.",
+            metadata={
+                "status": qrels_status.status,
+                "canonical_qrels_count": qrels_status.canonical_qrels_count,
+                "quality_claim": qrels_status.quality_claim,
+            },
+        )
+    if qrels_status.status in {"candidate", "reviewed"}:
+        return ToolAttempt(
+            stage="qrels_quality_gate",
+            status="blocked",
+            reason="Retrieval quality claims require canonical qrels.",
+            error_class="qrels_review_needed",
+            recommendation="Review or promote qrels before making semantic retrieval-quality claims.",
+            metadata={
+                "status": qrels_status.status,
+                "candidate_qrels_count": qrels_status.candidate_qrels_count,
+                "reviewed_qrels_count": qrels_status.reviewed_qrels_count,
+                "quality_claim": qrels_status.quality_claim,
+            },
+        )
+    return ToolAttempt(
+        stage="qrels_quality_gate",
+        status="skipped",
+        reason="No qrels were found; retrieval method is provenance, not semantic quality proof.",
+        error_class="qrels_missing",
+        metadata={
+            "status": qrels_status.status,
+            "quality_claim": qrels_status.quality_claim,
+        },
+    )
+
+
+def _evidence_pack_next_action(
+    *,
+    project_id: str,
+    evidence_refs: list[EvidencePackReferencePayload],
+    qrels_status: RetrievalQrelsStatusPayload,
+) -> ToolNextAction:
+    """Choose the safest follow-up that does not mutate project state implicitly."""
+
+    if evidence_refs:
+        first_ref = evidence_refs[0]
+        return ToolNextAction(
+            kind="read_resource",
+            message="Read the top evidence resource before using the pack in prose.",
+            endpoint=first_ref.read_endpoint,
+            args={"project_id": project_id, "ref_id": first_ref.ref_id},
+        )
+    if qrels_status.status in {"candidate", "reviewed"}:
+        return ToolNextAction(
+            kind="review_qrels",
+            message="Review or promote qrels before claiming semantic retrieval quality.",
+            args={"project_id": project_id, "qrels_status": qrels_status.status},
+        )
+    return ToolNextAction(
+        kind="scan_folder",
+        message="No evidence refs were found; scan the project source folder after adding PDFs/full text.",
+        tool_name="literature.project_scan_folder",
+        args={"project_id": project_id},
+    )
+
+
+def _evidence_pack_outcome(
+    *,
+    project_id: str,
+    all_chunks: list[dict[str, Any]],
+    evidence_refs: list[EvidencePackReferencePayload],
+    diagnostics: EvidenceRetrievalDiagnosticsPayload,
+    positive_hit_count: int,
+    qrels_status: RetrievalQrelsStatusPayload,
+) -> ToolOutcome:
+    """Build a ScanSci-style outcome envelope without changing legacy fields."""
+
+    attempts: list[ToolAttempt] = [
+        ToolAttempt(
+            stage="chunk_load",
+            status="success" if all_chunks else "skipped",
+            reason=(
+                "Loaded indexed project chunks."
+                if all_chunks
+                else "No indexed project chunks were found for this project."
+            ),
+            error_class="" if all_chunks else "ingest_needed",
+            recommendation="" if all_chunks else "Add PDFs/full text and run literature.project_scan_folder.",
+            metadata={"chunk_count": len(all_chunks)},
+        )
+    ]
+    if all_chunks:
+        attempts.append(
+            ToolAttempt(
+                stage="retrieval",
+                status="success" if evidence_refs else "skipped",
+                reason=(
+                    f"Used {diagnostics.retrieval_method} retrieval and returned evidence refs."
+                    if evidence_refs
+                    else "Indexed chunks existed, but no positive lexical or hybrid hits were returned."
+                ),
+                error_class="" if evidence_refs else "retrieval_empty",
+                metadata={
+                    "retrieval_method": diagnostics.retrieval_method,
+                    "positive_hit_count": positive_hit_count,
+                    "returned_ref_count": len(evidence_refs),
+                },
+            )
+        )
+    attempts.append(
+        ToolAttempt(
+            stage="rerank",
+            status="success" if diagnostics.rerank_status == "active" else "skipped",
+            reason=(
+                "Rerank participated in the evidence-pack result."
+                if diagnostics.rerank_status == "active"
+                else "Rerank did not participate in this evidence-pack result."
+            ),
+            error_class="" if diagnostics.rerank_status == "active" else "rerank_unavailable",
+            recommendation=(
+                ""
+                if diagnostics.rerank_status == "active"
+                else "Configure rerank or embeddings only if semantic reranking is required."
+            ),
+            metadata={
+                "rerank_status": diagnostics.rerank_status,
+                "embedding_status": diagnostics.embedding_status,
+            },
+        )
+    )
+    joint_status = str(diagnostics.joint_recall.get("status") or "disabled")
+    attempts.append(
+        ToolAttempt(
+            stage="joint_recall",
+            status="success" if joint_status == "active" else "skipped",
+            reason=(
+                "Wiki+project joint recall contributed bounded refs."
+                if joint_status == "active"
+                else "Wiki+project joint recall did not contribute refs."
+            ),
+            metadata={
+                "enabled": bool(diagnostics.joint_recall.get("enabled")),
+                "status": joint_status,
+                "project_weight": diagnostics.project_weight,
+                "wiki_weight": diagnostics.wiki_weight,
+            },
+        )
+    )
+    attempts.append(_evidence_pack_qrels_attempt(qrels_status))
+
+    if evidence_refs:
+        status = "success" if diagnostics.rerank_status == "active" else "degraded"
+        reason = (
+            "Evidence refs returned with active rerank provenance."
+            if diagnostics.rerank_status == "active"
+            else "Evidence refs returned without active rerank provenance."
+        )
+    elif all_chunks:
+        status = "empty"
+        reason = "Project chunks were indexed, but this query returned no evidence refs."
+    else:
+        status = "empty"
+        reason = "No indexed project chunks were available for evidence-pack retrieval."
+
+    return ToolOutcome(
+        status=status,
+        quality="refs_only" if evidence_refs else "none",
+        reason=reason,
+        next_action=_evidence_pack_next_action(
+            project_id=project_id,
+            evidence_refs=evidence_refs,
+            qrels_status=qrels_status,
+        ),
+        attempts=attempts,
+    )
+
+
 @router.post("/api/evidence-pack/build", response_model=EvidencePackBuildResponse)
 async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePackBuildResponse:
     """Build a query-scoped evidence pack from existing project chunks.
@@ -1254,6 +1587,16 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
         evidence_refs=evidence_refs,
         top_k=request.top_k,
     )
+    qrels_status = _project_qrels_status(project_id)
+    diagnostics.qrels_status = qrels_status
+    outcome = _evidence_pack_outcome(
+        project_id=project_id,
+        all_chunks=all_chunks,
+        evidence_refs=evidence_refs,
+        diagnostics=diagnostics,
+        positive_hit_count=positive_hit_count,
+        qrels_status=qrels_status,
+    )
 
     return EvidencePackBuildResponse(
         evidence_pack_ref=_evidence_pack_ref(project_id, query, section_id),
@@ -1265,6 +1608,7 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
         total=len(evidence_refs),
         truncated=positive_hit_count > len(evidence_refs),
         retrieval_diagnostics=diagnostics,
+        outcome=outcome,
         evidence_refs=evidence_refs,
     )
 

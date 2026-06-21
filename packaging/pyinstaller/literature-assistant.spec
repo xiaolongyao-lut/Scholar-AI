@@ -271,6 +271,9 @@ hiddenimports = [
     "routers.diagnostics_router",
     "routers.linter_router",
     "routers.agent_workspace_router",
+    "routers.agent_bridge_router",
+    "routers.health_check_router",
+    "routers.zotero_health_router",
     "recovery_autopilot_router",
 ]
 

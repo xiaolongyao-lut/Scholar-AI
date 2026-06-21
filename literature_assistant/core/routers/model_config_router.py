@@ -20,6 +20,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -28,6 +29,12 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from provider_capabilities import (
+    CAPABILITY_STATUS_AUTH_REQUIRED,
+    CAPABILITY_STATUS_PROBE_FAILED,
+    CAPABILITY_STATUS_TOOL_CALL_OK,
+    provider_capability_store,
+)
 from model_config_store import (
     chat_context_compression_store,
     chat_store,
@@ -159,6 +166,22 @@ class DiscoverResult(BaseModel):
     models: list[DiscoveredModel] = []
     endpoint: str = ""
     error: str = ""
+
+
+class ToolCapabilityProbeResult(BaseModel):
+    """Public result for a chat provider's native tool-call capability probe."""
+
+    ok: bool
+    status: str
+    provider: str = ""
+    base_url_host: str = ""
+    model: str = ""
+    stage: str = ""
+    error: str = ""
+    provider_message: str | None = None
+    ordinary_chat_ok: bool = False
+    forced_tool_choice_ok: bool = False
+    capability: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -451,6 +474,133 @@ async def test_chat_endpoint(payload: ConfigUpdate) -> ProbeResult:
         ok=False, status=resp.status_code,
         error=body_preview or f"HTTP {resp.status_code}",
         elapsed_ms=elapsed_ms,
+    )
+
+
+def _capability_status_from_probe_result(probe_result: Any) -> str:
+    """Map a provider probe result to a persisted dispatch-gate status."""
+
+    if bool(getattr(probe_result, "ok", False)) and bool(
+        getattr(probe_result, "forced_tool_choice_ok", False)
+    ):
+        return CAPABILITY_STATUS_TOOL_CALL_OK
+    status_code = getattr(probe_result, "status_code", None)
+    if status_code in {401, 403}:
+        return CAPABILITY_STATUS_AUTH_REQUIRED
+    return CAPABILITY_STATUS_PROBE_FAILED
+
+
+@chat_router.post("/tool-capability/test", response_model=ToolCapabilityProbeResult)
+async def test_chat_tool_capability(payload: ConfigUpdate) -> ToolCapabilityProbeResult:
+    """Probe and persist native OpenAI-compatible chat tool-call capability."""
+
+    base_url = (payload.base_url or chat_store.get_resolved_field("base_url") or "").strip()
+    api_key = (payload.api_key or chat_store.get_resolved_field("api_key") or "").strip()
+    model = (payload.model or chat_store.get_resolved_field("model") or "").strip()
+    provider = (payload.provider or chat_store.get_resolved_field("provider") or "OpenAI").strip()
+
+    if not base_url:
+        record = provider_capability_store.upsert_record(
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            status=CAPABILITY_STATUS_PROBE_FAILED,
+            ordinary_chat_ok=False,
+            forced_tool_choice_ok=False,
+            failure_class="configuration",
+            masked_error="base_url is required",
+        )
+        return ToolCapabilityProbeResult(
+            ok=False,
+            status=record.status,
+            provider=record.provider,
+            base_url_host=record.base_url_host,
+            model=record.model,
+            stage="configuration",
+            error="base_url is required",
+            ordinary_chat_ok=False,
+            forced_tool_choice_ok=False,
+            capability=record.to_dict(),
+        )
+    if not model:
+        record = provider_capability_store.upsert_record(
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            status=CAPABILITY_STATUS_PROBE_FAILED,
+            ordinary_chat_ok=False,
+            forced_tool_choice_ok=False,
+            failure_class="configuration",
+            masked_error="model is required",
+        )
+        return ToolCapabilityProbeResult(
+            ok=False,
+            status=record.status,
+            provider=record.provider,
+            base_url_host=record.base_url_host,
+            model=record.model,
+            stage="configuration",
+            error="model is required",
+            ordinary_chat_ok=False,
+            forced_tool_choice_ok=False,
+            capability=record.to_dict(),
+        )
+
+    try:
+        from provider_probe import probe_openai_tool_calling_capability
+    except ImportError as exc:
+        record = provider_capability_store.upsert_record(
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            status=CAPABILITY_STATUS_PROBE_FAILED,
+            ordinary_chat_ok=False,
+            forced_tool_choice_ok=False,
+            failure_class="import_error",
+            masked_error=str(exc),
+        )
+        return ToolCapabilityProbeResult(
+            ok=False,
+            status=record.status,
+            provider=record.provider,
+            base_url_host=record.base_url_host,
+            model=record.model,
+            stage="import_error",
+            error=str(exc),
+            ordinary_chat_ok=False,
+            forced_tool_choice_ok=False,
+            capability=record.to_dict(),
+        )
+
+    probe_result = await asyncio.to_thread(
+        probe_openai_tool_calling_capability,
+        base_url,
+        api_key,
+        model,
+    )
+    status = _capability_status_from_probe_result(probe_result)
+    record = provider_capability_store.upsert_record(
+        provider=provider,
+        base_url=base_url,
+        model=model,
+        status=status,
+        ordinary_chat_ok=bool(getattr(probe_result, "chat_ok", False)),
+        forced_tool_choice_ok=bool(getattr(probe_result, "forced_tool_choice_ok", False)),
+        failure_class=str(getattr(probe_result, "stage", "") or ""),
+        masked_error=str(getattr(probe_result, "error", "") or ""),
+    )
+    return ToolCapabilityProbeResult(
+        ok=record.tool_call_ok,
+        status=record.status,
+        provider=record.provider,
+        base_url_host=record.base_url_host,
+        model=record.model,
+        stage=str(getattr(probe_result, "stage", "") or ""),
+        error=str(getattr(probe_result, "error", "") or ""),
+        provider_message=getattr(probe_result, "provider_message", None),
+        ordinary_chat_ok=record.ordinary_chat_ok,
+        forced_tool_choice_ok=record.forced_tool_choice_ok,
+        capability=record.to_dict(),
     )
 
 

@@ -71,6 +71,8 @@ def _record_to_dict(record: ToolResultRecord) -> dict[str, Any]:
     """
     d = asdict(record)
     d.pop("raw_content", None)
+    d.pop("structured_content", None)
+    d.pop("structured_metadata", None)
     d.pop("llm_payload", None)
     d.pop("llm_payload_truncated", None)
     d["ts"] = datetime.now(timezone.utc).isoformat(timespec="seconds")

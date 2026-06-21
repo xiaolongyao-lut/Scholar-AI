@@ -60,6 +60,43 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.config_status", {}, result, started, "/health")
 
+    def health_check(self, include_live: bool = False) -> dict[str, Any]:
+        """Return passive Scholar AI workflow readiness diagnostics."""
+        started = time.perf_counter()
+        args = {"include_live": bool(include_live)}
+        endpoint = "/api/health/check"
+        backend_result = self.backend.get(endpoint, params=args)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.health_check", args, result, started, endpoint)
+
+    def zotero_attachment_health(
+        self,
+        zotero_data_dir: str,
+        allowed_root: str | None = None,
+        min_text_chars: int = 200,
+        max_items: int = 500,
+        write_reports: bool = True,
+    ) -> dict[str, Any]:
+        """Return read-only Zotero attachment health diagnostics."""
+        started = time.perf_counter()
+        zotero_data_dir = self._bounded_text(zotero_data_dir, "zotero_data_dir", max_chars=1000)
+        normalized_allowed_root = None
+        if allowed_root is not None and str(allowed_root).strip():
+            normalized_allowed_root = self._bounded_text(allowed_root, "allowed_root", max_chars=1000)
+        min_text_chars = self._bounded_int(min_text_chars, "min_text_chars", minimum=0, maximum=100000)
+        max_items = self._bounded_int(max_items, "max_items", minimum=1, maximum=5000)
+        args = {
+            "zotero_data_dir": zotero_data_dir,
+            "allowed_root": normalized_allowed_root,
+            "min_text_chars": min_text_chars,
+            "max_items": max_items,
+            "write_reports": bool(write_reports),
+        }
+        endpoint = "/api/zotero/attachment-health"
+        backend_result = self.backend.get(endpoint, params=args)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.zotero_attachment_health", args, result, started, endpoint)
+
     def list_projects(self) -> dict[str, Any]:
         """List Literature Assistant projects."""
         started = time.perf_counter()
@@ -287,6 +324,19 @@ class RuntimeTools:
         endpoint = "/api/writing/figures/candidates"
         backend_result = self.backend.get(endpoint, params=args)
         result = self._wrap_backend_result(backend_result)
+        result = self._with_runtime_outcome(
+            tool_name="literature.figures_candidates",
+            result=result,
+            endpoint=endpoint,
+            started=started,
+            success_quality="refs_only",
+            empty_next_action={
+                "kind": "scan_folder",
+                "message": "Scan the project source folder or enable PDF rendering before requesting figure/table candidates.",
+                "tool_name": "literature.project_scan_folder",
+                "args": {"project_id": project_id},
+            },
+        )
         return self._finish("literature.figures_candidates", args, result, started, endpoint)
 
     def figures_generate(
@@ -329,6 +379,20 @@ class RuntimeTools:
         endpoint = "/api/writing/figures/generate"
         backend_result = self.backend.post_json(endpoint, payload=payload)
         result = self._wrap_backend_result(backend_result)
+        result = self._with_runtime_outcome(
+            tool_name="literature.figures_generate",
+            result=result,
+            endpoint=endpoint,
+            started=started,
+            success_quality="full",
+            empty_count_key="generated_count",
+            empty_next_action={
+                "kind": "call_tool",
+                "message": "List pixel-backed figure/table candidates before materializing assets.",
+                "tool_name": "literature.figures_candidates",
+                "args": {"project_id": project_id, "pixel_only": True},
+            },
+        )
         return self._finish("literature.figures_generate", args, result, started, endpoint)
 
     def citations_sources(self, project_id: str) -> dict[str, Any]:
@@ -343,6 +407,19 @@ class RuntimeTools:
         endpoint = "/api/writing/citations/sources"
         backend_result = self.backend.get(endpoint, params=args)
         result = self._wrap_backend_result(backend_result)
+        result = self._with_runtime_outcome(
+            tool_name="literature.citations_sources",
+            result=result,
+            endpoint=endpoint,
+            started=started,
+            success_quality="metadata_only",
+            empty_next_action={
+                "kind": "scan_folder",
+                "message": "Scan or add project materials before expecting citation source metadata.",
+                "tool_name": "literature.project_scan_folder",
+                "args": {"project_id": project_id},
+            },
+        )
         return self._finish("literature.citations_sources", args, result, started, endpoint)
 
     def citations_detect_overlap(
@@ -381,6 +458,15 @@ class RuntimeTools:
         endpoint = "/api/citations/detect_overlap"
         backend_result = self.backend.post_json(endpoint, payload=payload)
         result = self._wrap_backend_result(backend_result)
+        result = self._with_runtime_outcome(
+            tool_name="literature.citations_detect_overlap",
+            result=result,
+            endpoint=endpoint,
+            started=started,
+            success_quality="full",
+            empty_status="success",
+            empty_reason="No overlapping citation anchors were detected.",
+        )
         return self._finish("literature.citations_detect_overlap", args, result, started, endpoint)
 
     def academic_writing_lint(
@@ -613,6 +699,16 @@ class RuntimeTools:
             style_profile=style_profile,
             started=started,
         )
+        result = self._with_runtime_outcome(
+            tool_name="literature.export_docx",
+            result=result,
+            endpoint=endpoint,
+            started=started,
+            success_quality="full",
+            required_data_key="artifact_path",
+            empty_status="failed",
+            empty_reason="DOCX export did not return an artifact path.",
+        )
         return self._finish("literature.export_docx", args, result, started, endpoint)
 
     def journal_style_spec_draft(
@@ -831,6 +927,122 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.agent_request_create", args, result, started, endpoint)
 
+    def single_paper_task_create(
+        self,
+        project_id: str,
+        material_id: str,
+        task_goal: str = "生成单篇论文深度精读、写作借鉴要点、可导出 Word 的结构化草稿",
+        output_language: str = "zh",
+        target_document: str = "word_draft",
+        create_agent_request: bool = True,
+        agent_host: str = "mcp",
+        source: str = "mcp",
+        max_chars: int = 12000,
+        max_chunks: int = 12,
+    ) -> dict[str, Any]:
+        """Create a Scholar AI single-paper deep-reading task instance.
+
+        Args:
+            project_id: Existing Scholar AI project id.
+            material_id: Existing material id within the project.
+            task_goal: Goal statement embedded in the generated task.
+            output_language: ``zh``, ``en``, or ``bilingual``.
+            target_document: ``deep_summary`` or ``word_draft``.
+            create_agent_request: Whether to create a runtime-visible job.
+            agent_host: Audit label for the requesting agent host.
+            source: Runtime filtering label for the invocation source.
+            max_chars: Resource-read budget, 100 through 40000.
+            max_chunks: Maximum indexed chunk refs, 1 through 50.
+        """
+        started = time.perf_counter()
+        project_id = self._bounded_text(project_id, "project_id", max_chars=200)
+        material_id = self._bounded_text(material_id, "material_id", max_chars=200)
+        payload: dict[str, Any] = {
+            "project_id": project_id,
+            "material_id": material_id,
+            "task_goal": self._bounded_text(task_goal, "task_goal", max_chars=500),
+            "output_language": self._output_language(output_language),
+            "target_document": self._single_paper_target_document(target_document),
+            "create_agent_request": bool(create_agent_request),
+            "agent_host": self._bounded_text(agent_host, "agent_host", max_chars=80),
+            "source": self._bounded_text(source, "source", max_chars=80),
+            "max_chars": self._bounded_int(max_chars, "max_chars", minimum=100, maximum=40000),
+            "max_chunks": self._bounded_int(max_chunks, "max_chunks", minimum=1, maximum=50),
+        }
+        args = {
+            "project_id": project_id,
+            "material_id": material_id,
+            "target_document": payload["target_document"],
+            "create_agent_request": payload["create_agent_request"],
+            "max_chars": payload["max_chars"],
+            "max_chunks": payload["max_chunks"],
+        }
+        endpoint = "/api/agent-bridge/single-paper-task"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.single_paper_task_create", args, result, started, endpoint)
+
+    def single_paper_completion_check(
+        self,
+        output_text: str,
+        task_manifest: dict[str, Any],
+        required_output_sections: list[str] | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        figure_table_refs: list[dict[str, Any]] | None = None,
+        lint_passed: bool = False,
+        docx_artifact_path: str | None = None,
+        sentinel: str = "待补充",
+    ) -> dict[str, Any]:
+        """Validate a completed single-paper deep-read draft locally.
+
+        Args:
+            output_text: Completed Markdown/plain-text draft.
+            task_manifest: Manifest returned by ``single_paper_task_create``.
+            required_output_sections: Optional section override.
+            evidence_refs: Evidence refs attached to the draft.
+            figure_table_refs: Figure/table refs attached to the draft.
+            lint_passed: Whether academic writing lint has passed.
+            docx_artifact_path: Optional local DOCX export artifact path.
+            sentinel: Placeholder token that must be absent from final output.
+        """
+        started = time.perf_counter()
+        manifest = self._optional_dict(task_manifest, "task_manifest")
+        if not manifest:
+            raise ValueError("task_manifest must be a non-empty object")
+        payload: dict[str, Any] = {
+            "output_text": self._bounded_text(output_text, "output_text", max_chars=120000),
+            "task_manifest": manifest,
+            "evidence_refs": self._dict_list(evidence_refs, "evidence_refs", maximum=200),
+            "figure_table_refs": self._dict_list(figure_table_refs, "figure_table_refs", maximum=100),
+            "lint_passed": bool(lint_passed),
+            "sentinel": self._bounded_text(sentinel, "sentinel", max_chars=40),
+        }
+        sections = self._bounded_text_list(
+            required_output_sections,
+            "required_output_sections",
+            maximum=30,
+            max_chars=160,
+        )
+        if sections:
+            payload["required_output_sections"] = sections
+        if docx_artifact_path is not None and str(docx_artifact_path).strip():
+            payload["docx_artifact_path"] = self._bounded_text(
+                docx_artifact_path,
+                "docx_artifact_path",
+                max_chars=1000,
+            )
+        args = {
+            "task_id": str(manifest.get("task_id") or "")[:120],
+            "required_section_count": len(sections) or len(manifest.get("required_output_sections") or []),
+            "evidence_ref_count": len(payload["evidence_refs"]),
+            "figure_table_ref_count": len(payload["figure_table_refs"]),
+            "lint_passed": payload["lint_passed"],
+        }
+        endpoint = "/api/agent-bridge/single-paper-task/completion-check"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.single_paper_completion_check", args, result, started, endpoint)
+
     def agent_request_list(
         self,
         status: str | None = None,
@@ -987,6 +1199,153 @@ class RuntimeTools:
                 if source_ref.get(key) is not None
             }
         return projected
+
+    def _with_runtime_outcome(
+        self,
+        *,
+        tool_name: str,
+        result: dict[str, Any],
+        endpoint: str,
+        started: float,
+        success_quality: str,
+        empty_status: str = "empty",
+        empty_reason: str = "Tool returned no usable data.",
+        empty_next_action: dict[str, Any] | None = None,
+        empty_count_key: str | None = None,
+        required_data_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Attach a ToolOutcome-compatible envelope without changing data shape."""
+
+        if not isinstance(result, dict):
+            raise ValueError("result must be an object")
+        data = result.get("data")
+        item_count = self._result_item_count(data, empty_count_key=empty_count_key)
+        is_empty = self._result_is_empty(
+            data,
+            empty_count_key=empty_count_key,
+            required_data_key=required_data_key,
+        )
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        if result.get("is_error") is True:
+            status = "failed"
+            quality = "none"
+            reason = str(result.get("message") or "Backend tool call failed.").strip()
+            attempt_status = "failed"
+            error_class = str(result.get("error_code") or "backend_error")
+            next_action = {
+                "kind": "retry_later",
+                "message": "Inspect the backend error and rerun the tool after the local service is healthy.",
+                "tool_name": None,
+                "endpoint": endpoint,
+                "command_preview": None,
+                "args": {},
+            }
+        elif is_empty:
+            status = empty_status
+            quality = success_quality if empty_status == "success" else "none"
+            reason = empty_reason
+            attempt_status = "success" if empty_status == "success" else "skipped"
+            error_class = "" if empty_status == "success" else "empty_result"
+            next_action = self._normalized_next_action(empty_next_action)
+        else:
+            status = "success"
+            quality = success_quality
+            reason = "Tool completed with structured data."
+            attempt_status = "success"
+            error_class = ""
+            next_action = self._normalized_next_action(None)
+        outcome = {
+            "schema_version": "scholar-ai-tool-outcome/v1",
+            "status": status,
+            "quality": quality,
+            "reason": reason,
+            "next_action": next_action,
+            "attempts": [
+                {
+                    "stage": "backend_http",
+                    "status": attempt_status,
+                    "reason": reason,
+                    "duration_ms": duration_ms,
+                    "error_class": error_class,
+                    "recommendation": str(next_action.get("message") or ""),
+                    "metadata": {
+                        "tool_name": tool_name,
+                        "endpoint": endpoint,
+                        "result_shape": type(data).__name__,
+                        "item_count": item_count,
+                    },
+                }
+            ],
+        }
+        return {**result, "outcome": outcome}
+
+    def _normalized_next_action(self, value: dict[str, Any] | None) -> dict[str, Any]:
+        """Return a ToolNextAction-compatible dict for runtime outcomes."""
+
+        if value is None:
+            return {
+                "kind": "none",
+                "message": "",
+                "tool_name": None,
+                "endpoint": None,
+                "command_preview": None,
+                "args": {},
+            }
+        if not isinstance(value, dict):
+            raise ValueError("next action must be an object")
+        return {
+            "kind": str(value.get("kind") or "none"),
+            "message": str(value.get("message") or "").strip()[:500],
+            "tool_name": str(value["tool_name"]).strip()[:160] if value.get("tool_name") else None,
+            "endpoint": str(value["endpoint"]).strip()[:260] if value.get("endpoint") else None,
+            "command_preview": (
+                str(value["command_preview"]).strip()[:500]
+                if value.get("command_preview")
+                else None
+            ),
+            "args": dict(value.get("args") or {}) if isinstance(value.get("args") or {}, dict) else {},
+        }
+
+    def _result_item_count(self, data: Any, *, empty_count_key: str | None = None) -> int:
+        """Return a small count for result outcome metadata."""
+
+        if isinstance(data, list):
+            return len(data)
+        if isinstance(data, dict):
+            if empty_count_key is not None:
+                raw_count = data.get(empty_count_key)
+                if isinstance(raw_count, int) and not isinstance(raw_count, bool):
+                    return max(0, raw_count)
+            for key in ("generated_assets", "refs", "items", "evidence_refs"):
+                raw_items = data.get(key)
+                if isinstance(raw_items, list):
+                    return len(raw_items)
+            return 1 if data else 0
+        if isinstance(data, str):
+            return 1 if data.strip() else 0
+        return 0 if data is None else 1
+
+    def _result_is_empty(
+        self,
+        data: Any,
+        *,
+        empty_count_key: str | None = None,
+        required_data_key: str | None = None,
+    ) -> bool:
+        """Return whether a backend result lacks usable payload for agents."""
+
+        if required_data_key is not None:
+            return not (isinstance(data, dict) and data.get(required_data_key))
+        if isinstance(data, list):
+            return len(data) == 0
+        if isinstance(data, dict):
+            if empty_count_key is not None:
+                raw_count = data.get(empty_count_key)
+                return not (isinstance(raw_count, int) and not isinstance(raw_count, bool) and raw_count > 0)
+            return len(data) == 0
+        if isinstance(data, str):
+            return not data.strip()
+        return data is None
 
     def _finish(
         self,
@@ -1229,6 +1588,18 @@ class RuntimeTools:
             return cleaned
         if cleaned not in allowed:
             raise ValueError(f"style_profile must be one of {sorted(allowed)}")
+        return cleaned
+
+    def _output_language(self, value: str) -> str:
+        cleaned = self._require_non_empty(value, "output_language").lower()
+        if cleaned not in {"zh", "en", "bilingual"}:
+            raise ValueError("output_language must be zh, en, or bilingual")
+        return cleaned
+
+    def _single_paper_target_document(self, value: str) -> str:
+        cleaned = self._require_non_empty(value, "target_document").lower()
+        if cleaned not in {"deep_summary", "word_draft"}:
+            raise ValueError("target_document must be deep_summary or word_draft")
         return cleaned
 
     def _bounded_text(self, value: str, name: str, max_chars: int, allow_empty: bool = False) -> str:

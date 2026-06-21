@@ -6,7 +6,29 @@ Includes models for writing sessions, jobs, events, and artifacts.
 
 from typing import Any, Dict, List, Optional
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+_MATERIAL_PROCESSING_PAGE_RANGE_MODES = {"all", "range", "pages"}
+_MATERIAL_PROCESSING_ALLOWED_MODES = {
+    "fast_text",
+    "layout_aware",
+    "ocr_fallback",
+    "translation_sidecar",
+}
+_MATERIAL_PROCESSING_CACHE_POLICIES = {"use", "refresh", "bypass"}
+_MATERIAL_PROCESSING_CACHE_DECISIONS = {"pending", "hit", "miss", "bypass", "refresh", "invalidated"}
+_MATERIAL_PROCESSING_OUTPUT_TARGETS = {
+    "chunks",
+    "locators",
+    "figures",
+    "tables",
+    "layout_sidecar",
+    "text_sidecar",
+    "bilingual_sidecar",
+    "docx",
+    "evidence_refs",
+}
 
 
 class TaskState(str, Enum):
@@ -74,6 +96,8 @@ class JobPayload(BaseModel):
     error: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    writing_workflow_state_summary: Dict[str, Any] = Field(default_factory=dict)
+    material_processing_task_summary: Dict[str, Any] = Field(default_factory=dict)
 
 
 class JobStatusPayload(BaseModel):
@@ -130,6 +154,282 @@ class ArtifactPayload(BaseModel):
     created_by: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     mime_type: str = "application/json"
+
+
+class WritingWorkflowStateRequest(BaseModel):
+    """Request to persist a writing workflow-state snapshot for one runtime job."""
+
+    phase: str = Field(min_length=1, max_length=120)
+    intake: Dict[str, Any] = Field(default_factory=dict)
+    evidence_refs: List[Dict[str, Any]] = Field(default_factory=list)
+    citation_bank: List[Dict[str, Any]] = Field(default_factory=list)
+    lint_report: Dict[str, Any] = Field(default_factory=dict)
+    export_manifest: Dict[str, Any] = Field(default_factory=dict)
+    change_log: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class WritingWorkflowStatePayload(BaseModel):
+    """Writing workflow-state response payload."""
+
+    schema_version: str
+    job_id: str
+    session_id: str
+    phase: str
+    updated_at: str
+    intake: Dict[str, Any] = Field(default_factory=dict)
+    evidence_refs: List[Dict[str, Any]] = Field(default_factory=list)
+    citation_bank: List[Dict[str, Any]] = Field(default_factory=list)
+    lint_report: Dict[str, Any] = Field(default_factory=dict)
+    export_manifest: Dict[str, Any] = Field(default_factory=dict)
+    change_log: List[Dict[str, Any]] = Field(default_factory=list)
+    readiness: Dict[str, bool] = Field(default_factory=dict)
+
+
+class MaterialProcessingPageRangePayload(BaseModel):
+    """Explicit page-selection contract for material processing."""
+
+    mode: str = Field(default="all", min_length=1, max_length=40)
+    start_page: Optional[int] = Field(default=None, ge=1)
+    end_page: Optional[int] = Field(default=None, ge=1)
+    pages: List[int] = Field(default_factory=list)
+
+    @field_validator("mode")
+    @classmethod
+    def _validate_mode(cls, value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized not in _MATERIAL_PROCESSING_PAGE_RANGE_MODES:
+            raise ValueError(f"mode must be one of {sorted(_MATERIAL_PROCESSING_PAGE_RANGE_MODES)}")
+        return normalized
+
+    @field_validator("pages")
+    @classmethod
+    def _validate_pages(cls, value: List[int]) -> List[int]:
+        pages = [int(page) for page in value]
+        if any(page < 1 for page in pages):
+            raise ValueError("pages must contain positive 1-based page numbers")
+        return sorted(dict.fromkeys(pages))
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> "MaterialProcessingPageRangePayload":
+        if self.mode == "range":
+            if self.start_page is None or self.end_page is None:
+                raise ValueError("range mode requires start_page and end_page")
+            if self.end_page < self.start_page:
+                raise ValueError("end_page must be greater than or equal to start_page")
+        if self.mode == "pages" and not self.pages:
+            raise ValueError("pages mode requires at least one page")
+        return self
+
+
+class MaterialProcessingPreservePayload(BaseModel):
+    """Document features the processor should preserve or track."""
+
+    formulas: bool = True
+    tables: bool = True
+    figures: bool = True
+    citations: bool = True
+    annotations: bool = True
+
+
+class MaterialProcessingInputRefPayload(BaseModel):
+    """Bounded local input reference for one material-processing task."""
+
+    ref_type: str = Field(default="material", min_length=1, max_length=80)
+    material_id: str = Field(min_length=1, max_length=200)
+    source_path_label: Optional[str] = Field(default=None, max_length=500)
+    content_digest: Optional[str] = Field(default=None, max_length=160)
+    size_bytes: Optional[int] = Field(default=None, ge=0)
+
+    @field_validator("ref_type", "material_id", "source_path_label", "content_digest", mode="before")
+    @classmethod
+    def _strip_optional_strings(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return str(value).strip()
+
+
+class MaterialProcessingCachePayload(BaseModel):
+    """Replay/cache identity and decision metadata."""
+
+    policy: str = Field(default="use", min_length=1, max_length=40)
+    content_digest: Optional[str] = Field(default=None, max_length=160)
+    parameter_digest: Optional[str] = Field(default=None, max_length=160)
+    cache_key: Optional[str] = Field(default=None, max_length=240)
+    decision: str = Field(default="pending", min_length=1, max_length=40)
+
+    @field_validator("policy")
+    @classmethod
+    def _validate_policy(cls, value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized not in _MATERIAL_PROCESSING_CACHE_POLICIES:
+            raise ValueError(f"policy must be one of {sorted(_MATERIAL_PROCESSING_CACHE_POLICIES)}")
+        return normalized
+
+    @field_validator("decision")
+    @classmethod
+    def _validate_decision(cls, value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized not in _MATERIAL_PROCESSING_CACHE_DECISIONS:
+            raise ValueError(f"decision must be one of {sorted(_MATERIAL_PROCESSING_CACHE_DECISIONS)}")
+        return normalized
+
+    @field_validator("content_digest", "parameter_digest", "cache_key", mode="before")
+    @classmethod
+    def _strip_optional_digest_strings(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return str(value).strip()
+
+
+class MaterialProcessingArtifactPayload(BaseModel):
+    """Typed artifact summary produced by a material-processing task."""
+
+    artifact_type: str = Field(min_length=1, max_length=120)
+    output_target: str = Field(min_length=1, max_length=120)
+    count: Optional[int] = Field(default=None, ge=0)
+    path: Optional[str] = Field(default=None, max_length=1000)
+    digest: Optional[str] = Field(default=None, max_length=160)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("artifact_type", "output_target", "path", "digest", mode="before")
+    @classmethod
+    def _strip_artifact_strings(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return str(value).strip()
+
+    @field_validator("output_target")
+    @classmethod
+    def _validate_output_target(cls, value: str) -> str:
+        normalized = str(value or "").strip()
+        if normalized not in _MATERIAL_PROCESSING_OUTPUT_TARGETS:
+            raise ValueError(f"output_target must be one of {sorted(_MATERIAL_PROCESSING_OUTPUT_TARGETS)}")
+        return normalized
+
+
+class MaterialProcessingTaskRequest(BaseModel):
+    """Versioned request contract for resumable material processing."""
+
+    schema_version: str = Field(default="material_processing_task_v1", min_length=1)
+    project_id: str = Field(min_length=1, max_length=200)
+    material_id: str = Field(min_length=1, max_length=200)
+    input_ref: MaterialProcessingInputRefPayload
+    page_range: MaterialProcessingPageRangePayload = Field(default_factory=MaterialProcessingPageRangePayload)
+    processing_mode: str = Field(default="fast_text", min_length=1, max_length=80)
+    language_in: Optional[str] = Field(default=None, max_length=40)
+    language_out: Optional[str] = Field(default=None, max_length=40)
+    preserve: MaterialProcessingPreservePayload = Field(default_factory=MaterialProcessingPreservePayload)
+    provider_ref: Optional[str] = Field(default=None, max_length=200)
+    cache: MaterialProcessingCachePayload = Field(default_factory=MaterialProcessingCachePayload)
+    output_targets: List[str] = Field(default_factory=lambda: ["chunks"])
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("schema_version")
+    @classmethod
+    def _validate_schema_version(cls, value: str) -> str:
+        normalized = str(value or "").strip()
+        if normalized != "material_processing_task_v1":
+            raise ValueError("schema_version must be material_processing_task_v1")
+        return normalized
+
+    @field_validator("project_id", "material_id", "processing_mode", "language_in", "language_out", "provider_ref", mode="before")
+    @classmethod
+    def _strip_request_strings(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return str(value).strip()
+
+    @field_validator("processing_mode")
+    @classmethod
+    def _validate_processing_mode(cls, value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized not in _MATERIAL_PROCESSING_ALLOWED_MODES:
+            raise ValueError(f"processing_mode must be one of {sorted(_MATERIAL_PROCESSING_ALLOWED_MODES)}")
+        return normalized
+
+    @field_validator("output_targets")
+    @classmethod
+    def _validate_output_targets(cls, value: List[str]) -> List[str]:
+        targets = [str(item or "").strip() for item in value]
+        if not targets:
+            raise ValueError("output_targets must contain at least one target")
+        invalid = [target for target in targets if target not in _MATERIAL_PROCESSING_OUTPUT_TARGETS]
+        if invalid:
+            raise ValueError(f"output_targets contains unsupported targets: {sorted(set(invalid))}")
+        return list(dict.fromkeys(targets))
+
+    @model_validator(mode="after")
+    def _validate_input_ref(self) -> "MaterialProcessingTaskRequest":
+        if self.input_ref.material_id != self.material_id:
+            raise ValueError("input_ref.material_id must match material_id")
+        return self
+
+
+class MaterialProcessingTaskPayload(BaseModel):
+    """Runtime-visible material-processing task record."""
+
+    schema_version: str
+    job_id: str
+    session_id: str
+    status: str
+    created_at: str
+    updated_at: str
+    request: MaterialProcessingTaskRequest
+    result: Dict[str, Any] = Field(default_factory=dict)
+    cache: MaterialProcessingCachePayload = Field(default_factory=MaterialProcessingCachePayload)
+    artifacts: List[MaterialProcessingArtifactPayload] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ResearchObjectPayload(BaseModel):
+    """Read-only research-domain object projected from runtime records."""
+
+    object_id: str = Field(min_length=1)
+    object_type: str = Field(min_length=1)
+    status: str = Field(min_length=1)
+    project_id: Optional[str] = None
+    material_id: Optional[str] = None
+    title: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    source_refs: List[Dict[str, Any]] = Field(default_factory=list)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+    state: Dict[str, Any] = Field(default_factory=dict)
+    confirmation_boundary: Dict[str, Any] = Field(default_factory=dict)
+    effects: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ResearchEventPayload(BaseModel):
+    """CloudEvents/PROV-inspired event projection for research objects."""
+
+    event_id: str = Field(min_length=1)
+    event_type: str = Field(min_length=1)
+    source: str = "scholar-ai.runtime"
+    subject: str = Field(min_length=1)
+    object_id: str = Field(min_length=1)
+    object_type: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    job_id: Optional[str] = None
+    timestamp: str = Field(min_length=1)
+    sequence: int = Field(ge=0)
+    status: Optional[str] = None
+    actor: Optional[str] = None
+    data: Dict[str, Any] = Field(default_factory=dict)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+    confirmation_boundary: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ResearchProjectionPayload(BaseModel):
+    """Read-only research object/event projection over runtime state."""
+
+    schema_version: str
+    generated_at: str
+    scope: Dict[str, Any] = Field(default_factory=dict)
+    objects: List[ResearchObjectPayload] = Field(default_factory=list)
+    events: List[ResearchEventPayload] = Field(default_factory=list)
+    approval_boundaries: List[Dict[str, Any]] = Field(default_factory=list)
+    status_projection: Dict[str, Any] = Field(default_factory=dict)
 
 
 class TimelineItemPayload(BaseModel):

@@ -152,22 +152,27 @@ def launch_desktop_runtime(
     python_executable: str | Path | None = None,
     env: Mapping[str, str] | None = None,
 ) -> None:
-    """Launch the source desktop app so the user can configure settings."""
+    """Launch the source desktop app without opening an extra terminal window."""
 
     start_script = repo_root / "start_desktop.py"
     if not start_script.is_file():
         raise ValueError("start_desktop.py not found under repo_root")
     launch_env = dict(os.environ if env is None else env)
     launch_env.setdefault("LITERATURE_ASSISTANT_REPO_ROOT", str(repo_root))
-    executable = str(python_executable or _default_python_executable(repo_root))
+    executable = _desktop_python_executable(python_executable or _default_python_executable(repo_root))
     command = _desktop_launch_command(executable=executable, start_script=start_script)
-    subprocess.Popen(
-        command,
-        cwd=repo_root,
-        env=launch_env,
-        creationflags=_creation_flags(visible=True),
-        close_fds=True,
-    )
+    stdout_path, stderr_path = _desktop_autostart_log_paths(repo_root)
+    with stdout_path.open("ab") as stdout_file, stderr_path.open("ab") as stderr_file:
+        subprocess.Popen(
+            command,
+            cwd=repo_root,
+            env=launch_env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            creationflags=_creation_flags(visible=True),
+            close_fds=False,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -228,16 +233,41 @@ def _force_desktop_launch(env: Mapping[str, str] | None) -> bool:
 
 
 def _desktop_launch_command(*, executable: str, start_script: Path) -> list[str]:
-    """Return a visible command that keeps startup logs available to the user."""
+    """Return the direct desktop launch command.
+
+    Why:
+        Windows ``cmd.exe /k`` leaves a terminal window behind for every MCP
+        autostart. The source desktop app already publishes runtime descriptors,
+        and this module writes stdout/stderr to local log files instead.
+    """
 
     if not isinstance(executable, str) or not executable.strip():
         raise ValueError("executable must be a non-empty string")
     if not isinstance(start_script, Path) or not start_script.is_file():
         raise ValueError("start_script must be an existing file")
-    if os.name == "nt":
-        command_line = subprocess.list2cmdline([executable, str(start_script)])
-        return ["cmd.exe", "/k", f"call {command_line}"]
     return [executable, str(start_script)]
+
+
+def _desktop_python_executable(executable: str | Path) -> str:
+    """Return the GUI Python executable for desktop autostart when available."""
+
+    executable_path = Path(executable)
+    if os.name != "nt":
+        return str(executable)
+    if executable_path.name.lower() != "python.exe":
+        return str(executable)
+    gui_executable = executable_path.with_name("pythonw.exe")
+    if gui_executable.is_file():
+        return str(gui_executable)
+    return str(executable)
+
+
+def _desktop_autostart_log_paths(repo_root: Path) -> tuple[Path, Path]:
+    """Return local log files used when MCP autostarts the desktop app."""
+
+    log_root = repo_root / "workspace_artifacts" / "runtime_state" / "desktop_autostart"
+    log_root.mkdir(parents=True, exist_ok=True)
+    return log_root / "start_desktop.stdout.log", log_root / "start_desktop.stderr.log"
 
 
 def _health_ok(base_url: str, capability_file: Path | None, timeout_sec: float) -> bool:
@@ -321,10 +351,19 @@ def _default_python_executable(repo_root: Path) -> Path:
 
 
 def _creation_flags(*, visible: bool) -> int:
+    """Return process flags for desktop autostart.
+
+    Args:
+        visible: Whether the pywebview application window should be user-visible.
+
+    Why:
+        ``visible`` means the native ``文献助手`` window is allowed to appear,
+        not that Windows should allocate a console. The desktop app is a GUI
+        acceptance surface; logs belong in ``workspace_artifacts``.
+    """
+
     if os.name != "nt":
         return 0
-    if visible:
-        return int(getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
     return int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 

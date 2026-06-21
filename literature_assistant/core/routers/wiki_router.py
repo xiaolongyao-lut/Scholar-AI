@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -13,6 +13,7 @@ from literature_assistant.core.project_paths import (
     REPO_ROOT,
     WORKSPACE_ARTIFACTS_ROOT,
     WORKSPACE_REFERENCES_ROOT,
+    output_path,
     wiki_generated_root,
     wiki_graph_db_path,
     wiki_graph_path,
@@ -238,6 +239,45 @@ class WikiExportResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class WikiProjectOkfExportRequest(BaseModel):
+    """Explicit process artifact records for a local project OKF bundle."""
+
+    output_path: str | None = None
+    project_id: str | None = None
+    include_live_project_records: bool = False
+    max_live_records: int = Field(default=200, ge=1, le=1000)
+    materials: list[dict[str, Any]] = Field(default_factory=list)
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    answers: list[dict[str, Any]] = Field(default_factory=list)
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
+    reviews: list[dict[str, Any]] = Field(default_factory=list)
+    exports: list[dict[str, Any]] = Field(default_factory=list)
+
+    def records_by_group(self) -> dict[str, list[dict[str, Any]]]:
+        """Return records in the Scholar AI process-artifact group order."""
+
+        return {
+            "materials": self.materials,
+            "evidence": self.evidence,
+            "answers": self.answers,
+            "tasks": self.tasks,
+            "reviews": self.reviews,
+            "exports": self.exports,
+        }
+
+
+class WikiProjectOkfExportResponse(BaseModel):
+    """Local project OKF export result for explicit process artifact records."""
+
+    enabled: bool
+    success: bool = False
+    page_count: int = 0
+    output_path: str = ""
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    manifest: dict[str, Any] = Field(default_factory=dict)
+
+
 class WikiImportRequest(BaseModel):
     """Local Markdown import request for the wiki sidecar."""
 
@@ -271,6 +311,22 @@ class WikiImportResponse(BaseModel):
     skipped: int = 0
     errored: int = 0
     pages: list[WikiImportItemPayload] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class WikiOkfInspectRequest(BaseModel):
+    """Read-only request to inspect a local OKF zip archive."""
+
+    archive_path: str = Field(min_length=1)
+
+
+class WikiOkfInspectResponse(BaseModel):
+    """Read-only OKF inspection response for future import planning."""
+
+    enabled: bool
+    dry_run: bool = True
+    archive_path: str = ""
+    inspection: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -403,41 +459,569 @@ def _is_relative_to(path: Path, root: Path) -> bool:
         return False
 
 
-def _resolve_wiki_export_path(raw_output_path: str | None) -> Path:
-    """Return a zip export path under the canonical wiki export root.
+def _resolve_safe_export_archive_path(
+    raw_output_path: str | None,
+    *,
+    export_dir: Path,
+    default_prefix: str,
+    root_label: str,
+) -> Path:
+    """Return a safe archive filename under one local export directory.
 
     Args:
         raw_output_path: Optional user-provided archive filename. It must be a
             filename only; absolute paths, parent directories, and alternate
             suffixes are rejected.
+        export_dir: Canonical local directory where the archive will be written.
+        default_prefix: Prefix used for timestamped default filenames.
+        root_label: Human-readable root label for HTTP 400 messages.
 
     Returns:
-        Resolved path inside ``workspace_artifacts/wiki_exports``.
+        Resolved path inside ``export_dir``.
     """
     from datetime import datetime, timezone
 
-    export_dir = (WORKSPACE_ARTIFACTS_ROOT / "wiki_exports").resolve()
-    export_dir.mkdir(parents=True, exist_ok=True)
+    if not isinstance(export_dir, Path):
+        raise TypeError("export_dir must be a pathlib.Path")
+    if not isinstance(default_prefix, str) or not default_prefix.strip():
+        raise ValueError("default_prefix must be non-empty")
+    if not isinstance(root_label, str) or not root_label.strip():
+        raise ValueError("root_label must be non-empty")
+
+    resolved_export_dir = export_dir.resolve()
+    resolved_export_dir.mkdir(parents=True, exist_ok=True)
 
     if raw_output_path is None:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        filename = f"wiki_export_{timestamp}.zip"
+        filename = f"{default_prefix.strip()}_{timestamp}.zip"
     else:
         filename = str(raw_output_path or "").strip()
         if not filename:
             raise HTTPException(status_code=400, detail="output_path must be a non-empty zip filename")
         candidate = Path(filename)
         if candidate.is_absolute() or filename != candidate.name or "/" in filename or "\\" in filename:
-            raise HTTPException(status_code=400, detail="output_path must be a filename under wiki_exports")
+            raise HTTPException(status_code=400, detail=f"output_path must be a filename under {root_label.strip()}")
         if not filename.lower().endswith(".zip"):
             filename = f"{filename}.zip"
         if not _SAFE_EXPORT_ARCHIVE_RE.fullmatch(filename):
             raise HTTPException(status_code=400, detail="output_path must be a safe .zip filename")
 
-    resolved = (export_dir / filename).resolve()
-    if not _is_relative_to(resolved, export_dir):
+    resolved = (resolved_export_dir / filename).resolve()
+    if not _is_relative_to(resolved, resolved_export_dir):
         raise HTTPException(status_code=400, detail="output_path escapes wiki export root")
     return resolved
+
+
+def _resolve_wiki_export_path(raw_output_path: str | None) -> Path:
+    """Return a legacy Markdown zip export path under ``workspace_artifacts/wiki_exports``."""
+
+    return _resolve_safe_export_archive_path(
+        raw_output_path,
+        export_dir=WORKSPACE_ARTIFACTS_ROOT / "wiki_exports",
+        default_prefix="wiki_export",
+        root_label="wiki_exports",
+    )
+
+
+def _resolve_wiki_okf_export_path(raw_output_path: str | None) -> Path:
+    """Return an OKF zip export path under the canonical generated-output root."""
+
+    return _resolve_safe_export_archive_path(
+        raw_output_path,
+        export_dir=output_path("wiki-okf"),
+        default_prefix="wiki_okf_export",
+        root_label="workspace_artifacts/generated/output/wiki-okf",
+    )
+
+
+def _resolve_project_okf_export_path(raw_output_path: str | None) -> Path:
+    """Return a project artifact OKF zip export path under generated output."""
+
+    return _resolve_safe_export_archive_path(
+        raw_output_path,
+        export_dir=output_path("project-okf"),
+        default_prefix="project_okf_export",
+        root_label="workspace_artifacts/generated/output/project-okf",
+    )
+
+
+def _resource_to_dict(resource: Any, *, resource_name: str) -> dict[str, Any]:
+    """Return a plain mapping from a local resource object.
+
+    Args:
+        resource: Store resource object or mapping.
+        resource_name: Name used in validation errors.
+
+    Returns:
+        A shallow copy of the resource mapping.
+    """
+
+    if not isinstance(resource_name, str) or not resource_name.strip():
+        raise ValueError("resource_name must be non-empty")
+    if isinstance(resource, Mapping):
+        return dict(resource)
+    to_dict = getattr(resource, "to_dict", None)
+    if not callable(to_dict):
+        raise TypeError(f"{resource_name} must expose to_dict() or be a mapping")
+    payload = to_dict()
+    if not isinstance(payload, Mapping):
+        raise TypeError(f"{resource_name}.to_dict() must return a mapping")
+    return dict(payload)
+
+
+def _citation_anchor_count(payload: Mapping[str, Any]) -> int:
+    """Return the number of citation anchors without exporting draft content."""
+
+    if not isinstance(payload, Mapping):
+        raise TypeError("payload must be a mapping")
+    raw_direct = payload.get("citation_anchors")
+    if isinstance(raw_direct, list):
+        return len(raw_direct)
+    raw_metadata = payload.get("metadata")
+    if isinstance(raw_metadata, Mapping):
+        raw_nested = raw_metadata.get("citation_anchors")
+        if isinstance(raw_nested, list):
+            return len(raw_nested)
+    return 0
+
+
+def _live_project_review_records(project_id: str, remaining: int) -> tuple[list[dict[str, Any]], list[str]]:
+    """Collect project-scoped Wiki ReviewQueue records without changing decisions."""
+
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise ValueError("project_id must be non-empty")
+    if remaining <= 0:
+        return [], ["live review collection skipped because max_live_records was exhausted"]
+    warnings: list[str] = []
+    records: list[dict[str, Any]] = []
+    try:
+        items = ReviewQueue(wiki_review_queue_path()).list_items()
+    except Exception as exc:
+        return [], [f"live review collection skipped: {exc}"]
+    for item in items:
+        payload = item.to_dict()
+        metadata = payload.get("metadata")
+        if isinstance(metadata, Mapping) and metadata.get("project_id") != project_id:
+            continue
+        if not isinstance(metadata, Mapping):
+            continue
+        records.append(payload)
+        if len(records) >= remaining:
+            warnings.append("live review collection truncated by max_live_records")
+            break
+    return records, warnings
+
+
+def _live_project_chat_answer_records(project_id: str, remaining: int) -> tuple[list[dict[str, Any]], list[str]]:
+    """Collect project chat-history metadata without exporting transcript text."""
+
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise ValueError("project_id must be non-empty")
+    if remaining <= 0:
+        return [], ["live chat-history collection skipped because max_live_records was exhausted"]
+    try:
+        from literature_assistant.core.chat.history_store import ChatHistoryStore, default_chat_history_db_path
+    except ImportError:
+        try:
+            from chat.history_store import ChatHistoryStore, default_chat_history_db_path  # type: ignore[no-redef]
+        except ImportError as exc:
+            return [], [f"live chat-history collection skipped: {exc}"]
+
+    db_path = default_chat_history_db_path()
+    if not db_path.exists():
+        return [], ["live chat-history collection skipped: chat history database is not initialized"]
+    try:
+        store = ChatHistoryStore(db_path)
+        summaries = store.list_project_conversation_summaries(project_id, limit=remaining)
+    except Exception as exc:
+        return [], [f"live chat-history collection skipped: {exc}"]
+
+    records: list[dict[str, Any]] = []
+    for summary in summaries:
+        records.append(
+            {
+                "conversation_id": str(summary.get("conversation_id") or ""),
+                "project_id": project_id,
+                "title": str(summary.get("title") or "Untitled conversation"),
+                "mode": str(summary.get("mode") or ""),
+                "status": "archived" if summary.get("archived") else "active",
+                "created_at": str(summary.get("created_at") or ""),
+                "updated_at": str(summary.get("updated_at") or ""),
+                "node_count": int(summary.get("node_count") or 0),
+                "evidence_ref_count": int(summary.get("evidence_ref_count") or 0),
+                "agent_count": int(summary.get("agent_count") or 0),
+                "agent_run_count": int(summary.get("agent_run_count") or 0),
+                "compression_snapshot_count": int(summary.get("compression_snapshot_count") or 0),
+                "has_private_transcript": True,
+                "summary": "Chat history metadata collected from the local history store. Transcript text omitted.",
+            }
+        )
+    warnings: list[str] = []
+    if len(records) >= remaining:
+        warnings.append("live chat-history collection truncated by max_live_records")
+    return records, warnings
+
+
+def _enum_value(value: Any) -> str:
+    """Return a string value for runtime enum-like fields."""
+
+    raw_value = getattr(value, "value", value)
+    return str(raw_value or "")
+
+
+def _mapping_or_empty(value: Any) -> Mapping[str, Any]:
+    """Return a mapping view for optional runtime metadata."""
+
+    return value if isinstance(value, Mapping) else {}
+
+
+def _live_project_runtime_records(
+    project_id: str,
+    remaining: int,
+) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
+    """Collect agent request/result and single-paper task metadata only."""
+
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise ValueError("project_id must be non-empty")
+    records: dict[str, list[dict[str, Any]]] = {"answers": [], "tasks": []}
+    if remaining <= 0:
+        return records, ["live agent-runtime collection skipped because max_live_records was exhausted"]
+    try:
+        import routers.agent_bridge_router as agent_bridge_router
+    except ImportError:
+        try:
+            from literature_assistant.core.routers import agent_bridge_router  # type: ignore[no-redef]
+        except ImportError as exc:
+            return records, [f"live agent-runtime collection skipped: {exc}"]
+    try:
+        runtime, _session_mode = agent_bridge_router.get_runtime()
+        sessions = runtime.list_sessions(include_archived=True)
+    except Exception as exc:
+        return records, [f"live agent-runtime collection skipped: {exc}"]
+
+    warnings: list[str] = []
+    budget = remaining
+    for session in sessions:
+        if budget <= 0:
+            break
+        session_id = str(getattr(session, "session_id", "") or "")
+        if not session_id:
+            continue
+        session_metadata = _mapping_or_empty(getattr(session, "metadata", {}))
+        try:
+            jobs = runtime.list_jobs(session_id=session_id)
+        except Exception as exc:
+            warnings.append(f"live agent-runtime jobs skipped for session {session_id}: {exc}")
+            continue
+        for job in jobs:
+            if budget <= 0:
+                warnings.append("live agent-runtime collection truncated by max_live_records")
+                break
+            job_metadata = _mapping_or_empty(getattr(job, "metadata", {}))
+            job_project_id = str(job_metadata.get("project_id") or session_metadata.get("project_id") or "")
+            if job_project_id != project_id:
+                continue
+            request_id = str(job_metadata.get("agent_request_id") or "").strip()
+            job_id = str(getattr(job, "job_id", "") or "").strip()
+            if not request_id and not job_id:
+                continue
+            artifact_count = 0
+            artifact_kinds: list[str] = []
+            try:
+                artifacts = runtime.get_job_artifacts(job_id) if job_id else []
+            except Exception as exc:
+                artifacts = []
+                warnings.append(f"live agent-runtime artifact metadata skipped for job {job_id}: {exc}")
+            for artifact in artifacts:
+                artifact_count += 1
+                artifact_kind = _enum_value(getattr(artifact, "artifact_type", ""))
+                if artifact_kind and artifact_kind not in artifact_kinds:
+                    artifact_kinds.append(artifact_kind)
+
+            resource_refs = job_metadata.get("resource_refs")
+            evidence_refs = job_metadata.get("evidence_refs")
+            wiki_refs = job_metadata.get("wiki_refs")
+            graph_patch_refs = job_metadata.get("graph_patch_refs")
+            nested_metadata = _mapping_or_empty(job_metadata.get("metadata"))
+            task_manifest = _mapping_or_empty(nested_metadata.get("task_manifest"))
+            paper = _mapping_or_empty(task_manifest.get("paper"))
+            task_id = str(nested_metadata.get("task_id") or task_manifest.get("task_id") or request_id or job_id)
+            task_record = {
+                "task_id": task_id,
+                "request_id": request_id,
+                "job_id": job_id,
+                "project_id": project_id,
+                "intent": str(job_metadata.get("intent") or ""),
+                "status": _enum_value(getattr(job, "status", "")),
+                "kind": _enum_value(getattr(job, "kind", "")),
+                "created_at": str(getattr(job, "created_at", "") or ""),
+                "started_at": str(getattr(job, "started_at", "") or ""),
+                "completed_at": str(getattr(job, "completed_at", "") or ""),
+                "agent_host": str(job_metadata.get("agent_host") or ""),
+                "source": str(job_metadata.get("source") or ""),
+                "resource_ref_count": len(resource_refs) if isinstance(resource_refs, list) else 0,
+                "artifact_count": artifact_count,
+                "artifact_kinds": artifact_kinds,
+                "single_paper_task": str(nested_metadata.get("task_schema_version") or "") == "scholar-ai-single-paper-task/v1",
+                "paper_title": str(paper.get("title") or nested_metadata.get("task_title") or ""),
+                "missing_field_count": len(nested_metadata.get("missing_fields")) if isinstance(nested_metadata.get("missing_fields"), list) else 0,
+                "has_private_input_text": bool(str(getattr(job, "input_text", "") or "").strip()),
+                "summary": "Agent request/task metadata collected from the local runtime. Prompt and artifact content omitted.",
+            }
+            records["tasks"].append(task_record)
+            budget -= 1
+            if budget <= 0:
+                warnings.append("live agent-runtime collection truncated by max_live_records")
+                break
+
+            if bool(job_metadata.get("agent_result_ready")):
+                consumer_metadata = _mapping_or_empty(job_metadata.get("knowledge_consumers"))
+                answer_record = {
+                    "request_id": request_id,
+                    "run_id": job_id,
+                    "job_id": job_id,
+                    "project_id": project_id,
+                    "title": f"Agent result: {job_metadata.get('intent') or request_id or job_id}",
+                    "status": _enum_value(getattr(job, "status", "")),
+                    "created_at": str(getattr(job, "created_at", "") or ""),
+                    "updated_at": str(getattr(job, "completed_at", "") or getattr(job, "created_at", "") or ""),
+                    "intent": str(job_metadata.get("intent") or ""),
+                    "evidence_ref_count": len(evidence_refs) if isinstance(evidence_refs, list) else 0,
+                    "wiki_ref_count": len(wiki_refs) if isinstance(wiki_refs, list) else 0,
+                    "graph_patch_ref_count": len(graph_patch_refs) if isinstance(graph_patch_refs, list) else 0,
+                    "artifact_count": artifact_count,
+                    "wiki_consumer_status": str(_mapping_or_empty(consumer_metadata.get("wiki")).get("status") or ""),
+                    "graph_consumer_status": str(_mapping_or_empty(consumer_metadata.get("graph")).get("status") or ""),
+                    "evolution_consumer_status": str(_mapping_or_empty(consumer_metadata.get("evolution")).get("status") or ""),
+                    "has_private_result_text": True,
+                    "summary": "Agent result metadata collected from the local runtime. Result text omitted.",
+                }
+                records["answers"].append(answer_record)
+                budget -= 1
+    return records, warnings
+
+
+def _live_project_discussion_records(project_id: str, remaining: int) -> tuple[list[dict[str, Any]], list[str]]:
+    """Collect discussion run metadata without exporting traces or answers."""
+
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise ValueError("project_id must be non-empty")
+    if remaining <= 0:
+        return [], ["live discussion-run collection skipped because max_live_records was exhausted"]
+    try:
+        from discussion_task_store import get_discussion_task_store
+    except ImportError:
+        try:
+            from literature_assistant.core.discussion_task_store import get_discussion_task_store  # type: ignore[no-redef]
+        except ImportError as exc:
+            return [], [f"live discussion-run collection skipped: {exc}"]
+    try:
+        summaries = get_discussion_task_store().list_project_run_summaries(project_id, limit=remaining)
+    except Exception as exc:
+        return [], [f"live discussion-run collection skipped: {exc}"]
+
+    records: list[dict[str, Any]] = []
+    for summary in summaries:
+        records.append(
+            {
+                "run_id": str(summary.get("run_id") or ""),
+                "project_id": project_id,
+                "title": f"Discussion run: {summary.get('query') or summary.get('run_id')}",
+                "query": str(summary.get("query") or ""),
+                "status": str(summary.get("state") or ""),
+                "current_stage": str(summary.get("current_stage") or ""),
+                "current_turn_index": int(summary.get("current_turn_index") or 0),
+                "created_at_epoch": summary.get("created_at_epoch"),
+                "updated_at_epoch": summary.get("updated_at_epoch"),
+                "agent_count": int(summary.get("agent_count") or 0),
+                "evidence_mode": str(summary.get("evidence_mode") or ""),
+                "evidence_top_k": int(summary.get("evidence_top_k") or 0),
+                "live_trace_count": int(summary.get("live_trace_count") or 0),
+                "event_log_length": int(summary.get("event_log_length") or 0),
+                "has_synthesis": bool(summary.get("has_synthesis")),
+                "has_final_result": bool(summary.get("has_final_result")),
+                "has_error": bool(summary.get("has_error")),
+                "archived": bool(summary.get("archived")),
+                "has_private_trace_or_answer_text": True,
+                "summary": "Discussion run metadata collected from the local task store. Traces, synthesis, final answers, and event payloads omitted.",
+            }
+        )
+    warnings: list[str] = []
+    if len(records) >= remaining:
+        warnings.append("live discussion-run collection truncated by max_live_records")
+    return records, warnings
+
+
+def _collect_live_project_okf_records(
+    project_id: str,
+    *,
+    max_records: int,
+) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
+    """Collect bounded local process-artifact records for a project OKF export.
+
+    Args:
+        project_id: Existing Scholar AI project id.
+        max_records: Total live records to collect across groups.
+
+    Returns:
+        Process-artifact records grouped for ``export_project_artifact_okf_bundle``
+        plus warnings about skipped or truncated stores.
+
+    Raises:
+        KeyError: If the project does not exist.
+        ValueError: If inputs are outside the endpoint contract.
+    """
+
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        raise ValueError("project_id is required when include_live_project_records is true")
+    if max_records < 1:
+        raise ValueError("max_records must be positive")
+
+    import routers.resources_router as resources_router
+
+    store = resources_router.get_writing_resource_store()
+    project = store.get_project(normalized_project_id)
+    if project is None:
+        raise KeyError(normalized_project_id)
+
+    records: dict[str, list[dict[str, Any]]] = {
+        "materials": [],
+        "evidence": [],
+        "answers": [],
+        "tasks": [],
+        "reviews": [],
+        "exports": [],
+    }
+    warnings: list[str] = []
+    remaining = max_records
+
+    def append_record(group: str, record: dict[str, Any]) -> bool:
+        nonlocal remaining
+        if remaining <= 0:
+            return False
+        records[group].append(record)
+        remaining -= 1
+        return True
+
+    for material in store.list_materials(normalized_project_id):
+        if not append_record("materials", _resource_to_dict(material, resource_name="material")):
+            warnings.append("live material collection truncated by max_live_records")
+            break
+
+    if remaining > 0:
+        try:
+            chunk_store = resources_router._load_chunk_store(normalized_project_id)
+        except Exception as exc:
+            warnings.append(f"live evidence chunk-ref collection skipped: {exc}")
+            chunk_store = {}
+        if isinstance(chunk_store, Mapping):
+            for material_id, chunks in sorted(chunk_store.items(), key=lambda item: str(item[0])):
+                if not isinstance(chunks, list):
+                    continue
+                for index, chunk in enumerate(chunks):
+                    if not isinstance(chunk, Mapping):
+                        continue
+                    chunk_id = str(chunk.get("chunk_id") or f"{material_id}-chunk-{index + 1}").strip()
+                    record = {
+                        "evidence_ref": chunk_id,
+                        "chunk_id": chunk_id,
+                        "material_id": str(chunk.get("material_id") or material_id),
+                        "title": str(chunk.get("title") or ""),
+                        "page": chunk.get("page"),
+                        "chunk_type": str(chunk.get("chunk_type") or "unknown"),
+                        "source_relative_path": str(chunk.get("source_relative_path") or ""),
+                        "summary": f"Bounded chunk reference for {chunk_id}. Full text omitted.",
+                        "has_private_text": bool(chunk.get("text")),
+                    }
+                    if not append_record("evidence", record):
+                        warnings.append("live evidence chunk-ref collection truncated by max_live_records")
+                        break
+                if remaining <= 0:
+                    break
+        else:
+            warnings.append("live evidence chunk-ref collection skipped: chunk store was not a mapping")
+
+    for draft in store.list_drafts(normalized_project_id):
+        payload = _resource_to_dict(draft, resource_name="draft")
+        record = {
+            "conversation_id": str(payload.get("draft_id") or ""),
+            "draft_id": str(payload.get("draft_id") or ""),
+            "project_id": normalized_project_id,
+            "title": str(payload.get("title") or "Untitled draft"),
+            "section_id": str(payload.get("section_id") or ""),
+            "status": str(payload.get("status") or ""),
+            "created_at": str(payload.get("created_at") or ""),
+            "updated_at": str(payload.get("updated_at") or ""),
+            "last_edited_by": str(payload.get("last_edited_by") or ""),
+            "citation_anchor_count": _citation_anchor_count(payload),
+            "summary": "Draft/answer metadata collected from the local project store. Content omitted.",
+        }
+        if not append_record("answers", record):
+            warnings.append("live answer/draft collection truncated by max_live_records")
+            break
+
+    if remaining > 0:
+        chat_records, chat_warnings = _live_project_chat_answer_records(normalized_project_id, remaining)
+        warnings.extend(chat_warnings)
+        for record in chat_records:
+            if not append_record("answers", record):
+                warnings.append("live chat-history collection truncated by max_live_records")
+                break
+
+    if remaining > 0:
+        runtime_records, runtime_warnings = _live_project_runtime_records(normalized_project_id, remaining)
+        warnings.extend(runtime_warnings)
+        for group in ("tasks", "answers"):
+            for record in runtime_records[group]:
+                if not append_record(group, record):
+                    warnings.append("live agent-runtime collection truncated by max_live_records")
+                    break
+            if remaining <= 0:
+                break
+
+    if remaining > 0:
+        discussion_records, discussion_warnings = _live_project_discussion_records(normalized_project_id, remaining)
+        warnings.extend(discussion_warnings)
+        for record in discussion_records:
+            if not append_record("answers", record):
+                warnings.append("live discussion-run collection truncated by max_live_records")
+                break
+
+    if hasattr(store, "list_figure_assets"):
+        for asset in store.list_figure_assets(normalized_project_id):
+            payload = _resource_to_dict(asset, resource_name="figure_asset")
+            record = {
+                "export_id": str(payload.get("asset_id") or ""),
+                "artifact_id": str(payload.get("asset_id") or ""),
+                "artifact_kind": "figure_table_asset",
+                "project_id": normalized_project_id,
+                "kind": str(payload.get("kind") or ""),
+                "caption": str(payload.get("caption") or ""),
+                "numbering": str(payload.get("numbering") or ""),
+                "material_id": str(payload.get("material_id") or ""),
+                "source_page": payload.get("source_page"),
+                "bbox": payload.get("bbox"),
+                "width": payload.get("width"),
+                "height": payload.get("height"),
+                "format": payload.get("format"),
+                "has_private_asset_path": bool(payload.get("asset_path")),
+                "description": "Figure/table asset metadata collected from the local project store. Private asset path omitted.",
+            }
+            if not append_record("exports", record):
+                warnings.append("live figure/export collection truncated by max_live_records")
+                break
+
+    if remaining > 0:
+        review_records, review_warnings = _live_project_review_records(normalized_project_id, remaining)
+        warnings.extend(review_warnings)
+        for record in review_records:
+            if not append_record("reviews", record):
+                break
+
+    total = sum(len(group_records) for group_records in records.values())
+    warnings.append(f"collected {total} live project records for local OKF export")
+    return records, warnings
 
 
 def _safe_import_source_label(path: Path) -> str:
@@ -467,6 +1051,29 @@ def _resolve_wiki_import_source(raw_path: str) -> Path:
     size = resolved.stat().st_size
     if size > _MAX_WIKI_IMPORT_FILE_BYTES:
         raise ValueError(f"Markdown source exceeds {_MAX_WIKI_IMPORT_FILE_BYTES} bytes")
+    return resolved
+
+
+def _resolve_wiki_import_archive(raw_path: str) -> Path:
+    """Resolve a local OKF archive path without granting general file reads."""
+
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("archive_path cannot be empty")
+    candidate = Path(raw_path.strip()).expanduser()
+    if not candidate.is_absolute():
+        candidate = REPO_ROOT / candidate
+    resolved = candidate.resolve()
+    if resolved.suffix.lower() != ".zip":
+        raise ValueError("archive_path must point to a .zip archive")
+    if not any(_is_relative_to(resolved, root) for root in _wiki_import_allowed_roots()):
+        raise ValueError("archive_path must stay inside an allowed local workspace root")
+    if any(_is_relative_to(resolved, root) for root in _wiki_import_forbidden_roots()):
+        raise ValueError("archive_path points to a protected workspace area")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"OKF archive not found: {_safe_import_source_label(resolved)}")
+    size = resolved.stat().st_size
+    if size > _MAX_WIKI_IMPORT_TOTAL_BYTES:
+        raise ValueError(f"OKF archive exceeds {_MAX_WIKI_IMPORT_TOTAL_BYTES} bytes")
     return resolved
 
 
@@ -911,6 +1518,31 @@ def wiki_import(
         errored=errored,
         pages=pages,
     )
+
+
+@router.post("/import/okf/inspect", response_model=WikiOkfInspectResponse)
+def wiki_okf_import_inspect(request: WikiOkfInspectRequest) -> WikiOkfInspectResponse:
+    """Inspect a local OKF zip archive without importing or mutating wiki pages."""
+
+    if not wiki_enabled():
+        return WikiOkfInspectResponse(enabled=False, warnings=_disabled_warning())
+
+    from wiki.export import inspect_okf_bundle_archive
+
+    try:
+        archive_path = _resolve_wiki_import_archive(request.archive_path)
+        source_label = _safe_import_source_label(archive_path)
+        inspection = dict(inspect_okf_bundle_archive(archive_path))
+        inspection["archive_path"] = source_label
+        return WikiOkfInspectResponse(
+            enabled=True,
+            dry_run=True,
+            archive_path=source_label,
+            inspection=inspection,
+            warnings=["Read-only inspection completed; no wiki pages, Zotero data, or external services were modified."],
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/status", response_model=WikiStatusResponse)
@@ -1429,11 +2061,17 @@ def wiki_doctor(user_id: str | None = Query(default=None)) -> WikiDoctorResponse
 def wiki_export(
     output_path: str | None = Query(default=None),
     user_id: str | None = Query(default=None),
+    format: str = Query(default="markdown"),
 ) -> WikiExportResponse:
-    """Export all wiki pages as Markdown zip archive (G15 2026-05-26).
+    """Export wiki pages as a local Markdown or OKF-compatible zip archive.
 
     Args:
-        output_path: Optional output zip filename under workspace_artifacts/wiki_exports.
+        output_path: Optional safe output zip filename. Markdown exports use
+            ``workspace_artifacts/wiki_exports`` for compatibility; OKF exports
+            use ``workspace_artifacts/generated/output/wiki-okf``.
+        user_id: Local wiki user whose readable pages are exported.
+        format: ``markdown`` for the existing raw page archive or ``okf`` for
+            Scholar AI's OKF-compatible profile bundle.
 
     Returns:
         WikiExportResponse with success/page_count/output_path/errors
@@ -1441,17 +2079,71 @@ def wiki_export(
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
 
-    from wiki.export import export_wiki_markdown
+    from wiki.export import export_wiki_markdown, export_wiki_okf_bundle
 
     current_user = _current_wiki_user(user_id)
-    resolved_output_path = _resolve_wiki_export_path(output_path)
+    normalized_format = str(format or "markdown").strip().lower()
+    if normalized_format not in {"markdown", "okf"}:
+        raise HTTPException(status_code=400, detail="format must be markdown or okf")
+    resolved_output_path = (
+        _resolve_wiki_okf_export_path(output_path)
+        if normalized_format == "okf"
+        else _resolve_wiki_export_path(output_path)
+    )
 
-    result = export_wiki_markdown(_reviewed_page_store(current_user), resolved_output_path)
+    page_store = _reviewed_page_store(current_user)
+    if normalized_format == "okf":
+        result = export_wiki_okf_bundle(page_store, resolved_output_path)
+    else:
+        result = export_wiki_markdown(page_store, resolved_output_path)
 
     if not result["success"]:
         raise HTTPException(status_code=500, detail={"errors": result["errors"]})
 
     return WikiExportResponse(**result)
+
+
+@router.post("/export/project-okf", response_model=WikiProjectOkfExportResponse)
+def wiki_project_okf_export(request: WikiProjectOkfExportRequest) -> WikiProjectOkfExportResponse:
+    """Export explicit process artifact records into a local OKF zip bundle."""
+
+    if not wiki_enabled():
+        return WikiProjectOkfExportResponse(enabled=False, warnings=_disabled_warning())
+
+    from wiki.export import export_project_artifact_okf_bundle
+
+    resolved_output_path = _resolve_project_okf_export_path(request.output_path)
+    records_by_group = request.records_by_group()
+    pre_export_warnings: list[str] = []
+    if request.include_live_project_records:
+        try:
+            live_records, live_warnings = _collect_live_project_okf_records(
+                request.project_id or "",
+                max_records=request.max_live_records,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"Project not found: {exc.args[0]}") from exc
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        pre_export_warnings.extend(live_warnings)
+        for group, records in live_records.items():
+            records_by_group[group] = [*records_by_group[group], *records]
+
+    try:
+        result = export_project_artifact_okf_bundle(
+            records_by_group,
+            resolved_output_path,
+            project_id=request.project_id,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail={"errors": result["errors"]})
+
+    result = dict(result)
+    result["warnings"] = [*pre_export_warnings, *list(result.get("warnings", []))]
+    return WikiProjectOkfExportResponse(enabled=True, **result)
 
 
 @router.get("/graph", response_model=WikiGraphResponse)

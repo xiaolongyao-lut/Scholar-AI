@@ -508,7 +508,10 @@ class TestWikiPermissionEnforcement:
         assert response.status_code == 200
         assert response.json()["page_count"] == 1
         with zipfile.ZipFile(output_path, "r") as archive:
-            assert archive.namelist() == ["synthesis/public-page.md"]
+            names = archive.namelist()
+            assert "manifest.json" in names
+            assert "synthesis/public-page.md" in names
+            assert "synthesis/private-page.md" not in names
 
     def test_graph_filters_unreadable_nodes(self, client, mock_wiki_enabled, tmp_path):
         """Graph responses are built from the caller's readable page subset."""

@@ -16,6 +16,7 @@ run).
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Any, Awaitable, Callable
@@ -42,6 +43,8 @@ from routers.local_literature_tool_bridge import (
 
 
 logger = logging.getLogger("ChatMcpIntegration")
+
+_STRUCTURED_PREVIEW_CHAR_LIMIT = 4000
 
 
 def is_mcp_tools_enabled() -> bool:
@@ -136,6 +139,33 @@ def make_local_literature_runner(
 ChatPostFn = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
+def _bounded_structured_projection(value: Any) -> Any:
+    """Return bounded structured state for API diagnostics only.
+
+    Why:
+        ``ToolResultRecord`` may contain useful structured MCP state, but API
+        diagnostics must not expose raw content blocks or provider payloads.
+    """
+
+    if value is None or isinstance(value, (int, float, bool)):
+        return value
+    try:
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    except (TypeError, ValueError):
+        text = str(value)
+    if len(text) <= _STRUCTURED_PREVIEW_CHAR_LIMIT:
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return text
+    marker = '"...[structured_content_truncated]"'
+    trimmed = text[: _STRUCTURED_PREVIEW_CHAR_LIMIT - len(marker) - 1].rstrip()
+    return {
+        "truncated": True,
+        "preview": f"{trimmed}{marker}",
+    }
+
+
 def make_chat_call(
     *,
     base_payload: dict[str, Any],
@@ -172,6 +202,7 @@ def transcript_to_dump(result: ToolUseRunResult) -> dict[str, Any]:
     return {
         "rounds": result.rounds,
         "stopped_reason": result.stopped_reason,
+        "diagnostics": result.diagnostics.to_dict(),
         "tool_calls": [
             {
                 "tool_call_id": r.tool_call_id,
@@ -182,6 +213,19 @@ def transcript_to_dump(result: ToolUseRunResult) -> dict[str, Any]:
                 "elapsed_ms": r.elapsed_ms,
                 "preview": r.preview,
                 "truncated": r.truncated,
+                "llm_payload_truncated": r.llm_payload_truncated,
+                "llm_payload_chars": r.llm_payload_chars,
+                "estimated_tokens": r.estimated_tokens,
+                "redacted": r.redacted,
+                "unsupported_block_count": r.unsupported_block_count,
+                "source_provenance": dict(r.source_provenance),
+                "budget_class": r.budget_class,
+                "structured_content": _bounded_structured_projection(
+                    r.structured_content
+                ),
+                "structured_metadata": _bounded_structured_projection(
+                    r.structured_metadata
+                ),
             }
             for r in result.transcript
         ],

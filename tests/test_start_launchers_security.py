@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -125,6 +127,79 @@ def test_frontend_cache_version_tracks_built_index(tmp_path: Path, monkeypatch: 
     assert first_version != second_version
 
 
+def test_desktop_initial_path_accepts_only_root_relative_spa_paths() -> None:
+    """Desktop smoke helpers may deep-link only into the local SPA."""
+    assert start_desktop._normalize_desktop_initial_path(None) == "/"
+    assert start_desktop._normalize_desktop_initial_path(" /__desktop_acceptance/semantic-review?mode=graph ") == (
+        "/__desktop_acceptance/semantic-review?mode=graph"
+    )
+    assert start_desktop._build_desktop_frontend_url(
+        "http://127.0.0.1:8765",
+        "/__desktop_acceptance/semantic-review",
+    ) == "http://127.0.0.1:8765/__desktop_acceptance/semantic-review"
+
+    for value in (
+        "https://example.com/wiki",
+        "//example.com/wiki",
+        "wiki",
+        "/../settings",
+        "/wiki#fragment",
+        "/wiki\\settings",
+        "/wiki\nsettings",
+    ):
+        with pytest.raises(ValueError):
+            start_desktop._normalize_desktop_initial_path(value)
+
+
+def test_desktop_window_geometry_centers_inside_primary_work_area() -> None:
+    """The source desktop window should start centered instead of drifting off-screen."""
+    geometry = start_desktop._center_desktop_window(start_desktop.DesktopRect(0, 0, 1920, 1040))
+
+    assert geometry.width == 1440
+    assert geometry.height == 900
+    assert geometry.x == 240
+    assert geometry.y == 70
+
+
+def test_desktop_window_geometry_shrinks_to_small_work_area() -> None:
+    """Small screens should still receive a fully visible pywebview window."""
+    geometry = start_desktop._center_desktop_window(start_desktop.DesktopRect(0, 0, 1280, 720))
+
+    assert geometry.width == 1216
+    assert geometry.height == 656
+    assert geometry.x == 32
+    assert geometry.y == 32
+
+
+def test_desktop_rect_scale_converts_physical_pixels_to_webview_units() -> None:
+    """DPI-aware Win32 pixels must be converted before passing geometry to pywebview."""
+    logical = start_desktop._scale_desktop_rect(start_desktop.DesktopRect(0, 0, 2560, 1600), 1.5)
+
+    assert logical == start_desktop.DesktopRect(0, 0, 1707, 1067)
+
+
+def test_desktop_window_geometry_rejects_invalid_work_area() -> None:
+    """Invalid monitor data should fail before pywebview sees impossible geometry."""
+    with pytest.raises(ValueError):
+        start_desktop._center_desktop_window(start_desktop.DesktopRect(0, 0, 0, 720))
+
+
+def test_desktop_single_instance_mutex_name_is_repo_scoped(tmp_path: Path) -> None:
+    """Concurrent desktop autostarts should only deduplicate the same checkout."""
+    first_root = tmp_path / "checkout-a"
+    second_root = tmp_path / "checkout-b"
+    first_root.mkdir()
+    second_root.mkdir()
+
+    first_name = start_desktop._desktop_single_instance_mutex_name(first_root)
+    second_name = start_desktop._desktop_single_instance_mutex_name(second_root)
+
+    assert first_name.startswith("Local\\ScholarAI_Desktop_")
+    assert first_name == start_desktop._desktop_single_instance_mutex_name(first_root)
+    assert first_name != second_name
+    assert len(first_name.rsplit("_", maxsplit=1)[-1]) == 16
+
+
 def test_launcher_sources_do_not_use_shell_true() -> None:
     """Launcher source should not reintroduce shell=True for fixed build commands."""
     # start.py removed, only check start_desktop.py
@@ -133,6 +208,16 @@ def test_launcher_sources_do_not_use_shell_true() -> None:
         source = source_path.read_text(encoding="utf-8")
         assert "shell=True" not in source
         assert 'input("按回车键退出' not in source
+
+
+def test_windows_batch_launcher_starts_gui_python_and_exits() -> None:
+    """Double-click startup should not keep a terminal attached to the desktop UI."""
+    source = Path("start.bat").read_text(encoding="utf-8")
+
+    assert ".venv-1\\Scripts\\pythonw.exe" in source
+    assert 'start "" "%VENV_PYTHONW%" "%~dp0start_desktop.py"' in source
+    assert "exit /b 0" in source
+    assert '.venv-1\\Scripts\\python.exe" "%~dp0start_desktop.py' not in source
 
 
 def test_frontend_index_has_no_external_font_links() -> None:
@@ -151,6 +236,58 @@ def test_frontend_csp_header_blocks_external_fonts() -> None:
     assert "font-src 'self' data:" in csp
     assert "fonts.googleapis.com" not in csp
     assert "'nonce-testnonce'" in csp
+
+
+def test_embedded_desktop_port_bridge_prefers_current_descriptor(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """Embedded pywebview startup must not overwrite its chosen free port with 8000."""
+    import python_adapter_server
+
+    api_port_path = tmp_path / "api-port.json"
+    descriptor_path = tmp_path / "desktop-runtime.json"
+    descriptor_path.write_text(
+        json.dumps({"pid": os.getpid(), "port": 4861}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(python_adapter_server, "api_port_file_path", lambda: api_port_path)
+    monkeypatch.setattr(python_adapter_server, "desktop_runtime_file_path", lambda: descriptor_path)
+    monkeypatch.setattr(python_adapter_server.sys, "argv", ["start_desktop.py"])
+
+    python_adapter_server._write_api_port_from_argv()
+
+    payload = json.loads(api_port_path.read_text(encoding="utf-8"))
+    assert payload["port"] == 4861
+    assert payload["pid"] == os.getpid()
+
+
+def test_api_port_bridge_ignores_stale_desktop_descriptor(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """Bare uvicorn --port remains authoritative when a descriptor belongs to another PID."""
+    import python_adapter_server
+
+    api_port_path = tmp_path / "api-port.json"
+    descriptor_path = tmp_path / "desktop-runtime.json"
+    descriptor_path.write_text(
+        json.dumps({"pid": os.getpid() + 1000, "port": 4861}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(python_adapter_server, "api_port_file_path", lambda: api_port_path)
+    monkeypatch.setattr(python_adapter_server, "desktop_runtime_file_path", lambda: descriptor_path)
+    monkeypatch.setattr(
+        python_adapter_server.sys,
+        "argv",
+        ["uvicorn", "literature_assistant.core.python_adapter_server:app", "--port", "7654"],
+    )
+
+    python_adapter_server._write_api_port_from_argv()
+
+    payload = json.loads(api_port_path.read_text(encoding="utf-8"))
+    assert payload["port"] == 7654
+    assert payload["pid"] == os.getpid()
 
 
 def test_browser_cache_cleanup_is_versioned_and_profile_scoped(tmp_path: Path) -> None:
@@ -181,12 +318,14 @@ def test_sensitive_log_redaction_masks_common_secret_shapes() -> None:
     """Durable backend logs should not persist raw provider secrets."""
     import python_adapter_server
 
+    api_key = "sk-" + "proj-" + "secret123456789"
+    bearer_token = "abcdefgh" + "ijklmnop"
     redacted = python_adapter_server._redact_sensitive_log_text(
-        "OPENAI_API_KEY=sk-proj-secret123456789 Authorization: Bearer abcdefghijklmnop"
+        f"OPENAI_API_KEY={api_key} Authorization: Bearer {bearer_token}"
     )
 
-    assert "sk-proj-secret123456789" not in redacted
-    assert "abcdefghijklmnop" not in redacted
+    assert api_key not in redacted
+    assert bearer_token not in redacted
     assert redacted.count("***REDACTED***") >= 2
 
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Tuple
 
-from wiki.evaluation import scan_text_for_secrets
+from literature_assistant.core.wiki.evaluation import scan_text_for_secrets
 
 _SCANNED_FIELDS: Tuple[str, ...] = (
     "title",

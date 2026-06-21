@@ -1016,6 +1016,93 @@ def _mark_uploaded_document_extraction_failed(
     _save_doc_store(project_id, doc_store)
 
 
+def _build_uploaded_document_processing_request(
+    *,
+    project_id: str,
+    material_id: str,
+    filename: str,
+    source_fingerprint: str,
+    source_size: int,
+) -> dict[str, Any]:
+    """Build the explicit task contract for background upload extraction."""
+
+    safe_filename = _safe_upload_filename(filename)
+    return {
+        "schema_version": "material_processing_task_v1",
+        "project_id": project_id,
+        "material_id": material_id,
+        "input_ref": {
+            "ref_type": "uploaded_source_file",
+            "material_id": material_id,
+            "source_path_label": safe_filename,
+            "content_digest": source_fingerprint,
+            "size_bytes": int(source_size),
+        },
+        "page_range": {"mode": "all"},
+        "processing_mode": "fast_text",
+        "language_in": None,
+        "language_out": None,
+        "preserve": {
+            "formulas": True,
+            "tables": True,
+            "figures": True,
+            "citations": True,
+            "annotations": True,
+        },
+        "provider_ref": None,
+        "cache": {
+            "policy": "use",
+            "content_digest": source_fingerprint,
+            "decision": "pending",
+        },
+        "output_targets": ["chunks", "locators", "text_sidecar"],
+        "metadata": {
+            "source": "resource_upload",
+            "filename": safe_filename,
+            "extension": Path(safe_filename).suffix.lower(),
+        },
+    }
+
+
+def _uploaded_document_processing_artifacts(result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Return typed artifact summaries for upload extraction results."""
+
+    chunks = int(result.get("chunks") or 0)
+    content_length = int(result.get("content_length") or 0)
+    artifacts: list[dict[str, Any]] = [
+        {
+            "artifact_type": "chunk_index",
+            "output_target": "chunks",
+            "count": chunks,
+            "metadata": {"chunk_count": chunks},
+        },
+        {
+            "artifact_type": "extracted_text_record",
+            "output_target": "text_sidecar",
+            "count": 1 if content_length else 0,
+            "metadata": {"content_length": content_length},
+        },
+        {
+            "artifact_type": "locator_metadata",
+            "output_target": "locators",
+            "count": chunks,
+            "metadata": {"source": "chunk_metadata"},
+        },
+    ]
+    sidecar_path = str(result.get("sidecar_markdown_path") or "").strip()
+    if sidecar_path:
+        artifacts.append(
+            {
+                "artifact_type": "markdown_sidecar",
+                "output_target": "text_sidecar",
+                "count": 1,
+                "path": sidecar_path,
+                "metadata": {"format": "markdown"},
+            }
+        )
+    return artifacts
+
+
 async def _start_uploaded_document_extraction_job(
     project_id: str,
     material_id: str,
@@ -1032,6 +1119,13 @@ async def _start_uploaded_document_extraction_job(
 
     runtime = get_writing_runtime()
     safe_filename = _safe_upload_filename(filename)
+    processing_request = _build_uploaded_document_processing_request(
+        project_id=project_id,
+        material_id=material_id,
+        filename=safe_filename,
+        source_fingerprint=source_fingerprint,
+        source_size=source_size,
+    )
     session = runtime.create_session(
         mode=SessionMode.PROMPT,
         tags=["resource_ingest", "pdf"],
@@ -1058,9 +1152,23 @@ async def _start_uploaded_document_extraction_job(
             "progress": 1,
         },
     )
+    runtime.update_material_processing_task(
+        job.job_id,
+        request=processing_request,
+        status="queued",
+        provenance={"source": "resources_router.upload_queue"},
+    )
 
     async def _executor(current_job: Any) -> dict[str, Any]:
         target_job = current_job or job
+        runtime.record_material_processing_task_result(
+            target_job.job_id,
+            status="running",
+            result={"status": "running", "stage": "read_source", "route": f"/workbench/paper/{material_id}"},
+            artifacts=[],
+            warnings=[],
+            provenance={"source": "resources_router.upload_executor"},
+        )
         runtime.emit_job_progress(target_job.job_id, stage="read_source", message="正在读取已保存的 PDF", progress=12)
 
         def _extract_and_persist() -> dict[str, Any]:
@@ -1083,6 +1191,20 @@ async def _start_uploaded_document_extraction_job(
             result = await asyncio.to_thread(_extract_and_persist)
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             _mark_uploaded_document_extraction_failed(project_id, material_id, str(exc))
+            runtime.record_material_processing_task_result(
+                target_job.job_id,
+                status="failed",
+                result={
+                    "status": "failed",
+                    "stage": "extract",
+                    "error": str(exc)[:1000],
+                    "route": f"/workbench/paper/{material_id}",
+                },
+                artifacts=[],
+                warnings=[str(exc)[:1000]],
+                cache_decision="miss",
+                provenance={"source": "resources_router.upload_executor"},
+            )
             raise
 
         runtime.emit_job_progress(
@@ -1092,7 +1214,7 @@ async def _start_uploaded_document_extraction_job(
             progress=86,
             data={"chunks": int(result.get("chunks") or 0)},
         )
-        return {
+        result_summary = {
             "status": "completed",
             "kind": "resource_ingest",
             "project_id": project_id,
@@ -1102,6 +1224,16 @@ async def _start_uploaded_document_extraction_job(
             "content_length": int(result.get("content_length") or 0),
             "route": f"/workbench/paper/{material_id}",
         }
+        runtime.record_material_processing_task_result(
+            target_job.job_id,
+            status="completed",
+            result=result_summary,
+            artifacts=_uploaded_document_processing_artifacts(result),
+            warnings=[],
+            cache_decision="miss",
+            provenance={"source": "resources_router.upload_executor"},
+        )
+        return result_summary
 
     await runtime.start_job(job.job_id, executor=_executor)
     return session.session_id, job.job_id

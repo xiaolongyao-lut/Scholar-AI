@@ -1,5 +1,9 @@
 import { createDefaultApiClient } from './httpClient';
+import type { components } from '@/generated/openapi';
 import type { WritingJob } from '@/types/runtime';
+
+export type AgentWorkflowHealthCheck = components['schemas']['HealthCheckResponse'];
+export type ZoteroAttachmentHealth = components['schemas']['ZoteroAttachmentHealthResponse'];
 
 export interface AgentWorkspaceArtifact {
   path: string;
@@ -80,4 +84,53 @@ export async function listRuntimeJobs(opts?: {
     },
   });
   return { recent: response.data };
+}
+
+/**
+ * Return passive local workflow readiness without spending provider quota.
+ *
+ * Args:
+ *   opts: Whether to ask the backend to record explicit live-probe intent.
+ *
+ * Returns:
+ *   Versioned readiness checks and ToolOutcome next-action guidance.
+ */
+export async function getAgentWorkflowHealth(opts?: {
+  includeLive?: boolean;
+}): Promise<AgentWorkflowHealthCheck> {
+  const response = await client.get<AgentWorkflowHealthCheck>('/api/health/check', {
+    params: {
+      include_live: opts?.includeLive ?? false,
+    },
+  });
+  return response.data;
+}
+
+/**
+ * Return read-only Zotero attachment diagnostics for UI guidance.
+ *
+ * Args:
+ *   opts: Optional local Zotero path controls and report-writing policy.
+ *
+ * Returns:
+ *   Versioned Zotero health report. The backend reads a snapshot only and never
+ *   writes Zotero repair state.
+ */
+export async function getZoteroAttachmentHealth(opts?: {
+  zoteroDataDir?: string | null;
+  allowedRoot?: string | null;
+  minTextChars?: number;
+  maxItems?: number;
+  writeReports?: boolean;
+}): Promise<ZoteroAttachmentHealth> {
+  const response = await client.get<ZoteroAttachmentHealth>('/api/zotero/attachment-health', {
+    params: {
+      zotero_data_dir: opts?.zoteroDataDir ?? undefined,
+      allowed_root: opts?.allowedRoot ?? undefined,
+      min_text_chars: opts?.minTextChars ?? undefined,
+      max_items: opts?.maxItems ?? 20,
+      write_reports: opts?.writeReports ?? false,
+    },
+  });
+  return response.data;
 }

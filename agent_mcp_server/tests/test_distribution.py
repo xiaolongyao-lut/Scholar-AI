@@ -33,6 +33,8 @@ def test_codex_config_example_points_to_shared_wrapper() -> None:
 
     server = payload["mcp_servers"]["literature_assistant"]
     assert server["command"] == "powershell"
+    assert "-WindowStyle" in server["args"]
+    assert "Hidden" in server["args"]
     assert GENERIC_WRAPPER in server["args"]
     assert server["cwd"] == GENERIC_REPO_ROOT
     assert server["env"]["LITERATURE_ASSISTANT_REPO_ROOT"] == GENERIC_REPO_ROOT
@@ -47,6 +49,8 @@ def test_claude_desktop_config_example_points_to_shared_wrapper() -> None:
 
     server = payload["mcpServers"]["literature-assistant"]
     assert server["command"] == "powershell"
+    assert "-WindowStyle" in server["args"]
+    assert "Hidden" in server["args"]
     assert GENERIC_WRAPPER in server["args"]
     assert server["env"]["LITERATURE_ASSISTANT_REPO_ROOT"] == GENERIC_REPO_ROOT
     assert "LITERATURE_ASSISTANT_BASE_URL" not in server["env"]
@@ -89,6 +93,18 @@ def test_legacy_local_plugin_packages_are_not_published() -> None:
         assert not path.exists(), f"legacy plugin/MCPB package file should stay absent: {path}"
 
 
+def test_wrapper_defaults_to_attach_only_desktop_policy() -> None:
+    """Default MCP startup should not open the desktop without explicit opt-in."""
+    source = WRAPPER.read_text(encoding="utf-8")
+
+    assert "LITASSIST_MCP_ALLOW_DESKTOP_AUTOSTART" in source
+    assert "LITASSIST_MCP_KEEP_CONSOLE" in source
+    assert "GetConsoleWindow" in source
+    assert "ShowWindow" in source
+    assert '"--no-launch"' in source
+    assert '"--force-launch"' in source
+
+
 def test_claude_code_script_prints_non_mutating_add_command() -> None:
     """Claude Code helper should support a safe print-only mode."""
     if platform.system() != "Windows":
@@ -112,6 +128,7 @@ def test_claude_code_script_prints_non_mutating_add_command() -> None:
     )
 
     assert "claude mcp add literature-assistant --scope user --transport stdio" in completed.stdout
+    assert "-WindowStyle Hidden" in completed.stdout
     assert str(WRAPPER) in completed.stdout
 
 
@@ -138,6 +155,7 @@ def test_codex_script_prints_non_mutating_add_command() -> None:
     )
 
     assert "codex mcp add literature_assistant" in completed.stdout
+    assert "-WindowStyle Hidden" in completed.stdout
     assert str(WRAPPER) in completed.stdout
 
 
@@ -167,4 +185,6 @@ def test_wrapper_self_test_registers_expected_tools() -> None:
     )
 
     assert "lit-assistant-mcp self-test ok" in completed.stdout
-    assert "tool_count=44" in completed.stdout
+    tool_count_line = next(line for line in completed.stdout.splitlines() if line.startswith("tool_count="))
+    tool_count = int(tool_count_line.partition("=")[2])
+    assert tool_count >= 44

@@ -43,6 +43,8 @@ $commandParts = @(
     "--",
     "powershell",
     "-NoProfile",
+    "-WindowStyle",
+    "Hidden",
     "-ExecutionPolicy",
     "Bypass",
     "-File",
@@ -57,5 +59,5 @@ if ($PrintOnly) {
     exit 0
 }
 
-& claude mcp add literature-assistant --scope user --transport stdio -- powershell -NoProfile -ExecutionPolicy Bypass -File $wrapperPath
+& claude mcp add literature-assistant --scope user --transport stdio -- powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $wrapperPath
 exit $LASTEXITCODE

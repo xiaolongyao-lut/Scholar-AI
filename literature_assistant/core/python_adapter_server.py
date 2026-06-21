@@ -33,7 +33,13 @@ try:
 except ImportError:
     pass
 
-from project_paths import FRONTEND_ROOT, runtime_state_path, ensure_directory, api_port_file_path
+from project_paths import (
+    FRONTEND_ROOT,
+    runtime_state_path,
+    ensure_directory,
+    api_port_file_path,
+    desktop_runtime_file_path,
+)
 from runtime_descriptor import delete_desktop_runtime_descriptor, refresh_desktop_runtime_descriptor
 
 # Import configuration and models
@@ -543,8 +549,44 @@ async def _lifespan(app: FastAPI):
             pass
 
 
+def _desktop_runtime_port_for_current_process() -> int | None:
+    """Return the embedded desktop port when this process owns the descriptor.
+
+    Why:
+        start_desktop.py writes the chosen free port before uvicorn's lifespan
+        starts. In the embedded thread, sys.argv is still start_desktop.py's
+        argv, so parsing argv would fall back to uvicorn's default 8000 and
+        overwrite the real desktop port bridge.
+    """
+
+    target = desktop_runtime_file_path()
+    if not target.is_file():
+        return None
+    try:
+        import json
+
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        pid = int(payload.get("pid") or 0)
+        port = int(payload.get("port") or 0)
+    except (TypeError, ValueError):
+        return None
+    if pid != os.getpid() or port <= 0 or port > 65535:
+        return None
+    return port
+
+
 def _write_api_port_from_argv() -> None:
-    """Detect --port from this process's argv and persist it for vite proxy."""
+    """Persist the live API port for Vite proxy and local attach clients."""
+    desktop_port = _desktop_runtime_port_for_current_process()
+    if desktop_port is not None:
+        write_api_port_file(desktop_port)
+        return
+
     port = 8000  # uvicorn default
     argv = sys.argv
     for i, arg in enumerate(argv):
@@ -1083,6 +1125,8 @@ from routers.writing_router import router as writing_router
 from routers.evidence_router import router as evidence_router
 from routers.linter_router import router as linter_router
 from routers.agent_workspace_router import router as agent_workspace_router
+from routers.health_check_router import router as health_check_router
+from routers.zotero_health_router import router as zotero_health_router
 from routers.agent_bridge_router import router as agent_bridge_router
 
 
@@ -1159,6 +1203,8 @@ app.include_router(writing_router)
 app.include_router(evidence_router)
 app.include_router(linter_router)
 app.include_router(agent_workspace_router)
+app.include_router(health_check_router)
+app.include_router(zotero_health_router)
 app.include_router(agent_bridge_router)
 
 

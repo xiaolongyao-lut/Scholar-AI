@@ -343,11 +343,7 @@ async def test_credential(
             },
         )
 
-    # B15 (2026-06-13): credential test is the user-initiated "is this provider
-    # reachable?" path. Pre-allowlisting every new third-party gateway in .env
-    # blocks normal discovery. skip_dns lets test/discover try any HTTPS host;
-    # scheme/userinfo/path checks still run, and real chat traffic stays strict.
-    decision = validate_endpoint(cred.base_url, trust_source=effective_trust, skip_dns=True)
+    decision = validate_endpoint(cred.base_url, trust_source=effective_trust)
     decision_log = _mask_decision(decision)
 
     if decision.skipped_network:

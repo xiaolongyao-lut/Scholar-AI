@@ -39,6 +39,7 @@ import type {
   ChatMessageData,
   ChatMessageDiagnostics,
   ChatRetrievalDiagnostics,
+  ChatRetrievalQrelsStatus,
 } from '@/components/chat/MessageRenderer';
 import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import type { GraphNavigateTarget } from '@/components/graph/GraphPayloadViewer';
@@ -476,12 +477,46 @@ function coerceJointRecallDiagnostics(value: unknown): ChatJointRecallDiagnostic
   };
 }
 
+function coerceQrelsQualityClaim(value: unknown): ChatRetrievalQrelsStatus['quality_claim'] | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (
+    value === 'no_qrels_available'
+    || value === 'candidate_qrels_review_required'
+    || value === 'reviewed_qrels_promotion_required'
+    || value === 'canonical_qrels_available'
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function coerceQrelsStatus(value: unknown): ChatRetrievalQrelsStatus | undefined {
+  if (!isRecord(value)) return undefined;
+  const status = readRecordString(value, 'status');
+  const qrelsStatus: ChatRetrievalQrelsStatus = {
+    schema_version: readRecordString(value, 'schema_version') === 'retrieval-qrels-status/v1'
+      ? 'retrieval-qrels-status/v1'
+      : undefined,
+    status: status === 'missing' || status === 'candidate' || status === 'reviewed' || status === 'canonical'
+      ? status
+      : undefined,
+    candidate_qrels_count: readRecordNonNegativeNumber(value, 'candidate_qrels_count'),
+    reviewed_qrels_count: readRecordNonNegativeNumber(value, 'reviewed_qrels_count'),
+    canonical_qrels_count: readRecordNonNegativeNumber(value, 'canonical_qrels_count'),
+    semantic_quality_claim_allowed: value.semantic_quality_claim_allowed === true,
+    quality_claim: coerceQrelsQualityClaim(value.quality_claim),
+    notes: readRecordStringArray(value, 'notes')?.slice(0, 8),
+  };
+  return Object.values(qrelsStatus).some((item) => item !== undefined) ? qrelsStatus : undefined;
+}
+
 function coerceRetrievalDiagnostics(value: unknown): ChatRetrievalDiagnostics | undefined {
   if (!isRecord(value)) return undefined;
   const diagnostics: ChatRetrievalDiagnostics = {
     retrieval_method: readRecordString(value, 'retrieval_method'),
     embedding_status: readRecordString(value, 'embedding_status'),
     rerank_status: readRecordString(value, 'rerank_status'),
+    qrels_status: coerceQrelsStatus(value.qrels_status),
     joint_recall: coerceJointRecallDiagnostics(value.joint_recall),
   };
   return Object.values(diagnostics).some((item) => item !== undefined) ? diagnostics : undefined;

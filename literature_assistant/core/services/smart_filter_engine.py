@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from services.abstract_extractor import extract_abstract
+
 
 EmbedTextsFn = Callable[[list[str]], Awaitable[list[list[float]]] | list[list[float]]]
 
@@ -289,6 +291,23 @@ class SmartFilterEngine:
         if match:
             abstract = re.sub(r"\s+", " ", match.group(1)).strip()
         return SmartFilterMetadata(title=title, abstract=abstract[:2000])
+
+    def extract_abstract(self, text: str, max_length: int = 500) -> str:
+        """Return the shared abstract extraction result for already-read text.
+
+        Args:
+            text: Full source text.
+            max_length: Positive character cap for the returned abstract.
+
+        Returns:
+            Abstract text or a bounded fallback summary.
+        """
+
+        if not isinstance(text, str):
+            raise TypeError("text must be a string")
+        if not isinstance(max_length, int) or max_length < 1:
+            raise ValueError("max_length must be a positive integer")
+        return extract_abstract(text, max_length=max_length)
 
     async def _try_vector_decisions(
         self,

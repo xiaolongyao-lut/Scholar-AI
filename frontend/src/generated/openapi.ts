@@ -204,6 +204,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-bridge/single-paper-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Single Paper Task
+         * @description Create a Scholar AI dynamic task instance for one paper.
+         *
+         *     Args:
+         *         request: Task-generation request. It must target a real project material.
+         *
+         *     Returns:
+         *         A Markdown task, machine-readable manifest, resource refs, outcome, and
+         *         optional runtime agent request. This route never creates external skill
+         *         packages or external uploads.
+         */
+        post: operations["post_api_agent_bridge_single_paper_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/single-paper-task/completion-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Single Paper Completion
+         * @description Validate a generated single-paper deep-read draft without external calls.
+         *
+         *     Args:
+         *         request: Completed draft text and the manifest from task generation.
+         *
+         *     Returns:
+         *         A deterministic completion report with a ToolOutcome next action.
+         */
+        post: operations["post_api_agent_bridge_single_paper_task_completion_check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-bridge/status": {
         parameters: {
             query?: never;
@@ -720,6 +774,26 @@ export interface paths {
          *     Uses the same URL construction as the real chat path via _build_chat_endpoint.
          */
         post: operations["post_api_chat_test"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/tool-capability/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Chat Tool Capability
+         * @description Probe and persist native OpenAI-compatible chat tool-call capability.
+         */
+        post: operations["post_api_chat_tool_capability_test"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1954,6 +2028,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/health/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Health Check
+         * @description Return passive Scholar AI workflow readiness.
+         */
+        get: operations["get_api_health_check"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inspiration/evidence_refs": {
         parameters: {
             query?: never;
@@ -2819,15 +2913,40 @@ export interface paths {
         put?: never;
         /**
          * Wiki Export
-         * @description Export all wiki pages as Markdown zip archive (G15 2026-05-26).
+         * @description Export wiki pages as a local Markdown or OKF-compatible zip archive.
          *
          *     Args:
-         *         output_path: Optional output zip filename under workspace_artifacts/wiki_exports.
+         *         output_path: Optional safe output zip filename. Markdown exports use
+         *             ``workspace_artifacts/wiki_exports`` for compatibility; OKF exports
+         *             use ``workspace_artifacts/generated/output/wiki-okf``.
+         *         user_id: Local wiki user whose readable pages are exported.
+         *         format: ``markdown`` for the existing raw page archive or ``okf`` for
+         *             Scholar AI's OKF-compatible profile bundle.
          *
          *     Returns:
          *         WikiExportResponse with success/page_count/output_path/errors
          */
         post: operations["post_api_wiki_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/export/project-okf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Project Okf Export
+         * @description Export explicit process artifact records into a local OKF zip bundle.
+         */
+        post: operations["post_api_wiki_export_project_okf"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2868,6 +2987,26 @@ export interface paths {
          *     roots so a browser caller cannot use the API as a general filesystem reader.
          */
         post: operations["post_api_wiki_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/import/okf/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Okf Import Inspect
+         * @description Inspect a local OKF zip archive without importing or mutating wiki pages.
+         */
+        post: operations["post_api_wiki_import_okf_inspect"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3491,6 +3630,26 @@ export interface paths {
          *     Packages project content for reviewer access.
          */
         post: operations["post_api_writing_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/zotero/attachment-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Zotero Attachment Health
+         * @description Return read-only Zotero attachment health diagnostics.
+         */
+        get: operations["get_api_zotero_attachment_health"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5505,6 +5664,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/job/{job_id}/material-processing-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Material Processing Task
+         * @description Return the latest material-processing task record for a runtime job.
+         */
+        get: operations["get_runtime_job_job_id_material_processing_task"];
+        put?: never;
+        /**
+         * Update Material Processing Task
+         * @description Persist a versioned material-processing task request for a runtime job.
+         */
+        post: operations["post_runtime_job_job_id_material_processing_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/job/{job_id}/pause": {
         parameters: {
             query?: never;
@@ -5605,6 +5788,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/job/{job_id}/writing-workflow-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Writing Workflow State
+         * @description Return the latest writing workflow-state snapshot for a runtime job.
+         */
+        get: operations["get_runtime_job_job_id_writing_workflow_state"];
+        put?: never;
+        /**
+         * Update Writing Workflow State
+         * @description Persist an auditable writing workflow-state snapshot for a runtime job.
+         */
+        post: operations["post_runtime_job_job_id_writing_workflow_state"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/jobs": {
         parameters: {
             query?: never;
@@ -5629,6 +5836,26 @@ export interface paths {
          *         HTTPException: If ``status`` is not a known runtime job status.
          */
         get: operations["get_runtime_jobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/research-projection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Research Projection
+         * @description Return a read-only research object/event projection over runtime state.
+         */
+        get: operations["get_runtime_research_projection"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9580,6 +9807,7 @@ export interface components {
          *         total: Number of evidence refs returned after truncation.
          *         truncated: Whether more positive lexical hits existed than returned.
          *         retrieval_diagnostics: Explicit embedding/rerank visibility for agents.
+         *         outcome: Agent-facing status, attempts, and safe next action.
          *         evidence_refs: MCP-safe evidence refs with no raw chunk body fields.
          */
         EvidencePackBuildResponse: {
@@ -9587,6 +9815,7 @@ export interface components {
             evidence_pack_ref: string;
             /** Evidence Refs */
             evidence_refs?: components["schemas"]["EvidencePackReferencePayload"][];
+            outcome?: components["schemas"]["ToolOutcome"] | null;
             /** Project Id */
             project_id: string;
             /** Query */
@@ -9826,6 +10055,8 @@ export interface components {
          *         wiki_weight: Weight assigned to wiki recall in this build.
          *         joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are
          *             reported here without being coerced into project chunk refs.
+         *         qrels_status: Whether retrieval quality can be claimed from canonical
+         *             qrels, or is still blocked by missing/candidate/reviewed labels.
          *         reasoning_trace: Auditable retrieval-decision summary, not private
          *             model chain-of-thought.
          *         notes: Bounded operational notes safe to show in chat/tool transcripts.
@@ -9853,6 +10084,7 @@ export interface components {
              * @default 1
              */
             project_weight: number;
+            qrels_status?: components["schemas"]["RetrievalQrelsStatusPayload"];
             /** Reasoning Trace */
             reasoning_trace?: string[];
             /**
@@ -10390,6 +10622,75 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HealthCheckItem
+         * @description One passive readiness check for the local Scholar AI workflow.
+         *
+         *     Args:
+         *         name: Stable check identifier.
+         *         status: Result for this check.
+         *         reason: Short non-secret explanation.
+         *         details: Small JSON-safe diagnostic details.
+         *         next_action: Optional follow-up that can be rendered by UI or agents.
+         */
+        HealthCheckItem: {
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            next_action?: components["schemas"]["ToolNextAction"] | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "degraded" | "blocked";
+        };
+        /**
+         * HealthCheckResponse
+         * @description Current local workflow readiness response.
+         *
+         *     Args:
+         *         schema_version: Versioned response contract.
+         *         status: Aggregated result across all checks.
+         *         generated_at: UTC timestamp.
+         *         include_live: Whether live probes were requested. This endpoint keeps
+         *             default checks passive and records the flag for explicit live modes.
+         *         checks: Ordered readiness/dependency checks.
+         *         recommendations: Deduplicated next actions from degraded/blocked checks.
+         *         outcome: ToolOutcome envelope for MCP and agent consumers.
+         */
+        HealthCheckResponse: {
+            /** Checks */
+            checks?: components["schemas"]["HealthCheckItem"][];
+            /** Generated At */
+            generated_at: string;
+            /**
+             * Include Live
+             * @default false
+             */
+            include_live: boolean;
+            outcome: components["schemas"]["ToolOutcome"];
+            /** Recommendations */
+            recommendations?: components["schemas"]["ToolNextAction"][];
+            /**
+             * Schema Version
+             * @default scholar-ai-health-check/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-health-check/v1";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "degraded" | "blocked";
+        };
         /** Highlight */
         Highlight: {
             /**
@@ -10761,6 +11062,10 @@ export interface components {
             job_id: string;
             /** Kind */
             kind: string;
+            /** Material Processing Task Summary */
+            material_processing_task_summary?: {
+                [key: string]: unknown;
+            };
             /** Metadata */
             metadata?: {
                 [key: string]: unknown;
@@ -10775,6 +11080,10 @@ export interface components {
             status: string;
             /** Tags */
             tags?: string[];
+            /** Writing Workflow State Summary */
+            writing_workflow_state_summary?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * JobStatusPayload
@@ -11159,6 +11468,183 @@ export interface components {
             type: string;
             /** Updated At */
             updated_at: string;
+        };
+        /**
+         * MaterialProcessingArtifactPayload
+         * @description Typed artifact summary produced by a material-processing task.
+         */
+        MaterialProcessingArtifactPayload: {
+            /** Artifact Type */
+            artifact_type: string;
+            /** Count */
+            count?: number | null;
+            /** Digest */
+            digest?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Output Target */
+            output_target: string;
+            /** Path */
+            path?: string | null;
+        };
+        /**
+         * MaterialProcessingCachePayload
+         * @description Replay/cache identity and decision metadata.
+         */
+        MaterialProcessingCachePayload: {
+            /** Cache Key */
+            cache_key?: string | null;
+            /** Content Digest */
+            content_digest?: string | null;
+            /**
+             * Decision
+             * @default pending
+             */
+            decision: string;
+            /** Parameter Digest */
+            parameter_digest?: string | null;
+            /**
+             * Policy
+             * @default use
+             */
+            policy: string;
+        };
+        /**
+         * MaterialProcessingInputRefPayload
+         * @description Bounded local input reference for one material-processing task.
+         */
+        MaterialProcessingInputRefPayload: {
+            /** Content Digest */
+            content_digest?: string | null;
+            /** Material Id */
+            material_id: string;
+            /**
+             * Ref Type
+             * @default material
+             */
+            ref_type: string;
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /** Source Path Label */
+            source_path_label?: string | null;
+        };
+        /**
+         * MaterialProcessingPageRangePayload
+         * @description Explicit page-selection contract for material processing.
+         */
+        MaterialProcessingPageRangePayload: {
+            /** End Page */
+            end_page?: number | null;
+            /**
+             * Mode
+             * @default all
+             */
+            mode: string;
+            /** Pages */
+            pages?: number[];
+            /** Start Page */
+            start_page?: number | null;
+        };
+        /**
+         * MaterialProcessingPreservePayload
+         * @description Document features the processor should preserve or track.
+         */
+        MaterialProcessingPreservePayload: {
+            /**
+             * Annotations
+             * @default true
+             */
+            annotations: boolean;
+            /**
+             * Citations
+             * @default true
+             */
+            citations: boolean;
+            /**
+             * Figures
+             * @default true
+             */
+            figures: boolean;
+            /**
+             * Formulas
+             * @default true
+             */
+            formulas: boolean;
+            /**
+             * Tables
+             * @default true
+             */
+            tables: boolean;
+        };
+        /**
+         * MaterialProcessingTaskPayload
+         * @description Runtime-visible material-processing task record.
+         */
+        MaterialProcessingTaskPayload: {
+            /** Artifacts */
+            artifacts?: components["schemas"]["MaterialProcessingArtifactPayload"][];
+            cache?: components["schemas"]["MaterialProcessingCachePayload"];
+            /** Created At */
+            created_at: string;
+            /** Job Id */
+            job_id: string;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            request: components["schemas"]["MaterialProcessingTaskRequest"];
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            };
+            /** Schema Version */
+            schema_version: string;
+            /** Session Id */
+            session_id: string;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * MaterialProcessingTaskRequest
+         * @description Versioned request contract for resumable material processing.
+         */
+        MaterialProcessingTaskRequest: {
+            cache?: components["schemas"]["MaterialProcessingCachePayload"];
+            input_ref: components["schemas"]["MaterialProcessingInputRefPayload"];
+            /** Language In */
+            language_in?: string | null;
+            /** Language Out */
+            language_out?: string | null;
+            /** Material Id */
+            material_id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Output Targets */
+            output_targets?: string[];
+            page_range?: components["schemas"]["MaterialProcessingPageRangePayload"];
+            preserve?: components["schemas"]["MaterialProcessingPreservePayload"];
+            /**
+             * Processing Mode
+             * @default fast_text
+             */
+            processing_mode: string;
+            /** Project Id */
+            project_id: string;
+            /** Provider Ref */
+            provider_ref?: string | null;
+            /**
+             * Schema Version
+             * @default material_processing_task_v1
+             */
+            schema_version: string;
         };
         /**
          * McpApprovalState
@@ -12716,6 +13202,119 @@ export interface components {
             status: number;
         };
         /**
+         * ResearchEventPayload
+         * @description CloudEvents/PROV-inspired event projection for research objects.
+         */
+        ResearchEventPayload: {
+            /** Actor */
+            actor?: string | null;
+            /** Confirmation Boundary */
+            confirmation_boundary?: {
+                [key: string]: unknown;
+            };
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            };
+            /** Event Id */
+            event_id: string;
+            /** Event Type */
+            event_type: string;
+            /** Job Id */
+            job_id?: string | null;
+            /** Object Id */
+            object_id: string;
+            /** Object Type */
+            object_type: string;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Sequence */
+            sequence: number;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Source
+             * @default scholar-ai.runtime
+             */
+            source: string;
+            /** Status */
+            status?: string | null;
+            /** Subject */
+            subject: string;
+            /** Timestamp */
+            timestamp: string;
+        };
+        /**
+         * ResearchObjectPayload
+         * @description Read-only research-domain object projected from runtime records.
+         */
+        ResearchObjectPayload: {
+            /** Confirmation Boundary */
+            confirmation_boundary?: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at?: string | null;
+            /** Effects */
+            effects?: {
+                [key: string]: unknown;
+            };
+            /** Material Id */
+            material_id?: string | null;
+            /** Object Id */
+            object_id: string;
+            /** Object Type */
+            object_type: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Source Refs */
+            source_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** State */
+            state?: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+            /** Title */
+            title?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * ResearchProjectionPayload
+         * @description Read-only research object/event projection over runtime state.
+         */
+        ResearchProjectionPayload: {
+            /** Approval Boundaries */
+            approval_boundaries?: {
+                [key: string]: unknown;
+            }[];
+            /** Events */
+            events?: components["schemas"]["ResearchEventPayload"][];
+            /** Generated At */
+            generated_at: string;
+            /** Objects */
+            objects?: components["schemas"]["ResearchObjectPayload"][];
+            /** Schema Version */
+            schema_version: string;
+            /** Scope */
+            scope?: {
+                [key: string]: unknown;
+            };
+            /** Status Projection */
+            status_projection?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * ResumeSessionPayload
          * @description Session resume response payload.
          */
@@ -12729,6 +13328,61 @@ export interface components {
             session: components["schemas"]["SessionPayload"];
             /** Timeline */
             timeline?: components["schemas"]["TimelineItemPayload"][];
+        };
+        /**
+         * RetrievalQrelsStatusPayload
+         * @description Quality-label gate for retrieval evaluation state.
+         *
+         *     Args:
+         *         status: Highest available local qrels review state for the project.
+         *         candidate_qrels_count: Candidate TREC qrels rows still awaiting review.
+         *         reviewed_qrels_count: Reviewed judgment rows available before promotion.
+         *         canonical_qrels_count: Canonical TREC qrels rows available for metrics.
+         *         semantic_quality_claim_allowed: True only when canonical qrels exist.
+         *         quality_claim: Short public claim token for UI/API gating.
+         *         notes: Bounded reviewer notes explaining why quality claims are gated.
+         */
+        RetrievalQrelsStatusPayload: {
+            /**
+             * Candidate Qrels Count
+             * @default 0
+             */
+            candidate_qrels_count: number;
+            /**
+             * Canonical Qrels Count
+             * @default 0
+             */
+            canonical_qrels_count: number;
+            /** Notes */
+            notes?: string[];
+            /**
+             * Quality Claim
+             * @default no_qrels_available
+             * @enum {string}
+             */
+            quality_claim: "no_qrels_available" | "candidate_qrels_review_required" | "reviewed_qrels_promotion_required" | "canonical_qrels_available";
+            /**
+             * Reviewed Qrels Count
+             * @default 0
+             */
+            reviewed_qrels_count: number;
+            /**
+             * Schema Version
+             * @default retrieval-qrels-status/v1
+             * @constant
+             */
+            schema_version: "retrieval-qrels-status/v1";
+            /**
+             * Semantic Quality Claim Allowed
+             * @default false
+             */
+            semantic_quality_claim_allowed: boolean;
+            /**
+             * Status
+             * @default missing
+             * @enum {string}
+             */
+            status: "missing" | "candidate" | "reviewed" | "canonical";
         };
         /**
          * RevisionPayload
@@ -13244,6 +13898,199 @@ export interface components {
             name: string;
             /** Source */
             source: string;
+        };
+        /**
+         * SinglePaperCompletionCheckPayload
+         * @description Machine-checkable completion report for a single-paper deep-read draft.
+         */
+        SinglePaperCompletionCheckPayload: {
+            /**
+             * Completion State
+             * @enum {string}
+             */
+            completion_state: "complete" | "incomplete";
+            /** Docx Export Ready */
+            docx_export_ready: boolean;
+            /** Evidence Ref Count */
+            evidence_ref_count: number;
+            /** Figure Table Ref Count */
+            figure_table_ref_count: number;
+            /** Lint Passed */
+            lint_passed: boolean;
+            /** Missing Sections */
+            missing_sections?: string[];
+            outcome: components["schemas"]["ToolOutcome"];
+            /** Present Sections */
+            present_sections?: string[];
+            /** Required Output Sections */
+            required_output_sections?: string[];
+            /**
+             * Schema Version
+             * @default scholar-ai-single-paper-completion-check/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-single-paper-completion-check/v1";
+            /**
+             * Sentinel
+             * @default 待补充
+             */
+            sentinel: string;
+            /** Sentinel Contexts */
+            sentinel_contexts?: string[];
+            /** Sentinel Count */
+            sentinel_count: number;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * SinglePaperCompletionCheckRequest
+         * @description Validate a completed single-paper deep-read draft against its task manifest.
+         *
+         *     Args:
+         *         output_text: Final Markdown/plain-text draft generated from the task.
+         *         task_manifest: Manifest returned by ``single-paper-task``.
+         *         required_output_sections: Optional override for manifest sections.
+         *         evidence_refs: Evidence anchors used by the draft.
+         *         figure_table_refs: Figure/table anchors used by the draft.
+         *         lint_passed: Whether ``literature.academic_writing_lint`` has passed.
+         *         docx_artifact_path: Optional local DOCX artifact path after export.
+         *         sentinel: Placeholder token that must not remain in final output.
+         */
+        SinglePaperCompletionCheckRequest: {
+            /** Docx Artifact Path */
+            docx_artifact_path?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Figure Table Refs */
+            figure_table_refs?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Lint Passed
+             * @default false
+             */
+            lint_passed: boolean;
+            /** Output Text */
+            output_text: string;
+            /** Required Output Sections */
+            required_output_sections?: string[] | null;
+            /**
+             * Sentinel
+             * @default 待补充
+             */
+            sentinel: string;
+            /** Task Manifest */
+            task_manifest: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SinglePaperTaskPayload
+         * @description Generated single-paper task instance plus optional runtime job binding.
+         */
+        SinglePaperTaskPayload: {
+            agent_request?: components["schemas"]["AgentBridgeRequestPayload"] | null;
+            /** Generated At */
+            generated_at: string;
+            /** Health Checks */
+            health_checks?: {
+                [key: string]: unknown;
+            };
+            /** Material Id */
+            material_id: string;
+            /** Missing Fields */
+            missing_fields?: string[];
+            outcome: components["schemas"]["ToolOutcome"];
+            /** Project Id */
+            project_id: string;
+            /** Resource Refs */
+            resource_refs?: components["schemas"]["AgentResourceRef"][];
+            /**
+             * Schema Version
+             * @default scholar-ai-single-paper-task/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-single-paper-task/v1";
+            /**
+             * Sentinel
+             * @default 待补充
+             */
+            sentinel: string;
+            task_artifact?: components["schemas"]["ArtifactPayload"] | null;
+            /** Task Id */
+            task_id: string;
+            /** Task Manifest */
+            task_manifest: {
+                [key: string]: unknown;
+            };
+            /** Task Markdown */
+            task_markdown: string;
+        };
+        /**
+         * SinglePaperTaskRequest
+         * @description Request one dynamic single-paper reading task instance.
+         *
+         *     Args:
+         *         project_id: Existing Scholar AI project id.
+         *         material_id: Existing material id that belongs to the project.
+         *         task_goal: User-facing goal statement embedded in the generated task.
+         *         output_language: Expected answer language for the external agent.
+         *         target_document: Intended downstream deliverable.
+         *         create_agent_request: Whether to create a runtime-visible agent job.
+         *         agent_host: External agent host label used for audit metadata.
+         *         source: Invocation source label used for runtime filtering.
+         *         max_chars: Bounded resource-read budget for the task envelope.
+         *         max_chunks: Maximum indexed chunks attached as resource refs.
+         */
+        SinglePaperTaskRequest: {
+            /**
+             * Agent Host
+             * @default mcp
+             */
+            agent_host: string;
+            /**
+             * Create Agent Request
+             * @default true
+             */
+            create_agent_request: boolean;
+            /** Material Id */
+            material_id: string;
+            /**
+             * Max Chars
+             * @default 12000
+             */
+            max_chars: number;
+            /**
+             * Max Chunks
+             * @default 12
+             */
+            max_chunks: number;
+            /**
+             * Output Language
+             * @default zh
+             * @enum {string}
+             */
+            output_language: "zh" | "en" | "bilingual";
+            /** Project Id */
+            project_id: string;
+            /**
+             * Source
+             * @default mcp
+             */
+            source: string;
+            /**
+             * Target Document
+             * @default word_draft
+             * @enum {string}
+             */
+            target_document: "deep_summary" | "word_draft";
+            /**
+             * Task Goal
+             * @default 生成单篇论文深度精读、写作借鉴要点、可导出 Word 的结构化草稿
+             */
+            task_goal: string;
         };
         /**
          * SkillApprovalDecisionCreate
@@ -13947,6 +14794,178 @@ export interface components {
             total: number;
         };
         /**
+         * ToolAttempt
+         * @description One bounded execution step, safe for audit/UI display.
+         *
+         *     Args:
+         *         stage: Stable phase label such as ``chunk_load`` or ``rerank``.
+         *         status: Step-level result.
+         *         reason: Short non-secret explanation.
+         *         duration_ms: Local elapsed duration in milliseconds.
+         *         error_class: Optional shared diagnostic class.
+         *         recommendation: Optional actionable hint.
+         *         metadata: Bounded JSON-safe details; callers must not include secrets,
+         *             raw provider payloads, cookies, or full document text.
+         */
+        ToolAttempt: {
+            /**
+             * Duration Ms
+             * @default 0
+             */
+            duration_ms: number;
+            /**
+             * Error Class
+             * @default
+             */
+            error_class: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Recommendation
+             * @default
+             */
+            recommendation: string;
+            /** Stage */
+            stage: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "success" | "skipped" | "failed" | "blocked" | "degraded";
+        };
+        /**
+         * ToolCapabilityProbeResult
+         * @description Public result for a chat provider's native tool-call capability probe.
+         */
+        ToolCapabilityProbeResult: {
+            /**
+             * Base Url Host
+             * @default
+             */
+            base_url_host: string;
+            /** Capability */
+            capability?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /**
+             * Forced Tool Choice Ok
+             * @default false
+             */
+            forced_tool_choice_ok: boolean;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Ordinary Chat Ok
+             * @default false
+             */
+            ordinary_chat_ok: boolean;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /** Provider Message */
+            provider_message?: string | null;
+            /**
+             * Stage
+             * @default
+             */
+            stage: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ToolNextAction
+         * @description Machine-actionable next step for agents and UI.
+         *
+         *     Args:
+         *         kind: Closed action class. Use ``none`` when no follow-up is needed.
+         *         message: Short user/agent visible explanation without secrets.
+         *         tool_name: Optional MCP tool name to call next.
+         *         endpoint: Optional backend endpoint for UI/developer follow-up.
+         *         command_preview: Optional non-secret command preview.
+         *         args: JSON-safe argument hints for the next action.
+         */
+        ToolNextAction: {
+            /** Args */
+            args?: {
+                [key: string]: unknown;
+            };
+            /** Command Preview */
+            command_preview?: string | null;
+            /** Endpoint */
+            endpoint?: string | null;
+            /**
+             * Kind
+             * @default none
+             * @enum {string}
+             */
+            kind: "call_tool" | "open_settings" | "bind_source_folder" | "scan_folder" | "read_resource" | "configure_provider" | "configure_rerank" | "obtain_full_text" | "review_qrels" | "retry_later" | "none";
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Tool Name */
+            tool_name?: string | null;
+        };
+        /**
+         * ToolOutcome
+         * @description Common agent-facing outcome envelope for multi-step tools.
+         *
+         *     Args:
+         *         status: Overall result state for the tool invocation.
+         *         quality: Coarse usefulness of returned data.
+         *         reason: Short non-secret explanation of the outcome.
+         *         next_action: Suggested safe follow-up.
+         *         attempts: Ordered step audit. Keep this concise; raw documents and
+         *             provider payloads belong in bounded resources, not this envelope.
+         */
+        ToolOutcome: {
+            /** Attempts */
+            attempts?: components["schemas"]["ToolAttempt"][];
+            next_action?: components["schemas"]["ToolNextAction"];
+            /**
+             * Quality
+             * @default unknown
+             * @enum {string}
+             */
+            quality: "full" | "partial" | "refs_only" | "metadata_only" | "none" | "unknown";
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-tool-outcome/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-tool-outcome/v1";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "success" | "partial" | "empty" | "blocked" | "config_needed" | "auth_required" | "degraded" | "failed";
+        };
+        /**
          * UnifiedSettingsPayload
          * @description Single Settings document for UI bootstrap and smoke verification.
          */
@@ -14272,6 +15291,38 @@ export interface components {
             warnings?: string[];
         };
         /**
+         * WikiOkfInspectRequest
+         * @description Read-only request to inspect a local OKF zip archive.
+         */
+        WikiOkfInspectRequest: {
+            /** Archive Path */
+            archive_path: string;
+        };
+        /**
+         * WikiOkfInspectResponse
+         * @description Read-only OKF inspection response for future import planning.
+         */
+        WikiOkfInspectResponse: {
+            /**
+             * Archive Path
+             * @default
+             */
+            archive_path: string;
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Inspection */
+            inspection?: {
+                [key: string]: unknown;
+            };
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
          * WikiPageCreateRequest
          * @description Request to create a new wiki page (G2 2026-05-26).
          */
@@ -14425,6 +15476,81 @@ export interface components {
             slug: string;
             /** Versions */
             versions?: components["schemas"]["WikiPageVersionPayload"][];
+        };
+        /**
+         * WikiProjectOkfExportRequest
+         * @description Explicit process artifact records for a local project OKF bundle.
+         */
+        WikiProjectOkfExportRequest: {
+            /** Answers */
+            answers?: {
+                [key: string]: unknown;
+            }[];
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            }[];
+            /** Exports */
+            exports?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Include Live Project Records
+             * @default false
+             */
+            include_live_project_records: boolean;
+            /** Materials */
+            materials?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Max Live Records
+             * @default 200
+             */
+            max_live_records: number;
+            /** Output Path */
+            output_path?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Reviews */
+            reviews?: {
+                [key: string]: unknown;
+            }[];
+            /** Tasks */
+            tasks?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * WikiProjectOkfExportResponse
+         * @description Local project OKF export result for explicit process artifact records.
+         */
+        WikiProjectOkfExportResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Errors */
+            errors?: string[];
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Output Path
+             * @default
+             */
+            output_path: string;
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+            /**
+             * Success
+             * @default false
+             */
+            success: boolean;
+            /** Warnings */
+            warnings?: string[];
         };
         /** WikiQueryRequest */
         WikiQueryRequest: {
@@ -14632,6 +15758,176 @@ export interface components {
             related_signals?: components["schemas"]["AssociationSignalPayload"][];
             /** Section Id */
             section_id?: string | null;
+        };
+        /**
+         * WritingWorkflowStatePayload
+         * @description Writing workflow-state response payload.
+         */
+        WritingWorkflowStatePayload: {
+            /** Change Log */
+            change_log?: {
+                [key: string]: unknown;
+            }[];
+            /** Citation Bank */
+            citation_bank?: {
+                [key: string]: unknown;
+            }[];
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Export Manifest */
+            export_manifest?: {
+                [key: string]: unknown;
+            };
+            /** Intake */
+            intake?: {
+                [key: string]: unknown;
+            };
+            /** Job Id */
+            job_id: string;
+            /** Lint Report */
+            lint_report?: {
+                [key: string]: unknown;
+            };
+            /** Phase */
+            phase: string;
+            /** Readiness */
+            readiness?: {
+                [key: string]: boolean;
+            };
+            /** Schema Version */
+            schema_version: string;
+            /** Session Id */
+            session_id: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * WritingWorkflowStateRequest
+         * @description Request to persist a writing workflow-state snapshot for one runtime job.
+         */
+        WritingWorkflowStateRequest: {
+            /** Change Log */
+            change_log?: {
+                [key: string]: unknown;
+            }[];
+            /** Citation Bank */
+            citation_bank?: {
+                [key: string]: unknown;
+            }[];
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Export Manifest */
+            export_manifest?: {
+                [key: string]: unknown;
+            };
+            /** Intake */
+            intake?: {
+                [key: string]: unknown;
+            };
+            /** Lint Report */
+            lint_report?: {
+                [key: string]: unknown;
+            };
+            /** Phase */
+            phase: string;
+        };
+        /**
+         * ZoteroAttachmentHealthResponse
+         * @description Versioned read-only Zotero attachment health report.
+         *
+         *     Args:
+         *         schema_version: Stable response contract.
+         *         status: Aggregate result across inspected rows.
+         *         generated_at: UTC timestamp.
+         *         zotero_data_dir: Source Zotero data directory.
+         *         snapshot_used: Whether the SQLite database was copied before reading.
+         *         summary: Counts and report metadata.
+         *         items: Bounded diagnostic rows.
+         *         reports: Local artifact paths under workspace output.
+         *         outcome: ToolOutcome envelope for MCP and UI consumers.
+         */
+        ZoteroAttachmentHealthResponse: {
+            /** Generated At */
+            generated_at: string;
+            /** Items */
+            items?: components["schemas"]["ZoteroAttachmentItem"][];
+            outcome: components["schemas"]["ToolOutcome"];
+            /** Reports */
+            reports?: {
+                [key: string]: string;
+            };
+            /**
+             * Schema Version
+             * @default scholar-ai-zotero-attachment-health/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-zotero-attachment-health/v1";
+            /** Snapshot Used */
+            snapshot_used: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "degraded" | "blocked";
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /** Zotero Data Dir */
+            zotero_data_dir: string;
+        };
+        /**
+         * ZoteroAttachmentItem
+         * @description One bounded Zotero attachment diagnostic row.
+         *
+         *     Args:
+         *         item_key: Zotero parent item key.
+         *         title: Optional parent item title.
+         *         doi: Optional parent DOI.
+         *         attachment_key: Optional Zotero attachment item key.
+         *         status: Closed health status for deterministic filters.
+         *         reason: Short non-secret explanation.
+         *         details: Small JSON-safe metadata without full local file content.
+         */
+        ZoteroAttachmentItem: {
+            /**
+             * Attachment Key
+             * @default
+             */
+            attachment_key: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Doi
+             * @default
+             */
+            doi: string;
+            /**
+             * Item Key
+             * @default
+             */
+            item_key: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "missing_attachment_row" | "missing_file" | "linked_file_outside_allowed_root" | "non_pdf_attachment" | "zero_or_short_extracted_text" | "duplicate_doi";
+            /**
+             * Title
+             * @default
+             */
+            title: string;
         };
         /**
          * _DiscoverModelsBody
@@ -15085,6 +16381,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentBridgeResourcePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_agent_bridge_single_paper_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SinglePaperTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SinglePaperTaskPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_agent_bridge_single_paper_task_completion_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SinglePaperCompletionCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SinglePaperCompletionCheckPayload"];
                 };
             };
             /** @description Validation Error */
@@ -16125,6 +17487,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProbeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_tool_capability_test: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolCapabilityProbeResult"];
                 };
             };
             /** @description Validation Error */
@@ -18232,6 +19627,37 @@ export interface operations {
             };
         };
     };
+    get_api_health_check: {
+        parameters: {
+            query?: {
+                include_live?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthCheckResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_inspiration_evidence_refs: {
         parameters: {
             query?: {
@@ -19878,6 +21304,7 @@ export interface operations {
             query?: {
                 output_path?: string | null;
                 user_id?: string | null;
+                format?: string;
             };
             header?: never;
             path?: never;
@@ -19892,6 +21319,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WikiExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_export_project_okf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiProjectOkfExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiProjectOkfExportResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19958,6 +21418,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WikiImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_import_okf_inspect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiOkfInspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiOkfInspectResponse"];
                 };
             };
             /** @description Validation Error */
@@ -21173,6 +22666,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubmissionResponsePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_zotero_attachment_health: {
+        parameters: {
+            query?: {
+                zotero_data_dir?: string | null;
+                allowed_root?: string | null;
+                min_text_chars?: number;
+                max_items?: number;
+                write_reports?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoteroAttachmentHealthResponse"];
                 };
             };
             /** @description Validation Error */
@@ -24665,6 +26193,72 @@ export interface operations {
             };
         };
     };
+    get_runtime_job_job_id_material_processing_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialProcessingTaskPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_runtime_job_job_id_material_processing_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialProcessingTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialProcessingTaskPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_runtime_job_job_id_pause: {
         parameters: {
             query?: never;
@@ -24831,6 +26425,72 @@ export interface operations {
             };
         };
     };
+    get_runtime_job_job_id_writing_workflow_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WritingWorkflowStatePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_runtime_job_job_id_writing_workflow_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WritingWorkflowStateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WritingWorkflowStatePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_runtime_jobs: {
         parameters: {
             query?: {
@@ -24851,6 +26511,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_research_projection: {
+        parameters: {
+            query?: {
+                session_id?: string | null;
+                job_id?: string | null;
+                project_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchProjectionPayload"];
                 };
             };
             /** @description Validation Error */

@@ -42,6 +42,8 @@ from models import (
 
 # Import resources router to reuse logic
 import routers.resources_router as resources_router
+from harness_protocols import ArtifactType, JobKind, SessionMode
+from writing_runtime import get_writing_runtime
 from writing_resources import WritingMaterial
 
 logger = logging.getLogger(__name__)
@@ -189,6 +191,267 @@ def _resolve_figure_file_path(project_id: str, asset_path: str) -> Path:
             return resolved
 
     raise HTTPException(status_code=404, detail="图像文件不存在或不在项目允许目录内")
+
+
+def _build_project_export_bundle_manifest(
+    *,
+    job_id: str,
+    session_id: str,
+    request: ExportProjectRequest,
+    response: ProjectExportPayload,
+    project_id: str,
+    export_format: str,
+) -> dict[str, Any]:
+    """Build a portable manifest for one writing export runtime artifact.
+
+    Args:
+        job_id: Runtime job identifier that owns the export.
+        session_id: Runtime session identifier that owns the export.
+        request: Validated export request.
+        response: Stable export response payload.
+        project_id: Non-empty project identifier.
+        export_format: Non-empty export format label.
+
+    Returns:
+        JSON-safe manifest describing export resources and runtime provenance
+        without embedding full document content.
+
+    Raises:
+        ValueError: If required identifiers or filename fields are missing.
+    """
+    normalized_job_id = str(job_id or "").strip()
+    normalized_session_id = str(session_id or "").strip()
+    normalized_project_id = str(project_id or "").strip()
+    normalized_format = str(export_format or "").strip()
+    filename = str(response.filename or "").strip()
+    if not normalized_job_id:
+        raise ValueError("job_id is required for export bundle manifest")
+    if not normalized_session_id:
+        raise ValueError("session_id is required for export bundle manifest")
+    if not normalized_project_id:
+        raise ValueError("project_id is required for export bundle manifest")
+    if not normalized_format:
+        raise ValueError("format is required for export bundle manifest")
+    if not filename:
+        raise ValueError("filename is required for export bundle manifest")
+
+    content_encoding = "base64" if response.content_base64 is not None else "text" if response.content is not None else None
+    resources: list[dict[str, Any]] = [
+        {
+            "role": "entry_document",
+            "filename": filename,
+            "format": normalized_format,
+            "media_type": response.media_type,
+            "encoding": content_encoding,
+            "file_path": response.file_path,
+        },
+        {
+            "role": "project_metadata",
+            "filename": "project.json",
+            "format": "json",
+            "media_type": "application/json",
+        },
+    ]
+    if request.include_evidence:
+        resources.append(
+            {
+                "role": "evidence_refs",
+                "filename": "evidence_refs.json",
+                "format": "json",
+                "media_type": "application/json",
+            }
+        )
+    if request.include_citations:
+        resources.append(
+            {
+                "role": "citation_bank",
+                "filename": "citations.json",
+                "format": "json",
+                "media_type": "application/json",
+            }
+        )
+    if response.writing_audit is not None or response.rendered_writing_audit is not None:
+        resources.append(
+            {
+                "role": "writing_audit",
+                "filename": "writing_audit.json",
+                "format": "json",
+                "media_type": "application/json",
+            }
+        )
+
+    project_payload = response.project if isinstance(response.project, dict) else {}
+    return {
+        "schema_version": "writing_export_bundle_manifest_v1",
+        "bundle": {
+            "kind": "writing_export_page_bundle",
+            "entry_document": filename,
+            "format": normalized_format,
+            "media_type": response.media_type,
+            "style_profile": request.style_profile,
+        },
+        "runtime": {
+            "job_id": normalized_job_id,
+            "session_id": normalized_session_id,
+            "action_id": "api.writing.export",
+        },
+        "project": {
+            "project_id": normalized_project_id,
+            "title": project_payload.get("title"),
+            "description": project_payload.get("description"),
+        },
+        "options": {
+            "include_evidence": bool(request.include_evidence),
+            "include_citations": bool(request.include_citations),
+        },
+        "counts": {
+            "documents": response.document_count,
+            "sections": len(response.sections),
+            "drafts": len(response.drafts),
+            "materials": len(response.materials),
+            "figure_assets": len(response.figure_assets),
+            "evidence_rows": len(response.evidence_rows),
+            "citation_chains": len(response.citation_chain),
+            "bibliography_entries": len(response.bibliography_entries),
+        },
+        "resources": resources,
+    }
+
+
+async def _record_project_export_workflow_state(
+    request: ExportProjectRequest,
+    response: ProjectExportPayload,
+) -> None:
+    """Persist export workflow state while keeping export responses stable.
+
+    Args:
+        request: Validated writing export request.
+        response: Export payload returned to the caller; no response fields are
+            added for runtime bookkeeping.
+
+    Raises:
+        ValueError: If the export response has no project id or format.
+    """
+    project_id = str(response.project_id or request.project_id or "").strip()
+    export_format = str(response.format or request.format or "").strip()
+    if not project_id:
+        raise ValueError("project_id is required for export workflow state")
+    if not export_format:
+        raise ValueError("format is required for export workflow state")
+
+    runtime = get_writing_runtime()
+    session = runtime.create_session(
+        mode=SessionMode.SKILL,
+        user_id=None,
+        tags=["writing_export", project_id, export_format],
+        metadata={
+            "title": f"Writing export: {project_id}",
+            "project_id": project_id,
+            "source": "api_writing_export",
+        },
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text=f"Export writing project {project_id} as {export_format}",
+        action_id="api.writing.export",
+        scope=project_id,
+        output_mode=export_format,
+        tags=["writing_export", export_format],
+        metadata={
+            "project_id": project_id,
+            "format": export_format,
+            "source": "api_writing_export",
+        },
+    )
+    await runtime.start_job(job.job_id)
+    bundle_manifest = _build_project_export_bundle_manifest(
+        job_id=job.job_id,
+        session_id=session.session_id,
+        request=request,
+        response=response,
+        project_id=project_id,
+        export_format=export_format,
+    )
+    bundle_artifact = runtime.add_job_artifact(
+        job_id=job.job_id,
+        artifact_type=ArtifactType.METADATA,
+        content=bundle_manifest,
+        created_by="writing_router",
+        metadata={
+            "kind": "writing_export_bundle_manifest",
+            "schema_version": bundle_manifest["schema_version"],
+            "project_id": project_id,
+            "format": export_format,
+        },
+        mime_type="application/json",
+    )
+    state = runtime.update_writing_workflow_state(
+        job.job_id,
+        phase="export_ready",
+        intake={
+            "project_id": project_id,
+            "format": export_format,
+            "include_evidence": bool(request.include_evidence),
+            "include_citations": bool(request.include_citations),
+            "style_profile": request.style_profile,
+        },
+        evidence_refs=[
+            {
+                "kind": "project_export_evidence_summary",
+                "count": len(response.evidence_rows),
+                "included": bool(request.include_evidence),
+            }
+        ],
+        citation_bank=[
+            {
+                "kind": "project_export_citation_summary",
+                "citation_chain_count": len(response.citation_chain),
+                "bibliography_count": len(response.bibliography_entries),
+                "included": bool(request.include_citations),
+            }
+        ],
+        lint_report={
+            "writing_audit_present": response.writing_audit is not None,
+            "rendered_writing_audit_present": response.rendered_writing_audit is not None,
+        },
+        export_manifest={
+            "project_id": project_id,
+            "format": export_format,
+            "filename": response.filename,
+            "media_type": response.media_type,
+            "file_path": response.file_path,
+            "has_content": response.content is not None,
+            "has_content_base64": response.content_base64 is not None,
+            "document_count": response.document_count,
+            "section_count": len(response.sections),
+            "draft_count": len(response.drafts),
+            "material_count": len(response.materials),
+            "figure_asset_count": len(response.figure_assets),
+            "bundle_manifest_artifact_id": bundle_artifact.artifact_id,
+            "bundle_manifest_schema_version": bundle_manifest["schema_version"],
+        },
+        change_log=[
+            {
+                "stage": "export",
+                "summary": f"Generated {export_format} export for project {project_id}.",
+            }
+        ],
+    )
+    await runtime.complete_job(
+        job.job_id,
+        result={
+            "project_id": project_id,
+            "format": export_format,
+            "filename": response.filename,
+            "workflow_phase": state["phase"],
+        },
+        artifact_metadata={
+            "kind": "writing_export_summary",
+            "project_id": project_id,
+            "format": export_format,
+        },
+    )
 
 
 class _GeneratedOutlineItem(TypedDict):
@@ -1468,10 +1731,16 @@ async def export_project(request: ExportProjectRequest) -> ProjectExportPayload:
             detail=f"Unsupported export format: {request.format}",
         ) from exc
 
-    return await export_project_resource(
+    payload = await export_project_resource(
         project_id=request.project_id,
         format=export_format,
         include_evidence=request.include_evidence,
         include_citations=request.include_citations,
         style_profile=request.style_profile,
     )
+    response = ProjectExportPayload(**payload)
+    try:
+        await _record_project_export_workflow_state(request, response)
+    except (RuntimeError, ValueError, TypeError) as exc:
+        logger.warning("Writing export workflow-state recording failed: %s", exc)
+    return response

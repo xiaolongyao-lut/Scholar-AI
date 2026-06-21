@@ -1,6 +1,7 @@
 """Source inspection tools with path policy, redaction, and audit support."""
 
 import ast
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -470,33 +471,135 @@ class SourceTools:
         if not candidate.is_absolute():
             candidate = self.repo_root / candidate
         try:
-            resolved = candidate.resolve()
+            resolved = Path(os.path.realpath(str(candidate.resolve()))).resolve(strict=False)
         except OSError:
             return None
         if not resolved.exists() or not resolved.is_dir():
             return None
-        for child in resolved.rglob("*"):
-            if child.is_file():
-                allowed, _ = self.policy.is_allowed(child)
-                self.policy.reset_touched()
-                if allowed:
-                    return resolved
+        if not self._path_is_within(resolved, self.repo_root):
+            return None
+        if self._path_matches_denied_patterns(resolved):
+            return None
+        if resolved == self.repo_root:
+            return resolved
+        for allowed_root in self.policy.allowed_roots:
+            if self._path_is_within(resolved, allowed_root) or self._path_is_within(allowed_root, resolved):
+                return resolved
         return None
 
     def _iter_files_and_dirs(self, root: Path, max_depth: int) -> Iterable[Path]:
-        for path in sorted(root.rglob("*"), key=lambda p: str(p).lower()):
+        visible_dirs, allowed_files = self._visible_source_paths(root, max_depth)
+        for path in self._walk_visible_paths(root):
             rel = path.relative_to(root)
             depth = len(rel.parts)
-            if depth <= max_depth:
+            if depth > max_depth:
+                continue
+            if path.is_dir():
+                if path in visible_dirs:
+                    yield path
+                continue
+            if path in allowed_files:
                 yield path
 
     def _iter_text_files(self, root: Path) -> Iterable[Path]:
-        for path in sorted(root.rglob("*"), key=lambda p: str(p).lower()):
+        for path in self._walk_visible_paths(root):
             if path.is_file() and self._is_text_file(path):
                 yield path
 
+    def _visible_source_paths(self, root: Path, max_depth: int) -> tuple[set[Path], set[Path]]:
+        """Return directories and files visible under the source policy.
+
+        Directory listing must not leak denied/runtime directories merely
+        because they sit next to allowed files in the repository.
+        """
+
+        visible_dirs: set[Path] = set()
+        allowed_files: set[Path] = set()
+        for path in self._walk_visible_paths(root):
+            try:
+                rel = path.relative_to(root)
+            except ValueError:
+                continue
+            depth = len(rel.parts)
+            if depth > max_depth or not path.is_file():
+                continue
+            allowed, _ = self.policy.is_allowed(path)
+            self.policy.reset_touched()
+            if not allowed:
+                continue
+            allowed_files.add(path)
+            parent = path.parent
+            while parent != root.parent:
+                try:
+                    parent_depth = len(parent.relative_to(root).parts)
+                except ValueError:
+                    break
+                if 0 < parent_depth <= max_depth and not self._path_matches_denied_patterns(parent):
+                    visible_dirs.add(parent)
+                if parent == root:
+                    break
+                parent = parent.parent
+        return visible_dirs, allowed_files
+
+    def _walk_visible_paths(self, root: Path) -> Iterable[Path]:
+        """Yield repository paths while pruning denied directories early."""
+
+        try:
+            children = sorted(root.iterdir(), key=lambda p: str(p).lower())
+        except OSError:
+            return
+        for child in children:
+            if child.is_dir():
+                if self._path_matches_denied_patterns(child):
+                    continue
+                yield child
+                yield from self._walk_visible_paths(child)
+                continue
+            yield child
+
+    def _path_is_within(self, child: Path, parent: Path) -> bool:
+        """Return True when ``child`` is equal to or inside ``parent``."""
+
+        try:
+            child_norm = os.path.normcase(str(Path(os.path.realpath(str(child))).resolve(strict=False)))
+            parent_norm = os.path.normcase(str(Path(os.path.realpath(str(parent))).resolve(strict=False)))
+            return os.path.commonpath([child_norm, parent_norm]) == parent_norm
+        except (OSError, RuntimeError, ValueError):
+            return False
+
+    def _path_matches_denied_patterns(self, path: Path) -> bool:
+        """Return True when a directory path matches the source denylist."""
+
+        try:
+            resolved = Path(os.path.realpath(str(path))).resolve(strict=False)
+        except (OSError, RuntimeError):
+            return True
+        resolved_norm = os.path.normcase(str(resolved))
+        for pattern in self.policy.denied_patterns:
+            if pattern.startswith("**/"):
+                suffix = pattern[3:]
+                if suffix.endswith("*"):
+                    prefix = os.path.normcase(suffix[:-1])
+                    if any(os.path.normcase(part).startswith(prefix) for part in resolved.parts):
+                        return True
+                elif any(os.path.normcase(part) == os.path.normcase(suffix) for part in resolved.parts):
+                    return True
+            elif pattern.endswith("/**"):
+                prefix_path = self.policy.repo_root / pattern[:-3]
+                if self._path_is_within(resolved, prefix_path):
+                    return True
+            elif "*" in pattern:
+                parts = [os.path.normcase(part) for part in pattern.split("*") if part]
+                if parts and all(part in resolved_norm for part in parts):
+                    return True
+            else:
+                exact_path = self.policy.repo_root / pattern
+                if self._path_is_within(resolved, exact_path):
+                    return True
+        return False
+
     def _iter_python_files(self, root: Path) -> Iterable[Path]:
-        for path in sorted(root.rglob("*.py"), key=lambda p: str(p).lower()):
+        for path in self._walk_visible_paths(root):
             if path.is_file() and self.policy.is_allowed(path)[0]:
                 yield path
 

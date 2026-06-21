@@ -6,6 +6,7 @@ of the package) so that pytest ``monkeypatch.setattr(rr, "X", ...)`` keeps
 affecting the live endpoint behaviour.
 """
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, Query
@@ -22,6 +23,32 @@ from models import (
 )
 
 import routers.resources_router as _rr
+
+
+def _resolve_project_source_file_for_unlink(project_id: str, source_relative: object) -> Path | None:
+    """Return a project-owned uploaded source file path safe for deletion.
+
+    Why:
+        ``source_relative_path`` is durable metadata and can be stale or
+        corrupted. Deletion must only unlink files under the project's managed
+        ``source_files`` directory.
+    """
+
+    normalized_project_id = str(project_id or "").strip()
+    normalized_source = str(source_relative or "").strip()
+    if not normalized_project_id or not normalized_source:
+        return None
+    try:
+        from project_paths import project_data_path
+
+        root = project_data_path(normalized_project_id, "source_files").resolve()
+        raw = Path(normalized_source).expanduser()
+        candidate = raw.resolve() if raw.is_absolute() else (root / raw).resolve()
+        if candidate == root or root not in candidate.parents:
+            return None
+        return candidate if candidate.exists() and candidate.is_file() else None
+    except (OSError, RuntimeError, ValueError):
+        return None
 
 
 # =========================================================================
@@ -125,10 +152,8 @@ async def delete_material(material_id: str) -> dict[str, str]:
     source_relative = (doc_store_before.get(material_id) or {}).get("source_relative_path", "")
     if source_relative:
         try:
-            from project_paths import project_data_path
-            from pathlib import Path
-            candidate = project_data_path(project_id, "source_files", source_relative)
-            if candidate.exists() and candidate.is_file():
+            candidate = _resolve_project_source_file_for_unlink(project_id, source_relative)
+            if candidate is not None:
                 candidate.unlink()
         except OSError as exc:
             _rr.logger.warning(

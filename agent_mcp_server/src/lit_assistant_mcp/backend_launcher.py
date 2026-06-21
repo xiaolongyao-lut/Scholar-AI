@@ -76,7 +76,7 @@ def ensure_backend_running(
     log_root.mkdir(parents=True, exist_ok=True)
     stdout_path = log_root / "uvicorn.stdout.log"
     stderr_path = log_root / "uvicorn.stderr.log"
-    executable = str(python_executable or _default_python_executable(repo_root))
+    executable = _backend_python_executable(python_executable or _default_python_executable(repo_root))
 
     with stdout_path.open("ab") as stdout_file, stderr_path.open("ab") as stderr_file:
         subprocess.Popen(
@@ -147,6 +147,19 @@ def _default_python_executable(repo_root: Path) -> Path:
     if os.name == "nt":
         return repo_root / ".venv-1" / "Scripts" / "python.exe"
     return repo_root / ".venv-1" / "bin" / "python"
+
+
+def _backend_python_executable(executable: str | Path) -> str:
+    """Return a non-console Python executable for hidden backend autostart."""
+    executable_path = Path(executable)
+    if os.name != "nt":
+        return str(executable)
+    if executable_path.name.lower() != "python.exe":
+        return str(executable)
+    gui_executable = executable_path.with_name("pythonw.exe")
+    if gui_executable.is_file():
+        return str(gui_executable)
+    return str(executable)
 
 
 def _isolated_capability_file(repo_root: Path, base_url: str) -> Path | None:

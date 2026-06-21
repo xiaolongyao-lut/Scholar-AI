@@ -263,6 +263,64 @@ class DiscussionTaskStore:
             )
             return snapshots
 
+    def list_project_run_summaries(
+        self,
+        project_id: str,
+        *,
+        limit: int = 100,
+        include_archived: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Return project-scoped discussion metadata without answer bodies.
+
+        Args:
+            project_id: Discussion config project identifier.
+            limit: Maximum run count; must be between 1 and 500.
+            include_archived: Include capacity-archived snapshots.
+
+        Returns:
+            Run metadata and derived counts. Live traces, synthesis payloads,
+            final result bodies, raw event logs, and error text are intentionally
+            omitted because they may contain private model output or provider
+            diagnostics.
+        """
+
+        normalized_project_id = str(project_id or "").strip()
+        if not normalized_project_id:
+            raise ValueError("project_id must not be empty")
+        if not isinstance(limit, int) or limit < 1 or limit > 500:
+            raise ValueError("limit must be between 1 and 500")
+        summaries: list[dict[str, Any]] = []
+        for snapshot in self.list_runs(include_archived=include_archived):
+            config = snapshot.get("config") if isinstance(snapshot.get("config"), dict) else {}
+            if str(config.get("project_id") or "").strip() != normalized_project_id:
+                continue
+            agents = config.get("agents") or config.get("agent_configs")
+            live_traces = snapshot.get("live_traces")
+            summary = {
+                "run_id": str(snapshot.get("run_id") or ""),
+                "project_id": normalized_project_id,
+                "query": str(config.get("query") or ""),
+                "state": str(snapshot.get("state") or ""),
+                "current_stage": str(snapshot.get("current_stage") or ""),
+                "current_turn_index": int(snapshot.get("current_turn_index") or 0),
+                "created_at_epoch": float(snapshot.get("created_at") or 0.0),
+                "updated_at_epoch": float(snapshot.get("updated_at") or 0.0),
+                "agent_count": len(agents) if isinstance(agents, list) else 0,
+                "evidence_mode": str(config.get("evidence_mode") or ""),
+                "evidence_top_k": int(config.get("evidence_top_k") or 0) if isinstance(config.get("evidence_top_k"), int) else 0,
+                "live_trace_count": len(live_traces) if isinstance(live_traces, list) else 0,
+                "event_log_length": int(snapshot.get("event_log_length") or 0),
+                "event_log_start_index": int(snapshot.get("event_log_start_index") or 0),
+                "has_synthesis": isinstance(snapshot.get("synthesis"), dict),
+                "has_final_result": isinstance(snapshot.get("final_result"), dict),
+                "has_error": bool(str(snapshot.get("error") or "").strip()),
+                "archived": bool(snapshot.get("archived")),
+            }
+            summaries.append(summary)
+            if len(summaries) >= limit:
+                break
+        return summaries
+
     def list_archived(self) -> list[dict[str, Any]]:
         """Return snapshots moved out by D11 capacity archiving."""
         with self._lock:
@@ -524,8 +582,14 @@ def get_discussion_task_store() -> DiscussionTaskStore:
     return _singleton
 
 
-def reset_discussion_task_store_for_tests() -> None:
+def reset_discussion_task_store_for_tests(
+    persistence_path: Path | None = None,
+) -> None:
     """Test-only: reset the singleton between test cases."""
     global _singleton
     with _singleton_lock:
-        _singleton = None
+        _singleton = (
+            DiscussionTaskStore(persistence_path=persistence_path)
+            if persistence_path is not None
+            else None
+        )

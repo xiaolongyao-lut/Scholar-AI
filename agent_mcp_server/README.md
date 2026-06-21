@@ -47,6 +47,38 @@ HTTP endpoint instead of creating an installer path.
 - `literature.agent_result`
 - `literature.agent_fail`
 
+## Optional Full-Text Acquisition
+
+Scholar AI processes PDFs and other local materials after they are inside a
+project source folder. If an agent starts from a DOI, title, or publisher URL
+and the PDF is not already local, use a separate full-text acquisition tool,
+then put the resulting PDF under the user-confirmed project source folder and
+call `literature.project_scan_folder`.
+
+Recommended workflow:
+
+```text
+DOI/title/URL -> external full-text tool -> project source folder -> literature.project_scan_folder -> literature.search_refs or literature.evidence_pack_build
+```
+
+Keep acquisition tools separate from Scholar AI. They may support open-access
+APIs, publisher links, or user-owned institutional access, but Scholar AI should
+not embed publisher bypass logic or gray-source retrieval code.
+
+Compliance boundary:
+
+- Prefer open-access sources and user-authorized institutional access.
+- Gray sources such as Sci-Hub or LibGen must be disabled by default in any
+  external tool configuration, require explicit user opt-in, and remain the
+  user's compliance responsibility.
+- Do not pass institutional cookies, passwords, API keys, or absolute private
+  source paths through this MCP toolbox.
+
+Before implementing or changing any acquisition workflow, create a rollback
+snapshot and recheck current mature references for MCP tool results, health
+diagnostics, provider configuration, and the external acquisition tool's legal
+and security boundary.
+
 ## Wrapper
 
 ```powershell
@@ -69,16 +101,19 @@ generation, visual review packs, translation packs, project packs, and the
 bounded Python sandbox. Translation model calls still go through the Literature
 Assistant backend; raw provider keys are never passed through MCP.
 
-By default, the wrapper attaches to `workspace_artifacts/runtime_state/desktop-runtime.json`.
-If no healthy desktop runtime is present and the user has not deliberately
-closed the app, it launches the source desktop app via `start_desktop.py` in a
-visible terminal so the user can configure API/model/rerank/wiki settings in
-the visible `文献助手` window and copy the printed
-`LITERATURE_ASSISTANT_BASE_URL=http://127.0.0.1:<port>` line if an agent needs
-manual help. After the user closes the desktop app, the wrapper does not
-relaunch it automatically; start `start_desktop.py` manually or run
-`.\agent_mcp_server\bin\lit-assistant-mcp.ps1 -ForceLaunch` for an explicit
-Codex-driven reopen.
+By default, the wrapper only attaches to an already healthy
+`workspace_artifacts/runtime_state/desktop-runtime.json`. It does not open the
+desktop app when no runtime is present; MCP tools return a bounded backend
+unavailable result until the user starts `文献助手` manually or asks for an
+explicit reopen.
+
+Use `.\agent_mcp_server\bin\lit-assistant-mcp.ps1 -ForceLaunch` for an
+explicit Codex-driven desktop reopen. Set
+`LITASSIST_MCP_ALLOW_DESKTOP_AUTOSTART=1` only for a local workflow where MCP
+startup is allowed to open the visible desktop app without another prompt.
+When installing stdio MCP config on Windows, include `-WindowStyle Hidden` in
+the PowerShell args so the MCP wrapper itself does not allocate a visible
+terminal.
 
 Headless Uvicorn autostart is debug-only. Set
 `LITASSIST_MCP_ALLOW_HEADLESS_AUTOSTART=1` with a loopback

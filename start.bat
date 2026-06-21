@@ -7,16 +7,20 @@ echo   ║   文献助手 — 桌面版                      ║
 echo   ╚══════════════════════════════════════════╝
 echo.
 
-set "VENV_PYTHON=%~dp0.venv-1\Scripts\python.exe"
-if exist "%VENV_PYTHON%" (
-    "%VENV_PYTHON%" "%~dp0start_desktop.py" %*
-) else (
-    python "%~dp0start_desktop.py" %*
+set "VENV_PYTHONW=%~dp0.venv-1\Scripts\pythonw.exe"
+if exist "%VENV_PYTHONW%" (
+    start "" "%VENV_PYTHONW%" "%~dp0start_desktop.py" %*
+    exit /b 0
 )
 
-if errorlevel 1 (
-    echo.
-    echo 启动失败，请检查 Python 环境和 pywebview 依赖
-    echo 修复: pip install pywebview pythonnet
-    pause
+where pythonw.exe >nul 2>&1
+if not errorlevel 1 (
+    start "" pythonw.exe "%~dp0start_desktop.py" %*
+    exit /b 0
 )
+
+echo.
+echo 启动失败，请检查 Python 环境和 pywebview 依赖
+echo 修复: pip install pywebview pythonnet
+pause
+exit /b 1

@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from lit_assistant_mcp.backend_launcher import ensure_backend_running
+from lit_assistant_mcp.backend_launcher import _backend_python_executable, _creation_flags, ensure_backend_running
 
 
 def _repo_root(tmp_path: Path) -> Path:
@@ -65,6 +65,28 @@ def test_loopback_backend_is_started_when_health_missing(tmp_path: Path) -> None
     assert popen.call_args.kwargs["cwd"] == repo_root
     assert popen.call_args.kwargs["stdout"].name.endswith("uvicorn.stdout.log")
     assert popen.call_args.kwargs["stderr"].name.endswith("uvicorn.stderr.log")
+
+
+def test_windows_backend_autostart_prefers_pythonw(tmp_path: Path) -> None:
+    """Hidden backend startup should avoid console Python when pythonw exists."""
+    python_exe = tmp_path / "python.exe"
+    pythonw_exe = tmp_path / "pythonw.exe"
+    python_exe.write_text("", encoding="utf-8")
+    pythonw_exe.write_text("", encoding="utf-8")
+
+    with patch("lit_assistant_mcp.backend_launcher.os.name", "nt"):
+        executable = _backend_python_executable(python_exe)
+
+    assert executable == str(pythonw_exe)
+
+
+def test_windows_backend_autostart_does_not_request_console() -> None:
+    """Headless Uvicorn startup must not allocate a visible Windows console."""
+    with patch("lit_assistant_mcp.backend_launcher.os.name", "nt"):
+        flags = _creation_flags()
+
+    assert flags & int(getattr(__import__("subprocess"), "CREATE_NO_WINDOW", 0))
+    assert not flags & int(getattr(__import__("subprocess"), "CREATE_NEW_CONSOLE", 0))
 
 
 def test_non_default_loopback_backend_uses_isolated_capability_file(tmp_path: Path) -> None:

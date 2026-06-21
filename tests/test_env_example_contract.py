@@ -8,6 +8,28 @@ def _clear_runtime_env(monkeypatch: Any) -> Any:
     """Reload runtime env helpers with dotenv disabled for deterministic tests."""
 
     monkeypatch.setenv("RUNTIME_ENV_DISABLE_DOTENV", "1")
+    for name in (
+        "CHAT_API_KEY",
+        "CHAT_BASE_URL",
+        "CHAT_MODEL",
+        "EMBEDDING_API_KEY",
+        "EMBEDDING_BASE_URL",
+        "EMBEDDING_MODEL",
+        "EMBEDDING_KEY_PROBE_DISABLE",
+        "RERANK_API_KEY",
+        "RERANK_BASE_URL",
+        "RERANK_MODEL",
+        "RERANK_KEY_PROBE_DISABLE",
+        "SILICONFLOW_API_KEY",
+        "SILICONFLOW_RERANK_API_KEY",
+        "SILICONFLOW_RERANK_BASE_URL",
+        "SILICONFLOW_RERANK_MODEL",
+        "DASHSCOPE_API_KEY",
+        "DASHSCOPE_RERANK_API_KEY",
+        "DASHSCOPE_RERANK_BASE_URL",
+        "DASHSCOPE_RERANK_MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
     import runtime_env
 
     runtime_env._repo_env.cache_clear()
@@ -33,12 +55,18 @@ def test_env_example_embedding_variables_resolve(monkeypatch: Any) -> None:
     assert model == "embedding-model"
 
 
-def test_env_example_rerank_variables_resolve(monkeypatch: Any) -> None:
+def test_env_example_rerank_variables_resolve(monkeypatch: Any, tmp_path: Any) -> None:
     """The public .env.example rerank template must map to runtime config."""
 
     _clear_runtime_env(monkeypatch)
+    import rerank_runtime_config
     import reranker_client
 
+    monkeypatch.setattr(
+        rerank_runtime_config,
+        "_OVERRIDE_PATH",
+        tmp_path / "rerank_override.json",
+    )
     monkeypatch.setenv("RERANK_API_KEY", "rerank-key")
     monkeypatch.setenv("RERANK_BASE_URL", "https://rerank.example.com/v1/rerank")
     monkeypatch.setenv("RERANK_MODEL", "rerank-model")

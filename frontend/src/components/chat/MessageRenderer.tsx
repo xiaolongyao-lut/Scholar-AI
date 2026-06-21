@@ -64,7 +64,23 @@ export interface ChatRetrievalDiagnostics {
   retrieval_method?: string;
   embedding_status?: string;
   rerank_status?: string;
+  qrels_status?: ChatRetrievalQrelsStatus;
   joint_recall?: ChatJointRecallDiagnostics;
+}
+
+export interface ChatRetrievalQrelsStatus {
+  schema_version?: 'retrieval-qrels-status/v1';
+  status?: 'missing' | 'candidate' | 'reviewed' | 'canonical';
+  candidate_qrels_count?: number;
+  reviewed_qrels_count?: number;
+  canonical_qrels_count?: number;
+  semantic_quality_claim_allowed?: boolean;
+  quality_claim?:
+    | 'no_qrels_available'
+    | 'candidate_qrels_review_required'
+    | 'reviewed_qrels_promotion_required'
+    | 'canonical_qrels_available';
+  notes?: string[];
 }
 
 export interface ChatJointRecallDiagnostics {
@@ -552,6 +568,21 @@ function MessageDiagnosticsRow({ diagnostics }: { diagnostics: ChatMessageDiagno
       </span>,
     );
   }
+  const qrelsItem = formatQrelsStatus(retrieval?.qrels_status);
+  if (qrelsItem) {
+    items.push(
+      <span key="qrels" title={qrelsItem.title} className={qrelsItem.className}>
+        {qrelsItem.label}
+      </span>,
+    );
+    if (qrelsItem.countLabel) {
+      items.push(
+        <span key="qrels-count" title={qrelsItem.title}>
+          {qrelsItem.countLabel}
+        </span>,
+      );
+    }
+  }
   if (diagnostics.insufficient) {
     items.push(
       <span key="insufficient" className="text-amber-700 dark:text-amber-300" title="未检索到相关上下文">
@@ -572,10 +603,59 @@ function MessageDiagnosticsRow({ diagnostics }: { diagnostics: ChatMessageDiagno
   );
 }
 
+function formatQrelsStatus(qrels: ChatRetrievalQrelsStatus | undefined): {
+  label: string;
+  countLabel: string;
+  title: string;
+  className?: string;
+} | null {
+  if (!qrels) return null;
+  const candidateCount = safeInteger(qrels.candidate_qrels_count);
+  const reviewedCount = safeInteger(qrels.reviewed_qrels_count);
+  const canonicalCount = safeInteger(qrels.canonical_qrels_count);
+  if (qrels.status === 'canonical' && qrels.semantic_quality_claim_allowed === true && canonicalCount > 0) {
+    return {
+      label: '语义质量已验证',
+      countLabel: `canonical ${canonicalCount}`,
+      title: '已有 canonical qrels，可用于检索质量评估',
+      className: 'text-emerald-700 dark:text-emerald-300',
+    };
+  }
+  if (qrels.status === 'reviewed' && reviewedCount > 0) {
+    return {
+      label: 'qrels 待提升',
+      countLabel: `已审 ${reviewedCount}`,
+      title: '已有人工 judgment，但尚未提升为 canonical qrels',
+      className: 'text-amber-700 dark:text-amber-300',
+    };
+  }
+  if (qrels.status === 'candidate' && candidateCount > 0) {
+    return {
+      label: 'qrels 待复核',
+      countLabel: `候选 ${candidateCount}`,
+      title: '候选 qrels 需要人工复核，不能作为语义质量证明',
+      className: 'text-amber-700 dark:text-amber-300',
+    };
+  }
+  if (qrels.status === 'missing') {
+    return {
+      label: 'qrels 未建立',
+      countLabel: '',
+      title: '没有 canonical qrels，当前只显示检索路径而非质量证明',
+      className: 'text-foreground/45',
+    };
+  }
+  return null;
+}
+
 function safeCount(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? String(Math.trunc(value))
     : '0';
+}
+
+function safeInteger(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0;
 }
 
 function safePercent(value: unknown): string {

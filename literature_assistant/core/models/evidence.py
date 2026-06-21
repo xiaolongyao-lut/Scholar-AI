@@ -1,9 +1,12 @@
 """Evidence chain and source label models for API."""
 
+from datetime import date
 from enum import Enum
 from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from .tool_outcome import ToolOutcome
 
 
 class PdfBboxUnit(str, Enum):
@@ -256,6 +259,46 @@ class EvidencePackReferencePayload(BaseModel):
     joint_score: Optional[float] = Field(default=None, ge=0.0)
 
 
+class RetrievalQrelsStatusPayload(BaseModel):
+    """Quality-label gate for retrieval evaluation state.
+
+    Args:
+        status: Highest available local qrels review state for the project.
+        candidate_qrels_count: Candidate TREC qrels rows still awaiting review.
+        reviewed_qrels_count: Reviewed judgment rows available before promotion.
+        canonical_qrels_count: Canonical TREC qrels rows available for metrics.
+        semantic_quality_claim_allowed: True only when canonical qrels exist.
+        quality_claim: Short public claim token for UI/API gating.
+        notes: Bounded reviewer notes explaining why quality claims are gated.
+    """
+
+    schema_version: Literal["retrieval-qrels-status/v1"] = "retrieval-qrels-status/v1"
+    status: Literal["missing", "candidate", "reviewed", "canonical"] = "missing"
+    candidate_qrels_count: int = Field(default=0, ge=0)
+    reviewed_qrels_count: int = Field(default=0, ge=0)
+    canonical_qrels_count: int = Field(default=0, ge=0)
+    semantic_quality_claim_allowed: bool = False
+    quality_claim: Literal[
+        "no_qrels_available",
+        "candidate_qrels_review_required",
+        "reviewed_qrels_promotion_required",
+        "canonical_qrels_available",
+    ] = "no_qrels_available"
+    notes: List[str] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def _validate_quality_gate(self) -> "RetrievalQrelsStatusPayload":
+        """Prevent candidate/reviewed qrels from being reported as quality proof."""
+
+        if self.semantic_quality_claim_allowed:
+            if self.status != "canonical" or self.canonical_qrels_count <= 0:
+                raise ValueError("semantic quality claims require canonical qrels")
+            self.quality_claim = "canonical_qrels_available"
+        elif self.status == "canonical" and self.canonical_qrels_count > 0:
+            raise ValueError("canonical qrels must enable the semantic quality gate")
+        return self
+
+
 class EvidenceRetrievalDiagnosticsPayload(BaseModel):
     """Machine-readable retrieval provenance for writing/evidence audits.
 
@@ -268,6 +311,8 @@ class EvidenceRetrievalDiagnosticsPayload(BaseModel):
         wiki_weight: Weight assigned to wiki recall in this build.
         joint_recall: Optional wiki+project fusion diagnostics. Wiki hits are
             reported here without being coerced into project chunk refs.
+        qrels_status: Whether retrieval quality can be claimed from canonical
+            qrels, or is still blocked by missing/candidate/reviewed labels.
         reasoning_trace: Auditable retrieval-decision summary, not private
             model chain-of-thought.
         notes: Bounded operational notes safe to show in chat/tool transcripts.
@@ -280,6 +325,7 @@ class EvidenceRetrievalDiagnosticsPayload(BaseModel):
     project_weight: float = Field(default=1.0, ge=0.0, le=1.0)
     wiki_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     joint_recall: dict[str, Any] = Field(default_factory=dict)
+    qrels_status: RetrievalQrelsStatusPayload = Field(default_factory=RetrievalQrelsStatusPayload)
     reasoning_trace: List[str] = Field(default_factory=list, max_length=16)
     notes: List[str] = Field(default_factory=list, max_length=12)
 
@@ -297,6 +343,7 @@ class EvidencePackBuildResponse(BaseModel):
         total: Number of evidence refs returned after truncation.
         truncated: Whether more positive lexical hits existed than returned.
         retrieval_diagnostics: Explicit embedding/rerank visibility for agents.
+        outcome: Agent-facing status, attempts, and safe next action.
         evidence_refs: MCP-safe evidence refs with no raw chunk body fields.
     """
 
@@ -311,7 +358,137 @@ class EvidencePackBuildResponse(BaseModel):
     retrieval_diagnostics: EvidenceRetrievalDiagnosticsPayload = Field(
         default_factory=EvidenceRetrievalDiagnosticsPayload
     )
+    outcome: Optional[ToolOutcome] = None
     evidence_refs: List[EvidencePackReferencePayload] = Field(default_factory=list)
+
+
+class JournalMetricEvidencePayload(BaseModel):
+    """Evidence row for journal-level metrics without treating metrics as relevance.
+
+    Args:
+        journal_title: Human-readable journal title.
+        issn: Optional ISSN/eISSN used to disambiguate journal titles.
+        metric_name: Metric label such as JIF, CiteScore, CAS partition, or CCF.
+        metric_year: Year the metric applies to.
+        metric_value: Display value copied from the cited source.
+        source_tier: Whether the source is official or an aggregator.
+        source_name: Provider or publisher name.
+        source_url: URL or local evidence URI for the metric source.
+        verified_at: Date this value was checked.
+        verified_by: Local verifier or automation label.
+        claim_scope: How the value may be used in Scholar AI outputs.
+        notes: Bounded caveats, especially for aggregated sources.
+    """
+
+    schema_version: Literal["scholar-ai-journal-metric-evidence/v1"] = (
+        "scholar-ai-journal-metric-evidence/v1"
+    )
+    journal_title: str = Field(min_length=1, max_length=240)
+    issn: Optional[str] = Field(default=None, max_length=32)
+    metric_name: str = Field(min_length=1, max_length=80)
+    metric_year: int = Field(ge=1900, le=2200)
+    metric_value: str = Field(min_length=1, max_length=120)
+    source_tier: Literal["official", "aggregated"]
+    source_name: str = Field(min_length=1, max_length=160)
+    source_url: str = Field(min_length=1, max_length=1000)
+    verified_at: date
+    verified_by: str = Field(min_length=1, max_length=120)
+    claim_scope: Literal["official_metric", "screening_reference"]
+    notes: List[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator(
+        "journal_title",
+        "issn",
+        "metric_name",
+        "metric_value",
+        "source_name",
+        "source_url",
+        "verified_by",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_metric_text(cls, value: Any) -> Optional[str]:
+        """Trim metric fields so equality and serialization stay stable."""
+
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("journal metric text fields must be strings")
+        text = value.strip()
+        if not text:
+            return None
+        return text
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _normalize_notes(cls, value: Any) -> List[str]:
+        """Keep notes bounded and non-empty for UI-safe caveats."""
+
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("notes must be a list")
+        notes: List[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError("notes must be strings")
+            text = item.strip()
+            if text:
+                notes.append(text[:240])
+            if len(notes) >= 8:
+                break
+        return notes
+
+    @model_validator(mode="after")
+    def _validate_metric_claim_scope(self) -> "JournalMetricEvidencePayload":
+        """Prevent aggregated metrics from being represented as official proof."""
+
+        if self.source_tier == "aggregated" and self.claim_scope == "official_metric":
+            raise ValueError("aggregated journal metrics cannot support official_metric claims")
+        if self.source_tier == "official" and self.claim_scope != "official_metric":
+            self.notes = [
+                *self.notes,
+                "Official source provided, but this row is intentionally scoped as a screening reference.",
+            ][:8]
+        return self
+
+
+class JournalMetricEvidenceSet(BaseModel):
+    """Small collection wrapper for journal metric evidence rows."""
+
+    schema_version: Literal["scholar-ai-journal-metric-evidence-set/v1"] = (
+        "scholar-ai-journal-metric-evidence-set/v1"
+    )
+    records: List[JournalMetricEvidencePayload] = Field(default_factory=list)
+
+    @property
+    def official_count(self) -> int:
+        """Return the number of official metric evidence rows."""
+
+        return sum(1 for record in self.records if record.source_tier == "official")
+
+    @property
+    def aggregated_count(self) -> int:
+        """Return the number of aggregated metric evidence rows."""
+
+        return sum(1 for record in self.records if record.source_tier == "aggregated")
+
+    @property
+    def has_official_metric_claim(self) -> bool:
+        """Return whether at least one row can support an official metric claim."""
+
+        return any(record.claim_scope == "official_metric" for record in self.records)
+
+    def summary(self) -> dict[str, Any]:
+        """Return JSON-safe counts for API, MCP, and report surfaces."""
+
+        return {
+            "schema_version": self.schema_version,
+            "total": len(self.records),
+            "official_count": self.official_count,
+            "aggregated_count": self.aggregated_count,
+            "has_official_metric_claim": self.has_official_metric_claim,
+        }
 
 
 class CitationOverlapPayload(BaseModel):

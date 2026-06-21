@@ -11,7 +11,18 @@ import {
   type Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Copy, ExternalLink, Crosshair, Maximize2, Minus, Plus, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Crosshair,
+  ListChecks,
+  Maximize2,
+  Minus,
+  Plus,
+  X,
+} from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { DimensionNode, type DimensionNodeData } from './DimensionNode';
@@ -26,6 +37,10 @@ import {
 import { layoutDimensionGraph, type DimensionLane } from './dimensionLayout';
 import { readNodeEvidenceText } from './graphEvidenceDisplay';
 import { resolveMaterialTarget, type GraphPayloadV0 } from './payloadToRf';
+import {
+  buildSemanticReviewSpec,
+  type ReviewDashboardSpecV1,
+} from './semanticReviewSpec';
 
 /** rail = 右栏轻量预览；explorer = 全宽工作台。 */
 export type GraphDensity = 'rail' | 'explorer';
@@ -68,6 +83,30 @@ const EVIDENCE_DIMENSIONS: ReadonlySet<ReasoningDimension> = new Set<ReasoningDi
   'counter_evidence',
 ]);
 
+type DimensionRouteKind = 'reasoning' | 'support' | 'counter' | 'citation' | 'other';
+type DimensionRouteVisibility = 'visible' | 'ghost';
+
+const ROUTE_FILTERS: readonly {
+  kind: DimensionRouteKind;
+  label: string;
+  title: string;
+}[] = [
+  { kind: 'reasoning', label: '推理', title: '推理和派生关系' },
+  { kind: 'support', label: '支持', title: '支持和被支持关系' },
+  { kind: 'counter', label: '反证', title: '反证和冲突关系' },
+];
+
+const SUPPORT_RELATIONS = new Set(['supports', 'supported_by']);
+const COUNTER_RELATIONS = new Set(['contradicts', 'challenges', 'refutes']);
+const REASONING_RELATIONS = new Set(['derives_from', 'builds_on', 'extends']);
+
+interface RawEdgeLike {
+  relation?: unknown;
+  confidence?: unknown;
+  metadata?: unknown;
+  evidence_refs?: unknown;
+}
+
 function relationStroke(relation: string | undefined): string {
   switch (relation) {
     case 'contradicts':
@@ -92,9 +131,58 @@ function relationDashed(relation: string | undefined): string | undefined {
   return relation === 'cites' ? '6 4' : undefined;
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function readRawEdge(edge: Edge): RawEdgeLike | null {
+  const raw = (edge.data as { raw?: unknown } | undefined)?.raw;
+  return raw && typeof raw === 'object' ? raw as RawEdgeLike : null;
+}
+
+function readEdgeRelation(edge: Edge): string | undefined {
+  const relation = readRawEdge(edge)?.relation;
+  return typeof relation === 'string' ? relation : undefined;
+}
+
+function readEdgeMetadataNumber(edge: Edge, key: string): number | null {
+  const metadata = readRawEdge(edge)?.metadata;
+  if (!metadata || typeof metadata !== 'object') return null;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readAverageEvidenceScore(edge: Edge): number | null {
+  const refs = readRawEdge(edge)?.evidence_refs;
+  if (!Array.isArray(refs)) return null;
+  const scores = refs
+    .map((ref) => (ref && typeof ref === 'object' ? (ref as Record<string, unknown>).score : null))
+    .filter((score): score is number => typeof score === 'number' && Number.isFinite(score));
+  if (scores.length === 0) return null;
+  return scores.reduce((sum, score) => sum + score, 0) / scores.length;
+}
+
+function readEvidenceWeight(edge: Edge): number {
+  const tolfScore = readEdgeMetadataNumber(edge, 'tolf_evidence_score');
+  if (tolfScore !== null) return clampNumber(tolfScore, 0, 1);
+  const confidence = readRawEdge(edge)?.confidence;
+  if (typeof confidence === 'number' && Number.isFinite(confidence)) return clampNumber(confidence, 0, 1);
+  const evidenceScore = readAverageEvidenceScore(edge);
+  return evidenceScore === null ? 0 : clampNumber(evidenceScore, 0, 1);
+}
+
+function resolveRouteKind(relation: string | undefined): DimensionRouteKind {
+  if (!relation) return 'other';
+  if (SUPPORT_RELATIONS.has(relation)) return 'support';
+  if (COUNTER_RELATIONS.has(relation)) return 'counter';
+  if (REASONING_RELATIONS.has(relation)) return 'reasoning';
+  if (relation === 'cites') return 'citation';
+  return 'other';
+}
+
 function styleEdges(edges: Edge[]): Edge[] {
   return edges.map((edge) => {
-    const rel = (edge.data as { raw?: { relation?: string } } | undefined)?.raw?.relation;
+    const rel = readEdgeRelation(edge);
     const stroke = relationStroke(rel);
     return {
       ...edge,
@@ -107,6 +195,47 @@ function styleEdges(edges: Edge[]): Edge[] {
   });
 }
 
+function decorateInteractiveEdges(
+  edges: Edge[],
+  {
+    activeNodeId,
+    hoveredEdgeId,
+    evidenceWeightVisible,
+    hiddenRouteKinds,
+  }: {
+    activeNodeId: string | null;
+    hoveredEdgeId: string | null;
+    evidenceWeightVisible: boolean;
+    hiddenRouteKinds: Set<DimensionRouteKind>;
+  },
+): Edge[] {
+  return edges.map((edge) => {
+    const relation = readEdgeRelation(edge);
+    const routeKind = resolveRouteKind(relation);
+    const routeVisible = hoveredEdgeId === edge.id
+      || (activeNodeId !== null && (edge.source === activeNodeId || edge.target === activeNodeId));
+    const routeVisibility: DimensionRouteVisibility = routeVisible ? 'visible' : 'ghost';
+    const baseWidth = typeof edge.style?.strokeWidth === 'number' ? edge.style.strokeWidth : 1.3;
+    const evidenceWidth = evidenceWeightVisible ? readEvidenceWeight(edge) * 2.4 : 0;
+    const opacity = routeVisible ? 0.9 : 0.035;
+    return {
+      ...edge,
+      hidden: hiddenRouteKinds.has(routeKind),
+      data: {
+        ...(edge.data ?? {}),
+        evidenceWeightVisible,
+        routeKind,
+        routeVisibility,
+      },
+      style: {
+        ...edge.style,
+        opacity,
+        strokeWidth: baseWidth + evidenceWidth,
+      },
+    };
+  });
+}
+
 function FilterBar({
   counts,
   selectedDimensions,
@@ -114,6 +243,10 @@ function FilterBar({
   onResetFilter,
   onlyEvidence,
   onToggleOnlyEvidence,
+  evidenceWeightVisible,
+  onToggleEvidenceWeight,
+  hiddenRouteKinds,
+  onToggleRouteKind,
 }: {
   counts: Record<ReasoningDimension, number>;
   selectedDimensions: Set<ReasoningDimension>;
@@ -121,6 +254,10 @@ function FilterBar({
   onResetFilter: () => void;
   onlyEvidence: boolean;
   onToggleOnlyEvidence: () => void;
+  evidenceWeightVisible: boolean;
+  onToggleEvidenceWeight: () => void;
+  hiddenRouteKinds: Set<DimensionRouteKind>;
+  onToggleRouteKind: (kind: DimensionRouteKind) => void;
 }) {
   const totalFiltered = Array.from(selectedDimensions).reduce((sum, d) => sum + (counts[d] ?? 0), 0);
   const totalAll = DIMENSION_DISPLAY_ORDER.reduce((sum, d) => sum + (counts[d] ?? 0), 0);
@@ -184,7 +321,218 @@ function FilterBar({
           已筛选 {totalFiltered}/{totalAll} · 重置
         </button>
       )}
+      <span className="mx-0.5 h-3 w-px bg-outline-variant/50" aria-hidden />
+      <button
+        type="button"
+        onClick={onToggleEvidenceWeight}
+        className={cn(
+          'rounded-sm border px-1.5 py-0.5 transition-colors',
+          evidenceWeightVisible
+            ? 'border-primary/50 bg-primary/15 text-primary'
+            : 'border-outline-variant/60 bg-surface text-foreground/65 hover:text-foreground',
+        )}
+        aria-pressed={evidenceWeightVisible}
+        title="按证据分数加粗边线"
+      >
+        证据权重
+      </button>
+      {ROUTE_FILTERS.map((route) => {
+        const isVisible = !hiddenRouteKinds.has(route.kind);
+        return (
+          <button
+            key={route.kind}
+            type="button"
+            onClick={() => onToggleRouteKind(route.kind)}
+            className={cn(
+              'rounded-sm border px-1.5 py-0.5 transition-colors',
+              isVisible
+                ? 'border-outline-variant/60 bg-surface text-foreground/65 hover:text-foreground'
+                : 'border-outline-variant/40 bg-surface-low text-foreground/35',
+            )}
+            aria-pressed={isVisible}
+            title={route.title}
+          >
+            {route.label}
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+function diagnosticToneClass(severity: 'info' | 'warning' | 'critical'): string {
+  switch (severity) {
+    case 'critical':
+      return 'border-red-500/35 bg-red-500/10 text-red-700 dark:text-red-300';
+    case 'warning':
+      return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300';
+    case 'info':
+    default:
+      return 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300';
+  }
+}
+
+function SemanticReviewPanel({
+  spec,
+  compact,
+}: {
+  spec: ReviewDashboardSpecV1;
+  compact: boolean;
+}) {
+  const reviewBuckets = spec.missing_metadata_buckets.filter((bucket) => bucket.status === 'review_required');
+  const diagnosticBuckets = spec.graph_diagnostics.filter((bucket) => bucket.status === 'review_required');
+  const topDimensions = spec.dimensions
+    .filter((bucket) => bucket.node_count > 0)
+    .sort((left, right) => right.node_count - left.node_count)
+    .slice(0, compact ? 3 : 5);
+  const topRelations = spec.relations
+    .filter((bucket) => bucket.edge_count > 0)
+    .sort((left, right) => right.edge_count - left.edge_count)
+    .slice(0, compact ? 3 : 5);
+  const hasReviewWork = reviewBuckets.length > 0 || diagnosticBuckets.length > 0 || spec.large_library_hints.length > 0;
+  const stats = [
+    { label: '节点', value: spec.summary.node_count },
+    { label: '关系', value: spec.summary.edge_count },
+    { label: '材料', value: spec.summary.material_count },
+    { label: '证据', value: spec.summary.evidence_ref_count },
+  ];
+
+  return (
+    <section
+      aria-label="语义复审面板"
+      className={cn(
+        'rounded-md border border-outline-variant/50 bg-surface-low px-2.5 py-2 text-[11px] text-foreground/70',
+        compact ? 'space-y-2' : 'grid gap-2 lg:grid-cols-[minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(220px,1fr)]',
+      )}
+    >
+      <div className="min-w-0 space-y-1.5">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <ListChecks className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+            <span className="truncate text-xs font-semibold text-foreground">语义复审</span>
+          </div>
+          <span
+            className={cn(
+              'inline-flex shrink-0 items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px]',
+              hasReviewWork
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+            )}
+          >
+            {hasReviewWork ? (
+              <AlertTriangle className="h-3 w-3" aria-hidden />
+            ) : (
+              <CheckCircle2 className="h-3 w-3" aria-hidden />
+            )}
+            {hasReviewWork ? '需要复审' : '结构正常'}
+          </span>
+        </div>
+        <div className="grid grid-cols-4 gap-1">
+          {stats.map((item) => (
+            <div
+              key={item.label}
+              className="min-w-0 rounded-sm border border-outline-variant/40 bg-surface px-1.5 py-1"
+            >
+              <div className="truncate text-[10px] text-foreground/45">{item.label}</div>
+              <div className="truncate font-semibold tabular-nums text-foreground">{item.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="min-w-0 space-y-1.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-foreground/45">待处理</div>
+        {reviewBuckets.length > 0 || diagnosticBuckets.length > 0 ? (
+          <>
+            {reviewBuckets.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {reviewBuckets.slice(0, compact ? 4 : 6).map((bucket) => (
+                  <span
+                    key={bucket.id}
+                    className="inline-flex max-w-full items-center gap-1 rounded-sm border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300"
+                    title={bucket.node_ids.slice(0, 8).join(', ')}
+                  >
+                    <span className="truncate">{bucket.label}</span>
+                    <span className="shrink-0 tabular-nums">{bucket.count}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {diagnosticBuckets.length > 0 ? (
+              <div className="flex flex-wrap gap-1" aria-label="图谱结构诊断">
+                {diagnosticBuckets.slice(0, compact ? 4 : 6).map((bucket) => (
+                  <span
+                    key={bucket.id}
+                    className={cn(
+                      'inline-flex max-w-full items-center gap-1 rounded-sm border px-1.5 py-0.5',
+                      diagnosticToneClass(bucket.severity),
+                    )}
+                    title={`${bucket.message} ${bucket.item_ids.slice(0, 8).join(', ')}`}
+                  >
+                    <span className="truncate">{bucket.label}</span>
+                    <span className="shrink-0 tabular-nums">{bucket.count}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-300">
+            暂无缺失元数据、孤立节点、悬空关系或重复标签。
+          </div>
+        )}
+        {spec.large_library_hints.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {spec.large_library_hints.slice(0, compact ? 2 : 3).map((hint) => (
+              <span
+                key={hint.kind}
+                className="inline-flex max-w-full items-center gap-1 rounded-sm border border-outline-variant/50 bg-surface px-1.5 py-0.5 text-foreground/60"
+                title={hint.message}
+              >
+                <span className="truncate">{hint.message}</span>
+                <span className="shrink-0 tabular-nums">{hint.count}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="min-w-0 space-y-1.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-foreground/45">维度 / 关系</div>
+        <div className="flex flex-wrap gap-1">
+          {topDimensions.map((bucket) => (
+            <span
+              key={bucket.dimension}
+              className="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5"
+              style={{
+                borderColor: DIMENSION_META[bucket.dimension].border,
+                background: DIMENSION_META[bucket.dimension].surface,
+                color: DIMENSION_META[bucket.dimension].accent,
+              }}
+              title={`缺少锚点 ${bucket.missing_anchor_count} · 证据 refs ${bucket.evidence_ref_count}`}
+            >
+              <span>{bucket.label}</span>
+              <span className="tabular-nums">{bucket.node_count}</span>
+            </span>
+          ))}
+          {topRelations.map((bucket) => (
+            <span
+              key={bucket.relation}
+              className="inline-flex max-w-full items-center gap-1 rounded-sm border border-outline-variant/50 bg-surface px-1.5 py-0.5 text-foreground/60"
+              title={`证据 refs ${bucket.evidence_ref_count} · 低置信 ${bucket.low_confidence_count}`}
+            >
+              <span className="truncate">{bucket.relation}</span>
+              <span className="shrink-0 tabular-nums">{bucket.edge_count}</span>
+            </span>
+          ))}
+          {topDimensions.length === 0 && topRelations.length === 0 ? (
+            <span className="rounded-sm border border-outline-variant/40 bg-surface px-1.5 py-0.5 text-foreground/45">
+              暂无可汇总维度或关系。
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -278,6 +626,8 @@ export function DimensionGraphViewer({
 }: DimensionGraphViewerProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [internalDimensions, setInternalDimensions] = useState<Set<ReasoningDimension>>(new Set());
+  const [evidenceWeightVisible, setEvidenceWeightVisible] = useState(false);
+  const [hiddenRouteKinds, setHiddenRouteKinds] = useState<Set<DimensionRouteKind>>(new Set());
 
   const selectedDimensions = controlledDimensions ?? internalDimensions;
   const setSelectedDimensions = useCallback(
@@ -292,6 +642,7 @@ export function DimensionGraphViewer({
   const resolvedDetailPlacement: DetailPlacement = detailPlacement ?? (density === 'explorer' ? 'sidebar' : 'panel');
 
   const dimensionGraph = useMemo(() => (payload ? buildDimensionGraph(payload) : null), [payload]);
+  const semanticReviewSpec = useMemo(() => (payload ? buildSemanticReviewSpec(payload) : null), [payload]);
 
   const filteredGraph = useMemo(() => {
     if (!dimensionGraph || selectedDimensions.size === 0) return dimensionGraph;
@@ -356,6 +707,19 @@ export function DimensionGraphViewer({
     }
   }, [onlyEvidence, dimensionGraph, setSelectedDimensions]);
 
+  const handleToggleEvidenceWeight = useCallback(() => {
+    setEvidenceWeightVisible((value) => !value);
+  }, []);
+
+  const handleToggleRouteKind = useCallback((kind: DimensionRouteKind) => {
+    setHiddenRouteKinds((current) => {
+      const next = new Set(current);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  }, []);
+
   const nodes = useMemo(() => (layout ? layout.nodes : []), [layout]);
   const edges = useMemo(() => (layout ? styleEdges(layout.edges) : []), [layout]);
 
@@ -394,25 +758,37 @@ export function DimensionGraphViewer({
   return (
     <div className={cn('relative flex h-full min-h-[280px] w-full flex-col', className)}>
       {showLegend ? (
-        <div className="z-10 flex items-center gap-2 px-2 pt-2">
-          <FilterBar
-            counts={dimensionGraph.counts}
-            selectedDimensions={selectedDimensions}
-            onToggleDimension={handleToggleDimension}
-            onResetFilter={handleResetFilter}
-            onlyEvidence={onlyEvidence}
-            onToggleOnlyEvidence={handleToggleOnlyEvidence}
-          />
-          {onExpand ? (
-            <button
-              type="button"
-              onClick={onExpand}
-              className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-outline-variant/60 bg-surface px-2 py-1 text-[11px] text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
-              title="展开为全宽图谱工作台"
-            >
-              <ExternalLink className="h-3 w-3" aria-hidden />
-              展开图谱
-            </button>
+        <div className="z-10 flex flex-col gap-2 px-2 pt-2">
+          <div className="flex items-center gap-2">
+            <FilterBar
+              counts={dimensionGraph.counts}
+              selectedDimensions={selectedDimensions}
+              onToggleDimension={handleToggleDimension}
+              onResetFilter={handleResetFilter}
+              onlyEvidence={onlyEvidence}
+              onToggleOnlyEvidence={handleToggleOnlyEvidence}
+              evidenceWeightVisible={evidenceWeightVisible}
+              onToggleEvidenceWeight={handleToggleEvidenceWeight}
+              hiddenRouteKinds={hiddenRouteKinds}
+              onToggleRouteKind={handleToggleRouteKind}
+            />
+            {onExpand ? (
+              <button
+                type="button"
+                onClick={onExpand}
+                className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-outline-variant/60 bg-surface px-2 py-1 text-[11px] text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground"
+                title="展开为全宽图谱工作台"
+              >
+                <ExternalLink className="h-3 w-3" aria-hidden />
+                展开图谱
+              </button>
+            ) : null}
+          </div>
+          {semanticReviewSpec ? (
+            <SemanticReviewPanel
+              spec={semanticReviewSpec}
+              compact={density === 'rail'}
+            />
           ) : null}
         </div>
       ) : null}
@@ -427,6 +803,8 @@ export function DimensionGraphViewer({
               showMiniMap={resolvedMiniMap}
               detailPlacement={resolvedDetailPlacement}
               selectedEntry={selectedEntry}
+              evidenceWeightVisible={evidenceWeightVisible}
+              hiddenRouteKinds={hiddenRouteKinds}
               onOpenSource={onOpenSource}
               onCloseDetail={handleCloseDetail}
             />
@@ -457,6 +835,8 @@ function DimensionFlow({
   showMiniMap,
   detailPlacement,
   selectedEntry,
+  evidenceWeightVisible,
+  hiddenRouteKinds,
   onOpenSource,
   onCloseDetail,
 }: {
@@ -466,11 +846,25 @@ function DimensionFlow({
   showMiniMap: boolean;
   detailPlacement: DetailPlacement;
   selectedEntry: DimensionGraphNode | null;
+  evidenceWeightVisible: boolean;
+  hiddenRouteKinds: Set<DimensionRouteKind>;
   onOpenSource?: (entry: DimensionGraphNode) => Promise<boolean> | boolean;
   onCloseDetail: () => void;
 }) {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const nodeViewportSignature = useMemo(() => nodes.map((node) => node.id).join('|'), [nodes]);
+  const activeNodeId = hoveredNodeId ?? selectedEntry?.node.id ?? null;
+  const interactiveEdges = useMemo(
+    () => decorateInteractiveEdges(edges, {
+      activeNodeId,
+      hoveredEdgeId,
+      evidenceWeightVisible,
+      hiddenRouteKinds,
+    }),
+    [activeNodeId, edges, evidenceWeightVisible, hiddenRouteKinds, hoveredEdgeId],
+  );
 
   useEffect(() => {
     if (nodes.length === 0) return undefined;
@@ -497,7 +891,7 @@ function DimensionFlow({
   return (
     <ReactFlow
       nodes={nodes}
-      edges={edges}
+      edges={interactiveEdges}
       nodeTypes={NODE_TYPES}
       edgeTypes={EDGE_TYPES}
       fitView
@@ -507,6 +901,10 @@ function DimensionFlow({
         const dimensionEntry = (node.data as DimensionNodeData | undefined)?.dimensionEntry;
         if (dimensionEntry) onNodeClick(dimensionEntry);
       }}
+      onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
+      onNodeMouseLeave={() => setHoveredNodeId(null)}
+      onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
+      onEdgeMouseLeave={() => setHoveredEdgeId(null)}
       nodesConnectable={false}
       nodesDraggable={false}
       elementsSelectable

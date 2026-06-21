@@ -1009,6 +1009,96 @@ class ChatHistoryStore:
         finally:
             conn.close()
 
+    def list_project_conversation_summaries(self, project_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Return project-scoped conversation metadata without message content.
+
+        Args:
+            project_id: Existing Scholar AI project id stored on conversations.
+            limit: Maximum conversation count; must be between 1 and 500.
+
+        Returns:
+            Conversation metadata and derived counts. Raw transcript events,
+            node ``content_text``, message parts, evidence quotes, and
+            compression summaries are intentionally omitted because they may
+            contain private local content.
+        """
+
+        normalized_project_id = self._require_non_empty_text(project_id, "project_id")
+        if not isinstance(limit, int) or limit < 1 or limit > 500:
+            raise ValueError("limit must be between 1 and 500")
+        conn = open_sqlite_connection(self.db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT
+                    c.conversation_id,
+                    c.project_id,
+                    c.title,
+                    c.mode,
+                    c.root_node_id,
+                    c.head_node_id,
+                    c.created_at,
+                    c.updated_at,
+                    c.archived,
+                    c.archived_at,
+                    c.metadata_json,
+                    (
+                        SELECT COUNT(*)
+                        FROM conversation_nodes AS n
+                        WHERE n.conversation_id = c.conversation_id
+                    ) AS node_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM evidence_edges AS e
+                        JOIN conversation_nodes AS n ON n.node_id = e.node_id
+                        WHERE n.conversation_id = c.conversation_id
+                    ) AS evidence_ref_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM conversation_agents AS a
+                        WHERE a.conversation_id = c.conversation_id
+                    ) AS agent_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM agent_runs AS r
+                        WHERE r.conversation_id = c.conversation_id
+                    ) AS agent_run_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM compression_snapshots AS s
+                        WHERE s.conversation_id = c.conversation_id
+                    ) AS compression_snapshot_count
+                FROM conversations AS c
+                WHERE c.project_id = ?
+                ORDER BY c.updated_at DESC, c.conversation_id ASC
+                LIMIT ?
+                """,
+                (normalized_project_id, limit),
+            ).fetchall()
+            return [
+                {
+                    "conversation_id": row["conversation_id"],
+                    "project_id": row["project_id"],
+                    "title": row["title"],
+                    "mode": row["mode"],
+                    "root_node_id": row["root_node_id"],
+                    "head_node_id": row["head_node_id"],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                    "archived": bool(row["archived"]),
+                    "archived_at": row["archived_at"],
+                    "metadata": json_loads(row["metadata_json"], default={}),
+                    "node_count": int(row["node_count"] or 0),
+                    "evidence_ref_count": int(row["evidence_ref_count"] or 0),
+                    "agent_count": int(row["agent_count"] or 0),
+                    "agent_run_count": int(row["agent_run_count"] or 0),
+                    "compression_snapshot_count": int(row["compression_snapshot_count"] or 0),
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+
     def load_transcript(self, conversation_id: str) -> list[dict[str, Any]]:
         """Load JSONL transcript events for one conversation."""
 

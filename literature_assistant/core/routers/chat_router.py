@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from models.analysis_chain import AnalysisChainPayload
 from prompts.project_reasoning_bias import (
@@ -36,6 +36,9 @@ from llm_cost_logger import log_llm_call
 from llm_pricing import usage_from_response
 from sampling_storage import load_user_sampling
 from model_config_store import chat_store
+from mcp_runtime.tool_use_runner import ToolLoopStopReason, failed_tool_use_run_result
+import provider_capabilities
+from provider_capabilities import ProviderToolCapabilityError
 from runtime_env import env_value
 from routers import chat_mcp_integration
 from provider_endpoint_policy import TrustSource, validate_endpoint
@@ -119,6 +122,9 @@ MAX_CHAT_QUERY_LENGTH = 80_000
 
 
 class ChatRequest(BaseModel):
+    _internal_skip_analysis_chain: bool = PrivateAttr(default=False)
+    _internal_skip_chat_telemetry: bool = PrivateAttr(default=False)
+
     query: str = Field(..., min_length=1, max_length=MAX_CHAT_QUERY_LENGTH)
     context: list[str] = Field(default_factory=list, description="Document text chunks as context")
     history: list[ChatMessage] = Field(default_factory=list, description="Previous conversation turns")
@@ -1171,13 +1177,51 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
                     allow_high_risk_tools=req.mcp_allow_high_risk_tools,
                 )
             )
-            run_result = await runner.run(
-                provider=llm.provider,
-                initial_messages=initial_messages,
-                chat_call=chat_call,
+            offered_tool_count = max(
+                0,
+                int(getattr(runner, "offered_tool_count", 0)),
             )
+            try:
+                provider_capabilities.ensure_tool_call_capability(
+                    provider=llm.provider,
+                    base_url=llm.base_url,
+                    model=str(payload.get("model", llm.model)),
+                )
+            except ProviderToolCapabilityError as exc:
+                run_result = failed_tool_use_run_result(
+                    stop_reason=ToolLoopStopReason.PROVIDER_TOOL_PROBE_FAILED,
+                    legacy_stopped_reason="provider_tool_probe_failed",
+                    message=str(exc),
+                    provider=llm.provider,
+                    offered_tool_count=offered_tool_count,
+                    metadata={"capability_status": exc.status},
+                )
+            else:
+                run_result = await runner.run(
+                    provider=llm.provider,
+                    initial_messages=initial_messages,
+                    chat_call=chat_call,
+                )
             data = run_result.final_response
             mcp_run_dump = chat_mcp_integration.transcript_to_dump(run_result)
+            if (
+                run_result.diagnostics.stop_reason
+                is ToolLoopStopReason.PROVIDER_TOOL_PROBE_FAILED
+            ):
+                return ChatResponse(
+                    answer="",
+                    model=telemetry_model,
+                    usage=None,
+                    sampling_params={
+                        "temperature": llm.temperature,
+                        "top_p": llm.top_p,
+                        "top_k": llm.top_k,
+                        "max_tokens": llm.max_tokens,
+                    },
+                    tool_calls=None,
+                    mcp_run=mcp_run_dump,
+                    analysis_chain=None,
+                )
         else:
             data = await _post_chat_with_retry(
                 url=url,
@@ -1200,7 +1244,14 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
         logger.error("Unexpected LLM response format: %s", data)
         raise HTTPException(status_code=502, detail=f"LLM 返回格式异常: {exc}") from exc
 
-    _log_chat_telemetry(model=model_used or telemetry_model, task="chat", started_at=started_at, usage=usage, status="ok")
+    if not getattr(req, "_internal_skip_chat_telemetry", False):
+        _log_chat_telemetry(
+            model=model_used or telemetry_model,
+            task="chat",
+            started_at=started_at,
+            usage=usage,
+            status="ok",
+        )
 
     analysis_chain = await _maybe_build_analysis_chain(req=req, answer=answer)
 
@@ -1237,6 +1288,8 @@ async def _maybe_build_analysis_chain(
         from feature_flags import is_enabled
     except ImportError:
         return None
+    if getattr(req, "_internal_skip_analysis_chain", False):
+        return None
     if not is_enabled("analysis_chain_rag"):
         return None
     try:
@@ -1262,6 +1315,8 @@ async def _maybe_build_analysis_chain(
             project_id=req.project_id,
             project_reasoning_bias_enabled=False,
         )
+        sub_req._internal_skip_analysis_chain = True
+        sub_req._internal_skip_chat_telemetry = True
         sub_resp = await chat_ask(sub_req)
         return sub_resp.answer
 

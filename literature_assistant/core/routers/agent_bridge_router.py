@@ -6,14 +6,15 @@ from __future__ import annotations
 import asyncio
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from datetime_utils import utc_now_iso_z
 from harness_protocols import ArtifactType, JobKind, JobStatus
-from models import ArtifactPayload, JobPayload, SessionPayload
+from models import ArtifactPayload, JobPayload, SessionPayload, ToolAttempt, ToolNextAction, ToolOutcome
 from literature_assistant.core.project_paths import wiki_generated_root
 from literature_assistant.core.wiki.page_store import AUTO_END, AUTO_START, WikiPageStore
 
@@ -26,6 +27,9 @@ MAX_RESULT_TEXT_CHARS = 120000
 MAX_RESOURCE_CHARS = 20000
 DEFAULT_RESOURCE_CHARS = 6000
 MAX_WIKI_CAPTURE_BODY_CHARS = 40000
+SINGLE_PAPER_TASK_SCHEMA_VERSION = "scholar-ai-single-paper-task/v1"
+SINGLE_PAPER_COMPLETION_SCHEMA_VERSION = "scholar-ai-single-paper-completion-check/v1"
+SINGLE_PAPER_TASK_SENTINEL = "待补充"
 
 
 class AgentResourceRef(BaseModel):
@@ -161,6 +165,137 @@ class AgentBridgeResourcePayload(BaseModel):
     total_chars: int = Field(ge=0)
 
 
+class SinglePaperTaskRequest(BaseModel):
+    """Request one dynamic single-paper reading task instance.
+
+    Args:
+        project_id: Existing Scholar AI project id.
+        material_id: Existing material id that belongs to the project.
+        task_goal: User-facing goal statement embedded in the generated task.
+        output_language: Expected answer language for the external agent.
+        target_document: Intended downstream deliverable.
+        create_agent_request: Whether to create a runtime-visible agent job.
+        agent_host: External agent host label used for audit metadata.
+        source: Invocation source label used for runtime filtering.
+        max_chars: Bounded resource-read budget for the task envelope.
+        max_chunks: Maximum indexed chunks attached as resource refs.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: str = Field(min_length=1, max_length=200)
+    material_id: str = Field(min_length=1, max_length=200)
+    task_goal: str = Field(
+        default="生成单篇论文深度精读、写作借鉴要点、可导出 Word 的结构化草稿",
+        min_length=1,
+        max_length=500,
+    )
+    output_language: Literal["zh", "en", "bilingual"] = "zh"
+    target_document: Literal["deep_summary", "word_draft"] = "word_draft"
+    create_agent_request: bool = True
+    agent_host: str = Field(default="mcp", min_length=1, max_length=80)
+    source: str = Field(default="mcp", min_length=1, max_length=80)
+    max_chars: int = Field(default=12000, ge=100, le=40000)
+    max_chunks: int = Field(default=12, ge=1, le=50)
+
+    @field_validator("project_id", "material_id", "task_goal", "agent_host", "source")
+    @classmethod
+    def _validate_required_text(cls, value: str) -> str:
+        """Normalize public string inputs before they become job metadata."""
+
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("field must be non-empty")
+        return text
+
+
+class SinglePaperTaskPayload(BaseModel):
+    """Generated single-paper task instance plus optional runtime job binding."""
+
+    schema_version: Literal["scholar-ai-single-paper-task/v1"] = SINGLE_PAPER_TASK_SCHEMA_VERSION
+    task_id: str
+    generated_at: str
+    sentinel: str = SINGLE_PAPER_TASK_SENTINEL
+    project_id: str
+    material_id: str
+    task_markdown: str
+    task_manifest: dict[str, Any]
+    resource_refs: list[AgentResourceRef] = Field(default_factory=list)
+    missing_fields: list[str] = Field(default_factory=list)
+    health_checks: dict[str, Any] = Field(default_factory=dict)
+    outcome: ToolOutcome
+    agent_request: AgentBridgeRequestPayload | None = None
+    task_artifact: ArtifactPayload | None = None
+
+
+class SinglePaperCompletionCheckRequest(BaseModel):
+    """Validate a completed single-paper deep-read draft against its task manifest.
+
+    Args:
+        output_text: Final Markdown/plain-text draft generated from the task.
+        task_manifest: Manifest returned by ``single-paper-task``.
+        required_output_sections: Optional override for manifest sections.
+        evidence_refs: Evidence anchors used by the draft.
+        figure_table_refs: Figure/table anchors used by the draft.
+        lint_passed: Whether ``literature.academic_writing_lint`` has passed.
+        docx_artifact_path: Optional local DOCX artifact path after export.
+        sentinel: Placeholder token that must not remain in final output.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    output_text: str = Field(min_length=1, max_length=MAX_RESULT_TEXT_CHARS)
+    task_manifest: dict[str, Any]
+    required_output_sections: list[str] | None = Field(default=None, max_length=30)
+    evidence_refs: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
+    figure_table_refs: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    lint_passed: bool = False
+    docx_artifact_path: str | None = Field(default=None, max_length=1000)
+    sentinel: str = Field(default=SINGLE_PAPER_TASK_SENTINEL, min_length=1, max_length=40)
+
+    @field_validator("output_text", "sentinel", "docx_artifact_path")
+    @classmethod
+    def _validate_completion_text(cls, value: str | None) -> str | None:
+        """Trim bounded public text while preserving omitted optional fields."""
+
+        if value is None:
+            return None
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("field must be non-empty")
+        return text
+
+    @field_validator("task_manifest")
+    @classmethod
+    def _validate_task_manifest(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Require a non-empty manifest object from the task-generation step."""
+
+        if not isinstance(value, dict) or not value:
+            raise ValueError("task_manifest must be a non-empty object")
+        return dict(value)
+
+
+class SinglePaperCompletionCheckPayload(BaseModel):
+    """Machine-checkable completion report for a single-paper deep-read draft."""
+
+    schema_version: Literal["scholar-ai-single-paper-completion-check/v1"] = (
+        SINGLE_PAPER_COMPLETION_SCHEMA_VERSION
+    )
+    task_id: str | None = None
+    sentinel: str = SINGLE_PAPER_TASK_SENTINEL
+    completion_state: Literal["complete", "incomplete"]
+    required_output_sections: list[str] = Field(default_factory=list)
+    present_sections: list[str] = Field(default_factory=list)
+    missing_sections: list[str] = Field(default_factory=list)
+    sentinel_count: int = Field(ge=0)
+    sentinel_contexts: list[str] = Field(default_factory=list)
+    evidence_ref_count: int = Field(ge=0)
+    figure_table_ref_count: int = Field(ge=0)
+    lint_passed: bool
+    docx_export_ready: bool
+    outcome: ToolOutcome
+
+
 def get_runtime():
     """Import and return the writing runtime service."""
 
@@ -243,6 +378,100 @@ async def create_agent_request(envelope: AgentRequestEnvelope) -> AgentBridgeReq
         },
         envelope=envelope,
     )
+
+
+@router.post("/single-paper-task", response_model=SinglePaperTaskPayload)
+async def create_single_paper_task(request: SinglePaperTaskRequest) -> SinglePaperTaskPayload:
+    """Create a Scholar AI dynamic task instance for one paper.
+
+    Args:
+        request: Task-generation request. It must target a real project material.
+
+    Returns:
+        A Markdown task, machine-readable manifest, resource refs, outcome, and
+        optional runtime agent request. This route never creates external skill
+        packages or external uploads.
+    """
+
+    payload = _build_single_paper_task_payload(request)
+    if not request.create_agent_request:
+        return payload
+
+    envelope = AgentRequestEnvelope(
+        source=request.source,
+        agent_host=request.agent_host,
+        intent="single_paper_deep_read",
+        user_text=payload.task_markdown,
+        project_id=request.project_id,
+        resource_refs=payload.resource_refs,
+        context_budget=AgentContextBudget(
+            max_chars=request.max_chars,
+            max_chunks=request.max_chunks,
+            include_full_text=False,
+        ),
+        output_targets=AgentOutputTargets(
+            runtime_job=True,
+            smart_read_conversation=False,
+            agent_workspace=True,
+            wiki_candidate=False,
+            graph_candidate=False,
+            evolution_capture=True,
+        ),
+        metadata={
+            "task_id": payload.task_id,
+            "task_schema_version": payload.schema_version,
+            "task_title": str(payload.task_manifest.get("paper", {}).get("title") or "single paper"),
+            "task_manifest": payload.task_manifest,
+            "missing_fields": list(payload.missing_fields),
+            "sentinel": payload.sentinel,
+        },
+    )
+    agent_request = await create_agent_request(envelope)
+    runtime, _ = get_runtime()
+    artifact = runtime.add_job_artifact(
+        agent_request.job.job_id,
+        artifact_type=ArtifactType.METADATA,
+        content=payload.task_markdown,
+        created_by="agent_bridge",
+        metadata={
+            "kind": "single_paper_task_markdown",
+            "task_id": payload.task_id,
+            "schema_version": payload.schema_version,
+            "project_id": request.project_id,
+            "material_id": request.material_id,
+            "sentinel": payload.sentinel,
+        },
+        mime_type="text/markdown",
+    )
+    return payload.model_copy(
+        update={
+            "agent_request": agent_request,
+            "task_artifact": ArtifactPayload(**artifact.to_dict()),
+            "outcome": _single_paper_outcome(
+                manifest=payload.task_manifest,
+                missing_fields=payload.missing_fields,
+                chunk_count=int(payload.health_checks.get("indexed_chunk_count") or 0),
+                request_created=True,
+                request_id=agent_request.request_id,
+            ),
+        }
+    )
+
+
+@router.post("/single-paper-task/completion-check", response_model=SinglePaperCompletionCheckPayload)
+def check_single_paper_completion(
+    request: SinglePaperCompletionCheckRequest,
+) -> SinglePaperCompletionCheckPayload:
+    """Validate a generated single-paper deep-read draft without external calls.
+
+    Args:
+        request: Completed draft text and the manifest from task generation.
+
+    Returns:
+        A deterministic completion report with a ToolOutcome next action.
+    """
+
+    return _single_paper_completion_check(request)
 
 
 @router.get("/requests", response_model=list[JobPayload])
@@ -377,6 +606,10 @@ async def fail_agent_request(request_id: str, request: AgentFailRequest) -> JobP
 
 
 def _request_title(envelope: AgentRequestEnvelope) -> str:
+    metadata = envelope.metadata if isinstance(envelope.metadata, dict) else {}
+    task_title = str(metadata.get("task_title") or "").strip()
+    if envelope.intent == "single_paper_deep_read" and task_title:
+        return f"单篇精读: {task_title[:40]}"
     intent = envelope.intent.strip() or "agent_request"
     if envelope.user_text:
         return f"智能体任务: {envelope.user_text[:40]}"
@@ -398,6 +631,846 @@ def _agent_job_metadata(request_id: str, envelope: AgentRequestEnvelope) -> dict
         "output_targets": envelope.output_targets.model_dump(mode="json"),
         "metadata": envelope.metadata,
     }
+
+
+def _build_single_paper_task_payload(request: SinglePaperTaskRequest) -> SinglePaperTaskPayload:
+    """Build a dynamic single-paper task from current project evidence.
+
+    Args:
+        request: Validated generation request.
+
+    Returns:
+        A bounded task payload with resource refs and explicit missing fields.
+
+    Raises:
+        HTTPException: If the project/material pair does not exist or is invalid.
+    """
+
+    project, material = _single_paper_project_material(request.project_id, request.material_id)
+    chunks = _single_paper_chunks(
+        project_id=request.project_id,
+        material_id=request.material_id,
+        limit=request.max_chunks,
+    )
+    generated_at = utc_now_iso_z()
+    task_id = f"paper_task_{uuid4().hex[:16]}"
+    metadata = dict(getattr(material, "metadata", {}) or {})
+    source_label = _single_paper_source_label(metadata=metadata, chunks=chunks)
+    resource_refs = _single_paper_resource_refs(
+        request=request,
+        material=material,
+        chunks=chunks,
+    )
+    missing_fields = _single_paper_missing_fields(
+        request=request,
+        metadata=metadata,
+        source_label=source_label,
+        chunk_count=len(chunks),
+    )
+    health_checks = {
+        "project_exists": True,
+        "material_exists": True,
+        "material_belongs_to_project": True,
+        "indexed_chunk_count": len(chunks),
+        "full_text_status": "ready" if chunks else SINGLE_PAPER_TASK_SENTINEL,
+        "attachment_or_source": source_label or SINGLE_PAPER_TASK_SENTINEL,
+        "doi_present": bool(_metadata_text(metadata, ("doi", "DOI"))),
+    }
+    manifest = _single_paper_manifest(
+        task_id=task_id,
+        generated_at=generated_at,
+        request=request,
+        project=project,
+        material=material,
+        metadata=metadata,
+        source_label=source_label,
+        chunks=chunks,
+        resource_refs=resource_refs,
+        missing_fields=missing_fields,
+        health_checks=health_checks,
+    )
+    task_markdown = _single_paper_task_markdown(manifest)
+    return SinglePaperTaskPayload(
+        task_id=task_id,
+        generated_at=generated_at,
+        project_id=request.project_id,
+        material_id=request.material_id,
+        task_markdown=task_markdown,
+        task_manifest=manifest,
+        resource_refs=resource_refs,
+        missing_fields=missing_fields,
+        health_checks=health_checks,
+        outcome=_single_paper_outcome(
+            manifest=manifest,
+            missing_fields=missing_fields,
+            chunk_count=len(chunks),
+            request_created=False,
+            request_id=None,
+        ),
+    )
+
+
+def _single_paper_project_material(project_id: str, material_id: str) -> tuple[Any, Any]:
+    """Return a project/material pair after ownership validation."""
+
+    store = get_resource_store()
+    project = store.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    material = store.get_material(material_id)
+    if material is None:
+        raise HTTPException(status_code=404, detail=f"Material not found: {material_id}")
+    if str(getattr(material, "project_id", "") or "") != project_id:
+        raise HTTPException(status_code=400, detail="material does not belong to project")
+    return project, material
+
+
+def _single_paper_chunks(*, project_id: str, material_id: str, limit: int) -> list[dict[str, Any]]:
+    """Return bounded indexed chunks for one material without reading raw files."""
+
+    if limit < 1 or limit > 50:
+        raise ValueError("limit must be between 1 and 50")
+    try:
+        import routers.resources_router as resources_router
+
+        chunk_store = resources_router._load_chunk_store(project_id)
+    except (ImportError, AttributeError, OSError, ValueError):
+        return []
+    raw_chunks = chunk_store.get(material_id, [])
+    if not isinstance(raw_chunks, list):
+        return []
+    chunks: list[dict[str, Any]] = []
+    for raw_chunk in raw_chunks:
+        if not isinstance(raw_chunk, dict):
+            continue
+        chunk_id = str(raw_chunk.get("chunk_id") or "").strip()
+        if not chunk_id:
+            continue
+        chunks.append(dict(raw_chunk))
+        if len(chunks) >= limit:
+            break
+    return chunks
+
+
+def _single_paper_resource_refs(
+    *,
+    request: SinglePaperTaskRequest,
+    material: Any,
+    chunks: list[dict[str, Any]],
+) -> list[AgentResourceRef]:
+    """Build bounded refs that an external agent can fetch on demand."""
+
+    refs = [
+        AgentResourceRef(
+            ref_id=f"material:{request.material_id}",
+            kind="material",
+            project_id=request.project_id,
+            title=str(getattr(material, "title", "") or request.material_id)[:500],
+            summary=_material_summary(material),
+            read_endpoint=f"/api/agent-bridge/resource/material:{request.material_id}",
+        )
+    ]
+    for chunk in chunks:
+        chunk_id = str(chunk.get("chunk_id") or "").strip()
+        if not chunk_id:
+            continue
+        refs.append(
+            AgentResourceRef(
+                ref_id=f"chunk:{chunk_id}",
+                kind="chunk",
+                project_id=request.project_id,
+                title=str(chunk.get("title") or getattr(material, "title", "") or request.material_id)[:500],
+                summary=_bounded_inline_text(
+                    str(chunk.get("summary") or chunk.get("content") or ""),
+                    limit=300,
+                ),
+                read_endpoint=f"/api/agent-bridge/resource/chunk:{chunk_id}?project_id={request.project_id}",
+                metadata={
+                    key: chunk[key]
+                    for key in ("material_id", "page", "chunk_index", "chunk_type", "source_relative_path")
+                    if chunk.get(key) is not None
+                },
+            )
+        )
+    return refs
+
+
+def _single_paper_manifest(
+    *,
+    task_id: str,
+    generated_at: str,
+    request: SinglePaperTaskRequest,
+    project: Any,
+    material: Any,
+    metadata: dict[str, Any],
+    source_label: str | None,
+    chunks: list[dict[str, Any]],
+    resource_refs: list[AgentResourceRef],
+    missing_fields: list[str],
+    health_checks: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a JSON-safe task manifest that mirrors the Markdown task."""
+
+    paper_title = str(getattr(material, "title", "") or request.material_id).strip()
+    authors = _metadata_authors(metadata)
+    doi = _metadata_text(metadata, ("doi", "DOI"))
+    publication = _metadata_text(metadata, ("journal", "publicationTitle", "venue", "container-title"))
+    publication_date = _metadata_text(metadata, ("publication_date", "date", "year"))
+    return {
+        "schema_version": SINGLE_PAPER_TASK_SCHEMA_VERSION,
+        "task_id": task_id,
+        "generated_at": generated_at,
+        "sentinel": SINGLE_PAPER_TASK_SENTINEL,
+        "task_goal": request.task_goal,
+        "output_language": request.output_language,
+        "target_document": request.target_document,
+        "project": {
+            "project_id": request.project_id,
+            "title": str(getattr(project, "title", "") or request.project_id),
+        },
+        "paper": {
+            "material_id": request.material_id,
+            "title": paper_title or SINGLE_PAPER_TASK_SENTINEL,
+            "authors": authors or [SINGLE_PAPER_TASK_SENTINEL],
+            "doi": doi or SINGLE_PAPER_TASK_SENTINEL,
+            "publication": publication or SINGLE_PAPER_TASK_SENTINEL,
+            "publication_date": publication_date or SINGLE_PAPER_TASK_SENTINEL,
+            "attachment_or_source": source_label or SINGLE_PAPER_TASK_SENTINEL,
+            "indexed_chunk_count": len(chunks),
+        },
+        "resource_refs": [ref.model_dump(mode="json") for ref in resource_refs],
+        "missing_fields": list(missing_fields),
+        "health_checks": dict(health_checks),
+        "required_output_sections": [
+            "论文元数据与附件健康检查",
+            "研究问题、动机、核心贡献",
+            "方法与实验设计拆解",
+            "关键图表/表格候选与写作价值",
+            "可借鉴写法：引言、方法、实验、图表说明",
+            "局限性、可复现实验线索、可迁移到本项目的写作模板",
+            "Word 草稿结构与导出准备",
+        ],
+    }
+
+
+def _single_paper_task_markdown(manifest: dict[str, Any]) -> str:
+    """Render the dynamic task as Markdown for an external agent job."""
+
+    paper = dict(manifest.get("paper") or {})
+    project = dict(manifest.get("project") or {})
+    resource_refs = [
+        item
+        for item in manifest.get("resource_refs", [])
+        if isinstance(item, dict)
+    ]
+    missing_fields = [str(item) for item in manifest.get("missing_fields", [])]
+    output_sections = [str(item) for item in manifest.get("required_output_sections", [])]
+    resource_lines = [
+        f"- `{ref.get('ref_id')}` ({ref.get('kind')}): {ref.get('read_endpoint') or SINGLE_PAPER_TASK_SENTINEL}"
+        for ref in resource_refs[:30]
+    ]
+    missing_lines = [f"- {item}: {SINGLE_PAPER_TASK_SENTINEL}" for item in missing_fields] or [
+        f"- 无显式缺失字段: {SINGLE_PAPER_TASK_SENTINEL} 不应出现在最终交付中"
+    ]
+    section_lines = [f"{index}. {title}" for index, title in enumerate(output_sections, start=1)]
+    return "\n".join(
+        [
+            "# Scholar AI 单篇论文深度精读任务",
+            "",
+            "## 任务边界",
+            f"- Task ID: `{manifest['task_id']}`",
+            f"- Generated at: `{manifest['generated_at']}`",
+            f"- Project: `{project.get('project_id')}` / {project.get('title')}",
+            f"- Material: `{paper.get('material_id')}`",
+            f"- Goal: {manifest.get('task_goal')}",
+            f"- Output language: `{manifest.get('output_language')}`",
+            f"- Target document: `{manifest.get('target_document')}`",
+            "",
+            "## 论文线索",
+            f"- Title: {paper.get('title')}",
+            f"- Authors: {', '.join(str(item) for item in paper.get('authors', []))}",
+            f"- DOI: {paper.get('doi')}",
+            f"- Publication: {paper.get('publication')}",
+            f"- Publication date: {paper.get('publication_date')}",
+            f"- Attachment/source: {paper.get('attachment_or_source')}",
+            f"- Indexed chunks: {paper.get('indexed_chunk_count')}",
+            "",
+            "## 可读取资源",
+            *(resource_lines or [f"- {SINGLE_PAPER_TASK_SENTINEL}: 当前没有可读取资源，请先扫描项目文件夹。"]),
+            "",
+            "## 缺失字段哨兵",
+            *missing_lines,
+            "",
+            "## 执行步骤",
+            "1. 先用 `literature.agent_resource_read` 读取 material ref；chunk refs 只按需分批读取。",
+            "2. 如果 indexed chunks 为 0，先调用 `literature.project_scan_folder`，不要凭标题臆造全文内容。",
+            "3. 用 `literature.evidence_pack_build` 针对研究问题、方法、实验、图表写法分别取证。",
+            "4. 用 `literature.figures_candidates` / `literature.figures_generate` 只挑能支撑正文论点的图表。",
+            "5. 产出单篇深度总结，所有未知项必须保留 `待补充`，不得静默省略。",
+            "6. Word 前先跑 `literature.academic_writing_lint`；需要 Word 时再调用 `literature.export_docx`。",
+            "7. 只产出 Scholar AI 本地任务、草稿、证据与导出准备，不创建外部 agent skill 包，也不执行外部上传。",
+            "",
+            "## 必交付结构",
+            *section_lines,
+            "",
+            "## 写作约束",
+            "- 引言写法要提炼问题铺垫、研究空白、贡献递进三段。",
+            "- 方法写法要提炼变量、对照组、评价指标、可复现实验条件。",
+            "- 实验写法要区分观察事实、作者解释、你可借鉴的表述模式。",
+            "- 图表写法要说明每张图/表承担的论证功能，而不是只复述标题。",
+            "- 所有引用必须落到 resource ref、page/chunk、figure/table candidate 或明确 `待补充`。",
+        ]
+    )
+
+
+def _single_paper_missing_fields(
+    *,
+    request: SinglePaperTaskRequest,
+    metadata: dict[str, Any],
+    source_label: str | None,
+    chunk_count: int,
+) -> list[str]:
+    """Return explicit missing-field names for sentinel-driven completion."""
+
+    missing: list[str] = []
+    if not _metadata_text(metadata, ("doi", "DOI")):
+        missing.append("paper.doi")
+    if not _metadata_authors(metadata):
+        missing.append("paper.authors")
+    if not source_label:
+        missing.append("paper.attachment_or_source")
+    if chunk_count <= 0:
+        missing.append("paper.indexed_chunks")
+    return missing
+
+
+def _single_paper_source_label(*, metadata: dict[str, Any], chunks: list[dict[str, Any]]) -> str | None:
+    """Return a non-secret attachment/source label for task context."""
+
+    direct = _metadata_text(
+        metadata,
+        (
+            "source_relative_path",
+            "source_path",
+            "attachment_path",
+            "pdf_path",
+            "path",
+            "filename",
+            "file",
+        ),
+    )
+    if direct:
+        return _safe_path_label(direct)
+    for chunk in chunks:
+        source_relative_path = str(chunk.get("source_relative_path") or "").strip()
+        if source_relative_path:
+            return _safe_path_label(source_relative_path)
+    return None
+
+
+def _single_paper_outcome(
+    *,
+    manifest: dict[str, Any],
+    missing_fields: list[str],
+    chunk_count: int,
+    request_created: bool,
+    request_id: str | None,
+) -> ToolOutcome:
+    """Return an actionable outcome for task creation."""
+
+    attempts = [
+        ToolAttempt(
+            stage="material_lookup",
+            status="success",
+            reason="Project material exists and belongs to the selected project.",
+            metadata={
+                "project_id": manifest.get("project", {}).get("project_id"),
+                "material_id": manifest.get("paper", {}).get("material_id"),
+            },
+        ),
+        ToolAttempt(
+            stage="indexed_full_text_check",
+            status="success" if chunk_count > 0 else "blocked",
+            reason=(
+                "Indexed chunks are available for bounded reading."
+                if chunk_count > 0
+                else "No indexed chunks were found for this paper."
+            ),
+            error_class="" if chunk_count > 0 else "ingest_needed",
+            recommendation="" if chunk_count > 0 else "Run literature.project_scan_folder after adding the paper PDF/full text.",
+            metadata={"indexed_chunk_count": chunk_count},
+        ),
+        ToolAttempt(
+            stage="sentinel_check",
+            status="success" if not missing_fields else "degraded",
+            reason=(
+                "No explicit missing fields were detected."
+                if not missing_fields
+                else "Missing fields are exposed with the 待补充 sentinel."
+            ),
+            metadata={"missing_fields": list(missing_fields)},
+        ),
+        ToolAttempt(
+            stage="agent_request",
+            status="success" if request_created else "skipped",
+            reason=(
+                "Runtime-visible agent request was created."
+                if request_created
+                else "Task markdown was generated without creating a runtime job."
+            ),
+            metadata={"request_id": request_id},
+        ),
+    ]
+    if chunk_count <= 0:
+        next_action = ToolNextAction(
+            kind="scan_folder",
+            message="No indexed chunks were found; scan the project source folder after adding the PDF/full text.",
+            tool_name="literature.project_scan_folder",
+            args={"project_id": manifest.get("project", {}).get("project_id")},
+        )
+        status = "blocked"
+        quality = "metadata_only"
+        reason = "Task generated, but full-text reading is blocked until the paper is indexed."
+    elif request_created and request_id:
+        next_action = ToolNextAction(
+            kind="call_tool",
+            message="Poll the runtime-visible agent request in Agent Workspace.",
+            tool_name="literature.agent_request_read",
+            args={"request_id": request_id},
+        )
+        status = "partial" if missing_fields else "success"
+        quality = "partial" if missing_fields else "full"
+        reason = "Task generated and queued as a runtime-visible agent request."
+    else:
+        next_action = ToolNextAction(
+            kind="call_tool",
+            message="Create an agent request from the generated task markdown when ready.",
+            tool_name="literature.agent_request_create",
+            args={"intent": "single_paper_deep_read"},
+        )
+        status = "partial" if missing_fields else "success"
+        quality = "partial" if missing_fields else "full"
+        reason = "Task markdown generated; no runtime agent request was created."
+    return ToolOutcome(
+        status=status,
+        quality=quality,
+        reason=reason,
+        next_action=next_action,
+        attempts=attempts,
+    )
+
+
+def _single_paper_completion_check(
+    request: SinglePaperCompletionCheckRequest,
+) -> SinglePaperCompletionCheckPayload:
+    """Return deterministic completion diagnostics for a single-paper draft."""
+
+    manifest = dict(request.task_manifest)
+    task_id = str(manifest.get("task_id") or "").strip() or None
+    required_sections = _single_paper_required_sections(
+        manifest=manifest,
+        override=request.required_output_sections,
+    )
+    present_sections = _single_paper_present_sections(
+        output_text=request.output_text,
+        required_sections=required_sections,
+    )
+    missing_sections = [section for section in required_sections if section not in present_sections]
+    sentinel_count = request.output_text.count(request.sentinel)
+    evidence_ref_count = _single_paper_count_refs(request.evidence_refs)
+    figure_table_ref_count = _single_paper_count_refs(request.figure_table_refs)
+    target_document = str(manifest.get("target_document") or "").strip()
+    docx_export_ready = bool(request.docx_artifact_path)
+    outcome = _single_paper_completion_outcome(
+        manifest=manifest,
+        missing_sections=missing_sections,
+        sentinel_count=sentinel_count,
+        evidence_ref_count=evidence_ref_count,
+        figure_table_ref_count=figure_table_ref_count,
+        lint_passed=request.lint_passed,
+        target_document=target_document,
+        docx_export_ready=docx_export_ready,
+    )
+    complete = (
+        not missing_sections
+        and sentinel_count == 0
+        and evidence_ref_count > 0
+        and request.lint_passed
+    )
+    return SinglePaperCompletionCheckPayload(
+        task_id=task_id,
+        sentinel=request.sentinel,
+        completion_state="complete" if complete else "incomplete",
+        required_output_sections=required_sections,
+        present_sections=present_sections,
+        missing_sections=missing_sections,
+        sentinel_count=sentinel_count,
+        sentinel_contexts=_single_paper_sentinel_contexts(request.output_text, request.sentinel),
+        evidence_ref_count=evidence_ref_count,
+        figure_table_ref_count=figure_table_ref_count,
+        lint_passed=request.lint_passed,
+        docx_export_ready=docx_export_ready,
+        outcome=outcome,
+    )
+
+
+def _single_paper_required_sections(
+    *,
+    manifest: dict[str, Any],
+    override: list[str] | None,
+) -> list[str]:
+    """Return bounded, de-duplicated required output sections."""
+
+    raw_sections = override if override is not None else manifest.get("required_output_sections", [])
+    if not isinstance(raw_sections, list):
+        raise ValueError("required_output_sections must be a list")
+    sections: list[str] = []
+    seen: set[str] = set()
+    for raw_section in raw_sections:
+        section = _bounded_inline_text(str(raw_section or ""), limit=160)
+        if not section:
+            continue
+        normalized = _single_paper_normalize_heading(section)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        sections.append(section)
+        if len(sections) >= 30:
+            break
+    if not sections:
+        raise ValueError("at least one required output section is required")
+    return sections
+
+
+def _single_paper_present_sections(
+    *,
+    output_text: str,
+    required_sections: list[str],
+) -> list[str]:
+    """Return required sections found as Markdown headings or numbered labels."""
+
+    required_by_norm = {
+        _single_paper_normalize_heading(section): section
+        for section in required_sections
+    }
+    present: list[str] = []
+    seen: set[str] = set()
+    for line in output_text.splitlines():
+        candidate = _single_paper_heading_candidate(line)
+        if not candidate:
+            continue
+        normalized = _single_paper_normalize_heading(candidate)
+        for required_norm, section in required_by_norm.items():
+            if required_norm in seen:
+                continue
+            if normalized == required_norm or normalized.startswith(required_norm):
+                seen.add(required_norm)
+                present.append(section)
+                break
+    return present
+
+
+def _single_paper_heading_candidate(line: str) -> str | None:
+    """Return a possible section title from common Markdown/list line shapes."""
+
+    text = str(line or "").strip()
+    if not text:
+        return None
+    match = re.match(r"^(?:#{1,6}\s+|\d+[.)、]\s+|[-*]\s+)(?P<title>.+?)\s*$", text)
+    if not match:
+        return None
+    title = match.group("title").strip().strip("#").strip()
+    title = re.sub(r"^`+|`+$", "", title).strip()
+    title = re.sub(r"^\*\*|\*\*$", "", title).strip()
+    return title or None
+
+
+def _single_paper_normalize_heading(value: str) -> str:
+    """Normalize section headings without losing Chinese title text."""
+
+    text = re.sub(r"\s+", "", str(value or "").strip().lower())
+    text = re.sub(r"^[`*_#]+|[`*_#]+$", "", text)
+    text = re.sub(r"[:：。.;；]+$", "", text)
+    return text
+
+
+def _single_paper_count_refs(refs: list[dict[str, Any]]) -> int:
+    """Count bounded ref objects that contain a usable identifier or title."""
+
+    count = 0
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        if str(ref.get("ref_id") or ref.get("id") or ref.get("title") or "").strip():
+            count += 1
+    return count
+
+
+def _single_paper_sentinel_contexts(output_text: str, sentinel: str) -> list[str]:
+    """Return short lines that still contain the completion sentinel."""
+
+    contexts: list[str] = []
+    for line in output_text.splitlines():
+        if sentinel not in line:
+            continue
+        contexts.append(_bounded_inline_text(line, limit=240))
+        if len(contexts) >= 10:
+            break
+    return contexts
+
+
+def _single_paper_completion_outcome(
+    *,
+    manifest: dict[str, Any],
+    missing_sections: list[str],
+    sentinel_count: int,
+    evidence_ref_count: int,
+    figure_table_ref_count: int,
+    lint_passed: bool,
+    target_document: str,
+    docx_export_ready: bool,
+) -> ToolOutcome:
+    """Return an actionable outcome for draft-completion validation."""
+
+    project_id = str(dict(manifest.get("project") or {}).get("project_id") or "").strip()
+    attempts = [
+        ToolAttempt(
+            stage="required_sections_check",
+            status="blocked" if missing_sections else "success",
+            reason=(
+                "Required output sections are present."
+                if not missing_sections
+                else "Required output sections are missing."
+            ),
+            error_class="missing_required_sections" if missing_sections else "",
+            recommendation=(
+                "Revise the draft to add every missing section title."
+                if missing_sections
+                else ""
+            ),
+            metadata={"missing_sections": list(missing_sections)},
+        ),
+        ToolAttempt(
+            stage="sentinel_check",
+            status="degraded" if sentinel_count else "success",
+            reason=(
+                "No completion sentinel remains in the draft."
+                if sentinel_count == 0
+                else "The draft still contains 待补充 placeholders."
+            ),
+            error_class="sentinel_remaining" if sentinel_count else "",
+            recommendation=(
+                "Resolve each 待补充 placeholder with evidence or keep the draft marked incomplete."
+                if sentinel_count
+                else ""
+            ),
+            metadata={"sentinel_count": sentinel_count},
+        ),
+        ToolAttempt(
+            stage="evidence_refs_check",
+            status="success" if evidence_ref_count > 0 else "degraded",
+            reason=(
+                "Evidence refs were supplied for the draft."
+                if evidence_ref_count > 0
+                else "No evidence refs were supplied for the draft."
+            ),
+            error_class="" if evidence_ref_count > 0 else "evidence_refs_missing",
+            recommendation=(
+                "Run literature.evidence_pack_build and attach refs before final export."
+                if evidence_ref_count == 0
+                else ""
+            ),
+            metadata={"evidence_ref_count": evidence_ref_count},
+        ),
+        ToolAttempt(
+            stage="figure_table_refs_check",
+            status="success" if figure_table_ref_count > 0 else "skipped",
+            reason=(
+                "Figure/table refs were supplied."
+                if figure_table_ref_count > 0
+                else "No figure/table refs were supplied; this is acceptable only when the paper has no useful figure/table candidate."
+            ),
+            metadata={"figure_table_ref_count": figure_table_ref_count},
+        ),
+        ToolAttempt(
+            stage="academic_writing_lint_check",
+            status="success" if lint_passed else "skipped",
+            reason=(
+                "Academic writing lint was marked as passed."
+                if lint_passed
+                else "Academic writing lint has not been marked as passed."
+            ),
+            error_class="" if lint_passed else "lint_not_run",
+            recommendation=(
+                "Run literature.academic_writing_lint before final Word export."
+                if not lint_passed
+                else ""
+            ),
+        ),
+        ToolAttempt(
+            stage="docx_export_check",
+            status="success" if docx_export_ready else "skipped",
+            reason=(
+                "A DOCX export artifact path was supplied."
+                if docx_export_ready
+                else "No DOCX artifact path was supplied."
+            ),
+            metadata={"target_document": target_document},
+        ),
+    ]
+    if missing_sections:
+        return ToolOutcome(
+            status="blocked",
+            quality="partial",
+            reason="Draft is missing required single-paper deep-read sections.",
+            next_action=ToolNextAction(
+                kind="call_tool",
+                message="Build evidence for the first missing section, then revise the draft.",
+                tool_name="literature.evidence_pack_build",
+                args={"project_id": project_id, "query": missing_sections[0]},
+            ),
+            attempts=attempts,
+        )
+    if sentinel_count > 0:
+        return ToolOutcome(
+            status="partial",
+            quality="partial",
+            reason="Draft structure is present, but 待补充 placeholders remain.",
+            next_action=ToolNextAction(
+                kind="call_tool",
+                message="Fetch evidence for unresolved placeholders before finalizing the draft.",
+                tool_name="literature.evidence_pack_build",
+                args={"project_id": project_id, "query": SINGLE_PAPER_TASK_SENTINEL},
+            ),
+            attempts=attempts,
+        )
+    if evidence_ref_count == 0:
+        return ToolOutcome(
+            status="partial",
+            quality="refs_only",
+            reason="Draft has no attached evidence refs.",
+            next_action=ToolNextAction(
+                kind="call_tool",
+                message="Attach evidence refs before treating the draft as final.",
+                tool_name="literature.evidence_pack_build",
+                args={"project_id": project_id, "query": "single paper deep read evidence"},
+            ),
+            attempts=attempts,
+        )
+    if not lint_passed:
+        return ToolOutcome(
+            status="partial",
+            quality="partial",
+            reason="Draft needs academic writing lint before export.",
+            next_action=ToolNextAction(
+                kind="call_tool",
+                message="Run the academic writing linter before final export.",
+                tool_name="literature.academic_writing_lint",
+                args={"content_type": "single_paper_deep_read"},
+            ),
+            attempts=attempts,
+        )
+    if target_document == "word_draft" and not docx_export_ready:
+        return ToolOutcome(
+            status="success",
+            quality="full",
+            reason="Draft passed completion checks and is ready for optional DOCX export.",
+            next_action=ToolNextAction(
+                kind="call_tool",
+                message="Export DOCX locally if a Word artifact is needed.",
+                tool_name="literature.export_docx",
+                args={"style_profile": "academic"},
+            ),
+            attempts=attempts,
+        )
+    return ToolOutcome(
+        status="success",
+        quality="full",
+        reason="Draft passed completion checks.",
+        attempts=attempts,
+    )
+
+
+def _material_summary(material: Any) -> str:
+    """Return a compact material summary for resource refs."""
+
+    parts = [
+        str(getattr(material, "summary", "") or "").strip(),
+        str(getattr(material, "summary_en", "") or "").strip(),
+    ]
+    focus_points = getattr(material, "focus_points", None)
+    if isinstance(focus_points, list):
+        parts.extend(str(item).strip() for item in focus_points if str(item).strip())
+    text = " | ".join(part for part in parts if part)
+    return _bounded_inline_text(text, limit=2000)
+
+
+def _metadata_text(metadata: dict[str, Any], aliases: tuple[str, ...]) -> str | None:
+    """Return the first non-empty metadata value for known aliases."""
+
+    for alias in aliases:
+        value = metadata.get(alias)
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple)):
+            text = ", ".join(str(item).strip() for item in value if str(item).strip())
+        else:
+            text = str(value).strip()
+        if text:
+            return _bounded_inline_text(text, limit=500)
+    return None
+
+
+def _metadata_authors(metadata: dict[str, Any]) -> list[str]:
+    """Return bounded author labels from Zotero/CSL-style metadata."""
+
+    raw = metadata.get("authors")
+    if raw is None:
+        raw = metadata.get("creators")
+    if isinstance(raw, list):
+        authors: list[str] = []
+        for item in raw:
+            if isinstance(item, dict):
+                name = str(
+                    item.get("name")
+                    or " ".join(
+                        part
+                        for part in [str(item.get("firstName") or "").strip(), str(item.get("lastName") or "").strip()]
+                        if part
+                    )
+                    or item.get("lastName")
+                    or ""
+                ).strip()
+            else:
+                name = str(item or "").strip()
+            if name:
+                authors.append(_bounded_inline_text(name, limit=120))
+            if len(authors) >= 20:
+                break
+        return authors
+    if isinstance(raw, str) and raw.strip():
+        return [_bounded_inline_text(part, limit=120) for part in re.split(r";|,", raw) if part.strip()][:20]
+    return []
+
+
+def _safe_path_label(value: str) -> str:
+    """Return a path label without exposing absolute machine-local roots."""
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if re.match(r"^[A-Za-z]:[\\/]", text) or text.startswith(("/", "\\")):
+        return Path(text).name[:240]
+    return text.replace("\\", "/")[:240]
+
+
+def _bounded_inline_text(value: str, *, limit: int) -> str:
+    """Return single-line bounded text for task manifests and metadata."""
+
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(0, limit - 1)].rstrip()}…"
 
 
 def _agent_result_metadata(

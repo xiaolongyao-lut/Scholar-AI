@@ -14,6 +14,11 @@ from models import (
     EventPayload,
     JobEventSnapshotPayload,
     ArtifactPayload,
+    WritingWorkflowStateRequest,
+    WritingWorkflowStatePayload,
+    MaterialProcessingTaskRequest,
+    MaterialProcessingTaskPayload,
+    ResearchProjectionPayload,
     TimelinePagePayload,
     CheckpointPayload,
     ResumeSessionPayload,
@@ -107,6 +112,89 @@ def _model_to_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
     raise TypeError("payload must serialize to a dict")
+
+
+def _writing_workflow_state_summary(job: Any) -> dict[str, Any]:
+    """Return a compact workflow-state projection for job lists and snapshots."""
+    metadata = _normalize_metadata(job)
+    state = metadata.get("writing_workflow_state")
+    if not isinstance(state, dict):
+        return {}
+    export_manifest = state.get("export_manifest")
+    lint_report = state.get("lint_report")
+    readiness = state.get("readiness")
+    intake = state.get("intake")
+    summary: dict[str, Any] = {
+        "schema_version": state.get("schema_version"),
+        "phase": state.get("phase"),
+        "updated_at": state.get("updated_at"),
+        "readiness": dict(readiness) if isinstance(readiness, dict) else {},
+    }
+    if isinstance(intake, dict):
+        summary["project_id"] = intake.get("project_id")
+        summary["task_type"] = intake.get("task_type")
+    if isinstance(export_manifest, dict):
+        summary["export_format"] = export_manifest.get("format")
+        summary["export_filename"] = export_manifest.get("filename")
+        summary["export_media_type"] = export_manifest.get("media_type")
+    if isinstance(lint_report, dict):
+        summary["lint_report_present"] = bool(lint_report)
+        if isinstance(lint_report.get("passed"), bool):
+            summary["lint_passed"] = lint_report["passed"]
+    return {
+        key: value
+        for key, value in summary.items()
+        if value is not None and value != ""
+    }
+
+
+def _material_processing_task_summary(job: Any) -> dict[str, Any]:
+    """Return compact material-processing task facts for job lists."""
+    metadata = _normalize_metadata(job)
+    task = metadata.get("material_processing_task")
+    if not isinstance(task, dict):
+        return {}
+    request = task.get("request")
+    cache = task.get("cache")
+    result = task.get("result")
+    artifacts = task.get("artifacts")
+    if not isinstance(request, dict):
+        return {}
+    input_ref = request.get("input_ref")
+    page_range = request.get("page_range")
+    summary: dict[str, Any] = {
+        "schema_version": task.get("schema_version"),
+        "status": task.get("status"),
+        "updated_at": task.get("updated_at"),
+        "project_id": request.get("project_id"),
+        "material_id": request.get("material_id"),
+        "processing_mode": request.get("processing_mode"),
+        "output_targets": list(request.get("output_targets") or []),
+        "page_range": dict(page_range) if isinstance(page_range, dict) else {},
+        "cache": dict(cache) if isinstance(cache, dict) else {},
+        "artifact_count": len(artifacts) if isinstance(artifacts, list) else 0,
+    }
+    if isinstance(input_ref, dict):
+        summary["content_digest"] = input_ref.get("content_digest")
+        summary["size_bytes"] = input_ref.get("size_bytes")
+        summary["source_path_label"] = input_ref.get("source_path_label")
+    if isinstance(result, dict):
+        for key in ("chunks", "content_length", "route", "error"):
+            if result.get(key) is not None:
+                summary[key] = result.get(key)
+    return {
+        key: value
+        for key, value in summary.items()
+        if value is not None and value != "" and value != []
+    }
+
+
+def _job_payload(job: Any) -> JobPayload:
+    """Serialize one runtime job with additive UI-safe projections."""
+    payload = _model_to_dict(job.to_dict() if hasattr(job, "to_dict") else job)
+    payload["writing_workflow_state_summary"] = _writing_workflow_state_summary(job)
+    payload["material_processing_task_summary"] = _material_processing_task_summary(job)
+    return JobPayload(**payload)
 
 
 def _coerce_figure_load_limit(value: Any, default: int = 96) -> int:
@@ -609,7 +697,7 @@ async def create_job(request: CreateJobRequest) -> JobPayload:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     
-    return JobPayload(**job.to_dict())
+    return _job_payload(job)
 
 
 @router.get("/jobs", response_model=List[JobPayload])
@@ -652,7 +740,30 @@ async def list_jobs(
             jobs.extend(runtime.list_jobs(session_id=session.session_id, status=parsed_status))
 
     jobs.sort(key=lambda job: job.created_at, reverse=True)
-    return [JobPayload(**job.to_dict()) for job in jobs[:limit]]
+    return [_job_payload(job) for job in jobs[:limit]]
+
+
+@router.get("/research-projection", response_model=ResearchProjectionPayload)
+async def get_research_projection(
+    session_id: str | None = Query(default=None),
+    job_id: str | None = Query(default=None),
+    project_id: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=1000),
+) -> ResearchProjectionPayload:
+    """Return a read-only research object/event projection over runtime state."""
+
+    runtime = get_runtime()
+    try:
+        projection = runtime.build_research_projection(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return ResearchProjectionPayload(**projection)
 
 
 @router.get("/job/{job_id}", response_model=JobPayload)
@@ -662,7 +773,7 @@ async def get_job(job_id: str) -> JobPayload:
     job = runtime.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
-    return JobPayload(**job.to_dict())
+    return _job_payload(job)
 
 
 @router.delete("/job/{job_id}")
@@ -792,7 +903,7 @@ async def get_job_event_snapshot(
     return JobEventSnapshotPayload(
         job_id=job.job_id,
         session_id=job.session_id,
-        job=JobPayload(**job.to_dict()),
+        job=_job_payload(job),
         status=JobStatusPayload(**status),
         events=[EventPayload(**event.to_dict()) for event in page_events],
         next_after_sequence=next_after_sequence,
@@ -810,3 +921,79 @@ async def get_job_artifacts(job_id: str) -> List[ArtifactPayload]:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
     artifacts = runtime.get_job_artifacts(job_id)
     return [ArtifactPayload(**a.to_dict()) for a in artifacts]
+
+
+@router.post("/job/{job_id}/writing-workflow-state", response_model=WritingWorkflowStatePayload)
+async def update_writing_workflow_state(
+    job_id: str,
+    request: WritingWorkflowStateRequest,
+) -> WritingWorkflowStatePayload:
+    """Persist an auditable writing workflow-state snapshot for a runtime job."""
+
+    runtime = get_runtime()
+    try:
+        state = runtime.update_writing_workflow_state(
+            job_id,
+            phase=request.phase,
+            intake=request.intake,
+            evidence_refs=request.evidence_refs,
+            citation_bank=request.citation_bank,
+            lint_report=request.lint_report,
+            export_manifest=request.export_manifest,
+            change_log=request.change_log,
+        )
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return WritingWorkflowStatePayload(**state)
+
+
+@router.get("/job/{job_id}/writing-workflow-state", response_model=WritingWorkflowStatePayload)
+async def get_writing_workflow_state(job_id: str) -> WritingWorkflowStatePayload:
+    """Return the latest writing workflow-state snapshot for a runtime job."""
+
+    runtime = get_runtime()
+    try:
+        state = runtime.get_writing_workflow_state(job_id)
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    if state is None:
+        raise HTTPException(status_code=404, detail=f"Writing workflow state not found: {job_id}")
+    return WritingWorkflowStatePayload(**state)
+
+
+@router.post("/job/{job_id}/material-processing-task", response_model=MaterialProcessingTaskPayload)
+async def update_material_processing_task(
+    job_id: str,
+    request: MaterialProcessingTaskRequest,
+) -> MaterialProcessingTaskPayload:
+    """Persist a versioned material-processing task request for a runtime job."""
+
+    runtime = get_runtime()
+    try:
+        task = runtime.update_material_processing_task(
+            job_id,
+            request=_model_to_dict(request),
+            status="queued",
+            provenance={"source": "runtime_router"},
+        )
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return MaterialProcessingTaskPayload(**task)
+
+
+@router.get("/job/{job_id}/material-processing-task", response_model=MaterialProcessingTaskPayload)
+async def get_material_processing_task(job_id: str) -> MaterialProcessingTaskPayload:
+    """Return the latest material-processing task record for a runtime job."""
+
+    runtime = get_runtime()
+    try:
+        task = runtime.get_material_processing_task(job_id)
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"Material processing task not found: {job_id}")
+    return MaterialProcessingTaskPayload(**task)

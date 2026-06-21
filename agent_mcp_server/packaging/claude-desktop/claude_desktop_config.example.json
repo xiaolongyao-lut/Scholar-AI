@@ -4,6 +4,8 @@
       "command": "powershell",
       "args": [
         "-NoProfile",
+        "-WindowStyle",
+        "Hidden",
         "-ExecutionPolicy",
         "Bypass",
         "-File",

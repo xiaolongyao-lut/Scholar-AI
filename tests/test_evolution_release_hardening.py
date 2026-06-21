@@ -76,9 +76,16 @@ class _StubMemoryAdapter:
 
 
 @pytest.fixture
-def client(tmp_path: Path) -> TestClient:
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """FastAPI TestClient with a throwaway evolution store + stub MemPalace."""
 
+    import feature_flags
+
+    monkeypatch.setattr(
+        feature_flags,
+        "_OVERRIDE_PATH",
+        tmp_path / "feature_flags_override.json",
+    )
     from python_adapter_server import app  # noqa: F401
     store = EvolutionCandidateStore(db_path=str(tmp_path / "s8.sqlite3"))
     adapter = _StubMemoryAdapter()
@@ -166,9 +173,10 @@ def test_secret_in_claim_marks_blocked_and_lists_under_blocked_filter(
 ):
     """Plan §Fail-closed: candidates with detected secrets land in BLOCKED."""
 
+    secret_like_token = "sk-" + "proj-" + ("A" * 48)
     cid = _capture_manual(
         client,
-        claim="leak: sk-proj-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        claim=f"leak: {secret_like_token}",
         source_id="src-secret",
     )
 

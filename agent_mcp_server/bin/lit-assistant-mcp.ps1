@@ -63,6 +63,28 @@ function Test-LoopbackHttpUrl {
     return ($uri.Scheme -in @("http", "https")) -and ($uri.Host -in @("localhost", "127.0.0.1", "::1"))
 }
 
+function Hide-OwnConsoleWindow {
+    if (-not [string]::IsNullOrWhiteSpace($env:LITASSIST_MCP_KEEP_CONSOLE)) {
+        return
+    }
+
+    try {
+        Add-Type -Namespace LitAssistantMcp -Name NativeConsoleWindow -MemberDefinition @"
+[System.Runtime.InteropServices.DllImport("kernel32.dll")]
+public static extern System.IntPtr GetConsoleWindow();
+
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
+"@
+        $consoleWindow = [LitAssistantMcp.NativeConsoleWindow]::GetConsoleWindow()
+        if ($consoleWindow -ne [System.IntPtr]::Zero) {
+            [void][LitAssistantMcp.NativeConsoleWindow]::ShowWindow($consoleWindow, 0)
+        }
+    } catch {
+        return
+    }
+}
+
 function Resolve-IsolatedCapabilityFile {
     param(
         [Parameter(Mandatory = $true)]
@@ -93,11 +115,16 @@ function Resolve-IsolatedCapabilityFile {
     return (Join-Path $capabilityRoot "$safeHost-$($uri.Port).json")
 }
 
+if (-not $SelfTest -and -not $PrintConfig) {
+    Hide-OwnConsoleWindow
+}
+
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-RepositoryRoot -ScriptPath $scriptDirectory
 $pythonExe = Join-Path $repoRoot ".venv-1\Scripts\python.exe"
 $mcpSourceRoot = Join-Path $repoRoot "agent_mcp_server\src"
 $baseUrlWasExplicit = -not [string]::IsNullOrWhiteSpace($env:LITERATURE_ASSISTANT_BASE_URL)
+$allowDesktopAutostart = -not [string]::IsNullOrWhiteSpace($env:LITASSIST_MCP_ALLOW_DESKTOP_AUTOSTART)
 
 if (-not (Test-Path -LiteralPath $pythonExe -PathType Leaf)) {
     throw "Missing Python interpreter: $pythonExe"
@@ -225,6 +252,9 @@ if ([string]::IsNullOrWhiteSpace($env:LITASSIST_MCP_SKIP_BACKEND_AUTOSTART)) {
         )
         if ($ForceLaunch) {
             $attachArgs += "--force-launch"
+        }
+        if (-not $ForceLaunch -and -not $allowDesktopAutostart) {
+            $attachArgs += "--no-launch"
         }
         $attachJson = & $pythonExe @attachArgs 2>$null
         if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($attachJson)) {
