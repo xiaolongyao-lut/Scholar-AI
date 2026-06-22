@@ -586,7 +586,22 @@ describe('AgentWorkspace', () => {
           present_artifacts: [{ kind: 'material_processing_task' }],
           object_ids: ['research_material:1'],
           event_types: ['material.ingest.completed'],
-          ...emptyWorkflowStageRuntimeFacts,
+          diagnostics: {},
+          reproducibility: {
+            cache_decision_record_count: 1,
+            cache_decision_refs: [
+              {
+                ref_type: 'material_processing_cache_decision',
+                ref_id: 'material-cache-decision:fixture-hit',
+                decision: 'hit',
+                policy: 'use',
+                replayable: true,
+                reason: 'Existing artifacts matched C:\\Users\\xiao\\private\\paper.pdf cache.',
+                artifact_family_digest: 'sha256:artifact-family-fixture',
+                has_all_requested_outputs: true,
+              },
+            ],
+          },
           next_actions: [],
           updated_at: '2026-06-21T03:00:00Z',
           gate: {
@@ -992,6 +1007,13 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
     expect(screen.getByText('Export readiness')).toBeInTheDocument();
     expect(screen.getByText('Agent handoff readiness')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Material cache decision records' })).toBeInTheDocument();
+    expect(screen.getByText('Material Cache Decisions')).toBeInTheDocument();
+    expect(screen.getByText('cache decisions 1')).toBeInTheDocument();
+    expect(screen.getByText('material-cache-decision:fixture-hit')).toBeInTheDocument();
+    expect(screen.getByText('hit · use · replayable true · outputs true')).toBeInTheDocument();
+    expect(screen.getByText('sha256:artifact-family-fixture')).toBeInTheDocument();
+    expect(screen.getByText('Existing artifacts matched [redacted-local-path] cache.')).toBeInTheDocument();
     expect(screen.getAllByText('can proceed false').length).toBeGreaterThan(0);
     expect(screen.getAllByText('require ready true').length).toBeGreaterThan(0);
     expect(screen.getAllByText('writing.export_project').length).toBeGreaterThan(0);

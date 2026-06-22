@@ -314,6 +314,11 @@ function readBooleanField(record: Record<string, unknown>, key: string): boolean
   return record[key] === true;
 }
 
+function readOptionalBooleanField(record: Record<string, unknown>, key: string): boolean | null {
+  const value = record[key];
+  return typeof value === 'boolean' ? value : null;
+}
+
 function sanitizeInspectorText(value: string): string {
   return value
     .replace(/[A-Za-z]:\\(?:Users|Documents and Settings)\\[^\s,;'"`<>)]*/g, '[redacted-local-path]')
@@ -660,6 +665,66 @@ function signalCollectionTone(signals: EvidenceIntegritySignal[]): StatusTone {
     return 'warning';
   }
   return signals.length > 0 ? 'info' : 'neutral';
+}
+
+interface MaterialCacheDecisionSummary {
+  stageId: string;
+  stageLabel: string;
+  refId: string;
+  decision: string;
+  policy: string;
+  replayable: boolean | null;
+  reason: string;
+  artifactFamilyDigest: string;
+  hasAllRequestedOutputs: boolean | null;
+}
+
+function materialCacheDecisionRefsForStage(stage: WorkflowPassportStage): MaterialCacheDecisionSummary[] {
+  const refs = stage.reproducibility.cache_decision_refs;
+  if (!Array.isArray(refs)) {
+    return [];
+  }
+  return refs.slice(0, 6).map((item, index) => {
+    const record = isRecord(item) ? item : {};
+    const refId = readTextField(record, 'ref_id') || readTextField(record, 'decision_id') || `cache-decision:${index + 1}`;
+    return {
+      stageId: stage.stage_id,
+      stageLabel: compactStageLabel(stage),
+      refId: sanitizeInspectorText(refId),
+      decision: sanitizeInspectorText(readTextField(record, 'decision') || 'unknown'),
+      policy: sanitizeInspectorText(readTextField(record, 'policy') || 'unknown'),
+      replayable: readOptionalBooleanField(record, 'replayable'),
+      reason: sanitizeInspectorText(readTextField(record, 'reason') || 'reason pending'),
+      artifactFamilyDigest: sanitizeInspectorText(readTextField(record, 'artifact_family_digest') || 'artifact digest pending'),
+      hasAllRequestedOutputs: readOptionalBooleanField(record, 'has_all_requested_outputs'),
+    };
+  });
+}
+
+function materialCacheDecisionRefs(stages: WorkflowPassportStage[]): MaterialCacheDecisionSummary[] {
+  return stages.flatMap(materialCacheDecisionRefsForStage);
+}
+
+function cacheDecisionTone(decision: MaterialCacheDecisionSummary): StatusTone {
+  if (decision.decision === 'invalidated') {
+    return 'danger';
+  }
+  if (decision.decision === 'pending' || decision.replayable === false || decision.hasAllRequestedOutputs === false) {
+    return 'warning';
+  }
+  if (decision.decision === 'hit') {
+    return 'success';
+  }
+  if (decision.decision === 'miss' || decision.decision === 'refresh' || decision.decision === 'bypass') {
+    return 'info';
+  }
+  return 'neutral';
+}
+
+function cacheDecisionSummary(decision: MaterialCacheDecisionSummary): string {
+  const replayable = decision.replayable === null ? 'unknown' : String(decision.replayable);
+  const outputs = decision.hasAllRequestedOutputs === null ? 'unknown' : String(decision.hasAllRequestedOutputs);
+  return `${decision.decision} · ${decision.policy} · replayable ${replayable} · outputs ${outputs}`;
 }
 
 function workflowGateSummary(passport: WorkflowPassportProjection | null): string {
@@ -1430,6 +1495,8 @@ export function ResearchWorkflowSpine({
   const lineageBlocked = (workflowReplayLineage?.blockers.length ?? 0) > 0;
   const lineageUnresolved = (workflowReplayLineage?.unresolved.length ?? 0) > 0;
   const handoffRecoveryBundle = buildHandoffRecoveryBundle(handoffCard, stages);
+  const cacheDecisionRefs = materialCacheDecisionRefs(stages);
+  const visibleCacheDecisionRefs = cacheDecisionRefs.slice(0, isDesktopAcceptance ? 2 : 4);
 
   return (
     <section
@@ -1500,6 +1567,7 @@ export function ResearchWorkflowSpine({
               {visibleStages.map((stage) => {
                 const isCurrent = stage.stage_id === currentStage?.stage_id;
                 const stageSignals = integritySignalsForStage(stage, integritySignals);
+                const stageCacheDecisions = materialCacheDecisionRefsForStage(stage);
                 return (
                   <article
                     key={stage.stage_id}
@@ -1521,6 +1589,11 @@ export function ResearchWorkflowSpine({
                       <StatusPill tone="neutral">artifacts {stage.present_artifacts.length}</StatusPill>
                       <StatusPill tone="neutral">events {stage.event_types.length}</StatusPill>
                       <StatusPill tone={signalCollectionTone(stageSignals)}>integrity links {stageSignals.length}</StatusPill>
+                      {stageCacheDecisions.length > 0 ? (
+                        <StatusPill tone={stageCacheDecisions.some((decision) => decision.replayable) ? 'info' : 'warning'}>
+                          cache decisions {stageCacheDecisions.length}
+                        </StatusPill>
+                      ) : null}
                       {stageSignals[0] ? (
                         <StatusPill tone={gateTone(stageSignals[0].status, stageSignals[0].severity)}>
                           {stageSignals[0].signal_id}
@@ -1532,6 +1605,47 @@ export function ResearchWorkflowSpine({
               })}
             </div>
           )}
+          {cacheDecisionRefs.length > 0 ? (
+            <div
+              className="mt-3 rounded-md border border-outline-variant/35 bg-surface-lowest px-2.5 py-2"
+              role="region"
+              aria-label="Material cache decision records"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <h4 className="truncate font-label text-[11px] font-semibold text-foreground">
+                  Material Cache Decisions
+                </h4>
+                <StatusPill tone="info">records {cacheDecisionRefs.length}</StatusPill>
+              </div>
+              <div className="mt-2 grid gap-2">
+                {visibleCacheDecisionRefs.map((decision) => (
+                  <div
+                    key={`${decision.stageId}:${decision.refId}`}
+                    className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-low px-2 py-2"
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="truncate font-label text-[11px] font-medium text-foreground">
+                        {decision.stageLabel}
+                      </span>
+                      <StatusPill tone={cacheDecisionTone(decision)}>
+                        {decision.decision}
+                      </StatusPill>
+                    </div>
+                    <p className="mt-1 break-words font-mono text-[11px] leading-4 text-foreground/65">
+                      {decision.refId}
+                    </p>
+                    <p className="mt-1 break-words text-[11px] leading-4 text-foreground/55">
+                      {decision.reason}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <StatusPill tone="neutral">{cacheDecisionSummary(decision)}</StatusPill>
+                      <StatusPill tone="neutral">{decision.artifactFamilyDigest}</StatusPill>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="grid min-w-0 gap-2">
