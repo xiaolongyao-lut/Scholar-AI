@@ -326,6 +326,58 @@ export interface WorkflowReplayIndexProjection {
   provenance: Record<string, unknown>;
 }
 
+export type ResearchActionLifecycleStatus =
+  | 'proposed'
+  | 'pending_approval'
+  | 'approved'
+  | 'rejected'
+  | 'blocked'
+  | 'unresolved'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export type ResearchActionLifecycleType =
+  | 'wiki_candidate'
+  | 'graph_patch'
+  | 'export_overwrite'
+  | 'batch_material_reprocess'
+  | 'artifact_export'
+  | 'agent_handoff'
+  | 'approval_gate'
+  | 'unknown';
+
+export interface ResearchActionLifecycleItemProjection {
+  action_uid: string;
+  action_id: string;
+  action_type: ResearchActionLifecycleType;
+  status: ResearchActionLifecycleStatus;
+  project_id: string | null;
+  session_id: string;
+  job_id: string;
+  object_refs: Record<string, unknown>[];
+  approval: Record<string, unknown>;
+  preflight: Record<string, unknown>;
+  gate_refs: Record<string, unknown>[];
+  effect_summary: Record<string, unknown>;
+  effect_refs: Record<string, unknown>[];
+  recovery: Record<string, unknown>;
+  forbidden_actions: string[];
+  provenance: Record<string, unknown>;
+}
+
+export interface ResearchActionLifecycleProjection {
+  schema_version: 'scholar_ai_research_action_lifecycle_v1';
+  generated_at: string;
+  scope: Record<string, unknown>;
+  actions: ResearchActionLifecycleItemProjection[];
+  summary: Record<string, unknown>;
+  blockers: string[];
+  unresolved: string[];
+  resume_probes: Record<string, unknown>[];
+  provenance: Record<string, unknown>;
+}
+
 export type BehaviorEvalSeverity = 'warn' | 'block';
 
 export type BehaviorEvalStatus = 'pass' | 'warn' | 'block' | 'unresolved';
@@ -577,6 +629,23 @@ export async function getWorkflowReplayIndex(opts?: {
       status: opts?.status ?? undefined,
       action_id: opts?.actionId ?? undefined,
       limit: opts?.limit ?? 25,
+    },
+  });
+  return response.data;
+}
+
+export async function getResearchActionLifecycle(opts?: {
+  sessionId?: string | null;
+  jobId?: string | null;
+  projectId?: string | null;
+  limit?: number;
+}): Promise<ResearchActionLifecycleProjection> {
+  const response = await client.get<ResearchActionLifecycleProjection>('/runtime/research-action-lifecycle', {
+    params: {
+      session_id: opts?.sessionId ?? undefined,
+      job_id: opts?.jobId ?? undefined,
+      project_id: opts?.projectId ?? undefined,
+      limit: opts?.limit ?? 50,
     },
   });
   return response.data;

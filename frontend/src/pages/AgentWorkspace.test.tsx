@@ -9,6 +9,7 @@ import {
   getAgentWorkspaceStatus,
   getBehaviorEvalPack,
   getEvidenceIntegrityGate,
+  getResearchActionLifecycle,
   getWorkflowPassport,
   getWorkflowReplayIndex,
   getWorkflowReplayLineage,
@@ -26,6 +27,7 @@ vi.mock('@/services/agentWorkspaceApi', () => ({
   getAgentWorkflowHealth: vi.fn(),
   getBehaviorEvalPack: vi.fn(),
   getEvidenceIntegrityGate: vi.fn(),
+  getResearchActionLifecycle: vi.fn(),
   getWorkflowPassport: vi.fn(),
   getWorkflowReplayIndex: vi.fn(),
   getWorkflowReplayLineage: vi.fn(),
@@ -43,6 +45,7 @@ const mockedGetAgentHandoffCard = vi.mocked(getAgentHandoffCard);
 const mockedGetAgentWorkflowHealth = vi.mocked(getAgentWorkflowHealth);
 const mockedGetBehaviorEvalPack = vi.mocked(getBehaviorEvalPack);
 const mockedGetEvidenceIntegrityGate = vi.mocked(getEvidenceIntegrityGate);
+const mockedGetResearchActionLifecycle = vi.mocked(getResearchActionLifecycle);
 const mockedGetWorkflowPassport = vi.mocked(getWorkflowPassport);
 const mockedGetWorkflowReplayIndex = vi.mocked(getWorkflowReplayIndex);
 const mockedGetWorkflowReplayLineage = vi.mocked(getWorkflowReplayLineage);
@@ -222,6 +225,27 @@ describe('AgentWorkspace', () => {
       blockers: [],
       unresolved: ['Stage is in progress and still needs completion evidence.'],
       provenance: {},
+    });
+    mockedGetResearchActionLifecycle.mockResolvedValue({
+      schema_version: 'scholar_ai_research_action_lifecycle_v1',
+      generated_at: '2026-06-21T01:00:01Z',
+      scope: {},
+      actions: [],
+      summary: {
+        action_count: 0,
+        matching_action_count: 0,
+        matching_job_count: 0,
+        status_counts: {},
+        action_type_counts: {},
+        requires_user_confirmation: false,
+        read_only: true,
+        external_mutation: false,
+        source_material_mutation: false,
+      },
+      blockers: [],
+      unresolved: [],
+      resume_probes: [],
+      provenance: { derived_from: ['runtime.jobs'] },
     });
     mockedGetBehaviorEvalPack.mockResolvedValue({
       schema_version: 'scholar_ai_behavior_eval_pack_v1',
@@ -1025,6 +1049,172 @@ describe('AgentWorkspace', () => {
       blocking_action_boundary: blockingBoundary,
       provenance: { derived_from: ['runtime.workflow_passport'] },
     });
+    mockedGetResearchActionLifecycle.mockResolvedValue({
+      schema_version: 'scholar_ai_research_action_lifecycle_v1',
+      generated_at: '2026-06-21T03:00:04Z',
+      scope: { project_id: 'project-1', limit: 50 },
+      actions: [
+        {
+          action_uid: 'wiki_candidate:job_agent_handoff_1',
+          action_id: 'agent.wiki_candidate',
+          action_type: 'wiki_candidate',
+          status: 'pending_approval',
+          project_id: 'project-1',
+          session_id: 'session_agent_handoff_1',
+          job_id: 'job_agent_handoff_1',
+          object_refs: [
+            { ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1', object_type: 'agent_request' },
+            { ref_type: 'research_object', ref_id: 'research_agent_request:job_agent_handoff_1' },
+          ],
+          approval: {
+            requires_user_confirmation: true,
+            status_counts: { pending: 1 },
+            approval_refs: [
+              {
+                approval_id: 'approval:wiki-graph',
+                status: 'pending',
+                reason: 'Confirm wiki and graph candidates before any write.',
+              },
+            ],
+          },
+          preflight: {
+            present: true,
+            action_id: 'agent.wiki_candidate',
+            required_claim_id: 'handoff_readiness',
+            status: 'blocked',
+            can_proceed: false,
+            refresh_required: false,
+            receipt_refs: [
+              {
+                ref_type: 'preflight_refresh_receipt',
+                ref_id: 'preflight_refresh:test123',
+                job_id: 'job_agent_handoff_1',
+                status: 'blocked',
+                can_proceed: false,
+              },
+            ],
+          },
+          gate_refs: [
+            {
+              ref_type: 'workflow_passport',
+              schema_version: 'scholar_ai_workflow_passport_v1',
+              current_stage_id: 'evidence_pack',
+            },
+            {
+              ref_type: 'evidence_integrity_gate',
+              schema_version: 'scholar_ai_evidence_integrity_gate_v1',
+              status: 'block',
+            },
+          ],
+          effect_summary: {
+            proposed_effect_count: 2,
+            actual_effect_count: 0,
+            external_mutation: false,
+            source_material_mutation: false,
+            requires_user_confirmation: true,
+          },
+          effect_refs: [
+            { ref_type: 'wiki_ref', ref_id: 'wiki:candidate/action-life', title: 'Candidate Wiki' },
+            { ref_type: 'runtime_artifact', ref_id: 'artifact:agent-result' },
+          ],
+          recovery: {
+            read_only: true,
+            resume_probes: [
+              {
+                label: 'Read research action lifecycle',
+                endpoint: '/runtime/research-action-lifecycle',
+                read_only: true,
+              },
+              {
+                label: 'Read workflow passport',
+                endpoint: '/runtime/workflow-passport',
+                read_only: true,
+              },
+            ],
+            next_safe_local_actions: ['Resolve blocker: Pending user confirmation is required.'],
+          },
+          forbidden_actions: [
+            'Do not execute approvals or write wiki/graph changes from the lifecycle projection.',
+            'Do not mutate C:\\Users\\Alice\\private\\paper.pdf from a lifecycle projection.',
+          ],
+          provenance: {
+            derived_from: ['runtime.jobs', 'runtime.approval_requests'],
+            read_only: true,
+          },
+        },
+        {
+          action_uid: 'approval_gate:approval:wiki-graph',
+          action_id: 'agent.approval_gate',
+          action_type: 'approval_gate',
+          status: 'pending_approval',
+          project_id: 'project-1',
+          session_id: 'session_agent_handoff_1',
+          job_id: 'job_agent_handoff_1',
+          object_refs: [{ ref_type: 'research_object', ref_id: 'approval_gate:approval:wiki-graph' }],
+          approval: {
+            requires_user_confirmation: true,
+            status_counts: { pending: 1 },
+            approval_refs: [{ approval_id: 'approval:wiki-graph', status: 'pending' }],
+          },
+          preflight: {
+            present: false,
+            status: 'not_applicable',
+            can_proceed: false,
+            refresh_required: false,
+            receipt_refs: [],
+          },
+          gate_refs: [],
+          effect_summary: {
+            responded: false,
+            requires_user_confirmation: true,
+            external_mutation: false,
+            source_material_mutation: false,
+          },
+          effect_refs: [],
+          recovery: {
+            read_only: true,
+            resume_probes: [
+              {
+                label: 'Read runtime snapshot',
+                endpoint: '/runtime/job/job_agent_handoff_1/snapshot',
+                read_only: true,
+              },
+            ],
+            next_safe_local_actions: ['Resolve blocker: Pending user confirmation is required.'],
+          },
+          forbidden_actions: [
+            'Do not execute approvals or write wiki/graph changes from the lifecycle projection.',
+          ],
+          provenance: { derived_from: ['runtime.approval_requests'], read_only: true },
+        },
+      ],
+      summary: {
+        action_count: 2,
+        matching_action_count: 2,
+        matching_job_count: 1,
+        status_counts: { pending_approval: 2, blocked: 0, unresolved: 0, completed: 0 },
+        action_type_counts: { wiki_candidate: 1, approval_gate: 1 },
+        requires_user_confirmation: true,
+        read_only: true,
+        external_mutation: false,
+        source_material_mutation: false,
+      },
+      blockers: ['Pending user confirmation is required.'],
+      unresolved: [],
+      resume_probes: [
+        {
+          label: 'Read research action lifecycle',
+          endpoint: '/runtime/research-action-lifecycle',
+          read_only: true,
+        },
+        {
+          label: 'Read evidence integrity gate',
+          endpoint: '/runtime/evidence-integrity-gate',
+          read_only: true,
+        },
+      ],
+      provenance: { derived_from: ['runtime.jobs'], read_only: true },
+    });
     mockedGetAgentHandoffCard.mockResolvedValue({
       schema_version: 'scholar_ai_agent_handoff_card_v1',
       generated_at: '2026-06-21T03:00:00Z',
@@ -1260,6 +1450,7 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('Evidence Integrity Gate')).toBeInTheDocument();
     expect(screen.getByText('Readiness Claims')).toBeInTheDocument();
     expect(screen.getByText('Command Preflight')).toBeInTheDocument();
+    expect(screen.getByText('Research Action Lifecycle')).toBeInTheDocument();
     expect(screen.getByText('Replay Lineage')).toBeInTheDocument();
     expect(screen.getByText('Replay Index')).toBeInTheDocument();
     expect(screen.getByText('Behavior Eval Pack')).toBeInTheDocument();
@@ -1278,6 +1469,27 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('require ready true').length).toBeGreaterThan(0);
     expect(screen.getAllByText('writing.export_project').length).toBeGreaterThan(0);
     expect(screen.getAllByText('receipt preflight_refresh:test123').length).toBeGreaterThan(0);
+    const lifecycleRegion = screen.getByRole('region', { name: 'Research action lifecycle' });
+    expect(within(lifecycleRegion).getByText('Research Action Lifecycle')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('2 actions · pending 2 · block 0 · unresolved 0 · completed 0')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('pending approval 2')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('blocked actions 0')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('confirmation true')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('agent.wiki_candidate')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('wiki_candidate:job_agent_handoff_1')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getAllByText('pending_approval').length).toBeGreaterThan(0);
+    expect(within(lifecycleRegion).getAllByText('confirmation true · pending 1 · approved 0 · rejected 0').length).toBeGreaterThan(0);
+    expect(within(lifecycleRegion).getByText('blocked · can proceed false · refresh false · receipts 1')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('external mutation false · source mutation false · proposed 2')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getAllByText('recovery read-only true').length).toBeGreaterThan(0);
+    expect(within(lifecycleRegion).getByText('forbidden 2')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('runtime_job:job_agent_handoff_1')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('wiki_ref:wiki:candidate/action-life')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getByText('Read research action lifecycle · read-only true')).toBeInTheDocument();
+    expect(within(lifecycleRegion).getAllByText('Resolve blocker: Pending user confirmation is required.').length).toBeGreaterThan(0);
+    expect(within(lifecycleRegion).getAllByText('Do not execute approvals or write wiki/graph changes from the lifecycle projection.').length).toBeGreaterThan(0);
+    expect(within(lifecycleRegion).getByText('Do not mutate [redacted-local-path] from a lifecycle projection.')).toBeInTheDocument();
     expect(screen.getByText('preflight_refresh:test123 · digests 4 · block 1 · unresolved 1')).toBeInTheDocument();
     expect(await screen.findByText('2 receipts · latest blocked · block 1 · unresolved 1')).toBeInTheDocument();
     expect(screen.getByText('Latest replay receipt reports 1 blocking checks.')).toBeInTheDocument();
@@ -1359,6 +1571,7 @@ describe('AgentWorkspace', () => {
       expect(mockedGetWorkflowReplayLineage).toHaveBeenCalledWith('job_agent_handoff_1', { limit: 12 });
     });
     expect(mockedGetBehaviorEvalPack).toHaveBeenCalledWith({ includeCases: true });
+    expect(mockedGetResearchActionLifecycle).toHaveBeenCalledWith({ limit: 50 });
     expect(await screen.findByText('in_progress · refs 2 · probes 3 · replay 2')).toBeInTheDocument();
     expect(screen.getByText('preflight_refresh:test123 · job_agent_handoff_1 blocked · index 2 · read-only true')).toBeInTheDocument();
     const handoffRecoveryRegion = screen.getByRole('region', { name: 'Agent handoff recovery bundle' });

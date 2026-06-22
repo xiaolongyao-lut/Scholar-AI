@@ -25,6 +25,7 @@ import {
   getAgentWorkspaceStatus,
   getBehaviorEvalPack,
   getEvidenceIntegrityGate,
+  getResearchActionLifecycle,
   getWorkflowPassport,
   getWorkflowReplayIndex,
   getWorkflowReplayLineage,
@@ -43,6 +44,8 @@ import {
   type BlockingActionBoundarySignalRef,
   type EvidenceIntegrityGateProjection,
   type EvidenceIntegritySignal,
+  type ResearchActionLifecycleItemProjection,
+  type ResearchActionLifecycleProjection,
   type WorkflowActionPreflightProjection,
   type RuntimeJobsStatus,
   type WorkflowReadinessClaimsProjection,
@@ -779,6 +782,128 @@ function handoffSummary(card: AgentHandoffCardProjection | null): string {
   const index = isRecord(recovery?.index) ? recovery.index : {};
   const matchingJobs = readNumberField(index, 'matching_job_count');
   return `${card.status} · refs ${card.resource_refs.length} · probes ${card.resume_probes.length} · replay ${matchingJobs}`;
+}
+
+function lifecycleTone(status: string | null | undefined): StatusTone {
+  if (status === 'blocked' || status === 'failed' || status === 'rejected') {
+    return 'danger';
+  }
+  if (status === 'pending_approval' || status === 'unresolved') {
+    return 'warning';
+  }
+  if (status === 'approved' || status === 'completed') {
+    return 'success';
+  }
+  if (status === 'proposed') {
+    return 'info';
+  }
+  return 'neutral';
+}
+
+function lifecycleSummary(lifecycle: ResearchActionLifecycleProjection | null): string {
+  if (!lifecycle) {
+    return 'lifecycle 未读取';
+  }
+  const statusCounts = readRecordField(lifecycle.summary, 'status_counts');
+  const blocked = readNumberField(statusCounts, 'blocked');
+  const pending = readNumberField(statusCounts, 'pending_approval');
+  const unresolved = readNumberField(statusCounts, 'unresolved');
+  const completed = readNumberField(statusCounts, 'completed');
+  return `${lifecycle.actions.length} actions · pending ${pending} · block ${blocked} · unresolved ${unresolved} · completed ${completed}`;
+}
+
+function lifecyclePrimaryMessage(lifecycle: ResearchActionLifecycleProjection | null): string {
+  if (!lifecycle) {
+    return 'Research Action Lifecycle 暂未读取；执行、批准或写入前仍需刷新只读投影。';
+  }
+  return sanitizeInspectorText(firstNonEmptyText(
+    [
+      lifecycle.blockers[0],
+      lifecycle.unresolved[0],
+      lifecycle.actions[0]?.recovery && isRecord(lifecycle.actions[0].recovery)
+        ? readTextArray(lifecycle.actions[0].recovery.next_safe_local_actions)[0]
+        : null,
+      'Research Action Lifecycle 已读取，当前仅展示只读动作、审批、效果和恢复探针。',
+    ],
+    'Research Action Lifecycle 已读取。',
+  ));
+}
+
+function lifecycleActionLabel(action: ResearchActionLifecycleItemProjection): string {
+  return sanitizeInspectorText(action.action_id || action.action_uid || action.action_type);
+}
+
+function lifecycleActionEffectLabel(action: ResearchActionLifecycleItemProjection): string {
+  const summary = isRecord(action.effect_summary) ? action.effect_summary : {};
+  const externalMutation = readOptionalBooleanField(summary, 'external_mutation');
+  const sourceMutation = readOptionalBooleanField(summary, 'source_material_mutation');
+  const proposed = readNumberField(summary, 'proposed_effect_count');
+  const actual = readNumberField(summary, 'actual_effect_count');
+  const parts = [
+    externalMutation === null ? null : `external mutation ${String(externalMutation)}`,
+    sourceMutation === null ? null : `source mutation ${String(sourceMutation)}`,
+    proposed > 0 ? `proposed ${proposed}` : null,
+    actual > 0 ? `actual ${actual}` : null,
+  ].filter((value): value is string => value !== null);
+  return parts.length > 0 ? parts.join(' · ') : 'effect boundary read-only';
+}
+
+function lifecycleActionPreflightLabel(action: ResearchActionLifecycleItemProjection): string {
+  const preflight = isRecord(action.preflight) ? action.preflight : {};
+  const status = sanitizeInspectorText(readTextField(preflight, 'status') || 'missing');
+  const canProceed = readOptionalBooleanField(preflight, 'can_proceed');
+  const refreshRequired = readOptionalBooleanField(preflight, 'refresh_required');
+  const receiptRefs = Array.isArray(preflight.receipt_refs) ? preflight.receipt_refs.length : 0;
+  return `${status} · can proceed ${canProceed === null ? 'unknown' : String(canProceed)} · refresh ${refreshRequired === null ? 'unknown' : String(refreshRequired)} · receipts ${receiptRefs}`;
+}
+
+function lifecycleActionApprovalLabel(action: ResearchActionLifecycleItemProjection): string {
+  const approval = isRecord(action.approval) ? action.approval : {};
+  const requires = readOptionalBooleanField(approval, 'requires_user_confirmation');
+  const statusCounts = readRecordField(approval, 'status_counts');
+  const pending = readNumberField(statusCounts, 'pending');
+  const approved = readNumberField(statusCounts, 'approved');
+  const rejected = readNumberField(statusCounts, 'rejected');
+  return `confirmation ${requires === null ? 'unknown' : String(requires)} · pending ${pending} · approved ${approved} · rejected ${rejected}`;
+}
+
+function readTextArray(value: unknown, maxItems = 6): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .slice(0, maxItems)
+    .map((item) => sanitizeInspectorText(String(item ?? '').trim()))
+    .filter((item) => item.length > 0);
+}
+
+function lifecycleProbeLabel(value: unknown, index: number): string {
+  const record = isRecord(value) ? value : {};
+  const label = sanitizeInspectorText(
+    readTextField(record, 'label')
+      || readTextField(record, 'name')
+      || readTextField(record, 'endpoint')
+      || `probe ${index + 1}`,
+  );
+  const readOnly = record.read_only === true ? 'true' : 'unknown';
+  return `${label} · read-only ${readOnly}`;
+}
+
+function lifecycleRefLabel(value: unknown, index: number): string {
+  const record = isRecord(value) ? value : {};
+  const type = sanitizeInspectorText(
+    readTextField(record, 'ref_type')
+      || readTextField(record, 'object_type')
+      || readTextField(record, 'kind')
+      || 'ref',
+  );
+  const id = sanitizeInspectorText(
+    readTextField(record, 'ref_id')
+      || readTextField(record, 'id')
+      || readTextField(record, 'artifact_id')
+      || `ref:${index + 1}`,
+  );
+  return id.startsWith(`${type}:`) ? id : `${type}:${id}`;
 }
 
 function handoffReplayRecoverySummary(card: AgentHandoffCardProjection | null): string {
@@ -1597,6 +1722,7 @@ export function ResearchWorkflowSpine({
   loading,
   passport,
   integrityGate,
+  actionLifecycle,
   handoffCard,
   actionPreflight,
   workflowReplayIndex,
@@ -1608,6 +1734,7 @@ export function ResearchWorkflowSpine({
   loading: boolean;
   passport: WorkflowPassportProjection | null;
   integrityGate: EvidenceIntegrityGateProjection | null;
+  actionLifecycle: ResearchActionLifecycleProjection | null;
   handoffCard: AgentHandoffCardProjection | null;
   actionPreflight: WorkflowActionPreflightProjection | null;
   workflowReplayIndex: WorkflowReplayIndexProjection | null;
@@ -1635,6 +1762,13 @@ export function ResearchWorkflowSpine({
   const behaviorEvalUnresolvedSignals = behaviorEvalSignals.filter((signal) => signal.status === 'unresolved');
   const handoffBlocked = (handoffCard?.blockers.length ?? 0) > 0;
   const handoffUnresolved = (handoffCard?.unresolved.length ?? 0) > 0;
+  const lifecycleActions = actionLifecycle?.actions ?? [];
+  const visibleLifecycleActions = lifecycleActions.slice(0, isDesktopAcceptance ? 2 : 4);
+  const lifecycleStatusCounts = actionLifecycle ? readRecordField(actionLifecycle.summary, 'status_counts') : {};
+  const lifecycleBlockedCount = readNumberField(lifecycleStatusCounts, 'blocked') + readNumberField(lifecycleStatusCounts, 'failed');
+  const lifecyclePendingCount = readNumberField(lifecycleStatusCounts, 'pending_approval');
+  const lifecycleUnresolvedCount = readNumberField(lifecycleStatusCounts, 'unresolved');
+  const lifecycleNeedsConfirmation = actionLifecycle?.summary.requires_user_confirmation === true;
   const readinessClaims = workflowReadinessClaims(integrityGate, handoffCard);
   const visibleReadinessClaims = readinessClaims?.claims.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
   const blockingBoundary = workflowBlockingActionBoundary(integrityGate, readinessClaims, actionPreflight);
@@ -1717,6 +1851,12 @@ export function ResearchWorkflowSpine({
           <StatusPill tone={behaviorEvalBlockingSignals.length > 0 ? 'danger' : behaviorEvalSignals.length > 0 ? 'warning' : 'neutral'}>
             behavior gate {behaviorEvalSignals.length}
           </StatusPill>
+          <StatusPill tone={lifecycleBlockedCount > 0 ? 'danger' : lifecyclePendingCount > 0 || lifecycleUnresolvedCount > 0 ? 'warning' : actionLifecycle ? 'info' : 'neutral'}>
+            lifecycle {actionLifecycle ? actionLifecycle.actions.length : '未读取'}
+          </StatusPill>
+          {lifecycleNeedsConfirmation ? (
+            <StatusPill tone="warning">confirmation required</StatusPill>
+          ) : null}
         </div>
       </div>
 
@@ -2025,6 +2165,125 @@ export function ResearchWorkflowSpine({
               {actionPreflight?.refresh_receipt_id ? <StatusPill tone="info">receipt {actionPreflight.refresh_receipt_id}</StatusPill> : null}
               {actionPreflight && preflightUnresolved ? <StatusPill tone="warning">needs gate proof</StatusPill> : null}
             </div>
+          </article>
+
+          <article
+            className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3"
+            role="region"
+            aria-label="Research action lifecycle"
+          >
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Research Action Lifecycle</h3>
+              <StatusPill tone={lifecycleBlockedCount > 0 ? 'danger' : lifecyclePendingCount > 0 || lifecycleUnresolvedCount > 0 ? 'warning' : actionLifecycle ? 'info' : 'neutral'}>
+                {actionLifecycle ? `${actionLifecycle.actions.length} actions` : '未读取'}
+              </StatusPill>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+              {lifecyclePrimaryMessage(actionLifecycle)}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone="neutral">{lifecycleSummary(actionLifecycle)}</StatusPill>
+              <StatusPill tone={lifecyclePendingCount > 0 ? 'warning' : 'neutral'}>pending approval {lifecyclePendingCount}</StatusPill>
+              <StatusPill tone={lifecycleBlockedCount > 0 ? 'danger' : 'neutral'}>blocked actions {lifecycleBlockedCount}</StatusPill>
+              <StatusPill tone={lifecycleUnresolvedCount > 0 ? 'warning' : 'neutral'}>unresolved actions {lifecycleUnresolvedCount}</StatusPill>
+              <StatusPill tone={lifecycleNeedsConfirmation ? 'warning' : actionLifecycle ? 'success' : 'neutral'}>
+                confirmation {actionLifecycle ? String(lifecycleNeedsConfirmation) : 'unknown'}
+              </StatusPill>
+              <StatusPill tone={actionLifecycle?.summary.read_only === true ? 'success' : 'neutral'}>
+                read-only {actionLifecycle?.summary.read_only === true ? 'true' : 'unknown'}
+              </StatusPill>
+            </div>
+
+            {visibleLifecycleActions.length === 0 ? (
+              <p className="mt-3 break-words rounded-md border border-outline-variant/25 bg-surface-lowest px-2.5 py-2 text-[11px] leading-4 text-foreground/50">
+                {loading ? '正在读取 action lifecycle。' : '尚未发现可审计 action lifecycle。'}
+              </p>
+            ) : (
+              <div className="mt-3 grid gap-2">
+                {visibleLifecycleActions.map((action) => {
+                  const recovery = isRecord(action.recovery) ? action.recovery : {};
+                  const nextActions = readTextArray(recovery.next_safe_local_actions, 3);
+                  const recoveryProbes = Array.isArray(recovery.resume_probes) ? recovery.resume_probes.slice(0, 4) : [];
+                  const objectRefs = action.object_refs.slice(0, 4).map(lifecycleRefLabel);
+                  const effectRefs = action.effect_refs.slice(0, 4).map(lifecycleRefLabel);
+                  return (
+                    <div
+                      key={action.action_uid}
+                      className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2.5 py-2"
+                    >
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-label text-[11px] font-medium text-foreground">
+                            {lifecycleActionLabel(action)}
+                          </p>
+                          <p className="mt-0.5 break-words font-mono text-[11px] leading-4 text-foreground/50">
+                            {sanitizeInspectorText(action.action_uid)}
+                          </p>
+                        </div>
+                        <StatusPill tone={lifecycleTone(action.status)}>
+                          {action.status}
+                        </StatusPill>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <StatusPill tone="neutral">{action.action_type}</StatusPill>
+                        <StatusPill tone={lifecycleTone(action.status)}>{lifecycleActionApprovalLabel(action)}</StatusPill>
+                        <StatusPill tone={lifecycleTone(readTextField(action.preflight, 'status'))}>
+                          {lifecycleActionPreflightLabel(action)}
+                        </StatusPill>
+                        <StatusPill tone={lifecycleActionEffectLabel(action).includes('true') ? 'warning' : 'success'}>
+                          {lifecycleActionEffectLabel(action)}
+                        </StatusPill>
+                        <StatusPill tone={recovery.read_only === true ? 'success' : 'neutral'}>
+                          recovery read-only {recovery.read_only === true ? 'true' : 'unknown'}
+                        </StatusPill>
+                        <StatusPill tone={action.forbidden_actions.length > 0 ? 'warning' : 'neutral'}>
+                          forbidden {action.forbidden_actions.length}
+                        </StatusPill>
+                      </div>
+
+                      <div className="mt-2 grid gap-2 md:grid-cols-2">
+                        <div className="min-w-0">
+                          <h4 className="font-label text-[11px] font-semibold text-foreground/45">Object / Effect refs</h4>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {objectRefs.length === 0 && effectRefs.length === 0 ? (
+                              <StatusPill tone="neutral">refs pending</StatusPill>
+                            ) : [...objectRefs, ...effectRefs].map((ref) => (
+                              <StatusPill key={ref} tone="info">{ref}</StatusPill>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-label text-[11px] font-semibold text-foreground/45">Recovery probes</h4>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {recoveryProbes.length === 0 ? (
+                              <StatusPill tone="neutral">probe list pending</StatusPill>
+                            ) : recoveryProbes.map((probe, index) => (
+                              <StatusPill key={`${action.action_uid}:probe:${index}`} tone="neutral">
+                                {lifecycleProbeLabel(probe, index)}
+                              </StatusPill>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {nextActions.length > 0 ? (
+                        <p className="mt-2 break-words text-[11px] leading-4 text-foreground/55">
+                          {nextActions[0]}
+                        </p>
+                      ) : null}
+                      {action.forbidden_actions.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {action.forbidden_actions.slice(0, isDesktopAcceptance ? 1 : 3).map((item) => (
+                            <StatusPill key={item} tone="warning">{sanitizeInspectorText(item)}</StatusPill>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </article>
 
           <article
@@ -2620,6 +2879,7 @@ export function AgentWorkspace() {
   const [wikiReview, setWikiReview] = useState<WikiReviewListModel | null>(null);
   const [workflowPassport, setWorkflowPassport] = useState<WorkflowPassportProjection | null>(null);
   const [integrityGate, setIntegrityGate] = useState<EvidenceIntegrityGateProjection | null>(null);
+  const [actionLifecycle, setActionLifecycle] = useState<ResearchActionLifecycleProjection | null>(null);
   const [handoffCard, setHandoffCard] = useState<AgentHandoffCardProjection | null>(null);
   const [workflowReplayIndex, setWorkflowReplayIndex] = useState<WorkflowReplayIndexProjection | null>(null);
   const [workflowReplayLineage, setWorkflowReplayLineage] = useState<WorkflowReplayLineageProjection | null>(null);
@@ -2636,7 +2896,7 @@ export function AgentWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const [next, bridge, runtimeJobs, workflowHealth, zotero, review, passport, gate, replayIndex, behaviorEval] = await Promise.all([
+      const [next, bridge, runtimeJobs, workflowHealth, zotero, review, passport, gate, lifecycle, replayIndex, behaviorEval] = await Promise.all([
         getAgentWorkspaceStatus(),
         getAgentBridgeStatus({ limit: 50 }).catch(() => null),
         listRuntimeJobs({ limit: 100 }).catch(() => null),
@@ -2645,6 +2905,7 @@ export function AgentWorkspace() {
         getWikiReview().catch(() => null),
         getWorkflowPassport({ limit: 500 }).catch(() => null),
         getEvidenceIntegrityGate({ limit: 500 }).catch(() => null),
+        getResearchActionLifecycle({ limit: 50 }).catch(() => null),
         getWorkflowReplayIndex({ limit: 25 }).catch(() => null),
         getBehaviorEvalPack({ includeCases: true }).catch(() => null),
       ]);
@@ -2656,6 +2917,7 @@ export function AgentWorkspace() {
       setWikiReview(review);
       setWorkflowPassport(passport);
       setIntegrityGate(gate);
+      setActionLifecycle(lifecycle);
       setWorkflowReplayIndex(replayIndex);
       setBehaviorEvalPack(behaviorEval);
       setSelectedArtifactPath((current) => {
@@ -2688,6 +2950,7 @@ export function AgentWorkspace() {
       setWikiReview(null);
       setWorkflowPassport(null);
       setIntegrityGate(null);
+      setActionLifecycle(null);
       setHandoffCard(null);
       setWorkflowReplayIndex(null);
       setWorkflowReplayLineage(null);
@@ -2828,6 +3091,7 @@ export function AgentWorkspace() {
           loading={loading}
           passport={workflowPassport}
           integrityGate={integrityGate}
+          actionLifecycle={actionLifecycle}
           handoffCard={handoffCard}
           actionPreflight={selectedActionPreflight}
           workflowReplayIndex={workflowReplayIndex}

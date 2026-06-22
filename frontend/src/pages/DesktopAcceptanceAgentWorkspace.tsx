@@ -6,10 +6,10 @@ import type {
   AgentHandoffCardProjection,
   AgentBridgeStatus,
   AgentWorkflowHealthCheck,
-  AgentWorkspaceAuditRecord,
   AgentWorkspaceStatus,
   BehaviorEvalPackProjection,
   EvidenceIntegrityGateProjection,
+  ResearchActionLifecycleProjection,
   RuntimeJobsStatus,
   WorkflowActionPreflightProjection,
   WorkflowPassportProjection,
@@ -436,6 +436,92 @@ const ACCEPTANCE_HANDOFF_CARD: AgentHandoffCardProjection = {
   provenance: { derived_from: ['runtime.job', 'runtime.workflow_passport'] },
 };
 
+const ACCEPTANCE_ACTION_LIFECYCLE: ResearchActionLifecycleProjection = {
+  schema_version: 'scholar_ai_research_action_lifecycle_v1',
+  generated_at: '2026-06-21T04:01:05.000Z',
+  scope: { project_id: 'desktop-acceptance', limit: 50 },
+  actions: [
+    {
+      action_uid: 'export_overwrite:job_export_acceptance',
+      action_id: 'writing.export_project',
+      action_type: 'export_overwrite',
+      status: 'blocked',
+      project_id: 'desktop-acceptance',
+      session_id: 'session_export_acceptance',
+      job_id: 'job_export_acceptance',
+      object_refs: [
+        { ref_type: 'runtime_job', ref_id: 'job_export_acceptance', object_type: 'artifact_export' },
+        { ref_type: 'research_object', ref_id: 'research_export:job_export_acceptance' },
+      ],
+      approval: {
+        requires_user_confirmation: true,
+        status_counts: { pending: 1 },
+        approval_refs: [{ approval_id: 'approval:desktop-export', status: 'pending' }],
+      },
+      preflight: { ...ACCEPTANCE_EXPORT_PREFLIGHT },
+      gate_refs: [
+        {
+          ref_type: 'workflow_passport',
+          schema_version: 'scholar_ai_workflow_passport_v1',
+          current_stage_id: 'evidence_pack',
+        },
+        {
+          ref_type: 'evidence_integrity_gate',
+          schema_version: 'scholar_ai_evidence_integrity_gate_v1',
+          status: 'block',
+        },
+      ],
+      effect_summary: {
+        proposed_effect_count: 1,
+        actual_effect_count: 0,
+        external_mutation: false,
+        source_material_mutation: false,
+        requires_user_confirmation: true,
+      },
+      effect_refs: [{ ref_type: 'runtime_artifact', ref_id: 'artifact:desktop-export-draft' }],
+      recovery: {
+        read_only: true,
+        resume_probes: [
+          {
+            label: 'Read research action lifecycle',
+            endpoint: '/runtime/research-action-lifecycle',
+            read_only: true,
+          },
+          {
+            label: 'Read action preflight',
+            endpoint: '/runtime/workflow-action-preflight',
+            read_only: true,
+          },
+        ],
+        next_safe_local_actions: ['Resolve unsupported citation anchors before export.'],
+      },
+      forbidden_actions: ['Do not approve export overwrite while integrity checks are blocked.'],
+      provenance: { derived_from: ['runtime.jobs', 'runtime.action_preflight'], read_only: true },
+    },
+  ],
+  summary: {
+    action_count: 1,
+    matching_action_count: 1,
+    matching_job_count: 1,
+    status_counts: { blocked: 1, pending_approval: 0, unresolved: 0, completed: 0 },
+    action_type_counts: { export_overwrite: 1 },
+    requires_user_confirmation: true,
+    read_only: true,
+    external_mutation: false,
+    source_material_mutation: false,
+  },
+  blockers: ['Unsupported citation anchors block export readiness.'],
+  unresolved: [],
+  resume_probes: [
+    {
+      label: 'Read research action lifecycle',
+      endpoint: '/runtime/research-action-lifecycle',
+      read_only: true,
+    },
+  ],
+  provenance: { derived_from: ['runtime.jobs'], read_only: true },
+};
+
 const ACCEPTANCE_BEHAVIOR_EVAL_PACK: BehaviorEvalPackProjection = {
   schema_version: 'scholar_ai_behavior_eval_pack_v1',
   generated_at: '2026-06-21T04:00:00.000Z',
@@ -494,6 +580,7 @@ export function DesktopAcceptanceAgentWorkspace() {
           loading={false}
           passport={ACCEPTANCE_WORKFLOW_PASSPORT}
           integrityGate={ACCEPTANCE_INTEGRITY_GATE}
+          actionLifecycle={ACCEPTANCE_ACTION_LIFECYCLE}
           handoffCard={ACCEPTANCE_HANDOFF_CARD}
           actionPreflight={ACCEPTANCE_EXPORT_PREFLIGHT}
           workflowReplayIndex={null}

@@ -16544,6 +16544,214 @@
         "title": "RerankProbeResult",
         "type": "object"
       },
+      "ResearchActionLifecycleItemPayload": {
+        "description": "One read-only action lifecycle row for auditable research workflow effects.\n\nArgs:\n    action_uid: Stable lifecycle-row id derived from local runtime evidence.\n    action_id: Domain action name, such as ``agent.wiki_candidate``.\n    action_type: Coarse action family used by UI and MCP clients.\n    status: Lifecycle state derived from approval, preflight, and job state.\n    project_id: Optional Scholar AI project scope.\n    session_id: Runtime session that owns the action evidence.\n    job_id: Runtime job that owns the action evidence.\n    object_refs: Bounded research object refs affected by the action.\n    approval: Approval request status and user-confirmation facts.\n    preflight: Freshness and blocking facts from action preflight receipts.\n    gate_refs: Workflow Passport and Evidence Integrity Gate refs.\n    effect_summary: Expected/actual local effects without executing actions.\n    effect_refs: Bounded artifact/wiki/graph/export refs created or proposed.\n    recovery: Safe read-only probes and next local checks for this action.\n    forbidden_actions: Mutations that remain outside this read-only boundary.\n    provenance: Runtime sources used to derive the row.",
+        "properties": {
+          "action_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Action Id",
+            "type": "string"
+          },
+          "action_type": {
+            "default": "unknown",
+            "enum": [
+              "wiki_candidate",
+              "graph_patch",
+              "export_overwrite",
+              "batch_material_reprocess",
+              "artifact_export",
+              "agent_handoff",
+              "approval_gate",
+              "unknown"
+            ],
+            "title": "Action Type",
+            "type": "string"
+          },
+          "action_uid": {
+            "maxLength": 220,
+            "minLength": 1,
+            "title": "Action Uid",
+            "type": "string"
+          },
+          "approval": {
+            "additionalProperties": true,
+            "title": "Approval",
+            "type": "object"
+          },
+          "effect_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 24,
+            "title": "Effect Refs",
+            "type": "array"
+          },
+          "effect_summary": {
+            "additionalProperties": true,
+            "title": "Effect Summary",
+            "type": "object"
+          },
+          "forbidden_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Forbidden Actions",
+            "type": "array"
+          },
+          "gate_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 16,
+            "title": "Gate Refs",
+            "type": "array"
+          },
+          "job_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Job Id",
+            "type": "string"
+          },
+          "object_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 24,
+            "title": "Object Refs",
+            "type": "array"
+          },
+          "preflight": {
+            "additionalProperties": true,
+            "title": "Preflight",
+            "type": "object"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "recovery": {
+            "additionalProperties": true,
+            "title": "Recovery",
+            "type": "object"
+          },
+          "session_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "proposed",
+            "enum": [
+              "proposed",
+              "pending_approval",
+              "approved",
+              "rejected",
+              "blocked",
+              "unresolved",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action_uid",
+          "action_id",
+          "session_id",
+          "job_id"
+        ],
+        "title": "ResearchActionLifecycleItemPayload",
+        "type": "object"
+      },
+      "ResearchActionLifecyclePayload": {
+        "description": "Read-only projection over proposed, approved, blocked, and completed actions.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this projection.\n    scope: Runtime filters used to derive lifecycle rows.\n    actions: Bounded action rows sorted by blocking priority and recency.\n    summary: Aggregate counts and read-only guarantees.\n    blockers: Blocking messages that stop action or readiness claims.\n    unresolved: Review/offline checks that remain visibly unresolved.\n    resume_probes: Safe local GET probes for resuming action review.\n    provenance: Runtime projections and mature patterns used to derive rows.",
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchActionLifecycleItemPayload"
+            },
+            "maxItems": 100,
+            "title": "Actions",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Blockers",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "resume_probes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 12,
+            "title": "Resume Probes",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "scholar_ai_research_action_lifecycle_v1",
+            "default": "scholar_ai_research_action_lifecycle_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "title": "Scope",
+            "type": "object"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Unresolved",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at"
+        ],
+        "title": "ResearchActionLifecyclePayload",
+        "type": "object"
+      },
       "ResearchEventPayload": {
         "description": "CloudEvents/PROV-inspired event projection for research objects.",
         "properties": {
@@ -39694,6 +39902,100 @@
           }
         },
         "summary": "List Jobs",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/runtime/research-action-lifecycle": {
+      "get": {
+        "description": "Return read-only action, approval, preflight, and effect lifecycle rows.",
+        "operationId": "get_runtime_research_action_lifecycle",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchActionLifecyclePayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Research Action Lifecycle",
         "tags": [
           "Runtime"
         ]

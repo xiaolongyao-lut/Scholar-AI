@@ -5944,6 +5944,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/research-action-lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Research Action Lifecycle
+         * @description Return read-only action, approval, preflight, and effect lifecycle rows.
+         */
+        get: operations["get_runtime_research_action_lifecycle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/research-projection": {
         parameters: {
             query?: never;
@@ -14137,6 +14157,133 @@ export interface components {
              * @default 0
              */
             status: number;
+        };
+        /**
+         * ResearchActionLifecycleItemPayload
+         * @description One read-only action lifecycle row for auditable research workflow effects.
+         *
+         *     Args:
+         *         action_uid: Stable lifecycle-row id derived from local runtime evidence.
+         *         action_id: Domain action name, such as ``agent.wiki_candidate``.
+         *         action_type: Coarse action family used by UI and MCP clients.
+         *         status: Lifecycle state derived from approval, preflight, and job state.
+         *         project_id: Optional Scholar AI project scope.
+         *         session_id: Runtime session that owns the action evidence.
+         *         job_id: Runtime job that owns the action evidence.
+         *         object_refs: Bounded research object refs affected by the action.
+         *         approval: Approval request status and user-confirmation facts.
+         *         preflight: Freshness and blocking facts from action preflight receipts.
+         *         gate_refs: Workflow Passport and Evidence Integrity Gate refs.
+         *         effect_summary: Expected/actual local effects without executing actions.
+         *         effect_refs: Bounded artifact/wiki/graph/export refs created or proposed.
+         *         recovery: Safe read-only probes and next local checks for this action.
+         *         forbidden_actions: Mutations that remain outside this read-only boundary.
+         *         provenance: Runtime sources used to derive the row.
+         */
+        ResearchActionLifecycleItemPayload: {
+            /** Action Id */
+            action_id: string;
+            /**
+             * Action Type
+             * @default unknown
+             * @enum {string}
+             */
+            action_type: "wiki_candidate" | "graph_patch" | "export_overwrite" | "batch_material_reprocess" | "artifact_export" | "agent_handoff" | "approval_gate" | "unknown";
+            /** Action Uid */
+            action_uid: string;
+            /** Approval */
+            approval?: {
+                [key: string]: unknown;
+            };
+            /** Effect Refs */
+            effect_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Effect Summary */
+            effect_summary?: {
+                [key: string]: unknown;
+            };
+            /** Forbidden Actions */
+            forbidden_actions?: string[];
+            /** Gate Refs */
+            gate_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Job Id */
+            job_id: string;
+            /** Object Refs */
+            object_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Preflight */
+            preflight?: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id?: string | null;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Recovery */
+            recovery?: {
+                [key: string]: unknown;
+            };
+            /** Session Id */
+            session_id: string;
+            /**
+             * Status
+             * @default proposed
+             * @enum {string}
+             */
+            status: "proposed" | "pending_approval" | "approved" | "rejected" | "blocked" | "unresolved" | "completed" | "failed" | "cancelled";
+        };
+        /**
+         * ResearchActionLifecyclePayload
+         * @description Read-only projection over proposed, approved, blocked, and completed actions.
+         *
+         *     Args:
+         *         schema_version: Versioned additive API contract.
+         *         generated_at: UTC generation time for this projection.
+         *         scope: Runtime filters used to derive lifecycle rows.
+         *         actions: Bounded action rows sorted by blocking priority and recency.
+         *         summary: Aggregate counts and read-only guarantees.
+         *         blockers: Blocking messages that stop action or readiness claims.
+         *         unresolved: Review/offline checks that remain visibly unresolved.
+         *         resume_probes: Safe local GET probes for resuming action review.
+         *         provenance: Runtime projections and mature patterns used to derive rows.
+         */
+        ResearchActionLifecyclePayload: {
+            /** Actions */
+            actions?: components["schemas"]["ResearchActionLifecycleItemPayload"][];
+            /** Blockers */
+            blockers?: string[];
+            /** Generated At */
+            generated_at: string;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Resume Probes */
+            resume_probes?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Schema Version
+             * @default scholar_ai_research_action_lifecycle_v1
+             * @constant
+             */
+            schema_version: "scholar_ai_research_action_lifecycle_v1";
+            /** Scope */
+            scope?: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /** Unresolved */
+            unresolved?: string[];
         };
         /**
          * ResearchEventPayload
@@ -28094,6 +28241,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobPayload"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_research_action_lifecycle: {
+        parameters: {
+            query?: {
+                session_id?: string | null;
+                job_id?: string | null;
+                project_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchActionLifecyclePayload"];
                 };
             };
             /** @description Validation Error */
