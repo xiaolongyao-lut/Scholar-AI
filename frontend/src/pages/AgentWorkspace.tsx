@@ -310,6 +310,10 @@ function readTextField(record: Record<string, unknown>, key: string): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function readBooleanField(record: Record<string, unknown>, key: string): boolean {
+  return record[key] === true;
+}
+
 function sanitizeInspectorText(value: string): string {
   return value
     .replace(/[A-Za-z]:\\(?:Users|Documents and Settings)\\[^\s,;'"`<>)]*/g, '[redacted-local-path]')
@@ -693,6 +697,105 @@ function handoffReplayRecoverySummary(card: AgentHandoffCardProjection | null): 
   const latestStatus = readTextField(highest, 'latest_status') || readTextField(currentReceipt, 'status') || 'unknown';
   const matchingJobs = readNumberField(index, 'matching_job_count');
   return `${receiptId} · ${jobId} ${latestStatus} · index ${matchingJobs} · read-only ${recovery.read_only ? 'true' : 'false'}`;
+}
+
+interface HandoffRecoveryBundle {
+  stageLabel: string;
+  primaryIssue: string;
+  attemptLabel: string;
+  receiptLabel: string;
+  attemptMetrics: string[];
+  resourceRefs: string[];
+  replayProbeLabels: string[];
+  safeProbeLabels: string[];
+  forbiddenActions: string[];
+  mutationBoundary: string;
+  recoveryRequired: boolean;
+  readOnly: boolean;
+}
+
+function handoffRefLabel(value: unknown, index: number): string {
+  const record = isRecord(value) ? value : {};
+  const kind = sanitizeInspectorText(readTextField(record, 'kind') || readTextField(record, 'ref_type') || 'ref');
+  const rawId = sanitizeInspectorText(
+    readTextField(record, 'ref_id')
+      || readTextField(record, 'id')
+      || readTextField(record, 'material_id')
+      || `ref:${index + 1}`,
+  );
+  return rawId.startsWith(`${kind}:`) ? rawId : `${kind}:${rawId}`;
+}
+
+function handoffProbeLabel(value: unknown, index: number): string {
+  const record = isRecord(value) ? value : {};
+  return sanitizeInspectorText(readTextField(record, 'label') || readTextField(record, 'name') || `probe ${index + 1}`);
+}
+
+function handoffStageLabel(
+  card: AgentHandoffCardProjection,
+  stages: WorkflowPassportStage[],
+): string {
+  const stageId = card.current_stage_id?.trim() || '';
+  const stage = stages.find((item) => item.stage_id === stageId);
+  if (stage) {
+    return compactStageLabel(stage);
+  }
+  return stageId || 'stage pending';
+}
+
+function buildHandoffRecoveryBundle(
+  card: AgentHandoffCardProjection | null,
+  stages: WorkflowPassportStage[],
+): HandoffRecoveryBundle | null {
+  if (!card) {
+    return null;
+  }
+  const recovery = card.replay_recovery;
+  const highest = isRecord(recovery?.highest_priority_attempt) ? recovery.highest_priority_attempt : {};
+  const currentReceipt = isRecord(recovery?.current_receipt) ? recovery.current_receipt : {};
+  const jobId = readTextField(highest, 'job_id') || card.job_id;
+  const latestStatus = readTextField(highest, 'latest_status') || readTextField(currentReceipt, 'status') || card.status;
+  const claimId = readTextField(highest, 'latest_required_claim_id') || card.action_preflight?.required_claim_id || 'claim pending';
+  const receiptId = readTextField(highest, 'latest_receipt_id') || readTextField(currentReceipt, 'receipt_id') || card.action_preflight?.refresh_receipt_id || 'receipt pending';
+  const recoveryPriority = readNumberField(highest, 'recovery_priority');
+  const primaryIssue = firstNonEmptyText(
+    [
+      card.blockers[0],
+      card.unresolved[0],
+      card.action_preflight?.blockers[0],
+      card.action_preflight?.unresolved[0],
+    ],
+    'No blocker recorded; rerun read-only probes before any mutating action.',
+  );
+  const replayProbeLabels = (recovery?.resume_probes ?? [])
+    .slice(0, 3)
+    .map(handoffProbeLabel);
+  const safeProbeLabels = card.resume_probes
+    .slice(0, 4)
+    .map(handoffProbeLabel);
+  const resourceRefs = card.resource_refs
+    .slice(0, 5)
+    .map(handoffRefLabel);
+  const sourceMutation = recovery?.source_material_mutation === true;
+  const externalMutation = recovery?.external_mutation === true;
+  return {
+    stageLabel: handoffStageLabel(card, stages),
+    primaryIssue: sanitizeInspectorText(primaryIssue),
+    attemptLabel: `${sanitizeInspectorText(jobId)} · ${sanitizeInspectorText(latestStatus)}`,
+    receiptLabel: `receipt ${sanitizeInspectorText(receiptId)}`,
+    attemptMetrics: [
+      `claim ${sanitizeInspectorText(claimId)}`,
+      `priority ${recoveryPriority}`,
+      `read-only ${readBooleanField(highest, 'read_only') || recovery?.read_only === true ? 'true' : 'unknown'}`,
+    ],
+    resourceRefs,
+    replayProbeLabels,
+    safeProbeLabels,
+    forbiddenActions: card.forbidden_actions.slice(0, 4).map(sanitizeInspectorText),
+    mutationBoundary: `source mutation ${sourceMutation ? 'true' : 'false'} · external mutation ${externalMutation ? 'true' : 'false'}`,
+    recoveryRequired: recovery?.recovery_required === true,
+    readOnly: recovery?.read_only === true,
+  };
 }
 
 function isWorkflowReadinessClaimsProjection(value: unknown): value is WorkflowReadinessClaimsProjection {
@@ -1326,6 +1429,7 @@ export function ResearchWorkflowSpine({
   const replayIndexUnresolved = (workflowReplayIndex?.unresolved.length ?? 0) > 0;
   const lineageBlocked = (workflowReplayLineage?.blockers.length ?? 0) > 0;
   const lineageUnresolved = (workflowReplayLineage?.unresolved.length ?? 0) > 0;
+  const handoffRecoveryBundle = buildHandoffRecoveryBundle(handoffCard, stages);
 
   return (
     <section
@@ -1725,6 +1829,97 @@ export function ResearchWorkflowSpine({
                 {preflightReceiptSummary(actionPreflight)}
               </StatusPill>
             </div>
+            {handoffRecoveryBundle ? (
+              <div
+                className="mt-3 rounded-md border border-outline-variant/35 bg-surface-lowest px-2.5 py-2"
+                role="region"
+                aria-label="Agent handoff recovery bundle"
+              >
+                <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0">
+                    <h4 className="font-label text-[11px] font-semibold text-foreground">
+                      Agent Handoff Recovery Bundle
+                    </h4>
+                    <p className="mt-1 break-words text-[11px] leading-4 text-foreground/60">
+                      {handoffRecoveryBundle.primaryIssue}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-1.5">
+                    <StatusPill tone={handoffRecoveryBundle.recoveryRequired ? 'warning' : 'info'}>
+                      recovery {handoffRecoveryBundle.recoveryRequired ? 'required' : 'optional'}
+                    </StatusPill>
+                    <StatusPill tone={handoffRecoveryBundle.readOnly ? 'success' : 'warning'}>
+                      read-only {handoffRecoveryBundle.readOnly ? 'true' : 'unknown'}
+                    </StatusPill>
+                  </div>
+                </div>
+
+                <div className="mt-2 grid gap-2 md:grid-cols-3">
+                  <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-low px-2 py-2">
+                    <h5 className="font-label text-[11px] font-semibold text-foreground/45">Current Stage</h5>
+                    <p className="mt-1 break-words font-label text-[11px] leading-4 text-foreground">
+                      {handoffRecoveryBundle.stageLabel}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <StatusPill tone="neutral">{handoffRecoveryBundle.receiptLabel}</StatusPill>
+                      {handoffRecoveryBundle.attemptMetrics.map((metric) => (
+                        <StatusPill key={metric} tone="neutral">{metric}</StatusPill>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-low px-2 py-2">
+                    <h5 className="font-label text-[11px] font-semibold text-foreground/45">Highest Priority Attempt</h5>
+                    <p className="mt-1 break-words font-mono text-[11px] leading-4 text-foreground/65">
+                      {handoffRecoveryBundle.attemptLabel}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {handoffRecoveryBundle.resourceRefs.length === 0 ? (
+                        <StatusPill tone="neutral">resource refs none</StatusPill>
+                      ) : handoffRecoveryBundle.resourceRefs.map((ref) => (
+                        <StatusPill key={ref} tone="info">{ref}</StatusPill>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-low px-2 py-2">
+                    <h5 className="font-label text-[11px] font-semibold text-foreground/45">Recovery Boundary</h5>
+                    <p className="mt-1 break-words font-mono text-[11px] leading-4 text-foreground/65">
+                      {handoffRecoveryBundle.mutationBoundary}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <StatusPill tone="neutral">safe probes {handoffRecoveryBundle.safeProbeLabels.length}</StatusPill>
+                      <StatusPill tone="neutral">replay probes {handoffRecoveryBundle.replayProbeLabels.length}</StatusPill>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <div className="min-w-0">
+                    <h5 className="font-label text-[11px] font-semibold text-foreground/45">Next Safe Local Probes</h5>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {[...handoffRecoveryBundle.safeProbeLabels, ...handoffRecoveryBundle.replayProbeLabels].length === 0 ? (
+                        <StatusPill tone="neutral">probe list pending</StatusPill>
+                      ) : [...handoffRecoveryBundle.safeProbeLabels, ...handoffRecoveryBundle.replayProbeLabels]
+                        .slice(0, 6)
+                        .map((probe) => (
+                          <StatusPill key={probe} tone="neutral">{probe}</StatusPill>
+                        ))}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <h5 className="font-label text-[11px] font-semibold text-foreground/45">Do Not Do</h5>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {handoffRecoveryBundle.forbiddenActions.length === 0 ? (
+                        <StatusPill tone="neutral">forbidden actions pending</StatusPill>
+                      ) : handoffRecoveryBundle.forbiddenActions.map((action) => (
+                        <StatusPill key={action} tone="warning">{action}</StatusPill>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </article>
         </div>
       </div>

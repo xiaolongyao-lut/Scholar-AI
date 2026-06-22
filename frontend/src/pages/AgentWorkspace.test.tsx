@@ -832,10 +832,20 @@ describe('AgentWorkspace', () => {
         source_material_mutation: false,
         external_mutation: false,
       },
-      resource_refs: [{ ref_id: 'material:1', kind: 'material' }],
+      resource_refs: [
+        { ref_id: 'material:1', kind: 'material' },
+        { ref_id: 'C:\\Users\\xiao\\private\\paper.pdf', kind: 'source_path' },
+      ],
       artifacts: [],
-      resume_probes: [{ label: 'Read workflow passport' }, { label: 'Read evidence integrity gate' }],
-      forbidden_actions: ['Do not treat unresolved integrity checks as passed or verified.'],
+      resume_probes: [
+        { label: 'Read workflow passport' },
+        { label: 'Read evidence integrity gate' },
+        { label: 'Inspect local file C:\\Users\\xiao\\private\\paper.pdf before mutation' },
+      ],
+      forbidden_actions: [
+        'Do not treat unresolved integrity checks as passed or verified.',
+        'Do not mutate C:\\Users\\xiao\\private\\paper.pdf from a handoff card.',
+      ],
       resume_prompt: 'Read /runtime/workflow-passport before mutating local files.',
       provenance: { derived_from: ['runtime.job'] },
     });
@@ -1016,8 +1026,29 @@ describe('AgentWorkspace', () => {
       expect(mockedGetWorkflowReplayLineage).toHaveBeenCalledWith('job_agent_handoff_1', { limit: 12 });
     });
     expect(mockedGetBehaviorEvalPack).toHaveBeenCalledWith({ includeCases: true });
-    expect(await screen.findByText('in_progress · refs 1 · probes 2 · replay 2')).toBeInTheDocument();
+    expect(await screen.findByText('in_progress · refs 2 · probes 3 · replay 2')).toBeInTheDocument();
     expect(screen.getByText('preflight_refresh:test123 · job_agent_handoff_1 blocked · index 2 · read-only true')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Agent handoff recovery bundle' })).toBeInTheDocument();
+    expect(screen.getByText('Agent Handoff Recovery Bundle')).toBeInTheDocument();
+    expect(screen.getByText('recovery required')).toBeInTheDocument();
+    expect(screen.getAllByText('read-only true').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('receipt preflight_refresh:test123').length).toBeGreaterThan(0);
+    expect(screen.getByText('claim handoff_readiness')).toBeInTheDocument();
+    expect(screen.getByText('priority 160')).toBeInTheDocument();
+    expect(screen.getByText('job_agent_handoff_1 · blocked')).toBeInTheDocument();
+    expect(screen.getByText('material:1')).toBeInTheDocument();
+    expect(screen.getByText('source_path:[redacted-local-path]')).toBeInTheDocument();
+    expect(screen.getByText('source mutation false · external mutation false')).toBeInTheDocument();
+    expect(screen.getByText('safe probes 3')).toBeInTheDocument();
+    expect(screen.getByText('replay probes 1')).toBeInTheDocument();
+    expect(screen.getByText('Read workflow passport')).toBeInTheDocument();
+    expect(screen.getByText('Read evidence integrity gate')).toBeInTheDocument();
+    expect(screen.getByText('Read workflow replay lineage')).toBeInTheDocument();
+    expect(screen.getByText('Inspect local file [redacted-local-path] before mutation')).toBeInTheDocument();
+    expect(screen.getByText('Do not treat unresolved integrity checks as passed or verified.')).toBeInTheDocument();
+    expect(screen.getByText('Do not mutate [redacted-local-path] from a handoff card.')).toBeInTheDocument();
+    expect(screen.queryByText(/C:\\Users\\xiao\\private\\paper\.pdf/)).not.toBeInTheDocument();
     expect(screen.queryByText(/\/runtime\/workflow-passport/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^integrity 通过$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Export readiness ready$/)).not.toBeInTheDocument();
