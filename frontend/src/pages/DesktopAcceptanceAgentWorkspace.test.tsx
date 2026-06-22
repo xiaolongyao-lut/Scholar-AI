@@ -25,8 +25,8 @@ describe('DesktopAcceptanceAgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getAllByText('docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json').length).toBeGreaterThan(1);
-    expect(within(workspaceStateRegion).getByText('goal-state 54 rows · proved 52 · incomplete 1 · out-of-scope 1 · latest N46-desktop-dirty-workspace-state-visibility')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('checkpoint 20260622-232824-n46-desktop-dirty-state-visibility')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal-state 56 rows · proved 54 · incomplete 1 · out-of-scope 1 · latest N48-post-n47-requirement-evidence-closeout')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('checkpoint 20260622-235229-n48-requirement-evidence-closeout')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText(/C:\\Users\\xiao\\/)).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: '研究流程主干' })).toHaveAttribute('data-density', 'desktop-acceptance');
     expect(screen.getByRole('heading', { name: '研究流程' })).toBeInTheDocument();

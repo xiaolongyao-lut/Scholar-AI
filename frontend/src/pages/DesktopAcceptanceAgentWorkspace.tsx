@@ -95,13 +95,13 @@ const ACCEPTANCE_WORKSPACE_STATE = {
   goal_state: {
     available: true,
     path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
-    updated_at: '2026-06-22T23:32:35+08:00',
-    checkpoint_id: '20260622-232824-n46-desktop-dirty-state-visibility',
-    requirement_count: 54,
-    proved_count: 52,
+    updated_at: '2026-06-22T23:56:58+08:00',
+    checkpoint_id: '20260622-235229-n48-requirement-evidence-closeout',
+    requirement_count: 56,
+    proved_count: 54,
     incomplete_count: 1,
     out_of_scope_count: 1,
-    latest_requirement_id: 'N46-desktop-dirty-workspace-state-visibility',
+    latest_requirement_id: 'N48-post-n47-requirement-evidence-closeout',
     next_authorized_local_actions: [
       'Create a rollback checkpoint and search mature references before nontrivial edits.',
     ],
