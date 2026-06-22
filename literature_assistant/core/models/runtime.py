@@ -577,6 +577,131 @@ class EvidenceIntegrityGatePayload(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class BehaviorEvalCasePayload(BaseModel):
+    """One deterministic behavior-eval case in the local MCP/agent suite.
+
+    Args:
+        case_id: Stable case id used in run records.
+        category: Research workflow risk area covered by the case.
+        severity: Expected actionability when the red flag appears.
+        objective: Behavior invariant the local evaluator protects.
+        red_flags: Observable failure shapes the case should catch.
+        pass_criteria: Deterministic criterion used by the evaluator.
+    """
+
+    case_id: str = Field(min_length=1, max_length=160)
+    category: str = Field(min_length=1, max_length=120)
+    severity: Literal["warn", "block"]
+    objective: str = Field(min_length=1, max_length=600)
+    red_flags: List[str] = Field(default_factory=list, max_length=12)
+    pass_criteria: str = Field(min_length=1, max_length=800)
+
+
+class BehaviorEvalFindingPayload(BaseModel):
+    """One red-flag finding emitted by a deterministic behavior evaluator.
+
+    Args:
+        finding_id: Stable finding id scoped by case and category.
+        case_id: Behavior eval case that emitted this finding.
+        category: Research workflow risk area covered by the finding.
+        severity: Blocking or warning severity for workflow handoff.
+        message: Bounded explanation of the behavior risk.
+        evidence: Redacted diagnostic evidence, never raw secrets or full text.
+        next_actions: Local repair or review actions for this finding.
+    """
+
+    finding_id: str = Field(min_length=1, max_length=220)
+    case_id: str = Field(min_length=1, max_length=160)
+    category: str = Field(min_length=1, max_length=120)
+    severity: Literal["warn", "block"]
+    message: str = Field(min_length=1, max_length=700)
+    evidence: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
+    next_actions: List[str] = Field(default_factory=list, max_length=8)
+
+
+class BehaviorEvalResultPayload(BaseModel):
+    """One behavior-eval observation result.
+
+    Args:
+        case_id: Evaluated case id or ad-hoc observation marker.
+        observation_id: Stable bounded observation id.
+        evaluation_goal: Whether the run expects canary red flags or safe behavior.
+        behavior_status: Aggregate behavior result for the observation.
+        structural_status: Canary structural result for evaluator health.
+        red_flag_detected: Whether any red-flag finding was emitted.
+        finding_count: Number of findings attached to the observation.
+        findings: Redacted finding details.
+    """
+
+    case_id: str = Field(min_length=1, max_length=160)
+    observation_id: str = Field(min_length=1, max_length=160)
+    evaluation_goal: Literal["red_flag_detected", "behavior_safe"]
+    behavior_status: Literal["pass", "warn", "block", "unresolved"]
+    structural_status: Literal["pass", "fail", "not_applicable"]
+    red_flag_detected: bool
+    finding_count: int = Field(ge=0)
+    findings: List[BehaviorEvalFindingPayload] = Field(default_factory=list, max_length=32)
+
+
+class BehaviorEvalSummaryPayload(BaseModel):
+    """Aggregate deterministic behavior-eval status.
+
+    Args:
+        case_count: Number of behavior cases registered in the suite.
+        observation_count: Number of observations evaluated in the run.
+        red_flag_count: Total findings emitted across observations.
+        block_count: Observations whose highest severity is block.
+        warn_count: Observations whose highest severity is warn.
+        unresolved_count: Observations with insufficient behavior signal.
+        structural_status: Canary structural health of the suite.
+        behavior_status: Aggregate behavior status across observations.
+        structural_note: Bounded explanation of structural-status semantics.
+    """
+
+    case_count: int = Field(ge=0)
+    observation_count: int = Field(ge=0)
+    red_flag_count: int = Field(ge=0)
+    block_count: int = Field(ge=0)
+    warn_count: int = Field(ge=0)
+    unresolved_count: int = Field(ge=0)
+    structural_status: Literal["pass", "fail", "not_applicable"]
+    behavior_status: Literal["pass", "warn", "block", "unresolved"]
+    structural_note: str = Field(min_length=1, max_length=400)
+
+
+class BehaviorEvalPackPayload(BaseModel):
+    """Read-only local behavior-eval pack for MCP/agent workflow red flags.
+
+    Args:
+        schema_version: Versioned additive API contract.
+        generated_at: UTC generation time for the local eval run.
+        mode: Canary or supplied-observation mode.
+        summary: Aggregate structural and behavior status.
+        results: Bounded per-observation eval results.
+        blockers: Unique block-level messages that should stop overclaims.
+        warnings: Unique warning messages for bounded follow-up.
+        next_actions: Local repair or review actions suggested by findings.
+        provenance: Local evaluator provenance and no-network guarantees.
+        cases: Optional case manifest when requested by the caller.
+        run_record: Optional local artifact pointer when a separate MCP tool
+            explicitly persists a run; this read-only route does not write one.
+    """
+
+    schema_version: Literal["scholar_ai_behavior_eval_pack_v1"] = (
+        "scholar_ai_behavior_eval_pack_v1"
+    )
+    generated_at: str
+    mode: Literal["canary", "observations"]
+    summary: BehaviorEvalSummaryPayload
+    results: List[BehaviorEvalResultPayload] = Field(default_factory=list, max_length=100)
+    blockers: List[str] = Field(default_factory=list, max_length=16)
+    warnings: List[str] = Field(default_factory=list, max_length=16)
+    next_actions: List[str] = Field(default_factory=list, max_length=16)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+    cases: List[BehaviorEvalCasePayload] = Field(default_factory=list, max_length=32)
+    run_record: Dict[str, Any] = Field(default_factory=dict)
+
+
 class PreflightRefreshReceiptPayload(BaseModel):
     """Replay receipt for refreshed action-preflight workflow projections.
 

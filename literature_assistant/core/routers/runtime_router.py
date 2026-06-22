@@ -3,6 +3,8 @@
 
 import asyncio
 import logging
+import sys
+from pathlib import Path
 from typing import Any, List
 from fastapi import APIRouter, HTTPException, Query
 from models import (
@@ -21,6 +23,7 @@ from models import (
     ResearchProjectionPayload,
     WorkflowPassportPayload,
     EvidenceIntegrityGatePayload,
+    BehaviorEvalPackPayload,
     AgentHandoffCardPayload,
     PreflightRefreshReceiptPayload,
     WorkflowReplayLineagePayload,
@@ -35,6 +38,8 @@ from models import (
 logger = logging.getLogger("RuntimeRouter")
 router = APIRouter(prefix="/runtime", tags=["Runtime"])
 _FIGURE_LOADER_VERSION = 3
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_MCP_SRC_ROOT = _REPO_ROOT / "agent_mcp_server" / "src"
 
 
 def get_runtime():
@@ -150,6 +155,37 @@ def _blocked_workflow_claims(reason: str) -> dict[str, Any]:
         },
         "provenance": {"derived_from": ["runtime.router_fallback"]},
     }
+
+
+def _ensure_agent_mcp_path() -> None:
+    """Expose the local MCP evaluator without importing external reference code."""
+
+    if not _MCP_SRC_ROOT.is_dir():
+        raise RuntimeError("agent_mcp_server/src is missing")
+    src = str(_MCP_SRC_ROOT)
+    if src not in sys.path:
+        sys.path.insert(0, src)
+
+
+def _build_behavior_eval_pack_payload(*, include_cases: bool) -> dict[str, Any]:
+    """Build a read-only deterministic behavior-eval projection for REST callers."""
+
+    _ensure_agent_mcp_path()
+    from lit_assistant_mcp.behavior_eval import build_behavior_eval_pack
+
+    payload = build_behavior_eval_pack(observations=None, include_cases=include_cases)
+    payload["run_record"] = {}
+    provenance = dict(payload.get("provenance") or {})
+    provenance.update(
+        {
+            "source": "runtime_router.behavior_eval_pack",
+            "derived_from": ["agent_mcp_server.local_behavior_eval"],
+            "read_only": True,
+            "record_written": False,
+        }
+    )
+    payload["provenance"] = provenance
+    return payload
 
 
 def _writing_workflow_state_summary(runtime: Any, job: Any) -> dict[str, Any]:
@@ -853,6 +889,21 @@ async def get_evidence_integrity_gate(
         status_code = 404 if "not found" in str(exc).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return EvidenceIntegrityGatePayload(**gate)
+
+
+@router.get("/behavior-eval-pack", response_model=BehaviorEvalPackPayload)
+async def get_behavior_eval_pack(
+    include_cases: bool = Query(default=True),
+) -> BehaviorEvalPackPayload:
+    """Return the read-only deterministic MCP/agent behavior-eval pack."""
+
+    try:
+        payload = _build_behavior_eval_pack_payload(include_cases=include_cases)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return BehaviorEvalPackPayload(**payload)
 
 
 @router.get("/job/{job_id}/agent-handoff-card", response_model=AgentHandoffCardPayload)

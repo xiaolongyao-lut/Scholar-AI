@@ -1957,6 +1957,351 @@
         "title": "BatchProcessRequest",
         "type": "object"
       },
+      "BehaviorEvalCasePayload": {
+        "description": "One deterministic behavior-eval case in the local MCP/agent suite.\n\nArgs:\n    case_id: Stable case id used in run records.\n    category: Research workflow risk area covered by the case.\n    severity: Expected actionability when the red flag appears.\n    objective: Behavior invariant the local evaluator protects.\n    red_flags: Observable failure shapes the case should catch.\n    pass_criteria: Deterministic criterion used by the evaluator.",
+        "properties": {
+          "case_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Case Id",
+            "type": "string"
+          },
+          "category": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "objective": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Objective",
+            "type": "string"
+          },
+          "pass_criteria": {
+            "maxLength": 800,
+            "minLength": 1,
+            "title": "Pass Criteria",
+            "type": "string"
+          },
+          "red_flags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Red Flags",
+            "type": "array"
+          },
+          "severity": {
+            "enum": [
+              "warn",
+              "block"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "category",
+          "severity",
+          "objective",
+          "pass_criteria"
+        ],
+        "title": "BehaviorEvalCasePayload",
+        "type": "object"
+      },
+      "BehaviorEvalFindingPayload": {
+        "description": "One red-flag finding emitted by a deterministic behavior evaluator.\n\nArgs:\n    finding_id: Stable finding id scoped by case and category.\n    case_id: Behavior eval case that emitted this finding.\n    category: Research workflow risk area covered by the finding.\n    severity: Blocking or warning severity for workflow handoff.\n    message: Bounded explanation of the behavior risk.\n    evidence: Redacted diagnostic evidence, never raw secrets or full text.\n    next_actions: Local repair or review actions for this finding.",
+        "properties": {
+          "case_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Case Id",
+            "type": "string"
+          },
+          "category": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 16,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "finding_id": {
+            "maxLength": 220,
+            "minLength": 1,
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 700,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "severity": {
+            "enum": [
+              "warn",
+              "block"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "case_id",
+          "category",
+          "severity",
+          "message"
+        ],
+        "title": "BehaviorEvalFindingPayload",
+        "type": "object"
+      },
+      "BehaviorEvalPackPayload": {
+        "description": "Read-only local behavior-eval pack for MCP/agent workflow red flags.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for the local eval run.\n    mode: Canary or supplied-observation mode.\n    summary: Aggregate structural and behavior status.\n    results: Bounded per-observation eval results.\n    blockers: Unique block-level messages that should stop overclaims.\n    warnings: Unique warning messages for bounded follow-up.\n    next_actions: Local repair or review actions suggested by findings.\n    provenance: Local evaluator provenance and no-network guarantees.\n    cases: Optional case manifest when requested by the caller.\n    run_record: Optional local artifact pointer when a separate MCP tool\n        explicitly persists a run; this read-only route does not write one.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Blockers",
+            "type": "array"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/BehaviorEvalCasePayload"
+            },
+            "maxItems": 32,
+            "title": "Cases",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "canary",
+              "observations"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BehaviorEvalResultPayload"
+            },
+            "maxItems": 100,
+            "title": "Results",
+            "type": "array"
+          },
+          "run_record": {
+            "additionalProperties": true,
+            "title": "Run Record",
+            "type": "object"
+          },
+          "schema_version": {
+            "const": "scholar_ai_behavior_eval_pack_v1",
+            "default": "scholar_ai_behavior_eval_pack_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BehaviorEvalSummaryPayload"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "mode",
+          "summary"
+        ],
+        "title": "BehaviorEvalPackPayload",
+        "type": "object"
+      },
+      "BehaviorEvalResultPayload": {
+        "description": "One behavior-eval observation result.\n\nArgs:\n    case_id: Evaluated case id or ad-hoc observation marker.\n    observation_id: Stable bounded observation id.\n    evaluation_goal: Whether the run expects canary red flags or safe behavior.\n    behavior_status: Aggregate behavior result for the observation.\n    structural_status: Canary structural result for evaluator health.\n    red_flag_detected: Whether any red-flag finding was emitted.\n    finding_count: Number of findings attached to the observation.\n    findings: Redacted finding details.",
+        "properties": {
+          "behavior_status": {
+            "enum": [
+              "pass",
+              "warn",
+              "block",
+              "unresolved"
+            ],
+            "title": "Behavior Status",
+            "type": "string"
+          },
+          "case_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Case Id",
+            "type": "string"
+          },
+          "evaluation_goal": {
+            "enum": [
+              "red_flag_detected",
+              "behavior_safe"
+            ],
+            "title": "Evaluation Goal",
+            "type": "string"
+          },
+          "finding_count": {
+            "minimum": 0.0,
+            "title": "Finding Count",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/BehaviorEvalFindingPayload"
+            },
+            "maxItems": 32,
+            "title": "Findings",
+            "type": "array"
+          },
+          "observation_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "red_flag_detected": {
+            "title": "Red Flag Detected",
+            "type": "boolean"
+          },
+          "structural_status": {
+            "enum": [
+              "pass",
+              "fail",
+              "not_applicable"
+            ],
+            "title": "Structural Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "observation_id",
+          "evaluation_goal",
+          "behavior_status",
+          "structural_status",
+          "red_flag_detected",
+          "finding_count"
+        ],
+        "title": "BehaviorEvalResultPayload",
+        "type": "object"
+      },
+      "BehaviorEvalSummaryPayload": {
+        "description": "Aggregate deterministic behavior-eval status.\n\nArgs:\n    case_count: Number of behavior cases registered in the suite.\n    observation_count: Number of observations evaluated in the run.\n    red_flag_count: Total findings emitted across observations.\n    block_count: Observations whose highest severity is block.\n    warn_count: Observations whose highest severity is warn.\n    unresolved_count: Observations with insufficient behavior signal.\n    structural_status: Canary structural health of the suite.\n    behavior_status: Aggregate behavior status across observations.\n    structural_note: Bounded explanation of structural-status semantics.",
+        "properties": {
+          "behavior_status": {
+            "enum": [
+              "pass",
+              "warn",
+              "block",
+              "unresolved"
+            ],
+            "title": "Behavior Status",
+            "type": "string"
+          },
+          "block_count": {
+            "minimum": 0.0,
+            "title": "Block Count",
+            "type": "integer"
+          },
+          "case_count": {
+            "minimum": 0.0,
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "observation_count": {
+            "minimum": 0.0,
+            "title": "Observation Count",
+            "type": "integer"
+          },
+          "red_flag_count": {
+            "minimum": 0.0,
+            "title": "Red Flag Count",
+            "type": "integer"
+          },
+          "structural_note": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Structural Note",
+            "type": "string"
+          },
+          "structural_status": {
+            "enum": [
+              "pass",
+              "fail",
+              "not_applicable"
+            ],
+            "title": "Structural Status",
+            "type": "string"
+          },
+          "unresolved_count": {
+            "minimum": 0.0,
+            "title": "Unresolved Count",
+            "type": "integer"
+          },
+          "warn_count": {
+            "minimum": 0.0,
+            "title": "Warn Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "case_count",
+          "observation_count",
+          "red_flag_count",
+          "block_count",
+          "warn_count",
+          "unresolved_count",
+          "structural_status",
+          "behavior_status",
+          "structural_note"
+        ],
+        "title": "BehaviorEvalSummaryPayload",
+        "type": "object"
+      },
       "Body_post_api_export_journal_style_specs_upload": {
         "properties": {
           "file": {
@@ -37789,6 +38134,50 @@
         "summary": "Run Action",
         "tags": [
           "Skills"
+        ]
+      }
+    },
+    "/runtime/behavior-eval-pack": {
+      "get": {
+        "description": "Return the read-only deterministic MCP/agent behavior-eval pack.",
+        "operationId": "get_runtime_behavior_eval_pack",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_cases",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Cases",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BehaviorEvalPackPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Behavior Eval Pack",
+        "tags": [
+          "Runtime"
         ]
       }
     },

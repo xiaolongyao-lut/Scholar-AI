@@ -7,6 +7,7 @@ import {
   getAgentHandoffCard,
   getAgentWorkflowHealth,
   getAgentWorkspaceStatus,
+  getBehaviorEvalPack,
   getEvidenceIntegrityGate,
   getWorkflowPassport,
   getWorkflowReplayIndex,
@@ -22,6 +23,7 @@ vi.mock('@/services/agentWorkspaceApi', () => ({
   getAgentBridgeStatus: vi.fn(),
   getAgentHandoffCard: vi.fn(),
   getAgentWorkflowHealth: vi.fn(),
+  getBehaviorEvalPack: vi.fn(),
   getEvidenceIntegrityGate: vi.fn(),
   getWorkflowPassport: vi.fn(),
   getWorkflowReplayIndex: vi.fn(),
@@ -38,6 +40,7 @@ const mockedGetAgentWorkspaceStatus = vi.mocked(getAgentWorkspaceStatus);
 const mockedGetAgentBridgeStatus = vi.mocked(getAgentBridgeStatus);
 const mockedGetAgentHandoffCard = vi.mocked(getAgentHandoffCard);
 const mockedGetAgentWorkflowHealth = vi.mocked(getAgentWorkflowHealth);
+const mockedGetBehaviorEvalPack = vi.mocked(getBehaviorEvalPack);
 const mockedGetEvidenceIntegrityGate = vi.mocked(getEvidenceIntegrityGate);
 const mockedGetWorkflowPassport = vi.mocked(getWorkflowPassport);
 const mockedGetWorkflowReplayIndex = vi.mocked(getWorkflowReplayIndex);
@@ -166,6 +169,33 @@ describe('AgentWorkspace', () => {
       blockers: [],
       unresolved: ['Stage is in progress and still needs completion evidence.'],
       provenance: {},
+    });
+    mockedGetBehaviorEvalPack.mockResolvedValue({
+      schema_version: 'scholar_ai_behavior_eval_pack_v1',
+      generated_at: '2026-06-21T01:00:01Z',
+      mode: 'canary',
+      summary: {
+        case_count: 8,
+        observation_count: 8,
+        red_flag_count: 8,
+        block_count: 7,
+        warn_count: 1,
+        unresolved_count: 0,
+        structural_status: 'pass',
+        behavior_status: 'block',
+        structural_note: 'Canary mode passes when every unsafe canary is detected.',
+      },
+      results: [],
+      blockers: ['Output claims verification while nested diagnostics remain offline, needs-review, or unresolved.'],
+      warnings: ['Observation forwards full raw source content or exceeds declared resource bounds.'],
+      next_actions: ['Keep unresolved checks visibly unresolved; rerun source verification before claiming verified.'],
+      provenance: {
+        source: 'runtime_router.behavior_eval_pack',
+        read_only: true,
+        record_written: false,
+      },
+      cases: [],
+      run_record: {},
     });
     mockedGetWorkflowReplayIndex.mockResolvedValue({
       schema_version: 'scholar_ai_workflow_replay_index_v1',
@@ -863,6 +893,7 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('Command Preflight')).toBeInTheDocument();
     expect(screen.getByText('Replay Lineage')).toBeInTheDocument();
     expect(screen.getByText('Replay Index')).toBeInTheDocument();
+    expect(screen.getByText('Behavior Eval Pack')).toBeInTheDocument();
     expect(screen.getByText('Agent Handoff')).toBeInTheDocument();
     expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
     expect(screen.getByText('Export readiness')).toBeInTheDocument();
@@ -882,11 +913,17 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('unresolved 1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('blocked').length).toBeGreaterThan(0);
-    expect(screen.getByText('behavior eval 1')).toBeInTheDocument();
+    expect(screen.getAllByText('behavior eval 阻断').length).toBeGreaterThan(0);
+    expect(screen.getByText('canary · cases 8 · flags 8 · block 7 · warn 1')).toBeInTheDocument();
+    expect(screen.getByText('structural pass')).toBeInTheDocument();
+    expect(screen.getByText('read-only true · record not written')).toBeInTheDocument();
+    expect(screen.getAllByText('artifacts 1').length).toBeGreaterThan(0);
+    expect(screen.getByText('behavior-eval-20260621.json')).toBeInTheDocument();
     await waitFor(() => {
       expect(mockedGetAgentHandoffCard).toHaveBeenCalledWith('job_agent_handoff_1');
       expect(mockedGetWorkflowReplayLineage).toHaveBeenCalledWith('job_agent_handoff_1', { limit: 12 });
     });
+    expect(mockedGetBehaviorEvalPack).toHaveBeenCalledWith({ includeCases: true });
     expect(await screen.findByText('in_progress · refs 1 · probes 2 · replay 2')).toBeInTheDocument();
     expect(screen.getByText('preflight_refresh:test123 · job_agent_handoff_1 blocked · index 2 · read-only true')).toBeInTheDocument();
     expect(screen.queryByText(/\/runtime\/workflow-passport/)).not.toBeInTheDocument();

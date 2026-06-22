@@ -1106,6 +1106,45 @@ def test_runtime_evidence_integrity_gate_route_keeps_unresolved_separate(monkeyp
     assert missing_response.status_code == 404
 
 
+def test_runtime_behavior_eval_pack_route_exposes_read_only_canary_projection(tmp_path, monkeypatch) -> None:
+    """Behavior eval route should expose deterministic red flags without persisting run records."""
+
+    artifact_root = tmp_path / "workspace_artifacts"
+    monkeypatch.setenv("LITERATURE_ASSISTANT_USER_ROOT", str(artifact_root))
+    monkeypatch.setattr(runtime_router_module, "_REPO_ROOT", runtime_router_module.Path(__file__).resolve().parents[1])
+    monkeypatch.setattr(
+        runtime_router_module,
+        "_MCP_SRC_ROOT",
+        runtime_router_module.Path(__file__).resolve().parents[1] / "agent_mcp_server" / "src",
+    )
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    response = client.get("/runtime/behavior-eval-pack", params={"include_cases": True})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "scholar_ai_behavior_eval_pack_v1"
+    assert payload["mode"] == "canary"
+    assert payload["summary"]["case_count"] == 8
+    assert payload["summary"]["observation_count"] == 8
+    assert payload["summary"]["structural_status"] == "pass"
+    assert payload["summary"]["behavior_status"] == "block"
+    assert payload["summary"]["block_count"] == 7
+    assert payload["summary"]["warn_count"] == 1
+    assert len(payload["cases"]) == 8
+    assert len(payload["results"]) == 8
+    assert payload["provenance"]["read_only"] is True
+    assert payload["provenance"]["record_written"] is False
+    assert payload["run_record"] == {}
+    assert not list(artifact_root.glob("**/behavior_eval_runs/*.json"))
+
+    compact_response = client.get("/runtime/behavior-eval-pack", params={"include_cases": False})
+    assert compact_response.status_code == 200
+    assert compact_response.json()["cases"] == []
+
+
 def test_runtime_preflight_refresh_receipt_route_reads_persisted_replay_evidence(monkeypatch) -> None:
     """Runtime route should expose persisted workflow refresh receipts."""
 

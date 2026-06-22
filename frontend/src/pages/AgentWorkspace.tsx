@@ -22,6 +22,7 @@ import {
   getAgentHandoffCard,
   getAgentWorkflowHealth,
   getAgentWorkspaceStatus,
+  getBehaviorEvalPack,
   getEvidenceIntegrityGate,
   getWorkflowPassport,
   getWorkflowReplayIndex,
@@ -34,6 +35,7 @@ import {
   type AgentWorkspaceAuditRecord,
   type AgentWorkspaceStatus,
   type AgentBridgeStatus,
+  type BehaviorEvalPackProjection,
   type EvidenceIntegrityGateProjection,
   type WorkflowActionPreflightProjection,
   type RuntimeJobsStatus,
@@ -644,6 +646,50 @@ function workflowReplayIndexRecovery(index: WorkflowReplayIndexProjection | null
   return `${first.job_id} · ${first.latest_status} · block ${first.latest_blocker_count} · unresolved ${first.latest_unresolved_count}`;
 }
 
+function behaviorEvalTone(pack: BehaviorEvalPackProjection | null): StatusTone {
+  if (!pack) {
+    return 'neutral';
+  }
+  if (pack.summary.structural_status === 'fail' || pack.summary.behavior_status === 'block') {
+    return 'danger';
+  }
+  if (pack.summary.behavior_status === 'warn' || pack.summary.behavior_status === 'unresolved') {
+    return 'warning';
+  }
+  return 'success';
+}
+
+function behaviorEvalSummary(pack: BehaviorEvalPackProjection | null): string {
+  if (!pack) {
+    return 'behavior eval pack 未读取';
+  }
+  return `${pack.mode} · cases ${pack.summary.case_count} · flags ${pack.summary.red_flag_count} · block ${pack.summary.block_count} · warn ${pack.summary.warn_count}`;
+}
+
+function behaviorEvalPrimaryMessage(pack: BehaviorEvalPackProjection | null): string {
+  if (!pack) {
+    return 'Behavior Eval Pack 暂未读取；仅保留本地产物启发式作为上下文。';
+  }
+  return firstNonEmptyText(
+    [
+      pack.blockers[0],
+      pack.warnings[0],
+      pack.next_actions[0],
+      pack.summary.structural_note,
+    ],
+    'Behavior Eval Pack 已读取，未返回阻断或警告。'
+  );
+}
+
+function behaviorEvalReadOnlyLabel(pack: BehaviorEvalPackProjection | null): string {
+  if (!pack) {
+    return 'read-only unknown';
+  }
+  const recordWritten = pack.provenance.record_written === true;
+  const readOnly = pack.provenance.read_only === true;
+  return `read-only ${readOnly ? 'true' : 'unknown'} · record ${recordWritten ? 'written' : 'not written'}`;
+}
+
 function workflowReadinessClaims(
   integrityGate: EvidenceIntegrityGateProjection | null,
   handoffCard: AgentHandoffCardProjection | null,
@@ -1082,6 +1128,7 @@ export function ResearchWorkflowSpine({
   actionPreflight,
   workflowReplayIndex,
   workflowReplayLineage,
+  behaviorEvalPack,
   behaviorEvalArtifacts,
   density = 'default',
 }: {
@@ -1092,6 +1139,7 @@ export function ResearchWorkflowSpine({
   actionPreflight: WorkflowActionPreflightProjection | null;
   workflowReplayIndex: WorkflowReplayIndexProjection | null;
   workflowReplayLineage: WorkflowReplayLineageProjection | null;
+  behaviorEvalPack: BehaviorEvalPackProjection | null;
   behaviorEvalArtifacts: AgentWorkspaceArtifact[];
   density?: WorkflowSpineDensity;
 }) {
@@ -1103,7 +1151,6 @@ export function ResearchWorkflowSpine({
   const unresolvedCount = integrityGate?.unresolved.length ?? readNumberField(statusCounts, 'unresolved');
   const blockerCount = integrityGate?.blockers.length ?? readNumberField(statusCounts, 'block');
   const firstSignal = integrityGate?.signals[0] ?? null;
-  const behaviorEvalLatest = behaviorEvalArtifacts[0] ?? null;
   const handoffBlocked = (handoffCard?.blockers.length ?? 0) > 0;
   const handoffUnresolved = (handoffCard?.unresolved.length ?? 0) > 0;
   const readinessClaims = workflowReadinessClaims(integrityGate, handoffCard);
@@ -1160,6 +1207,9 @@ export function ResearchWorkflowSpine({
           </StatusPill>
           <StatusPill tone={replayIndexBlocked ? 'danger' : replayIndexUnresolved ? 'warning' : workflowReplayIndex ? 'info' : 'neutral'}>
             replay index {workflowReplayIndex ? workflowReplayIndex.matching_job_count : '未读取'}
+          </StatusPill>
+          <StatusPill tone={behaviorEvalTone(behaviorEvalPack)}>
+            behavior eval {behaviorEvalPack ? gateStatusLabel(behaviorEvalPack.summary.behavior_status) : '未读取'}
           </StatusPill>
         </div>
       </div>
@@ -1337,6 +1387,31 @@ export function ResearchWorkflowSpine({
 
           <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
             <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Behavior Eval Pack</h3>
+              <StatusPill tone={behaviorEvalTone(behaviorEvalPack)}>
+                {behaviorEvalPack ? gateStatusLabel(behaviorEvalPack.summary.behavior_status) : '未读取'}
+              </StatusPill>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+              {behaviorEvalPrimaryMessage(behaviorEvalPack)}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone="neutral">{behaviorEvalSummary(behaviorEvalPack)}</StatusPill>
+              <StatusPill tone={behaviorEvalPack?.summary.structural_status === 'pass' ? 'success' : behaviorEvalPack ? 'danger' : 'neutral'}>
+                structural {behaviorEvalPack?.summary.structural_status ?? 'unknown'}
+              </StatusPill>
+              <StatusPill tone={behaviorEvalPack?.provenance.read_only === true ? 'info' : 'neutral'}>
+                {behaviorEvalReadOnlyLabel(behaviorEvalPack)}
+              </StatusPill>
+              <StatusPill tone={behaviorEvalArtifacts.length > 0 ? 'info' : 'neutral'}>
+                artifacts {behaviorEvalArtifacts.length}
+              </StatusPill>
+              {behaviorEvalArtifacts[0]?.name ? <StatusPill tone="info">{behaviorEvalArtifacts[0].name}</StatusPill> : null}
+            </div>
+          </article>
+
+          <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
               <h3 className="truncate font-label text-xs font-semibold text-foreground">Agent Handoff</h3>
               <StatusPill tone={handoffBlocked ? 'danger' : handoffUnresolved ? 'warning' : handoffCard ? 'success' : 'neutral'}>
                 {handoffCard ? handoffCard.status : '未读取'}
@@ -1357,10 +1432,6 @@ export function ResearchWorkflowSpine({
               <StatusPill tone={actionPreflight?.refresh_receipt ? 'info' : 'neutral'}>
                 {preflightReceiptSummary(actionPreflight)}
               </StatusPill>
-              <StatusPill tone={behaviorEvalLatest ? 'success' : 'neutral'}>
-                behavior eval {behaviorEvalArtifacts.length}
-              </StatusPill>
-              {behaviorEvalLatest ? <StatusPill tone="info">{behaviorEvalLatest.name}</StatusPill> : null}
             </div>
           </article>
         </div>
@@ -1508,6 +1579,7 @@ export function AgentWorkspace() {
   const [handoffCard, setHandoffCard] = useState<AgentHandoffCardProjection | null>(null);
   const [workflowReplayIndex, setWorkflowReplayIndex] = useState<WorkflowReplayIndexProjection | null>(null);
   const [workflowReplayLineage, setWorkflowReplayLineage] = useState<WorkflowReplayLineageProjection | null>(null);
+  const [behaviorEvalPack, setBehaviorEvalPack] = useState<BehaviorEvalPackProjection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>('agents');
@@ -1520,7 +1592,7 @@ export function AgentWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const [next, bridge, runtimeJobs, workflowHealth, zotero, review, passport, gate, replayIndex] = await Promise.all([
+      const [next, bridge, runtimeJobs, workflowHealth, zotero, review, passport, gate, replayIndex, behaviorEval] = await Promise.all([
         getAgentWorkspaceStatus(),
         getAgentBridgeStatus({ limit: 50 }).catch(() => null),
         listRuntimeJobs({ limit: 100 }).catch(() => null),
@@ -1530,6 +1602,7 @@ export function AgentWorkspace() {
         getWorkflowPassport({ limit: 500 }).catch(() => null),
         getEvidenceIntegrityGate({ limit: 500 }).catch(() => null),
         getWorkflowReplayIndex({ limit: 25 }).catch(() => null),
+        getBehaviorEvalPack({ includeCases: true }).catch(() => null),
       ]);
       setStatus(next);
       setBridgeStatus(bridge);
@@ -1540,6 +1613,7 @@ export function AgentWorkspace() {
       setWorkflowPassport(passport);
       setIntegrityGate(gate);
       setWorkflowReplayIndex(replayIndex);
+      setBehaviorEvalPack(behaviorEval);
       setSelectedArtifactPath((current) => {
         if (current && next.artifacts.some((artifact) => artifact.path === current)) {
           return current;
@@ -1573,6 +1647,7 @@ export function AgentWorkspace() {
       setHandoffCard(null);
       setWorkflowReplayIndex(null);
       setWorkflowReplayLineage(null);
+      setBehaviorEvalPack(null);
     } finally {
       setLoading(false);
     }
@@ -1713,6 +1788,7 @@ export function AgentWorkspace() {
           actionPreflight={selectedActionPreflight}
           workflowReplayIndex={workflowReplayIndex}
           workflowReplayLineage={workflowReplayLineage}
+          behaviorEvalPack={behaviorEvalPack}
           behaviorEvalArtifacts={behaviorEvalArtifacts}
         />
 

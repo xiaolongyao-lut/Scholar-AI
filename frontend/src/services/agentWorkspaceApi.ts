@@ -247,6 +247,68 @@ export interface WorkflowReplayIndexProjection {
   provenance: Record<string, unknown>;
 }
 
+export type BehaviorEvalSeverity = 'warn' | 'block';
+
+export type BehaviorEvalStatus = 'pass' | 'warn' | 'block' | 'unresolved';
+
+export type BehaviorEvalStructuralStatus = 'pass' | 'fail' | 'not_applicable';
+
+export interface BehaviorEvalCaseProjection {
+  case_id: string;
+  category: string;
+  severity: BehaviorEvalSeverity;
+  objective: string;
+  red_flags: string[];
+  pass_criteria: string;
+}
+
+export interface BehaviorEvalFindingProjection {
+  finding_id: string;
+  case_id: string;
+  category: string;
+  severity: BehaviorEvalSeverity;
+  message: string;
+  evidence: Record<string, unknown>[];
+  next_actions: string[];
+}
+
+export interface BehaviorEvalResultProjection {
+  case_id: string;
+  observation_id: string;
+  evaluation_goal: 'red_flag_detected' | 'behavior_safe';
+  behavior_status: BehaviorEvalStatus;
+  structural_status: BehaviorEvalStructuralStatus;
+  red_flag_detected: boolean;
+  finding_count: number;
+  findings: BehaviorEvalFindingProjection[];
+}
+
+export interface BehaviorEvalSummaryProjection {
+  case_count: number;
+  observation_count: number;
+  red_flag_count: number;
+  block_count: number;
+  warn_count: number;
+  unresolved_count: number;
+  structural_status: BehaviorEvalStructuralStatus;
+  behavior_status: BehaviorEvalStatus;
+  structural_note: string;
+}
+
+export interface BehaviorEvalPackProjection {
+  schema_version: 'scholar_ai_behavior_eval_pack_v1';
+  generated_at: string;
+  mode: 'canary' | 'observations';
+  summary: BehaviorEvalSummaryProjection;
+  results: BehaviorEvalResultProjection[];
+  blockers: string[];
+  warnings: string[];
+  next_actions: string[];
+  provenance: Record<string, unknown>;
+  cases: BehaviorEvalCaseProjection[];
+  run_record: Record<string, unknown>;
+}
+
 export interface AgentHandoffReplayRecoveryProjection {
   schema_version: 'scholar_ai_agent_handoff_replay_recovery_v1';
   current_receipt: Record<string, unknown>;
@@ -434,6 +496,17 @@ export async function getWorkflowReplayIndex(opts?: {
       status: opts?.status ?? undefined,
       action_id: opts?.actionId ?? undefined,
       limit: opts?.limit ?? 25,
+    },
+  });
+  return response.data;
+}
+
+export async function getBehaviorEvalPack(opts?: {
+  includeCases?: boolean;
+}): Promise<BehaviorEvalPackProjection> {
+  const response = await client.get<BehaviorEvalPackProjection>('/runtime/behavior-eval-pack', {
+    params: {
+      include_cases: opts?.includeCases ?? true,
     },
   });
   return response.data;

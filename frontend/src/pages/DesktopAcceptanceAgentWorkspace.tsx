@@ -8,6 +8,7 @@ import type {
   AgentWorkflowHealthCheck,
   AgentWorkspaceAuditRecord,
   AgentWorkspaceStatus,
+  BehaviorEvalPackProjection,
   EvidenceIntegrityGateProjection,
   RuntimeJobsStatus,
   WorkflowActionPreflightProjection,
@@ -395,6 +396,34 @@ const ACCEPTANCE_HANDOFF_CARD: AgentHandoffCardProjection = {
   provenance: { derived_from: ['runtime.job', 'runtime.workflow_passport'] },
 };
 
+const ACCEPTANCE_BEHAVIOR_EVAL_PACK: BehaviorEvalPackProjection = {
+  schema_version: 'scholar_ai_behavior_eval_pack_v1',
+  generated_at: '2026-06-21T04:00:00.000Z',
+  mode: 'canary',
+  summary: {
+    case_count: 8,
+    observation_count: 8,
+    red_flag_count: 8,
+    block_count: 7,
+    warn_count: 1,
+    unresolved_count: 0,
+    structural_status: 'pass',
+    behavior_status: 'block',
+    structural_note: 'Canary mode passes when every unsafe canary is detected.',
+  },
+  results: [],
+  blockers: ['Output claims verification while nested diagnostics remain offline, needs-review, or unresolved.'],
+  warnings: ['Observation forwards full raw source content or exceeds declared resource bounds.'],
+  next_actions: ['Keep unresolved checks visibly unresolved; rerun source verification before claiming verified.'],
+  provenance: {
+    source: 'runtime_router.behavior_eval_pack',
+    read_only: true,
+    record_written: false,
+  },
+  cases: [],
+  run_record: {},
+};
+
 export function DesktopAcceptanceAgentWorkspace() {
   return (
     <div
@@ -429,6 +458,7 @@ export function DesktopAcceptanceAgentWorkspace() {
           actionPreflight={ACCEPTANCE_EXPORT_PREFLIGHT}
           workflowReplayIndex={null}
           workflowReplayLineage={null}
+          behaviorEvalPack={ACCEPTANCE_BEHAVIOR_EVAL_PACK}
           behaviorEvalArtifacts={[]}
           density="desktop-acceptance"
         />

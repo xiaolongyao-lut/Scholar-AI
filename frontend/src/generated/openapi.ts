@@ -5560,6 +5560,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/behavior-eval-pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Behavior Eval Pack
+         * @description Return the read-only deterministic MCP/agent behavior-eval pack.
+         */
+        get: operations["get_runtime_behavior_eval_pack"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/evidence-integrity-gate": {
         parameters: {
             query?: never;
@@ -7535,6 +7555,203 @@ export interface components {
              * @description Path to folder containing PDF files
              */
             pdf_folder: string;
+        };
+        /**
+         * BehaviorEvalCasePayload
+         * @description One deterministic behavior-eval case in the local MCP/agent suite.
+         *
+         *     Args:
+         *         case_id: Stable case id used in run records.
+         *         category: Research workflow risk area covered by the case.
+         *         severity: Expected actionability when the red flag appears.
+         *         objective: Behavior invariant the local evaluator protects.
+         *         red_flags: Observable failure shapes the case should catch.
+         *         pass_criteria: Deterministic criterion used by the evaluator.
+         */
+        BehaviorEvalCasePayload: {
+            /** Case Id */
+            case_id: string;
+            /** Category */
+            category: string;
+            /** Objective */
+            objective: string;
+            /** Pass Criteria */
+            pass_criteria: string;
+            /** Red Flags */
+            red_flags?: string[];
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warn" | "block";
+        };
+        /**
+         * BehaviorEvalFindingPayload
+         * @description One red-flag finding emitted by a deterministic behavior evaluator.
+         *
+         *     Args:
+         *         finding_id: Stable finding id scoped by case and category.
+         *         case_id: Behavior eval case that emitted this finding.
+         *         category: Research workflow risk area covered by the finding.
+         *         severity: Blocking or warning severity for workflow handoff.
+         *         message: Bounded explanation of the behavior risk.
+         *         evidence: Redacted diagnostic evidence, never raw secrets or full text.
+         *         next_actions: Local repair or review actions for this finding.
+         */
+        BehaviorEvalFindingPayload: {
+            /** Case Id */
+            case_id: string;
+            /** Category */
+            category: string;
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            }[];
+            /** Finding Id */
+            finding_id: string;
+            /** Message */
+            message: string;
+            /** Next Actions */
+            next_actions?: string[];
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warn" | "block";
+        };
+        /**
+         * BehaviorEvalPackPayload
+         * @description Read-only local behavior-eval pack for MCP/agent workflow red flags.
+         *
+         *     Args:
+         *         schema_version: Versioned additive API contract.
+         *         generated_at: UTC generation time for the local eval run.
+         *         mode: Canary or supplied-observation mode.
+         *         summary: Aggregate structural and behavior status.
+         *         results: Bounded per-observation eval results.
+         *         blockers: Unique block-level messages that should stop overclaims.
+         *         warnings: Unique warning messages for bounded follow-up.
+         *         next_actions: Local repair or review actions suggested by findings.
+         *         provenance: Local evaluator provenance and no-network guarantees.
+         *         cases: Optional case manifest when requested by the caller.
+         *         run_record: Optional local artifact pointer when a separate MCP tool
+         *             explicitly persists a run; this read-only route does not write one.
+         */
+        BehaviorEvalPackPayload: {
+            /** Blockers */
+            blockers?: string[];
+            /** Cases */
+            cases?: components["schemas"]["BehaviorEvalCasePayload"][];
+            /** Generated At */
+            generated_at: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "canary" | "observations";
+            /** Next Actions */
+            next_actions?: string[];
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Results */
+            results?: components["schemas"]["BehaviorEvalResultPayload"][];
+            /** Run Record */
+            run_record?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Schema Version
+             * @default scholar_ai_behavior_eval_pack_v1
+             * @constant
+             */
+            schema_version: "scholar_ai_behavior_eval_pack_v1";
+            summary: components["schemas"]["BehaviorEvalSummaryPayload"];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * BehaviorEvalResultPayload
+         * @description One behavior-eval observation result.
+         *
+         *     Args:
+         *         case_id: Evaluated case id or ad-hoc observation marker.
+         *         observation_id: Stable bounded observation id.
+         *         evaluation_goal: Whether the run expects canary red flags or safe behavior.
+         *         behavior_status: Aggregate behavior result for the observation.
+         *         structural_status: Canary structural result for evaluator health.
+         *         red_flag_detected: Whether any red-flag finding was emitted.
+         *         finding_count: Number of findings attached to the observation.
+         *         findings: Redacted finding details.
+         */
+        BehaviorEvalResultPayload: {
+            /**
+             * Behavior Status
+             * @enum {string}
+             */
+            behavior_status: "pass" | "warn" | "block" | "unresolved";
+            /** Case Id */
+            case_id: string;
+            /**
+             * Evaluation Goal
+             * @enum {string}
+             */
+            evaluation_goal: "red_flag_detected" | "behavior_safe";
+            /** Finding Count */
+            finding_count: number;
+            /** Findings */
+            findings?: components["schemas"]["BehaviorEvalFindingPayload"][];
+            /** Observation Id */
+            observation_id: string;
+            /** Red Flag Detected */
+            red_flag_detected: boolean;
+            /**
+             * Structural Status
+             * @enum {string}
+             */
+            structural_status: "pass" | "fail" | "not_applicable";
+        };
+        /**
+         * BehaviorEvalSummaryPayload
+         * @description Aggregate deterministic behavior-eval status.
+         *
+         *     Args:
+         *         case_count: Number of behavior cases registered in the suite.
+         *         observation_count: Number of observations evaluated in the run.
+         *         red_flag_count: Total findings emitted across observations.
+         *         block_count: Observations whose highest severity is block.
+         *         warn_count: Observations whose highest severity is warn.
+         *         unresolved_count: Observations with insufficient behavior signal.
+         *         structural_status: Canary structural health of the suite.
+         *         behavior_status: Aggregate behavior status across observations.
+         *         structural_note: Bounded explanation of structural-status semantics.
+         */
+        BehaviorEvalSummaryPayload: {
+            /**
+             * Behavior Status
+             * @enum {string}
+             */
+            behavior_status: "pass" | "warn" | "block" | "unresolved";
+            /** Block Count */
+            block_count: number;
+            /** Case Count */
+            case_count: number;
+            /** Observation Count */
+            observation_count: number;
+            /** Red Flag Count */
+            red_flag_count: number;
+            /** Structural Note */
+            structural_note: string;
+            /**
+             * Structural Status
+             * @enum {string}
+             */
+            structural_status: "pass" | "fail" | "not_applicable";
+            /** Unresolved Count */
+            unresolved_count: number;
+            /** Warn Count */
+            warn_count: number;
         };
         /** Body_post_api_export_journal_style_specs_upload */
         Body_post_api_export_journal_style_specs_upload: {
@@ -26959,6 +27176,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunActionAcceptedPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_behavior_eval_pack: {
+        parameters: {
+            query?: {
+                include_cases?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BehaviorEvalPackPayload"];
                 };
             };
             /** @description Validation Error */
