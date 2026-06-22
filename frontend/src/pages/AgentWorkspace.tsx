@@ -680,6 +680,25 @@ function signalCollectionTone(signals: EvidenceIntegritySignal[]): StatusTone {
   return signals.length > 0 ? 'info' : 'neutral';
 }
 
+function isBehaviorEvalSignal(value: { category?: string | null; signal_id?: string | null }): boolean {
+  const category = value.category?.trim().toLowerCase() ?? '';
+  const signalId = value.signal_id?.trim().toLowerCase() ?? '';
+  return category === 'behavior_eval' || signalId.startsWith('behavior_eval:');
+}
+
+function integritySignalPrimaryEvidenceType(signal: EvidenceIntegritySignal): string {
+  const firstEvidence = signal.evidence.find(isRecord);
+  if (!firstEvidence) {
+    return '';
+  }
+  return sanitizeInspectorText(
+    readTextField(firstEvidence, 'ref_type')
+      || readTextField(firstEvidence, 'type')
+      || readTextField(firstEvidence, 'source_kind')
+      || readTextField(firstEvidence, 'kind'),
+  );
+}
+
 interface MaterialCacheDecisionSummary {
   stageId: string;
   stageLabel: string;
@@ -989,6 +1008,9 @@ function behaviorEvalTone(pack: BehaviorEvalPackProjection | null): StatusTone {
   if (!pack) {
     return 'neutral';
   }
+  if (pack.mode === 'canary') {
+    return pack.summary.structural_status === 'fail' ? 'danger' : 'success';
+  }
   if (pack.summary.structural_status === 'fail' || pack.summary.behavior_status === 'block') {
     return 'danger';
   }
@@ -996,6 +1018,16 @@ function behaviorEvalTone(pack: BehaviorEvalPackProjection | null): StatusTone {
     return 'warning';
   }
   return 'success';
+}
+
+function behaviorEvalStatusLabel(pack: BehaviorEvalPackProjection | null): string {
+  if (!pack) {
+    return '未读取';
+  }
+  if (pack.mode === 'canary') {
+    return pack.summary.structural_status === 'pass' ? 'canary ok' : `canary ${pack.summary.structural_status}`;
+  }
+  return gateStatusLabel(pack.summary.behavior_status);
 }
 
 function behaviorEvalSummary(pack: BehaviorEvalPackProjection | null): string {
@@ -1008,6 +1040,9 @@ function behaviorEvalSummary(pack: BehaviorEvalPackProjection | null): string {
 function behaviorEvalPrimaryMessage(pack: BehaviorEvalPackProjection | null): string {
   if (!pack) {
     return 'Behavior Eval Pack 暂未读取；仅保留本地产物启发式作为上下文。';
+  }
+  if (pack.mode === 'canary' && pack.summary.structural_status === 'pass') {
+    return pack.summary.structural_note || 'Canary mode verified the evaluator catches seeded unsafe outputs; it is not a project workflow blocker.';
   }
   return firstNonEmptyText(
     [
@@ -1173,6 +1208,18 @@ function blockingRecoveryDrilldownSummary(
     readOnly: drilldown.read_only === true,
     rawPathExposed: drilldown.raw_path_exposed === true,
   };
+}
+
+function behaviorEvalSignalBoundarySummary(
+  signalCount: number,
+  blockedCount: number,
+  unresolvedCount: number,
+  boundaryDrilldownCount: number,
+): string {
+  if (signalCount === 0) {
+    return 'No observation-mode behavior_eval integrity signal is currently blocking workflow claims.';
+  }
+  return `${signalCount} behavior_eval signals · block ${blockedCount} · unresolved ${unresolvedCount} · recovery ${boundaryDrilldownCount}`;
 }
 
 function readinessClaimSummary(claim: WorkflowReadinessClaim): string {
@@ -1583,6 +1630,9 @@ export function ResearchWorkflowSpine({
   const activeSignal = integritySignals.find((signal) => signal.signal_id === activeSignalId) ?? firstSignal;
   const activeSignalDetails = activeSignal ? buildIntegrityDrilldownDetails(activeSignal) : null;
   const visibleSignals = integritySignals.slice(0, isDesktopAcceptance ? 2 : 4);
+  const behaviorEvalSignals = integritySignals.filter(isBehaviorEvalSignal);
+  const behaviorEvalBlockingSignals = behaviorEvalSignals.filter((signal) => signal.status === 'block' || signal.severity === 'block');
+  const behaviorEvalUnresolvedSignals = behaviorEvalSignals.filter((signal) => signal.status === 'unresolved');
   const handoffBlocked = (handoffCard?.blockers.length ?? 0) > 0;
   const handoffUnresolved = (handoffCard?.unresolved.length ?? 0) > 0;
   const readinessClaims = workflowReadinessClaims(integrityGate, handoffCard);
@@ -1594,6 +1644,10 @@ export function ResearchWorkflowSpine({
   const visibleBlockedBoundarySignals = blockingBoundary?.blocked_signal_refs.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
   const visibleUnresolvedBoundarySignals = blockingBoundary?.unresolved_signal_refs.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
   const visibleBoundaryRecoveryDrilldowns = (blockingBoundary?.recovery_drilldowns ?? [])
+    .slice(0, isDesktopAcceptance ? 2 : 4)
+    .map((drilldown) => blockingRecoveryDrilldownSummary(drilldown, stages));
+  const behaviorEvalBoundaryDrilldowns = (blockingBoundary?.recovery_drilldowns ?? [])
+    .filter(isBehaviorEvalSignal)
     .slice(0, isDesktopAcceptance ? 2 : 4)
     .map((drilldown) => blockingRecoveryDrilldownSummary(drilldown, stages));
   const visibleBoundaryProbes = blockingBoundary?.local_read_only_probes.slice(0, isDesktopAcceptance ? 3 : 5) ?? [];
@@ -1658,7 +1712,10 @@ export function ResearchWorkflowSpine({
             replay index {workflowReplayIndex ? workflowReplayIndex.matching_job_count : '未读取'}
           </StatusPill>
           <StatusPill tone={behaviorEvalTone(behaviorEvalPack)}>
-            behavior eval {behaviorEvalPack ? gateStatusLabel(behaviorEvalPack.summary.behavior_status) : '未读取'}
+            behavior eval {behaviorEvalStatusLabel(behaviorEvalPack)}
+          </StatusPill>
+          <StatusPill tone={behaviorEvalBlockingSignals.length > 0 ? 'danger' : behaviorEvalSignals.length > 0 ? 'warning' : 'neutral'}>
+            behavior gate {behaviorEvalSignals.length}
           </StatusPill>
         </div>
       </div>
@@ -2144,6 +2201,104 @@ export function ResearchWorkflowSpine({
             ) : null}
           </article>
 
+          <article
+            className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3"
+            role="region"
+            aria-label="Behavior eval gate signals"
+          >
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Behavior Gate Signals</h3>
+              <StatusPill tone={behaviorEvalBlockingSignals.length > 0 ? 'danger' : behaviorEvalSignals.length > 0 ? 'warning' : 'neutral'}>
+                {behaviorEvalBlockingSignals.length > 0 ? 'blocking' : behaviorEvalSignals.length > 0 ? 'observed' : 'none'}
+              </StatusPill>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+              {behaviorEvalSignalBoundarySummary(
+                behaviorEvalSignals.length,
+                behaviorEvalBlockingSignals.length,
+                behaviorEvalUnresolvedSignals.length,
+                behaviorEvalBoundaryDrilldowns.length,
+              )}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone={behaviorEvalBlockingSignals.length > 0 ? 'danger' : 'neutral'}>
+                behavior block {behaviorEvalBlockingSignals.length}
+              </StatusPill>
+              <StatusPill tone={behaviorEvalUnresolvedSignals.length > 0 ? 'warning' : 'neutral'}>
+                behavior unresolved {behaviorEvalUnresolvedSignals.length}
+              </StatusPill>
+              <StatusPill tone={behaviorEvalBoundaryDrilldowns.length > 0 ? 'info' : 'neutral'}>
+                behavior recovery {behaviorEvalBoundaryDrilldowns.length}
+              </StatusPill>
+              <StatusPill tone={behaviorEvalSignals.length > 0 ? 'info' : 'neutral'}>
+                observation-mode gate
+              </StatusPill>
+              <StatusPill tone={behaviorEvalPack?.mode === 'canary' ? 'success' : behaviorEvalPack ? 'warning' : 'neutral'}>
+                pack mode {behaviorEvalPack?.mode ?? 'unknown'}
+              </StatusPill>
+            </div>
+            <div className="mt-2 grid gap-2">
+              {behaviorEvalSignals.slice(0, isDesktopAcceptance ? 2 : 4).map((signal) => {
+                const primaryEvidenceType = integritySignalPrimaryEvidenceType(signal);
+                return (
+                  <div
+                    key={signal.signal_id}
+                    className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-lowest px-2.5 py-2"
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-label text-[11px] font-medium text-foreground">
+                          {sanitizeInspectorText(signal.signal_id)}
+                        </p>
+                        <p className="mt-0.5 break-words text-[11px] leading-4 text-foreground/55">
+                          {sanitizeInspectorText(signal.message)}
+                        </p>
+                      </div>
+                      <StatusPill tone={gateTone(signal.status, signal.severity)}>
+                        {gateStatusLabel(signal.status)}
+                      </StatusPill>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <StatusPill tone="neutral">{sanitizeInspectorText(signal.category)}</StatusPill>
+                      <StatusPill tone={signal.severity === 'block' ? 'danger' : signal.severity === 'warn' ? 'warning' : 'neutral'}>
+                        severity {sanitizeInspectorText(signal.severity)}
+                      </StatusPill>
+                      <StatusPill tone="neutral">evidence {signal.evidence.length}</StatusPill>
+                      {primaryEvidenceType ? (
+                        <StatusPill tone="neutral">evidence type {primaryEvidenceType}</StatusPill>
+                      ) : null}
+                      <StatusPill tone={signal.next_actions.length > 0 ? 'info' : 'neutral'}>
+                        next actions {signal.next_actions.length}
+                      </StatusPill>
+                    </div>
+                    {signal.next_actions[0] ? (
+                      <p className="mt-1.5 break-words text-[11px] leading-4 text-foreground/50">
+                        {sanitizeInspectorText(signal.next_actions[0])}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {behaviorEvalSignals.length === 0 ? (
+                <p className="break-words text-[11px] leading-4 text-foreground/50">
+                  Behavior Eval Pack canary results remain evaluator-health context; project blocking appears here only after persisted observation-mode findings reach the Evidence Integrity Gate.
+                </p>
+              ) : null}
+              {behaviorEvalBoundaryDrilldowns.length > 0 ? (
+                <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-lowest px-2.5 py-2">
+                  <h4 className="font-label text-[11px] font-semibold text-foreground/45">Behavior Recovery Drilldowns</h4>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {behaviorEvalBoundaryDrilldowns.map((item) => (
+                      <StatusPill key={item.signalId} tone={item.blocksClaims ? 'danger' : 'warning'}>
+                        {item.signalId} · {item.stageLabel} · safe probes {item.probeCount}
+                      </StatusPill>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </article>
+
           <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
             <div className="flex min-w-0 items-center justify-between gap-2">
               <h3 className="truncate font-label text-xs font-semibold text-foreground">Replay Lineage</h3>
@@ -2187,7 +2342,7 @@ export function ResearchWorkflowSpine({
             <div className="flex min-w-0 items-center justify-between gap-2">
               <h3 className="truncate font-label text-xs font-semibold text-foreground">Behavior Eval Pack</h3>
               <StatusPill tone={behaviorEvalTone(behaviorEvalPack)}>
-                {behaviorEvalPack ? gateStatusLabel(behaviorEvalPack.summary.behavior_status) : '未读取'}
+                {behaviorEvalStatusLabel(behaviorEvalPack)}
               </StatusPill>
             </div>
             <p className="mt-2 break-words text-xs leading-5 text-foreground/60">

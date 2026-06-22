@@ -490,6 +490,15 @@ describe('AgentWorkspace', () => {
           message: 'Unsupported citation anchors block export readiness.',
           blocks_claims: true,
         },
+        {
+          signal_id: 'behavior_eval:unsafe-handoff-claim',
+          category: 'behavior_eval',
+          status: 'block',
+          severity: 'block',
+          message: 'Behavior Eval Pack found blocking MCP/agent workflow red flags.',
+          blocks_claims: true,
+          replay_ref_count: 1,
+        },
       ],
       unresolved_signal_refs: [
         {
@@ -571,6 +580,47 @@ describe('AgentWorkspace', () => {
           next_safe_local_actions: ['Record qrels_status before retrying export.'],
           requires_human_review: true,
           blocks_claims: false,
+          read_only: true,
+          raw_path_exposed: false,
+        },
+        {
+          signal_id: 'behavior_eval:unsafe-handoff-claim',
+          category: 'behavior_eval',
+          status: 'block',
+          severity: 'block',
+          message: 'Behavior Eval Pack found blocking MCP/agent workflow red flags.',
+          linked_stage_id: 'agent_handoff',
+          source_ref: {
+            source_id: 'behavior_eval_runs\\observation-red-flags.json',
+            source_kind: 'behavior_eval_pack',
+            source_digest: 'sha256:behavior-eval-fixture',
+            raw_path_exposed: false,
+          },
+          checked_facts: {
+            mode: 'observations',
+            behavior_status: 'block',
+            red_flag_count: 1,
+            block_count: 1,
+            stage_id: 'agent_handoff',
+          },
+          evidence_refs: [
+            { ref_type: 'behavior_eval_pack', ref_id: 'behavior_eval_runs/observation-red-flags.json' },
+            { ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' },
+          ],
+          replay_refs: [
+            { ref_type: 'behavior_eval_pack', ref_id: 'behavior_eval_runs/observation-red-flags.json' },
+          ],
+          recovery_refs: [
+            { ref_type: 'workflow_passport_stage', ref_id: 'agent_handoff' },
+            { ref_type: 'evidence_integrity_signal', ref_id: 'behavior_eval:unsafe-handoff-claim' },
+          ],
+          local_read_only_probes: [
+            { label: 'Read behavior eval run record', read_only: true },
+            { label: 'Read Evidence Integrity Gate', read_only: true },
+          ],
+          next_safe_local_actions: ['Review behavior-eval findings before making export, handoff, or external-action claims.'],
+          requires_human_review: false,
+          blocks_claims: true,
           read_only: true,
           raw_path_exposed: false,
         },
@@ -804,6 +854,28 @@ describe('AgentWorkspace', () => {
             requires_user_confirmation: true,
           },
         },
+        {
+          stage_id: 'agent_handoff',
+          label: 'Agent handoff',
+          status: 'blocked',
+          required_artifacts: ['agent_handoff_card'],
+          present_artifacts: [],
+          object_ids: [],
+          event_types: ['agent.handoff.blocked'],
+          ...emptyWorkflowStageRuntimeFacts,
+          next_actions: ['Review behavior-eval findings before handoff.'],
+          updated_at: '2026-06-21T03:03:00Z',
+          gate: {
+            gate_id: 'agent_handoff.gate',
+            status: 'block',
+            severity: 'block',
+            reason: 'Behavior Eval Pack found blocking MCP/agent workflow red flags.',
+            evidence: [{ ref_type: 'evidence_integrity_signal', ref_id: 'behavior_eval:unsafe-handoff-claim' }],
+            blockers: ['Behavior Eval Pack found blocking MCP/agent workflow red flags.'],
+            unresolved: [],
+            requires_user_confirmation: false,
+          },
+        },
       ],
     });
     mockedGetEvidenceIntegrityGate.mockResolvedValue({
@@ -861,14 +933,54 @@ describe('AgentWorkspace', () => {
             { status: 'unresolved', replayCount: 1 },
           ),
         },
+        {
+          signal_id: 'behavior_eval:unsafe-handoff-claim',
+          category: 'behavior_eval',
+          status: 'block',
+          severity: 'block',
+          message: 'Behavior Eval Pack found blocking MCP/agent workflow red flags.',
+          evidence: [
+            { ref_type: 'behavior_eval_pack', ref_id: 'behavior_eval_runs/observation-red-flags.json' },
+            { ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' },
+          ],
+          next_actions: ['Review behavior-eval findings before making export, handoff, or external-action claims.'],
+          metadata: {
+            mode: 'observations',
+            behavior_status: 'block',
+            red_flag_count: 1,
+          },
+          drilldown: integrityDrilldownFixture(
+            'behavior_eval_pack',
+            {
+              mode: 'observations',
+              behavior_status: 'block',
+              red_flag_count: 1,
+              block_count: 1,
+              stage_id: 'agent_handoff',
+            },
+            {
+              status: 'block',
+              evidenceRefs: [
+                { ref_type: 'behavior_eval_pack', ref_id: 'behavior_eval_runs/observation-red-flags.json' },
+                { ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' },
+              ],
+              replayRefs: [
+                { ref_type: 'behavior_eval_pack', ref_id: 'behavior_eval_runs/observation-red-flags.json' },
+              ],
+            },
+          ),
+        },
       ],
       summary: {
-        signal_count: 3,
-        status_counts: { block: 2, unresolved: 1 },
-        severity_counts: { block: 2, note: 1 },
+        signal_count: 4,
+        status_counts: { block: 3, unresolved: 1 },
+        severity_counts: { block: 3, note: 1 },
         unresolved_is_pass: false,
       },
-      blockers: ['Unsupported citation anchors block export readiness.'],
+      blockers: [
+        'Unsupported citation anchors block export readiness.',
+        'Behavior Eval Pack found blocking MCP/agent workflow red flags.',
+      ],
       unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
       enforcement: {
         schema_version: 'scholar_ai_workflow_enforcement_v1',
@@ -1179,11 +1291,12 @@ describe('AgentWorkspace', () => {
     expect(within(boundaryRegion).getByText('boundary can proceed false')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('boundary require ready true')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('boundary refresh false')).toBeInTheDocument();
-    expect(within(boundaryRegion).getByText('blocked signals 1')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('blocked signals 2')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('unresolved signals 1')).toBeInTheDocument();
-    expect(within(boundaryRegion).getByText('recovery drilldowns 2')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('recovery drilldowns 3')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('claim export_readiness')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('citation_verification:unsupported:1 · block')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('behavior_eval:unsafe-handoff-claim · block')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('retrieval_quality:missing_qrels_status:1 · unresolved')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Recovery Drilldowns')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('citation_verification:unsupported:1')).toBeInTheDocument();
@@ -1191,13 +1304,15 @@ describe('AgentWorkspace', () => {
     expect(within(boundaryRegion).getAllByText('facts 3').length).toBeGreaterThan(0);
     expect(within(boundaryRegion).getAllByText('evidence 2').length).toBeGreaterThan(0);
     expect(within(boundaryRegion).getAllByText('replay 1').length).toBeGreaterThan(0);
-    expect(within(boundaryRegion).getByText('safe probes 2')).toBeInTheDocument();
-    expect(within(boundaryRegion).getByText('blocks claims true')).toBeInTheDocument();
-    expect(within(boundaryRegion).getByText('human review false')).toBeInTheDocument();
+    expect(within(boundaryRegion).getAllByText('safe probes 2').length).toBeGreaterThan(1);
+    expect(within(boundaryRegion).getAllByText('blocks claims true').length).toBeGreaterThan(1);
+    expect(within(boundaryRegion).getAllByText('human review false').length).toBeGreaterThan(1);
     expect(within(boundaryRegion).getAllByText('read-only true').length).toBeGreaterThan(0);
     expect(within(boundaryRegion).getByText('Run citation source verification before retrying export.')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Evidence pack · qrels_status')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Record qrels_status before retrying export.')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Agent handoff · behavior_eval_pack')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Review behavior-eval findings before making export, handoff, or external-action claims.')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Read Workflow Passport · read-only true')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Read Evidence Integrity Gate · read-only true')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Read runtime job action preflight metadata · read-only true')).toBeInTheDocument();
@@ -1207,10 +1322,28 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('unresolved 1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('blocked').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('behavior eval 阻断').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('behavior eval canary ok').length).toBeGreaterThan(0);
+    expect(screen.getByText('behavior gate 1')).toBeInTheDocument();
+    const behaviorGateRegion = screen.getByRole('region', { name: 'Behavior eval gate signals' });
+    expect(within(behaviorGateRegion).getByText('Behavior Gate Signals')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('blocking')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('1 behavior_eval signals · block 1 · unresolved 0 · recovery 1')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('behavior block 1')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('behavior unresolved 0')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('behavior recovery 1')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('observation-mode gate')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('pack mode canary')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('behavior_eval:unsafe-handoff-claim')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('evidence type behavior_eval_pack')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('severity block')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('evidence 2')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('next actions 1')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('Behavior Recovery Drilldowns')).toBeInTheDocument();
+    expect(within(behaviorGateRegion).getByText('behavior_eval:unsafe-handoff-claim · Agent handoff · safe probes 2')).toBeInTheDocument();
+    expect(screen.getByText('Canary mode passes when every unsafe canary is detected.')).toBeInTheDocument();
     expect(screen.getByText('canary · cases 8 · flags 8 · block 7 · warn 1')).toBeInTheDocument();
     expect(screen.getAllByText('Integrity Drilldown Inspector').length).toBeGreaterThan(0);
-    expect(screen.getByText('integrity links 1')).toBeInTheDocument();
+    expect(screen.getAllByText('integrity links 1').length).toBeGreaterThan(0);
     expect(screen.getByText('linked stage Citation review')).toBeInTheDocument();
     expect(screen.getByText('raw path redacted')).toBeInTheDocument();
     expect(screen.getAllByText('workflow_stage:citation_review').length).toBeGreaterThan(1);
