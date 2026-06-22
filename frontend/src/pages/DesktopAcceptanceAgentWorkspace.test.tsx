@@ -18,8 +18,16 @@ describe('DesktopAcceptanceAgentWorkspace', () => {
     expect(screen.getByText('Scan the project source folder so retrieval and evidence packs can read chunks.')).toBeInTheDocument();
     expect(screen.getByText('Provide a Zotero data directory containing zotero.sqlite, then rerun the health check.')).toBeInTheDocument();
     expect(screen.getByText('打开任务详情检查待补充哨兵和 evidence refs。')).toBeInTheDocument();
-    expect(screen.getByText('goal-state 52 rows · proved 50 · incomplete 1 · out-of-scope 1 · latest N44-track-desktop-acceptance-lifecycle-test')).toBeInTheDocument();
-    expect(screen.getByText('checkpoint 20260622-231241-n44-post-commit-goal-state-closeout')).toBeInTheDocument();
+    const workspaceStateRegion = screen.getByRole('region', { name: 'Workspace state visibility' });
+    expect(within(workspaceStateRegion).getByText('changed 3')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('main · changed 3 · staged 0 · unstaged 2 · untracked 1')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('ahead 41')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getAllByText('docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json').length).toBeGreaterThan(1);
+    expect(within(workspaceStateRegion).getByText('goal-state 54 rows · proved 52 · incomplete 1 · out-of-scope 1 · latest N46-desktop-dirty-workspace-state-visibility')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('checkpoint 20260622-232824-n46-desktop-dirty-state-visibility')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).queryByText(/C:\\Users\\xiao\\/)).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: '研究流程主干' })).toHaveAttribute('data-density', 'desktop-acceptance');
     expect(screen.getByRole('heading', { name: '研究流程' })).toBeInTheDocument();
     expect(screen.getByText('Workflow Passport')).toBeInTheDocument();
