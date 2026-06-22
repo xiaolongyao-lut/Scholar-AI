@@ -1549,8 +1549,14 @@ function workspaceGoalStateSummary(state: AgentWorkspaceStatus['workspace_state'
   if (!goal.available) {
     return `goal-state unavailable${goal.error ? ` · ${sanitizeInspectorText(goal.error)}` : ''}`;
   }
-  const latest = goal.latest_requirement_id ? ` · latest ${sanitizeInspectorText(goal.latest_requirement_id)}` : '';
-  return `goal-state ${goal.requirement_count} rows · proved ${goal.proved_count} · incomplete ${goal.incomplete_count} · out-of-scope ${goal.out_of_scope_count}${latest}`;
+  const status = goal.requirement_status;
+  const total = status?.total ?? goal.requirement_count;
+  const proved = status?.proved ?? goal.proved_count;
+  const incomplete = status?.incomplete ?? goal.incomplete_count;
+  const outOfScope = status?.out_of_scope ?? goal.out_of_scope_count;
+  const latestId = status?.latest_id ?? goal.latest_requirement_id;
+  const latest = latestId ? ` · latest ${sanitizeInspectorText(latestId)}` : '';
+  return `goal-state ${total} rows · proved ${proved} · incomplete ${incomplete} · out-of-scope ${outOfScope}${latest}`;
 }
 
 function workspaceGoalCompletionClaimSummary(goal: AgentWorkspaceStatus['workspace_state']['goal_state']): {
@@ -3226,6 +3232,11 @@ export function WorkspaceStatePanel({
               <StatusPill tone={state.goal_state.available ? 'success' : 'warning'}>
                 goal-state {state.goal_state.available ? 'visible' : 'missing'}
               </StatusPill>
+              {state.goal_state.requirement_status ? (
+                <StatusPill tone={state.goal_state.requirement_status.incomplete > 0 ? 'warning' : 'success'}>
+                  requirement status visible
+                </StatusPill>
+              ) : null}
               {goalCompletionClaim.fullGoal ? (
                 <StatusPill tone={goalCompletionClaim.fullGoal.toLowerCase().includes('not complete') ? 'warning' : 'info'}>
                   full goal status visible

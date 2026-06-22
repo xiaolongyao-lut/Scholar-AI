@@ -59,6 +59,14 @@ export interface AgentWorkspaceRecoveryProbe {
   mcp_tool: string | null;
 }
 
+export interface AgentWorkspaceGoalRequirementStatus {
+  total: number;
+  proved: number;
+  incomplete: number;
+  out_of_scope: number;
+  latest_id: string | null;
+}
+
 export interface AgentWorkspaceGoalState {
   available: boolean;
   path: string | null;
@@ -69,6 +77,7 @@ export interface AgentWorkspaceGoalState {
   incomplete_count: number;
   out_of_scope_count: number;
   latest_requirement_id: string | null;
+  requirement_status: AgentWorkspaceGoalRequirementStatus;
   completion_claim: {
     this_slice: string | null;
     full_goal: string | null;

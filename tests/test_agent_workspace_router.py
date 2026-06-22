@@ -75,6 +75,13 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
             incomplete_count=1,
             out_of_scope_count=1,
             latest_requirement_id="N41-goal-state-workspace-visibility",
+            requirement_status=agent_workspace_router.AgentWorkspaceGoalRequirementStatus(
+                total=49,
+                proved=47,
+                incomplete=1,
+                out_of_scope=1,
+                latest_id="N41-goal-state-workspace-visibility",
+            ),
             completion_claim=agent_workspace_router.AgentWorkspaceGoalCompletionClaim(
                 this_slice="N41 made goal-state recovery visible.",
                 full_goal="The full Scholar AI workflow spine remains active, not complete.",
@@ -121,6 +128,13 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert goal_state["incomplete_count"] == 1
     assert goal_state["out_of_scope_count"] == 1
     assert goal_state["latest_requirement_id"] == "N41-goal-state-workspace-visibility"
+    assert goal_state["requirement_status"] == {
+        "total": 49,
+        "proved": 47,
+        "incomplete": 1,
+        "out_of_scope": 1,
+        "latest_id": "N41-goal-state-workspace-visibility",
+    }
     assert goal_state["completion_claim"]["this_slice"] == "N41 made goal-state recovery visible."
     assert goal_state["completion_claim"]["full_goal"] == "The full Scholar AI workflow spine remains active, not complete."
     probes = payload["workspace_state"]["recovery_probes"]
@@ -201,6 +215,11 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert summary.incomplete_count == 1
     assert summary.out_of_scope_count == 1
     assert summary.latest_requirement_id == "D01"
+    assert summary.requirement_status.total == 4
+    assert summary.requirement_status.proved == 2
+    assert summary.requirement_status.incomplete == 1
+    assert summary.requirement_status.out_of_scope == 1
+    assert summary.requirement_status.latest_id == "D01"
     assert summary.completion_claim.this_slice is not None
     assert len(summary.completion_claim.this_slice) == agent_workspace_router.MAX_GOAL_COMPLETION_CHARS
     assert summary.completion_claim.this_slice.startswith("N41 exposed bounded recovery state")

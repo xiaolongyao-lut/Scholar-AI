@@ -110,6 +110,13 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       incomplete_count: 1,
       out_of_scope_count: 1,
       latest_requirement_id: 'N41-goal-state-workspace-visibility',
+      requirement_status: {
+        total: 49,
+        proved: 47,
+        incomplete: 1,
+        out_of_scope: 1,
+        latest_id: 'N41-goal-state-workspace-visibility',
+      },
       completion_claim: {
         this_slice: 'N41 made goal-state recovery visible.',
         full_goal: 'The full Scholar AI workflow spine remains active, not complete.',
@@ -1864,6 +1871,7 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('runtime ready · files 2 · 128 B')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal-state 49 rows · proved 47 · incomplete 1 · out-of-scope 1 · latest N41-goal-state-workspace-visibility')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal-state visible')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('requirement status visible')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal status visible')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('slice completion N41 made goal-state recovery visible.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal The full Scholar AI workflow spine remains active, not complete.')).toBeInTheDocument();

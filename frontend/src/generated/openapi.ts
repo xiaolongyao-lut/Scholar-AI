@@ -7434,6 +7434,42 @@ export interface components {
             this_slice?: string | null;
         };
         /**
+         * AgentWorkspaceGoalRequirementStatus
+         * @description Bounded requirement-to-evidence status summary for resume decisions.
+         *
+         *     Args:
+         *         total: Number of requirement rows in the selected goal-state record.
+         *         proved: Rows backed by concrete implementation, command, artifact, or
+         *             runtime evidence.
+         *         incomplete: Rows that still need stronger local evidence or tooling.
+         *         out_of_scope: Rows explicitly excluded by the current user boundary.
+         *         latest_id: Last row id in the requirement matrix.
+         */
+        AgentWorkspaceGoalRequirementStatus: {
+            /**
+             * Incomplete
+             * @default 0
+             */
+            incomplete: number;
+            /** Latest Id */
+            latest_id?: string | null;
+            /**
+             * Out Of Scope
+             * @default 0
+             */
+            out_of_scope: number;
+            /**
+             * Proved
+             * @default 0
+             */
+            proved: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
          * AgentWorkspaceGoalState
          * @description Bounded longrun goal-state summary for recovery decisions.
          *
@@ -7447,6 +7483,7 @@ export interface components {
          *         incomplete_count: Number of incomplete rows.
          *         out_of_scope_count: Number of rows explicitly outside current scope.
          *         latest_requirement_id: Last requirement id in the matrix.
+         *         requirement_status: Compact requirement-to-evidence status summary.
          *         completion_claim: Bounded slice/full-goal completion summary.
          *         next_authorized_local_actions: Bounded action labels from the record.
          *         stop_boundaries: Bounded stop-boundary labels from the record.
@@ -7486,6 +7523,7 @@ export interface components {
              * @default 0
              */
             requirement_count: number;
+            requirement_status?: components["schemas"]["AgentWorkspaceGoalRequirementStatus"];
             /** Stop Boundaries */
             stop_boundaries?: string[];
             /** Updated At */

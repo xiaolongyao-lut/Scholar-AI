@@ -119,6 +119,25 @@ class AgentWorkspaceGoalCompletionClaim(BaseModel):
     full_goal: str | None = Field(default=None, max_length=MAX_GOAL_COMPLETION_CHARS)
 
 
+class AgentWorkspaceGoalRequirementStatus(BaseModel):
+    """Bounded requirement-to-evidence status summary for resume decisions.
+
+    Args:
+        total: Number of requirement rows in the selected goal-state record.
+        proved: Rows backed by concrete implementation, command, artifact, or
+            runtime evidence.
+        incomplete: Rows that still need stronger local evidence or tooling.
+        out_of_scope: Rows explicitly excluded by the current user boundary.
+        latest_id: Last row id in the requirement matrix.
+    """
+
+    total: int = Field(default=0, ge=0)
+    proved: int = Field(default=0, ge=0)
+    incomplete: int = Field(default=0, ge=0)
+    out_of_scope: int = Field(default=0, ge=0)
+    latest_id: str | None = Field(default=None, max_length=160)
+
+
 class AgentWorkspaceGoalState(BaseModel):
     """Bounded longrun goal-state summary for recovery decisions.
 
@@ -132,6 +151,7 @@ class AgentWorkspaceGoalState(BaseModel):
         incomplete_count: Number of incomplete rows.
         out_of_scope_count: Number of rows explicitly outside current scope.
         latest_requirement_id: Last requirement id in the matrix.
+        requirement_status: Compact requirement-to-evidence status summary.
         completion_claim: Bounded slice/full-goal completion summary.
         next_authorized_local_actions: Bounded action labels from the record.
         stop_boundaries: Bounded stop-boundary labels from the record.
@@ -147,6 +167,7 @@ class AgentWorkspaceGoalState(BaseModel):
     incomplete_count: int = Field(default=0, ge=0)
     out_of_scope_count: int = Field(default=0, ge=0)
     latest_requirement_id: str | None = Field(default=None, max_length=160)
+    requirement_status: AgentWorkspaceGoalRequirementStatus = Field(default_factory=AgentWorkspaceGoalRequirementStatus)
     completion_claim: AgentWorkspaceGoalCompletionClaim = Field(default_factory=AgentWorkspaceGoalCompletionClaim)
     next_authorized_local_actions: list[str] = Field(default_factory=list)
     stop_boundaries: list[str] = Field(default_factory=list)
@@ -633,6 +654,13 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
         incomplete_count=statuses.get("incomplete", 0),
         out_of_scope_count=statuses.get("out_of_scope", 0),
         latest_requirement_id=latest_requirement_id,
+        requirement_status=AgentWorkspaceGoalRequirementStatus(
+            total=len(requirements),
+            proved=statuses.get("proved", 0),
+            incomplete=statuses.get("incomplete", 0),
+            out_of_scope=statuses.get("out_of_scope", 0),
+            latest_id=latest_requirement_id,
+        ),
         completion_claim=_safe_goal_completion_claim(payload.get("completion_claim")),
         next_authorized_local_actions=_safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
         stop_boundaries=_safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
