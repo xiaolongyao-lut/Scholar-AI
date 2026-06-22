@@ -4,7 +4,7 @@ from lit_assistant_mcp.server import create_mcp_server
 
 
 def test_server_registers_source_and_runtime_tools() -> None:
-    """FastMCP server exposes Slice 2 and Slice 3 tool names."""
+    """FastMCP server exposes source, runtime, and workflow-spine tool names."""
     server = create_mcp_server()
 
     tool_names = {tool.name for tool in server._tool_manager.list_tools()}
@@ -44,11 +44,18 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.single_paper_completion_check",
         "literature.agent_request_list",
         "literature.agent_request_read",
+        "literature.agent_handoff_card",
+        "literature.behavior_eval_pack",
+        "literature.workflow_passport",
+        "literature.evidence_integrity_gate",
         "literature.agent_resource_read",
         "literature.agent_progress",
         "literature.agent_result",
         "literature.agent_fail",
         "literature.research_action_lifecycle",
+        "literature.workflow_refresh_receipt",
+        "literature.workflow_replay_lineage",
+        "literature.workflow_replay_index",
         "literature.ocr_material",
         "literature.prepare_visual_review",
         "literature.translate_pack",

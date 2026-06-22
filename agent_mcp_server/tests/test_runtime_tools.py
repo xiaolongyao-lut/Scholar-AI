@@ -1186,6 +1186,8 @@ def test_agent_handoff_card_reads_runtime_card_by_request_id(
                 "read_only": True,
                 "action_ref_count": 1,
                 "pending_confirmation_count": 1,
+                "blocked_action_count": 1,
+                "missing_preflight_count": 0,
                 "action_refs": [
                     {
                         "ref_type": "research_action_lifecycle",
@@ -1200,8 +1202,20 @@ def test_agent_handoff_card_reads_runtime_card_by_request_id(
                 "resume_probes": [
                     {"endpoint": "/runtime/research-action-lifecycle", "read_only": True}
                 ],
+                "forbidden_actions": [
+                    "Do not execute approvals from the lifecycle projection.",
+                    "Do not write import-to-wiki content from the handoff card.",
+                ],
             },
             "resume_probes": [{"endpoint": "/runtime/job/job_agent_1/snapshot"}],
+            "provenance": {
+                "derived_from": [
+                    "runtime.agent_request",
+                    "runtime.research_action_lifecycle_refs",
+                ],
+                "external_mutation": False,
+                "source_material_mutation": False,
+            },
         },
     )
 
@@ -1221,9 +1235,18 @@ def test_agent_handoff_card_reads_runtime_card_by_request_id(
     assert result["data"]["replay_recovery"]["highest_priority_attempt"]["job_id"] == "job_agent_1"
     assert result["data"]["action_lifecycle_recovery"]["read_only"] is True
     assert result["data"]["action_lifecycle_recovery"]["pending_confirmation_count"] == 1
+    assert result["data"]["action_lifecycle_recovery"]["blocked_action_count"] == 1
+    assert result["data"]["action_lifecycle_recovery"]["missing_preflight_count"] == 0
+    assert result["data"]["action_lifecycle_recovery"]["resume_probes"] == [
+        {"endpoint": "/runtime/research-action-lifecycle", "read_only": True}
+    ]
+    assert "execute approvals" in result["data"]["action_lifecycle_recovery"]["forbidden_actions"][0]
     action_ref = result["data"]["action_lifecycle_recovery"]["action_refs"][0]
     assert action_ref["action_type"] == "agent_handoff"
     assert action_ref["probe_endpoint"] == "/runtime/research-action-lifecycle"
+    assert "runtime.research_action_lifecycle_refs" in result["data"]["provenance"]["derived_from"]
+    assert result["data"]["provenance"]["external_mutation"] is False
+    assert result["data"]["provenance"]["source_material_mutation"] is False
     assert backend.calls[-2] == ("json", "/api/agent-bridge/request/agentreq_1", None)
     assert backend.calls[-1] == ("json", "/runtime/job/job_agent_1/agent-handoff-card", None)
 
