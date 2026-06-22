@@ -98,6 +98,7 @@ _MATERIAL_PROCESSING_OUTPUT_TARGETS = {
 _RESEARCH_PROJECTION_SCHEMA_VERSION = "research_object_projection_v1"
 _RESEARCH_EVENT_SOURCE = "scholar-ai.runtime"
 _RESEARCH_PROJECT_OBJECT_TYPE = "research_project"
+_MATERIAL_PROCESSING_CACHE_DECISION_SCHEMA_VERSION = "material_processing_cache_decision_v1"
 _WORKFLOW_PASSPORT_SCHEMA_VERSION = "scholar_ai_workflow_passport_v1"
 _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION = "scholar_ai_evidence_integrity_gate_v1"
 _AGENT_HANDOFF_CARD_SCHEMA_VERSION = "scholar_ai_agent_handoff_card_v1"
@@ -568,6 +569,119 @@ def _normalize_material_processing_cache(
     }
 
 
+def _material_processing_artifact_family_summary(artifacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return reproducible artifact-family facts without exposing local paths."""
+
+    rows: list[dict[str, Any]] = []
+    for artifact in artifacts[:16]:
+        artifact_type = _safe_projection_string(artifact.get("artifact_type"))
+        output_target = _safe_projection_string(artifact.get("output_target"))
+        if artifact_type is None or output_target is None:
+            continue
+        row: dict[str, Any] = {
+            "artifact_type": artifact_type,
+            "output_target": output_target,
+        }
+        if artifact.get("count") is not None:
+            row["count"] = _coerce_non_negative_int(artifact.get("count"), field_name="artifact_family.count")
+        digest = _optional_string(artifact.get("digest"), field_name="artifact_family.digest", max_length=160)
+        if digest:
+            row["digest"] = digest
+        row.update(_projection_path_summary(artifact.get("path")))
+        rows.append(
+            {
+                key: _projection_value(value)
+                for key, value in row.items()
+                if not _is_blank_projection_value(value)
+            }
+        )
+    return rows
+
+
+def _build_material_processing_cache_decision_record(
+    *,
+    job: WritingJob,
+    task_record: dict[str, Any],
+    artifacts: list[dict[str, Any]],
+    warnings: list[str],
+) -> dict[str, Any]:
+    """Build the cache/replay decision receipt for a material-processing task."""
+
+    request = _require_object(task_record.get("request"), field_name="material_processing_task.request")
+    cache = _require_object(task_record.get("cache"), field_name="material_processing_task.cache")
+    decision = _normalize_contract_choice(
+        cache.get("decision"),
+        field_name="material_processing_task.cache.decision",
+        allowed=_MATERIAL_PROCESSING_CACHE_DECISIONS,
+        default="pending",
+    )
+    policy = _normalize_contract_choice(
+        cache.get("policy"),
+        field_name="material_processing_task.cache.policy",
+        allowed=_MATERIAL_PROCESSING_CACHE_POLICIES,
+        default="use",
+    )
+    input_ref = _require_object(request.get("input_ref"), field_name="material_processing_task.request.input_ref")
+    output_targets = _normalize_material_processing_output_targets(request.get("output_targets"))
+    artifact_family = _material_processing_artifact_family_summary(artifacts)
+    has_all_requested_outputs = bool(output_targets) and {str(item.get("output_target")) for item in artifact_family} >= set(output_targets)
+    reasons = {
+        "pending": "Processing has not recorded a cache outcome yet.",
+        "hit": "Existing artifacts matched the content and parameter identity.",
+        "miss": "No reusable artifact matched the content and parameter identity; new outputs were generated.",
+        "bypass": "Cache lookup was skipped by the task policy.",
+        "refresh": "The task policy requested regeneration despite a stable cache identity.",
+        "invalidated": "A prior cached artifact was invalidated by changed inputs, parameters, or warnings.",
+    }
+    replayable = bool(cache.get("cache_key") and cache.get("parameter_digest") and decision not in {"pending", "invalidated"})
+    receipt_seed = {
+        "schema_version": _MATERIAL_PROCESSING_CACHE_DECISION_SCHEMA_VERSION,
+        "job_id": job.job_id,
+        "cache_key": cache.get("cache_key"),
+        "decision": decision,
+        "status": task_record.get("status"),
+        "artifact_family": artifact_family,
+        "warnings": warnings[:12],
+    }
+    return {
+        "schema_version": _MATERIAL_PROCESSING_CACHE_DECISION_SCHEMA_VERSION,
+        "decision_id": f"material-cache-decision:{hashlib.sha256(_digest_json_payload(receipt_seed).encode('utf-8')).hexdigest()[:24]}",
+        "generated_at": str(task_record.get("updated_at") or utc_now_iso_z()),
+        "job_id": job.job_id,
+        "session_id": job.session_id,
+        "project_id": request.get("project_id"),
+        "material_id": request.get("material_id"),
+        "policy": policy,
+        "decision": decision,
+        "reason": reasons.get(decision, "Cache decision was recorded by the material-processing task."),
+        "replayable": replayable,
+        "content_digest": cache.get("content_digest") or input_ref.get("content_digest"),
+        "parameter_digest": cache.get("parameter_digest"),
+        "cache_key": cache.get("cache_key"),
+        "processing_mode": request.get("processing_mode"),
+        "page_range": _json_safe_copy(request.get("page_range") or {}),
+        "output_targets": output_targets,
+        "artifact_family": artifact_family,
+        "artifact_family_digest": _digest_json_payload(artifact_family),
+        "warning_count": len(warnings),
+        "has_all_requested_outputs": has_all_requested_outputs,
+        "provenance": {
+            "derived_from": [
+                "runtime.job_metadata.material_processing_task",
+                "runtime.artifacts.material_processing_task",
+            ],
+            "runtime_job_id": job.job_id,
+            "source_material_mutation": False,
+            "external_mutation": False,
+            "standard_patterns": [
+                "W3C PROV activity/entity generation",
+                "Workflow Run RO-Crate workflow outputs",
+                "Python json stable serialization with SHA-256 digest",
+            ],
+        },
+    }
+
+
 def _normalize_material_processing_request(value: Any) -> dict[str, Any]:
     """Return a versioned material-processing request with computed cache identity."""
 
@@ -991,6 +1105,7 @@ def _new_passport_reproducibility() -> dict[str, Any]:
         "task_refs": [],
         "artifact_refs": [],
         "cache_refs": [],
+        "cache_decision_refs": [],
         "locator_refs": [],
         "qrels_refs": [],
         "preflight_receipts": [],
@@ -998,6 +1113,7 @@ def _new_passport_reproducibility() -> dict[str, Any]:
         "replay_probe_refs": [],
         "parameter_digest_count": 0,
         "cache_key_count": 0,
+        "cache_decision_record_count": 0,
     }
 
 
@@ -1035,6 +1151,7 @@ def _trim_passport_stage_projection(row: dict[str, Any]) -> None:
             "blocker_count",
             "parameter_digest_count",
             "cache_key_count",
+            "cache_decision_record_count",
         ):
             if key in diagnostics:
                 try:
@@ -1048,6 +1165,7 @@ def _trim_passport_stage_projection(row: dict[str, Any]) -> None:
             "task_refs",
             "artifact_refs",
             "cache_refs",
+            "cache_decision_refs",
             "locator_refs",
             "qrels_refs",
             "preflight_receipts",
@@ -1063,7 +1181,7 @@ def _trim_passport_stage_projection(row: dict[str, Any]) -> None:
             reproducibility["projection_digest_keys"] = sorted(dict.fromkeys(str(item) for item in digest_keys if str(item).strip()))[:16]
         else:
             reproducibility["projection_digest_keys"] = []
-        for key in ("parameter_digest_count", "cache_key_count"):
+        for key in ("parameter_digest_count", "cache_key_count", "cache_decision_record_count"):
             try:
                 reproducibility[key] = max(0, int(reproducibility.get(key) or 0))
             except (TypeError, ValueError):
@@ -1156,6 +1274,26 @@ def _record_passport_material_task(row: dict[str, Any], job_id: str, task: dict[
             if not _is_blank_projection_value(value)
         },
     )
+    decision_record = cache.get("decision_record") if isinstance(cache.get("decision_record"), dict) else {}
+    if decision_record:
+        _append_unique_mapping(
+            reproducibility["cache_decision_refs"],
+            {
+                key: _projection_value(value)
+                for key, value in {
+                    "ref_type": "material_processing_cache_decision",
+                    "ref_id": decision_record.get("decision_id"),
+                    "decision": decision_record.get("decision"),
+                    "policy": decision_record.get("policy"),
+                    "replayable": decision_record.get("replayable"),
+                    "reason": decision_record.get("reason"),
+                    "artifact_family_digest": decision_record.get("artifact_family_digest"),
+                    "has_all_requested_outputs": decision_record.get("has_all_requested_outputs"),
+                }.items()
+                if not _is_blank_projection_value(value)
+            },
+        )
+        reproducibility["cache_decision_record_count"] = int(reproducibility.get("cache_decision_record_count") or 0) + 1
     if _safe_projection_string(cache.get("parameter_digest")):
         reproducibility["parameter_digest_count"] = int(reproducibility.get("parameter_digest_count") or 0) + 1
     if _safe_projection_string(cache.get("cache_key")):
@@ -5217,6 +5355,13 @@ class WritingRuntime:
             "warnings": normalized_warnings,
             "provenance": normalized_provenance,
         }
+        decision_record = _build_material_processing_cache_decision_record(
+            job=job,
+            task_record=task_record,
+            artifacts=normalized_artifacts,
+            warnings=normalized_warnings,
+        )
+        task_record["cache"]["decision_record"] = decision_record
 
         metadata = dict(job.metadata)
         metadata[_MATERIAL_PROCESSING_TASK_KEY] = dict(task_record)
@@ -5240,6 +5385,7 @@ class WritingRuntime:
                     "material_id": normalized_request["material_id"],
                     "processing_mode": normalized_request["processing_mode"],
                     "cache_key": task_record["cache"].get("cache_key"),
+                    "cache_decision_id": decision_record["decision_id"],
                 },
                 mime_type="application/json",
             )
@@ -5256,6 +5402,8 @@ class WritingRuntime:
                     "material_id": normalized_request["material_id"],
                     "processing_mode": normalized_request["processing_mode"],
                     "cache_decision": task_record["cache"].get("decision"),
+                    "cache_decision_id": decision_record["decision_id"],
+                    "cache_replayable": decision_record["replayable"],
                     "artifact_count": len(normalized_artifacts),
                 },
             ),

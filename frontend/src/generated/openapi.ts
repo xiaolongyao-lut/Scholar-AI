@@ -12184,6 +12184,10 @@ export interface components {
              * @default pending
              */
             decision: string;
+            /** Decision Record */
+            decision_record?: {
+                [key: string]: unknown;
+            };
             /** Parameter Digest */
             parameter_digest?: string | null;
             /**

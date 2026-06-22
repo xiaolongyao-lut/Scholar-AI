@@ -12290,6 +12290,11 @@
             "title": "Decision",
             "type": "string"
           },
+          "decision_record": {
+            "additionalProperties": true,
+            "title": "Decision Record",
+            "type": "object"
+          },
           "parameter_digest": {
             "anyOf": [
               {

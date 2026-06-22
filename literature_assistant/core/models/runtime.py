@@ -256,6 +256,7 @@ class MaterialProcessingCachePayload(BaseModel):
     parameter_digest: Optional[str] = Field(default=None, max_length=160)
     cache_key: Optional[str] = Field(default=None, max_length=240)
     decision: str = Field(default="pending", min_length=1, max_length=40)
+    decision_record: Dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("policy")
     @classmethod

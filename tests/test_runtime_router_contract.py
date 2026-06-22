@@ -659,10 +659,14 @@ def test_runtime_router_updates_material_processing_task(monkeypatch, tmp_path) 
     assert task["request"]["page_range"] == {"mode": "range", "start_page": 2, "end_page": 4, "pages": []}
     assert task["cache"]["policy"] == "refresh"
     assert task["cache"]["parameter_digest"].startswith("sha256:")
+    assert task["cache"]["decision_record"]["schema_version"] == "material_processing_cache_decision_v1"
+    assert task["cache"]["decision_record"]["decision"] == "pending"
+    assert task["cache"]["decision_record"]["replayable"] is False
 
     get_response = client.get(f"/runtime/job/{job.job_id}/material-processing-task")
     assert get_response.status_code == 200
     assert get_response.json()["cache"]["cache_key"] == task["cache"]["cache_key"]
+    assert get_response.json()["cache"]["decision_record"]["decision_id"] == task["cache"]["decision_record"]["decision_id"]
 
     jobs_response = client.get("/runtime/jobs")
     assert jobs_response.status_code == 200
@@ -760,6 +764,9 @@ def test_uploaded_pdf_extraction_job_records_material_processing_contract(monkey
     assert task["result"]["chunks"] == 2
     assert task["cache"]["content_digest"] == "sha256:upload"
     assert task["cache"]["decision"] == "miss"
+    assert task["cache"]["decision_record"]["decision"] == "miss"
+    assert task["cache"]["decision_record"]["has_all_requested_outputs"] is True
+    assert task["cache"]["decision_record"]["artifact_family_digest"].startswith("sha256:")
     assert {artifact["output_target"] for artifact in task["artifacts"]} == {"chunks", "locators", "text_sidecar"}
     assert any(event.data.get("material_processing_status") == "completed" for event in events)
 
@@ -1035,7 +1042,12 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
     assert ingest_reproducibility["read_only"] is True
     assert ingest_reproducibility["parameter_digest_count"] == 1
     assert ingest_reproducibility["cache_key_count"] == 1
+    assert ingest_reproducibility["cache_decision_record_count"] == 1
     assert ingest_reproducibility["cache_refs"][0]["decision"] == "hit"
+    assert ingest_reproducibility["cache_decision_refs"][0]["ref_type"] == "material_processing_cache_decision"
+    assert ingest_reproducibility["cache_decision_refs"][0]["decision"] == "hit"
+    assert ingest_reproducibility["cache_decision_refs"][0]["replayable"] is True
+    assert ingest_reproducibility["cache_decision_refs"][0]["has_all_requested_outputs"] is True
     artifact_refs = stage_by_id["material_read"]["reproducibility"]["artifact_refs"]
     assert {item["output_target"] for item in artifact_refs if "output_target" in item} >= {"chunks", "locators"}
     assert all("path" not in item for item in artifact_refs)

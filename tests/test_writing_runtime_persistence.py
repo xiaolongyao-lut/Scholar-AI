@@ -306,6 +306,7 @@ async def test_material_processing_task_persists_as_job_metadata_event_and_artif
                 "artifact_type": "extracted_text_record",
                 "output_target": "text_sidecar",
                 "count": 1,
+                "path": str(tmp_path / "private" / "paper.md"),
                 "metadata": {"content_length": 2048},
             },
         ],
@@ -315,6 +316,19 @@ async def test_material_processing_task_persists_as_job_metadata_event_and_artif
 
     assert updated["status"] == "completed"
     assert updated["cache"]["decision"] == "miss"
+    decision_record = updated["cache"]["decision_record"]
+    assert decision_record["schema_version"] == "material_processing_cache_decision_v1"
+    assert decision_record["decision"] == "miss"
+    assert decision_record["reason"].startswith("No reusable artifact matched")
+    assert decision_record["replayable"] is True
+    assert decision_record["content_digest"] == "sha256:abc123"
+    assert decision_record["parameter_digest"] == updated["cache"]["parameter_digest"]
+    assert decision_record["cache_key"] == updated["cache"]["cache_key"]
+    assert decision_record["artifact_family_digest"].startswith("sha256:")
+    assert decision_record["artifact_family"][1]["path_present"] is True
+    assert decision_record["artifact_family"][1]["path_digest"].startswith("sha256:")
+    assert "path" not in decision_record["artifact_family"][1]
+    assert decision_record["has_all_requested_outputs"] is False
     assert updated["result"]["chunks"] == 4
 
     loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
@@ -327,13 +341,20 @@ async def test_material_processing_task_persists_as_job_metadata_event_and_artif
     assert loaded_task == loaded_job.metadata["material_processing_task"]
     assert loaded_task["request"]["output_targets"] == ["chunks", "locators", "text_sidecar"]
     assert loaded_task["artifacts"][0]["artifact_type"] == "chunk_index"
+    loaded_decision_record = loaded_task["cache"]["decision_record"]
+    assert loaded_decision_record["decision_id"] == decision_record["decision_id"]
+    assert "private" not in str(loaded_decision_record["artifact_family"])
     assert any(event.data.get("material_processing_status") == "completed" for event in loaded_events)
+    assert any(event.data.get("cache_decision_id") == decision_record["decision_id"] for event in loaded_events)
     assert any(
         isinstance(artifact.content, dict)
         and artifact.content.get("kind") == "material_processing_task"
         and artifact.content.get("state", {}).get("status") == "completed"
+        and artifact.content.get("state", {}).get("cache", {}).get("decision_record", {}).get("decision_id")
+        == decision_record["decision_id"]
         for artifact in loaded_artifacts
     )
+    assert any(artifact.metadata.get("cache_decision_id") == decision_record["decision_id"] for artifact in loaded_artifacts)
 
 
 @pytest.mark.asyncio
@@ -505,8 +526,13 @@ async def test_workflow_passport_rebuilds_from_persisted_runtime_state(tmp_path:
     assert ingest_repro["read_only"] is True
     assert ingest_repro["parameter_digest_count"] == 1
     assert ingest_repro["cache_key_count"] == 1
+    assert ingest_repro["cache_decision_record_count"] == 1
     assert ingest_repro["cache_refs"][0]["decision"] == "hit"
     assert ingest_repro["cache_refs"][0]["parameter_digest"].startswith("sha256:")
+    assert ingest_repro["cache_decision_refs"][0]["ref_type"] == "material_processing_cache_decision"
+    assert ingest_repro["cache_decision_refs"][0]["decision"] == "hit"
+    assert ingest_repro["cache_decision_refs"][0]["replayable"] is True
+    assert ingest_repro["cache_decision_refs"][0]["artifact_family_digest"].startswith("sha256:")
     assert stage_by_id["material_read"]["diagnostics"]["artifact_count"] >= 2
     assert {
         item["output_target"]
