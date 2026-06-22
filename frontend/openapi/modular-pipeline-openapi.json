@@ -798,8 +798,13 @@
         "type": "object"
       },
       "AgentHandoffCardPayload": {
-        "description": "Recoverable handoff card for one runtime-visible agent request.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this card.\n    request_id: Agent bridge request id when present.\n    job_id: Runtime job id that owns the handoff card.\n    session_id: Runtime session id used for resume probes.\n    project_id: Optional project id recovered from job/session metadata.\n    status: Terminal or current job lifecycle state.\n    current_stage_id: Workflow passport stage that should be inspected next.\n    completed_evidence: Bounded refs to completed runtime evidence.\n    blockers: Block-level integrity or lifecycle messages.\n    unresolved: Review/offline checks that must remain visible.\n    readiness_claims: Gate-derived handoff/export readiness state.\n    action_preflight: Read-only command preflight and refresh receipt used\n        to decide whether the handoff can be trusted.\n    replay_recovery: Compact replay-index and lineage context a resumed\n        agent should inspect before mutating local state.\n    resource_refs: Bounded resource refs supplied to the delegated agent.\n    artifacts: Bounded artifacts attached to the runtime job.\n    resume_probes: Read-only calls a new agent should run before mutating.\n    forbidden_actions: Actions that remain outside the local handoff boundary.\n    resume_prompt: Compact instruction block for the next agent session.\n    provenance: Runtime sources used to derive the card.",
+        "description": "Recoverable handoff card for one runtime-visible agent request.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this card.\n    request_id: Agent bridge request id when present.\n    job_id: Runtime job id that owns the handoff card.\n    session_id: Runtime session id used for resume probes.\n    project_id: Optional project id recovered from job/session metadata.\n    status: Terminal or current job lifecycle state.\n    current_stage_id: Workflow passport stage that should be inspected next.\n    completed_evidence: Bounded refs to completed runtime evidence.\n    blockers: Block-level integrity or lifecycle messages.\n    unresolved: Review/offline checks that must remain visible.\n    readiness_claims: Gate-derived handoff/export readiness state.\n    action_preflight: Read-only command preflight and refresh receipt used\n        to decide whether the handoff can be trusted.\n    action_lifecycle_recovery: Read-only research-action lifecycle refs a\n        resumed agent should inspect before mutating local state.\n    replay_recovery: Compact replay-index and lineage context a resumed\n        agent should inspect before mutating local state.\n    resource_refs: Bounded resource refs supplied to the delegated agent.\n    artifacts: Bounded artifacts attached to the runtime job.\n    resume_probes: Read-only calls a new agent should run before mutating.\n    forbidden_actions: Actions that remain outside the local handoff boundary.\n    resume_prompt: Compact instruction block for the next agent session.\n    provenance: Runtime sources used to derive the card.",
         "properties": {
+          "action_lifecycle_recovery": {
+            "additionalProperties": true,
+            "title": "Action Lifecycle Recovery",
+            "type": "object"
+          },
           "action_preflight": {
             "additionalProperties": true,
             "title": "Action Preflight",
@@ -1498,6 +1503,199 @@
         "title": "AgentWorkspaceAuditRecord",
         "type": "object"
       },
+      "AgentWorkspaceDirectoryState": {
+        "description": "Bounded local directory summary for workspace recovery checks.",
+        "properties": {
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "file_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "File Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "total_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total Bytes",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label",
+          "path",
+          "exists"
+        ],
+        "title": "AgentWorkspaceDirectoryState",
+        "type": "object"
+      },
+      "AgentWorkspaceGitState": {
+        "description": "Read-only git state summary for local recovery decisions.",
+        "properties": {
+          "ahead": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ahead",
+            "type": "integer"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "behind": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Behind",
+            "type": "integer"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "changed_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Changed Count",
+            "type": "integer"
+          },
+          "conflicted_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Conflicted Count",
+            "type": "integer"
+          },
+          "dirty_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dirty Paths",
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "staged_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Staged Count",
+            "type": "integer"
+          },
+          "unstaged_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unstaged Count",
+            "type": "integer"
+          },
+          "untracked_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Untracked Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "AgentWorkspaceGitState",
+        "type": "object"
+      },
+      "AgentWorkspaceState": {
+        "description": "Machine-readable local workspace state for resumable agents.",
+        "properties": {
+          "artifact_root": {
+            "$ref": "#/components/schemas/AgentWorkspaceDirectoryState"
+          },
+          "boundaries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Boundaries",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "git": {
+            "$ref": "#/components/schemas/AgentWorkspaceGitState"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "output_root": {
+            "$ref": "#/components/schemas/AgentWorkspaceDirectoryState"
+          },
+          "read_only": {
+            "default": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "recovery_probes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Recovery Probes",
+            "type": "array"
+          },
+          "runtime_state_root": {
+            "$ref": "#/components/schemas/AgentWorkspaceDirectoryState"
+          },
+          "schema_version": {
+            "default": "scholar_ai_agent_workspace_state_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "workspace_ready": {
+            "title": "Workspace Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generated_at",
+          "workspace_ready",
+          "artifact_root",
+          "runtime_state_root",
+          "output_root",
+          "git"
+        ],
+        "title": "AgentWorkspaceState",
+        "type": "object"
+      },
       "AgentWorkspaceStatus": {
         "description": "Aggregated Agent Workspace snapshot.",
         "properties": {
@@ -1544,13 +1742,17 @@
             "minimum": 0.0,
             "title": "Total Artifact Bytes",
             "type": "integer"
+          },
+          "workspace_state": {
+            "$ref": "#/components/schemas/AgentWorkspaceState"
           }
         },
         "required": [
           "artifact_root",
           "artifact_count",
           "audit_count",
-          "total_artifact_bytes"
+          "total_artifact_bytes",
+          "workspace_state"
         ],
         "title": "AgentWorkspaceStatus",
         "type": "object"

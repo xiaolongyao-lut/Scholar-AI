@@ -57,6 +57,67 @@ const emptyWorkflowStageRuntimeFacts = {
   reproducibility: {},
 };
 
+function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    schema_version: 'scholar_ai_agent_workspace_state_v1' as const,
+    generated_at: '2026-06-21T01:00:00Z',
+    workspace_ready: true,
+    read_only: true,
+    artifact_root: {
+      label: 'agent_mcp_workflows',
+      path: 'workspace_artifacts/agent_mcp_workflows',
+      exists: true,
+      file_count: 0,
+      total_bytes: 0,
+      truncated: false,
+    },
+    runtime_state_root: {
+      label: 'runtime_state',
+      path: 'workspace_artifacts/runtime_state',
+      exists: true,
+      file_count: 2,
+      total_bytes: 128,
+      truncated: false,
+    },
+    output_root: {
+      label: 'generated_output',
+      path: 'workspace_artifacts/generated/output',
+      exists: true,
+      file_count: 0,
+      total_bytes: 0,
+      truncated: false,
+    },
+    git: {
+      available: true,
+      branch: 'main',
+      ahead: 33,
+      behind: 0,
+      changed_count: 0,
+      staged_count: 0,
+      unstaged_count: 0,
+      untracked_count: 0,
+      conflicted_count: 0,
+      dirty_paths: [],
+      error: null,
+    },
+    recovery_probes: [
+      { label: 'Workflow Passport', route: '/runtime/workflow-passport', read_only: true },
+      { label: 'Evidence Integrity Gate', route: '/runtime/evidence-integrity-gate', read_only: true },
+      { label: 'Research Action Lifecycle', route: '/runtime/research-action-lifecycle', read_only: true },
+      { label: 'Agent Workspace Status', route: '/api/agent-workspace/status', read_only: true },
+    ],
+    boundaries: [
+      'Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.',
+      'Create a rollback checkpoint and re-check official or mature references before nontrivial edits.',
+    ],
+    next_safe_local_actions: [
+      'Read Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.',
+      'Inspect git dirty paths and preserve unrelated local work before staging or committing.',
+    ],
+    ...overrides,
+  };
+}
+
 interface IntegrityDrilldownFixtureRef {
   ref_type: string;
   ref_id: string;
@@ -108,6 +169,7 @@ describe('AgentWorkspace', () => {
       audit_count: 0,
       total_artifact_bytes: 0,
       latest_activity_at: null,
+      workspace_state: workspaceStateFixture(),
       artifacts: [],
       audit_records: [],
     });
@@ -341,6 +403,37 @@ describe('AgentWorkspace', () => {
       audit_count: 1,
       total_artifact_bytes: 512,
       latest_activity_at: '2026-06-21T02:00:00.000Z',
+      workspace_state: workspaceStateFixture({
+        artifact_root: {
+          label: 'agent_mcp_workflows',
+          path: 'workspace_artifacts/agent_mcp_workflows',
+          exists: true,
+          file_count: 1,
+          total_bytes: 512,
+          truncated: false,
+        },
+        output_root: {
+          label: 'generated_output',
+          path: 'workspace_artifacts/generated/output',
+          exists: true,
+          file_count: 3,
+          total_bytes: 2048,
+          truncated: true,
+        },
+        git: {
+          available: true,
+          branch: 'main',
+          ahead: 33,
+          behind: 0,
+          changed_count: 2,
+          staged_count: 0,
+          unstaged_count: 1,
+          untracked_count: 1,
+          conflicted_count: 0,
+          dirty_paths: ['literature_assistant/core/routers/agent_workspace_router.py', 'docs/plans/local-goal-state.json'],
+          error: null,
+        },
+      }),
       artifacts: [],
       audit_records: [
         {
@@ -751,6 +844,29 @@ describe('AgentWorkspace', () => {
       audit_count: 0,
       total_artifact_bytes: 256,
       latest_activity_at: '2026-06-21T03:00:00.000Z',
+      workspace_state: workspaceStateFixture({
+        artifact_root: {
+          label: 'agent_mcp_workflows',
+          path: 'workspace_artifacts/agent_mcp_workflows',
+          exists: true,
+          file_count: 1,
+          total_bytes: 256,
+          truncated: false,
+        },
+        git: {
+          available: true,
+          branch: 'main',
+          ahead: 33,
+          behind: 0,
+          changed_count: 2,
+          staged_count: 0,
+          unstaged_count: 1,
+          untracked_count: 1,
+          conflicted_count: 0,
+          dirty_paths: ['literature_assistant/core/routers/agent_workspace_router.py', 'docs/plans/local-goal-state.json'],
+          error: null,
+        },
+      }),
       artifacts: [
         {
           path: 'behavior_eval_runs/behavior-eval-20260621.json',
@@ -1566,6 +1682,21 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('read-only true · record not written')).toBeInTheDocument();
     expect(screen.getAllByText('artifacts 1').length).toBeGreaterThan(0);
     expect(screen.getByText('behavior-eval-20260621.json')).toBeInTheDocument();
+    const workspaceStateRegion = screen.getByRole('region', { name: 'Workspace state visibility' });
+    expect(within(workspaceStateRegion).getByText('Workspace State')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('workspace ready')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('main · changed 2 · staged 0 · unstaged 1 · untracked 1')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('ahead 33')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('artifacts ready · files 1 · 256 B')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('runtime ready · files 2 · 128 B')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).queryByText(/C:\\Users\\/)).not.toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('literature_assistant/core/routers/agent_workspace_router.py')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('docs/plans/local-goal-state.json')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Create a rollback checkpoint and re-check official or mature references before nontrivial edits.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).queryByText('/runtime/workflow-passport')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(mockedGetAgentHandoffCard).toHaveBeenCalledWith('job_agent_handoff_1');
       expect(mockedGetWorkflowReplayLineage).toHaveBeenCalledWith('job_agent_handoff_1', { limit: 12 });
@@ -1648,6 +1779,7 @@ describe('AgentWorkspace', () => {
       audit_count: 0,
       total_artifact_bytes: 0,
       latest_activity_at: null,
+      workspace_state: workspaceStateFixture(),
       artifacts: [],
       audit_records: [],
     });

@@ -1385,6 +1385,47 @@ function summarizeStatusCounts(value: unknown): string {
   return entries.map(([status, count]) => `${status} ${count}`).join(' · ');
 }
 
+function workspaceGitSummary(workspaceStatus: AgentWorkspaceStatus | null): string {
+  const git = workspaceStatus?.workspace_state.git;
+  if (!git?.available) {
+    return git?.error ? `git unavailable · ${sanitizeInspectorText(git.error)}` : 'git unavailable';
+  }
+  const branch = git.branch?.trim() || 'detached';
+  return `${branch} · changed ${git.changed_count} · staged ${git.staged_count} · unstaged ${git.unstaged_count} · untracked ${git.untracked_count}`;
+}
+
+function workspaceStateTone(workspaceStatus: AgentWorkspaceStatus | null): StatusTone {
+  const state = workspaceStatus?.workspace_state;
+  if (!state) {
+    return 'neutral';
+  }
+  if (!state.workspace_ready || state.git.conflicted_count > 0) {
+    return 'danger';
+  }
+  if (state.git.changed_count > 0 || state.git.behind > 0) {
+    return 'warning';
+  }
+  return 'success';
+}
+
+function workspaceDirectorySummary(
+  label: string,
+  exists: boolean,
+  fileCount: number,
+  totalBytes: number,
+  truncated: boolean,
+): string {
+  const suffix = truncated ? ' · truncated' : '';
+  return `${label} ${exists ? 'ready' : 'missing'} · files ${fileCount} · ${formatBytes(totalBytes)}${suffix}`;
+}
+
+function workspaceProbeLabel(value: unknown, index: number): string {
+  const record = isRecord(value) ? value : {};
+  const label = sanitizeInspectorText(readTextField(record, 'label') || `probe ${index + 1}`);
+  const readOnly = record.read_only === true ? 'true' : 'unknown';
+  return `${label} · read-only ${readOnly}`;
+}
+
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
   const recommendation = healthCheck?.recommendations?.find((item) => actionMessage(item));
   return actionMessage(recommendation)
@@ -1488,6 +1529,20 @@ function buildReadinessCards({
       metrics: [
         `active ${singlePaperActive}`,
         `failed ${singlePaperFailed}`,
+      ],
+    },
+    {
+      id: 'workspace-state',
+      label: '工作区状态',
+      statusLabel: workspaceStatus?.workspace_state.workspace_ready ? '可恢复' : workspaceStatus ? '需检查' : '未读取',
+      tone: workspaceStateTone(workspaceStatus),
+      icon: <TerminalSquare size={15} />,
+      summary: workspaceGitSummary(workspaceStatus),
+      nextAction: workspaceStatus?.workspace_state.next_safe_local_actions[0]
+        || '读取本地工作区状态后再恢复或交接任务。',
+      metrics: [
+        `runtime ${workspaceStatus?.workspace_state.runtime_state_root.exists ? 'yes' : 'no'}`,
+        `output ${workspaceStatus?.workspace_state.output_root.file_count ?? 0}`,
       ],
     },
     {
@@ -2870,6 +2925,129 @@ export function ReadinessPanel({
   );
 }
 
+function WorkspaceStatePanel({
+  workspaceStatus,
+}: {
+  workspaceStatus: AgentWorkspaceStatus | null;
+}) {
+  const state = workspaceStatus?.workspace_state ?? null;
+  if (state === null) {
+    return null;
+  }
+  const git = state.git;
+  const dirtyPaths = git.dirty_paths.slice(0, 6);
+  const probes = state.recovery_probes.slice(0, 4);
+  const boundaries = state.boundaries.slice(0, 3).map(sanitizeInspectorText);
+  const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
+  return (
+    <section
+      aria-label="Workspace state visibility"
+      className="mb-4 min-w-0 max-w-full overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest px-4 py-3"
+    >
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="font-display text-sm font-semibold text-foreground">Workspace State</h2>
+          <p className="mt-0.5 text-xs leading-5 text-foreground/50">
+            Local artifacts, runtime roots, git state, recovery probes, and mutation boundaries are summarized read-only.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <StatusPill tone={workspaceStateTone(workspaceStatus)}>
+            {state.workspace_ready ? 'workspace ready' : 'workspace needs check'}
+          </StatusPill>
+          <StatusPill tone="neutral">read-only {String(state.read_only)}</StatusPill>
+          <StatusPill tone={git.available ? 'info' : 'warning'}>{git.available ? 'git visible' : 'git unavailable'}</StatusPill>
+        </div>
+      </div>
+      <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <article className="min-w-0 overflow-hidden rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+            <h3 className="truncate font-label text-xs font-semibold text-foreground">Local Recovery State</h3>
+            <StatusPill tone={git.conflicted_count > 0 ? 'danger' : git.changed_count > 0 ? 'warning' : 'success'}>
+              changed {git.changed_count}
+            </StatusPill>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <StatusPill tone="neutral">{workspaceGitSummary(workspaceStatus)}</StatusPill>
+            <StatusPill tone="neutral">ahead {git.ahead}</StatusPill>
+            <StatusPill tone={git.behind > 0 ? 'warning' : 'neutral'}>behind {git.behind}</StatusPill>
+            <StatusPill tone={git.conflicted_count > 0 ? 'danger' : 'neutral'}>conflicts {git.conflicted_count}</StatusPill>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            {[
+              workspaceDirectorySummary(
+                'artifacts',
+                state.artifact_root.exists,
+                state.artifact_root.file_count,
+                state.artifact_root.total_bytes,
+                state.artifact_root.truncated,
+              ),
+              workspaceDirectorySummary(
+                'runtime',
+                state.runtime_state_root.exists,
+                state.runtime_state_root.file_count,
+                state.runtime_state_root.total_bytes,
+                state.runtime_state_root.truncated,
+              ),
+              workspaceDirectorySummary(
+                'output',
+                state.output_root.exists,
+                state.output_root.file_count,
+                state.output_root.total_bytes,
+                state.output_root.truncated,
+              ),
+            ].map((item) => (
+              <p key={item} className="min-w-0 break-words rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                {item}
+              </p>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {dirtyPaths.length === 0 ? (
+              <StatusPill tone="success">no dirty paths reported</StatusPill>
+            ) : dirtyPaths.map((path) => (
+              <StatusPill key={path} tone="warning">{sanitizeInspectorText(path)}</StatusPill>
+            ))}
+          </div>
+        </article>
+        <article className="min-w-0 overflow-hidden rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+            <h3 className="truncate font-label text-xs font-semibold text-foreground">Recovery Guardrails</h3>
+            <StatusPill tone="info">probes {probes.length}</StatusPill>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {probes.map((probe, index) => (
+              <StatusPill key={workspaceProbeLabel(probe, index)} tone="info">{workspaceProbeLabel(probe, index)}</StatusPill>
+            ))}
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <div className="min-w-0">
+              <h4 className="font-label text-[11px] font-semibold text-foreground/45">Next Safe Local Actions</h4>
+              <div className="mt-1 flex flex-col gap-1.5">
+                {nextActions.map((action) => (
+                  <p key={action} className="break-words rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    {action}
+                  </p>
+                ))}
+              </div>
+            </div>
+            <div className="min-w-0">
+              <h4 className="font-label text-[11px] font-semibold text-foreground/45">Boundaries</h4>
+              <div className="mt-1 flex flex-col gap-1.5">
+                {boundaries.map((boundary) => (
+                  <p key={boundary} className="break-words rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    {boundary}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 export function AgentWorkspace() {
   const [status, setStatus] = useState<AgentWorkspaceStatus | null>(null);
   const [bridgeStatus, setBridgeStatus] = useState<AgentBridgeStatus | null>(null);
@@ -3086,6 +3264,8 @@ export function AgentWorkspace() {
           agentJobs={agentJobs}
           auditRecords={status?.audit_records ?? []}
         />
+
+        <WorkspaceStatePanel workspaceStatus={status} />
 
         <ResearchWorkflowSpine
           loading={loading}

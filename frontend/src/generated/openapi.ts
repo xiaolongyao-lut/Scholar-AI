@@ -7009,6 +7009,8 @@ export interface components {
          *         readiness_claims: Gate-derived handoff/export readiness state.
          *         action_preflight: Read-only command preflight and refresh receipt used
          *             to decide whether the handoff can be trusted.
+         *         action_lifecycle_recovery: Read-only research-action lifecycle refs a
+         *             resumed agent should inspect before mutating local state.
          *         replay_recovery: Compact replay-index and lineage context a resumed
          *             agent should inspect before mutating local state.
          *         resource_refs: Bounded resource refs supplied to the delegated agent.
@@ -7019,6 +7021,10 @@ export interface components {
          *         provenance: Runtime sources used to derive the card.
          */
         AgentHandoffCardPayload: {
+            /** Action Lifecycle Recovery */
+            action_lifecycle_recovery?: {
+                [key: string]: unknown;
+            };
             /** Action Preflight */
             action_preflight?: {
                 [key: string]: unknown;
@@ -7338,6 +7344,114 @@ export interface components {
             touched_paths?: string[];
         };
         /**
+         * AgentWorkspaceDirectoryState
+         * @description Bounded local directory summary for workspace recovery checks.
+         */
+        AgentWorkspaceDirectoryState: {
+            /** Exists */
+            exists: boolean;
+            /**
+             * File Count
+             * @default 0
+             */
+            file_count: number;
+            /** Label */
+            label: string;
+            /** Path */
+            path: string;
+            /**
+             * Total Bytes
+             * @default 0
+             */
+            total_bytes: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * AgentWorkspaceGitState
+         * @description Read-only git state summary for local recovery decisions.
+         */
+        AgentWorkspaceGitState: {
+            /**
+             * Ahead
+             * @default 0
+             */
+            ahead: number;
+            /** Available */
+            available: boolean;
+            /**
+             * Behind
+             * @default 0
+             */
+            behind: number;
+            /** Branch */
+            branch?: string | null;
+            /**
+             * Changed Count
+             * @default 0
+             */
+            changed_count: number;
+            /**
+             * Conflicted Count
+             * @default 0
+             */
+            conflicted_count: number;
+            /** Dirty Paths */
+            dirty_paths?: string[];
+            /** Error */
+            error?: string | null;
+            /**
+             * Staged Count
+             * @default 0
+             */
+            staged_count: number;
+            /**
+             * Unstaged Count
+             * @default 0
+             */
+            unstaged_count: number;
+            /**
+             * Untracked Count
+             * @default 0
+             */
+            untracked_count: number;
+        };
+        /**
+         * AgentWorkspaceState
+         * @description Machine-readable local workspace state for resumable agents.
+         */
+        AgentWorkspaceState: {
+            artifact_root: components["schemas"]["AgentWorkspaceDirectoryState"];
+            /** Boundaries */
+            boundaries?: string[];
+            /** Generated At */
+            generated_at: string;
+            git: components["schemas"]["AgentWorkspaceGitState"];
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            output_root: components["schemas"]["AgentWorkspaceDirectoryState"];
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /** Recovery Probes */
+            recovery_probes?: {
+                [key: string]: unknown;
+            }[];
+            runtime_state_root: components["schemas"]["AgentWorkspaceDirectoryState"];
+            /**
+             * Schema Version
+             * @default scholar_ai_agent_workspace_state_v1
+             */
+            schema_version: string;
+            /** Workspace Ready */
+            workspace_ready: boolean;
+        };
+        /**
          * AgentWorkspaceStatus
          * @description Aggregated Agent Workspace snapshot.
          */
@@ -7356,6 +7470,7 @@ export interface components {
             latest_activity_at?: string | null;
             /** Total Artifact Bytes */
             total_artifact_bytes: number;
+            workspace_state: components["schemas"]["AgentWorkspaceState"];
         };
         /**
          * ApplyFixesRequest

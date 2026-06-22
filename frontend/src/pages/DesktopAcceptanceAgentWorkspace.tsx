@@ -45,12 +45,73 @@ function integrityDrilldownFixture(
   };
 }
 
+const ACCEPTANCE_WORKSPACE_STATE = {
+  schema_version: 'scholar_ai_agent_workspace_state_v1',
+  generated_at: '2026-06-21T04:00:00.000Z',
+  workspace_ready: true,
+  read_only: true,
+  artifact_root: {
+    label: 'agent_mcp_workflows',
+    path: 'workspace_artifacts/agent_mcp_workflows',
+    exists: true,
+    file_count: 2,
+    total_bytes: 4096,
+    truncated: false,
+  },
+  runtime_state_root: {
+    label: 'runtime_state',
+    path: 'workspace_artifacts/runtime_state',
+    exists: true,
+    file_count: 3,
+    total_bytes: 2048,
+    truncated: false,
+  },
+  output_root: {
+    label: 'generated_output',
+    path: 'workspace_artifacts/generated/output',
+    exists: true,
+    file_count: 1,
+    total_bytes: 1024,
+    truncated: false,
+  },
+  git: {
+    available: true,
+    branch: 'main',
+    ahead: 33,
+    behind: 0,
+    changed_count: 0,
+    staged_count: 0,
+    unstaged_count: 0,
+    untracked_count: 0,
+    conflicted_count: 0,
+    dirty_paths: [],
+    error: null,
+  },
+  recovery_probes: [
+    { label: 'Workflow Passport', route: '/runtime/workflow-passport', read_only: true },
+    { label: 'Evidence Integrity Gate', route: '/runtime/evidence-integrity-gate', read_only: true },
+    { label: 'Research Action Lifecycle', route: '/runtime/research-action-lifecycle', read_only: true },
+    { label: 'Agent Workspace Status', route: '/api/agent-workspace/status', read_only: true },
+  ],
+  boundaries: [
+    'Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.',
+    'Do not mutate Zotero databases or github/ reference repositories from Agent Workspace state.',
+    'Create a rollback checkpoint and re-check official or mature references before nontrivial edits.',
+  ],
+  next_safe_local_actions: [
+    'Read Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.',
+    'Inspect git dirty paths and preserve unrelated local work before staging or committing.',
+    'Use workspace artifacts and audit records as recovery evidence; treat missing evidence as unresolved.',
+  ],
+} satisfies AgentWorkspaceStatus['workspace_state'];
+
 const ACCEPTANCE_WORKSPACE_STATUS: AgentWorkspaceStatus = {
   artifact_root: 'workspace_artifacts/agent_mcp_workflows',
   artifact_count: 2,
   audit_count: 1,
   total_artifact_bytes: 4096,
   latest_activity_at: '2026-06-21T04:00:00.000Z',
+  workspace_state: ACCEPTANCE_WORKSPACE_STATE,
   artifacts: [],
   audit_records: [
     {

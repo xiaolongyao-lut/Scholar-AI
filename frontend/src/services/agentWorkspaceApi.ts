@@ -26,12 +26,50 @@ export interface AgentWorkspaceAuditRecord {
   error_code: string | null;
 }
 
+export interface AgentWorkspaceDirectoryState {
+  label: string;
+  path: string;
+  exists: boolean;
+  file_count: number;
+  total_bytes: number;
+  truncated: boolean;
+}
+
+export interface AgentWorkspaceGitState {
+  available: boolean;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  changed_count: number;
+  staged_count: number;
+  unstaged_count: number;
+  untracked_count: number;
+  conflicted_count: number;
+  dirty_paths: string[];
+  error: string | null;
+}
+
+export interface AgentWorkspaceState {
+  schema_version: 'scholar_ai_agent_workspace_state_v1';
+  generated_at: string;
+  workspace_ready: boolean;
+  read_only: boolean;
+  artifact_root: AgentWorkspaceDirectoryState;
+  runtime_state_root: AgentWorkspaceDirectoryState;
+  output_root: AgentWorkspaceDirectoryState;
+  git: AgentWorkspaceGitState;
+  recovery_probes: Record<string, unknown>[];
+  boundaries: string[];
+  next_safe_local_actions: string[];
+}
+
 export interface AgentWorkspaceStatus {
   artifact_root: string;
   artifact_count: number;
   audit_count: number;
   total_artifact_bytes: number;
   latest_activity_at: string | null;
+  workspace_state: AgentWorkspaceState;
   artifacts: AgentWorkspaceArtifact[];
   audit_records: AgentWorkspaceAuditRecord[];
 }

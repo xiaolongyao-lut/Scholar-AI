@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from project_paths import WORKSPACE_ARTIFACTS_ROOT
+from project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT, WORKSPACE_OUTPUT_ROOT, WORKSPACE_RUNTIME_STATE_ROOT
 
 
 router = APIRouter(prefix="/api/agent-workspace", tags=["Agent Workspace"])
@@ -22,6 +23,9 @@ MAX_ARTIFACTS = 500
 MAX_AUDIT_RECORDS = 1000
 MAX_PREVIEW_CHARS = 12000
 MAX_FILE_BYTES = 2 * 1024 * 1024
+MAX_DIRECTORY_STATE_FILES = 1000
+MAX_STATE_PATHS = 8
+GIT_STATUS_TIMEOUT_SECONDS = 2.0
 
 
 class AgentWorkspaceArtifact(BaseModel):
@@ -49,6 +53,49 @@ class AgentWorkspaceAuditRecord(BaseModel):
     error_code: str | None = None
 
 
+class AgentWorkspaceDirectoryState(BaseModel):
+    """Bounded local directory summary for workspace recovery checks."""
+
+    label: str
+    path: str
+    exists: bool
+    file_count: int = Field(default=0, ge=0)
+    total_bytes: int = Field(default=0, ge=0)
+    truncated: bool = False
+
+
+class AgentWorkspaceGitState(BaseModel):
+    """Read-only git state summary for local recovery decisions."""
+
+    available: bool
+    branch: str | None = None
+    ahead: int = Field(default=0, ge=0)
+    behind: int = Field(default=0, ge=0)
+    changed_count: int = Field(default=0, ge=0)
+    staged_count: int = Field(default=0, ge=0)
+    unstaged_count: int = Field(default=0, ge=0)
+    untracked_count: int = Field(default=0, ge=0)
+    conflicted_count: int = Field(default=0, ge=0)
+    dirty_paths: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class AgentWorkspaceState(BaseModel):
+    """Machine-readable local workspace state for resumable agents."""
+
+    schema_version: str = "scholar_ai_agent_workspace_state_v1"
+    generated_at: str
+    workspace_ready: bool
+    read_only: bool = True
+    artifact_root: AgentWorkspaceDirectoryState
+    runtime_state_root: AgentWorkspaceDirectoryState
+    output_root: AgentWorkspaceDirectoryState
+    git: AgentWorkspaceGitState
+    recovery_probes: list[dict[str, Any]] = Field(default_factory=list)
+    boundaries: list[str] = Field(default_factory=list)
+    next_safe_local_actions: list[str] = Field(default_factory=list)
+
+
 class AgentWorkspaceStatus(BaseModel):
     """Aggregated Agent Workspace snapshot."""
 
@@ -57,6 +104,7 @@ class AgentWorkspaceStatus(BaseModel):
     audit_count: int = Field(ge=0)
     total_artifact_bytes: int = Field(ge=0)
     latest_activity_at: str | None = None
+    workspace_state: AgentWorkspaceState
     artifacts: list[AgentWorkspaceArtifact] = Field(default_factory=list)
     audit_records: list[AgentWorkspaceAuditRecord] = Field(default_factory=list)
 
@@ -105,6 +153,30 @@ def _safe_relative(path: Path, root: Path) -> str:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="path escapes Agent Workspace") from exc
     return relative.as_posix()
+
+
+def _safe_repo_relative(path_text: str) -> str:
+    """Return a redacted repository-relative path from git porcelain output."""
+
+    if not path_text.strip():
+        return ""
+    normalized = path_text.strip().replace("\\", "/")
+    if normalized.startswith("\"") and normalized.endswith("\""):
+        normalized = normalized[1:-1]
+    if normalized.startswith("/") or ":" in normalized.split("/", 1)[0]:
+        return "[redacted-local-path]"
+    return _redact_text(normalized)
+
+
+def _workspace_state_path(path: Path) -> str:
+    """Return a path label that avoids exposing absolute local workspace roots."""
+
+    resolved = path.resolve()
+    try:
+        relative = resolved.relative_to(REPO_ROOT.resolve())
+        return _redact_text(relative.as_posix())
+    except ValueError:
+        return "[redacted-local-path]"
 
 
 def _artifact_kind(path: Path) -> str:
@@ -264,6 +336,142 @@ def _load_audit_records(limit: int) -> list[AgentWorkspaceAuditRecord]:
     return records
 
 
+def _count_directory_state(
+    label: str,
+    root: Path,
+    *,
+    excluded_root: Path | None = None,
+) -> AgentWorkspaceDirectoryState:
+    """Return a bounded directory state without exposing child file paths."""
+
+    resolved = root.resolve()
+    resolved_excluded = excluded_root.resolve() if excluded_root is not None else None
+    path_label = _workspace_state_path(resolved)
+    if not resolved.exists():
+        return AgentWorkspaceDirectoryState(label=label, path=path_label, exists=False)
+    if not resolved.is_dir():
+        return AgentWorkspaceDirectoryState(label=label, path=path_label, exists=True)
+    file_count = 0
+    total_bytes = 0
+    truncated = False
+    for path in resolved.rglob("*"):
+        if not path.is_file():
+            continue
+        if resolved_excluded is not None:
+            try:
+                path.resolve().relative_to(resolved_excluded)
+                continue
+            except ValueError:
+                pass
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        file_count += 1
+        total_bytes += max(int(stat.st_size), 0)
+        if file_count >= MAX_DIRECTORY_STATE_FILES:
+            truncated = True
+            break
+    return AgentWorkspaceDirectoryState(
+        label=label,
+        path=path_label,
+        exists=True,
+        file_count=file_count,
+        total_bytes=total_bytes,
+        truncated=truncated,
+    )
+
+
+def _parse_branch_header(header: str) -> tuple[str | None, int, int]:
+    """Parse ``git status --porcelain=v2 --branch`` header fields."""
+
+    branch: str | None = None
+    ahead = 0
+    behind = 0
+    for line in header.splitlines():
+        if line.startswith("# branch.head "):
+            value = line.removeprefix("# branch.head ").strip()
+            branch = None if value == "(detached)" else value
+        elif line.startswith("# branch.ab "):
+            parts = line.removeprefix("# branch.ab ").split()
+            for part in parts:
+                if part.startswith("+") and part[1:].isdigit():
+                    ahead = int(part[1:])
+                elif part.startswith("-") and part[1:].isdigit():
+                    behind = int(part[1:])
+    return branch, ahead, behind
+
+
+def _parse_git_porcelain(stdout: str) -> AgentWorkspaceGitState:
+    """Convert porcelain v2 status into a bounded read-only summary."""
+
+    branch, ahead, behind = _parse_branch_header(stdout)
+    staged_count = 0
+    unstaged_count = 0
+    untracked_count = 0
+    conflicted_count = 0
+    dirty_paths: list[str] = []
+    for line in stdout.splitlines():
+        if not line or line.startswith("# "):
+            continue
+        if line.startswith("? "):
+            untracked_count += 1
+            path_text = _safe_repo_relative(line[2:])
+        elif line.startswith("u "):
+            conflicted_count += 1
+            parts = line.split(maxsplit=10)
+            path_text = _safe_repo_relative(parts[-1] if parts else "")
+        elif line.startswith("1 ") or line.startswith("2 "):
+            parts = line.split(maxsplit=8)
+            status = parts[1] if len(parts) > 1 else ".."
+            if len(status) >= 2:
+                if status[0] != ".":
+                    staged_count += 1
+                if status[1] != ".":
+                    unstaged_count += 1
+            path_text = _safe_repo_relative(parts[-1] if parts else "")
+        else:
+            path_text = ""
+        if path_text and len(dirty_paths) < MAX_STATE_PATHS:
+            dirty_paths.append(path_text)
+    changed_count = staged_count + unstaged_count + untracked_count + conflicted_count
+    return AgentWorkspaceGitState(
+        available=True,
+        branch=branch,
+        ahead=ahead,
+        behind=behind,
+        changed_count=changed_count,
+        staged_count=staged_count,
+        unstaged_count=unstaged_count,
+        untracked_count=untracked_count,
+        conflicted_count=conflicted_count,
+        dirty_paths=dirty_paths,
+    )
+
+
+def _read_git_workspace_state() -> AgentWorkspaceGitState:
+    """Read local git state through a non-mutating porcelain command."""
+
+    repo_root = REPO_ROOT.resolve()
+    if not (repo_root / ".git").exists():
+        return AgentWorkspaceGitState(available=False, error="git repository metadata is not present")
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--porcelain=v2", "--branch"],
+            cwd=str(repo_root),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=GIT_STATUS_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return AgentWorkspaceGitState(available=False, error=_redact_text(str(exc)))
+    if completed.returncode != 0:
+        message = completed.stderr.strip() or completed.stdout.strip() or "git status failed"
+        return AgentWorkspaceGitState(available=False, error=_redact_text(message[:240]))
+    return _parse_git_porcelain(completed.stdout)
+
+
 def _latest_activity(
     artifacts: list[AgentWorkspaceArtifact],
     audit_records: list[AgentWorkspaceAuditRecord],
@@ -273,6 +481,41 @@ def _latest_activity(
     values = [item.modified_at for item in artifacts]
     values.extend(record.timestamp for record in audit_records)
     return max(values) if values else None
+
+
+def _build_workspace_state() -> AgentWorkspaceState:
+    """Build the read-only local workspace recovery state."""
+
+    artifact_state = _count_directory_state("agent_mcp_workflows", _workspace_root(), excluded_root=_audit_root())
+    runtime_state = _count_directory_state("runtime_state", WORKSPACE_RUNTIME_STATE_ROOT)
+    output_state = _count_directory_state("generated_output", WORKSPACE_OUTPUT_ROOT)
+    git_state = _read_git_workspace_state()
+    boundaries = [
+        "Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.",
+        "Do not mutate Zotero databases or github/ reference repositories from Agent Workspace state.",
+        "Create a rollback checkpoint and re-check official or mature references before nontrivial edits.",
+    ]
+    next_actions = [
+        "Read Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.",
+        "Inspect git dirty paths and preserve unrelated local work before staging or committing.",
+        "Use workspace artifacts and audit records as recovery evidence; treat missing evidence as unresolved.",
+    ]
+    return AgentWorkspaceState(
+        generated_at=datetime.now(tz=timezone.utc).isoformat(),
+        workspace_ready=artifact_state.exists and runtime_state.exists,
+        artifact_root=artifact_state,
+        runtime_state_root=runtime_state,
+        output_root=output_state,
+        git=git_state,
+        recovery_probes=[
+            {"label": "Workflow Passport", "route": "/runtime/workflow-passport", "read_only": True},
+            {"label": "Evidence Integrity Gate", "route": "/runtime/evidence-integrity-gate", "read_only": True},
+            {"label": "Research Action Lifecycle", "route": "/runtime/research-action-lifecycle", "read_only": True},
+            {"label": "Agent Workspace Status", "route": "/api/agent-workspace/status", "read_only": True},
+        ],
+        boundaries=boundaries,
+        next_safe_local_actions=next_actions,
+    )
 
 
 @router.get("/status", response_model=AgentWorkspaceStatus)
@@ -294,6 +537,7 @@ async def get_agent_workspace_status(
         audit_count=len(audit_records),
         total_artifact_bytes=total_bytes,
         latest_activity_at=_latest_activity(artifacts, audit_records),
+        workspace_state=_build_workspace_state(),
         artifacts=artifacts,
         audit_records=audit_records,
     )
