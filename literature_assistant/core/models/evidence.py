@@ -4,7 +4,7 @@ from datetime import date
 from enum import Enum
 from typing import Any, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
 
 from .tool_outcome import ToolOutcome
 
@@ -244,6 +244,8 @@ class EvidencePackReferencePayload(BaseModel):
         joint_score: Optional fused project/wiki score from weighted RRF.
     """
 
+    _locator_quality: dict[str, Any] = PrivateAttr(default_factory=dict)
+
     project_id: str = Field(min_length=1)
     source_type: Literal["project", "wiki"] = "project"
     ref_id: str = Field(min_length=1)
@@ -274,6 +276,8 @@ class EvidenceLocatorCoveragePayload(BaseModel):
         material_locator_count: Project refs with material_id and chunk_id.
         page_locator_count: Project refs with a one-based source page.
         bbox_locator_count: Project refs with a valid bbox tied to a page.
+        invalid_bbox_count: Project refs carrying malformed, out-of-range, or
+            unsupported bbox metadata that was not exposed as a locator.
         missing_locator_count: Project refs missing the material/chunk locator.
         page_coverage_ratio: Page-locator coverage over project refs.
         bbox_coverage_ratio: Bbox-locator coverage over project refs.
@@ -285,6 +289,7 @@ class EvidenceLocatorCoveragePayload(BaseModel):
         risk_level: Local diagnostic severity; it records risk but does not
             mutate or block workflows by itself.
         sample_figure_table_ids: Bounded figure/table candidate ids for review.
+        sample_invalid_bbox_ref_ids: Bounded examples needing bbox repair.
         sample_missing_ref_ids: Bounded examples for repair without leaking text.
         notes: Bounded reviewer/agent hints.
     """
@@ -298,6 +303,7 @@ class EvidenceLocatorCoveragePayload(BaseModel):
     material_locator_count: int = Field(default=0, ge=0)
     page_locator_count: int = Field(default=0, ge=0)
     bbox_locator_count: int = Field(default=0, ge=0)
+    invalid_bbox_count: int = Field(default=0, ge=0)
     missing_locator_count: int = Field(default=0, ge=0)
     page_coverage_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
     bbox_coverage_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -315,6 +321,7 @@ class EvidenceLocatorCoveragePayload(BaseModel):
     ] = "no_refs"
     risk_level: Literal["none", "warn", "block"] = "none"
     sample_figure_table_ids: List[str] = Field(default_factory=list, max_length=8)
+    sample_invalid_bbox_ref_ids: List[str] = Field(default_factory=list, max_length=8)
     sample_missing_ref_ids: List[str] = Field(default_factory=list, max_length=8)
     notes: List[str] = Field(default_factory=list, max_length=8)
 
@@ -328,6 +335,7 @@ class EvidenceLocatorCoveragePayload(BaseModel):
             self.material_locator_count,
             self.page_locator_count,
             self.bbox_locator_count,
+            self.invalid_bbox_count,
             self.missing_locator_count,
             self.source_label_count,
             self.figure_table_locator_count,

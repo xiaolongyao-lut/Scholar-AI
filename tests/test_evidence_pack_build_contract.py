@@ -112,6 +112,7 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
         "material_locator_count": 1,
         "page_locator_count": 1,
         "bbox_locator_count": 1,
+        "invalid_bbox_count": 0,
         "missing_locator_count": 0,
         "page_coverage_ratio": 1.0,
         "bbox_coverage_ratio": 1.0,
@@ -122,6 +123,7 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
         "coverage_state": "layout_complete",
         "risk_level": "none",
         "sample_figure_table_ids": ["figure:porosity-1"],
+        "sample_invalid_bbox_ref_ids": [],
         "sample_missing_ref_ids": [],
         "notes": [
             "Every project ref has material, page, and bbox locators.",
@@ -205,6 +207,67 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
     assert "SHOULD_NOT_LEAK" not in serialized
     assert "ocr" not in serialized.lower()
     assert "private_note" not in serialized
+
+
+def test_evidence_pack_build_reports_invalid_bbox_locator_gap() -> None:
+    """Evidence-pack diagnostics must retain invalid bbox repair signals."""
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    resources_router._save_chunk_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            "mat_pack_invalid_bbox": [
+                {
+                    "chunk_id": "pack_chunk_invalid_bbox",
+                    "material_id": "mat_pack_invalid_bbox",
+                    "title": "AlSi10Mg invalid bbox evidence",
+                    "summary": "AlSi10Mg evidence with invalid bbox metadata.",
+                    "content": "AlSi10Mg evidence with invalid bbox metadata.",
+                    "page": 6,
+                    "locator": {
+                        "material_id": "mat_pack_invalid_bbox",
+                        "chunk_id": "pack_chunk_invalid_bbox",
+                        "page": 6,
+                        "bbox": [0.1, 0.2, 1.5, 0.3],
+                        "bbox_unit": "normalized_ratio",
+                    },
+                }
+            ]
+        },
+    )
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg invalid bbox",
+            "top_k": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    coverage = payload["retrieval_diagnostics"]["locator_coverage"]
+    assert coverage["coverage_state"] == "page_located"
+    assert coverage["risk_level"] == "warn"
+    assert coverage["page_locator_count"] == 1
+    assert coverage["bbox_locator_count"] == 0
+    assert coverage["invalid_bbox_count"] == 1
+    assert coverage["sample_invalid_bbox_ref_ids"] == ["chunk:pack_chunk_invalid_bbox"]
+    assert payload["evidence_refs"][0]["locator"] == {
+        "material_id": "mat_pack_invalid_bbox",
+        "chunk_id": "pack_chunk_invalid_bbox",
+        "page": 6,
+    }
+    attempts = {attempt["stage"]: attempt for attempt in payload["outcome"]["attempts"]}
+    assert attempts["locator_coverage"]["status"] == "degraded"
+    assert attempts["locator_coverage"]["error_class"] == "locator_coverage_page_located"
+    assert attempts["locator_coverage"]["metadata"]["invalid_bbox_count"] == 1
+    serialized = str(payload)
+    assert "1.5" not in serialized
+    assert "[0.1, 0.2, 1.5, 0.3]" not in serialized
 
 
 def test_evidence_pack_build_reports_hybrid_rerank_when_retriever_returns_dense_hits(

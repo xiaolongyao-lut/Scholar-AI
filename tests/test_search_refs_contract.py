@@ -108,6 +108,7 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
         "material_locator_count": 1,
         "page_locator_count": 1,
         "bbox_locator_count": 1,
+        "invalid_bbox_count": 0,
         "missing_locator_count": 0,
         "page_coverage_ratio": 1.0,
         "bbox_coverage_ratio": 1.0,
@@ -118,6 +119,7 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
         "coverage_state": "layout_complete",
         "risk_level": "none",
         "sample_figure_table_ids": ["figure:attention-1"],
+        "sample_invalid_bbox_ref_ids": [],
         "sample_missing_ref_ids": [],
         "notes": [
             "Every project ref has material, page, and bbox locators.",
@@ -237,6 +239,62 @@ def test_search_refs_marks_material_only_locators_as_blocking_risk() -> None:
     assert payload["locator_coverage"]["source_label_coverage_ratio"] == 0.0
 
 
+def test_search_refs_reports_invalid_bbox_without_leaking_coordinates() -> None:
+    """Malformed bbox metadata must stay visible as a repairable locator gap."""
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    resources_router._save_chunk_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            "mat_invalid_bbox": [
+                {
+                    "chunk_id": "chunk_invalid_bbox",
+                    "material_id": "mat_invalid_bbox",
+                    "title": "Attention invalid bbox",
+                    "content": "Attention evidence with malformed layout coordinates.",
+                    "page": 5,
+                    "locator": {
+                        "material_id": "mat_invalid_bbox",
+                        "chunk_id": "chunk_invalid_bbox",
+                        "page": 5,
+                        "bbox": [1.2, 0.1, 0.2, 0.3],
+                        "bbox_unit": "normalized_ratio",
+                    },
+                }
+            ]
+        },
+    )
+
+    response = client.get(
+        "/resources/chunks/search-refs",
+        params={"project_id": project_id, "query": "attention malformed layout", "top_k": 5},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_refs"] == 1
+    ref = payload["refs"][0]
+    assert ref["metadata"]["locator"] == {
+        "material_id": "mat_invalid_bbox",
+        "chunk_id": "chunk_invalid_bbox",
+        "page": 5,
+    }
+    locator_coverage = payload["locator_coverage"]
+    assert locator_coverage["coverage_state"] == "page_located"
+    assert locator_coverage["risk_level"] == "warn"
+    assert locator_coverage["page_locator_count"] == 1
+    assert locator_coverage["bbox_locator_count"] == 0
+    assert locator_coverage["invalid_bbox_count"] == 1
+    assert locator_coverage["sample_invalid_bbox_ref_ids"] == ["chunk:chunk_invalid_bbox"]
+    assert locator_coverage["bbox_unit_counts"] == {}
+    assert "invalid bbox" in " ".join(locator_coverage["notes"]).lower()
+    serialized = str(payload)
+    assert "1.2" not in serialized
+    assert "[1.2, 0.1, 0.2, 0.3]" not in serialized
+
+
 def test_search_refs_empty_store_is_stable_and_read_only(monkeypatch: Any) -> None:
     """An empty chunk store returns an empty envelope without backfilling."""
 
@@ -266,6 +324,7 @@ def test_search_refs_empty_store_is_stable_and_read_only(monkeypatch: Any) -> No
             "material_locator_count": 0,
             "page_locator_count": 0,
             "bbox_locator_count": 0,
+            "invalid_bbox_count": 0,
             "missing_locator_count": 0,
             "page_coverage_ratio": 0.0,
             "bbox_coverage_ratio": 0.0,
@@ -276,6 +335,7 @@ def test_search_refs_empty_store_is_stable_and_read_only(monkeypatch: Any) -> No
             "coverage_state": "no_refs",
             "risk_level": "none",
             "sample_figure_table_ids": [],
+            "sample_invalid_bbox_ref_ids": [],
             "sample_missing_ref_ids": [],
             "notes": ["No project chunk refs were returned for locator coverage."],
         },

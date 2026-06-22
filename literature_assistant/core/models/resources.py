@@ -1,7 +1,7 @@
 """Writing resource API models used by the FastAPI adapter."""
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 try:
     from literature_assistant.core.academic_writing_linter import AcademicWritingLintResponse
@@ -118,6 +118,8 @@ class ChunkSearchRefPayload(BaseModel):
         metadata: Whitelisted provenance fields only.
         read_endpoint: Bounded reader endpoint for fetching full content later.
     """
+
+    _locator_quality: Dict[str, Any] = PrivateAttr(default_factory=dict)
 
     chunk_id: str
     ref_id: str

@@ -310,6 +310,44 @@ def _chunk_search_ref_locator(chunk: dict[str, Any], *, material_id: str, chunk_
     )
 
 
+def _chunk_locator_quality(chunk: dict[str, Any]) -> dict[str, Any]:
+    """Return bounded locator-quality diagnostics without exposing coordinates."""
+
+    if not isinstance(chunk, dict):
+        raise TypeError("chunk must be a dictionary")
+    raw_bbox: Any = None
+    raw_unit: Any = None
+    locator = chunk.get("locator")
+    if isinstance(locator, dict) and "bbox" in locator:
+        raw_bbox = locator.get("bbox")
+        raw_unit = locator.get("bbox_unit")
+    elif "bbox" in chunk:
+        raw_bbox = chunk.get("bbox")
+        raw_unit = chunk.get("bbox_unit")
+    reason = _invalid_bbox_reason(raw_bbox, raw_unit)
+    if reason == "":
+        return {}
+    return {"invalid_bbox": True, "invalid_bbox_reason": reason}
+
+
+def _invalid_bbox_reason(bbox: Any, bbox_unit: Any) -> str:
+    """Classify bbox metadata that cannot be used for source recovery."""
+
+    if bbox is None:
+        return ""
+    normalized_bbox = coerce_pdf_bbox(bbox)
+    if normalized_bbox is None:
+        return "malformed_bbox"
+    raw_unit = _normalize_search_ref_text(bbox_unit, max_chars=80)
+    try:
+        normalized_unit = PdfBboxUnit(raw_unit) if raw_unit else PdfBboxUnit.NORMALIZED_RATIO
+    except ValueError:
+        return "unsupported_bbox_unit"
+    if not pdf_bbox_matches_unit(normalized_bbox, normalized_unit):
+        return "bbox_outside_declared_unit"
+    return ""
+
+
 def _layout_locator_payload(
     *,
     material_id: str,
@@ -366,10 +404,12 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
     material_locator_count = 0
     page_locator_count = 0
     bbox_locator_count = 0
+    invalid_bbox_count = 0
     bbox_unit_counts: dict[str, int] = {}
     source_label_count = 0
     figure_table_locator_count = 0
     sample_figure_table_ids: list[str] = []
+    invalid_bbox_ref_ids: list[str] = []
     missing_ref_ids: list[str] = []
     for ref in refs:
         source_type = _ref_source_type(ref)
@@ -388,6 +428,10 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
         ref_id = _normalize_search_ref_text(_ref_attr(ref, "ref_id"), max_chars=200) or _normalize_search_ref_text(
             _ref_attr(ref, "chunk_id"), max_chars=200
         )
+        if _ref_has_invalid_bbox(ref):
+            invalid_bbox_count += 1
+            if ref_id and len(invalid_bbox_ref_ids) < 8:
+                invalid_bbox_ref_ids.append(ref_id)
         if not _locator_has_identity(locator):
             if ref_id and len(missing_ref_ids) < 8:
                 missing_ref_ids.append(ref_id)
@@ -424,6 +468,7 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
         material_locator_count=material_locator_count,
         page_locator_count=page_locator_count,
         bbox_locator_count=bbox_locator_count,
+        invalid_bbox_count=invalid_bbox_count,
         missing_locator_count=missing_locator_count,
         page_coverage_ratio=page_ratio,
         bbox_coverage_ratio=bbox_ratio,
@@ -434,6 +479,7 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
         coverage_state=coverage_state,
         risk_level=risk_level,
         sample_figure_table_ids=sample_figure_table_ids,
+        sample_invalid_bbox_ref_ids=invalid_bbox_ref_ids,
         sample_missing_ref_ids=missing_ref_ids,
         notes=_locator_coverage_notes(
             coverage_state=coverage_state,
@@ -441,6 +487,7 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
             non_project_ref_count=non_project_ref_count,
             source_label_count=source_label_count,
             figure_table_locator_count=figure_table_locator_count,
+            invalid_bbox_count=invalid_bbox_count,
         ),
     )
 
@@ -504,6 +551,24 @@ def _ref_locator(ref: Any) -> dict[str, Any]:
         return locator if isinstance(locator, dict) else {}
     locator = getattr(metadata, "locator", None)
     return locator if isinstance(locator, dict) else {}
+
+
+def _ref_locator_quality(ref: Any) -> dict[str, Any]:
+    """Return private locator diagnostics attached by local search helpers."""
+
+    quality = getattr(ref, "_locator_quality", None)
+    if isinstance(quality, dict):
+        return quality
+    if isinstance(ref, dict):
+        quality = ref.get("locator_quality")
+        return quality if isinstance(quality, dict) else {}
+    return {}
+
+
+def _ref_has_invalid_bbox(ref: Any) -> bool:
+    """Return true when a ref had bbox metadata that failed validation."""
+
+    return bool(_ref_locator_quality(ref).get("invalid_bbox"))
 
 
 def _locator_has_identity(locator: dict[str, Any]) -> bool:
@@ -570,6 +635,7 @@ def _locator_coverage_notes(
     non_project_ref_count: int,
     source_label_count: int,
     figure_table_locator_count: int,
+    invalid_bbox_count: int,
 ) -> list[str]:
     """Return bounded hints without leaking chunk text or local paths."""
 
@@ -590,6 +656,8 @@ def _locator_coverage_notes(
         notes.append("Project refs are missing source locators; run or repair material processing before evidence reuse.")
     if project_ref_count and source_label_count < project_ref_count:
         notes.append("Some project refs lack source labels, so retrieval provenance is only partially explainable.")
+    if invalid_bbox_count:
+        notes.append("Some project refs carried invalid bbox metadata; page jumps remain available but exact layout boxes need repair.")
     if figure_table_locator_count:
         notes.append("Some project refs are linked to figure/table candidates for layout-aware review.")
     return notes[:8]
@@ -642,7 +710,7 @@ def _chunk_to_search_ref(project_id: str, score: float, chunk: dict[str, Any]) -
     if not chunk_id:
         return None
     rounded_score = round(float(score), 2)
-    return ChunkSearchRefPayload(
+    ref = ChunkSearchRefPayload(
         chunk_id=chunk_id,
         ref_id=f"chunk:{chunk_id}",
         summary=_chunk_search_ref_summary(chunk),
@@ -651,6 +719,8 @@ def _chunk_to_search_ref(project_id: str, score: float, chunk: dict[str, Any]) -
         metadata=_chunk_search_ref_metadata(chunk, material_id=material_id, chunk_id=chunk_id),
         read_endpoint=_chunk_search_read_endpoint(project_id=project_id, chunk_id=chunk_id),
     )
+    ref._locator_quality = _chunk_locator_quality(chunk)
+    return ref
 
 
 def _flatten_chunk_store_for_search_refs(chunk_store: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:

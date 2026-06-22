@@ -973,7 +973,7 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
     figure_candidate = str(figure_candidate).strip()[:260] if figure_candidate is not None else None
     lexical_score = float(getattr(ref, "lexical_score", 0.0) or 0.0)
     rerank_score = getattr(ref, "rerank_score", None)
-    return EvidencePackReferencePayload(
+    evidence_ref = EvidencePackReferencePayload(
         project_id=project_id,
         ref_id=ref_id,
         read_endpoint=read_endpoint,
@@ -989,6 +989,10 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
         summary=summary,
         suitable_for_body=bool(summary.strip()),
     )
+    locator_quality = getattr(ref, "_locator_quality", None)
+    if isinstance(locator_quality, dict):
+        evidence_ref._locator_quality = dict(locator_quality)
+    return evidence_ref
 
 
 def _resolve_hybrid_retriever_class() -> Any | None:
