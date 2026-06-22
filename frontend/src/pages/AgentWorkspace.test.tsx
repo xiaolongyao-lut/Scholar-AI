@@ -110,6 +110,10 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       incomplete_count: 1,
       out_of_scope_count: 1,
       latest_requirement_id: 'N41-goal-state-workspace-visibility',
+      completion_claim: {
+        this_slice: 'N41 made goal-state recovery visible.',
+        full_goal: 'The full Scholar AI workflow spine remains active, not complete.',
+      },
       next_authorized_local_actions: [
         'Create a rollback checkpoint and search mature references before nontrivial edits.',
       ],
@@ -1860,6 +1864,9 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('runtime ready · files 2 · 128 B')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal-state 49 rows · proved 47 · incomplete 1 · out-of-scope 1 · latest N41-goal-state-workspace-visibility')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal-state visible')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('full goal status visible')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('slice completion N41 made goal-state recovery visible.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('full goal The full Scholar AI workflow spine remains active, not complete.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('checkpoint 20260622-214730-n41-goal-state-record-update')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText(/C:\\Users\\/)).not.toBeInTheDocument();

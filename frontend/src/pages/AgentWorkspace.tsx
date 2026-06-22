@@ -1553,6 +1553,17 @@ function workspaceGoalStateSummary(state: AgentWorkspaceStatus['workspace_state'
   return `goal-state ${goal.requirement_count} rows · proved ${goal.proved_count} · incomplete ${goal.incomplete_count} · out-of-scope ${goal.out_of_scope_count}${latest}`;
 }
 
+function workspaceGoalCompletionClaimSummary(goal: AgentWorkspaceStatus['workspace_state']['goal_state']): {
+  thisSlice: string | null;
+  fullGoal: string | null;
+} {
+  const claim = goal.completion_claim;
+  return {
+    thisSlice: claim?.this_slice ? sanitizeInspectorText(claim.this_slice) : null,
+    fullGoal: claim?.full_goal ? sanitizeInspectorText(claim.full_goal) : null,
+  };
+}
+
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
   const recommendation = healthCheck?.recommendations?.find((item) => actionMessage(item));
   return actionMessage(recommendation)
@@ -3143,6 +3154,7 @@ export function WorkspaceStatePanel({
   const probes = state.recovery_probes.slice(0, 5);
   const boundaries = state.boundaries.slice(0, 3).map(sanitizeInspectorText);
   const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
+  const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
   return (
     <section
       aria-label="Workspace state visibility"
@@ -3214,6 +3226,11 @@ export function WorkspaceStatePanel({
               <StatusPill tone={state.goal_state.available ? 'success' : 'warning'}>
                 goal-state {state.goal_state.available ? 'visible' : 'missing'}
               </StatusPill>
+              {goalCompletionClaim.fullGoal ? (
+                <StatusPill tone={goalCompletionClaim.fullGoal.toLowerCase().includes('not complete') ? 'warning' : 'info'}>
+                  full goal status visible
+                </StatusPill>
+              ) : null}
               {state.goal_state.checkpoint_id ? (
                 <StatusPill tone="neutral">checkpoint {sanitizeInspectorText(state.goal_state.checkpoint_id)}</StatusPill>
               ) : null}
@@ -3221,6 +3238,20 @@ export function WorkspaceStatePanel({
                 <StatusPill tone="neutral">{sanitizeInspectorText(state.goal_state.path)}</StatusPill>
               ) : null}
             </div>
+            {goalCompletionClaim.thisSlice || goalCompletionClaim.fullGoal ? (
+              <div className="mt-2 grid gap-1.5">
+                {goalCompletionClaim.thisSlice ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    slice completion {goalCompletionClaim.thisSlice}
+                  </p>
+                ) : null}
+                {goalCompletionClaim.fullGoal ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    full goal {goalCompletionClaim.fullGoal}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {dirtyPaths.length === 0 ? (

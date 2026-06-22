@@ -102,6 +102,10 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     incomplete_count: 1,
     out_of_scope_count: 1,
     latest_requirement_id: 'N48-post-n47-requirement-evidence-closeout',
+    completion_claim: {
+      this_slice: 'N49 aligned the source desktop Agent Workspace acceptance fixture with N48 recovery state.',
+      full_goal: 'The full Scholar AI research workflow spine goal remains active, not complete.',
+    },
     next_authorized_local_actions: [
       'Create a rollback checkpoint and search mature references before nontrivial edits.',
     ],

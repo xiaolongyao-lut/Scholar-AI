@@ -7420,6 +7420,20 @@ export interface components {
             untracked_count: number;
         };
         /**
+         * AgentWorkspaceGoalCompletionClaim
+         * @description Bounded longrun completion-claim summary for resume decisions.
+         *
+         *     Args:
+         *         this_slice: Short local slice completion claim.
+         *         full_goal: Short full-goal completion boundary claim.
+         */
+        AgentWorkspaceGoalCompletionClaim: {
+            /** Full Goal */
+            full_goal?: string | null;
+            /** This Slice */
+            this_slice?: string | null;
+        };
+        /**
          * AgentWorkspaceGoalState
          * @description Bounded longrun goal-state summary for recovery decisions.
          *
@@ -7433,6 +7447,7 @@ export interface components {
          *         incomplete_count: Number of incomplete rows.
          *         out_of_scope_count: Number of rows explicitly outside current scope.
          *         latest_requirement_id: Last requirement id in the matrix.
+         *         completion_claim: Bounded slice/full-goal completion summary.
          *         next_authorized_local_actions: Bounded action labels from the record.
          *         stop_boundaries: Bounded stop-boundary labels from the record.
          *         error: Redacted parse/read error when unavailable.
@@ -7442,6 +7457,7 @@ export interface components {
             available: boolean;
             /** Checkpoint Id */
             checkpoint_id?: string | null;
+            completion_claim?: components["schemas"]["AgentWorkspaceGoalCompletionClaim"];
             /** Error */
             error?: string | null;
             /**

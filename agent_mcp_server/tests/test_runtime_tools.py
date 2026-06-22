@@ -1615,6 +1615,10 @@ def test_agent_workspace_status_reads_recovery_state(
                     "incomplete_count": 1,
                     "out_of_scope_count": 1,
                     "latest_requirement_id": "N41-goal-state-workspace-visibility",
+                    "completion_claim": {
+                        "this_slice": "N41 made goal-state recovery visible.",
+                        "full_goal": "The full Scholar AI workflow spine remains active, not complete.",
+                    },
                     "next_authorized_local_actions": [
                         "Create a rollback checkpoint and search mature references before edits."
                     ],
@@ -1699,6 +1703,8 @@ def test_agent_workspace_status_reads_recovery_state(
     assert state["goal_state"]["requirement_count"] == 49
     assert state["goal_state"]["incomplete_count"] == 1
     assert state["goal_state"]["latest_requirement_id"] == "N41-goal-state-workspace-visibility"
+    assert state["goal_state"]["completion_claim"]["this_slice"] == "N41 made goal-state recovery visible."
+    assert state["goal_state"]["completion_claim"]["full_goal"] == "The full Scholar AI workflow spine remains active, not complete."
     assert state["recovery_probes"][0]["route"] == "/runtime/research-action-lifecycle"
     assert state["recovery_probes"][0]["read_only"] is True
     handoff_probe = state["recovery_probes"][1]

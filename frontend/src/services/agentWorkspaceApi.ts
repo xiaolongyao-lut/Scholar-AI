@@ -69,6 +69,10 @@ export interface AgentWorkspaceGoalState {
   incomplete_count: number;
   out_of_scope_count: number;
   latest_requirement_id: string | null;
+  completion_claim: {
+    this_slice: string | null;
+    full_goal: string | null;
+  };
   next_authorized_local_actions: string[];
   stop_boundaries: string[];
   error: string | null;

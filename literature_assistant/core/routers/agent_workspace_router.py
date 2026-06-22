@@ -8,6 +8,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import re
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -27,6 +28,7 @@ MAX_DIRECTORY_STATE_FILES = 1000
 MAX_STATE_PATHS = 8
 MAX_GOAL_STATE_ACTIONS = 3
 MAX_GOAL_STATE_BOUNDARIES = 3
+MAX_GOAL_COMPLETION_CHARS = 240
 GIT_STATUS_TIMEOUT_SECONDS = 2.0
 
 
@@ -105,6 +107,18 @@ class AgentWorkspaceRecoveryProbe(BaseModel):
     mcp_tool: str | None = Field(default=None, max_length=120)
 
 
+class AgentWorkspaceGoalCompletionClaim(BaseModel):
+    """Bounded longrun completion-claim summary for resume decisions.
+
+    Args:
+        this_slice: Short local slice completion claim.
+        full_goal: Short full-goal completion boundary claim.
+    """
+
+    this_slice: str | None = Field(default=None, max_length=MAX_GOAL_COMPLETION_CHARS)
+    full_goal: str | None = Field(default=None, max_length=MAX_GOAL_COMPLETION_CHARS)
+
+
 class AgentWorkspaceGoalState(BaseModel):
     """Bounded longrun goal-state summary for recovery decisions.
 
@@ -118,6 +132,7 @@ class AgentWorkspaceGoalState(BaseModel):
         incomplete_count: Number of incomplete rows.
         out_of_scope_count: Number of rows explicitly outside current scope.
         latest_requirement_id: Last requirement id in the matrix.
+        completion_claim: Bounded slice/full-goal completion summary.
         next_authorized_local_actions: Bounded action labels from the record.
         stop_boundaries: Bounded stop-boundary labels from the record.
         error: Redacted parse/read error when unavailable.
@@ -132,6 +147,7 @@ class AgentWorkspaceGoalState(BaseModel):
     incomplete_count: int = Field(default=0, ge=0)
     out_of_scope_count: int = Field(default=0, ge=0)
     latest_requirement_id: str | None = Field(default=None, max_length=160)
+    completion_claim: AgentWorkspaceGoalCompletionClaim = Field(default_factory=AgentWorkspaceGoalCompletionClaim)
     next_authorized_local_actions: list[str] = Field(default_factory=list)
     stop_boundaries: list[str] = Field(default_factory=list)
     error: str | None = Field(default=None, max_length=240)
@@ -191,14 +207,14 @@ def _redact_text(value: str) -> str:
     try:
         from lit_assistant_mcp.redaction import SecretRedactor
 
-        return SecretRedactor.scan(value)
+        text = SecretRedactor.scan(value)
     except Exception:
-        import re
-
         text = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "sk-***REDACTED***", value)
         text = re.sub(r"(?i)\bBearer\s+[A-Za-z0-9._\-+/=]{8,}", "Bearer ***REDACTED***", text)
         text = re.sub(r"(?i)\bAuthorization:\s*(?:Bearer|Basic)\s+\S+", "Authorization: ***REDACTED***", text)
-        return text
+    text = re.sub(r"(?i)\b[A-Z]:[/\\]Users[/\\][^ \t\r\n\"'<>]+", "[redacted-local-path]", text)
+    text = re.sub(r"(?i)\b/Users/[^ \t\r\n\"'<>]+", "[redacted-local-path]", text)
+    return text
 
 
 def _safe_relative(path: Path, root: Path) -> str:
@@ -559,6 +575,23 @@ def _safe_text_list(value: Any, limit: int) -> list[str]:
     return out
 
 
+def _safe_goal_completion_claim(value: Any) -> AgentWorkspaceGoalCompletionClaim:
+    """Return bounded completion claims without exposing the full goal record."""
+
+    if not isinstance(value, dict):
+        return AgentWorkspaceGoalCompletionClaim()
+    this_slice = value.get("this_slice")
+    full_goal = value.get("full_goal")
+    return AgentWorkspaceGoalCompletionClaim(
+        this_slice=_redact_text(this_slice).strip()[:MAX_GOAL_COMPLETION_CHARS]
+        if isinstance(this_slice, str) and this_slice.strip()
+        else None,
+        full_goal=_redact_text(full_goal).strip()[:MAX_GOAL_COMPLETION_CHARS]
+        if isinstance(full_goal, str) and full_goal.strip()
+        else None,
+    )
+
+
 def _load_goal_state_summary() -> AgentWorkspaceGoalState:
     """Load a bounded local goal-state summary without exposing full records."""
 
@@ -600,6 +633,7 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
         incomplete_count=statuses.get("incomplete", 0),
         out_of_scope_count=statuses.get("out_of_scope", 0),
         latest_requirement_id=latest_requirement_id,
+        completion_claim=_safe_goal_completion_claim(payload.get("completion_claim")),
         next_authorized_local_actions=_safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
         stop_boundaries=_safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
     )

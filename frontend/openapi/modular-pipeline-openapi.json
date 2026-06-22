@@ -1629,8 +1629,39 @@
         "title": "AgentWorkspaceGitState",
         "type": "object"
       },
+      "AgentWorkspaceGoalCompletionClaim": {
+        "description": "Bounded longrun completion-claim summary for resume decisions.\n\nArgs:\n    this_slice: Short local slice completion claim.\n    full_goal: Short full-goal completion boundary claim.",
+        "properties": {
+          "full_goal": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Goal"
+          },
+          "this_slice": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "This Slice"
+          }
+        },
+        "title": "AgentWorkspaceGoalCompletionClaim",
+        "type": "object"
+      },
       "AgentWorkspaceGoalState": {
-        "description": "Bounded longrun goal-state summary for recovery decisions.\n\nArgs:\n    available: Whether a local goal-state JSON record was found and parsed.\n    path: Repository-relative or redacted label for the selected record.\n    updated_at: Timestamp from the selected goal-state record.\n    checkpoint_id: Rollback checkpoint id, without local checkpoint path.\n    requirement_count: Number of requirement-to-evidence rows.\n    proved_count: Number of rows currently proved.\n    incomplete_count: Number of incomplete rows.\n    out_of_scope_count: Number of rows explicitly outside current scope.\n    latest_requirement_id: Last requirement id in the matrix.\n    next_authorized_local_actions: Bounded action labels from the record.\n    stop_boundaries: Bounded stop-boundary labels from the record.\n    error: Redacted parse/read error when unavailable.",
+        "description": "Bounded longrun goal-state summary for recovery decisions.\n\nArgs:\n    available: Whether a local goal-state JSON record was found and parsed.\n    path: Repository-relative or redacted label for the selected record.\n    updated_at: Timestamp from the selected goal-state record.\n    checkpoint_id: Rollback checkpoint id, without local checkpoint path.\n    requirement_count: Number of requirement-to-evidence rows.\n    proved_count: Number of rows currently proved.\n    incomplete_count: Number of incomplete rows.\n    out_of_scope_count: Number of rows explicitly outside current scope.\n    latest_requirement_id: Last requirement id in the matrix.\n    completion_claim: Bounded slice/full-goal completion summary.\n    next_authorized_local_actions: Bounded action labels from the record.\n    stop_boundaries: Bounded stop-boundary labels from the record.\n    error: Redacted parse/read error when unavailable.",
         "properties": {
           "available": {
             "title": "Available",
@@ -1647,6 +1678,9 @@
               }
             ],
             "title": "Checkpoint Id"
+          },
+          "completion_claim": {
+            "$ref": "#/components/schemas/AgentWorkspaceGoalCompletionClaim"
           },
           "error": {
             "anyOf": [
