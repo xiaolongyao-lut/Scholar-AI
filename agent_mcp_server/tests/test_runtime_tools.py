@@ -1457,6 +1457,79 @@ def test_evidence_integrity_gate_reads_runtime_projection(
     )
 
 
+def test_research_action_lifecycle_reads_runtime_projection(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Research action lifecycle should expose backend action/effect rows to MCP."""
+
+    backend.set_json(
+        "/runtime/research-action-lifecycle",
+        {
+            "schema_version": "scholar_ai_research_action_lifecycle_v1",
+            "scope": {"project_id": "project-1"},
+            "actions": [
+                {
+                    "action_uid": "wiki_candidate:job-1",
+                    "action_id": "agent.wiki_candidate",
+                    "action_type": "wiki_candidate",
+                    "status": "pending_approval",
+                    "project_id": "project-1",
+                    "session_id": "session-1",
+                    "job_id": "job-1",
+                    "approval": {"requires_user_confirmation": True},
+                    "preflight": {
+                        "present": True,
+                        "status": "blocked",
+                        "can_proceed": False,
+                        "receipt_refs": [{"ref_type": "preflight_refresh_receipt"}],
+                    },
+                    "effect_summary": {
+                        "external_mutation": False,
+                        "source_material_mutation": False,
+                    },
+                    "effect_refs": [{"ref_type": "wiki_ref", "ref_id": "wiki:candidate"}],
+                    "recovery": {
+                        "read_only": True,
+                        "resume_probes": [
+                            {"endpoint": "/runtime/research-action-lifecycle", "read_only": True}
+                        ],
+                    },
+                    "forbidden_actions": ["Do not execute approvals from the lifecycle projection."],
+                }
+            ],
+            "summary": {"read_only": True, "requires_user_confirmation": True},
+            "blockers": ["Pending user confirmation is required."],
+        },
+    )
+
+    result = tools.research_action_lifecycle(
+        session_id=" session-1 ",
+        job_id=" job-1 ",
+        project_id=" project-1 ",
+        limit=14,
+    )
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar_ai_research_action_lifecycle_v1"
+    action = result["data"]["actions"][0]
+    assert action["action_type"] == "wiki_candidate"
+    assert action["approval"]["requires_user_confirmation"] is True
+    assert action["preflight"]["can_proceed"] is False
+    assert action["effect_summary"]["external_mutation"] is False
+    assert action["recovery"]["resume_probes"][0]["read_only"] is True
+    assert backend.calls[-1] == (
+        "json",
+        "/runtime/research-action-lifecycle",
+        {
+            "limit": 14,
+            "session_id": "session-1",
+            "job_id": "job-1",
+            "project_id": "project-1",
+        },
+    )
+
+
 def test_workflow_refresh_receipt_reads_runtime_receipt(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -1583,6 +1656,12 @@ def test_runtime_projection_tools_reject_invalid_bounds_before_backend(
 
     with pytest.raises(ValueError, match="project_id"):
         tools.evidence_integrity_gate(project_id=" " * 4)
+
+    with pytest.raises(ValueError, match="limit"):
+        tools.research_action_lifecycle(limit=0)
+
+    with pytest.raises(ValueError, match="session_id"):
+        tools.research_action_lifecycle(session_id=" " * 4)
 
     with pytest.raises(ValueError, match="job_id"):
         tools.workflow_refresh_receipt(" " * 4)

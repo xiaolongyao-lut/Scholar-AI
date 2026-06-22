@@ -1186,6 +1186,33 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.evidence_integrity_gate", params, result, started, endpoint)
 
+    def research_action_lifecycle(
+        self,
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Read the research action lifecycle projection for runtime state.
+
+        Args:
+            session_id: Optional runtime session filter.
+            job_id: Optional runtime job filter.
+            project_id: Optional Scholar AI project filter.
+            limit: Maximum lifecycle rows returned by the backend.
+        """
+        started = time.perf_counter()
+        params = self._runtime_projection_params(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+        endpoint = "/runtime/research-action-lifecycle"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.research_action_lifecycle", params, result, started, endpoint)
+
     def workflow_refresh_receipt(
         self,
         job_id: str,

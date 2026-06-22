@@ -111,6 +111,7 @@ def create_mcp_server(
         "literature.behavior_eval_pack": runtime.behavior_eval_pack,
         "literature.workflow_passport": runtime.workflow_passport,
         "literature.evidence_integrity_gate": runtime.evidence_integrity_gate,
+        "literature.research_action_lifecycle": runtime.research_action_lifecycle,
         "literature.workflow_refresh_receipt": runtime.workflow_refresh_receipt,
         "literature.workflow_replay_lineage": runtime.workflow_replay_lineage,
         "literature.workflow_replay_index": runtime.workflow_replay_index,
@@ -585,6 +586,21 @@ def create_mcp_server(
     ) -> dict[str, Any]:
         """Read the runtime evidence integrity gate projection."""
         return runtime.evidence_integrity_gate(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+
+    @mcp.tool(name="literature.research_action_lifecycle", structured_output=True)
+    def literature_research_action_lifecycle(
+        session_id: str | None = None,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Read the runtime research action lifecycle projection."""
+        return runtime.research_action_lifecycle(
             session_id=session_id,
             job_id=job_id,
             project_id=project_id,

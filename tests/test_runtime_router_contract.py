@@ -1467,6 +1467,146 @@ def test_runtime_workflow_replay_index_route_discovers_receipts_without_job_id(m
     assert missing_response.status_code == 404
 
 
+def test_runtime_research_action_lifecycle_route_projects_actions_effects_and_gates(monkeypatch) -> None:
+    """Research action lifecycle should expose read-only action/effect facts."""
+
+    runtime = WritingRuntime(autosave=False)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-action-life", "title": "Action lifecycle project"},
+    )
+    agent_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="private agent prompt should not leak",
+        metadata={
+            "agent_bridge": True,
+            "agent_request_id": "agentreq-action-life",
+            "project_id": "project-action-life",
+            "material_id": "material-action-life",
+            "output_targets": {"wiki_candidate": True, "graph_candidate": True},
+            "wiki_refs": [
+                {
+                    "ref_id": "wiki:candidate/action-life",
+                    "title": "Do not expose raw text",
+                    "content": "private wiki draft",
+                }
+            ],
+            "graph_patch_refs": [
+                {
+                    "ref_id": "graph_patch:action-life",
+                    "node_count": 2,
+                    "raw_content": "private graph payload",
+                }
+            ],
+            "agent_result_consumers": {
+                "wiki": {
+                    "status": "candidate_created",
+                    "wiki_slug": "action-life",
+                    "path": "C:\\Users\\xiao\\private\\wiki.md",
+                },
+                "graph": {
+                    "status": "candidate_created",
+                    "graph_patch_ref_count": 1,
+                    "raw_content": "private graph body",
+                },
+            },
+            "raw_content": "private agent result",
+            "api_key": "sk-route-secret",
+        },
+    )
+    runtime.add_job_artifact(
+        agent_job.job_id,
+        artifact_type=ArtifactType.METADATA,
+        content={
+            "kind": "agent_result",
+            "status": "candidate_created",
+            "content": "private artifact content",
+        },
+        created_by="pytest",
+        metadata={
+            "kind": "agent_result",
+            "schema_version": "scholar_ai_agent_result_v1",
+            "project_id": "project-action-life",
+            "agent_request_id": "agentreq-action-life",
+            "path": "C:\\Users\\xiao\\private\\agent-result.json",
+        },
+    )
+    runtime.request_approval(
+        job_id=agent_job.job_id,
+        session_id=session.session_id,
+        reason="Confirm wiki and graph candidates before any write.",
+        metadata={"project_id": "project-action-life", "path": "C:\\Users\\xiao\\private\\approval.txt"},
+    )
+    runtime.build_action_preflight(
+        action_id="agent.handoff_card",
+        required_claim_id="handoff_readiness",
+        session_id=session.session_id,
+        job_id=agent_job.job_id,
+        project_id="project-action-life",
+        require_ready=False,
+        persist_refresh_receipt=True,
+    )
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/runtime/research-action-lifecycle",
+        params={"project_id": "project-action-life", "limit": 10},
+    )
+
+    assert response.status_code == 200
+    lifecycle = response.json()
+    assert lifecycle["schema_version"] == "scholar_ai_research_action_lifecycle_v1"
+    assert lifecycle["scope"]["project_id"] == "project-action-life"
+    assert lifecycle["summary"]["read_only"] is True
+    assert lifecycle["summary"]["external_mutation"] is False
+    assert lifecycle["summary"]["source_material_mutation"] is False
+    assert lifecycle["summary"]["requires_user_confirmation"] is True
+    action_by_type = {item["action_type"]: item for item in lifecycle["actions"]}
+    assert {"wiki_candidate", "graph_patch", "agent_handoff", "approval_gate"} <= set(action_by_type)
+    wiki_action = action_by_type["wiki_candidate"]
+    assert wiki_action["action_id"] == "agent.wiki_candidate"
+    assert wiki_action["status"] == "pending_approval"
+    assert wiki_action["approval"]["requires_user_confirmation"] is True
+    assert wiki_action["preflight"]["present"] is True
+    assert wiki_action["preflight"]["receipt_refs"][0]["ref_type"] == "preflight_refresh_receipt"
+    assert wiki_action["effect_summary"]["external_mutation"] is False
+    assert wiki_action["effect_summary"]["source_material_mutation"] is False
+    assert wiki_action["recovery"]["read_only"] is True
+    assert any(probe["endpoint"] == "/runtime/research-action-lifecycle" for probe in wiki_action["recovery"]["resume_probes"])
+    assert any(ref["object_type"] == "agent_request" for ref in wiki_action["object_refs"])
+    assert any(ref["ref_type"] == "runtime_artifact" for ref in wiki_action["effect_refs"])
+    assert any(ref["ref_type"] == "wiki_ref" for ref in wiki_action["effect_refs"])
+    assert any(ref["ref_type"] == "graph_patch_ref" for ref in action_by_type["graph_patch"]["effect_refs"])
+    assert action_by_type["approval_gate"]["effect_summary"]["requires_user_confirmation"] is True
+    assert any("Do not execute approvals" in text for text in wiki_action["forbidden_actions"])
+    assert any("Pending user confirmation" in message for message in lifecycle["blockers"])
+    assert any(probe["endpoint"] == "/runtime/evidence-integrity-gate" for probe in lifecycle["resume_probes"])
+    serialized = str(lifecycle)
+    assert "sk-route-secret" not in serialized
+    assert "private agent prompt should not leak" not in serialized
+    assert "private agent result" not in serialized
+    assert "private wiki draft" not in serialized
+    assert "private artifact content" not in serialized
+    assert "C:\\Users\\xiao\\private" not in serialized
+
+    job_response = client.get(
+        "/runtime/research-action-lifecycle",
+        params={"job_id": agent_job.job_id, "limit": 5},
+    )
+    assert job_response.status_code == 200
+    assert job_response.json()["summary"]["matching_job_count"] == 1
+
+    invalid_response = client.get("/runtime/research-action-lifecycle", params={"limit": 0})
+    assert invalid_response.status_code == 422
+
+    missing_response = client.get("/runtime/research-action-lifecycle", params={"job_id": "job_missing"})
+    assert missing_response.status_code == 404
+
+
 def test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns(monkeypatch) -> None:
     """Agent handoff cards should carry blocking-boundary drilldowns through REST."""
 

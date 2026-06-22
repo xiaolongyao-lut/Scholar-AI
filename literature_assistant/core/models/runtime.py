@@ -674,6 +674,93 @@ class EvidenceIntegrityGatePayload(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ResearchActionLifecycleItemPayload(BaseModel):
+    """One read-only action lifecycle row for auditable research workflow effects.
+
+    Args:
+        action_uid: Stable lifecycle-row id derived from local runtime evidence.
+        action_id: Domain action name, such as ``agent.wiki_candidate``.
+        action_type: Coarse action family used by UI and MCP clients.
+        status: Lifecycle state derived from approval, preflight, and job state.
+        project_id: Optional Scholar AI project scope.
+        session_id: Runtime session that owns the action evidence.
+        job_id: Runtime job that owns the action evidence.
+        object_refs: Bounded research object refs affected by the action.
+        approval: Approval request status and user-confirmation facts.
+        preflight: Freshness and blocking facts from action preflight receipts.
+        gate_refs: Workflow Passport and Evidence Integrity Gate refs.
+        effect_summary: Expected/actual local effects without executing actions.
+        effect_refs: Bounded artifact/wiki/graph/export refs created or proposed.
+        recovery: Safe read-only probes and next local checks for this action.
+        forbidden_actions: Mutations that remain outside this read-only boundary.
+        provenance: Runtime sources used to derive the row.
+    """
+
+    action_uid: str = Field(min_length=1, max_length=220)
+    action_id: str = Field(min_length=1, max_length=160)
+    action_type: Literal[
+        "wiki_candidate",
+        "graph_patch",
+        "export_overwrite",
+        "batch_material_reprocess",
+        "artifact_export",
+        "agent_handoff",
+        "approval_gate",
+        "unknown",
+    ] = "unknown"
+    status: Literal[
+        "proposed",
+        "pending_approval",
+        "approved",
+        "rejected",
+        "blocked",
+        "unresolved",
+        "completed",
+        "failed",
+        "cancelled",
+    ] = "proposed"
+    project_id: str | None = Field(default=None, max_length=200)
+    session_id: str = Field(min_length=1, max_length=160)
+    job_id: str = Field(min_length=1, max_length=160)
+    object_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)
+    approval: Dict[str, Any] = Field(default_factory=dict)
+    preflight: Dict[str, Any] = Field(default_factory=dict)
+    gate_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
+    effect_summary: Dict[str, Any] = Field(default_factory=dict)
+    effect_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)
+    recovery: Dict[str, Any] = Field(default_factory=dict)
+    forbidden_actions: List[str] = Field(default_factory=list, max_length=8)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ResearchActionLifecyclePayload(BaseModel):
+    """Read-only projection over proposed, approved, blocked, and completed actions.
+
+    Args:
+        schema_version: Versioned additive API contract.
+        generated_at: UTC generation time for this projection.
+        scope: Runtime filters used to derive lifecycle rows.
+        actions: Bounded action rows sorted by blocking priority and recency.
+        summary: Aggregate counts and read-only guarantees.
+        blockers: Blocking messages that stop action or readiness claims.
+        unresolved: Review/offline checks that remain visibly unresolved.
+        resume_probes: Safe local GET probes for resuming action review.
+        provenance: Runtime projections and mature patterns used to derive rows.
+    """
+
+    schema_version: Literal["scholar_ai_research_action_lifecycle_v1"] = (
+        "scholar_ai_research_action_lifecycle_v1"
+    )
+    generated_at: str
+    scope: Dict[str, Any] = Field(default_factory=dict)
+    actions: List[ResearchActionLifecycleItemPayload] = Field(default_factory=list, max_length=100)
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    blockers: List[str] = Field(default_factory=list, max_length=16)
+    unresolved: List[str] = Field(default_factory=list, max_length=16)
+    resume_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=12)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
 class BehaviorEvalCasePayload(BaseModel):
     """One deterministic behavior-eval case in the local MCP/agent suite.
 

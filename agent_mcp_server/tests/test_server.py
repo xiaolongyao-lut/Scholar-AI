@@ -47,6 +47,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.agent_progress",
         "literature.agent_result",
         "literature.agent_fail",
+        "literature.research_action_lifecycle",
         "literature.ocr_material",
         "literature.prepare_visual_review",
         "literature.translate_pack",

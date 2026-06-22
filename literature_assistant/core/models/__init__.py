@@ -93,6 +93,8 @@ from .runtime import (
     WorkflowPassportPayload,
     EvidenceIntegritySignalPayload,
     EvidenceIntegrityGatePayload,
+    ResearchActionLifecycleItemPayload,
+    ResearchActionLifecyclePayload,
     BehaviorEvalCasePayload,
     BehaviorEvalFindingPayload,
     BehaviorEvalResultPayload,

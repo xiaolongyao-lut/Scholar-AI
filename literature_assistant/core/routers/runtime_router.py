@@ -23,6 +23,7 @@ from models import (
     ResearchProjectionPayload,
     WorkflowPassportPayload,
     EvidenceIntegrityGatePayload,
+    ResearchActionLifecyclePayload,
     BehaviorEvalPackPayload,
     AgentHandoffCardPayload,
     PreflightRefreshReceiptPayload,
@@ -889,6 +890,29 @@ async def get_evidence_integrity_gate(
         status_code = 404 if "not found" in str(exc).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return EvidenceIntegrityGatePayload(**gate)
+
+
+@router.get("/research-action-lifecycle", response_model=ResearchActionLifecyclePayload)
+async def get_research_action_lifecycle(
+    session_id: str | None = Query(default=None),
+    job_id: str | None = Query(default=None),
+    project_id: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> ResearchActionLifecyclePayload:
+    """Return read-only action, approval, preflight, and effect lifecycle rows."""
+
+    runtime = get_runtime()
+    try:
+        lifecycle = runtime.build_research_action_lifecycle(
+            session_id=session_id,
+            job_id=job_id,
+            project_id=project_id,
+            limit=limit,
+        )
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return ResearchActionLifecyclePayload(**lifecycle)
 
 
 @router.get("/behavior-eval-pack", response_model=BehaviorEvalPackPayload)
