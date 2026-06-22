@@ -39,6 +39,7 @@ import {
   type BehaviorEvalPackProjection,
   type BlockingActionBoundaryProjection,
   type BlockingActionBoundaryProbe,
+  type BlockingActionBoundaryRecoveryDrilldown,
   type BlockingActionBoundarySignalRef,
   type EvidenceIntegrityGateProjection,
   type EvidenceIntegritySignal,
@@ -1131,6 +1132,49 @@ function blockingSignalLabel(signal: BlockingActionBoundarySignalRef): string {
   return `${signalId} · ${status}`;
 }
 
+interface BlockingRecoveryDrilldownSummary {
+  signalId: string;
+  stageLabel: string;
+  status: string;
+  source: string;
+  factCount: number;
+  evidenceCount: number;
+  replayCount: number;
+  recoveryRefCount: number;
+  probeCount: number;
+  primaryAction: string;
+  requiresHumanReview: boolean;
+  blocksClaims: boolean;
+  readOnly: boolean;
+  rawPathExposed: boolean;
+}
+
+function blockingRecoveryDrilldownSummary(
+  drilldown: BlockingActionBoundaryRecoveryDrilldown,
+  stages: WorkflowPassportStage[],
+): BlockingRecoveryDrilldownSummary {
+  const sourceRef = isRecord(drilldown.source_ref) ? drilldown.source_ref : {};
+  const source = readTextField(sourceRef, 'source_kind') || readTextField(sourceRef, 'source_digest') || 'source pending';
+  const stageId = drilldown.linked_stage_id?.trim() || '';
+  const stageLabel = stageId ? linkedStageLabel(stageId, stages) : 'stage pending';
+  return {
+    signalId: sanitizeInspectorText(drilldown.signal_id || 'signal pending'),
+    stageLabel: sanitizeInspectorText(stageLabel),
+    status: sanitizeInspectorText(drilldown.status || 'unknown'),
+    source: sanitizeInspectorText(source),
+    factCount: Object.keys(isRecord(drilldown.checked_facts) ? drilldown.checked_facts : {}).length,
+    evidenceCount: Array.isArray(drilldown.evidence_refs) ? drilldown.evidence_refs.length : 0,
+    replayCount: Array.isArray(drilldown.replay_refs) ? drilldown.replay_refs.length : 0,
+    recoveryRefCount: Array.isArray(drilldown.recovery_refs) ? drilldown.recovery_refs.length : 0,
+    probeCount: Array.isArray(drilldown.local_read_only_probes) ? drilldown.local_read_only_probes.length : 0,
+    primaryAction: sanitizeInspectorText(drilldown.next_safe_local_actions?.[0] || 'Refresh this signal before retrying the blocked action.'),
+    requiresHumanReview: drilldown.requires_human_review === true,
+    blocksClaims: drilldown.blocks_claims === true,
+    readOnly: drilldown.read_only === true,
+    rawPathExposed: drilldown.raw_path_exposed === true,
+  };
+}
+
 function readinessClaimSummary(claim: WorkflowReadinessClaim): string {
   return firstNonEmptyText(
     [
@@ -1549,6 +1593,9 @@ export function ResearchWorkflowSpine({
   const visibleBoundaryClaims = blockingBoundary?.blocked_claims.slice(0, isDesktopAcceptance ? 1 : 3) ?? [];
   const visibleBlockedBoundarySignals = blockingBoundary?.blocked_signal_refs.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
   const visibleUnresolvedBoundarySignals = blockingBoundary?.unresolved_signal_refs.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
+  const visibleBoundaryRecoveryDrilldowns = (blockingBoundary?.recovery_drilldowns ?? [])
+    .slice(0, isDesktopAcceptance ? 2 : 4)
+    .map((drilldown) => blockingRecoveryDrilldownSummary(drilldown, stages));
   const visibleBoundaryProbes = blockingBoundary?.local_read_only_probes.slice(0, isDesktopAcceptance ? 3 : 5) ?? [];
   const visibleBoundaryForbidden = blockingBoundary?.forbidden_actions.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
   const preflightBlocked = actionPreflight?.status === 'blocked' || actionPreflight?.can_proceed === false;
@@ -1955,6 +2002,9 @@ export function ResearchWorkflowSpine({
               <StatusPill tone={visibleUnresolvedBoundarySignals.length > 0 ? 'warning' : 'neutral'}>
                 unresolved signals {visibleUnresolvedBoundarySignals.length}
               </StatusPill>
+              <StatusPill tone={visibleBoundaryRecoveryDrilldowns.length > 0 ? 'info' : 'neutral'}>
+                recovery drilldowns {visibleBoundaryRecoveryDrilldowns.length}
+              </StatusPill>
               {blockingBoundary && boundaryUnresolved ? <StatusPill tone="warning">boundary needs review</StatusPill> : null}
             </div>
 
@@ -2012,6 +2062,55 @@ export function ResearchWorkflowSpine({
                         </StatusPill>
                       ))}
                     </div>
+                  </div>
+                </div>
+
+                <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-lowest px-2.5 py-2">
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <h4 className="font-label text-[11px] font-semibold text-foreground/45">Recovery Drilldowns</h4>
+                    <StatusPill tone={visibleBoundaryRecoveryDrilldowns.length > 0 ? 'info' : 'neutral'}>
+                      {visibleBoundaryRecoveryDrilldowns.length}
+                    </StatusPill>
+                  </div>
+                  <div className="mt-2 grid gap-2">
+                    {visibleBoundaryRecoveryDrilldowns.length === 0 ? (
+                      <p className="break-words text-[11px] leading-4 text-foreground/50">
+                        recovery drilldown pending
+                      </p>
+                    ) : visibleBoundaryRecoveryDrilldowns.map((item) => (
+                      <div
+                        key={item.signalId}
+                        className="min-w-0 rounded-md border border-outline-variant/20 bg-surface-low px-2 py-1.5"
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate font-label text-[11px] font-medium text-foreground">
+                              {item.signalId}
+                            </p>
+                            <p className="mt-0.5 break-words text-[11px] leading-4 text-foreground/55">
+                              {item.stageLabel} · {item.source}
+                            </p>
+                          </div>
+                          <StatusPill tone={claimTone(item.status)}>
+                            {claimStatusLabel(item.status)}
+                          </StatusPill>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <StatusPill tone="neutral">facts {item.factCount}</StatusPill>
+                          <StatusPill tone="neutral">evidence {item.evidenceCount}</StatusPill>
+                          <StatusPill tone={item.replayCount > 0 ? 'info' : 'neutral'}>replay {item.replayCount}</StatusPill>
+                          <StatusPill tone="neutral">refs {item.recoveryRefCount}</StatusPill>
+                          <StatusPill tone={item.probeCount > 0 ? 'info' : 'neutral'}>safe probes {item.probeCount}</StatusPill>
+                          <StatusPill tone={item.blocksClaims ? 'danger' : 'neutral'}>blocks claims {String(item.blocksClaims)}</StatusPill>
+                          <StatusPill tone={item.requiresHumanReview ? 'warning' : 'neutral'}>human review {String(item.requiresHumanReview)}</StatusPill>
+                          <StatusPill tone={item.readOnly ? 'success' : 'warning'}>read-only {String(item.readOnly)}</StatusPill>
+                          {item.rawPathExposed ? <StatusPill tone="danger">raw path exposed</StatusPill> : null}
+                        </div>
+                        <p className="mt-1.5 break-words text-[11px] leading-4 text-foreground/50">
+                          {item.primaryAction}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
 

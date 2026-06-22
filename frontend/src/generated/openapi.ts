@@ -7770,6 +7770,7 @@ export interface components {
          *         unresolved: Review or stale-evidence messages that remain unresolved.
          *         blocked_signal_refs: Signal summaries that block the action.
          *         unresolved_signal_refs: Signal summaries that need refresh or review.
+         *         recovery_drilldowns: Bounded signal-to-record recovery drilldowns.
          *         evidence_refs: Bounded evidence refs proving the boundary decision.
          *         local_read_only_probes: Safe GET probes for recovery before mutation.
          *         next_safe_local_actions: Local-only actions that may unblock the boundary.
@@ -7810,6 +7811,8 @@ export interface components {
             provenance?: {
                 [key: string]: unknown;
             };
+            /** Recovery Drilldowns */
+            recovery_drilldowns?: components["schemas"]["BlockingActionBoundaryRecoveryDrilldownPayload"][];
             /**
              * Refresh Required
              * @default false
@@ -7839,6 +7842,89 @@ export interface components {
             unresolved_signal_refs?: {
                 [key: string]: unknown;
             }[];
+        };
+        /**
+         * BlockingActionBoundaryRecoveryDrilldownPayload
+         * @description Bounded recovery row linking one boundary signal to local replay evidence.
+         *
+         *     Args:
+         *         signal_id: Evidence Integrity Gate signal that caused recovery work.
+         *         category: Signal category used to find the owning workflow stage.
+         *         status: Signal status at the time the boundary was derived.
+         *         severity: Signal severity at the time the boundary was derived.
+         *         message: Compact signal message for human inspection.
+         *         linked_stage_id: Workflow Passport stage that should be rebuilt first.
+         *         source_ref: Path-safe source digest and source-kind metadata.
+         *         checked_facts: Bounded facts used to reproduce the signal decision.
+         *         evidence_refs: Bounded evidence refs that support the signal.
+         *         replay_refs: Replay or receipt refs that can reproduce the decision.
+         *         recovery_refs: Cross-projection refs a resumed agent can inspect.
+         *         local_read_only_probes: Safe GET probes to refresh records locally.
+         *         next_safe_local_actions: Local-only actions that may unblock the signal.
+         *         requires_human_review: Whether the signal must remain unresolved until review.
+         *         blocks_claims: Whether the signal directly blocks readiness claims.
+         *         read_only: Whether the drilldown adds only read-only recovery context.
+         *         raw_path_exposed: Whether any raw local path was exposed.
+         */
+        BlockingActionBoundaryRecoveryDrilldownPayload: {
+            /**
+             * Blocks Claims
+             * @default false
+             */
+            blocks_claims: boolean;
+            /** Category */
+            category?: string | null;
+            /** Checked Facts */
+            checked_facts?: {
+                [key: string]: unknown;
+            };
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Linked Stage Id */
+            linked_stage_id?: string | null;
+            /** Local Read Only Probes */
+            local_read_only_probes?: {
+                [key: string]: unknown;
+            }[];
+            /** Message */
+            message?: string | null;
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            /**
+             * Raw Path Exposed
+             * @default false
+             */
+            raw_path_exposed: boolean;
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /** Recovery Refs */
+            recovery_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Replay Refs */
+            replay_refs?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Requires Human Review
+             * @default false
+             */
+            requires_human_review: boolean;
+            /** Severity */
+            severity?: string | null;
+            /** Signal Id */
+            signal_id: string;
+            /** Source Ref */
+            source_ref?: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status?: string | null;
         };
         /** Body_post_api_export_journal_style_specs_upload */
         Body_post_api_export_journal_style_specs_upload: {

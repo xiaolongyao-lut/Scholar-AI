@@ -155,6 +155,27 @@ export interface BlockingActionBoundaryProbe {
   [key: string]: unknown;
 }
 
+export interface BlockingActionBoundaryRecoveryDrilldown {
+  signal_id: string;
+  category?: string | null;
+  status?: string | null;
+  severity?: string | null;
+  message?: string | null;
+  linked_stage_id?: string | null;
+  source_ref: Record<string, unknown>;
+  checked_facts: Record<string, unknown>;
+  evidence_refs: Record<string, unknown>[];
+  replay_refs: Record<string, unknown>[];
+  recovery_refs: Record<string, unknown>[];
+  local_read_only_probes: BlockingActionBoundaryProbe[];
+  next_safe_local_actions: string[];
+  requires_human_review: boolean;
+  blocks_claims: boolean;
+  read_only: boolean;
+  raw_path_exposed: boolean;
+  [key: string]: unknown;
+}
+
 export interface BlockingActionBoundaryProjection {
   schema_version: 'scholar_ai_blocking_action_boundary_v1';
   action_id: string;
@@ -168,6 +189,7 @@ export interface BlockingActionBoundaryProjection {
   unresolved: string[];
   blocked_signal_refs: BlockingActionBoundarySignalRef[];
   unresolved_signal_refs: BlockingActionBoundarySignalRef[];
+  recovery_drilldowns?: BlockingActionBoundaryRecoveryDrilldown[];
   evidence_refs: Record<string, unknown>[];
   local_read_only_probes: BlockingActionBoundaryProbe[];
   next_safe_local_actions: string[];

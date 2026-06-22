@@ -783,6 +783,27 @@ async def test_evidence_integrity_gate_blocks_unsupported_and_keeps_unresolved_v
     assert boundary["blocked_claims"][0]["claim_id"] == "export_readiness"
     assert boundary["blocked_signal_refs"]
     assert boundary["unresolved_signal_refs"]
+    assert boundary["recovery_drilldowns"]
+    citation_recovery = next(
+        item
+        for item in boundary["recovery_drilldowns"]
+        if item.get("category") == "citation_verification"
+        and item.get("checked_facts", {}).get("citation_id") == "cite:unsupported"
+    )
+    assert citation_recovery["status"] == "block"
+    assert citation_recovery["linked_stage_id"] == "citation_review"
+    assert citation_recovery["blocks_claims"] is True
+    assert citation_recovery["checked_facts"]["citation_id"] == "cite:unsupported"
+    assert any(ref["ref_type"] == "evidence_integrity_signal" for ref in citation_recovery["recovery_refs"])
+    assert any(probe["read_only"] is True for probe in citation_recovery["local_read_only_probes"])
+    qrels_recovery = next(
+        item
+        for item in boundary["recovery_drilldowns"]
+        if item.get("category") == "retrieval_quality"
+        and item.get("checked_facts", {}).get("quality_claim") == "candidate_qrels_review_required"
+    )
+    assert qrels_recovery["requires_human_review"] is True
+    assert qrels_recovery["linked_stage_id"] == "evidence_pack"
     assert any(probe["read_only"] is True for probe in boundary["local_read_only_probes"])
     assert any("runtime/jobs" in probe["url"] for probe in boundary["local_read_only_probes"])
     assert any("unresolved integrity checks" in action for action in boundary["forbidden_actions"])
@@ -897,6 +918,16 @@ def test_action_preflight_requires_refresh_for_stale_workflow_evidence(
     assert boundary["status"] in {"blocked", "unresolved"}
     assert boundary["can_proceed"] is False
     assert boundary["refresh_required"] is True
+    assert boundary["recovery_drilldowns"]
+    assert any(
+        item.get("linked_stage_id") == "export"
+        for item in boundary["recovery_drilldowns"]
+    )
+    assert any(
+        ref.get("ref_type") == "workflow_passport_stage"
+        for item in boundary["recovery_drilldowns"]
+        for ref in item.get("recovery_refs", [])
+    )
     assert any("Workflow Passport" in action for action in boundary["next_safe_local_actions"])
     assert any(probe["read_only"] is True for probe in boundary["local_read_only_probes"])
     assert preflight["summary"]["blocking_action_boundary_status"] == boundary["status"]

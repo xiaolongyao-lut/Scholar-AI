@@ -2303,7 +2303,7 @@
         "type": "object"
       },
       "BlockingActionBoundaryPayload": {
-        "description": "Read-only boundary between blocked workflow actions and safe local probes.\n\nArgs:\n    schema_version: Versioned additive projection contract.\n    action_id: Local action being evaluated by the boundary.\n    required_claim_id: Readiness claim that must be ready and fresh.\n    status: Boundary state; unresolved or blocked must not be treated as pass.\n    can_proceed: Whether local execution can continue without bypassing a gate.\n    require_ready: Whether the action requires a ready claim.\n    refresh_required: Whether source projections must be refreshed first.\n    blocked_claims: Bounded claim rows explaining the action block.\n    blockers: Blocking messages copied from gate and claim projections.\n    unresolved: Review or stale-evidence messages that remain unresolved.\n    blocked_signal_refs: Signal summaries that block the action.\n    unresolved_signal_refs: Signal summaries that need refresh or review.\n    evidence_refs: Bounded evidence refs proving the boundary decision.\n    local_read_only_probes: Safe GET probes for recovery before mutation.\n    next_safe_local_actions: Local-only actions that may unblock the boundary.\n    forbidden_actions: Actions that remain outside user authorization.\n    provenance: Runtime sources used to derive this projection.",
+        "description": "Read-only boundary between blocked workflow actions and safe local probes.\n\nArgs:\n    schema_version: Versioned additive projection contract.\n    action_id: Local action being evaluated by the boundary.\n    required_claim_id: Readiness claim that must be ready and fresh.\n    status: Boundary state; unresolved or blocked must not be treated as pass.\n    can_proceed: Whether local execution can continue without bypassing a gate.\n    require_ready: Whether the action requires a ready claim.\n    refresh_required: Whether source projections must be refreshed first.\n    blocked_claims: Bounded claim rows explaining the action block.\n    blockers: Blocking messages copied from gate and claim projections.\n    unresolved: Review or stale-evidence messages that remain unresolved.\n    blocked_signal_refs: Signal summaries that block the action.\n    unresolved_signal_refs: Signal summaries that need refresh or review.\n    recovery_drilldowns: Bounded signal-to-record recovery drilldowns.\n    evidence_refs: Bounded evidence refs proving the boundary decision.\n    local_read_only_probes: Safe GET probes for recovery before mutation.\n    next_safe_local_actions: Local-only actions that may unblock the boundary.\n    forbidden_actions: Actions that remain outside user authorization.\n    provenance: Runtime sources used to derive this projection.",
         "properties": {
           "action_id": {
             "maxLength": 160,
@@ -2381,6 +2381,14 @@
             "title": "Provenance",
             "type": "object"
           },
+          "recovery_drilldowns": {
+            "items": {
+              "$ref": "#/components/schemas/BlockingActionBoundaryRecoveryDrilldownPayload"
+            },
+            "maxItems": 8,
+            "title": "Recovery Drilldowns",
+            "type": "array"
+          },
           "refresh_required": {
             "default": false,
             "title": "Refresh Required",
@@ -2436,6 +2444,156 @@
           "status"
         ],
         "title": "BlockingActionBoundaryPayload",
+        "type": "object"
+      },
+      "BlockingActionBoundaryRecoveryDrilldownPayload": {
+        "description": "Bounded recovery row linking one boundary signal to local replay evidence.\n\nArgs:\n    signal_id: Evidence Integrity Gate signal that caused recovery work.\n    category: Signal category used to find the owning workflow stage.\n    status: Signal status at the time the boundary was derived.\n    severity: Signal severity at the time the boundary was derived.\n    message: Compact signal message for human inspection.\n    linked_stage_id: Workflow Passport stage that should be rebuilt first.\n    source_ref: Path-safe source digest and source-kind metadata.\n    checked_facts: Bounded facts used to reproduce the signal decision.\n    evidence_refs: Bounded evidence refs that support the signal.\n    replay_refs: Replay or receipt refs that can reproduce the decision.\n    recovery_refs: Cross-projection refs a resumed agent can inspect.\n    local_read_only_probes: Safe GET probes to refresh records locally.\n    next_safe_local_actions: Local-only actions that may unblock the signal.\n    requires_human_review: Whether the signal must remain unresolved until review.\n    blocks_claims: Whether the signal directly blocks readiness claims.\n    read_only: Whether the drilldown adds only read-only recovery context.\n    raw_path_exposed: Whether any raw local path was exposed.",
+        "properties": {
+          "blocks_claims": {
+            "default": false,
+            "title": "Blocks Claims",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "checked_facts": {
+            "additionalProperties": true,
+            "title": "Checked Facts",
+            "type": "object"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 12,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "linked_stage_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Stage Id"
+          },
+          "local_read_only_probes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 8,
+            "title": "Local Read Only Probes",
+            "type": "array"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 600,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "raw_path_exposed": {
+            "default": false,
+            "title": "Raw Path Exposed",
+            "type": "boolean"
+          },
+          "read_only": {
+            "default": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "recovery_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 16,
+            "title": "Recovery Refs",
+            "type": "array"
+          },
+          "replay_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 8,
+            "title": "Replay Refs",
+            "type": "array"
+          },
+          "requires_human_review": {
+            "default": false,
+            "title": "Requires Human Review",
+            "type": "boolean"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "signal_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Signal Id",
+            "type": "string"
+          },
+          "source_ref": {
+            "additionalProperties": true,
+            "title": "Source Ref",
+            "type": "object"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "signal_id"
+        ],
+        "title": "BlockingActionBoundaryRecoveryDrilldownPayload",
         "type": "object"
       },
       "Body_post_api_export_journal_style_specs_upload": {

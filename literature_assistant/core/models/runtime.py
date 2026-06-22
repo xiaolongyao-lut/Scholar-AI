@@ -520,6 +520,48 @@ class WorkflowPassportPayload(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class BlockingActionBoundaryRecoveryDrilldownPayload(BaseModel):
+    """Bounded recovery row linking one boundary signal to local replay evidence.
+
+    Args:
+        signal_id: Evidence Integrity Gate signal that caused recovery work.
+        category: Signal category used to find the owning workflow stage.
+        status: Signal status at the time the boundary was derived.
+        severity: Signal severity at the time the boundary was derived.
+        message: Compact signal message for human inspection.
+        linked_stage_id: Workflow Passport stage that should be rebuilt first.
+        source_ref: Path-safe source digest and source-kind metadata.
+        checked_facts: Bounded facts used to reproduce the signal decision.
+        evidence_refs: Bounded evidence refs that support the signal.
+        replay_refs: Replay or receipt refs that can reproduce the decision.
+        recovery_refs: Cross-projection refs a resumed agent can inspect.
+        local_read_only_probes: Safe GET probes to refresh records locally.
+        next_safe_local_actions: Local-only actions that may unblock the signal.
+        requires_human_review: Whether the signal must remain unresolved until review.
+        blocks_claims: Whether the signal directly blocks readiness claims.
+        read_only: Whether the drilldown adds only read-only recovery context.
+        raw_path_exposed: Whether any raw local path was exposed.
+    """
+
+    signal_id: str = Field(min_length=1, max_length=200)
+    category: Optional[str] = Field(default=None, max_length=120)
+    status: Optional[str] = Field(default=None, max_length=80)
+    severity: Optional[str] = Field(default=None, max_length=80)
+    message: Optional[str] = Field(default=None, max_length=600)
+    linked_stage_id: Optional[str] = Field(default=None, max_length=120)
+    source_ref: Dict[str, Any] = Field(default_factory=dict)
+    checked_facts: Dict[str, Any] = Field(default_factory=dict)
+    evidence_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=12)
+    replay_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
+    recovery_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
+    local_read_only_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
+    next_safe_local_actions: List[str] = Field(default_factory=list, max_length=8)
+    requires_human_review: bool = False
+    blocks_claims: bool = False
+    read_only: bool = True
+    raw_path_exposed: bool = False
+
+
 class BlockingActionBoundaryPayload(BaseModel):
     """Read-only boundary between blocked workflow actions and safe local probes.
 
@@ -536,6 +578,7 @@ class BlockingActionBoundaryPayload(BaseModel):
         unresolved: Review or stale-evidence messages that remain unresolved.
         blocked_signal_refs: Signal summaries that block the action.
         unresolved_signal_refs: Signal summaries that need refresh or review.
+        recovery_drilldowns: Bounded signal-to-record recovery drilldowns.
         evidence_refs: Bounded evidence refs proving the boundary decision.
         local_read_only_probes: Safe GET probes for recovery before mutation.
         next_safe_local_actions: Local-only actions that may unblock the boundary.
@@ -557,6 +600,7 @@ class BlockingActionBoundaryPayload(BaseModel):
     unresolved: List[str] = Field(default_factory=list, max_length=12)
     blocked_signal_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
     unresolved_signal_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
+    recovery_drilldowns: List[BlockingActionBoundaryRecoveryDrilldownPayload] = Field(default_factory=list, max_length=8)
     evidence_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=12)
     local_read_only_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
     next_safe_local_actions: List[str] = Field(default_factory=list, max_length=8)

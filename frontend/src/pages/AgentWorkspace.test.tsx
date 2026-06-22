@@ -502,6 +502,79 @@ describe('AgentWorkspace', () => {
           replay_ref_count: 1,
         },
       ],
+      recovery_drilldowns: [
+        {
+          signal_id: 'citation_verification:unsupported:1',
+          category: 'citation_verification',
+          status: 'block',
+          severity: 'block',
+          message: 'Unsupported citation anchors block export readiness.',
+          linked_stage_id: 'citation_review',
+          source_ref: {
+            source_id: 'C:\\Users\\Alice\\private\\paper.pdf',
+            source_kind: 'citation_verification',
+            source_digest: 'sha256:citation-fixture',
+            raw_path_exposed: false,
+          },
+          checked_facts: {
+            citation_id: 'cite:unsupported',
+            verification_status: 'unsupported',
+            stage_id: 'citation_review',
+          },
+          evidence_refs: [
+            { ref_type: 'citation_verification', ref_id: 'cite:unsupported' },
+            { ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' },
+          ],
+          replay_refs: [
+            { ref_type: 'preflight_refresh_receipt', ref_id: 'preflight_refresh:test123' },
+          ],
+          recovery_refs: [
+            { ref_type: 'workflow_passport_stage', ref_id: 'citation_review' },
+            { ref_type: 'evidence_integrity_signal', ref_id: 'citation_verification:unsupported:1' },
+            { ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' },
+          ],
+          local_read_only_probes: [
+            { label: 'Read Evidence Integrity Gate', read_only: true },
+            { label: 'Read workflow replay lineage', read_only: true },
+          ],
+          next_safe_local_actions: ['Run citation source verification before retrying export.'],
+          requires_human_review: false,
+          blocks_claims: true,
+          read_only: true,
+          raw_path_exposed: false,
+        },
+        {
+          signal_id: 'retrieval_quality:missing_qrels_status:1',
+          category: 'retrieval_quality',
+          status: 'unresolved',
+          severity: 'note',
+          message: 'Evidence refs exist, but retrieval qrels status is not recorded.',
+          linked_stage_id: 'evidence_pack',
+          source_ref: {
+            source_id: 'qrels_status:fixture',
+            source_kind: 'qrels_status',
+            source_digest: 'sha256:qrels-fixture',
+            raw_path_exposed: false,
+          },
+          checked_facts: {
+            evidence_ref_count: 2,
+            qrels_status: 'missing',
+            stage_id: 'evidence_pack',
+          },
+          evidence_refs: [{ ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' }],
+          replay_refs: [{ ref_type: 'workflow_replay_probe', ref_id: 'qrels_status:replay:1' }],
+          recovery_refs: [
+            { ref_type: 'workflow_passport_stage', ref_id: 'evidence_pack' },
+            { ref_type: 'evidence_integrity_signal', ref_id: 'retrieval_quality:missing_qrels_status:1' },
+          ],
+          local_read_only_probes: [{ label: 'Refresh boundary signal drilldown', read_only: true }],
+          next_safe_local_actions: ['Record qrels_status before retrying export.'],
+          requires_human_review: true,
+          blocks_claims: false,
+          read_only: true,
+          raw_path_exposed: false,
+        },
+      ],
       evidence_refs: [{ ref_type: 'evidence_integrity_signal', ref_id: 'citation_verification:unsupported:1' }],
       local_read_only_probes: [
         {
@@ -1108,14 +1181,29 @@ describe('AgentWorkspace', () => {
     expect(within(boundaryRegion).getByText('boundary refresh false')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('blocked signals 1')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('unresolved signals 1')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('recovery drilldowns 2')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('claim export_readiness')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('citation_verification:unsupported:1 · block')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('retrieval_quality:missing_qrels_status:1 · unresolved')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Recovery Drilldowns')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('citation_verification:unsupported:1')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Citation review · citation_verification')).toBeInTheDocument();
+    expect(within(boundaryRegion).getAllByText('facts 3').length).toBeGreaterThan(0);
+    expect(within(boundaryRegion).getAllByText('evidence 2').length).toBeGreaterThan(0);
+    expect(within(boundaryRegion).getAllByText('replay 1').length).toBeGreaterThan(0);
+    expect(within(boundaryRegion).getByText('safe probes 2')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('blocks claims true')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('human review false')).toBeInTheDocument();
+    expect(within(boundaryRegion).getAllByText('read-only true').length).toBeGreaterThan(0);
+    expect(within(boundaryRegion).getByText('Run citation source verification before retrying export.')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Evidence pack · qrels_status')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Record qrels_status before retrying export.')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Read Workflow Passport · read-only true')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Read Evidence Integrity Gate · read-only true')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Read runtime job action preflight metadata · read-only true')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Do not execute the blocked action until the required readiness claim is ready and fresh.')).toBeInTheDocument();
     expect(within(boundaryRegion).getByText('Do not mutate [redacted-local-path] from a boundary.')).toBeInTheDocument();
+    expect(screen.queryByText('C:\\Users\\Alice\\private\\paper.pdf')).not.toBeInTheDocument();
     expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('unresolved 1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('blocked').length).toBeGreaterThan(0);

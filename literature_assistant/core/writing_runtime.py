@@ -1687,6 +1687,194 @@ def _blocked_signal_summaries(signals: list[dict[str, Any]], *, statuses: set[st
     return rows
 
 
+def _signal_linked_stage_id(signal: dict[str, Any], drilldown: dict[str, Any]) -> str | None:
+    """Return the Workflow Passport stage id linked to one integrity signal."""
+
+    checked_facts = drilldown.get("checked_facts") if isinstance(drilldown.get("checked_facts"), dict) else {}
+    stage_id = _safe_projection_string(checked_facts.get("stage_id"))
+    if stage_id is not None:
+        return stage_id
+    signal_id = _safe_projection_string(signal.get("signal_id"))
+    if signal_id and signal_id.startswith("workflow_stage:"):
+        return signal_id.removeprefix("workflow_stage:")
+    category = _safe_projection_string(signal.get("category"))
+    return {
+        "locator": "material_read",
+        "retrieval_quality": "evidence_pack",
+        "citation_verification": "citation_review",
+        "citation_overlap": "citation_review",
+        "writing_lint": "draft",
+        "export_readiness": "export",
+        "approval_boundary": "agent_handoff",
+    }.get(category or "")
+
+
+def _recovery_ref_from_evidence_ref(ref: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a path-safe recovery ref derived from one compact evidence ref."""
+
+    ref_type = _safe_projection_string(ref.get("ref_type"))
+    ref_id = _safe_projection_string(ref.get("ref_id"))
+    if ref_type is None and ref_id is None:
+        return None
+    row = {
+        "ref_type": ref_type,
+        "ref_id": ref_id,
+        "source": "integrity_signal",
+    }
+    if ref_type == "runtime_job" and ref_id:
+        row["probe_endpoint"] = f"/runtime/job/{ref_id}"
+    elif ref_type == "preflight_refresh_receipt" and ref_id:
+        row["probe_endpoint"] = "/runtime/workflow-replay-index"
+    elif ref_type == "workflow_passport" or ref_type == "evidence_integrity_gate":
+        row["probe_endpoint"] = f"/runtime/{str(ref_type).replace('_', '-')}"
+    elif ref_type == "evidence_integrity_signal" and ref_id:
+        row["probe_endpoint"] = "/runtime/evidence-integrity-gate"
+    return _compact_projection_mapping(row)
+
+
+def _boundary_recovery_probe_rows(
+    *,
+    signal: dict[str, Any],
+    drilldown: dict[str, Any],
+    gate_scope: dict[str, Any],
+    linked_stage_id: str | None,
+    max_items: int = 8,
+) -> list[dict[str, Any]]:
+    """Return safe local probes that reproduce a boundary signal decision."""
+
+    probe_params = {
+        "session_id": gate_scope.get("session_id"),
+        "job_id": gate_scope.get("job_id"),
+        "project_id": gate_scope.get("project_id"),
+    }
+    probes: list[dict[str, Any]] = [
+        _handoff_resume_probe("Read Workflow Passport", "/runtime/workflow-passport", probe_params),
+        _handoff_resume_probe("Read Evidence Integrity Gate", "/runtime/evidence-integrity-gate", probe_params),
+    ]
+    for ref in list(drilldown.get("evidence_refs") or []) + list(drilldown.get("replay_refs") or []):
+        if not isinstance(ref, dict):
+            continue
+        ref_type = _safe_projection_string(ref.get("ref_type"))
+        ref_id = _safe_projection_string(ref.get("ref_id"))
+        if ref_type == "runtime_job" and ref_id:
+            _append_unique_mapping(probes, _handoff_resume_probe("Read runtime job", f"/runtime/job/{ref_id}"), max_items=max_items)
+            _append_unique_mapping(
+                probes,
+                _handoff_resume_probe("Read workflow replay lineage", f"/runtime/job/{ref_id}/workflow-replay-lineage"),
+                max_items=max_items,
+            )
+        elif ref_type == "preflight_refresh_receipt":
+            scoped_params = dict(probe_params)
+            if ref_id:
+                scoped_params["receipt_id"] = ref_id
+            _append_unique_mapping(
+                probes,
+                _handoff_resume_probe("List workflow replay index", "/runtime/workflow-replay-index", scoped_params),
+                max_items=max_items,
+            )
+    signal_id = _safe_projection_string(signal.get("signal_id"))
+    if signal_id:
+        _append_unique_mapping(
+            probes,
+            _handoff_resume_probe("Refresh boundary signal drilldown", "/runtime/evidence-integrity-gate", {
+                **probe_params,
+                "signal_id": signal_id,
+                "stage_id": linked_stage_id,
+            }),
+            max_items=max_items,
+        )
+    return probes[:max_items]
+
+
+def _boundary_recovery_drilldowns(
+    signals: list[dict[str, Any]],
+    *,
+    statuses: set[str],
+    gate_scope: dict[str, Any],
+    max_items: int = 8,
+) -> list[dict[str, Any]]:
+    """Return bounded signal-to-record drilldowns for blocked action recovery."""
+
+    rows: list[dict[str, Any]] = []
+    for signal in signals:
+        if len(rows) >= max_items:
+            break
+        if not isinstance(signal, dict):
+            continue
+        status = _safe_projection_string(signal.get("status"))
+        if status not in statuses:
+            continue
+        signal_id = _safe_projection_string(signal.get("signal_id"))
+        if signal_id is None:
+            continue
+        drilldown = signal.get("drilldown") if isinstance(signal.get("drilldown"), dict) else {}
+        source_ref = drilldown.get("source_ref") if isinstance(drilldown.get("source_ref"), dict) else {}
+        checked_facts = drilldown.get("checked_facts") if isinstance(drilldown.get("checked_facts"), dict) else {}
+        evidence_refs = [item for item in drilldown.get("evidence_refs") or [] if isinstance(item, dict)][:12]
+        replay_refs = [item for item in drilldown.get("replay_refs") or [] if isinstance(item, dict)][:8]
+        linked_stage_id = _signal_linked_stage_id(signal, drilldown)
+        recovery_refs: list[dict[str, Any]] = [
+            {
+                "ref_type": "workflow_passport_stage",
+                "ref_id": linked_stage_id,
+                "probe_endpoint": "/runtime/workflow-passport",
+            },
+            {
+                "ref_type": "evidence_integrity_signal",
+                "ref_id": signal_id,
+                "probe_endpoint": "/runtime/evidence-integrity-gate",
+            },
+        ]
+        for ref in evidence_refs + replay_refs:
+            recovery_ref = _recovery_ref_from_evidence_ref(ref)
+            if recovery_ref:
+                _append_unique_mapping(recovery_refs, recovery_ref, max_items=16)
+        next_actions: list[str] = []
+        for action in signal.get("next_actions") or []:
+            _append_unique_text(next_actions, action, max_items=8)
+        if not next_actions:
+            _append_unique_text(
+                next_actions,
+                "Refresh this signal through the Evidence Integrity Gate before retrying the blocked action.",
+                max_items=8,
+            )
+        row = {
+            "signal_id": signal_id,
+            "category": _safe_projection_string(signal.get("category")),
+            "status": status,
+            "severity": _safe_projection_string(signal.get("severity")),
+            "message": _safe_projection_string(signal.get("message")),
+            "linked_stage_id": linked_stage_id,
+            "source_ref": _compact_projection_mapping(source_ref),
+            "checked_facts": _compact_projection_mapping(checked_facts),
+            "evidence_refs": [_compact_projection_mapping(item) for item in evidence_refs],
+            "replay_refs": [_compact_projection_mapping(item) for item in replay_refs],
+            "recovery_refs": [
+                _compact_projection_mapping(item)
+                for item in recovery_refs
+                if isinstance(item, dict)
+            ][:16],
+            "local_read_only_probes": _boundary_recovery_probe_rows(
+                signal=signal,
+                drilldown=drilldown,
+                gate_scope=gate_scope,
+                linked_stage_id=linked_stage_id,
+                max_items=8,
+            ),
+            "next_safe_local_actions": next_actions,
+            "requires_human_review": bool(drilldown.get("requires_human_review")),
+            "blocks_claims": bool(drilldown.get("blocks_claims")),
+            "read_only": True,
+            "raw_path_exposed": bool(source_ref.get("raw_path_exposed")),
+        }
+        rows.append({
+            key: _json_safe_copy(value)
+            for key, value in row.items()
+            if not _is_blank_projection_value(value) and str(key).lower() not in _RESEARCH_PRIVATE_PROJECTION_KEYS
+        })
+    return rows
+
+
 def _workflow_blocking_action_boundary(
     *,
     action_id: str,
@@ -1720,6 +1908,12 @@ def _workflow_blocking_action_boundary(
     signal_rows = [signal for signal in gate_signals if isinstance(signal, dict)]
     blocked_signal_refs = _blocked_signal_summaries(signal_rows, statuses={"block"}, max_items=8)
     unresolved_signal_refs = _blocked_signal_summaries(signal_rows, statuses={"unresolved"}, max_items=8)
+    recovery_drilldowns = _boundary_recovery_drilldowns(
+        signal_rows,
+        statuses={"block", "unresolved"},
+        gate_scope=gate_scope,
+        max_items=8,
+    )
     normalized_status = _safe_projection_string(status) or "unresolved"
     boundary_blocked = normalized_status == "blocked" or bool(blockers) or (bool(require_ready) and not bool(can_proceed))
     boundary_unresolved = normalized_status in {"unresolved", "stale"} or bool(unresolved) or bool(refresh_required)
@@ -1788,6 +1982,7 @@ def _workflow_blocking_action_boundary(
         "unresolved": [str(item) for item in unresolved[:12] if _safe_projection_string(item) is not None],
         "blocked_signal_refs": blocked_signal_refs,
         "unresolved_signal_refs": unresolved_signal_refs,
+        "recovery_drilldowns": recovery_drilldowns,
         "evidence_refs": evidence_refs[:12],
         "local_read_only_probes": safe_probe_rows,
         "next_safe_local_actions": next_safe_local_actions[:8],
@@ -1797,9 +1992,11 @@ def _workflow_blocking_action_boundary(
                 "runtime.evidence_integrity_gate",
                 "runtime.workflow_readiness_claims",
                 "runtime.action_preflight",
+                "runtime.integrity_signal_drilldowns",
             ],
             "evidence_integrity_gate_schema_version": gate.get("schema_version"),
             "workflow_enforcement_schema_version": _WORKFLOW_ENFORCEMENT_SCHEMA_VERSION,
+            "recovery_drilldown_schema": "scholar_ai_blocking_action_boundary_recovery_drilldown_v1",
         },
     }
 
