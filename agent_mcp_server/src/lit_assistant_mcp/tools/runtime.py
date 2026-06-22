@@ -864,6 +864,32 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.agent_bridge_status", args, result, started, endpoint)
 
+    def agent_workspace_status(
+        self,
+        artifact_limit: int = 200,
+        audit_limit: int = 200,
+    ) -> dict[str, Any]:
+        """Read the local Agent Workspace status and workspace recovery state.
+
+        Args:
+            artifact_limit: Maximum workspace artifact rows returned by the backend.
+            audit_limit: Maximum MCP audit rows returned by the backend.
+        """
+        started = time.perf_counter()
+        params = {
+            "artifact_limit": self._bounded_int(
+                artifact_limit,
+                "artifact_limit",
+                minimum=1,
+                maximum=500,
+            ),
+            "audit_limit": self._bounded_int(audit_limit, "audit_limit", minimum=1, maximum=1000),
+        }
+        endpoint = "/api/agent-workspace/status"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_workspace_status", params, result, started, endpoint)
+
     def agent_request_create(
         self,
         intent: str,

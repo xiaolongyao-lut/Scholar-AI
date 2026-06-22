@@ -102,6 +102,7 @@ def create_mcp_server(
         "literature.export_annotations_markdown": runtime.export_annotations_markdown,
         "literature.export_docx": runtime.export_docx,
         "literature.agent_bridge_status": runtime.agent_bridge_status,
+        "literature.agent_workspace_status": runtime.agent_workspace_status,
         "literature.agent_request_create": runtime.agent_request_create,
         "literature.single_paper_task_create": runtime.single_paper_task_create,
         "literature.single_paper_completion_check": runtime.single_paper_completion_check,
@@ -441,6 +442,14 @@ def create_mcp_server(
     def literature_agent_bridge_status(limit: int = 20) -> dict[str, Any]:
         """Read the runtime-backed agent bridge status."""
         return runtime.agent_bridge_status(limit=limit)
+
+    @mcp.tool(name="literature.agent_workspace_status", structured_output=True)
+    def literature_agent_workspace_status(
+        artifact_limit: int = 200,
+        audit_limit: int = 200,
+    ) -> dict[str, Any]:
+        """Read the Agent Workspace status and workspace recovery state."""
+        return runtime.agent_workspace_status(artifact_limit=artifact_limit, audit_limit=audit_limit)
 
     @mcp.tool(name="literature.agent_request_create", structured_output=True)
     def literature_agent_request_create(

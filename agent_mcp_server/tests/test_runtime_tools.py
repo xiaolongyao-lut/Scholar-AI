@@ -1555,6 +1555,83 @@ def test_research_action_lifecycle_reads_runtime_projection(
     )
 
 
+def test_agent_workspace_status_reads_recovery_state(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Agent Workspace status should expose read-only recovery state to MCP callers."""
+
+    backend.set_json(
+        "/api/agent-workspace/status",
+        {
+            "schema_version": "scholar_ai_agent_workspace_status_v1",
+            "workspace_state": {
+                "schema_version": "scholar_ai_agent_workspace_state_v1",
+                "read_only": True,
+                "git": {
+                    "available": True,
+                    "branch": "main",
+                    "ahead": 34,
+                    "dirty_count": 2,
+                    "dirty_paths": [
+                        ".gitignore",
+                        "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
+                    ],
+                },
+                "roots": [
+                    {
+                        "key": "workspace_artifacts",
+                        "exists": True,
+                        "file_count": 12,
+                        "truncated": False,
+                        "sample_paths": ["workspace_artifacts/generated/output/a.md"],
+                    }
+                ],
+                "recovery": {
+                    "read_only": True,
+                    "probes": [
+                        {
+                            "endpoint": "/runtime/research-action-lifecycle",
+                            "read_only": True,
+                            "purpose": "resume blocked research actions",
+                        },
+                        {
+                            "endpoint": "/api/agent-workspace/status",
+                            "read_only": True,
+                            "purpose": "recover workspace state",
+                        },
+                    ],
+                },
+                "mutation_boundaries": [
+                    "Do not restore rollback checkpoints without explicit user intent."
+                ],
+                "next_safe_local_actions": [
+                    "Run focused MCP contract tests before staging this slice."
+                ],
+            },
+        },
+    )
+
+    result = tools.agent_workspace_status(artifact_limit=25, audit_limit=30)
+
+    assert result["is_error"] is False
+    state = result["data"]["workspace_state"]
+    assert state["read_only"] is True
+    assert state["git"]["dirty_paths"] == [
+        ".gitignore",
+        "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
+    ]
+    assert state["roots"][0]["sample_paths"] == ["workspace_artifacts/generated/output/a.md"]
+    assert state["recovery"]["probes"][0]["endpoint"] == "/runtime/research-action-lifecycle"
+    assert state["recovery"]["probes"][0]["read_only"] is True
+    assert "explicit user intent" in state["mutation_boundaries"][0]
+    assert backend.calls[-1] == (
+        "json",
+        "/api/agent-workspace/status",
+        {"artifact_limit": 25, "audit_limit": 30},
+    )
+
+
 def test_workflow_refresh_receipt_reads_runtime_receipt(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -1699,6 +1776,12 @@ def test_runtime_projection_tools_reject_invalid_bounds_before_backend(
 
     with pytest.raises(ValueError, match="limit"):
         tools.workflow_replay_index(limit=0)
+
+    with pytest.raises(ValueError, match="artifact_limit"):
+        tools.agent_workspace_status(artifact_limit=0)
+
+    with pytest.raises(ValueError, match="audit_limit"):
+        tools.agent_workspace_status(audit_limit=0)
 
     assert backend.calls == []
 
