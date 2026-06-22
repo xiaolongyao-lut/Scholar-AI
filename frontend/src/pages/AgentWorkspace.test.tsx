@@ -101,10 +101,51 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       error: null,
     },
     recovery_probes: [
-      { label: 'Workflow Passport', route: '/runtime/workflow-passport', read_only: true },
-      { label: 'Evidence Integrity Gate', route: '/runtime/evidence-integrity-gate', read_only: true },
-      { label: 'Research Action Lifecycle', route: '/runtime/research-action-lifecycle', read_only: true },
-      { label: 'Agent Workspace Status', route: '/api/agent-workspace/status', read_only: true },
+      {
+        label: 'Workflow Passport',
+        route: '/runtime/workflow-passport',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover stage, gate, reproducibility, and provenance context before resuming workflow work.',
+        mcp_tool: 'literature.workflow_passport',
+      },
+      {
+        label: 'Evidence Integrity Gate',
+        route: '/runtime/evidence-integrity-gate',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover blockers, unresolved evidence, and integrity signals before trusting claims.',
+        mcp_tool: 'literature.evidence_integrity_gate',
+      },
+      {
+        label: 'Research Action Lifecycle',
+        route: '/runtime/research-action-lifecycle',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover action, approval, preflight, effect, and forbidden-action state before mutation.',
+        mcp_tool: 'literature.research_action_lifecycle',
+      },
+      {
+        label: 'Agent Handoff Card',
+        route: '/runtime/job/{job_id}/agent-handoff-card',
+        read_only: true,
+        requires_identifier: true,
+        identifier_hint: 'job_id',
+        purpose: 'Recover resumable handoff instructions, resource refs, replay recovery, and boundaries for one job.',
+        mcp_tool: 'literature.agent_handoff_card',
+      },
+      {
+        label: 'Agent Workspace Status',
+        route: '/api/agent-workspace/status',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover local artifact, audit, git, root, and recovery-probe state.',
+        mcp_tool: 'literature.agent_workspace_status',
+      },
     ],
     boundaries: [
       'Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.',
@@ -1693,10 +1734,12 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).queryByText(/C:\\Users\\/)).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('literature_assistant/core/routers/agent_workspace_router.py')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('docs/plans/local-goal-state.json')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true · literature.workflow_passport')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true · literature.research_action_lifecycle')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Agent Handoff Card · read-only true · needs job_id · literature.agent_handoff_card')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Create a rollback checkpoint and re-check official or mature references before nontrivial edits.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/workflow-passport')).not.toBeInTheDocument();
+    expect(within(workspaceStateRegion).queryByText('/runtime/job/{job_id}/agent-handoff-card')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(mockedGetAgentHandoffCard).toHaveBeenCalledWith('job_agent_handoff_1');
       expect(mockedGetWorkflowReplayLineage).toHaveBeenCalledWith('job_agent_handoff_1', { limit: 12 });

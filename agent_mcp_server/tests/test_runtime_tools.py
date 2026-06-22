@@ -1572,37 +1572,70 @@ def test_agent_workspace_status_reads_recovery_state(
                     "available": True,
                     "branch": "main",
                     "ahead": 34,
-                    "dirty_count": 2,
+                    "changed_count": 2,
+                    "staged_count": 0,
+                    "unstaged_count": 1,
+                    "untracked_count": 1,
+                    "conflicted_count": 0,
                     "dirty_paths": [
                         ".gitignore",
                         "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
                     ],
                 },
-                "roots": [
-                    {
-                        "key": "workspace_artifacts",
-                        "exists": True,
-                        "file_count": 12,
-                        "truncated": False,
-                        "sample_paths": ["workspace_artifacts/generated/output/a.md"],
-                    }
-                ],
-                "recovery": {
-                    "read_only": True,
-                    "probes": [
-                        {
-                            "endpoint": "/runtime/research-action-lifecycle",
-                            "read_only": True,
-                            "purpose": "resume blocked research actions",
-                        },
-                        {
-                            "endpoint": "/api/agent-workspace/status",
-                            "read_only": True,
-                            "purpose": "recover workspace state",
-                        },
-                    ],
+                "artifact_root": {
+                    "label": "agent_mcp_workflows",
+                    "path": "workspace_artifacts/agent_mcp_workflows",
+                    "exists": True,
+                    "file_count": 12,
+                    "total_bytes": 4096,
+                    "truncated": False,
                 },
-                "mutation_boundaries": [
+                "runtime_state_root": {
+                    "label": "runtime_state",
+                    "path": "workspace_artifacts/runtime_state",
+                    "exists": True,
+                    "file_count": 7,
+                    "total_bytes": 1024,
+                    "truncated": False,
+                },
+                "output_root": {
+                    "label": "generated_output",
+                    "path": "workspace_artifacts/generated/output",
+                    "exists": True,
+                    "file_count": 3,
+                    "total_bytes": 512,
+                    "truncated": False,
+                },
+                "recovery_probes": [
+                    {
+                        "label": "Research Action Lifecycle",
+                        "route": "/runtime/research-action-lifecycle",
+                        "read_only": True,
+                        "requires_identifier": False,
+                        "identifier_hint": None,
+                        "purpose": "Recover action lifecycle state.",
+                        "mcp_tool": "literature.research_action_lifecycle",
+                    },
+                    {
+                        "label": "Agent Handoff Card",
+                        "route": "/runtime/job/{job_id}/agent-handoff-card",
+                        "read_only": True,
+                        "requires_identifier": True,
+                        "identifier_hint": "job_id",
+                        "purpose": "Recover handoff card state for one job.",
+                        "mcp_tool": "literature.agent_handoff_card",
+                    },
+                    {
+                        "label": "Agent Workspace Status",
+                        "route": "/api/agent-workspace/status",
+                        "read_only": True,
+                        "requires_identifier": False,
+                        "identifier_hint": None,
+                        "purpose": "Recover workspace state.",
+                        "mcp_tool": "literature.agent_workspace_status",
+                    },
+                ],
+                "boundaries": [
                     "Do not restore rollback checkpoints without explicit user intent."
                 ],
                 "next_safe_local_actions": [
@@ -1621,10 +1654,15 @@ def test_agent_workspace_status_reads_recovery_state(
         ".gitignore",
         "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
     ]
-    assert state["roots"][0]["sample_paths"] == ["workspace_artifacts/generated/output/a.md"]
-    assert state["recovery"]["probes"][0]["endpoint"] == "/runtime/research-action-lifecycle"
-    assert state["recovery"]["probes"][0]["read_only"] is True
-    assert "explicit user intent" in state["mutation_boundaries"][0]
+    assert state["artifact_root"]["file_count"] == 12
+    assert state["recovery_probes"][0]["route"] == "/runtime/research-action-lifecycle"
+    assert state["recovery_probes"][0]["read_only"] is True
+    handoff_probe = state["recovery_probes"][1]
+    assert handoff_probe["route"] == "/runtime/job/{job_id}/agent-handoff-card"
+    assert handoff_probe["requires_identifier"] is True
+    assert handoff_probe["identifier_hint"] == "job_id"
+    assert handoff_probe["mcp_tool"] == "literature.agent_handoff_card"
+    assert "explicit user intent" in state["boundaries"][0]
     assert backend.calls[-1] == (
         "json",
         "/api/agent-workspace/status",

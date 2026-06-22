@@ -35,6 +35,7 @@ import {
   type AgentWorkflowHealthCheck,
   type AgentWorkspaceArtifact,
   type AgentWorkspaceAuditRecord,
+  type AgentWorkspaceRecoveryProbe,
   type AgentWorkspaceStatus,
   type AgentBridgeStatus,
   type BehaviorEvalPackProjection,
@@ -1419,11 +1420,12 @@ function workspaceDirectorySummary(
   return `${label} ${exists ? 'ready' : 'missing'} · files ${fileCount} · ${formatBytes(totalBytes)}${suffix}`;
 }
 
-function workspaceProbeLabel(value: unknown, index: number): string {
-  const record = isRecord(value) ? value : {};
-  const label = sanitizeInspectorText(readTextField(record, 'label') || `probe ${index + 1}`);
-  const readOnly = record.read_only === true ? 'true' : 'unknown';
-  return `${label} · read-only ${readOnly}`;
+function workspaceProbeLabel(value: AgentWorkspaceRecoveryProbe, index: number): string {
+  const label = sanitizeInspectorText(value.label.trim() || `probe ${index + 1}`);
+  const readOnly = value.read_only ? 'true' : 'unknown';
+  const identifier = value.requires_identifier && value.identifier_hint ? ` · needs ${value.identifier_hint}` : '';
+  const mcpTool = value.mcp_tool ? ` · ${sanitizeInspectorText(value.mcp_tool)}` : '';
+  return `${label} · read-only ${readOnly}${identifier}${mcpTool}`;
 }
 
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
@@ -2936,7 +2938,7 @@ function WorkspaceStatePanel({
   }
   const git = state.git;
   const dirtyPaths = git.dirty_paths.slice(0, 6);
-  const probes = state.recovery_probes.slice(0, 4);
+  const probes = state.recovery_probes.slice(0, 5);
   const boundaries = state.boundaries.slice(0, 3).map(sanitizeInspectorText);
   const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
   return (

@@ -89,7 +89,21 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert payload["workspace_state"]["artifact_root"]["truncated"] is False
     assert payload["workspace_state"]["runtime_state_root"]["exists"] is True
     assert payload["workspace_state"]["output_root"]["exists"] is True
-    assert payload["workspace_state"]["recovery_probes"]
+    probes = payload["workspace_state"]["recovery_probes"]
+    assert [probe["label"] for probe in probes] == [
+        "Workflow Passport",
+        "Evidence Integrity Gate",
+        "Research Action Lifecycle",
+        "Agent Handoff Card",
+        "Agent Workspace Status",
+    ]
+    assert all(probe["read_only"] is True for probe in probes)
+    handoff_probe = next(probe for probe in probes if probe["label"] == "Agent Handoff Card")
+    assert handoff_probe["route"] == "/runtime/job/{job_id}/agent-handoff-card"
+    assert handoff_probe["requires_identifier"] is True
+    assert handoff_probe["identifier_hint"] == "job_id"
+    assert handoff_probe["mcp_tool"] == "literature.agent_handoff_card"
+    assert "replay recovery" in handoff_probe["purpose"]
     assert any("rollback checkpoint" in item for item in payload["workspace_state"]["boundaries"])
     assert payload["artifacts"][0]["path"] == "reports/summary.md"
     assert ".audit" not in payload["artifacts"][0]["path"]

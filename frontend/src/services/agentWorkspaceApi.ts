@@ -49,6 +49,16 @@ export interface AgentWorkspaceGitState {
   error: string | null;
 }
 
+export interface AgentWorkspaceRecoveryProbe {
+  label: string;
+  route: string;
+  read_only: boolean;
+  requires_identifier: boolean;
+  identifier_hint: string | null;
+  purpose: string;
+  mcp_tool: string | null;
+}
+
 export interface AgentWorkspaceState {
   schema_version: 'scholar_ai_agent_workspace_state_v1';
   generated_at: string;
@@ -58,7 +68,7 @@ export interface AgentWorkspaceState {
   runtime_state_root: AgentWorkspaceDirectoryState;
   output_root: AgentWorkspaceDirectoryState;
   git: AgentWorkspaceGitState;
-  recovery_probes: Record<string, unknown>[];
+  recovery_probes: AgentWorkspaceRecoveryProbe[];
   boundaries: string[];
   next_safe_local_actions: string[];
 }

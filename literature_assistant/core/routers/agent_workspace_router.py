@@ -80,6 +80,29 @@ class AgentWorkspaceGitState(BaseModel):
     error: str | None = None
 
 
+class AgentWorkspaceRecoveryProbe(BaseModel):
+    """One read-only recovery endpoint a resumed agent can inspect.
+
+    Args:
+        label: Stable display label for the recovery surface.
+        route: Local route or route pattern. Placeholder routes require an
+            identifier supplied from visible runtime state.
+        read_only: Whether this probe is diagnostic only.
+        requires_identifier: Whether the route pattern needs a job/request id.
+        identifier_hint: Identifier name expected by the route pattern.
+        purpose: Why this probe should be read before mutating workflow state.
+        mcp_tool: Optional MCP tool exposing the same read-only projection.
+    """
+
+    label: str = Field(min_length=1, max_length=120)
+    route: str = Field(min_length=1, max_length=240)
+    read_only: bool = True
+    requires_identifier: bool = False
+    identifier_hint: str | None = Field(default=None, max_length=80)
+    purpose: str = Field(min_length=1, max_length=240)
+    mcp_tool: str | None = Field(default=None, max_length=120)
+
+
 class AgentWorkspaceState(BaseModel):
     """Machine-readable local workspace state for resumable agents."""
 
@@ -91,7 +114,7 @@ class AgentWorkspaceState(BaseModel):
     runtime_state_root: AgentWorkspaceDirectoryState
     output_root: AgentWorkspaceDirectoryState
     git: AgentWorkspaceGitState
-    recovery_probes: list[dict[str, Any]] = Field(default_factory=list)
+    recovery_probes: list[AgentWorkspaceRecoveryProbe] = Field(default_factory=list)
     boundaries: list[str] = Field(default_factory=list)
     next_safe_local_actions: list[str] = Field(default_factory=list)
 
@@ -472,6 +495,51 @@ def _read_git_workspace_state() -> AgentWorkspaceGitState:
     return _parse_git_porcelain(completed.stdout)
 
 
+def _workspace_recovery_probe(
+    label: str,
+    route: str,
+    purpose: str,
+    *,
+    mcp_tool: str | None = None,
+    requires_identifier: bool = False,
+    identifier_hint: str | None = None,
+) -> AgentWorkspaceRecoveryProbe:
+    """Create a typed read-only recovery probe with boundary validation.
+
+    Args:
+        label: Human-readable probe label.
+        route: Absolute local route or route pattern.
+        purpose: Short recovery reason for resumed agents.
+        mcp_tool: Optional MCP tool name for the same projection.
+        requires_identifier: Whether route placeholders need runtime context.
+        identifier_hint: Identifier expected by the route pattern.
+
+    Returns:
+        A response-model validated read-only recovery probe.
+
+    Raises:
+        ValueError: If required probe fields are malformed.
+    """
+
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("recovery probe label must be non-empty")
+    if not isinstance(route, str) or not route.strip() or not route.strip().startswith("/"):
+        raise ValueError("recovery probe route must be an absolute local route")
+    if not isinstance(purpose, str) or not purpose.strip():
+        raise ValueError("recovery probe purpose must be non-empty")
+    if requires_identifier and (not isinstance(identifier_hint, str) or not identifier_hint.strip()):
+        raise ValueError("identifier_hint is required for identifier-bound recovery probes")
+    return AgentWorkspaceRecoveryProbe(
+        label=label.strip(),
+        route=route.strip(),
+        read_only=True,
+        requires_identifier=requires_identifier,
+        identifier_hint=identifier_hint.strip() if isinstance(identifier_hint, str) and identifier_hint.strip() else None,
+        purpose=purpose.strip(),
+        mcp_tool=mcp_tool.strip() if isinstance(mcp_tool, str) and mcp_tool.strip() else None,
+    )
+
+
 def _latest_activity(
     artifacts: list[AgentWorkspaceArtifact],
     audit_records: list[AgentWorkspaceAuditRecord],
@@ -508,10 +576,38 @@ def _build_workspace_state() -> AgentWorkspaceState:
         output_root=output_state,
         git=git_state,
         recovery_probes=[
-            {"label": "Workflow Passport", "route": "/runtime/workflow-passport", "read_only": True},
-            {"label": "Evidence Integrity Gate", "route": "/runtime/evidence-integrity-gate", "read_only": True},
-            {"label": "Research Action Lifecycle", "route": "/runtime/research-action-lifecycle", "read_only": True},
-            {"label": "Agent Workspace Status", "route": "/api/agent-workspace/status", "read_only": True},
+            _workspace_recovery_probe(
+                "Workflow Passport",
+                "/runtime/workflow-passport",
+                "Recover stage, gate, reproducibility, and provenance context before resuming workflow work.",
+                mcp_tool="literature.workflow_passport",
+            ),
+            _workspace_recovery_probe(
+                "Evidence Integrity Gate",
+                "/runtime/evidence-integrity-gate",
+                "Recover blockers, unresolved evidence, and integrity signals before trusting claims.",
+                mcp_tool="literature.evidence_integrity_gate",
+            ),
+            _workspace_recovery_probe(
+                "Research Action Lifecycle",
+                "/runtime/research-action-lifecycle",
+                "Recover action, approval, preflight, effect, and forbidden-action state before mutation.",
+                mcp_tool="literature.research_action_lifecycle",
+            ),
+            _workspace_recovery_probe(
+                "Agent Handoff Card",
+                "/runtime/job/{job_id}/agent-handoff-card",
+                "Recover resumable handoff instructions, resource refs, replay recovery, and boundaries for one job.",
+                mcp_tool="literature.agent_handoff_card",
+                requires_identifier=True,
+                identifier_hint="job_id",
+            ),
+            _workspace_recovery_probe(
+                "Agent Workspace Status",
+                "/api/agent-workspace/status",
+                "Recover local artifact, audit, git, root, and recovery-probe state.",
+                mcp_tool="literature.agent_workspace_status",
+            ),
         ],
         boundaries=boundaries,
         next_safe_local_actions=next_actions,

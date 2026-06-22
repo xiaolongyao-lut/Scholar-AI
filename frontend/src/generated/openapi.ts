@@ -7420,6 +7420,42 @@ export interface components {
             untracked_count: number;
         };
         /**
+         * AgentWorkspaceRecoveryProbe
+         * @description One read-only recovery endpoint a resumed agent can inspect.
+         *
+         *     Args:
+         *         label: Stable display label for the recovery surface.
+         *         route: Local route or route pattern. Placeholder routes require an
+         *             identifier supplied from visible runtime state.
+         *         read_only: Whether this probe is diagnostic only.
+         *         requires_identifier: Whether the route pattern needs a job/request id.
+         *         identifier_hint: Identifier name expected by the route pattern.
+         *         purpose: Why this probe should be read before mutating workflow state.
+         *         mcp_tool: Optional MCP tool exposing the same read-only projection.
+         */
+        AgentWorkspaceRecoveryProbe: {
+            /** Identifier Hint */
+            identifier_hint?: string | null;
+            /** Label */
+            label: string;
+            /** Mcp Tool */
+            mcp_tool?: string | null;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /**
+             * Requires Identifier
+             * @default false
+             */
+            requires_identifier: boolean;
+            /** Route */
+            route: string;
+        };
+        /**
          * AgentWorkspaceState
          * @description Machine-readable local workspace state for resumable agents.
          */
@@ -7439,9 +7475,7 @@ export interface components {
              */
             read_only: boolean;
             /** Recovery Probes */
-            recovery_probes?: {
-                [key: string]: unknown;
-            }[];
+            recovery_probes?: components["schemas"]["AgentWorkspaceRecoveryProbe"][];
             runtime_state_root: components["schemas"]["AgentWorkspaceDirectoryState"];
             /**
              * Schema Version
