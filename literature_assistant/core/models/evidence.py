@@ -236,6 +236,7 @@ class EvidencePackReferencePayload(BaseModel):
         rerank_score: Optional rerank score; ``None`` when rerank did not run.
         citation_anchor: Stable local citation anchor for draft traceability.
         figure_candidate: Optional future figure/table candidate id.
+        source_labels: Retrieval/source labels used to explain provenance.
         summary: Bounded summary safe for model context.
         suitable_for_body: Whether the ref is safe to cite in body prose.
         source_title: Optional display title for non-project resources.
@@ -255,6 +256,7 @@ class EvidencePackReferencePayload(BaseModel):
     rerank_score: Optional[float] = Field(default=None, ge=0.0)
     citation_anchor: str = Field(min_length=1, max_length=260)
     figure_candidate: Optional[str] = Field(default=None, max_length=260)
+    source_labels: List[str] = Field(default_factory=list, max_length=16)
     summary: str = Field(min_length=1, max_length=300)
     suitable_for_body: bool = True
     source_title: Optional[str] = Field(default=None, max_length=160)
@@ -275,9 +277,14 @@ class EvidenceLocatorCoveragePayload(BaseModel):
         missing_locator_count: Project refs missing the material/chunk locator.
         page_coverage_ratio: Page-locator coverage over project refs.
         bbox_coverage_ratio: Bbox-locator coverage over project refs.
+        bbox_unit_counts: Count of valid bbox locators by declared coordinate unit.
+        source_label_count: Project refs with explicit retrieval/source labels.
+        source_label_coverage_ratio: Source-label coverage over project refs.
+        figure_table_locator_count: Project refs with figure/table candidate ids.
         coverage_state: Coarse state for workflow-passport and integrity gates.
         risk_level: Local diagnostic severity; it records risk but does not
             mutate or block workflows by itself.
+        sample_figure_table_ids: Bounded figure/table candidate ids for review.
         sample_missing_ref_ids: Bounded examples for repair without leaking text.
         notes: Bounded reviewer/agent hints.
     """
@@ -294,6 +301,10 @@ class EvidenceLocatorCoveragePayload(BaseModel):
     missing_locator_count: int = Field(default=0, ge=0)
     page_coverage_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
     bbox_coverage_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    bbox_unit_counts: dict[str, int] = Field(default_factory=dict)
+    source_label_count: int = Field(default=0, ge=0)
+    source_label_coverage_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    figure_table_locator_count: int = Field(default=0, ge=0)
     coverage_state: Literal[
         "no_refs",
         "missing",
@@ -303,6 +314,7 @@ class EvidenceLocatorCoveragePayload(BaseModel):
         "layout_complete",
     ] = "no_refs"
     risk_level: Literal["none", "warn", "block"] = "none"
+    sample_figure_table_ids: List[str] = Field(default_factory=list, max_length=8)
     sample_missing_ref_ids: List[str] = Field(default_factory=list, max_length=8)
     notes: List[str] = Field(default_factory=list, max_length=8)
 
@@ -317,6 +329,8 @@ class EvidenceLocatorCoveragePayload(BaseModel):
             self.page_locator_count,
             self.bbox_locator_count,
             self.missing_locator_count,
+            self.source_label_count,
+            self.figure_table_locator_count,
         ):
             if value > self.project_ref_count:
                 raise ValueError("locator counts cannot exceed project_ref_count")
@@ -324,6 +338,13 @@ class EvidenceLocatorCoveragePayload(BaseModel):
             raise ValueError("bbox locator count cannot exceed page locator count")
         if self.page_locator_count > self.material_locator_count:
             raise ValueError("page locator count cannot exceed material locator count")
+        for unit, count in self.bbox_unit_counts.items():
+            if not isinstance(unit, str) or not unit.strip():
+                raise ValueError("bbox_unit_counts keys must be non-empty strings")
+            if not isinstance(count, int) or count < 0:
+                raise ValueError("bbox_unit_counts values must be non-negative integers")
+        if sum(self.bbox_unit_counts.values()) > self.bbox_locator_count:
+            raise ValueError("bbox_unit_counts cannot exceed bbox_locator_count")
         return self
 
 

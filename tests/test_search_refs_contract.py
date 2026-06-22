@@ -46,6 +46,8 @@ def _write_chunk_fixture(project_id: str) -> None:
                     "chunk_index": 2,
                     "chunk_type": "body",
                     "source_relative_path": "papers/attention.pdf",
+                    "source_labels": ["bm25", "dense"],
+                    "figure_candidate": "figure:attention-1",
                     "private_note": "SHOULD_NOT_LEAK_PRIVATE",
                     "locator": {
                         "material_id": "mat_alpha",
@@ -109,10 +111,18 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
         "missing_locator_count": 0,
         "page_coverage_ratio": 1.0,
         "bbox_coverage_ratio": 1.0,
+        "bbox_unit_counts": {"normalized_ratio": 1},
+        "source_label_count": 1,
+        "source_label_coverage_ratio": 1.0,
+        "figure_table_locator_count": 1,
         "coverage_state": "layout_complete",
         "risk_level": "none",
+        "sample_figure_table_ids": ["figure:attention-1"],
         "sample_missing_ref_ids": [],
-        "notes": ["Every project ref has material, page, and bbox locators."],
+        "notes": [
+            "Every project ref has material, page, and bbox locators.",
+            "Some project refs are linked to figure/table candidates for layout-aware review.",
+        ],
     }
     ref = payload["refs"][0]
     assert set(ref) == {
@@ -136,6 +146,8 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
         "chunk_type",
         "source_relative_path",
         "locator",
+        "source_labels",
+        "figure_candidate",
     }
     assert ref["metadata"] == {
         "material_id": "mat_alpha",
@@ -151,6 +163,8 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
             "bbox": [0.1, 0.2, 0.3, 0.4],
             "bbox_unit": "normalized_ratio",
         },
+        "source_labels": ["bm25", "dense"],
+        "figure_candidate": "figure:attention-1",
     }
     serialized = str(payload)
     assert "content" not in ref
@@ -219,6 +233,8 @@ def test_search_refs_marks_material_only_locators_as_blocking_risk() -> None:
     assert payload["locator_coverage"]["risk_level"] == "block"
     assert payload["locator_coverage"]["page_coverage_ratio"] == 0.0
     assert payload["locator_coverage"]["bbox_coverage_ratio"] == 0.0
+    assert payload["locator_coverage"]["bbox_unit_counts"] == {}
+    assert payload["locator_coverage"]["source_label_coverage_ratio"] == 0.0
 
 
 def test_search_refs_empty_store_is_stable_and_read_only(monkeypatch: Any) -> None:
@@ -253,8 +269,13 @@ def test_search_refs_empty_store_is_stable_and_read_only(monkeypatch: Any) -> No
             "missing_locator_count": 0,
             "page_coverage_ratio": 0.0,
             "bbox_coverage_ratio": 0.0,
+            "bbox_unit_counts": {},
+            "source_label_count": 0,
+            "source_label_coverage_ratio": 0.0,
+            "figure_table_locator_count": 0,
             "coverage_state": "no_refs",
             "risk_level": "none",
+            "sample_figure_table_ids": [],
             "sample_missing_ref_ids": [],
             "notes": ["No project chunk refs were returned for locator coverage."],
         },

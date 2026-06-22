@@ -230,6 +230,54 @@ def _chunk_search_ref_summary(chunk: dict[str, Any]) -> str:
     return "Matched chunk"
 
 
+def _dedupe_bounded_strings(values: Any, *, max_items: int = 16, max_chars: int = 120) -> list[str]:
+    """Return stable non-empty strings for low-risk provenance fields."""
+
+    raw_values = values if isinstance(values, (list, tuple, set)) else [values]
+    output: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        text = _normalize_search_ref_text(raw, max_chars=max_chars)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        output.append(text)
+        if len(output) >= max_items:
+            break
+    return output
+
+
+def _chunk_source_labels(chunk: dict[str, Any]) -> list[str]:
+    """Return bounded retrieval/source labels already carried by a chunk."""
+
+    labels = _dedupe_bounded_strings(chunk.get("source_labels"), max_items=16, max_chars=80)
+    if labels:
+        return labels
+    source_label = _normalize_search_ref_text(chunk.get("source_label") or chunk.get("source_hint"), max_chars=80)
+    return [source_label] if source_label else []
+
+
+def _chunk_figure_table_candidate(chunk: dict[str, Any]) -> str | None:
+    """Return a stable figure/table candidate id without exposing captions."""
+
+    for key in (
+        "figure_candidate",
+        "figure_table_candidate",
+        "figure_table_candidate_id",
+        "candidate_id",
+        "figure_id",
+        "table_id",
+    ):
+        value = _normalize_search_ref_text(chunk.get(key), max_chars=260)
+        if value:
+            return value
+    for key in ("linked_figure_ids", "linked_table_ids", "figure_ids", "table_ids"):
+        values = _dedupe_bounded_strings(chunk.get(key), max_items=1, max_chars=260)
+        if values:
+            return values[0]
+    return None
+
+
 def _chunk_search_ref_locator(chunk: dict[str, Any], *, material_id: str, chunk_id: str) -> dict[str, Any] | None:
     """Return a compact locator copied only from whitelisted scalar fields."""
 
@@ -318,6 +366,10 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
     material_locator_count = 0
     page_locator_count = 0
     bbox_locator_count = 0
+    bbox_unit_counts: dict[str, int] = {}
+    source_label_count = 0
+    figure_table_locator_count = 0
+    sample_figure_table_ids: list[str] = []
     missing_ref_ids: list[str] = []
     for ref in refs:
         source_type = _ref_source_type(ref)
@@ -325,6 +377,13 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
             non_project_ref_count += 1
             continue
         project_ref_count += 1
+        if _ref_source_labels(ref):
+            source_label_count += 1
+        figure_table_id = _ref_figure_table_id(ref)
+        if figure_table_id:
+            figure_table_locator_count += 1
+            if len(sample_figure_table_ids) < 8 and figure_table_id not in sample_figure_table_ids:
+                sample_figure_table_ids.append(figure_table_id)
         locator = _ref_locator(ref)
         ref_id = _normalize_search_ref_text(_ref_attr(ref, "ref_id"), max_chars=200) or _normalize_search_ref_text(
             _ref_attr(ref, "chunk_id"), max_chars=200
@@ -344,10 +403,12 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
                 unit = PdfBboxUnit.NORMALIZED_RATIO
             if bbox is not None and pdf_bbox_matches_unit(bbox, unit):
                 bbox_locator_count += 1
+                bbox_unit_counts[unit.value] = bbox_unit_counts.get(unit.value, 0) + 1
 
     missing_locator_count = max(project_ref_count - material_locator_count, 0)
     page_ratio = _coverage_ratio(page_locator_count, project_ref_count)
     bbox_ratio = _coverage_ratio(bbox_locator_count, project_ref_count)
+    source_label_ratio = _coverage_ratio(source_label_count, project_ref_count)
     coverage_state = _locator_coverage_state(
         total_refs=total_refs,
         project_ref_count=project_ref_count,
@@ -366,13 +427,20 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
         missing_locator_count=missing_locator_count,
         page_coverage_ratio=page_ratio,
         bbox_coverage_ratio=bbox_ratio,
+        bbox_unit_counts=bbox_unit_counts,
+        source_label_count=source_label_count,
+        source_label_coverage_ratio=source_label_ratio,
+        figure_table_locator_count=figure_table_locator_count,
         coverage_state=coverage_state,
         risk_level=risk_level,
+        sample_figure_table_ids=sample_figure_table_ids,
         sample_missing_ref_ids=missing_ref_ids,
         notes=_locator_coverage_notes(
             coverage_state=coverage_state,
             project_ref_count=project_ref_count,
             non_project_ref_count=non_project_ref_count,
+            source_label_count=source_label_count,
+            figure_table_locator_count=figure_table_locator_count,
         ),
     )
 
@@ -389,6 +457,39 @@ def _ref_source_type(ref: Any) -> str:
     """Return the bounded source type for a ref."""
 
     return _normalize_search_ref_text(_ref_attr(ref, "source_type"), max_chars=80)
+
+
+def _ref_metadata_attr(ref: Any, field_name: str) -> Any:
+    """Read a whitelisted metadata field from dict or model refs."""
+
+    metadata = _ref_attr(ref, "metadata")
+    if isinstance(metadata, dict):
+        return metadata.get(field_name)
+    return getattr(metadata, field_name, None)
+
+
+def _ref_source_labels(ref: Any) -> list[str]:
+    """Return source labels from evidence refs or search-ref metadata."""
+
+    labels = _dedupe_bounded_strings(_ref_attr(ref, "source_labels"), max_items=16, max_chars=80)
+    if labels:
+        return labels
+    return _dedupe_bounded_strings(_ref_metadata_attr(ref, "source_labels"), max_items=16, max_chars=80)
+
+
+def _ref_figure_table_id(ref: Any) -> str:
+    """Return the first linked figure/table candidate id on a ref."""
+
+    for raw in (
+        _ref_attr(ref, "figure_candidate"),
+        _ref_attr(ref, "figure_table_candidate"),
+        _ref_metadata_attr(ref, "figure_candidate"),
+        _ref_metadata_attr(ref, "figure_table_candidate"),
+    ):
+        value = _normalize_search_ref_text(raw, max_chars=260)
+        if value:
+            return value
+    return ""
 
 
 def _ref_locator(ref: Any) -> dict[str, Any]:
@@ -467,6 +568,8 @@ def _locator_coverage_notes(
     coverage_state: str,
     project_ref_count: int,
     non_project_ref_count: int,
+    source_label_count: int,
+    figure_table_locator_count: int,
 ) -> list[str]:
     """Return bounded hints without leaking chunk text or local paths."""
 
@@ -485,6 +588,10 @@ def _locator_coverage_notes(
         notes.append("Project refs identify source chunks but cannot jump to a source page yet.")
     else:
         notes.append("Project refs are missing source locators; run or repair material processing before evidence reuse.")
+    if project_ref_count and source_label_count < project_ref_count:
+        notes.append("Some project refs lack source labels, so retrieval provenance is only partially explainable.")
+    if figure_table_locator_count:
+        notes.append("Some project refs are linked to figure/table candidates for layout-aware review.")
     return notes[:8]
 
 
@@ -504,6 +611,8 @@ def _chunk_search_ref_metadata(chunk: dict[str, Any], *, material_id: str, chunk
         chunk_type=chunk_type,
         source_relative_path=source_relative_path,
         locator=_chunk_search_ref_locator(chunk, material_id=material_id, chunk_id=chunk_id),
+        source_labels=_chunk_source_labels(chunk),
+        figure_candidate=_chunk_figure_table_candidate(chunk),
     )
 
 

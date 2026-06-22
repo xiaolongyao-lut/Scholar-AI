@@ -3928,7 +3928,7 @@
         "type": "object"
       },
       "ChunkSearchRefMetadataPayload": {
-        "description": "Whitelisted provenance metadata for token-bounded chunk refs.\n\nArgs:\n    material_id: Material that owns the matched chunk.\n    title: Human-readable source title when available.\n    page: One-based page number when the chunk store records it.\n    chunk_type: Optional chunk classifier from the extraction pipeline.\n    source_relative_path: Project-local source-file path when persisted.\n    locator: Optional compact locator payload suitable for reader jumps.",
+        "description": "Whitelisted provenance metadata for token-bounded chunk refs.\n\nArgs:\n    material_id: Material that owns the matched chunk.\n    title: Human-readable source title when available.\n    page: One-based page number when the chunk store records it.\n    chunk_type: Optional chunk classifier from the extraction pipeline.\n    source_relative_path: Project-local source-file path when persisted.\n    locator: Optional compact locator payload suitable for reader jumps.\n    source_labels: Retrieval/source labels attached by the pipeline.\n    figure_candidate: Optional figure/table candidate id linked to the chunk.",
         "properties": {
           "chunk_type": {
             "anyOf": [
@@ -3940,6 +3940,18 @@
               }
             ],
             "title": "Chunk Type"
+          },
+          "figure_candidate": {
+            "anyOf": [
+              {
+                "maxLength": 260,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Candidate"
           },
           "locator": {
             "anyOf": [
@@ -3967,6 +3979,14 @@
               }
             ],
             "title": "Page"
+          },
+          "source_labels": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Source Labels",
+            "type": "array"
           },
           "source_relative_path": {
             "anyOf": [
@@ -8156,7 +8176,7 @@
         "type": "object"
       },
       "EvidenceLocatorCoveragePayload": {
-        "description": "Coverage summary for refs that should be recoverable in source layout.\n\nArgs:\n    total_refs: All refs in the response, including non-project bounded refs.\n    project_ref_count: Project-local chunk refs that can carry PDF locators.\n    non_project_ref_count: Bounded refs outside the project chunk store.\n    material_locator_count: Project refs with material_id and chunk_id.\n    page_locator_count: Project refs with a one-based source page.\n    bbox_locator_count: Project refs with a valid bbox tied to a page.\n    missing_locator_count: Project refs missing the material/chunk locator.\n    page_coverage_ratio: Page-locator coverage over project refs.\n    bbox_coverage_ratio: Bbox-locator coverage over project refs.\n    coverage_state: Coarse state for workflow-passport and integrity gates.\n    risk_level: Local diagnostic severity; it records risk but does not\n        mutate or block workflows by itself.\n    sample_missing_ref_ids: Bounded examples for repair without leaking text.\n    notes: Bounded reviewer/agent hints.",
+        "description": "Coverage summary for refs that should be recoverable in source layout.\n\nArgs:\n    total_refs: All refs in the response, including non-project bounded refs.\n    project_ref_count: Project-local chunk refs that can carry PDF locators.\n    non_project_ref_count: Bounded refs outside the project chunk store.\n    material_locator_count: Project refs with material_id and chunk_id.\n    page_locator_count: Project refs with a one-based source page.\n    bbox_locator_count: Project refs with a valid bbox tied to a page.\n    missing_locator_count: Project refs missing the material/chunk locator.\n    page_coverage_ratio: Page-locator coverage over project refs.\n    bbox_coverage_ratio: Bbox-locator coverage over project refs.\n    bbox_unit_counts: Count of valid bbox locators by declared coordinate unit.\n    source_label_count: Project refs with explicit retrieval/source labels.\n    source_label_coverage_ratio: Source-label coverage over project refs.\n    figure_table_locator_count: Project refs with figure/table candidate ids.\n    coverage_state: Coarse state for workflow-passport and integrity gates.\n    risk_level: Local diagnostic severity; it records risk but does not\n        mutate or block workflows by itself.\n    sample_figure_table_ids: Bounded figure/table candidate ids for review.\n    sample_missing_ref_ids: Bounded examples for repair without leaking text.\n    notes: Bounded reviewer/agent hints.",
         "properties": {
           "bbox_coverage_ratio": {
             "default": 0.0,
@@ -8171,6 +8191,13 @@
             "title": "Bbox Locator Count",
             "type": "integer"
           },
+          "bbox_unit_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Bbox Unit Counts",
+            "type": "object"
+          },
           "coverage_state": {
             "default": "no_refs",
             "enum": [
@@ -8183,6 +8210,12 @@
             ],
             "title": "Coverage State",
             "type": "string"
+          },
+          "figure_table_locator_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Figure Table Locator Count",
+            "type": "integer"
           },
           "material_locator_count": {
             "default": 0,
@@ -8239,6 +8272,14 @@
             "title": "Risk Level",
             "type": "string"
           },
+          "sample_figure_table_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Sample Figure Table Ids",
+            "type": "array"
+          },
           "sample_missing_ref_ids": {
             "items": {
               "type": "string"
@@ -8252,6 +8293,19 @@
             "default": "scholar-ai-evidence-locator-coverage/v1",
             "title": "Schema Version",
             "type": "string"
+          },
+          "source_label_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Source Label Count",
+            "type": "integer"
+          },
+          "source_label_coverage_ratio": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Source Label Coverage Ratio",
+            "type": "number"
           },
           "total_refs": {
             "default": 0,
@@ -8395,7 +8449,7 @@
         "type": "object"
       },
       "EvidencePackReferencePayload": {
-        "description": "MCP-safe evidence ref derived from a backend search ref.\n\nArgs:\n    project_id: Project that owns the chunk ref.\n    source_type: Evidence source family; wiki refs are bounded resources\n        and are not copied into project chunks.\n    ref_id: Agent bridge resource id in ``kind:id`` form.\n    read_endpoint: Bounded reader endpoint with explicit project scope.\n    chunk_id: Stable chunk identifier in the project chunk store.\n    material_id: Material that owns the chunk.\n    page: One-based source page when persisted in metadata.\n    locator: Optional compact locator that can jump back to a material,\n        page, and bbox without exposing source text.\n    lexical_score: Score from the local lexical retrieval path.\n    rerank_score: Optional rerank score; ``None`` when rerank did not run.\n    citation_anchor: Stable local citation anchor for draft traceability.\n    figure_candidate: Optional future figure/table candidate id.\n    summary: Bounded summary safe for model context.\n    suitable_for_body: Whether the ref is safe to cite in body prose.\n    source_title: Optional display title for non-project resources.\n    source_path: Optional bounded source path for non-project resources.\n    joint_score: Optional fused project/wiki score from weighted RRF.",
+        "description": "MCP-safe evidence ref derived from a backend search ref.\n\nArgs:\n    project_id: Project that owns the chunk ref.\n    source_type: Evidence source family; wiki refs are bounded resources\n        and are not copied into project chunks.\n    ref_id: Agent bridge resource id in ``kind:id`` form.\n    read_endpoint: Bounded reader endpoint with explicit project scope.\n    chunk_id: Stable chunk identifier in the project chunk store.\n    material_id: Material that owns the chunk.\n    page: One-based source page when persisted in metadata.\n    locator: Optional compact locator that can jump back to a material,\n        page, and bbox without exposing source text.\n    lexical_score: Score from the local lexical retrieval path.\n    rerank_score: Optional rerank score; ``None`` when rerank did not run.\n    citation_anchor: Stable local citation anchor for draft traceability.\n    figure_candidate: Optional future figure/table candidate id.\n    source_labels: Retrieval/source labels used to explain provenance.\n    summary: Bounded summary safe for model context.\n    suitable_for_body: Whether the ref is safe to cite in body prose.\n    source_title: Optional display title for non-project resources.\n    source_path: Optional bounded source path for non-project resources.\n    joint_score: Optional fused project/wiki score from weighted RRF.",
         "properties": {
           "chunk_id": {
             "minLength": 1,
@@ -8492,6 +8546,14 @@
               }
             ],
             "title": "Rerank Score"
+          },
+          "source_labels": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Source Labels",
+            "type": "array"
           },
           "source_path": {
             "anyOf": [

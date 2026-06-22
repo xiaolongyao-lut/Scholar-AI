@@ -965,6 +965,12 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
     locator = getattr(ref.metadata, "locator", None)
     if not isinstance(locator, dict):
         locator = None
+    source_labels = getattr(ref.metadata, "source_labels", [])
+    if not isinstance(source_labels, list):
+        source_labels = []
+    source_labels = [str(label).strip() for label in source_labels if str(label).strip()][:16]
+    figure_candidate = getattr(ref.metadata, "figure_candidate", None)
+    figure_candidate = str(figure_candidate).strip()[:260] if figure_candidate is not None else None
     lexical_score = float(getattr(ref, "lexical_score", 0.0) or 0.0)
     rerank_score = getattr(ref, "rerank_score", None)
     return EvidencePackReferencePayload(
@@ -978,7 +984,8 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
         lexical_score=lexical_score,
         rerank_score=rerank_score,
         citation_anchor=_citation_anchor_from_ref(ref_id, material_id, chunk_id),
-        figure_candidate=None,
+        figure_candidate=figure_candidate or None,
+        source_labels=source_labels,
         summary=summary,
         suitable_for_body=bool(summary.strip()),
     )
@@ -1088,6 +1095,7 @@ def _wiki_hit_to_evidence_ref(project_id: str, hit: dict[str, Any]) -> EvidenceP
         rerank_score=None,
         citation_anchor=_citation_anchor_from_ref(ref_id, "wiki", stable_id),
         figure_candidate=None,
+        source_labels=[],
         summary=summary,
         suitable_for_body=True,
         source_title=str(hit.get("title") or "")[:160] or None,

@@ -8475,10 +8475,14 @@ export interface components {
          *         chunk_type: Optional chunk classifier from the extraction pipeline.
          *         source_relative_path: Project-local source-file path when persisted.
          *         locator: Optional compact locator payload suitable for reader jumps.
+         *         source_labels: Retrieval/source labels attached by the pipeline.
+         *         figure_candidate: Optional figure/table candidate id linked to the chunk.
          */
         ChunkSearchRefMetadataPayload: {
             /** Chunk Type */
             chunk_type?: string | null;
+            /** Figure Candidate */
+            figure_candidate?: string | null;
             /** Locator */
             locator?: {
                 [key: string]: unknown;
@@ -8487,6 +8491,8 @@ export interface components {
             material_id: string;
             /** Page */
             page?: number | null;
+            /** Source Labels */
+            source_labels?: string[];
             /** Source Relative Path */
             source_relative_path?: string | null;
             /** Title */
@@ -10316,9 +10322,14 @@ export interface components {
          *         missing_locator_count: Project refs missing the material/chunk locator.
          *         page_coverage_ratio: Page-locator coverage over project refs.
          *         bbox_coverage_ratio: Bbox-locator coverage over project refs.
+         *         bbox_unit_counts: Count of valid bbox locators by declared coordinate unit.
+         *         source_label_count: Project refs with explicit retrieval/source labels.
+         *         source_label_coverage_ratio: Source-label coverage over project refs.
+         *         figure_table_locator_count: Project refs with figure/table candidate ids.
          *         coverage_state: Coarse state for workflow-passport and integrity gates.
          *         risk_level: Local diagnostic severity; it records risk but does not
          *             mutate or block workflows by itself.
+         *         sample_figure_table_ids: Bounded figure/table candidate ids for review.
          *         sample_missing_ref_ids: Bounded examples for repair without leaking text.
          *         notes: Bounded reviewer/agent hints.
          */
@@ -10333,12 +10344,21 @@ export interface components {
              * @default 0
              */
             bbox_locator_count: number;
+            /** Bbox Unit Counts */
+            bbox_unit_counts?: {
+                [key: string]: number;
+            };
             /**
              * Coverage State
              * @default no_refs
              * @enum {string}
              */
             coverage_state: "no_refs" | "missing" | "material_only" | "page_located" | "layout_partial" | "layout_complete";
+            /**
+             * Figure Table Locator Count
+             * @default 0
+             */
+            figure_table_locator_count: number;
             /**
              * Material Locator Count
              * @default 0
@@ -10377,6 +10397,8 @@ export interface components {
              * @enum {string}
              */
             risk_level: "none" | "warn" | "block";
+            /** Sample Figure Table Ids */
+            sample_figure_table_ids?: string[];
             /** Sample Missing Ref Ids */
             sample_missing_ref_ids?: string[];
             /**
@@ -10385,6 +10407,16 @@ export interface components {
              * @constant
              */
             schema_version: "scholar-ai-evidence-locator-coverage/v1";
+            /**
+             * Source Label Count
+             * @default 0
+             */
+            source_label_count: number;
+            /**
+             * Source Label Coverage Ratio
+             * @default 0
+             */
+            source_label_coverage_ratio: number;
             /**
              * Total Refs
              * @default 0
@@ -10483,6 +10515,7 @@ export interface components {
          *         rerank_score: Optional rerank score; ``None`` when rerank did not run.
          *         citation_anchor: Stable local citation anchor for draft traceability.
          *         figure_candidate: Optional future figure/table candidate id.
+         *         source_labels: Retrieval/source labels used to explain provenance.
          *         summary: Bounded summary safe for model context.
          *         suitable_for_body: Whether the ref is safe to cite in body prose.
          *         source_title: Optional display title for non-project resources.
@@ -10516,6 +10549,8 @@ export interface components {
             ref_id: string;
             /** Rerank Score */
             rerank_score?: number | null;
+            /** Source Labels */
+            source_labels?: string[];
             /** Source Path */
             source_path?: string | null;
             /** Source Title */

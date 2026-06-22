@@ -91,6 +91,8 @@ class ChunkSearchRefMetadataPayload(BaseModel):
         chunk_type: Optional chunk classifier from the extraction pipeline.
         source_relative_path: Project-local source-file path when persisted.
         locator: Optional compact locator payload suitable for reader jumps.
+        source_labels: Retrieval/source labels attached by the pipeline.
+        figure_candidate: Optional figure/table candidate id linked to the chunk.
     """
 
     material_id: str
@@ -99,6 +101,8 @@ class ChunkSearchRefMetadataPayload(BaseModel):
     chunk_type: Optional[str] = None
     source_relative_path: Optional[str] = None
     locator: Optional[Dict[str, Any]] = None
+    source_labels: List[str] = Field(default_factory=list, max_length=16)
+    figure_candidate: Optional[str] = Field(default=None, max_length=260)
 
 
 class ChunkSearchRefPayload(BaseModel):

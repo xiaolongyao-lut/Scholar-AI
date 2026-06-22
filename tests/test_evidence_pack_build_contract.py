@@ -49,6 +49,8 @@ def _write_chunk_fixture(project_id: str) -> None:
                     "chunk_index": 1,
                     "chunk_type": "body",
                     "source_relative_path": "papers/alsi10mg.pdf",
+                    "source_labels": ["bm25", "layout_pdf"],
+                    "figure_candidate": "figure:porosity-1",
                     "locator": {
                         "page": 9,
                         "chunk_index": 1,
@@ -113,10 +115,18 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
         "missing_locator_count": 0,
         "page_coverage_ratio": 1.0,
         "bbox_coverage_ratio": 1.0,
+        "bbox_unit_counts": {"normalized_ratio": 1},
+        "source_label_count": 1,
+        "source_label_coverage_ratio": 1.0,
+        "figure_table_locator_count": 1,
         "coverage_state": "layout_complete",
         "risk_level": "none",
+        "sample_figure_table_ids": ["figure:porosity-1"],
         "sample_missing_ref_ids": [],
-        "notes": ["Every project ref has material, page, and bbox locators."],
+        "notes": [
+            "Every project ref has material, page, and bbox locators.",
+            "Some project refs are linked to figure/table candidates for layout-aware review.",
+        ],
     }
     assert diagnostics["reasoning_trace"]
     assert any("lexical" in item.lower() for item in diagnostics["reasoning_trace"])
@@ -156,6 +166,7 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
         "rerank_score",
         "citation_anchor",
         "figure_candidate",
+        "source_labels",
         "summary",
         "suitable_for_body",
         "source_title",
@@ -180,7 +191,8 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
     assert ref["lexical_score"] > 0
     assert ref["rerank_score"] is None
     assert ref["citation_anchor"]
-    assert ref["figure_candidate"] is None
+    assert ref["figure_candidate"] == "figure:porosity-1"
+    assert ref["source_labels"] == ["bm25", "layout_pdf"]
     assert ref["suitable_for_body"] is True
     assert ref["source_title"] is None
     assert ref["source_path"] is None
@@ -347,6 +359,7 @@ def test_evidence_pack_build_reports_wiki_project_joint_recall(
     assert wiki_refs[0]["source_path"].startswith("synthesis/alsi10mg-")
     assert wiki_refs[0]["joint_score"] is not None
     assert wiki_refs[0]["locator"] is None
+    assert wiki_refs[0]["source_labels"] == []
     assert len(wiki_refs[0]["summary"]) <= 300
     serialized = str(payload)
     assert "Wiki note 1" in serialized
