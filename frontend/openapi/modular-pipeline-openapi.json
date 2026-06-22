@@ -1707,6 +1707,181 @@
         "title": "AgentWorkspaceGoalOpenRequirement",
         "type": "object"
       },
+      "AgentWorkspaceGoalRequirementDrilldown": {
+        "description": "Read-only requirement-to-evidence drilldown for one longrun row.\n\nArgs:\n    schema_version: Stable payload schema for REST, MCP, and UI callers.\n    available: Whether the requested requirement was found.\n    read_only: Confirms this projection has no mutation authority.\n    path: Repository-relative goal-state record label.\n    updated_at: Goal-state record timestamp.\n    checkpoint_id: Rollback checkpoint id, without local checkpoint path.\n    id: Requirement row id.\n    status: Requirement row status.\n    requirement: Redacted requirement text.\n    residual_risk: Redacted residual risk text.\n    evidence: Bounded evidence references.\n    evidence_count: Total evidence references found before truncation.\n    truncated: Whether evidence references were omitted.\n    next_safe_local_actions: Bounded next local actions from the goal state.\n    stop_boundaries: Bounded stop boundaries from the goal state.\n    error: Redacted lookup/read error when unavailable.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AgentWorkspaceGoalRequirementEvidenceRef"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "read_only": {
+            "default": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "requirement": {
+            "anyOf": [
+              {
+                "maxLength": 480,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirement"
+          },
+          "residual_risk": {
+            "anyOf": [
+              {
+                "maxLength": 480,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residual Risk"
+          },
+          "schema_version": {
+            "default": "scholar_ai_goal_requirement_drilldown_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "stop_boundaries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stop Boundaries",
+            "type": "array"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "AgentWorkspaceGoalRequirementDrilldown",
+        "type": "object"
+      },
+      "AgentWorkspaceGoalRequirementEvidenceRef": {
+        "description": "One bounded evidence reference from the longrun requirement matrix.\n\nArgs:\n    label: Short evidence reference label, preserving list order.\n    text: Redacted evidence reference text or compact JSON preview.",
+        "properties": {
+          "label": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 480,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "text"
+        ],
+        "title": "AgentWorkspaceGoalRequirementEvidenceRef",
+        "type": "object"
+      },
       "AgentWorkspaceGoalRequirementStatus": {
         "description": "Bounded requirement-to-evidence status summary for resume decisions.\n\nArgs:\n    total: Number of requirement rows in the selected goal-state record.\n    proved: Rows backed by concrete implementation, command, artifact, or\n        runtime evidence.\n    incomplete: Rows that still need stronger local evidence or tooling.\n    out_of_scope: Rows explicitly excluded by the current user boundary.\n    latest_id: Last row id in the requirement matrix.",
         "properties": {
@@ -24795,6 +24970,49 @@
         "summary": "Get Agent Bridge Status",
         "tags": [
           "Agent Bridge"
+        ]
+      }
+    },
+    "/api/agent-workspace/goal-requirements/{requirement_id}": {
+      "get": {
+        "description": "Return a bounded read-only requirement-to-evidence drilldown.",
+        "operationId": "get_api_agent_workspace_goal_requirements_requirement_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "requirement_id",
+            "required": true,
+            "schema": {
+              "title": "Requirement Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentWorkspaceGoalRequirementDrilldown"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Workspace Goal Requirement",
+        "tags": [
+          "Agent Workspace"
         ]
       }
     },

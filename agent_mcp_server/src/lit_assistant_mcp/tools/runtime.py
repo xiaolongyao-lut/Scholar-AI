@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import quote
 from uuid import uuid4
 
 from ..audit import AuditLog
@@ -889,6 +890,23 @@ class RuntimeTools:
         backend_result = self.backend.get(endpoint, params=params)
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.agent_workspace_status", params, result, started, endpoint)
+
+    def agent_workspace_requirement(
+        self,
+        requirement_id: str,
+    ) -> dict[str, Any]:
+        """Read one goal-state requirement-to-evidence drilldown.
+
+        Args:
+            requirement_id: Exact requirement matrix id from Agent Workspace state.
+        """
+        started = time.perf_counter()
+        requirement_id = self._bounded_text(requirement_id, "requirement_id", max_chars=160)
+        params = {"requirement_id": requirement_id}
+        endpoint = f"/api/agent-workspace/goal-requirements/{quote(requirement_id, safe='')}"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.agent_workspace_requirement", params, result, started, endpoint)
 
     def agent_request_create(
         self,

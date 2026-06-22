@@ -278,6 +278,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-workspace/goal-requirements/{requirement_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Workspace Goal Requirement
+         * @description Return a bounded read-only requirement-to-evidence drilldown.
+         */
+        get: operations["get_api_agent_workspace_goal_requirements_requirement_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-workspace/status": {
         parameters: {
             query?: never;
@@ -7452,6 +7472,88 @@ export interface components {
             residual_risk?: string | null;
             /** Status */
             status: string;
+        };
+        /**
+         * AgentWorkspaceGoalRequirementDrilldown
+         * @description Read-only requirement-to-evidence drilldown for one longrun row.
+         *
+         *     Args:
+         *         schema_version: Stable payload schema for REST, MCP, and UI callers.
+         *         available: Whether the requested requirement was found.
+         *         read_only: Confirms this projection has no mutation authority.
+         *         path: Repository-relative goal-state record label.
+         *         updated_at: Goal-state record timestamp.
+         *         checkpoint_id: Rollback checkpoint id, without local checkpoint path.
+         *         id: Requirement row id.
+         *         status: Requirement row status.
+         *         requirement: Redacted requirement text.
+         *         residual_risk: Redacted residual risk text.
+         *         evidence: Bounded evidence references.
+         *         evidence_count: Total evidence references found before truncation.
+         *         truncated: Whether evidence references were omitted.
+         *         next_safe_local_actions: Bounded next local actions from the goal state.
+         *         stop_boundaries: Bounded stop boundaries from the goal state.
+         *         error: Redacted lookup/read error when unavailable.
+         */
+        AgentWorkspaceGoalRequirementDrilldown: {
+            /** Available */
+            available: boolean;
+            /** Checkpoint Id */
+            checkpoint_id?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Evidence */
+            evidence?: components["schemas"]["AgentWorkspaceGoalRequirementEvidenceRef"][];
+            /**
+             * Evidence Count
+             * @default 0
+             */
+            evidence_count: number;
+            /** Id */
+            id?: string | null;
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            /** Path */
+            path?: string | null;
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /** Requirement */
+            requirement?: string | null;
+            /** Residual Risk */
+            residual_risk?: string | null;
+            /**
+             * Schema Version
+             * @default scholar_ai_goal_requirement_drilldown_v1
+             */
+            schema_version: string;
+            /** Status */
+            status?: string | null;
+            /** Stop Boundaries */
+            stop_boundaries?: string[];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * AgentWorkspaceGoalRequirementEvidenceRef
+         * @description One bounded evidence reference from the longrun requirement matrix.
+         *
+         *     Args:
+         *         label: Short evidence reference label, preserving list order.
+         *         text: Redacted evidence reference text or compact JSON preview.
+         */
+        AgentWorkspaceGoalRequirementEvidenceRef: {
+            /** Label */
+            label: string;
+            /** Text */
+            text: string;
         };
         /**
          * AgentWorkspaceGoalRequirementStatus
@@ -18329,6 +18431,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentBridgeStatusPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_agent_workspace_goal_requirements_requirement_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentWorkspaceGoalRequirementDrilldown"];
                 };
             };
             /** @description Validation Error */

@@ -1748,6 +1748,58 @@ def test_agent_workspace_status_reads_recovery_state(
     )
 
 
+def test_agent_workspace_requirement_reads_goal_requirement_drilldown(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Agent Workspace requirement drilldown should be exposed to MCP callers."""
+
+    backend.set_json(
+        "/api/agent-workspace/goal-requirements/B01-computer-use-accessibility-tree",
+        {
+            "schema_version": "scholar_ai_goal_requirement_drilldown_v1",
+            "available": True,
+            "read_only": True,
+            "path": "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
+            "updated_at": "2026-06-22T21:36:00+08:00",
+            "checkpoint_id": "20260622-213822-n41-goal-state-workspace-visibility",
+            "id": "B01-computer-use-accessibility-tree",
+            "status": "incomplete",
+            "requirement": "Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
+            "residual_risk": "Retry only after the external tool error is fixed.",
+            "evidence": [
+                {
+                    "label": "tests/test_agent_workspace_router.py",
+                    "text": "router contract covers redacted requirement drilldown",
+                }
+            ],
+            "evidence_count": 1,
+            "truncated": False,
+            "next_safe_local_actions": [
+                "Create a rollback checkpoint and search mature references before edits."
+            ],
+            "stop_boundaries": ["No push, tag, release, deploy, or external upload."],
+            "error": None,
+        },
+    )
+
+    result = tools.agent_workspace_requirement("B01-computer-use-accessibility-tree")
+
+    assert result["is_error"] is False
+    data = result["data"]
+    assert data["schema_version"] == "scholar_ai_goal_requirement_drilldown_v1"
+    assert data["read_only"] is True
+    assert data["id"] == "B01-computer-use-accessibility-tree"
+    assert data["status"] == "incomplete"
+    assert data["evidence_count"] == 1
+    assert data["evidence"][0]["label"] == "tests/test_agent_workspace_router.py"
+    assert backend.calls[-1] == (
+        "json",
+        "/api/agent-workspace/goal-requirements/B01-computer-use-accessibility-tree",
+        None,
+    )
+
+
 def test_workflow_refresh_receipt_reads_runtime_receipt(
     tools: RuntimeTools,
     backend: FakeBackend,

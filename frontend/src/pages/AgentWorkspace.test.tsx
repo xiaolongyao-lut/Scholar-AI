@@ -6,6 +6,7 @@ import {
   getAgentBridgeStatus,
   getAgentHandoffCard,
   getAgentWorkflowHealth,
+  getAgentWorkspaceRequirement,
   getAgentWorkspaceStatus,
   getBehaviorEvalPack,
   getEvidenceIntegrityGate,
@@ -22,6 +23,7 @@ import { getWikiReview } from '@/services/wikiApi';
 
 vi.mock('@/services/agentWorkspaceApi', () => ({
   getAgentWorkspaceStatus: vi.fn(),
+  getAgentWorkspaceRequirement: vi.fn(),
   getAgentBridgeStatus: vi.fn(),
   getAgentHandoffCard: vi.fn(),
   getAgentWorkflowHealth: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock('@/services/wikiApi', () => ({
 }));
 
 const mockedGetAgentWorkspaceStatus = vi.mocked(getAgentWorkspaceStatus);
+const mockedGetAgentWorkspaceRequirement = vi.mocked(getAgentWorkspaceRequirement);
 const mockedGetAgentBridgeStatus = vi.mocked(getAgentBridgeStatus);
 const mockedGetAgentHandoffCard = vi.mocked(getAgentHandoffCard);
 const mockedGetAgentWorkflowHealth = vi.mocked(getAgentWorkflowHealth);
@@ -248,6 +251,31 @@ describe('AgentWorkspace', () => {
       workspace_state: workspaceStateFixture(),
       artifacts: [],
       audit_records: [],
+    });
+    mockedGetAgentWorkspaceRequirement.mockResolvedValue({
+      schema_version: 'scholar_ai_goal_requirement_drilldown_v1',
+      available: true,
+      read_only: true,
+      path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
+      updated_at: '2026-06-22T21:50:27+08:00',
+      checkpoint_id: '20260622-214730-n41-goal-state-record-update',
+      id: 'B01-computer-use-accessibility-tree',
+      status: 'incomplete',
+      requirement: 'Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.',
+      residual_risk: 'Retry only after the external tool error is fixed.',
+      evidence: [
+        {
+          label: 'tests/test_agent_workspace_router.py',
+          text: 'router contract covers redacted requirement drilldown',
+        },
+      ],
+      evidence_count: 1,
+      truncated: false,
+      next_safe_local_actions: [
+        'Create a rollback checkpoint and search mature references before edits.',
+      ],
+      stop_boundaries: ['No push, tag, release, deploy, or external upload.'],
+      error: null,
     });
     mockedGetAgentBridgeStatus.mockResolvedValue({
       enabled: true,
@@ -1725,6 +1753,7 @@ describe('AgentWorkspace', () => {
     render(<AgentWorkspace />);
 
     expect(await screen.findByRole('region', { name: '研究流程主干' })).toBeInTheDocument();
+    expect(await screen.findByText('Material Cache Decisions')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '研究流程' })).toBeInTheDocument();
     expect(screen.getByText('Workflow Passport')).toBeInTheDocument();
     expect(screen.getByText('Evidence Integrity Gate')).toBeInTheDocument();
@@ -1739,7 +1768,6 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('Export readiness').length).toBeGreaterThan(0);
     expect(screen.getByText('Agent handoff readiness')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Material cache decision records' })).toBeInTheDocument();
-    expect(screen.getByText('Material Cache Decisions')).toBeInTheDocument();
     expect(screen.getByText('cache decisions 1')).toBeInTheDocument();
     expect(screen.getByText('material-cache-decision:fixture-hit')).toBeInTheDocument();
     expect(screen.getByText('hit · use · replayable true · outputs true')).toBeInTheDocument();
@@ -1872,7 +1900,7 @@ describe('AgentWorkspace', () => {
     const workspaceStateRegion = screen.getByRole('region', { name: 'Workspace state visibility' });
     expect(within(workspaceStateRegion).getByText('Workspace State')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('workspace ready')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getAllByText('read-only true').length).toBeGreaterThan(1);
     expect(within(workspaceStateRegion).getByText('main · changed 2 · staged 0 · unstaged 1 · untracked 1')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('ahead 33')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('artifacts ready · files 1 · 256 B')).toBeInTheDocument();
@@ -1883,6 +1911,17 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('open requirements 1')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Open Requirements')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('B01-computer-use-accessibility-tree · incomplete · Computer Use accessibility-tree acceptance is blocked by sandboxPolicy. · risk Retry only after the external tool error is fixed.')).toBeInTheDocument();
+    const requirementDrilldownRegion = within(workspaceStateRegion).getByRole('region', { name: 'Requirement evidence drilldown' });
+    expect(within(requirementDrilldownRegion).getByText('Requirement Evidence')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('drilldown visible')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('evidence 1')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('B01-computer-use-accessibility-tree · incomplete')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('requirement Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('risk Retry only after the external tool error is fixed.')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('tests/test_agent_workspace_router.py · router contract covers redacted requirement drilldown')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('next Create a rollback checkpoint and search mature references before edits.')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('boundary No push, tag, release, deploy, or external upload.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal status visible')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('slice completion N41 made goal-state recovery visible.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal The full Scholar AI workflow spine remains active, not complete.')).toBeInTheDocument();
@@ -1898,6 +1937,7 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('Create a rollback checkpoint and re-check official or mature references before nontrivial edits.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/workflow-passport')).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/job/{job_id}/agent-handoff-card')).not.toBeInTheDocument();
+    expect(mockedGetAgentWorkspaceRequirement).toHaveBeenCalledWith('B01-computer-use-accessibility-tree');
     expect(mockedGetBehaviorEvalPack).toHaveBeenCalledWith({ includeCases: true });
     expect(mockedGetResearchActionLifecycle).toHaveBeenCalledWith({ limit: 50 });
     expect(await screen.findByText('in_progress · refs 2 · probes 3 · replay 2')).toBeInTheDocument();

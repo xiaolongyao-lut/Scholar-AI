@@ -22,6 +22,7 @@ import {
   getAgentBridgeStatus,
   getAgentHandoffCard,
   getAgentWorkflowHealth,
+  getAgentWorkspaceRequirement,
   getAgentWorkspaceStatus,
   getBehaviorEvalPack,
   getEvidenceIntegrityGate,
@@ -35,6 +36,7 @@ import {
   type AgentWorkflowHealthCheck,
   type AgentWorkspaceArtifact,
   type AgentWorkspaceAuditRecord,
+  type AgentWorkspaceGoalRequirementDrilldown,
   type AgentWorkspaceRecoveryProbe,
   type AgentWorkspaceStatus,
   type AgentBridgeStatus,
@@ -3158,8 +3160,14 @@ export function ReadinessPanel({
 
 export function WorkspaceStatePanel({
   workspaceStatus,
+  requirementDrilldown,
+  selectedRequirementId,
+  onSelectRequirement,
 }: {
   workspaceStatus: AgentWorkspaceStatus | null;
+  requirementDrilldown: AgentWorkspaceGoalRequirementDrilldown | null;
+  selectedRequirementId: string | null;
+  onSelectRequirement: (requirementId: string) => void;
 }) {
   const state = workspaceStatus?.workspace_state ?? null;
   if (state === null) {
@@ -3282,12 +3290,77 @@ export function WorkspaceStatePanel({
                 <h4 className="font-label text-[11px] font-semibold text-foreground/45">Open Requirements</h4>
                 {openRequirements.map((item) => {
                   const label = workspaceGoalOpenRequirementLabel(item);
+                  const selected = selectedRequirementId === item.id;
                   return (
-                    <p key={`${item.id}-${item.status}`} className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    <button
+                      key={`${item.id}-${item.status}`}
+                      type="button"
+                      onClick={() => onSelectRequirement(item.id)}
+                      className={cn(
+                        'break-words rounded-md border px-2 py-1.5 text-left text-[11px] leading-4 transition-colors',
+                        selected
+                          ? 'border-primary/35 bg-primary/10 text-foreground'
+                          : 'border-outline-variant/35 bg-surface text-foreground/60 hover:border-primary/25 hover:text-foreground/75',
+                      )}
+                    >
                       {label}
-                    </p>
+                    </button>
                   );
                 })}
+              </div>
+            ) : null}
+            {requirementDrilldown ? (
+              <div
+                role="region"
+                aria-label="Requirement evidence drilldown"
+                className="mt-2 grid gap-1.5 rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5"
+              >
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <h4 className="mr-auto font-label text-[11px] font-semibold text-foreground/45">
+                    Requirement Evidence
+                  </h4>
+                  <StatusPill tone={requirementDrilldown.available ? 'info' : 'warning'}>
+                    drilldown {requirementDrilldown.available ? 'visible' : 'missing'}
+                  </StatusPill>
+                  <StatusPill tone="neutral">read-only {String(requirementDrilldown.read_only)}</StatusPill>
+                  <StatusPill tone={requirementDrilldown.truncated ? 'warning' : 'neutral'}>
+                    evidence {requirementDrilldown.evidence_count}
+                  </StatusPill>
+                </div>
+                <p className="break-words text-[11px] leading-4 text-foreground/60">
+                  {requirementDrilldown.id ? sanitizeInspectorText(requirementDrilldown.id) : 'requirement id pending'}
+                  {requirementDrilldown.status ? ` · ${sanitizeInspectorText(requirementDrilldown.status)}` : ''}
+                  {requirementDrilldown.error ? ` · ${sanitizeInspectorText(requirementDrilldown.error)}` : ''}
+                </p>
+                {requirementDrilldown.requirement ? (
+                  <p className="break-words rounded-md border border-outline-variant/25 bg-surface-lowest px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                    requirement {sanitizeInspectorText(requirementDrilldown.requirement)}
+                  </p>
+                ) : null}
+                {requirementDrilldown.residual_risk ? (
+                  <p className="break-words rounded-md border border-outline-variant/25 bg-surface-lowest px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                    risk {sanitizeInspectorText(requirementDrilldown.residual_risk)}
+                  </p>
+                ) : null}
+                {requirementDrilldown.evidence.length > 0 ? (
+                  <div className="grid gap-1">
+                    {requirementDrilldown.evidence.slice(0, 4).map((item) => (
+                      <p key={`${item.label}-${item.text}`} className="break-words rounded-md border border-outline-variant/25 bg-surface-lowest px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                        {sanitizeInspectorText(item.label)} · {sanitizeInspectorText(item.text)}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                {requirementDrilldown.next_safe_local_actions.length > 0 ? (
+                  <p className="break-words text-[11px] leading-4 text-foreground/55">
+                    next {sanitizeInspectorText(requirementDrilldown.next_safe_local_actions[0])}
+                  </p>
+                ) : null}
+                {requirementDrilldown.stop_boundaries.length > 0 ? (
+                  <p className="break-words text-[11px] leading-4 text-foreground/55">
+                    boundary {sanitizeInspectorText(requirementDrilldown.stop_boundaries[0])}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -3351,6 +3424,7 @@ export function AgentWorkspace() {
   const [workflowReplayIndex, setWorkflowReplayIndex] = useState<WorkflowReplayIndexProjection | null>(null);
   const [workflowReplayLineage, setWorkflowReplayLineage] = useState<WorkflowReplayLineageProjection | null>(null);
   const [behaviorEvalPack, setBehaviorEvalPack] = useState<BehaviorEvalPackProjection | null>(null);
+  const [requirementDrilldown, setRequirementDrilldown] = useState<AgentWorkspaceGoalRequirementDrilldown | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>('agents');
@@ -3358,6 +3432,7 @@ export function AgentWorkspace() {
   const [selectedArtifactPath, setSelectedArtifactPath] = useState<string | null>(null);
   const [selectedAuditIndex, setSelectedAuditIndex] = useState(0);
   const [selectedAgentJobId, setSelectedAgentJobId] = useState<string | null>(null);
+  const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -3406,6 +3481,13 @@ export function AgentWorkspace() {
       setSelectedAuditIndex((current) => (
         current >= 0 && current < next.audit_records.length ? current : 0
       ));
+      setSelectedRequirementId((current) => {
+        const openRequirements = next.workspace_state.goal_state.open_requirements ?? [];
+        if (current && openRequirements.some((item) => item.id === current)) {
+          return current;
+        }
+        return openRequirements[0]?.id ?? null;
+      });
     } catch (exc) {
       const message = exc instanceof Error ? exc.message : 'Agent Workspace 加载失败';
       setError(message);
@@ -3422,6 +3504,8 @@ export function AgentWorkspace() {
       setWorkflowReplayIndex(null);
       setWorkflowReplayLineage(null);
       setBehaviorEvalPack(null);
+      setRequirementDrilldown(null);
+      setSelectedRequirementId(null);
     } finally {
       setLoading(false);
     }
@@ -3430,6 +3514,30 @@ export function AgentWorkspace() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedRequirementId) {
+      setRequirementDrilldown(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    getAgentWorkspaceRequirement(selectedRequirementId)
+      .then((drilldown) => {
+        if (!cancelled) {
+          setRequirementDrilldown(drilldown);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRequirementDrilldown(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRequirementId]);
 
   const artifacts = useMemo(
     () => (status?.artifacts ?? []).filter((artifact) => matchesQuery(query, artifact, null)),
@@ -3554,7 +3662,12 @@ export function AgentWorkspace() {
           auditRecords={status?.audit_records ?? []}
         />
 
-        <WorkspaceStatePanel workspaceStatus={status} />
+        <WorkspaceStatePanel
+          workspaceStatus={status}
+          requirementDrilldown={requirementDrilldown}
+          selectedRequirementId={selectedRequirementId}
+          onSelectRequirement={setSelectedRequirementId}
+        />
 
         <ResearchWorkflowSpine
           loading={loading}

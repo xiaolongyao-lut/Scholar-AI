@@ -74,6 +74,30 @@ export interface AgentWorkspaceGoalOpenRequirement {
   residual_risk: string | null;
 }
 
+export interface AgentWorkspaceGoalRequirementEvidenceRef {
+  label: string;
+  text: string;
+}
+
+export interface AgentWorkspaceGoalRequirementDrilldown {
+  schema_version: 'scholar_ai_goal_requirement_drilldown_v1';
+  available: boolean;
+  read_only: boolean;
+  path: string | null;
+  updated_at: string | null;
+  checkpoint_id: string | null;
+  id: string | null;
+  status: string | null;
+  requirement: string | null;
+  residual_risk: string | null;
+  evidence: AgentWorkspaceGoalRequirementEvidenceRef[];
+  evidence_count: number;
+  truncated: boolean;
+  next_safe_local_actions: string[];
+  stop_boundaries: string[];
+  error: string | null;
+}
+
 export interface AgentWorkspaceGoalState {
   available: boolean;
   path: string | null;
@@ -629,6 +653,17 @@ export async function getAgentWorkspaceStatus(opts?: {
       preview_chars: opts?.previewChars ?? 4000,
     },
   });
+  return response.data;
+}
+
+export async function getAgentWorkspaceRequirement(requirementId: string): Promise<AgentWorkspaceGoalRequirementDrilldown> {
+  const trimmed = requirementId.trim();
+  if (!trimmed) {
+    throw new Error('requirementId is required to read a requirement drilldown');
+  }
+  const response = await client.get<AgentWorkspaceGoalRequirementDrilldown>(
+    `/api/agent-workspace/goal-requirements/${encodeURIComponent(trimmed)}`,
+  );
   return response.data;
 }
 

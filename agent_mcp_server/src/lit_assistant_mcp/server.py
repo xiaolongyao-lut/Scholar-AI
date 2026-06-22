@@ -103,6 +103,7 @@ def create_mcp_server(
         "literature.export_docx": runtime.export_docx,
         "literature.agent_bridge_status": runtime.agent_bridge_status,
         "literature.agent_workspace_status": runtime.agent_workspace_status,
+        "literature.agent_workspace_requirement": runtime.agent_workspace_requirement,
         "literature.agent_request_create": runtime.agent_request_create,
         "literature.single_paper_task_create": runtime.single_paper_task_create,
         "literature.single_paper_completion_check": runtime.single_paper_completion_check,
@@ -450,6 +451,13 @@ def create_mcp_server(
     ) -> dict[str, Any]:
         """Read the Agent Workspace status and workspace recovery state."""
         return runtime.agent_workspace_status(artifact_limit=artifact_limit, audit_limit=audit_limit)
+
+    @mcp.tool(name="literature.agent_workspace_requirement", structured_output=True)
+    def literature_agent_workspace_requirement(
+        requirement_id: str,
+    ) -> dict[str, Any]:
+        """Read one Agent Workspace requirement-to-evidence drilldown."""
+        return runtime.agent_workspace_requirement(requirement_id=requirement_id)
 
     @mcp.tool(name="literature.agent_request_create", structured_output=True)
     def literature_agent_request_create(

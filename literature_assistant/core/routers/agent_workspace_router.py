@@ -30,6 +30,8 @@ MAX_GOAL_STATE_ACTIONS = 3
 MAX_GOAL_STATE_BOUNDARIES = 3
 MAX_GOAL_STATE_OPEN_REQUIREMENTS = 5
 MAX_GOAL_COMPLETION_CHARS = 240
+MAX_GOAL_REQUIREMENT_EVIDENCE = 8
+MAX_GOAL_REQUIREMENT_TEXT_CHARS = 480
 GIT_STATUS_TIMEOUT_SECONDS = 2.0
 OPEN_REQUIREMENT_STATUSES = frozenset(
     {
@@ -162,6 +164,58 @@ class AgentWorkspaceGoalOpenRequirement(BaseModel):
     status: str = Field(min_length=1, max_length=80)
     requirement: str | None = Field(default=None, max_length=240)
     residual_risk: str | None = Field(default=None, max_length=240)
+
+
+class AgentWorkspaceGoalRequirementEvidenceRef(BaseModel):
+    """One bounded evidence reference from the longrun requirement matrix.
+
+    Args:
+        label: Short evidence reference label, preserving list order.
+        text: Redacted evidence reference text or compact JSON preview.
+    """
+
+    label: str = Field(min_length=1, max_length=80)
+    text: str = Field(min_length=1, max_length=MAX_GOAL_REQUIREMENT_TEXT_CHARS)
+
+
+class AgentWorkspaceGoalRequirementDrilldown(BaseModel):
+    """Read-only requirement-to-evidence drilldown for one longrun row.
+
+    Args:
+        schema_version: Stable payload schema for REST, MCP, and UI callers.
+        available: Whether the requested requirement was found.
+        read_only: Confirms this projection has no mutation authority.
+        path: Repository-relative goal-state record label.
+        updated_at: Goal-state record timestamp.
+        checkpoint_id: Rollback checkpoint id, without local checkpoint path.
+        id: Requirement row id.
+        status: Requirement row status.
+        requirement: Redacted requirement text.
+        residual_risk: Redacted residual risk text.
+        evidence: Bounded evidence references.
+        evidence_count: Total evidence references found before truncation.
+        truncated: Whether evidence references were omitted.
+        next_safe_local_actions: Bounded next local actions from the goal state.
+        stop_boundaries: Bounded stop boundaries from the goal state.
+        error: Redacted lookup/read error when unavailable.
+    """
+
+    schema_version: str = "scholar_ai_goal_requirement_drilldown_v1"
+    available: bool
+    read_only: bool = True
+    path: str | None = Field(default=None, max_length=240)
+    updated_at: str | None = Field(default=None, max_length=80)
+    checkpoint_id: str | None = Field(default=None, max_length=120)
+    id: str | None = Field(default=None, max_length=160)
+    status: str | None = Field(default=None, max_length=80)
+    requirement: str | None = Field(default=None, max_length=MAX_GOAL_REQUIREMENT_TEXT_CHARS)
+    residual_risk: str | None = Field(default=None, max_length=MAX_GOAL_REQUIREMENT_TEXT_CHARS)
+    evidence: list[AgentWorkspaceGoalRequirementEvidenceRef] = Field(default_factory=list)
+    evidence_count: int = Field(default=0, ge=0)
+    truncated: bool = False
+    next_safe_local_actions: list[str] = Field(default_factory=list)
+    stop_boundaries: list[str] = Field(default_factory=list)
+    error: str | None = Field(default=None, max_length=240)
 
 
 class AgentWorkspaceGoalState(BaseModel):
@@ -670,19 +724,73 @@ def _safe_goal_open_requirement(row: dict[str, Any]) -> AgentWorkspaceGoalOpenRe
     )
 
 
-def _load_goal_state_summary() -> AgentWorkspaceGoalState:
-    """Load a bounded local goal-state summary without exposing full records."""
+def _safe_requirement_text(value: Any) -> str | None:
+    """Return bounded redacted requirement text from arbitrary goal-state data."""
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return _redact_text(value).strip()[:MAX_GOAL_REQUIREMENT_TEXT_CHARS]
+
+
+def _safe_evidence_preview(value: Any) -> str | None:
+    """Return a bounded redacted evidence preview without exposing raw records."""
+
+    if isinstance(value, str):
+        text = value.strip()
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError):
+            text = str(value)
+    text = _redact_text(text).strip()
+    return text[:MAX_GOAL_REQUIREMENT_TEXT_CHARS] if text else None
+
+
+def _safe_goal_requirement_evidence_refs(value: Any) -> tuple[list[AgentWorkspaceGoalRequirementEvidenceRef], int, bool]:
+    """Return bounded evidence refs and total count for a requirement row."""
+
+    if not isinstance(value, list):
+        return [], 0, False
+    refs: list[AgentWorkspaceGoalRequirementEvidenceRef] = []
+    for index, item in enumerate(value):
+        if len(refs) >= MAX_GOAL_REQUIREMENT_EVIDENCE:
+            break
+        preview = _safe_evidence_preview(item)
+        if preview is None:
+            continue
+        label = f"evidence {index + 1}"
+        if isinstance(item, dict):
+            raw_label = item.get("id") or item.get("ref_id") or item.get("path") or item.get("command")
+            if isinstance(raw_label, str) and raw_label.strip():
+                label = _redact_text(raw_label.strip())[:80]
+        refs.append(AgentWorkspaceGoalRequirementEvidenceRef(label=label, text=preview))
+    return refs, len(value), len(value) > MAX_GOAL_REQUIREMENT_EVIDENCE
+
+
+def _load_goal_state_payload() -> tuple[Path | None, dict[str, Any] | None, str | None]:
+    """Load the newest goal-state payload for summary and drilldown projections."""
 
     path = _latest_goal_state_file()
     if path is None:
-        return AgentWorkspaceGoalState(available=False, error="no longrun goal-state record found")
-    path_label = _workspace_state_path(path)
+        return None, None, "no longrun goal-state record found"
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return AgentWorkspaceGoalState(available=False, path=path_label, error=_redact_text(str(exc))[:240])
+        return path, None, _redact_text(str(exc))[:240]
     if not isinstance(payload, dict):
-        return AgentWorkspaceGoalState(available=False, path=path_label, error="goal-state record is not an object")
+        return path, None, "goal-state record is not an object"
+    return path, payload, None
+
+
+def _load_goal_state_summary() -> AgentWorkspaceGoalState:
+    """Load a bounded local goal-state summary without exposing full records."""
+
+    path, payload, error = _load_goal_state_payload()
+    if path is None:
+        return AgentWorkspaceGoalState(available=False, error="no longrun goal-state record found")
+    path_label = _workspace_state_path(path)
+    if payload is None:
+        return AgentWorkspaceGoalState(available=False, path=path_label, error=error or "goal-state record unavailable")
 
     raw_requirements = payload.get("requirements")
     requirements = raw_requirements if isinstance(raw_requirements, list) else []
@@ -727,6 +835,87 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
         completion_claim=_safe_goal_completion_claim(payload.get("completion_claim")),
         next_authorized_local_actions=_safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
         stop_boundaries=_safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
+    )
+
+
+def _load_goal_requirement_drilldown(requirement_id: str) -> AgentWorkspaceGoalRequirementDrilldown:
+    """Load one bounded goal-state requirement row by id.
+
+    Args:
+        requirement_id: Exact requirement matrix id to inspect.
+
+    Returns:
+        A read-only, response-model-compatible requirement drilldown.
+
+    Raises:
+        HTTPException: If the id is empty or too long.
+    """
+
+    if not isinstance(requirement_id, str) or not requirement_id.strip():
+        raise HTTPException(status_code=400, detail="requirement_id is required")
+    normalized_id = requirement_id.strip()
+    if len(normalized_id) > 160:
+        raise HTTPException(status_code=400, detail="requirement_id is too long")
+
+    path, payload, error = _load_goal_state_payload()
+    if path is None:
+        return AgentWorkspaceGoalRequirementDrilldown(
+            available=False,
+            id=_redact_text(normalized_id)[:160],
+            error=error or "no longrun goal-state record found",
+        )
+    path_label = _workspace_state_path(path)
+    if payload is None:
+        return AgentWorkspaceGoalRequirementDrilldown(
+            available=False,
+            path=path_label,
+            id=_redact_text(normalized_id)[:160],
+            error=error or "goal-state record unavailable",
+        )
+
+    requirements = payload.get("requirements")
+    rows = requirements if isinstance(requirements, list) else []
+    match = next(
+        (
+            row
+            for row in rows
+            if isinstance(row, dict)
+            and isinstance(row.get("id"), str)
+            and row.get("id", "").strip() == normalized_id
+        ),
+        None,
+    )
+    rollback = payload.get("rollback")
+    checkpoint_id = rollback.get("checkpoint_id") if isinstance(rollback, dict) else None
+    updated_at = payload.get("updated_at")
+    base = {
+        "path": path_label,
+        "updated_at": _redact_text(updated_at)[:80] if isinstance(updated_at, str) and updated_at.strip() else None,
+        "checkpoint_id": _redact_text(checkpoint_id)[:120] if isinstance(checkpoint_id, str) and checkpoint_id.strip() else None,
+        "next_safe_local_actions": _safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
+        "stop_boundaries": _safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
+    }
+    if match is None:
+        return AgentWorkspaceGoalRequirementDrilldown(
+            available=False,
+            id=_redact_text(normalized_id)[:160],
+            error="requirement id was not found in the selected goal-state record",
+            **base,
+        )
+
+    evidence_refs, evidence_count, truncated = _safe_goal_requirement_evidence_refs(match.get("evidence"))
+    status = match.get("status")
+    row_id = match.get("id")
+    return AgentWorkspaceGoalRequirementDrilldown(
+        available=True,
+        id=_redact_text(row_id.strip())[:160] if isinstance(row_id, str) and row_id.strip() else _redact_text(normalized_id)[:160],
+        status=_redact_text(status.strip())[:80] if isinstance(status, str) and status.strip() else None,
+        requirement=_safe_requirement_text(match.get("requirement")),
+        residual_risk=_safe_requirement_text(match.get("residual_risk")),
+        evidence=evidence_refs,
+        evidence_count=evidence_count,
+        truncated=truncated,
+        **base,
     )
 
 
@@ -845,6 +1034,14 @@ def _build_workspace_state() -> AgentWorkspaceState:
                 "Recover local artifact, audit, git, root, and recovery-probe state.",
                 mcp_tool="literature.agent_workspace_status",
             ),
+            _workspace_recovery_probe(
+                "Goal Requirement Drilldown",
+                "/api/agent-workspace/goal-requirements/{requirement_id}",
+                "Recover one requirement-to-evidence row by id before claiming closure.",
+                mcp_tool="literature.agent_workspace_requirement",
+                requires_identifier=True,
+                identifier_hint="requirement_id",
+            ),
         ],
         boundaries=boundaries,
         next_safe_local_actions=next_actions,
@@ -874,3 +1071,12 @@ async def get_agent_workspace_status(
         artifacts=artifacts,
         audit_records=audit_records,
     )
+
+
+@router.get("/goal-requirements/{requirement_id}", response_model=AgentWorkspaceGoalRequirementDrilldown)
+async def get_agent_workspace_goal_requirement(
+    requirement_id: str,
+) -> AgentWorkspaceGoalRequirementDrilldown:
+    """Return a bounded read-only requirement-to-evidence drilldown."""
+
+    return _load_goal_requirement_drilldown(requirement_id)

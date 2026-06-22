@@ -6,6 +6,7 @@ import type {
   AgentHandoffCardProjection,
   AgentBridgeStatus,
   AgentWorkflowHealthCheck,
+  AgentWorkspaceGoalRequirementDrilldown,
   AgentWorkspaceStatus,
   BehaviorEvalPackProjection,
   BlockingActionBoundaryProjection,
@@ -179,6 +180,15 @@ const ACCEPTANCE_WORKSPACE_STATE = {
       purpose: 'Recover local artifact, audit, git, root, and recovery-probe state.',
       mcp_tool: 'literature.agent_workspace_status',
     },
+    {
+      label: 'Goal Requirement Drilldown',
+      route: '/api/agent-workspace/goal-requirements/{requirement_id}',
+      read_only: true,
+      requires_identifier: true,
+      identifier_hint: 'requirement_id',
+      purpose: 'Recover one requirement-to-evidence row by id before claiming closure.',
+      mcp_tool: 'literature.agent_workspace_requirement',
+    },
   ],
   boundaries: [
     'Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.',
@@ -191,6 +201,36 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     'Use workspace artifacts and audit records as recovery evidence; treat missing evidence as unresolved.',
   ],
 } satisfies AgentWorkspaceStatus['workspace_state'];
+
+const ACCEPTANCE_REQUIREMENT_DRILLDOWN = {
+  schema_version: 'scholar_ai_goal_requirement_drilldown_v1',
+  available: true,
+  read_only: true,
+  path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
+  updated_at: '2026-06-22T23:56:58+08:00',
+  checkpoint_id: '20260622-235229-n48-requirement-evidence-closeout',
+  id: 'B01-computer-use-accessibility-tree',
+  status: 'incomplete',
+  requirement: 'Computer Use accessibility-tree acceptance waits for sandboxPolicy tool repair.',
+  residual_risk: 'Do not retry native accessibility-tree acceptance until the tool error is fixed.',
+  evidence: [
+    {
+      label: 'tests/test_agent_workspace_router.py',
+      text: 'Router contract keeps requirement drilldown bounded and path safe.',
+    },
+    {
+      label: 'frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx',
+      text: 'Desktop acceptance fixture exposes requirement-to-evidence drilldown without native accessibility-tree tooling.',
+    },
+  ],
+  evidence_count: 2,
+  truncated: false,
+  next_safe_local_actions: [
+    'Create a rollback checkpoint and search mature references before nontrivial edits.',
+  ],
+  stop_boundaries: ['No Computer Use accessibility-tree retry until sandboxPolicy is fixed.'],
+  error: null,
+} satisfies AgentWorkspaceGoalRequirementDrilldown;
 
 const ACCEPTANCE_WORKSPACE_STATUS: AgentWorkspaceStatus = {
   artifact_root: 'workspace_artifacts/agent_mcp_workflows',
@@ -909,7 +949,12 @@ export function DesktopAcceptanceAgentWorkspace() {
           auditRecords={ACCEPTANCE_WORKSPACE_STATUS.audit_records}
           density="desktop-acceptance"
         />
-        <WorkspaceStatePanel workspaceStatus={ACCEPTANCE_WORKSPACE_STATUS} />
+        <WorkspaceStatePanel
+          workspaceStatus={ACCEPTANCE_WORKSPACE_STATUS}
+          requirementDrilldown={ACCEPTANCE_REQUIREMENT_DRILLDOWN}
+          selectedRequirementId="B01-computer-use-accessibility-tree"
+          onSelectRequirement={() => undefined}
+        />
         <ResearchWorkflowSpine
           loading={false}
           passport={ACCEPTANCE_WORKFLOW_PASSPORT}

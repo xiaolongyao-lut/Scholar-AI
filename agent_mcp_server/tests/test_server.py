@@ -39,6 +39,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.journal_style_spec_confirm",
         "literature.agent_bridge_status",
         "literature.agent_workspace_status",
+        "literature.agent_workspace_requirement",
         "literature.agent_request_create",
         "literature.single_paper_task_create",
         "literature.single_paper_completion_check",
