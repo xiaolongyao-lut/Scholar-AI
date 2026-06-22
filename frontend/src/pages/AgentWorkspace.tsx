@@ -3,6 +3,7 @@ import {
   Activity,
   Bot,
   CheckCircle2,
+  ChevronRight,
   Clock,
   FileJson2,
   FileText,
@@ -309,6 +310,30 @@ function readTextField(record: Record<string, unknown>, key: string): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function sanitizeInspectorText(value: string): string {
+  return value
+    .replace(/[A-Za-z]:\\(?:Users|Documents and Settings)\\[^\s,;'"`<>)]*/g, '[redacted-local-path]')
+    .replace(/\/(?:Users|home)\/[^\s,;'"`<>)]*/g, '[redacted-local-path]')
+    .replace(/workspace_artifacts[\\/]private[^\s,;'"`<>)]*/g, '[redacted-workspace-path]');
+}
+
+function displayUnknownValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '—';
+  }
+  if (typeof value === 'string') {
+    return sanitizeInspectorText(value.trim() || '—');
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  try {
+    return sanitizeInspectorText(JSON.stringify(value));
+  } catch {
+    return 'unreadable';
+  }
+}
+
 function actionMessage(action: ToolNextActionLike | null | undefined): string {
   const message = action?.message?.trim();
   if (message) {
@@ -530,6 +555,107 @@ function integritySignalDrilldownSummary(signal: EvidenceIntegritySignal | null)
     requiresHumanReview: drilldown.requires_human_review === true,
     blocksClaims: drilldown.blocks_claims === true,
   };
+}
+
+interface IntegrityRefSummary {
+  refType: string;
+  refId: string;
+}
+
+interface IntegrityFactSummary {
+  key: string;
+  value: string;
+}
+
+interface IntegrityDrilldownDetails {
+  source: string;
+  sourceId: string;
+  sourceDigest: string;
+  rawPathExposed: boolean;
+  linkedStageId: string;
+  factItems: IntegrityFactSummary[];
+  evidenceRefs: IntegrityRefSummary[];
+  replayRefs: IntegrityRefSummary[];
+  requiresHumanReview: boolean;
+  blocksClaims: boolean;
+}
+
+function readRefSummaries(value: unknown, maxItems: number): IntegrityRefSummary[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.slice(0, maxItems).map((item, index) => {
+    const record = isRecord(item) ? item : {};
+    const fallback = `ref:${index + 1}`;
+    return {
+      refType: sanitizeInspectorText(readTextField(record, 'ref_type') || readTextField(record, 'type') || 'ref'),
+      refId: sanitizeInspectorText(readTextField(record, 'ref_id') || readTextField(record, 'id') || fallback),
+    };
+  });
+}
+
+function integritySignalStageId(signal: EvidenceIntegritySignal): string {
+  const drilldown = isRecord(signal.drilldown) ? signal.drilldown : {};
+  const checkedFacts = readRecordField(drilldown, 'checked_facts');
+  const factStageId = readTextField(checkedFacts, 'stage_id');
+  if (factStageId) {
+    return factStageId;
+  }
+  if (signal.signal_id.startsWith('workflow_stage:')) {
+    return signal.signal_id.slice('workflow_stage:'.length);
+  }
+  return '';
+}
+
+function integritySignalsForStage(
+  stage: WorkflowPassportStage,
+  signals: EvidenceIntegritySignal[],
+): EvidenceIntegritySignal[] {
+  return signals.filter((signal) => integritySignalStageId(signal) === stage.stage_id);
+}
+
+function buildIntegrityDrilldownDetails(signal: EvidenceIntegritySignal): IntegrityDrilldownDetails {
+  const drilldown = isRecord(signal.drilldown) ? signal.drilldown : {};
+  const sourceRef = readRecordField(drilldown, 'source_ref');
+  const checkedFacts = readRecordField(drilldown, 'checked_facts');
+  const factItems = Object.entries(checkedFacts)
+    .slice(0, 8)
+    .map(([key, value]) => ({
+      key: sanitizeInspectorText(key),
+      value: displayUnknownValue(value),
+    }));
+  const sourceKind = readTextField(sourceRef, 'source_kind');
+  const sourceDigest = readTextField(sourceRef, 'source_digest');
+  return {
+    source: sanitizeInspectorText(sourceKind || sourceDigest || 'source pending'),
+    sourceId: sanitizeInspectorText(readTextField(sourceRef, 'source_id') || 'source id pending'),
+    sourceDigest: sanitizeInspectorText(sourceDigest || 'digest pending'),
+    rawPathExposed: sourceRef.raw_path_exposed === true,
+    linkedStageId: sanitizeInspectorText(integritySignalStageId(signal)),
+    factItems,
+    evidenceRefs: readRefSummaries(drilldown.evidence_refs, 4),
+    replayRefs: readRefSummaries(drilldown.replay_refs, 4),
+    requiresHumanReview: drilldown.requires_human_review === true,
+    blocksClaims: drilldown.blocks_claims === true,
+  };
+}
+
+function linkedStageLabel(stageId: string, stages: WorkflowPassportStage[]): string {
+  if (!stageId) {
+    return 'stage pending';
+  }
+  const stage = stages.find((item) => item.stage_id === stageId);
+  return stage ? compactStageLabel(stage) : stageId;
+}
+
+function signalCollectionTone(signals: EvidenceIntegritySignal[]): StatusTone {
+  if (signals.some((signal) => signal.status === 'block' || signal.severity === 'block')) {
+    return 'danger';
+  }
+  if (signals.some((signal) => signal.status === 'unresolved' || signal.status === 'warn' || signal.severity === 'warn')) {
+    return 'warning';
+  }
+  return signals.length > 0 ? 'info' : 'neutral';
 }
 
 function workflowGateSummary(passport: WorkflowPassportProjection | null): string {
@@ -1182,8 +1308,13 @@ export function ResearchWorkflowSpine({
   const statusCounts = integrityGate ? readRecordField(integrityGate.summary, 'status_counts') : {};
   const unresolvedCount = integrityGate?.unresolved.length ?? readNumberField(statusCounts, 'unresolved');
   const blockerCount = integrityGate?.blockers.length ?? readNumberField(statusCounts, 'block');
+  const integritySignals = integrityGate?.signals ?? [];
   const firstSignal = integrityGate?.signals[0] ?? null;
   const firstSignalDrilldown = integritySignalDrilldownSummary(firstSignal);
+  const [activeSignalId, setActiveSignalId] = useState<string | null>(null);
+  const activeSignal = integritySignals.find((signal) => signal.signal_id === activeSignalId) ?? firstSignal;
+  const activeSignalDetails = activeSignal ? buildIntegrityDrilldownDetails(activeSignal) : null;
+  const visibleSignals = integritySignals.slice(0, isDesktopAcceptance ? 2 : 4);
   const handoffBlocked = (handoffCard?.blockers.length ?? 0) > 0;
   const handoffUnresolved = (handoffCard?.unresolved.length ?? 0) > 0;
   const readinessClaims = workflowReadinessClaims(integrityGate, handoffCard);
@@ -1264,6 +1395,7 @@ export function ResearchWorkflowSpine({
             <div className="grid gap-2 md:grid-cols-2">
               {visibleStages.map((stage) => {
                 const isCurrent = stage.stage_id === currentStage?.stage_id;
+                const stageSignals = integritySignalsForStage(stage, integritySignals);
                 return (
                   <article
                     key={stage.stage_id}
@@ -1284,6 +1416,12 @@ export function ResearchWorkflowSpine({
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       <StatusPill tone="neutral">artifacts {stage.present_artifacts.length}</StatusPill>
                       <StatusPill tone="neutral">events {stage.event_types.length}</StatusPill>
+                      <StatusPill tone={signalCollectionTone(stageSignals)}>integrity links {stageSignals.length}</StatusPill>
+                      {stageSignals[0] ? (
+                        <StatusPill tone={gateTone(stageSignals[0].status, stageSignals[0].severity)}>
+                          {stageSignals[0].signal_id}
+                        </StatusPill>
+                      ) : null}
                     </div>
                   </article>
                 );
@@ -1317,6 +1455,121 @@ export function ResearchWorkflowSpine({
               {firstSignalDrilldown?.requiresHumanReview ? <StatusPill tone="warning">human review</StatusPill> : null}
               {firstSignalDrilldown?.blocksClaims ? <StatusPill tone="danger">blocks claims</StatusPill> : null}
             </div>
+            {activeSignal && activeSignalDetails ? (
+              <details open className="mt-3 rounded-md border border-outline-variant/35 bg-surface-lowest px-2.5 py-2">
+                <summary className="flex min-w-0 cursor-pointer list-none items-start justify-between gap-2 marker:hidden">
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <ChevronRight size={14} className="shrink-0 text-foreground/35" aria-hidden="true" />
+                      <h4 className="truncate font-label text-[11px] font-semibold text-foreground">
+                        Integrity Drilldown Inspector
+                      </h4>
+                    </div>
+                    <p className="mt-1 break-words text-[11px] leading-4 text-foreground/55">
+                      {activeSignal.message}
+                    </p>
+                  </div>
+                  <StatusPill tone={gateTone(activeSignal.status, activeSignal.severity)}>
+                    {gateStatusLabel(activeSignal.status)}
+                  </StatusPill>
+                </summary>
+
+                {visibleSignals.length > 1 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Integrity signal selector">
+                    {visibleSignals.map((signal) => (
+                      <button
+                        key={signal.signal_id}
+                        type="button"
+                        onClick={() => setActiveSignalId(signal.signal_id)}
+                        className={cn(
+                          'max-w-full truncate rounded-md border px-2 py-1 text-left font-label text-[11px] leading-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/45',
+                          signal.signal_id === activeSignal.signal_id
+                            ? 'border-primary/45 bg-primary/10 text-foreground'
+                            : 'border-outline-variant/40 bg-surface-low text-foreground/65 hover:bg-surface',
+                        )}
+                      >
+                        {signal.signal_id}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-low px-2 py-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      <StatusPill tone="info">linked stage {linkedStageLabel(activeSignalDetails.linkedStageId, stages)}</StatusPill>
+                      <StatusPill tone="neutral">{activeSignalDetails.source}</StatusPill>
+                      <StatusPill tone={activeSignalDetails.rawPathExposed ? 'danger' : 'success'}>
+                        raw path {activeSignalDetails.rawPathExposed ? 'exposed' : 'redacted'}
+                      </StatusPill>
+                      {activeSignalDetails.blocksClaims ? <StatusPill tone="danger">claim blocker</StatusPill> : null}
+                      {activeSignalDetails.requiresHumanReview ? <StatusPill tone="warning">review required</StatusPill> : null}
+                    </div>
+                    <p className="mt-2 break-words font-mono text-[11px] leading-4 text-foreground/55">
+                      {activeSignalDetails.sourceId} · {activeSignalDetails.sourceDigest}
+                    </p>
+                  </div>
+
+                  <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-low px-2 py-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      <StatusPill tone="neutral">facts {activeSignalDetails.factItems.length}</StatusPill>
+                      <StatusPill tone="neutral">evidence refs {activeSignalDetails.evidenceRefs.length}</StatusPill>
+                      <StatusPill tone={activeSignalDetails.replayRefs.length > 0 ? 'info' : 'neutral'}>
+                        replay refs {activeSignalDetails.replayRefs.length}
+                      </StatusPill>
+                    </div>
+                    <dl className="mt-2 grid gap-1">
+                      {activeSignalDetails.factItems.length === 0 ? (
+                        <div className="text-[11px] leading-4 text-foreground/45">checked facts pending</div>
+                      ) : activeSignalDetails.factItems.map((fact) => (
+                        <div key={fact.key} className="grid min-w-0 grid-cols-[minmax(82px,0.45fr)_minmax(0,1fr)] gap-2 text-[11px] leading-4">
+                          <dt className="truncate font-label text-foreground/45">{fact.key}</dt>
+                          <dd className="break-words font-mono text-foreground/65">{fact.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                </div>
+
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <div className="min-w-0">
+                    <h5 className="font-label text-[11px] font-semibold text-foreground/45">Evidence refs</h5>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {activeSignalDetails.evidenceRefs.length === 0 ? (
+                        <StatusPill tone="neutral">none</StatusPill>
+                      ) : activeSignalDetails.evidenceRefs.map((ref) => (
+                        <StatusPill key={`${ref.refType}:${ref.refId}`} tone="neutral">
+                          {ref.refType}:{ref.refId}
+                        </StatusPill>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <h5 className="font-label text-[11px] font-semibold text-foreground/45">Replay refs</h5>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {activeSignalDetails.replayRefs.length === 0 ? (
+                        <StatusPill tone="neutral">none</StatusPill>
+                      ) : activeSignalDetails.replayRefs.map((ref) => (
+                        <StatusPill key={`${ref.refType}:${ref.refId}`} tone="info">
+                          {ref.refType}:{ref.refId}
+                        </StatusPill>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {activeSignal.next_actions.length > 0 ? (
+                  <div className="mt-2 rounded-md border border-outline-variant/25 bg-surface-low px-2 py-2">
+                    <h5 className="font-label text-[11px] font-semibold text-foreground/45">Next local actions</h5>
+                    <ul className="mt-1 grid gap-1 text-[11px] leading-4 text-foreground/60">
+                      {activeSignal.next_actions.slice(0, 3).map((action) => (
+                        <li key={action} className="break-words">{action}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </details>
+            ) : null}
           </article>
 
           <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">

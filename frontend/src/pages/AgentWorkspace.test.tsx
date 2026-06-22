@@ -53,10 +53,23 @@ const emptyWorkflowStageRuntimeFacts = {
   reproducibility: {},
 };
 
+interface IntegrityDrilldownFixtureRef {
+  ref_type: string;
+  ref_id: string;
+}
+
+interface IntegrityDrilldownFixtureOptions {
+  status?: 'pass' | 'warn' | 'unresolved' | 'block';
+  evidenceCount?: number;
+  replayCount?: number;
+  evidenceRefs?: IntegrityDrilldownFixtureRef[];
+  replayRefs?: IntegrityDrilldownFixtureRef[];
+}
+
 function integrityDrilldownFixture(
   sourceKind: string,
   checkedFacts: Record<string, unknown>,
-  options: { status?: 'pass' | 'warn' | 'unresolved' | 'block'; evidenceCount?: number; replayCount?: number } = {},
+  options: IntegrityDrilldownFixtureOptions = {},
 ): Record<string, unknown> {
   const status = options.status ?? 'unresolved';
   return {
@@ -69,11 +82,11 @@ function integrityDrilldownFixture(
       raw_path_exposed: false,
     },
     checked_facts: checkedFacts,
-    evidence_refs: Array.from({ length: options.evidenceCount ?? 1 }, (_, index) => ({
+    evidence_refs: options.evidenceRefs ?? Array.from({ length: options.evidenceCount ?? 1 }, (_, index) => ({
       ref_type: sourceKind,
       ref_id: `${sourceKind}:${index + 1}`,
     })),
-    replay_refs: Array.from({ length: options.replayCount ?? 0 }, (_, index) => ({
+    replay_refs: options.replayRefs ?? Array.from({ length: options.replayCount ?? 0 }, (_, index) => ({
       ref_type: 'workflow_replay_probe',
       ref_id: `${sourceKind}:replay:${index + 1}`,
     })),
@@ -640,6 +653,25 @@ describe('AgentWorkspace', () => {
       status: 'block',
       signals: [
         {
+          signal_id: 'workflow_stage:citation_review',
+          category: 'workflow_stage',
+          status: 'block',
+          severity: 'block',
+          message: 'Citation review stage is blocked by unsupported anchors.',
+          evidence: [{ ref_type: 'workflow_passport_stage', ref_id: 'citation_review' }],
+          next_actions: ['Open the linked integrity signal before export.'],
+          metadata: { stage_id: 'citation_review' },
+          drilldown: integrityDrilldownFixture(
+            'workflow_passport_stage',
+            { stage_id: 'citation_review', gate_status: 'block', requires_user_confirmation: true },
+            {
+              status: 'block',
+              evidenceRefs: [{ ref_type: 'workflow_passport_stage', ref_id: 'citation_review' }],
+              replayCount: 1,
+            },
+          ),
+        },
+        {
           signal_id: 'citation_verification:unsupported:1',
           category: 'citation_verification',
           status: 'block',
@@ -671,9 +703,9 @@ describe('AgentWorkspace', () => {
         },
       ],
       summary: {
-        signal_count: 2,
-        status_counts: { block: 1, unresolved: 1 },
-        severity_counts: { block: 1, note: 1 },
+        signal_count: 3,
+        status_counts: { block: 2, unresolved: 1 },
+        severity_counts: { block: 2, note: 1 },
         unresolved_is_pass: false,
       },
       blockers: ['Unsupported citation anchors block export readiness.'],
@@ -967,6 +999,14 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('blocked').length).toBeGreaterThan(0);
     expect(screen.getAllByText('behavior eval 阻断').length).toBeGreaterThan(0);
     expect(screen.getByText('canary · cases 8 · flags 8 · block 7 · warn 1')).toBeInTheDocument();
+    expect(screen.getAllByText('Integrity Drilldown Inspector').length).toBeGreaterThan(0);
+    expect(screen.getByText('integrity links 1')).toBeInTheDocument();
+    expect(screen.getByText('linked stage Citation review')).toBeInTheDocument();
+    expect(screen.getByText('raw path redacted')).toBeInTheDocument();
+    expect(screen.getAllByText('workflow_stage:citation_review').length).toBeGreaterThan(1);
+    expect(screen.getByText('workflow_passport_stage:citation_review')).toBeInTheDocument();
+    expect(screen.getByText('workflow_replay_probe:workflow_passport_stage:replay:1')).toBeInTheDocument();
+    expect(screen.getByText('Open the linked integrity signal before export.')).toBeInTheDocument();
     expect(screen.getByText('structural pass')).toBeInTheDocument();
     expect(screen.getByText('read-only true · record not written')).toBeInTheDocument();
     expect(screen.getAllByText('artifacts 1').length).toBeGreaterThan(0);
