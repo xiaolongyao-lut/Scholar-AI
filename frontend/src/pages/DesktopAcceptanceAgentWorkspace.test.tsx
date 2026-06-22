@@ -1,0 +1,50 @@
+import { render, screen, within } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+
+import { DesktopAcceptanceAgentWorkspace } from './DesktopAcceptanceAgentWorkspace';
+
+describe('DesktopAcceptanceAgentWorkspace', () => {
+  it('renders the local readiness fixture without private Zotero paths', () => {
+    render(<DesktopAcceptanceAgentWorkspace />);
+
+    expect(screen.getByTestId('desktop-acceptance-agent-workspace')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '本地就绪面板' })).toHaveAttribute('data-density', 'desktop-acceptance');
+    expect(screen.getByRole('heading', { name: '本地就绪' })).toBeInTheDocument();
+    expect(screen.getByText('工作流检查')).toBeInTheDocument();
+    expect(screen.getByText('Zotero 附件')).toBeInTheDocument();
+    expect(screen.getByText('单篇精读')).toBeInTheDocument();
+    expect(screen.getByText('Review Queue')).toBeInTheDocument();
+    expect(screen.getByText('导出与审计')).toBeInTheDocument();
+    expect(screen.getByText('Scan the project source folder so retrieval and evidence packs can read chunks.')).toBeInTheDocument();
+    expect(screen.getByText('Provide a Zotero data directory containing zotero.sqlite, then rerun the health check.')).toBeInTheDocument();
+    expect(screen.getByText('打开任务详情检查待补充哨兵和 evidence refs。')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '研究流程主干' })).toHaveAttribute('data-density', 'desktop-acceptance');
+    expect(screen.getByRole('heading', { name: '研究流程' })).toBeInTheDocument();
+    expect(screen.getByText('Workflow Passport')).toBeInTheDocument();
+    expect(screen.getByText('Evidence Integrity Gate')).toBeInTheDocument();
+    expect(screen.getAllByText('Agent Handoff').length).toBeGreaterThan(0);
+    const crosslinkRegion = screen.getByRole('region', { name: 'Research action crosslinks' });
+    expect(within(crosslinkRegion).getByText('Research Action Crosslinks')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('crosslinks 4')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('lifecycle read-only true')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('passport refs 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('gate refs 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('handoff refs 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('boundary probes 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getAllByText('runtime.research_action_lifecycle_refs').length).toBeGreaterThan(0);
+    expect(within(crosslinkRegion).getAllByText('export_overwrite:job_export_acceptance · export_overwrite · blocked · citation_review · read-only true').length).toBeGreaterThan(1);
+    expect(within(crosslinkRegion).getByText('Read research action lifecycle · read-only true')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('handoff action refs 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('scoped action refs 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('blocked actions 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('pending confirmations 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('missing preflight 0')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('Do not execute approvals from the handoff action-lifecycle recovery bundle.')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('Do not mutate [redacted-local-path] from this read-only projection.')).toBeInTheDocument();
+    expect(within(crosslinkRegion).queryByText(/C:\\Users\\Alice\\private\\desktop-acceptance\.pdf/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('unresolved 1').length).toBeGreaterThan(0);
+    expect(screen.queryByText('C:/private/Zotero')).not.toBeInTheDocument();
+  });
+});

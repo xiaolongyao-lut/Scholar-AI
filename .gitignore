@@ -143,6 +143,7 @@ htmlcov/
 /frontend/**/*.test.ts
 /frontend/**/*.test.tsx
 /frontend/**/*.test.mjs
+!/frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx
 !/frontend/src/pages/Settings.test.tsx
 /frontend/playwright.config.ts
 /frontend/vite.config.e2e.ts
