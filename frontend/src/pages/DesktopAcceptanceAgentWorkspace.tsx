@@ -953,6 +953,8 @@ export function DesktopAcceptanceAgentWorkspace() {
           workspaceStatus={ACCEPTANCE_WORKSPACE_STATUS}
           requirementDrilldown={ACCEPTANCE_REQUIREMENT_DRILLDOWN}
           selectedRequirementId="B01-computer-use-accessibility-tree"
+          requirementQuery=""
+          onRequirementQueryChange={() => undefined}
           onSelectRequirement={() => undefined}
         />
         <ResearchWorkflowSpine

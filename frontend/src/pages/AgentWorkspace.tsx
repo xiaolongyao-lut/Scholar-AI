@@ -65,6 +65,8 @@ import type { WikiReviewListModel } from '@/types/wiki';
 
 type WorkspaceTab = 'agents' | 'artifacts' | 'audit';
 
+type AgentWorkspaceOpenRequirement = NonNullable<AgentWorkspaceStatus['workspace_state']['goal_state']['open_requirements']>[number];
+
 const KIND_LABELS: Record<string, string> = {
   markdown: 'Markdown',
   json: 'JSON',
@@ -145,6 +147,20 @@ function matchesQuery(
     : artifact
     ? `${artifact.path} ${artifact.kind} ${artifact.preview}`.toLowerCase()
     : `${record?.tool_name ?? ''} ${record?.allow_block_reason ?? ''} ${record?.error_code ?? ''} ${record?.result_preview ?? ''}`.toLowerCase();
+  return haystack.includes(needle);
+}
+
+function matchesOpenRequirementQuery(query: string, item: AgentWorkspaceOpenRequirement): boolean {
+  const needle = filterText(query);
+  if (!needle) {
+    return true;
+  }
+  const haystack = [
+    item.id,
+    item.status,
+    item.requirement ?? '',
+    item.residual_risk ?? '',
+  ].join(' ').toLowerCase();
   return haystack.includes(needle);
 }
 
@@ -1573,7 +1589,7 @@ function workspaceGoalCompletionClaimSummary(goal: AgentWorkspaceStatus['workspa
 }
 
 function workspaceGoalOpenRequirementLabel(
-  item: NonNullable<AgentWorkspaceStatus['workspace_state']['goal_state']['open_requirements']>[number],
+  item: AgentWorkspaceOpenRequirement,
 ): string {
   const id = sanitizeInspectorText(item.id);
   const status = sanitizeInspectorText(item.status);
@@ -3162,11 +3178,15 @@ export function WorkspaceStatePanel({
   workspaceStatus,
   requirementDrilldown,
   selectedRequirementId,
+  requirementQuery,
+  onRequirementQueryChange,
   onSelectRequirement,
 }: {
   workspaceStatus: AgentWorkspaceStatus | null;
   requirementDrilldown: AgentWorkspaceGoalRequirementDrilldown | null;
   selectedRequirementId: string | null;
+  requirementQuery: string;
+  onRequirementQueryChange: (query: string) => void;
   onSelectRequirement: (requirementId: string) => void;
 }) {
   const state = workspaceStatus?.workspace_state ?? null;
@@ -3179,7 +3199,12 @@ export function WorkspaceStatePanel({
   const boundaries = state.boundaries.slice(0, 3).map(sanitizeInspectorText);
   const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
-  const openRequirements = (state.goal_state.open_requirements ?? []).slice(0, 5);
+  const allOpenRequirements = state.goal_state.open_requirements ?? [];
+  const matchingOpenRequirements = allOpenRequirements.filter((item) => matchesOpenRequirementQuery(requirementQuery, item));
+  const openRequirements = matchingOpenRequirements.slice(0, 5);
+  const openRequirementResultLabel = requirementQuery.trim()
+    ? `requirement matches ${matchingOpenRequirements.length} / total ${allOpenRequirements.length}`
+    : `requirements shown ${openRequirements.length} / total ${allOpenRequirements.length}`;
   return (
     <section
       aria-label="Workspace state visibility"
@@ -3256,8 +3281,8 @@ export function WorkspaceStatePanel({
                   requirement status visible
                 </StatusPill>
               ) : null}
-              {openRequirements.length > 0 ? (
-                <StatusPill tone="warning">open requirements {openRequirements.length}</StatusPill>
+              {allOpenRequirements.length > 0 ? (
+                <StatusPill tone="warning">open requirements {allOpenRequirements.length}</StatusPill>
               ) : null}
               {goalCompletionClaim.fullGoal ? (
                 <StatusPill tone={goalCompletionClaim.fullGoal.toLowerCase().includes('not complete') ? 'warning' : 'info'}>
@@ -3285,28 +3310,63 @@ export function WorkspaceStatePanel({
                 ) : null}
               </div>
             ) : null}
-            {openRequirements.length > 0 ? (
+            {allOpenRequirements.length > 0 ? (
               <div className="mt-2 grid gap-1.5">
-                <h4 className="font-label text-[11px] font-semibold text-foreground/45">Open Requirements</h4>
-                {openRequirements.map((item) => {
-                  const label = workspaceGoalOpenRequirementLabel(item);
-                  const selected = selectedRequirementId === item.id;
-                  return (
-                    <button
-                      key={`${item.id}-${item.status}`}
-                      type="button"
-                      onClick={() => onSelectRequirement(item.id)}
-                      className={cn(
-                        'break-words rounded-md border px-2 py-1.5 text-left text-[11px] leading-4 transition-colors',
-                        selected
-                          ? 'border-primary/35 bg-primary/10 text-foreground'
-                          : 'border-outline-variant/35 bg-surface text-foreground/60 hover:border-primary/25 hover:text-foreground/75',
-                      )}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
+                <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 id="agent-workspace-open-requirements-heading" className="font-label text-[11px] font-semibold text-foreground/45">
+                    Open Requirements
+                  </h4>
+                  <StatusPill tone={openRequirements.length > 0 ? 'info' : 'warning'}>{openRequirementResultLabel}</StatusPill>
+                </div>
+                <label className="relative block">
+                  <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/35" />
+                  <input
+                    type="search"
+                    value={requirementQuery}
+                    onChange={(event) => onRequirementQueryChange(event.target.value)}
+                    aria-label="Filter open requirements"
+                    aria-controls="agent-workspace-open-requirements-list"
+                    className="h-8 w-full rounded-md border border-outline-variant/45 bg-surface-lowest pl-8 pr-2 text-[11px] text-foreground outline-none transition-colors placeholder:text-foreground/35 focus:border-primary/45"
+                    placeholder="Filter by requirement id, status, evidence risk"
+                  />
+                </label>
+                {openRequirements.length > 0 ? (
+                  <div
+                    id="agent-workspace-open-requirements-list"
+                    role="list"
+                    aria-labelledby="agent-workspace-open-requirements-heading"
+                    className="grid gap-1"
+                  >
+                    {openRequirements.map((item) => {
+                      const label = workspaceGoalOpenRequirementLabel(item);
+                      const selected = selectedRequirementId === item.id;
+                      return (
+                        <div
+                          key={`${item.id}-${item.status}`}
+                          role="listitem"
+                        >
+                          <button
+                            type="button"
+                            aria-current={selected ? 'true' : undefined}
+                            onClick={() => onSelectRequirement(item.id)}
+                            className={cn(
+                              'w-full break-words rounded-md border px-2 py-1.5 text-left text-[11px] leading-4 transition-colors',
+                              selected
+                                ? 'border-primary/35 bg-primary/10 text-foreground'
+                                : 'border-outline-variant/35 bg-surface text-foreground/60 hover:border-primary/25 hover:text-foreground/75',
+                            )}
+                          >
+                            {label}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/55">
+                    No open requirements match the current filter.
+                  </p>
+                )}
               </div>
             ) : null}
             {requirementDrilldown ? (
@@ -3429,6 +3489,7 @@ export function AgentWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>('agents');
   const [query, setQuery] = useState('');
+  const [requirementQuery, setRequirementQuery] = useState('');
   const [selectedArtifactPath, setSelectedArtifactPath] = useState<string | null>(null);
   const [selectedAuditIndex, setSelectedAuditIndex] = useState(0);
   const [selectedAgentJobId, setSelectedAgentJobId] = useState<string | null>(null);
@@ -3666,6 +3727,8 @@ export function AgentWorkspace() {
           workspaceStatus={status}
           requirementDrilldown={requirementDrilldown}
           selectedRequirementId={selectedRequirementId}
+          requirementQuery={requirementQuery}
+          onRequirementQueryChange={setRequirementQuery}
           onSelectRequirement={setSelectedRequirementId}
         />
 

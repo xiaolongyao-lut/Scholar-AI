@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentWorkspace } from './AgentWorkspace';
@@ -679,6 +679,107 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('进入 Wiki 工作台复核待审页面。')).toBeInTheDocument();
     expect(screen.getByText('打开任务详情检查待补充哨兵和 evidence refs。')).toBeInTheDocument();
     expect(screen.queryByText('C:/private/Zotero')).not.toBeInTheDocument();
+  });
+
+  it('filters open requirements before truncation and selects a matching drilldown', async () => {
+    const openRequirements = [
+      'N56-alpha-ready',
+      'N56-beta-ready',
+      'N56-gamma-ready',
+      'N56-delta-ready',
+      'N56-epsilon-ready',
+      'N56-zeta-risk-filter-target',
+    ].map((id, index) => ({
+      id,
+      status: index === 5 ? 'incomplete' : 'proved',
+      requirement: index === 5
+        ? 'Filterable requirement remains selectable after the visible list is narrowed.'
+        : `Stable requirement row ${index + 1}`,
+      residual_risk: index === 5 ? 'zeta evidence must remain reachable after filtering.' : null,
+    }));
+
+    mockedGetAgentWorkspaceStatus.mockResolvedValue({
+      artifact_root: 'workspace_artifacts/agent_mcp_workflows',
+      artifact_count: 0,
+      audit_count: 0,
+      total_artifact_bytes: 0,
+      latest_activity_at: null,
+      workspace_state: workspaceStateFixture({
+        goal_state: {
+          ...workspaceStateFixture().goal_state,
+          requirement_count: 54,
+          proved_count: 52,
+          incomplete_count: 1,
+          out_of_scope_count: 1,
+          latest_requirement_id: 'N56-open-requirement-filtering',
+          requirement_status: {
+            total: 54,
+            proved: 52,
+            incomplete: 1,
+            out_of_scope: 1,
+            latest_id: 'N56-open-requirement-filtering',
+          },
+          open_requirements: openRequirements,
+        },
+      }),
+      artifacts: [],
+      audit_records: [],
+    });
+    mockedGetAgentWorkspaceRequirement.mockImplementation(async (requirementId: string) => ({
+      schema_version: 'scholar_ai_goal_requirement_drilldown_v1',
+      available: true,
+      read_only: true,
+      path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
+      updated_at: '2026-06-23T02:20:00+08:00',
+      checkpoint_id: '20260623-020320-n56-agent-workspace-open-requirement-filtering-p',
+      id: requirementId,
+      status: requirementId.includes('zeta') ? 'incomplete' : 'proved',
+      requirement: requirementId.includes('zeta')
+        ? 'Filterable requirement remains selectable after the visible list is narrowed.'
+        : 'Stable requirement row',
+      residual_risk: requirementId.includes('zeta') ? 'zeta evidence must remain reachable after filtering.' : null,
+      evidence: [
+        {
+          label: 'frontend/src/pages/AgentWorkspace.test.tsx',
+          text: `drilldown loaded for ${requirementId}`,
+        },
+      ],
+      evidence_count: 1,
+      truncated: false,
+      next_safe_local_actions: ['Keep requirement recovery read-only.'],
+      stop_boundaries: ['No external mutation.'],
+      error: null,
+    }));
+
+    render(<AgentWorkspace />);
+
+    const workspaceStateRegion = await screen.findByRole('region', { name: 'Workspace state visibility' });
+    expect(within(workspaceStateRegion).getByText('open requirements 6')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('requirements shown 5 / total 6')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).queryByRole('button', {
+      name: /N56-zeta-risk-filter-target/,
+    })).not.toBeInTheDocument();
+
+    fireEvent.change(within(workspaceStateRegion).getByLabelText('Filter open requirements'), {
+      target: { value: 'zeta' },
+    });
+
+    expect(within(workspaceStateRegion).getByText('requirement matches 1 / total 6')).toBeInTheDocument();
+    const filteredRequirement = within(workspaceStateRegion).getByRole('button', {
+      name: /N56-zeta-risk-filter-target/,
+    });
+    expect(filteredRequirement).toBeInTheDocument();
+    expect(filteredRequirement).not.toHaveAttribute('aria-current');
+
+    fireEvent.click(filteredRequirement);
+
+    await waitFor(() => {
+      expect(mockedGetAgentWorkspaceRequirement).toHaveBeenLastCalledWith('N56-zeta-risk-filter-target');
+    });
+    expect(filteredRequirement).toHaveAttribute('aria-current', 'true');
+    const requirementDrilldownRegion = within(workspaceStateRegion).getByRole('region', { name: 'Requirement evidence drilldown' });
+    expect(within(requirementDrilldownRegion).getByText('N56-zeta-risk-filter-target · incomplete')).toBeInTheDocument();
+    expect(within(requirementDrilldownRegion).getByText('frontend/src/pages/AgentWorkspace.test.tsx · drilldown loaded for N56-zeta-risk-filter-target')).toBeInTheDocument();
   });
 
   it('renders workflow passport, integrity gate, handoff card, and behavior eval visibility', async () => {
