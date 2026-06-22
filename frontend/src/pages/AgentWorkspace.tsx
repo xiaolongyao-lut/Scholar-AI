@@ -37,6 +37,9 @@ import {
   type AgentWorkspaceStatus,
   type AgentBridgeStatus,
   type BehaviorEvalPackProjection,
+  type BlockingActionBoundaryProjection,
+  type BlockingActionBoundaryProbe,
+  type BlockingActionBoundarySignalRef,
   type EvidenceIntegrityGateProjection,
   type EvidenceIntegritySignal,
   type WorkflowActionPreflightProjection,
@@ -323,7 +326,8 @@ function sanitizeInspectorText(value: string): string {
   return value
     .replace(/[A-Za-z]:\\(?:Users|Documents and Settings)\\[^\s,;'"`<>)]*/g, '[redacted-local-path]')
     .replace(/\/(?:Users|home)\/[^\s,;'"`<>)]*/g, '[redacted-local-path]')
-    .replace(/workspace_artifacts[\\/]private[^\s,;'"`<>)]*/g, '[redacted-workspace-path]');
+    .replace(/workspace_artifacts[\\/]private[^\s,;'"`<>)]*/g, '[redacted-workspace-path]')
+    .replace(/\/runtime\/[^\s,;'"`<>)]*/g, '[redacted-runtime-route]');
 }
 
 function displayUnknownValue(value: unknown): string {
@@ -338,6 +342,14 @@ function displayUnknownValue(value: unknown): string {
   }
   try {
     return sanitizeInspectorText(JSON.stringify(value));
+  } catch {
+    return 'unreadable';
+  }
+}
+
+function displayInspectorJson(value: unknown): string {
+  try {
+    return sanitizeInspectorText(JSON.stringify(value, null, 2));
   } catch {
     return 'unreadable';
   }
@@ -1060,6 +1072,17 @@ function workflowActionPreflight(
   return isWorkflowActionPreflightProjection(handoffCard?.action_preflight) ? handoffCard.action_preflight : null;
 }
 
+function workflowBlockingActionBoundary(
+  integrityGate: EvidenceIntegrityGateProjection | null,
+  readinessClaims: WorkflowReadinessClaimsProjection | null,
+  actionPreflight: WorkflowActionPreflightProjection | null,
+): BlockingActionBoundaryProjection | null {
+  return actionPreflight?.blocking_action_boundary
+    ?? integrityGate?.blocking_action_boundary
+    ?? readinessClaims?.blocking_action_boundary
+    ?? null;
+}
+
 function actionPreflightSummary(preflight: WorkflowActionPreflightProjection | null): string {
   if (!preflight) {
     return '尚未读取到 action preflight；命令执行前仍需当前 Workflow Passport 与 Evidence Integrity Gate。';
@@ -1073,6 +1096,39 @@ function actionPreflightSummary(preflight: WorkflowActionPreflightProjection | n
     ],
     'Action preflight 已读取，但仍需复核当前门禁。'
   );
+}
+
+function blockingBoundarySummary(boundary: BlockingActionBoundaryProjection | null): string {
+  if (!boundary) {
+    return 'Blocking boundary 暂未读取；执行前仍需从 gate、readiness claim 与 action preflight 复核。';
+  }
+  return sanitizeInspectorText(firstNonEmptyText(
+    [
+      boundary.refresh_required
+        ? 'Boundary requires fresh Workflow Passport and Evidence Integrity Gate before mutation.'
+        : null,
+      boundary.blockers[0],
+      boundary.unresolved[0],
+      boundary.next_safe_local_actions[0],
+      `Action ${boundary.action_id} requires ${boundary.required_claim_id}: ${boundary.status}.`,
+    ],
+    'Boundary 已读取，未返回阻断消息。',
+  ));
+}
+
+function blockingProbeLabel(probe: BlockingActionBoundaryProbe, index: number): string {
+  const label = sanitizeInspectorText(
+    probe.label?.trim()
+      || probe.name?.trim()
+      || `probe ${index + 1}`,
+  );
+  return `${label} · read-only ${probe.read_only === true ? 'true' : 'unknown'}`;
+}
+
+function blockingSignalLabel(signal: BlockingActionBoundarySignalRef): string {
+  const signalId = sanitizeInspectorText(signal.signal_id || 'signal pending');
+  const status = sanitizeInspectorText(signal.status || 'unknown');
+  return `${signalId} · ${status}`;
 }
 
 function readinessClaimSummary(claim: WorkflowReadinessClaim): string {
@@ -1373,7 +1429,7 @@ function DetailPanel({
           <section>
             <h3 className="mb-1.5 font-label text-[11px] font-semibold uppercase text-foreground/40">Metadata</h3>
             <pre className="whitespace-pre-wrap break-words rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2 font-mono text-xs leading-5 text-foreground/70">
-              {JSON.stringify(metadata, null, 2)}
+              {displayInspectorJson(metadata)}
             </pre>
           </section>
         </div>
@@ -1487,6 +1543,14 @@ export function ResearchWorkflowSpine({
   const handoffUnresolved = (handoffCard?.unresolved.length ?? 0) > 0;
   const readinessClaims = workflowReadinessClaims(integrityGate, handoffCard);
   const visibleReadinessClaims = readinessClaims?.claims.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
+  const blockingBoundary = workflowBlockingActionBoundary(integrityGate, readinessClaims, actionPreflight);
+  const boundaryBlocked = blockingBoundary?.status === 'blocked' || blockingBoundary?.can_proceed === false;
+  const boundaryUnresolved = blockingBoundary?.status === 'unresolved';
+  const visibleBoundaryClaims = blockingBoundary?.blocked_claims.slice(0, isDesktopAcceptance ? 1 : 3) ?? [];
+  const visibleBlockedBoundarySignals = blockingBoundary?.blocked_signal_refs.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
+  const visibleUnresolvedBoundarySignals = blockingBoundary?.unresolved_signal_refs.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
+  const visibleBoundaryProbes = blockingBoundary?.local_read_only_probes.slice(0, isDesktopAcceptance ? 3 : 5) ?? [];
+  const visibleBoundaryForbidden = blockingBoundary?.forbidden_actions.slice(0, isDesktopAcceptance ? 2 : 4) ?? [];
   const preflightBlocked = actionPreflight?.status === 'blocked' || actionPreflight?.can_proceed === false;
   const preflightUnresolved = actionPreflight?.status === 'unresolved';
   const preflightRefreshRequired = actionPreflight?.refresh_required === true || actionPreflight?.freshness?.refresh_required === true;
@@ -1536,6 +1600,9 @@ export function ResearchWorkflowSpine({
           </StatusPill>
           <StatusPill tone={actionPreflight ? claimTone(actionPreflight.status) : 'neutral'}>
             preflight {preflightStatusLabel(actionPreflight?.status)}
+          </StatusPill>
+          <StatusPill tone={blockingBoundary ? claimTone(blockingBoundary.status) : 'neutral'}>
+            boundary {claimStatusLabel(blockingBoundary?.status)}
           </StatusPill>
           <StatusPill tone={lineageBlocked ? 'danger' : lineageUnresolved ? 'warning' : workflowReplayLineage ? 'info' : 'neutral'}>
             replay {workflowReplayLineage ? workflowReplayLineage.receipt_count : '未读取'}
@@ -1854,6 +1921,128 @@ export function ResearchWorkflowSpine({
               {actionPreflight?.refresh_receipt_id ? <StatusPill tone="info">receipt {actionPreflight.refresh_receipt_id}</StatusPill> : null}
               {actionPreflight && preflightUnresolved ? <StatusPill tone="warning">needs gate proof</StatusPill> : null}
             </div>
+          </article>
+
+          <article
+            className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3"
+            role="region"
+            aria-label="Blocking action boundary"
+          >
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate font-label text-xs font-semibold text-foreground">Blocking Action Boundary</h3>
+              <StatusPill tone={blockingBoundary ? claimTone(blockingBoundary.status) : 'neutral'}>
+                {claimStatusLabel(blockingBoundary?.status)}
+              </StatusPill>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+              {blockingBoundarySummary(blockingBoundary)}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone={boundaryBlocked ? 'danger' : blockingBoundary ? 'success' : 'neutral'}>
+                boundary can proceed {blockingBoundary ? String(blockingBoundary.can_proceed) : 'unknown'}
+              </StatusPill>
+              <StatusPill tone={blockingBoundary?.require_ready ? 'warning' : 'neutral'}>
+                boundary require ready {blockingBoundary ? String(blockingBoundary.require_ready) : 'unknown'}
+              </StatusPill>
+              <StatusPill tone={blockingBoundary?.refresh_required ? 'warning' : 'neutral'}>
+                boundary refresh {blockingBoundary ? String(blockingBoundary.refresh_required) : 'unknown'}
+              </StatusPill>
+              {blockingBoundary ? <StatusPill tone="neutral">{blockingBoundary.action_id}</StatusPill> : null}
+              {blockingBoundary ? <StatusPill tone={claimTone(blockingBoundary.status)}>{blockingBoundary.required_claim_id}</StatusPill> : null}
+              <StatusPill tone={visibleBlockedBoundarySignals.length > 0 ? 'danger' : 'neutral'}>
+                blocked signals {visibleBlockedBoundarySignals.length}
+              </StatusPill>
+              <StatusPill tone={visibleUnresolvedBoundarySignals.length > 0 ? 'warning' : 'neutral'}>
+                unresolved signals {visibleUnresolvedBoundarySignals.length}
+              </StatusPill>
+              {blockingBoundary && boundaryUnresolved ? <StatusPill tone="warning">boundary needs review</StatusPill> : null}
+            </div>
+
+            {blockingBoundary ? (
+              <div className="mt-3 grid gap-2">
+                {visibleBoundaryClaims.length > 0 ? (
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {visibleBoundaryClaims.map((claim, index) => (
+                      <div
+                        key={`${claim.claim_id}:${index}`}
+                        className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2.5 py-2"
+                      >
+                        <div className="flex min-w-0 items-center justify-between gap-2">
+                          <span className="truncate font-label text-[11px] font-medium text-foreground">
+                            {sanitizeInspectorText(claim.label || claim.claim_id)}
+                          </span>
+                          <StatusPill tone={claimTone(claim.status)}>
+                            {claimStatusLabel(claim.status)}
+                          </StatusPill>
+                        </div>
+                        <p className="mt-1 break-words text-[11px] leading-4 text-foreground/55">
+                          {sanitizeInspectorText(claim.reason || 'Boundary did not include a claim reason.')}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <StatusPill tone="neutral">claim {sanitizeInspectorText(claim.claim_id)}</StatusPill>
+                          <StatusPill tone={(claim.blocker_count ?? 0) > 0 ? 'danger' : 'neutral'}>block {claim.blocker_count ?? 0}</StatusPill>
+                          <StatusPill tone={(claim.unresolved_count ?? 0) > 0 ? 'warning' : 'neutral'}>unresolved {claim.unresolved_count ?? 0}</StatusPill>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-lowest px-2.5 py-2">
+                    <h4 className="font-label text-[11px] font-semibold text-foreground/45">Blocking Signals</h4>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {visibleBlockedBoundarySignals.length === 0 ? (
+                        <StatusPill tone="neutral">none</StatusPill>
+                      ) : visibleBlockedBoundarySignals.map((signal) => (
+                        <StatusPill key={signal.signal_id} tone="danger">
+                          {blockingSignalLabel(signal)}
+                        </StatusPill>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-lowest px-2.5 py-2">
+                    <h4 className="font-label text-[11px] font-semibold text-foreground/45">Unresolved Signals</h4>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {visibleUnresolvedBoundarySignals.length === 0 ? (
+                        <StatusPill tone="neutral">none</StatusPill>
+                      ) : visibleUnresolvedBoundarySignals.map((signal) => (
+                        <StatusPill key={signal.signal_id} tone="warning">
+                          {blockingSignalLabel(signal)}
+                        </StatusPill>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div className="min-w-0">
+                    <h4 className="font-label text-[11px] font-semibold text-foreground/45">Local Read-only Probes</h4>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {visibleBoundaryProbes.length === 0 ? (
+                        <StatusPill tone="neutral">probe list pending</StatusPill>
+                      ) : visibleBoundaryProbes.map((probe, index) => (
+                        <StatusPill key={`${probe.label ?? probe.url ?? 'probe'}:${index}`} tone={probe.read_only === true ? 'info' : 'warning'}>
+                          {blockingProbeLabel(probe, index)}
+                        </StatusPill>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-label text-[11px] font-semibold text-foreground/45">Forbidden Actions</h4>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {visibleBoundaryForbidden.length === 0 ? (
+                        <StatusPill tone="neutral">forbidden actions pending</StatusPill>
+                      ) : visibleBoundaryForbidden.map((action, index) => (
+                        <StatusPill key={`${action}:${index}`} tone="warning">
+                          {sanitizeInspectorText(action)}
+                        </StatusPill>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </article>
 
           <article className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">

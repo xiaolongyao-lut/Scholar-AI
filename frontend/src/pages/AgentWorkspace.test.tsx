@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentWorkspace } from './AgentWorkspace';
@@ -14,6 +14,7 @@ import {
   getWorkflowReplayLineage,
   getZoteroAttachmentHealth,
   listRuntimeJobs,
+  type BlockingActionBoundaryProjection,
   type WorkflowActionPreflightProjection,
 } from '@/services/agentWorkspaceApi';
 import { getWikiReview } from '@/services/wikiApi';
@@ -460,6 +461,76 @@ describe('AgentWorkspace', () => {
   });
 
   it('renders workflow passport, integrity gate, handoff card, and behavior eval visibility', async () => {
+    const blockingBoundary: BlockingActionBoundaryProjection = {
+      schema_version: 'scholar_ai_blocking_action_boundary_v1',
+      action_id: 'writing.export_project',
+      required_claim_id: 'export_readiness',
+      status: 'blocked',
+      can_proceed: false,
+      require_ready: true,
+      refresh_required: false,
+      blocked_claims: [
+        {
+          claim_id: 'export_readiness',
+          label: 'Export readiness',
+          status: 'blocked',
+          reason: 'Unsupported citation anchors block export readiness.',
+          blocker_count: 1,
+          unresolved_count: 1,
+        },
+      ],
+      blockers: ['Unsupported citation anchors block export readiness.'],
+      unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
+      blocked_signal_refs: [
+        {
+          signal_id: 'citation_verification:unsupported:1',
+          category: 'citation_verification',
+          status: 'block',
+          severity: 'block',
+          message: 'Unsupported citation anchors block export readiness.',
+          blocks_claims: true,
+        },
+      ],
+      unresolved_signal_refs: [
+        {
+          signal_id: 'retrieval_quality:missing_qrels_status:1',
+          category: 'retrieval_quality',
+          status: 'unresolved',
+          severity: 'note',
+          message: 'Evidence refs exist, but retrieval qrels status is not recorded.',
+          blocks_claims: false,
+          replay_ref_count: 1,
+        },
+      ],
+      evidence_refs: [{ ref_type: 'evidence_integrity_signal', ref_id: 'citation_verification:unsupported:1' }],
+      local_read_only_probes: [
+        {
+          label: 'Read Workflow Passport',
+          url: '/runtime/workflow-passport',
+          method: 'GET',
+          read_only: true,
+        },
+        {
+          label: 'Read Evidence Integrity Gate',
+          url: '/runtime/evidence-integrity-gate',
+          method: 'GET',
+          read_only: true,
+        },
+        {
+          label: 'Read runtime job action preflight metadata',
+          url: '/runtime/job/job_agent_handoff_1',
+          method: 'GET',
+          read_only: true,
+        },
+      ],
+      next_safe_local_actions: ['Resolve blocker: Unsupported citation anchors block export readiness.'],
+      forbidden_actions: [
+        'Do not execute the blocked action until the required readiness claim is ready and fresh.',
+        'Do not treat unresolved integrity checks as passed or verified.',
+        'Do not mutate C:\\Users\\Alice\\private\\paper.pdf from a boundary.',
+      ],
+      provenance: { derived_from: ['runtime.evidence_integrity_gate', 'runtime.action_preflight'] },
+    };
     const blockedActionPreflight: WorkflowActionPreflightProjection = {
       schema_version: 'scholar_ai_action_preflight_v1',
       generated_at: '2026-06-21T03:00:00Z',
@@ -512,6 +583,7 @@ describe('AgentWorkspace', () => {
       blockers: ['Unsupported citation anchors block export readiness.'],
       unresolved: ['Evidence refs exist, but retrieval qrels status is not recorded.'],
       evidence: [{ ref_type: 'evidence_integrity_signal', ref_id: 'citation_verification:unsupported:1' }],
+      blocking_action_boundary: blockingBoundary,
       summary: {
         hard_blocked: true,
         unresolved_is_ready: false,
@@ -596,7 +668,7 @@ describe('AgentWorkspace', () => {
                 decision: 'hit',
                 policy: 'use',
                 replayable: true,
-                reason: 'Existing artifacts matched C:\\Users\\xiao\\private\\paper.pdf cache.',
+                reason: 'Existing artifacts matched C:\\Users\\Alice\\private\\paper.pdf cache.',
                 artifact_family_digest: 'sha256:artifact-family-fixture',
                 has_all_requested_outputs: true,
               },
@@ -760,9 +832,12 @@ describe('AgentWorkspace', () => {
           unresolved: 1,
           blocked: 1,
           unresolved_is_ready: false,
+          blocking_action_boundary_status: 'blocked',
         },
+        blocking_action_boundary: blockingBoundary,
         provenance: { derived_from: ['runtime.evidence_integrity_gate'] },
       },
+      blocking_action_boundary: blockingBoundary,
       provenance: { derived_from: ['runtime.workflow_passport'] },
     });
     mockedGetAgentHandoffCard.mockResolvedValue({
@@ -849,17 +924,17 @@ describe('AgentWorkspace', () => {
       },
       resource_refs: [
         { ref_id: 'material:1', kind: 'material' },
-        { ref_id: 'C:\\Users\\xiao\\private\\paper.pdf', kind: 'source_path' },
+        { ref_id: 'C:\\Users\\Alice\\private\\paper.pdf', kind: 'source_path' },
       ],
       artifacts: [],
       resume_probes: [
         { label: 'Read workflow passport' },
         { label: 'Read evidence integrity gate' },
-        { label: 'Inspect local file C:\\Users\\xiao\\private\\paper.pdf before mutation' },
+        { label: 'Inspect local file C:\\Users\\Alice\\private\\paper.pdf before mutation' },
       ],
       forbidden_actions: [
         'Do not treat unresolved integrity checks as passed or verified.',
-        'Do not mutate C:\\Users\\xiao\\private\\paper.pdf from a handoff card.',
+        'Do not mutate C:\\Users\\Alice\\private\\paper.pdf from a handoff card.',
       ],
       resume_prompt: 'Read /runtime/workflow-passport before mutating local files.',
       provenance: { derived_from: ['runtime.job'] },
@@ -1005,7 +1080,7 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('Behavior Eval Pack')).toBeInTheDocument();
     expect(screen.getByText('Agent Handoff')).toBeInTheDocument();
     expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
-    expect(screen.getByText('Export readiness')).toBeInTheDocument();
+    expect(screen.getAllByText('Export readiness').length).toBeGreaterThan(0);
     expect(screen.getByText('Agent handoff readiness')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Material cache decision records' })).toBeInTheDocument();
     expect(screen.getByText('Material Cache Decisions')).toBeInTheDocument();
@@ -1026,6 +1101,21 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('preflight_refresh:test123').length).toBeGreaterThan(0);
     expect(screen.getAllByText('preflight blocked').length).toBeGreaterThan(0);
     expect(screen.getAllByText('fresh 0s').length).toBeGreaterThan(0);
+    const boundaryRegion = screen.getByRole('region', { name: 'Blocking action boundary' });
+    expect(within(boundaryRegion).getByText('Blocking Action Boundary')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('boundary can proceed false')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('boundary require ready true')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('boundary refresh false')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('blocked signals 1')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('unresolved signals 1')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('claim export_readiness')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('citation_verification:unsupported:1 · block')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('retrieval_quality:missing_qrels_status:1 · unresolved')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Read Workflow Passport · read-only true')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Read Evidence Integrity Gate · read-only true')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Read runtime job action preflight metadata · read-only true')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Do not execute the blocked action until the required readiness claim is ready and fresh.')).toBeInTheDocument();
+    expect(within(boundaryRegion).getByText('Do not mutate [redacted-local-path] from a boundary.')).toBeInTheDocument();
     expect(screen.getAllByText('Unsupported citation anchors block export readiness.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('unresolved 1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('blocked').length).toBeGreaterThan(0);
@@ -1050,8 +1140,9 @@ describe('AgentWorkspace', () => {
     expect(mockedGetBehaviorEvalPack).toHaveBeenCalledWith({ includeCases: true });
     expect(await screen.findByText('in_progress · refs 2 · probes 3 · replay 2')).toBeInTheDocument();
     expect(screen.getByText('preflight_refresh:test123 · job_agent_handoff_1 blocked · index 2 · read-only true')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Agent handoff recovery bundle' })).toBeInTheDocument();
-    expect(screen.getByText('Agent Handoff Recovery Bundle')).toBeInTheDocument();
+    const handoffRecoveryRegion = screen.getByRole('region', { name: 'Agent handoff recovery bundle' });
+    expect(handoffRecoveryRegion).toBeInTheDocument();
+    expect(within(handoffRecoveryRegion).getByText('Agent Handoff Recovery Bundle')).toBeInTheDocument();
     expect(screen.getByText('recovery required')).toBeInTheDocument();
     expect(screen.getAllByText('read-only true').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
@@ -1068,9 +1159,9 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('Read evidence integrity gate')).toBeInTheDocument();
     expect(screen.getByText('Read workflow replay lineage')).toBeInTheDocument();
     expect(screen.getByText('Inspect local file [redacted-local-path] before mutation')).toBeInTheDocument();
-    expect(screen.getByText('Do not treat unresolved integrity checks as passed or verified.')).toBeInTheDocument();
-    expect(screen.getByText('Do not mutate [redacted-local-path] from a handoff card.')).toBeInTheDocument();
-    expect(screen.queryByText(/C:\\Users\\xiao\\private\\paper\.pdf/)).not.toBeInTheDocument();
+    expect(within(handoffRecoveryRegion).getByText('Do not treat unresolved integrity checks as passed or verified.')).toBeInTheDocument();
+    expect(within(handoffRecoveryRegion).getByText('Do not mutate [redacted-local-path] from a handoff card.')).toBeInTheDocument();
+    expect(screen.queryByText(/C:\\Users\\Alice\\private\\paper\.pdf/)).not.toBeInTheDocument();
     expect(screen.queryByText(/\/runtime\/workflow-passport/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^integrity 通过$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Export readiness ready$/)).not.toBeInTheDocument();

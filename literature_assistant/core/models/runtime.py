@@ -520,6 +520,50 @@ class WorkflowPassportPayload(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class BlockingActionBoundaryPayload(BaseModel):
+    """Read-only boundary between blocked workflow actions and safe local probes.
+
+    Args:
+        schema_version: Versioned additive projection contract.
+        action_id: Local action being evaluated by the boundary.
+        required_claim_id: Readiness claim that must be ready and fresh.
+        status: Boundary state; unresolved or blocked must not be treated as pass.
+        can_proceed: Whether local execution can continue without bypassing a gate.
+        require_ready: Whether the action requires a ready claim.
+        refresh_required: Whether source projections must be refreshed first.
+        blocked_claims: Bounded claim rows explaining the action block.
+        blockers: Blocking messages copied from gate and claim projections.
+        unresolved: Review or stale-evidence messages that remain unresolved.
+        blocked_signal_refs: Signal summaries that block the action.
+        unresolved_signal_refs: Signal summaries that need refresh or review.
+        evidence_refs: Bounded evidence refs proving the boundary decision.
+        local_read_only_probes: Safe GET probes for recovery before mutation.
+        next_safe_local_actions: Local-only actions that may unblock the boundary.
+        forbidden_actions: Actions that remain outside user authorization.
+        provenance: Runtime sources used to derive this projection.
+    """
+
+    schema_version: Literal["scholar_ai_blocking_action_boundary_v1"] = (
+        "scholar_ai_blocking_action_boundary_v1"
+    )
+    action_id: str = Field(min_length=1, max_length=160)
+    required_claim_id: str = Field(min_length=1, max_length=160)
+    status: Literal["ready", "unresolved", "blocked"]
+    can_proceed: bool = False
+    require_ready: bool = False
+    refresh_required: bool = False
+    blocked_claims: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
+    blockers: List[str] = Field(default_factory=list, max_length=12)
+    unresolved: List[str] = Field(default_factory=list, max_length=12)
+    blocked_signal_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
+    unresolved_signal_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
+    evidence_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=12)
+    local_read_only_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=8)
+    next_safe_local_actions: List[str] = Field(default_factory=list, max_length=8)
+    forbidden_actions: List[str] = Field(default_factory=list, max_length=8)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
 class EvidenceIntegritySignalPayload(BaseModel):
     """One reproducible integrity check signal for evidence-bound workflows.
 
@@ -581,6 +625,7 @@ class EvidenceIntegrityGatePayload(BaseModel):
     blockers: List[str] = Field(default_factory=list, max_length=16)
     unresolved: List[str] = Field(default_factory=list, max_length=16)
     enforcement: Dict[str, Any] = Field(default_factory=dict)
+    blocking_action_boundary: BlockingActionBoundaryPayload | None = None
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 

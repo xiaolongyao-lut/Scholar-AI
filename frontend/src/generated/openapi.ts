@@ -7753,6 +7753,93 @@ export interface components {
             /** Warn Count */
             warn_count: number;
         };
+        /**
+         * BlockingActionBoundaryPayload
+         * @description Read-only boundary between blocked workflow actions and safe local probes.
+         *
+         *     Args:
+         *         schema_version: Versioned additive projection contract.
+         *         action_id: Local action being evaluated by the boundary.
+         *         required_claim_id: Readiness claim that must be ready and fresh.
+         *         status: Boundary state; unresolved or blocked must not be treated as pass.
+         *         can_proceed: Whether local execution can continue without bypassing a gate.
+         *         require_ready: Whether the action requires a ready claim.
+         *         refresh_required: Whether source projections must be refreshed first.
+         *         blocked_claims: Bounded claim rows explaining the action block.
+         *         blockers: Blocking messages copied from gate and claim projections.
+         *         unresolved: Review or stale-evidence messages that remain unresolved.
+         *         blocked_signal_refs: Signal summaries that block the action.
+         *         unresolved_signal_refs: Signal summaries that need refresh or review.
+         *         evidence_refs: Bounded evidence refs proving the boundary decision.
+         *         local_read_only_probes: Safe GET probes for recovery before mutation.
+         *         next_safe_local_actions: Local-only actions that may unblock the boundary.
+         *         forbidden_actions: Actions that remain outside user authorization.
+         *         provenance: Runtime sources used to derive this projection.
+         */
+        BlockingActionBoundaryPayload: {
+            /** Action Id */
+            action_id: string;
+            /** Blocked Claims */
+            blocked_claims?: {
+                [key: string]: unknown;
+            }[];
+            /** Blocked Signal Refs */
+            blocked_signal_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Blockers */
+            blockers?: string[];
+            /**
+             * Can Proceed
+             * @default false
+             */
+            can_proceed: boolean;
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Forbidden Actions */
+            forbidden_actions?: string[];
+            /** Local Read Only Probes */
+            local_read_only_probes?: {
+                [key: string]: unknown;
+            }[];
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Refresh Required
+             * @default false
+             */
+            refresh_required: boolean;
+            /**
+             * Require Ready
+             * @default false
+             */
+            require_ready: boolean;
+            /** Required Claim Id */
+            required_claim_id: string;
+            /**
+             * Schema Version
+             * @default scholar_ai_blocking_action_boundary_v1
+             * @constant
+             */
+            schema_version: "scholar_ai_blocking_action_boundary_v1";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "unresolved" | "blocked";
+            /** Unresolved */
+            unresolved?: string[];
+            /** Unresolved Signal Refs */
+            unresolved_signal_refs?: {
+                [key: string]: unknown;
+            }[];
+        };
         /** Body_post_api_export_journal_style_specs_upload */
         Body_post_api_export_journal_style_specs_upload: {
             /** File */
@@ -10227,6 +10314,7 @@ export interface components {
         EvidenceIntegrityGatePayload: {
             /** Blockers */
             blockers?: string[];
+            blocking_action_boundary?: components["schemas"]["BlockingActionBoundaryPayload"] | null;
             /** Enforcement */
             enforcement?: {
                 [key: string]: unknown;

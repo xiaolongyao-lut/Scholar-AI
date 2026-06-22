@@ -774,7 +774,21 @@ async def test_evidence_integrity_gate_blocks_unsupported_and_keeps_unresolved_v
     )
     assert export_claim["status"] == "blocked"
     assert export_claim["blockers"]
+    boundary = gate["blocking_action_boundary"]
+    assert boundary["schema_version"] == "scholar_ai_blocking_action_boundary_v1"
+    assert boundary["action_id"] == "writing.export_project"
+    assert boundary["required_claim_id"] == "export_readiness"
+    assert boundary["status"] == "blocked"
+    assert boundary["can_proceed"] is False
+    assert boundary["blocked_claims"][0]["claim_id"] == "export_readiness"
+    assert boundary["blocked_signal_refs"]
+    assert boundary["unresolved_signal_refs"]
+    assert any(probe["read_only"] is True for probe in boundary["local_read_only_probes"])
+    assert any("runtime/jobs" in probe["url"] for probe in boundary["local_read_only_probes"])
+    assert any("unresolved integrity checks" in action for action in boundary["forbidden_actions"])
+    assert gate["enforcement"]["blocking_action_boundary"]["schema_version"] == "scholar_ai_blocking_action_boundary_v1"
     assert gate["enforcement"]["summary"]["unresolved_is_ready"] is False
+    assert gate["enforcement"]["summary"]["blocking_action_boundary_status"] == "blocked"
     serialized = str(gate)
     assert "C:\\Users\\xiao\\private" not in serialized
     assert "workspace_artifacts/private" not in serialized
@@ -876,6 +890,16 @@ def test_action_preflight_requires_refresh_for_stale_workflow_evidence(
     assert preflight["can_proceed"] is False
     assert preflight["summary"]["refresh_required"] is True
     assert preflight["summary"]["freshness_status"] == "stale"
+    boundary = preflight["blocking_action_boundary"]
+    assert boundary["schema_version"] == "scholar_ai_blocking_action_boundary_v1"
+    assert boundary["action_id"] == "writing.export_project"
+    assert boundary["required_claim_id"] == "export_readiness"
+    assert boundary["status"] in {"blocked", "unresolved"}
+    assert boundary["can_proceed"] is False
+    assert boundary["refresh_required"] is True
+    assert any("Workflow Passport" in action for action in boundary["next_safe_local_actions"])
+    assert any(probe["read_only"] is True for probe in boundary["local_read_only_probes"])
+    assert preflight["summary"]["blocking_action_boundary_status"] == boundary["status"]
     assert any("exceeding" in item for item in preflight["unresolved"])
     assert any(action.startswith("Rebuild the Workflow Passport") for action in preflight["freshness"]["refresh_actions"])
 

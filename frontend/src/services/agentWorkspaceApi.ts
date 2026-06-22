@@ -122,10 +122,64 @@ export interface WorkflowReadinessClaim {
   evidence: Record<string, unknown>[];
 }
 
+export type BlockingActionBoundaryStatus = 'ready' | 'unresolved' | 'blocked';
+
+export interface BlockingActionBoundaryClaim {
+  claim_id: string;
+  label?: string;
+  status: string;
+  reason?: string;
+  blocker_count?: number;
+  unresolved_count?: number;
+  [key: string]: unknown;
+}
+
+export interface BlockingActionBoundarySignalRef {
+  signal_id: string;
+  category?: string | null;
+  status?: string | null;
+  severity?: string | null;
+  message?: string | null;
+  blocks_claims?: boolean;
+  replay_ref_count?: number;
+  [key: string]: unknown;
+}
+
+export interface BlockingActionBoundaryProbe {
+  label?: string;
+  name?: string;
+  url?: string;
+  method?: string;
+  read_only?: boolean;
+  params?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface BlockingActionBoundaryProjection {
+  schema_version: 'scholar_ai_blocking_action_boundary_v1';
+  action_id: string;
+  required_claim_id: string;
+  status: BlockingActionBoundaryStatus;
+  can_proceed: boolean;
+  require_ready: boolean;
+  refresh_required: boolean;
+  blocked_claims: BlockingActionBoundaryClaim[];
+  blockers: string[];
+  unresolved: string[];
+  blocked_signal_refs: BlockingActionBoundarySignalRef[];
+  unresolved_signal_refs: BlockingActionBoundarySignalRef[];
+  evidence_refs: Record<string, unknown>[];
+  local_read_only_probes: BlockingActionBoundaryProbe[];
+  next_safe_local_actions: string[];
+  forbidden_actions: string[];
+  provenance: Record<string, unknown>;
+}
+
 export interface WorkflowReadinessClaimsProjection {
   schema_version: 'scholar_ai_workflow_enforcement_v1';
   status: WorkflowReadinessClaimStatus;
   claims: WorkflowReadinessClaim[];
+  blocking_action_boundary?: BlockingActionBoundaryProjection;
   summary: Record<string, unknown>;
   provenance: Record<string, unknown>;
 }
@@ -343,6 +397,7 @@ export interface WorkflowActionPreflightProjection {
   blockers: string[];
   unresolved: string[];
   evidence: Record<string, unknown>[];
+  blocking_action_boundary?: BlockingActionBoundaryProjection;
   summary: Record<string, unknown>;
   provenance: Record<string, unknown>;
 }
@@ -357,6 +412,7 @@ export interface EvidenceIntegrityGateProjection {
   blockers: string[];
   unresolved: string[];
   enforcement?: WorkflowReadinessClaimsProjection;
+  blocking_action_boundary?: BlockingActionBoundaryProjection;
   provenance: Record<string, unknown>;
 }
 

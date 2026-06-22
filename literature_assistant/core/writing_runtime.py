@@ -103,6 +103,7 @@ _WORKFLOW_PASSPORT_SCHEMA_VERSION = "scholar_ai_workflow_passport_v1"
 _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION = "scholar_ai_evidence_integrity_gate_v1"
 _AGENT_HANDOFF_CARD_SCHEMA_VERSION = "scholar_ai_agent_handoff_card_v1"
 _ACTION_PREFLIGHT_SCHEMA_VERSION = "scholar_ai_action_preflight_v1"
+_BLOCKING_ACTION_BOUNDARY_SCHEMA_VERSION = "scholar_ai_blocking_action_boundary_v1"
 _ACTION_PREFLIGHT_FRESHNESS_SCHEMA_VERSION = "scholar_ai_action_preflight_freshness_v1"
 _PREFLIGHT_REFRESH_RECEIPT_SCHEMA_VERSION = "scholar_ai_preflight_refresh_receipt_v1"
 _WORKFLOW_REPLAY_LINEAGE_SCHEMA_VERSION = "scholar_ai_workflow_replay_lineage_v1"
@@ -1628,6 +1629,181 @@ def _bounded_claim_evidence(signals: list[dict[str, Any]], *, max_items: int = 1
     return evidence
 
 
+def _blocking_boundary_local_probes(*, action_id: str, scope: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return read-only local probes that can refresh a blocked action boundary."""
+
+    normalized_action_id = _require_non_empty_string(action_id, field_name="action_id", max_length=160)
+    if not isinstance(scope, dict):
+        raise ValueError("scope must be an object")
+    probe_params = {
+        "session_id": scope.get("session_id"),
+        "job_id": scope.get("job_id"),
+        "project_id": scope.get("project_id"),
+    }
+    probes = [
+        _handoff_resume_probe("Read Workflow Passport", "/runtime/workflow-passport", probe_params),
+        _handoff_resume_probe("Read Evidence Integrity Gate", "/runtime/evidence-integrity-gate", probe_params),
+        _handoff_resume_probe("List workflow replay index", "/runtime/workflow-replay-index", probe_params),
+    ]
+    job_id = _safe_projection_string(scope.get("job_id"))
+    if job_id:
+        probes.append(_handoff_resume_probe("Read runtime job action preflight metadata", f"/runtime/job/{job_id}"))
+        probes.append(_handoff_resume_probe("Read workflow replay lineage", f"/runtime/job/{job_id}/workflow-replay-lineage"))
+    else:
+        probes.append(_handoff_resume_probe("List runtime jobs for action preflight metadata", "/runtime/jobs", probe_params))
+    return probes[:8]
+
+
+def _blocked_signal_summaries(signals: list[dict[str, Any]], *, statuses: set[str], max_items: int = 8) -> list[dict[str, Any]]:
+    """Return bounded signal summaries that explain blockers or unresolved checks."""
+
+    rows: list[dict[str, Any]] = []
+    for signal in signals:
+        if len(rows) >= max_items:
+            break
+        if not isinstance(signal, dict):
+            continue
+        status = _safe_projection_string(signal.get("status"))
+        if status not in statuses:
+            continue
+        signal_id = _safe_projection_string(signal.get("signal_id"))
+        if signal_id is None:
+            continue
+        row = {
+            "signal_id": signal_id,
+            "category": _safe_projection_string(signal.get("category")),
+            "status": status,
+            "severity": _safe_projection_string(signal.get("severity")),
+            "message": _safe_projection_string(signal.get("message")),
+            "blocks_claims": False,
+        }
+        drilldown = signal.get("drilldown")
+        if isinstance(drilldown, dict):
+            row["blocks_claims"] = bool(drilldown.get("blocks_claims"))
+            replay_refs = drilldown.get("replay_refs")
+            if isinstance(replay_refs, list):
+                row["replay_ref_count"] = len(replay_refs)
+        rows.append(_compact_projection_mapping(row))
+    return rows
+
+
+def _workflow_blocking_action_boundary(
+    *,
+    action_id: str,
+    required_claim_id: str,
+    claim: dict[str, Any] | None,
+    gate: dict[str, Any],
+    blockers: list[str],
+    unresolved: list[str],
+    evidence: list[dict[str, Any]],
+    status: str,
+    can_proceed: bool,
+    require_ready: bool,
+    refresh_required: bool = False,
+) -> dict[str, Any]:
+    """Return a bounded, read-only boundary between blocked actions and safe probes."""
+
+    normalized_action_id = _require_non_empty_string(action_id, field_name="action_id", max_length=160)
+    normalized_claim_id = _require_non_empty_string(required_claim_id, field_name="required_claim_id", max_length=160)
+    if claim is not None and not isinstance(claim, dict):
+        raise ValueError("claim must be an object when provided")
+    if not isinstance(gate, dict):
+        raise ValueError("gate must be an object")
+    if not isinstance(blockers, list):
+        raise ValueError("blockers must be a list")
+    if not isinstance(unresolved, list):
+        raise ValueError("unresolved must be a list")
+    if not isinstance(evidence, list):
+        raise ValueError("evidence must be a list")
+    gate_scope = gate.get("scope") if isinstance(gate.get("scope"), dict) else {}
+    gate_signals = gate.get("signals") if isinstance(gate.get("signals"), list) else []
+    signal_rows = [signal for signal in gate_signals if isinstance(signal, dict)]
+    blocked_signal_refs = _blocked_signal_summaries(signal_rows, statuses={"block"}, max_items=8)
+    unresolved_signal_refs = _blocked_signal_summaries(signal_rows, statuses={"unresolved"}, max_items=8)
+    normalized_status = _safe_projection_string(status) or "unresolved"
+    boundary_blocked = normalized_status == "blocked" or bool(blockers) or (bool(require_ready) and not bool(can_proceed))
+    boundary_unresolved = normalized_status in {"unresolved", "stale"} or bool(unresolved) or bool(refresh_required)
+    safe_probe_rows = _blocking_boundary_local_probes(action_id=normalized_action_id, scope=gate_scope)
+    blocked_claims: list[dict[str, Any]] = []
+    if isinstance(claim, dict):
+        blocked_claims.append(
+            _compact_projection_mapping(
+                {
+                    "claim_id": claim.get("claim_id"),
+                    "label": claim.get("label"),
+                    "status": claim.get("status"),
+                    "reason": claim.get("reason"),
+                    "blocker_count": len(claim.get("blockers") or []),
+                    "unresolved_count": len(claim.get("unresolved") or []),
+                }
+            )
+        )
+    elif boundary_blocked or boundary_unresolved:
+        blocked_claims.append(
+            {
+                "claim_id": normalized_claim_id,
+                "status": "missing",
+                "reason": f"Readiness claim {normalized_claim_id} was not found.",
+            }
+        )
+
+    next_safe_local_actions: list[str] = []
+    if refresh_required:
+        _append_unique_text(
+            next_safe_local_actions,
+            "Rebuild the Workflow Passport and Evidence Integrity Gate before executing this action.",
+            max_items=8,
+        )
+    for message in blockers[:3]:
+        _append_unique_text(next_safe_local_actions, f"Resolve blocker: {message}", max_items=8)
+    for message in unresolved[:3]:
+        _append_unique_text(next_safe_local_actions, f"Refresh or review unresolved check: {message}", max_items=8)
+    if not next_safe_local_actions:
+        _append_unique_text(
+            next_safe_local_actions,
+            "Run the read-only local probes before making any readiness or handoff claim.",
+            max_items=8,
+        )
+
+    forbidden_actions = [
+        "Do not execute the blocked action until the required readiness claim is ready and fresh.",
+        "Do not treat unresolved integrity checks as passed or verified.",
+        "Do not bypass explicit user authorization for push, tag, release, publish, deploy, upload, credentials, or external mutation.",
+        "Do not add import-to-wiki writes, direct Zotero writes, or github/ reference-repository changes from this boundary.",
+    ]
+    evidence_refs: list[dict[str, Any]] = []
+    for item in evidence:
+        if isinstance(item, dict):
+            _append_unique_mapping(evidence_refs, _compact_projection_mapping(item), max_items=12)
+    return {
+        "schema_version": _BLOCKING_ACTION_BOUNDARY_SCHEMA_VERSION,
+        "action_id": normalized_action_id,
+        "required_claim_id": normalized_claim_id,
+        "status": "blocked" if boundary_blocked else "unresolved" if boundary_unresolved else "ready",
+        "can_proceed": bool(can_proceed) and not boundary_blocked and not boundary_unresolved,
+        "require_ready": bool(require_ready),
+        "refresh_required": bool(refresh_required),
+        "blocked_claims": blocked_claims[:8],
+        "blockers": [str(item) for item in blockers[:12] if _safe_projection_string(item) is not None],
+        "unresolved": [str(item) for item in unresolved[:12] if _safe_projection_string(item) is not None],
+        "blocked_signal_refs": blocked_signal_refs,
+        "unresolved_signal_refs": unresolved_signal_refs,
+        "evidence_refs": evidence_refs[:12],
+        "local_read_only_probes": safe_probe_rows,
+        "next_safe_local_actions": next_safe_local_actions[:8],
+        "forbidden_actions": forbidden_actions,
+        "provenance": {
+            "derived_from": [
+                "runtime.evidence_integrity_gate",
+                "runtime.workflow_readiness_claims",
+                "runtime.action_preflight",
+            ],
+            "evidence_integrity_gate_schema_version": gate.get("schema_version"),
+            "workflow_enforcement_schema_version": _WORKFLOW_ENFORCEMENT_SCHEMA_VERSION,
+        },
+    }
+
+
 def _workflow_readiness_claims(
     *,
     workflow_state: dict[str, Any] | None,
@@ -1702,16 +1878,56 @@ def _workflow_readiness_claims(
     for claim in claims:
         if status_rank.get(str(claim.get("status") or ""), 0) > status_rank[overall]:
             overall = str(claim["status"])
+    boundary_claim = next(
+        (claim for claim in claims if isinstance(claim, dict) and claim.get("status") in {"blocked", "unresolved"}),
+        claims[0] if claims else None,
+    )
+    boundary_action_id = (
+        "writing.export_project"
+        if isinstance(boundary_claim, dict) and boundary_claim.get("claim_id") == "export_readiness"
+        else "agent.handoff_card"
+    )
+    boundary = _workflow_blocking_action_boundary(
+        action_id=boundary_action_id,
+        required_claim_id=str((boundary_claim or {}).get("claim_id") or "handoff_readiness"),
+        claim=boundary_claim if isinstance(boundary_claim, dict) else None,
+        gate=gate,
+        blockers=[
+            message
+            for claim in claims
+            if isinstance(claim, dict)
+            for message in list(claim.get("blockers") or [])[:8]
+        ],
+        unresolved=[
+            message
+            for claim in claims
+            if isinstance(claim, dict)
+            for message in list(claim.get("unresolved") or [])[:8]
+        ],
+        evidence=[
+            item
+            for claim in claims
+            if isinstance(claim, dict)
+            for item in list(claim.get("evidence") or [])[:8]
+            if isinstance(item, dict)
+        ],
+        status="blocked" if overall == "blocked" else "unresolved" if overall == "unresolved" else "ready",
+        can_proceed=overall in {"ready", "warning"},
+        require_ready=True,
+        refresh_required=False,
+    )
     return {
         "schema_version": _WORKFLOW_ENFORCEMENT_SCHEMA_VERSION,
         "status": overall,
         "claims": claims,
+        "blocking_action_boundary": boundary,
         "summary": {
             "ready": sum(1 for claim in claims if claim["status"] == "ready"),
             "warning": sum(1 for claim in claims if claim["status"] == "warning"),
             "unresolved": sum(1 for claim in claims if claim["status"] == "unresolved"),
             "blocked": sum(1 for claim in claims if claim["status"] == "blocked"),
             "unresolved_is_ready": False,
+            "blocking_action_boundary_status": boundary.get("status"),
         },
         "provenance": {
             "derived_from": [
@@ -2041,6 +2257,19 @@ def _workflow_action_preflight_payload(
         status = "ready"
     else:
         status = "unresolved"
+    blocking_action_boundary = _workflow_blocking_action_boundary(
+        action_id=normalized_action_id,
+        required_claim_id=normalized_claim_id,
+        claim=claim,
+        gate=gate,
+        blockers=blockers,
+        unresolved=unresolved,
+        evidence=evidence,
+        status=status,
+        can_proceed=not hard_blocked,
+        require_ready=bool(require_ready),
+        refresh_required=refresh_required,
+    )
 
     return {
         "schema_version": _ACTION_PREFLIGHT_SCHEMA_VERSION,
@@ -2058,6 +2287,7 @@ def _workflow_action_preflight_payload(
         "blockers": blockers[:12],
         "unresolved": unresolved[:12],
         "evidence": evidence[:16],
+        "blocking_action_boundary": blocking_action_boundary,
         "summary": {
             "hard_blocked": hard_blocked,
             "unresolved_is_ready": False,
@@ -2065,6 +2295,7 @@ def _workflow_action_preflight_payload(
             "refresh_required": refresh_required,
             "freshness_status": freshness.get("status"),
             "freshness_max_age_seconds": freshness.get("max_age_seconds"),
+            "blocking_action_boundary_status": blocking_action_boundary.get("status"),
             "workflow_gate_summary": dict(stage_summary),
             "workflow_state_phase": workflow_state.get("phase") if isinstance(workflow_state, dict) else None,
         },
@@ -6578,6 +6809,7 @@ class WritingRuntime:
             workflow_state=primary_workflow_state,
             gate=gate_payload,
         )
+        gate_payload["blocking_action_boundary"] = gate_payload["enforcement"].get("blocking_action_boundary")
         return {
             **gate_payload,
         }

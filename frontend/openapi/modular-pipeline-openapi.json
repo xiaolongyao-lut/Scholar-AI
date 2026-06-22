@@ -2302,6 +2302,142 @@
         "title": "BehaviorEvalSummaryPayload",
         "type": "object"
       },
+      "BlockingActionBoundaryPayload": {
+        "description": "Read-only boundary between blocked workflow actions and safe local probes.\n\nArgs:\n    schema_version: Versioned additive projection contract.\n    action_id: Local action being evaluated by the boundary.\n    required_claim_id: Readiness claim that must be ready and fresh.\n    status: Boundary state; unresolved or blocked must not be treated as pass.\n    can_proceed: Whether local execution can continue without bypassing a gate.\n    require_ready: Whether the action requires a ready claim.\n    refresh_required: Whether source projections must be refreshed first.\n    blocked_claims: Bounded claim rows explaining the action block.\n    blockers: Blocking messages copied from gate and claim projections.\n    unresolved: Review or stale-evidence messages that remain unresolved.\n    blocked_signal_refs: Signal summaries that block the action.\n    unresolved_signal_refs: Signal summaries that need refresh or review.\n    evidence_refs: Bounded evidence refs proving the boundary decision.\n    local_read_only_probes: Safe GET probes for recovery before mutation.\n    next_safe_local_actions: Local-only actions that may unblock the boundary.\n    forbidden_actions: Actions that remain outside user authorization.\n    provenance: Runtime sources used to derive this projection.",
+        "properties": {
+          "action_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Action Id",
+            "type": "string"
+          },
+          "blocked_claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 8,
+            "title": "Blocked Claims",
+            "type": "array"
+          },
+          "blocked_signal_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 8,
+            "title": "Blocked Signal Refs",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Blockers",
+            "type": "array"
+          },
+          "can_proceed": {
+            "default": false,
+            "title": "Can Proceed",
+            "type": "boolean"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 12,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "forbidden_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Forbidden Actions",
+            "type": "array"
+          },
+          "local_read_only_probes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 8,
+            "title": "Local Read Only Probes",
+            "type": "array"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "refresh_required": {
+            "default": false,
+            "title": "Refresh Required",
+            "type": "boolean"
+          },
+          "require_ready": {
+            "default": false,
+            "title": "Require Ready",
+            "type": "boolean"
+          },
+          "required_claim_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Required Claim Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "scholar_ai_blocking_action_boundary_v1",
+            "default": "scholar_ai_blocking_action_boundary_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "unresolved",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Unresolved",
+            "type": "array"
+          },
+          "unresolved_signal_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 8,
+            "title": "Unresolved Signal Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action_id",
+          "required_claim_id",
+          "status"
+        ],
+        "title": "BlockingActionBoundaryPayload",
+        "type": "object"
+      },
       "Body_post_api_export_journal_style_specs_upload": {
         "properties": {
           "file": {
@@ -8028,6 +8164,16 @@
             "maxItems": 16,
             "title": "Blockers",
             "type": "array"
+          },
+          "blocking_action_boundary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockingActionBoundaryPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "enforcement": {
             "additionalProperties": true,
