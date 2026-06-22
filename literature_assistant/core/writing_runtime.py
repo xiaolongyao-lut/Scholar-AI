@@ -1114,6 +1114,7 @@ def _new_passport_diagnostics() -> dict[str, Any]:
         "locator_coverage_count": 0,
         "qrels_status_count": 0,
         "preflight_receipt_count": 0,
+        "research_action_count": 0,
         "warning_count": 0,
         "status_counts": {},
         "cache_decisions": {},
@@ -1137,6 +1138,7 @@ def _new_passport_reproducibility() -> dict[str, Any]:
         "locator_refs": [],
         "qrels_refs": [],
         "preflight_receipts": [],
+        "research_action_refs": [],
         "projection_digest_keys": [],
         "replay_probe_refs": [],
         "parameter_digest_count": 0,
@@ -1174,6 +1176,7 @@ def _trim_passport_stage_projection(row: dict[str, Any]) -> None:
             "locator_coverage_count",
             "qrels_status_count",
             "preflight_receipt_count",
+            "research_action_count",
             "warning_count",
             "unresolved_count",
             "blocker_count",
@@ -1197,6 +1200,7 @@ def _trim_passport_stage_projection(row: dict[str, Any]) -> None:
             "locator_refs",
             "qrels_refs",
             "preflight_receipts",
+            "research_action_refs",
             "replay_probe_refs",
         ):
             value = reproducibility.get(key)
@@ -1491,7 +1495,7 @@ def _workflow_stage_drilldown(stage: dict[str, Any], gate: dict[str, Any]) -> di
     reproducibility = stage.get("reproducibility") if isinstance(stage.get("reproducibility"), dict) else {}
     evidence_refs = list(gate.get("evidence") or [])[:12]
     replay_refs: list[dict[str, Any]] = []
-    for key in ("preflight_receipts", "replay_probe_refs", "locator_refs", "qrels_refs"):
+    for key in ("preflight_receipts", "replay_probe_refs", "locator_refs", "qrels_refs", "research_action_refs"):
         values = reproducibility.get(key)
         if not isinstance(values, list):
             continue
@@ -1512,6 +1516,7 @@ def _workflow_stage_drilldown(stage: dict[str, Any], gate: dict[str, Any]) -> di
         "locator_coverage_count": diagnostics.get("locator_coverage_count"),
         "qrels_status_count": diagnostics.get("qrels_status_count"),
         "preflight_receipt_count": diagnostics.get("preflight_receipt_count"),
+        "research_action_count": diagnostics.get("research_action_count"),
         "unresolved_count": diagnostics.get("unresolved_count"),
         "blocker_count": diagnostics.get("blocker_count"),
         "parameter_digest_count": reproducibility.get("parameter_digest_count"),
@@ -1670,6 +1675,7 @@ def _blocking_boundary_local_probes(*, action_id: str, scope: dict[str, Any]) ->
     probes = [
         _handoff_resume_probe("Read Workflow Passport", "/runtime/workflow-passport", probe_params),
         _handoff_resume_probe("Read Evidence Integrity Gate", "/runtime/evidence-integrity-gate", probe_params),
+        _handoff_resume_probe("Read Research Action Lifecycle", "/runtime/research-action-lifecycle", probe_params),
         _handoff_resume_probe("Read Behavior Eval Pack", "/runtime/behavior-eval-pack", {"include_cases": "true"}),
         _handoff_resume_probe("List workflow replay index", "/runtime/workflow-replay-index", probe_params),
     ]
@@ -1680,6 +1686,136 @@ def _blocking_boundary_local_probes(*, action_id: str, scope: dict[str, Any]) ->
     else:
         probes.append(_handoff_resume_probe("List runtime jobs for action preflight metadata", "/runtime/jobs", probe_params))
     return probes[:8]
+
+
+def _research_action_stage_id(action_type: str) -> str:
+    """Return the Workflow Passport stage that owns a lifecycle action family."""
+
+    if action_type in {"artifact_export", "export_overwrite"}:
+        return "export"
+    if action_type == "batch_material_reprocess":
+        return "material_ingest"
+    return "agent_handoff"
+
+
+def _research_action_ref_status(
+    *,
+    job: WritingJob,
+    approvals: list[WritingApprovalRequest],
+    latest_receipt: dict[str, Any] | None,
+) -> str:
+    """Return a lightweight lifecycle status without rebuilding Passport/Gate."""
+
+    if any(approval.status == ApprovalStatus.PENDING for approval in approvals):
+        return "pending_approval"
+    if any(approval.status == ApprovalStatus.REJECTED for approval in approvals):
+        return "rejected"
+    if job.status in {JobStatus.FAILED, JobStatus.APPROVAL_REJECTED}:
+        return "failed"
+    if job.status == JobStatus.CANCELLED:
+        return "cancelled"
+    if latest_receipt is not None:
+        receipt_status = str(latest_receipt.get("status") or "").strip().lower()
+        if receipt_status == "blocked":
+            return "blocked"
+        if receipt_status in {"unresolved", "stale"} or bool(latest_receipt.get("refresh_required")):
+            return "unresolved"
+        if receipt_status == "ready" and job.status == JobStatus.COMPLETED:
+            return "completed"
+    if job.status == JobStatus.COMPLETED:
+        return "completed"
+    if job.status in {JobStatus.STARTED, JobStatus.IN_PROGRESS, JobStatus.QUEUED, JobStatus.PAUSED}:
+        return "unresolved"
+    return "proposed"
+
+
+def _lightweight_research_action_refs_for_jobs(
+    *,
+    jobs: list[WritingJob],
+    sessions_by_id: dict[str, WritingSession],
+    artifacts_by_job: dict[str, list[WritingArtifact]],
+    approvals: list[WritingApprovalRequest],
+    project_id: str | None = None,
+    max_items: int = 16,
+) -> list[dict[str, Any]]:
+    """Return bounded action refs for recovery links without recursive rebuilds.
+
+    Why:
+        Passport, Integrity Gate, and Handoff Card need lifecycle breadcrumbs,
+        but the full lifecycle projection itself rebuilds Passport and Gate.
+    """
+
+    if not isinstance(jobs, list):
+        raise ValueError("jobs must be a list")
+    if not isinstance(sessions_by_id, dict):
+        raise ValueError("sessions_by_id must be an object")
+    if not isinstance(artifacts_by_job, dict):
+        raise ValueError("artifacts_by_job must be an object")
+    if not isinstance(approvals, list):
+        raise ValueError("approvals must be a list")
+    normalized_project_id = _safe_projection_string(project_id)
+    refs: list[dict[str, Any]] = []
+    approvals_by_job: dict[str, list[WritingApprovalRequest]] = {}
+    for approval in approvals:
+        if not isinstance(approval, WritingApprovalRequest):
+            continue
+        approvals_by_job.setdefault(approval.job_id, []).append(approval)
+    for job in jobs:
+        if not isinstance(job, WritingJob):
+            continue
+        session = sessions_by_id.get(job.session_id)
+        job_project_id = _project_id_for_job(job, session)
+        if normalized_project_id is not None and job_project_id != normalized_project_id:
+            continue
+        job_approvals = approvals_by_job.get(job.job_id, [])
+        artifacts = artifacts_by_job.get(job.job_id, [])
+        receipts, receipt_counts = _collect_job_preflight_receipts(job, artifacts if isinstance(artifacts, list) else [])
+        latest_receipt = receipts[-1] if receipts else None
+        status = _research_action_ref_status(job=job, approvals=job_approvals, latest_receipt=latest_receipt)
+        for action_type in _research_action_types_for_job(job):
+            action_id = _research_action_id_for_type(action_type)
+            ref = {
+                "ref_type": "research_action_lifecycle",
+                "ref_id": f"{action_type}:{job.job_id}",
+                "action_id": action_id,
+                "action_type": action_type,
+                "status": status,
+                "stage_id": _research_action_stage_id(action_type),
+                "job_id": job.job_id,
+                "session_id": job.session_id,
+                "project_id": job_project_id,
+                "requires_user_confirmation": any(
+                    approval.status == ApprovalStatus.PENDING for approval in job_approvals
+                ),
+                "preflight_present": latest_receipt is not None,
+                "latest_receipt_id": latest_receipt.get("receipt_id") if isinstance(latest_receipt, dict) else None,
+                "preflight_receipt_count": len(receipts),
+                "preflight_receipt_sources": receipt_counts,
+                "probe_endpoint": "/runtime/research-action-lifecycle",
+                "read_only": True,
+            }
+            _append_unique_mapping(refs, _compact_projection_mapping(ref), max_items=max_items)
+            if len(refs) >= max_items:
+                return refs[:max_items]
+        for approval in job_approvals:
+            ref = {
+                "ref_type": "research_action_lifecycle",
+                "ref_id": f"approval_gate:{approval.approval_id}",
+                "action_id": _research_action_id_for_type("approval_gate"),
+                "action_type": "approval_gate",
+                "status": "pending_approval" if approval.status == ApprovalStatus.PENDING else approval.status.value,
+                "stage_id": "agent_handoff",
+                "job_id": job.job_id,
+                "session_id": approval.session_id,
+                "project_id": job_project_id,
+                "requires_user_confirmation": approval.status == ApprovalStatus.PENDING,
+                "probe_endpoint": "/runtime/research-action-lifecycle",
+                "read_only": True,
+            }
+            _append_unique_mapping(refs, _compact_projection_mapping(ref), max_items=max_items)
+            if len(refs) >= max_items:
+                return refs[:max_items]
+    return refs[:max_items]
 
 
 def _blocked_signal_summaries(signals: list[dict[str, Any]], *, statuses: set[str], max_items: int = 8) -> list[dict[str, Any]]:
@@ -7228,6 +7364,39 @@ class WritingRuntime:
             for job in self._jobs.values()
             if job.job_id in selected_job_ids
         ]
+        selected_artifacts_by_job = {
+            job.job_id: self.get_job_artifacts(job.job_id)
+            for job in selected_jobs
+        }
+        action_refs = _lightweight_research_action_refs_for_jobs(
+            jobs=selected_jobs,
+            sessions_by_id=dict(self._sessions),
+            artifacts_by_job=selected_artifacts_by_job,
+            approvals=list(self._approval_requests.values()),
+            project_id=_safe_projection_string(project_id),
+            max_items=32,
+        )
+        for action_ref in action_refs:
+            stage_id = _safe_projection_string(action_ref.get("stage_id"))
+            if stage_id is None or stage_id not in stage_rows:
+                continue
+            row = stage_rows[stage_id]
+            diagnostics = row.get("diagnostics")
+            reproducibility = row.get("reproducibility")
+            if isinstance(diagnostics, dict):
+                diagnostics["research_action_count"] = int(diagnostics.get("research_action_count") or 0) + 1
+                _increment_nested_count(diagnostics, "status_counts", action_ref.get("status"))
+            if isinstance(reproducibility, dict):
+                _append_unique_mapping(
+                    reproducibility["research_action_refs"],
+                    action_ref,
+                    max_items=16,
+                )
+            if action_ref.get("requires_user_confirmation"):
+                row["requires_user_confirmation"] = True
+                _append_unique_text(row["blockers"], "Pending research action user confirmation is required.")
+            if action_ref.get("preflight_present") is False and action_ref.get("action_type") != "batch_material_reprocess":
+                _append_unique_text(row["unresolved"], "Research action preflight evidence is missing.")
         payload_rows = _iter_runtime_metadata_dicts(selected_jobs) + _iter_artifact_dicts(selected_jobs, self._artifacts)
         for source_id, payload in payload_rows:
             _record_passport_integrity_payload(stage_rows["material_read"], source_id, payload)
@@ -7349,6 +7518,18 @@ class WritingRuntime:
                 for job in jobs
                 if _project_id_for_job(job, self.get_session(job.session_id)) == normalized_project_id
             ]
+        scoped_artifacts_by_job = {
+            job.job_id: self.get_job_artifacts(job.job_id)
+            for job in jobs
+        }
+        research_action_refs = _lightweight_research_action_refs_for_jobs(
+            jobs=jobs,
+            sessions_by_id=dict(self._sessions),
+            artifacts_by_job=scoped_artifacts_by_job,
+            approvals=list(self._approval_requests.values()),
+            project_id=normalized_project_id,
+            max_items=16,
+        )
 
         signals: list[dict[str, Any]] = []
         for stage in passport.get("stages", []):
@@ -7557,6 +7738,8 @@ class WritingRuntime:
                 "category_counts": category_counts,
                 "runtime_job_count": len(jobs),
                 "artifact_payload_count": len(artifact_rows),
+                "research_action_count": len(research_action_refs),
+                "research_action_refs": research_action_refs[:16],
                 "workflow_passport_status": passport.get("gate_summary"),
                 "unresolved_is_pass": False,
             },
@@ -7573,8 +7756,10 @@ class WritingRuntime:
                     "runtime.academic_writing_lint",
                     "runtime.export_manifest",
                     "runtime.behavior_eval_pack",
+                    "runtime.research_action_lifecycle_refs",
                 ],
                 "workflow_passport_schema_version": passport.get("schema_version"),
+                "research_action_lifecycle_schema_version": _RESEARCH_ACTION_LIFECYCLE_SCHEMA_VERSION,
             },
         }
         gate_payload["enforcement"] = _workflow_readiness_claims(
@@ -8115,6 +8300,62 @@ class WritingRuntime:
             candidate.job_id: (job_artifacts if candidate.job_id == job.job_id else self.get_job_artifacts(candidate.job_id))
             for candidate in scoped_jobs
         }
+        resume_probe_params = {
+            "session_id": job.session_id,
+            "job_id": job.job_id,
+            "project_id": project_id,
+        }
+        research_action_refs = _lightweight_research_action_refs_for_jobs(
+            jobs=scoped_jobs,
+            sessions_by_id=dict(self._sessions),
+            artifacts_by_job=scoped_artifacts_by_job,
+            approvals=list(self._approval_requests.values()),
+            project_id=project_id,
+            max_items=16,
+        )
+        current_action_refs = [
+            ref
+            for ref in research_action_refs
+            if isinstance(ref, dict) and ref.get("job_id") == job.job_id
+        ][:8]
+        action_lifecycle_recovery = {
+            "schema_version": "scholar_ai_handoff_action_lifecycle_recovery_v1",
+            "read_only": True,
+            "action_ref_count": len(current_action_refs),
+            "scoped_action_ref_count": len(research_action_refs),
+            "blocked_action_count": sum(
+                1
+                for ref in current_action_refs
+                if str(ref.get("status") or "") in {"blocked", "failed", "rejected"}
+            ),
+            "pending_confirmation_count": sum(
+                1
+                for ref in current_action_refs
+                if bool(ref.get("requires_user_confirmation"))
+            ),
+            "missing_preflight_count": sum(
+                1
+                for ref in current_action_refs
+                if ref.get("preflight_present") is False
+            ),
+            "action_refs": current_action_refs,
+            "resume_probes": [
+                _handoff_resume_probe("Read research action lifecycle", "/runtime/research-action-lifecycle", resume_probe_params),
+            ],
+            "forbidden_actions": [
+                "Do not execute approvals from the handoff action-lifecycle recovery bundle.",
+                "Do not import wiki candidates, upload externally, or mutate source materials from this read-only projection.",
+            ],
+            "provenance": {
+                "derived_from": [
+                    "runtime.jobs",
+                    "runtime.approval_requests",
+                    "runtime.preflight_refresh_receipts",
+                    "runtime.research_action_lifecycle_refs",
+                ],
+                "research_action_lifecycle_schema_version": _RESEARCH_ACTION_LIFECYCLE_SCHEMA_VERSION,
+            },
+        }
         replay_lineage = _agent_handoff_current_replay_lineage(
             job=job,
             artifacts=job_artifacts,
@@ -8140,11 +8381,6 @@ class WritingRuntime:
 
         artifacts = _bounded_handoff_artifacts(job_artifacts)
         resource_refs = _bounded_handoff_refs(metadata.get("resource_refs"), max_items=50)
-        resume_probe_params = {
-            "session_id": job.session_id,
-            "job_id": job.job_id,
-            "project_id": project_id,
-        }
         resume_probes = [
             _handoff_resume_probe(
                 "Read linked agent request",
@@ -8155,6 +8391,7 @@ class WritingRuntime:
             _handoff_resume_probe("Read runtime snapshot", f"/runtime/job/{job.job_id}/snapshot"),
             _handoff_resume_probe("Read workflow passport", "/runtime/workflow-passport", resume_probe_params),
             _handoff_resume_probe("Read evidence integrity gate", "/runtime/evidence-integrity-gate", resume_probe_params),
+            _handoff_resume_probe("Read research action lifecycle", "/runtime/research-action-lifecycle", resume_probe_params),
             _handoff_resume_probe("Read job artifacts", f"/runtime/job/{job.job_id}/artifacts"),
             _handoff_resume_probe("Read workflow replay lineage", f"/runtime/job/{job.job_id}/workflow-replay-lineage"),
             _handoff_resume_probe("List scoped workflow replay index", "/runtime/workflow-replay-index", {
@@ -8221,6 +8458,7 @@ class WritingRuntime:
             "unresolved": unresolved[:16],
             "readiness_claims": readiness_claims,
             "action_preflight": action_preflight,
+            "action_lifecycle_recovery": _redacted_projection_copy(action_lifecycle_recovery),
             "replay_recovery": replay_recovery,
             "resource_refs": resource_refs[:50],
             "artifacts": artifacts[:24],
@@ -8234,6 +8472,7 @@ class WritingRuntime:
                     "runtime.workflow_passport",
                     "runtime.evidence_integrity_gate",
                     "runtime.action_preflight",
+                    "runtime.research_action_lifecycle_refs",
                     "runtime.preflight_refresh_receipt",
                     "runtime.workflow_replay_lineage",
                     "runtime.workflow_replay_index",
@@ -8241,6 +8480,7 @@ class WritingRuntime:
                 "workflow_passport_schema_version": passport.get("schema_version"),
                 "evidence_integrity_gate_schema_version": gate.get("schema_version"),
                 "action_preflight_schema_version": action_preflight.get("schema_version"),
+                "research_action_lifecycle_schema_version": _RESEARCH_ACTION_LIFECYCLE_SCHEMA_VERSION,
                 "preflight_refresh_receipt_schema_version": refresh_receipt.get("schema_version"),
                 "workflow_replay_lineage_schema_version": replay_lineage.get("schema_version"),
                 "workflow_replay_index_schema_version": replay_index.get("schema_version"),

@@ -1607,6 +1607,91 @@ def test_runtime_research_action_lifecycle_route_projects_actions_effects_and_ga
     assert missing_response.status_code == 404
 
 
+def test_runtime_lifecycle_refs_crosslink_passport_gate_boundary_and_handoff(monkeypatch) -> None:
+    """Lifecycle refs should remain recoverable through read-only runtime projections."""
+
+    runtime = WritingRuntime(autosave=False)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-lifecycle-crosslinks"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="handoff lifecycle crosslinks",
+        metadata={
+            "agent_bridge": True,
+            "agent_request_id": "agentreq-lifecycle-crosslinks",
+            "project_id": "project-lifecycle-crosslinks",
+            "output_targets": {"wiki_candidate": True, "graph_candidate": True},
+        },
+    )
+    runtime.request_approval(
+        job_id=job.job_id,
+        session_id=session.session_id,
+        reason="Confirm generated candidates before any write.",
+        metadata={"project_id": "project-lifecycle-crosslinks"},
+    )
+    runtime.build_action_preflight(
+        action_id="agent.handoff_card",
+        required_claim_id="handoff_readiness",
+        session_id=session.session_id,
+        job_id=job.job_id,
+        project_id="project-lifecycle-crosslinks",
+        require_ready=False,
+        persist_refresh_receipt=True,
+    )
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    passport_response = client.get(
+        "/runtime/workflow-passport",
+        params={"project_id": "project-lifecycle-crosslinks", "limit": 20},
+    )
+    gate_response = client.get(
+        "/runtime/evidence-integrity-gate",
+        params={"project_id": "project-lifecycle-crosslinks", "limit": 20},
+    )
+    handoff_response = client.get(f"/runtime/job/{job.job_id}/agent-handoff-card")
+
+    assert passport_response.status_code == 200
+    assert gate_response.status_code == 200
+    assert handoff_response.status_code == 200
+    passport = passport_response.json()
+    gate = gate_response.json()
+    handoff = handoff_response.json()
+
+    agent_stage = next(stage for stage in passport["stages"] if stage["stage_id"] == "agent_handoff")
+    research_action_refs = agent_stage["reproducibility"]["research_action_refs"]
+    assert agent_stage["diagnostics"]["research_action_count"] >= 1
+    assert any(ref["action_type"] == "wiki_candidate" for ref in research_action_refs)
+    assert any(ref["probe_endpoint"] == "/runtime/research-action-lifecycle" for ref in research_action_refs)
+    assert all(ref["read_only"] is True for ref in research_action_refs)
+
+    assert gate["summary"]["research_action_count"] >= 1
+    assert any(ref["action_type"] == "agent_handoff" for ref in gate["summary"]["research_action_refs"])
+    assert "runtime.research_action_lifecycle_refs" in gate["provenance"]["derived_from"]
+    assert gate["provenance"]["research_action_lifecycle_schema_version"] == (
+        "scholar_ai_research_action_lifecycle_v1"
+    )
+
+    boundary = gate["blocking_action_boundary"]
+    assert any(
+        probe["endpoint"] == "/runtime/research-action-lifecycle" and probe["read_only"] is True
+        for probe in boundary["local_read_only_probes"]
+    )
+
+    recovery = handoff["action_lifecycle_recovery"]
+    assert recovery["schema_version"] == "scholar_ai_handoff_action_lifecycle_recovery_v1"
+    assert recovery["read_only"] is True
+    assert recovery["pending_confirmation_count"] >= 1
+    assert any(ref["action_type"] == "agent_handoff" for ref in recovery["action_refs"])
+    assert recovery["resume_probes"][0]["endpoint"] == "/runtime/research-action-lifecycle"
+    assert "runtime.research_action_lifecycle_refs" in handoff["provenance"]["derived_from"]
+
+
 def test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns(monkeypatch) -> None:
     """Agent handoff cards should carry blocking-boundary drilldowns through REST."""
 

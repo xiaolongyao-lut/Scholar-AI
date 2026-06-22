@@ -1118,6 +1118,8 @@ class AgentHandoffCardPayload(BaseModel):
         readiness_claims: Gate-derived handoff/export readiness state.
         action_preflight: Read-only command preflight and refresh receipt used
             to decide whether the handoff can be trusted.
+        action_lifecycle_recovery: Read-only research-action lifecycle refs a
+            resumed agent should inspect before mutating local state.
         replay_recovery: Compact replay-index and lineage context a resumed
             agent should inspect before mutating local state.
         resource_refs: Bounded resource refs supplied to the delegated agent.
@@ -1145,6 +1147,7 @@ class AgentHandoffCardPayload(BaseModel):
     unresolved: List[str] = Field(default_factory=list, max_length=16)
     readiness_claims: Dict[str, Any] = Field(default_factory=dict)
     action_preflight: Dict[str, Any] = Field(default_factory=dict)
+    action_lifecycle_recovery: Dict[str, Any] = Field(default_factory=dict)
     replay_recovery: Dict[str, Any] = Field(default_factory=dict)
     resource_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=50)
     artifacts: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)

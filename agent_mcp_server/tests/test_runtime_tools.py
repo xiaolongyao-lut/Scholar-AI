@@ -1181,6 +1181,26 @@ def test_agent_handoff_card_reads_runtime_card_by_request_id(
                 "resume_probes": [{"endpoint": "/runtime/workflow-replay-index", "read_only": True}],
                 "read_only": True,
             },
+            "action_lifecycle_recovery": {
+                "schema_version": "scholar_ai_handoff_action_lifecycle_recovery_v1",
+                "read_only": True,
+                "action_ref_count": 1,
+                "pending_confirmation_count": 1,
+                "action_refs": [
+                    {
+                        "ref_type": "research_action_lifecycle",
+                        "action_type": "agent_handoff",
+                        "action_id": "agent.handoff_card",
+                        "status": "pending_approval",
+                        "job_id": "job_agent_1",
+                        "probe_endpoint": "/runtime/research-action-lifecycle",
+                        "read_only": True,
+                    }
+                ],
+                "resume_probes": [
+                    {"endpoint": "/runtime/research-action-lifecycle", "read_only": True}
+                ],
+            },
             "resume_probes": [{"endpoint": "/runtime/job/job_agent_1/snapshot"}],
         },
     )
@@ -1199,6 +1219,11 @@ def test_agent_handoff_card_reads_runtime_card_by_request_id(
     assert drilldown["raw_path_exposed"] is False
     assert result["data"]["replay_recovery"]["read_only"] is True
     assert result["data"]["replay_recovery"]["highest_priority_attempt"]["job_id"] == "job_agent_1"
+    assert result["data"]["action_lifecycle_recovery"]["read_only"] is True
+    assert result["data"]["action_lifecycle_recovery"]["pending_confirmation_count"] == 1
+    action_ref = result["data"]["action_lifecycle_recovery"]["action_refs"][0]
+    assert action_ref["action_type"] == "agent_handoff"
+    assert action_ref["probe_endpoint"] == "/runtime/research-action-lifecycle"
     assert backend.calls[-2] == ("json", "/api/agent-bridge/request/agentreq_1", None)
     assert backend.calls[-1] == ("json", "/runtime/job/job_agent_1/agent-handoff-card", None)
 
