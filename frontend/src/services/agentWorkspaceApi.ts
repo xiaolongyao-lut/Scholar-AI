@@ -79,6 +79,8 @@ export interface WorkflowPassportStage {
   object_ids: string[];
   event_types: string[];
   gate: WorkflowPassportGate;
+  diagnostics: Record<string, unknown>;
+  reproducibility: Record<string, unknown>;
   next_actions: string[];
   updated_at: string | null;
 }

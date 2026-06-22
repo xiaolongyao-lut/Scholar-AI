@@ -468,6 +468,8 @@ class WorkflowPassportStagePayload(BaseModel):
         object_ids: Research object ids that provide this stage evidence.
         event_types: Domain events observed for this stage.
         gate: Integrity/reproducibility gate projection for this stage.
+        diagnostics: Bounded quality counters and unresolved local facts.
+        reproducibility: Parameter/cache/replay facts needed to re-run or audit.
         next_actions: Bounded local actions that can move the stage forward.
         updated_at: Latest timestamp observed for this stage.
     """
@@ -489,6 +491,8 @@ class WorkflowPassportStagePayload(BaseModel):
     object_ids: List[str] = Field(default_factory=list, max_length=48)
     event_types: List[str] = Field(default_factory=list, max_length=48)
     gate: WorkflowPassportGatePayload
+    diagnostics: Dict[str, Any] = Field(default_factory=dict)
+    reproducibility: Dict[str, Any] = Field(default_factory=dict)
     next_actions: List[str] = Field(default_factory=list, max_length=12)
     updated_at: Optional[str] = None
 

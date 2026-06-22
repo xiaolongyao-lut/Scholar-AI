@@ -16549,10 +16549,16 @@ export interface components {
          *         object_ids: Research object ids that provide this stage evidence.
          *         event_types: Domain events observed for this stage.
          *         gate: Integrity/reproducibility gate projection for this stage.
+         *         diagnostics: Bounded quality counters and unresolved local facts.
+         *         reproducibility: Parameter/cache/replay facts needed to re-run or audit.
          *         next_actions: Bounded local actions that can move the stage forward.
          *         updated_at: Latest timestamp observed for this stage.
          */
         WorkflowPassportStagePayload: {
+            /** Diagnostics */
+            diagnostics?: {
+                [key: string]: unknown;
+            };
             /** Event Types */
             event_types?: string[];
             gate: components["schemas"]["WorkflowPassportGatePayload"];
@@ -16566,6 +16572,10 @@ export interface components {
             present_artifacts?: {
                 [key: string]: unknown;
             }[];
+            /** Reproducibility */
+            reproducibility?: {
+                [key: string]: unknown;
+            };
             /** Required Artifacts */
             required_artifacts?: string[];
             /**

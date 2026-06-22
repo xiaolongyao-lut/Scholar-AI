@@ -899,15 +899,30 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
             "schema_version": "material_processing_task_v1",
             "project_id": "project-passport",
             "material_id": "material-passport",
-            "input_ref": {"ref_type": "uploaded_source_file", "material_id": "material-passport"},
+            "input_ref": {
+                "ref_type": "uploaded_source_file",
+                "material_id": "material-passport",
+                "content_digest": "sha256:passport-material",
+            },
             "processing_mode": "fast_text",
+            "cache": {"policy": "use", "decision": "hit"},
             "output_targets": ["chunks", "locators"],
         },
         status="completed",
         result={"chunks": 2},
         artifacts=[
-            {"artifact_type": "chunk_index", "output_target": "chunks", "count": 2},
-            {"artifact_type": "locator_index", "output_target": "locators", "count": 2},
+            {
+                "artifact_type": "chunk_index",
+                "output_target": "chunks",
+                "count": 2,
+                "path": "C:\\Users\\xiao\\private\\chunks.jsonl",
+            },
+            {
+                "artifact_type": "locator_index",
+                "output_target": "locators",
+                "count": 2,
+                "path": "workspace_artifacts/private/locators.jsonl",
+            },
         ],
         provenance={"source": "pytest"},
     )
@@ -924,7 +939,24 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
     runtime.add_job_artifact(
         evidence_job.job_id,
         artifact_type=ArtifactType.METADATA,
-        content={"kind": "evidence_pack", "locator_coverage": {"risk_level": "none"}},
+        content={
+            "kind": "evidence_pack",
+            "locator_coverage": {
+                "coverage_state": "strong",
+                "risk_level": "none",
+                "project_ref_count": 2,
+                "page_locator_count": 2,
+                "bbox_locator_count": 2,
+                "bbox_unit_counts": {"pdf_point": 2},
+                "source_label_coverage_ratio": 1.0,
+                "figure_table_locator_count": 1,
+            },
+            "qrels_status": {
+                "status": "available",
+                "quality_claim": "semantic_qrels_ready",
+                "semantic_quality_claim_allowed": True,
+            },
+        },
         created_by="pytest",
         metadata={"evidence_pack_id": "pack-passport", "project_id": "project-passport"},
     )
@@ -945,6 +977,15 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
         lint_report={"passed": True},
         export_manifest={"format": "docx", "filename": "passport.docx"},
         change_log=[{"stage": "export", "summary": "ready"}],
+    )
+    preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=draft_job.job_id,
+        project_id="project-passport",
+        require_ready=False,
+        persist_refresh_receipt=True,
     )
     agent_job = runtime.create_job(
         session_id=session.session_id,
@@ -987,16 +1028,42 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
         "chunks",
         "locators",
     }
+    ingest_diagnostics = stage_by_id["material_ingest"]["diagnostics"]
+    ingest_reproducibility = stage_by_id["material_ingest"]["reproducibility"]
+    assert ingest_diagnostics["task_count"] == 1
+    assert ingest_diagnostics["cache_decisions"] == {"hit": 1}
+    assert ingest_reproducibility["read_only"] is True
+    assert ingest_reproducibility["parameter_digest_count"] == 1
+    assert ingest_reproducibility["cache_key_count"] == 1
+    assert ingest_reproducibility["cache_refs"][0]["decision"] == "hit"
+    artifact_refs = stage_by_id["material_read"]["reproducibility"]["artifact_refs"]
+    assert {item["output_target"] for item in artifact_refs if "output_target" in item} >= {"chunks", "locators"}
+    assert all("path" not in item for item in artifact_refs)
+    assert any(item.get("path_present") is True and str(item.get("path_digest", "")).startswith("sha256:") for item in artifact_refs)
     assert stage_by_id["evidence_pack"]["status"] == "complete"
+    evidence_reproducibility = stage_by_id["evidence_pack"]["reproducibility"]
+    assert evidence_reproducibility["locator_refs"][0]["risk_level"] == "none"
+    assert evidence_reproducibility["locator_refs"][0]["bbox_unit_counts"] == {"pdf_point": 2}
+    assert evidence_reproducibility["qrels_refs"][0]["semantic_quality_claim_allowed"] is True
     assert stage_by_id["draft"]["gate"]["status"] == "pass"
     assert stage_by_id["citation_review"]["gate"]["status"] == "pass"
     assert stage_by_id["export"]["gate"]["status"] == "pass"
+    export_reproducibility = stage_by_id["export"]["reproducibility"]
+    assert export_reproducibility["preflight_receipts"][0]["ref_id"] == preflight["refresh_receipt_id"]
+    assert "workflow_passport" in export_reproducibility["projection_digest_keys"]
+    assert any(
+        probe["endpoint"] == f"/runtime/job/{draft_job.job_id}/workflow-replay-lineage"
+        for probe in export_reproducibility["replay_probe_refs"]
+    )
     assert stage_by_id["agent_handoff"]["gate"]["status"] == "block"
     assert stage_by_id["agent_handoff"]["gate"]["requires_user_confirmation"] is True
     assert approval.approval_id in str(stage_by_id["agent_handoff"])
     assert passport["gate_summary"]["requires_user_confirmation"] is True
     assert passport["gate_summary"]["blocking_stage_ids"] == ["agent_handoff"]
     assert "runtime.research_projection" in passport["provenance"]["derived_from"]
+    serialized = str(passport)
+    assert "C:\\Users\\xiao\\private" not in serialized
+    assert "workspace_artifacts/private" not in serialized
 
 
 @pytest.mark.persistence_smoke

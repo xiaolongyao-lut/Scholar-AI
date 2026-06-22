@@ -21821,8 +21821,13 @@
         "type": "object"
       },
       "WorkflowPassportStagePayload": {
-        "description": "Read-only stage ledger row for the research workflow passport.\n\nArgs:\n    stage_id: Scholar AI workflow stage id.\n    label: User-facing short label.\n    status: Stage progress derived from existing runtime state.\n    required_artifacts: Artifact families expected for a reproducible stage.\n    present_artifacts: Bounded runtime/material artifacts found locally.\n    object_ids: Research object ids that provide this stage evidence.\n    event_types: Domain events observed for this stage.\n    gate: Integrity/reproducibility gate projection for this stage.\n    next_actions: Bounded local actions that can move the stage forward.\n    updated_at: Latest timestamp observed for this stage.",
+        "description": "Read-only stage ledger row for the research workflow passport.\n\nArgs:\n    stage_id: Scholar AI workflow stage id.\n    label: User-facing short label.\n    status: Stage progress derived from existing runtime state.\n    required_artifacts: Artifact families expected for a reproducible stage.\n    present_artifacts: Bounded runtime/material artifacts found locally.\n    object_ids: Research object ids that provide this stage evidence.\n    event_types: Domain events observed for this stage.\n    gate: Integrity/reproducibility gate projection for this stage.\n    diagnostics: Bounded quality counters and unresolved local facts.\n    reproducibility: Parameter/cache/replay facts needed to re-run or audit.\n    next_actions: Bounded local actions that can move the stage forward.\n    updated_at: Latest timestamp observed for this stage.",
         "properties": {
+          "diagnostics": {
+            "additionalProperties": true,
+            "title": "Diagnostics",
+            "type": "object"
+          },
           "event_types": {
             "items": {
               "type": "string"
@@ -21864,6 +21869,11 @@
             "maxItems": 24,
             "title": "Present Artifacts",
             "type": "array"
+          },
+          "reproducibility": {
+            "additionalProperties": true,
+            "title": "Reproducibility",
+            "type": "object"
           },
           "required_artifacts": {
             "items": {

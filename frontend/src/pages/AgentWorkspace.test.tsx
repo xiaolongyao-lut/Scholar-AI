@@ -48,6 +48,10 @@ const mockedGetWorkflowReplayLineage = vi.mocked(getWorkflowReplayLineage);
 const mockedGetZoteroAttachmentHealth = vi.mocked(getZoteroAttachmentHealth);
 const mockedListRuntimeJobs = vi.mocked(listRuntimeJobs);
 const mockedGetWikiReview = vi.mocked(getWikiReview);
+const emptyWorkflowStageRuntimeFacts = {
+  diagnostics: {},
+  reproducibility: {},
+};
 
 describe('AgentWorkspace', () => {
   beforeEach(() => {
@@ -128,6 +132,7 @@ describe('AgentWorkspace', () => {
           present_artifacts: [],
           object_ids: [],
           event_types: [],
+          ...emptyWorkflowStageRuntimeFacts,
           next_actions: ['Create or complete a material-processing task for source materials.'],
           updated_at: null,
           gate: {
@@ -534,6 +539,7 @@ describe('AgentWorkspace', () => {
           present_artifacts: [{ kind: 'material_processing_task' }],
           object_ids: ['research_material:1'],
           event_types: ['material.ingest.completed'],
+          ...emptyWorkflowStageRuntimeFacts,
           next_actions: [],
           updated_at: '2026-06-21T03:00:00Z',
           gate: {
@@ -555,6 +561,7 @@ describe('AgentWorkspace', () => {
           present_artifacts: [{ kind: 'evidence_pack' }],
           object_ids: ['evidence_pack:1'],
           event_types: ['evidence.pack.created'],
+          ...emptyWorkflowStageRuntimeFacts,
           next_actions: ['Record qrels_status before making retrieval-quality claims.'],
           updated_at: '2026-06-21T03:01:00Z',
           gate: {
@@ -576,6 +583,7 @@ describe('AgentWorkspace', () => {
           present_artifacts: [],
           object_ids: [],
           event_types: ['approval.required'],
+          ...emptyWorkflowStageRuntimeFacts,
           next_actions: ['Resolve unsupported citation anchors before export.'],
           updated_at: '2026-06-21T03:02:00Z',
           gate: {

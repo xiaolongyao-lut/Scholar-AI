@@ -690,6 +690,19 @@ def _safe_projection_string(value: Any) -> str | None:
     return text or None
 
 
+def _projection_path_summary(value: Any) -> dict[str, Any]:
+    """Return an irreversible local-path summary for audit projections."""
+
+    text = _safe_projection_string(value)
+    if text is None:
+        return {}
+    return {
+        "path_present": True,
+        "path_kind": "absolute" if Path(text).is_absolute() else "relative",
+        "path_digest": f"sha256:{hashlib.sha256(text.encode('utf-8')).hexdigest()}",
+    }
+
+
 def _metadata_string(metadata: dict[str, Any], keys: tuple[str, ...]) -> str | None:
     """Return the first non-empty string value from runtime metadata."""
 
@@ -857,9 +870,10 @@ def _material_processing_artifact_refs(task: dict[str, Any]) -> list[dict[str, A
             "artifact_type": artifact.get("artifact_type"),
             "output_target": artifact.get("output_target"),
         }
-        for key in ("count", "path", "digest"):
+        for key in ("count", "digest"):
             if artifact.get(key) is not None:
                 ref[key] = artifact.get(key)
+        ref.update(_projection_path_summary(artifact.get("path")))
         refs.append(
             {
                 key: _projection_value(value)
@@ -934,6 +948,296 @@ def _passport_gate_for_stage(stage: dict[str, Any], row: dict[str, Any]) -> dict
         "unresolved": unresolved,
         "requires_user_confirmation": requires_user_confirmation,
     }
+
+
+def _new_passport_diagnostics() -> dict[str, Any]:
+    """Return empty bounded counters for one workflow-passport stage."""
+
+    return {
+        "artifact_count": 0,
+        "task_count": 0,
+        "event_count": 0,
+        "locator_coverage_count": 0,
+        "qrels_status_count": 0,
+        "preflight_receipt_count": 0,
+        "warning_count": 0,
+        "status_counts": {},
+        "cache_decisions": {},
+        "locator_risk_counts": {},
+        "unresolved_count": 0,
+        "blocker_count": 0,
+    }
+
+
+def _new_passport_reproducibility() -> dict[str, Any]:
+    """Return empty replay/cache evidence for one workflow-passport stage."""
+
+    return {
+        "read_only": True,
+        "source_material_mutation": False,
+        "external_mutation": False,
+        "task_refs": [],
+        "artifact_refs": [],
+        "cache_refs": [],
+        "locator_refs": [],
+        "qrels_refs": [],
+        "preflight_receipts": [],
+        "projection_digest_keys": [],
+        "replay_probe_refs": [],
+        "parameter_digest_count": 0,
+        "cache_key_count": 0,
+    }
+
+
+def _increment_nested_count(container: dict[str, Any], bucket: str, key: Any) -> None:
+    """Increment a nested count in a stage diagnostics mapping."""
+
+    normalized = _safe_projection_string(key)
+    if normalized is None:
+        return
+    target = container.get(bucket)
+    if not isinstance(target, dict):
+        target = {}
+        container[bucket] = target
+    target[normalized] = int(target.get(normalized, 0)) + 1
+
+
+def _trim_passport_stage_projection(row: dict[str, Any]) -> None:
+    """Bound optional diagnostics and replay facts before response validation."""
+
+    diagnostics = row.get("diagnostics")
+    if isinstance(diagnostics, dict):
+        for key in ("status_counts", "cache_decisions", "locator_risk_counts"):
+            value = diagnostics.get(key)
+            if isinstance(value, dict):
+                diagnostics[key] = dict(sorted(value.items(), key=lambda item: str(item[0]))[:16])
+        for key in (
+            "artifact_count",
+            "task_count",
+            "event_count",
+            "locator_coverage_count",
+            "qrels_status_count",
+            "preflight_receipt_count",
+            "warning_count",
+            "unresolved_count",
+            "blocker_count",
+            "parameter_digest_count",
+            "cache_key_count",
+        ):
+            if key in diagnostics:
+                try:
+                    diagnostics[key] = max(0, int(diagnostics[key]))
+                except (TypeError, ValueError):
+                    diagnostics[key] = 0
+
+    reproducibility = row.get("reproducibility")
+    if isinstance(reproducibility, dict):
+        for key in (
+            "task_refs",
+            "artifact_refs",
+            "cache_refs",
+            "locator_refs",
+            "qrels_refs",
+            "preflight_receipts",
+            "replay_probe_refs",
+        ):
+            value = reproducibility.get(key)
+            if isinstance(value, list):
+                reproducibility[key] = value[:16]
+            else:
+                reproducibility[key] = []
+        digest_keys = reproducibility.get("projection_digest_keys")
+        if isinstance(digest_keys, list):
+            reproducibility["projection_digest_keys"] = sorted(dict.fromkeys(str(item) for item in digest_keys if str(item).strip()))[:16]
+        else:
+            reproducibility["projection_digest_keys"] = []
+        for key in ("parameter_digest_count", "cache_key_count"):
+            try:
+                reproducibility[key] = max(0, int(reproducibility.get(key) or 0))
+            except (TypeError, ValueError):
+                reproducibility[key] = 0
+
+
+def _record_passport_stage_event(row: dict[str, Any], event_type: str) -> None:
+    """Attach a runtime event type to a stage's diagnostics."""
+
+    diagnostics = row.get("diagnostics")
+    if not isinstance(diagnostics, dict):
+        return
+    diagnostics["event_count"] = int(diagnostics.get("event_count") or 0) + 1
+    _increment_nested_count(diagnostics, "status_counts", event_type)
+
+
+def _record_passport_workflow_state(row: dict[str, Any], job_id: str, workflow_state: dict[str, Any]) -> None:
+    """Attach writing-state readiness facts to one passport stage."""
+
+    diagnostics = row.get("diagnostics")
+    reproducibility = row.get("reproducibility")
+    if not isinstance(diagnostics, dict) or not isinstance(reproducibility, dict):
+        return
+    readiness = workflow_state.get("readiness") if isinstance(workflow_state.get("readiness"), dict) else {}
+    evidence_refs = workflow_state.get("evidence_refs")
+    citation_bank = workflow_state.get("citation_bank")
+    change_log = workflow_state.get("change_log")
+    diagnostics["artifact_count"] = int(diagnostics.get("artifact_count") or 0) + 1
+    _append_unique_mapping(
+        reproducibility["task_refs"],
+        {
+            "ref_type": "runtime_job",
+            "ref_id": job_id,
+            "artifact_type": _WRITING_WORKFLOW_STATE_KEY,
+            "phase": workflow_state.get("phase"),
+        },
+    )
+    for key, value in readiness.items():
+        if key.startswith("has_"):
+            _increment_nested_count(diagnostics, "status_counts", f"{key}:{bool(value)}")
+    if isinstance(evidence_refs, list):
+        diagnostics["evidence_ref_count"] = int(diagnostics.get("evidence_ref_count") or 0) + len(evidence_refs)
+    if isinstance(citation_bank, list):
+        diagnostics["citation_count"] = int(diagnostics.get("citation_count") or 0) + len(citation_bank)
+    if isinstance(change_log, list):
+        diagnostics["change_log_count"] = int(diagnostics.get("change_log_count") or 0) + len(change_log)
+
+
+def _record_passport_material_task(row: dict[str, Any], job_id: str, task: dict[str, Any]) -> None:
+    """Attach task/cache/artifact facts from a material-processing record."""
+
+    diagnostics = row.get("diagnostics")
+    reproducibility = row.get("reproducibility")
+    if not isinstance(diagnostics, dict) or not isinstance(reproducibility, dict):
+        return
+    request = task.get("request") if isinstance(task.get("request"), dict) else {}
+    cache = task.get("cache") if isinstance(task.get("cache"), dict) else {}
+    artifacts = task.get("artifacts") if isinstance(task.get("artifacts"), list) else []
+    warnings = task.get("warnings") if isinstance(task.get("warnings"), list) else []
+    status = _safe_projection_string(task.get("status")) or "unknown"
+    diagnostics["task_count"] = int(diagnostics.get("task_count") or 0) + 1
+    diagnostics["artifact_count"] = int(diagnostics.get("artifact_count") or 0) + len(artifacts)
+    diagnostics["warning_count"] = int(diagnostics.get("warning_count") or 0) + len(warnings)
+    _increment_nested_count(diagnostics, "status_counts", status)
+    _increment_nested_count(diagnostics, "cache_decisions", cache.get("decision"))
+    _append_unique_mapping(
+        reproducibility["task_refs"],
+        {
+            "ref_type": "runtime_job",
+            "ref_id": job_id,
+            "artifact_type": _MATERIAL_PROCESSING_TASK_KEY,
+            "status": status,
+            "processing_mode": request.get("processing_mode"),
+            "material_id": request.get("material_id"),
+        },
+    )
+    cache_ref = {
+        "ref_type": "material_processing_cache",
+        "ref_id": cache.get("cache_key") or job_id,
+        "policy": cache.get("policy"),
+        "decision": cache.get("decision"),
+        "content_digest": cache.get("content_digest"),
+        "parameter_digest": cache.get("parameter_digest"),
+    }
+    _append_unique_mapping(
+        reproducibility["cache_refs"],
+        {
+            key: _projection_value(value)
+            for key, value in cache_ref.items()
+            if not _is_blank_projection_value(value)
+        },
+    )
+    if _safe_projection_string(cache.get("parameter_digest")):
+        reproducibility["parameter_digest_count"] = int(reproducibility.get("parameter_digest_count") or 0) + 1
+    if _safe_projection_string(cache.get("cache_key")):
+        reproducibility["cache_key_count"] = int(reproducibility.get("cache_key_count") or 0) + 1
+    for artifact_ref in _material_processing_artifact_refs(task):
+        _append_unique_mapping(reproducibility["artifact_refs"], artifact_ref)
+
+
+def _record_passport_integrity_payload(row: dict[str, Any], source_id: str, payload: dict[str, Any]) -> None:
+    """Attach locator and qrels evidence discovered in runtime metadata."""
+
+    diagnostics = row.get("diagnostics")
+    reproducibility = row.get("reproducibility")
+    if not isinstance(diagnostics, dict) or not isinstance(reproducibility, dict):
+        return
+    for locator_source_id, locator_payload in _extract_locator_payloads(source_id, payload):
+        diagnostics["locator_coverage_count"] = int(diagnostics.get("locator_coverage_count") or 0) + 1
+        _increment_nested_count(diagnostics, "locator_risk_counts", locator_payload.get("risk_level"))
+        _append_unique_mapping(
+            reproducibility["locator_refs"],
+            {
+                "ref_type": "locator_coverage",
+                "ref_id": locator_source_id,
+                **_compact_projection_mapping(
+                    locator_payload,
+                    allowed_keys=(
+                        "coverage_state",
+                        "risk_level",
+                        "project_ref_count",
+                        "page_locator_count",
+                        "bbox_locator_count",
+                        "bbox_unit_counts",
+                        "source_label_coverage_ratio",
+                        "figure_table_locator_count",
+                    ),
+                ),
+            },
+        )
+    for qrels_source_id, qrels_payload in _extract_qrels_payloads(source_id, payload):
+        diagnostics["qrels_status_count"] = int(diagnostics.get("qrels_status_count") or 0) + 1
+        _append_unique_mapping(
+            reproducibility["qrels_refs"],
+            {
+                "ref_type": "qrels_status",
+                "ref_id": qrels_source_id,
+                **_compact_projection_mapping(
+                    qrels_payload,
+                    allowed_keys=("status", "quality_claim", "semantic_quality_claim_allowed"),
+                ),
+            },
+        )
+
+
+def _record_passport_preflight_receipts(
+    row: dict[str, Any],
+    job: "WritingJob",
+    artifacts_by_job: dict[str, list["WritingArtifact"]],
+) -> None:
+    """Attach replay receipt facts proving prior gate refreshes are recoverable."""
+
+    diagnostics = row.get("diagnostics")
+    reproducibility = row.get("reproducibility")
+    if not isinstance(diagnostics, dict) or not isinstance(reproducibility, dict):
+        return
+    receipts, receipt_counts = _collect_job_preflight_receipts(job, artifacts_by_job.get(job.job_id, []))
+    if not receipts:
+        return
+    diagnostics["preflight_receipt_count"] = int(diagnostics.get("preflight_receipt_count") or 0) + len(receipts)
+    latest = receipts[-1]
+    counts = _receipt_validation_counts(latest)
+    diagnostics["blocker_count"] = int(diagnostics.get("blocker_count") or 0) + counts["blocker_count"]
+    diagnostics["unresolved_count"] = int(diagnostics.get("unresolved_count") or 0) + counts["unresolved_count"]
+    projection_digests = latest.get("projection_digests")
+    if isinstance(projection_digests, dict):
+        for key in projection_digests:
+            _append_unique_text(reproducibility["projection_digest_keys"], key, max_items=16)
+    _append_unique_mapping(
+        reproducibility["preflight_receipts"],
+        {
+            "ref_type": "preflight_refresh_receipt",
+            "ref_id": latest.get("receipt_id"),
+            "status": latest.get("status"),
+            "generated_at": latest.get("generated_at"),
+            "action_id": latest.get("action_id"),
+            "blocker_count": counts["blocker_count"],
+            "unresolved_count": counts["unresolved_count"],
+            "metadata_receipt_count": receipt_counts.get("metadata_receipt_count"),
+            "artifact_receipt_count": receipt_counts.get("artifact_receipt_count"),
+        },
+    )
+    _append_unique_mapping(
+        reproducibility["replay_probe_refs"],
+        _handoff_resume_probe("Read workflow replay lineage", f"/runtime/job/{job.job_id}/workflow-replay-lineage"),
+    )
 
 
 def _integrity_signal(
@@ -2458,7 +2762,10 @@ def _extract_locator_payloads(source_id: str, payload: dict[str, Any]) -> list[t
     matches: list[tuple[str, dict[str, Any]]] = []
     for item in _collect_nested_dicts(payload):
         if "coverage_state" in item and "risk_level" in item and (
-            "page_coverage_ratio" in item or "bbox_coverage_ratio" in item
+            "page_coverage_ratio" in item
+            or "bbox_coverage_ratio" in item
+            or "page_locator_count" in item
+            or "bbox_locator_count" in item
         ):
             matches.append((source_id, item))
     return matches[:16]
@@ -5349,6 +5656,8 @@ class WritingRuntime:
                 "blockers": [],
                 "unresolved": [],
                 "requires_user_confirmation": False,
+                "diagnostics": _new_passport_diagnostics(),
+                "reproducibility": _new_passport_reproducibility(),
                 "next_actions": [str(stage["next_action"])],
                 "updated_at": None,
             }
@@ -5386,10 +5695,17 @@ class WritingRuntime:
                     not row.get("updated_at") or str(item["updated_at"]) > str(row["updated_at"])
                 ):
                     row["updated_at"] = item["updated_at"]
+                diagnostics = row.get("diagnostics")
+                if isinstance(diagnostics, dict):
+                    diagnostics["object_count"] = int(diagnostics.get("object_count") or 0) + 1
+                    _increment_nested_count(diagnostics, "status_counts", item.get("status"))
                 if boundary.get("requires_user_confirmation"):
                     row["requires_user_confirmation"] = True
                     _append_unique_text(row["blockers"], "Pending user confirmation is required.")
                 if object_type == "runtime_artifact" or effects.get("content_shape"):
+                    diagnostics = row.get("diagnostics")
+                    if isinstance(diagnostics, dict):
+                        diagnostics["artifact_count"] = int(diagnostics.get("artifact_count") or 0) + 1
                     _append_unique_mapping(
                         row["present_artifacts"],
                         {
@@ -5433,6 +5749,7 @@ class WritingRuntime:
                     str(ingest_row["status"]),
                     _passport_status_from_runtime_status(task.get("status")),
                 )
+                _record_passport_material_task(ingest_row, selected_job_id, task)
                 task_request = task.get("request") if isinstance(task.get("request"), dict) else {}
                 material_id = _safe_projection_string(task_request.get("material_id"))
                 if material_id is not None:
@@ -5466,6 +5783,7 @@ class WritingRuntime:
                         str(read_row["status"]),
                         "complete" if task.get("status") == "completed" else "in_progress",
                     )
+                    _record_passport_material_task(read_row, selected_job_id, task)
                     if material_id is not None:
                         _append_unique_text(read_row["object_ids"], _research_object_id("research_material", material_id))
                     for artifact_ref in _material_processing_artifact_refs(task):
@@ -5496,6 +5814,7 @@ class WritingRuntime:
                             "ref_id": job.job_id,
                         },
                     )
+                    _record_passport_workflow_state(row, job.job_id, workflow_state)
                     readiness = workflow_state.get("readiness")
                     if isinstance(readiness, dict):
                         missing = [
@@ -5516,6 +5835,7 @@ class WritingRuntime:
                 if not _stage_matches_event(stage, event_type):
                     continue
                 row = stage_rows[str(stage["stage_id"])]
+                _record_passport_stage_event(row, event_type)
                 _append_unique_text(row["event_types"], event_type)
                 _append_unique_text(row["object_ids"], event.get("object_id"))
                 if event.get("timestamp") and (
@@ -5532,6 +5852,22 @@ class WritingRuntime:
                     row["requires_user_confirmation"] = True
                     _append_unique_text(row["blockers"], "Pending user confirmation is required.")
 
+        selected_jobs = [
+            job
+            for job in self._jobs.values()
+            if job.job_id in selected_job_ids
+        ]
+        payload_rows = _iter_runtime_metadata_dicts(selected_jobs) + _iter_artifact_dicts(selected_jobs, self._artifacts)
+        for source_id, payload in payload_rows:
+            _record_passport_integrity_payload(stage_rows["material_read"], source_id, payload)
+            _record_passport_integrity_payload(stage_rows["evidence_pack"], source_id, payload)
+        for selected_job in selected_jobs:
+            kind_value = str(getattr(selected_job.kind, "value", selected_job.kind))
+            if kind_value == JobKind.ARTIFACT_EXPORT.value:
+                _record_passport_preflight_receipts(stage_rows["export"], selected_job, self._artifacts)
+            if kind_value == JobKind.AGENT_REQUEST.value or bool(selected_job.metadata.get("agent_bridge")):
+                _record_passport_preflight_receipts(stage_rows["agent_handoff"], selected_job, self._artifacts)
+
         stages: list[dict[str, Any]] = []
         gate_counts: dict[str, int] = {}
         severity_counts: dict[str, int] = {}
@@ -5543,6 +5879,7 @@ class WritingRuntime:
             row["gate"] = gate
             for private_key in ("blockers", "unresolved", "requires_user_confirmation"):
                 row.pop(private_key, None)
+            _trim_passport_stage_projection(row)
             stages.append(row)
             _increment_projection_count(gate_counts, gate["status"])
             _increment_projection_count(severity_counts, gate["severity"])

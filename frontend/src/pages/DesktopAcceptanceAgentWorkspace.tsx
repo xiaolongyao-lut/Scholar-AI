@@ -18,6 +18,11 @@ import type {
 import type { WikiReviewListModel } from '@/types/wiki';
 import type { WritingJob } from '@/types/runtime';
 
+const EMPTY_WORKFLOW_STAGE_RUNTIME_FACTS = {
+  diagnostics: {},
+  reproducibility: {},
+};
+
 const ACCEPTANCE_WORKSPACE_STATUS: AgentWorkspaceStatus = {
   artifact_root: 'workspace_artifacts/agent_mcp_workflows',
   artifact_count: 2,
@@ -213,6 +218,7 @@ const ACCEPTANCE_WORKFLOW_PASSPORT: WorkflowPassportProjection = {
       present_artifacts: [{ kind: 'material_processing_task' }],
       object_ids: ['research_material:acceptance'],
       event_types: ['material.ingest.completed'],
+      ...EMPTY_WORKFLOW_STAGE_RUNTIME_FACTS,
       next_actions: [],
       updated_at: '2026-06-21T04:00:00.000Z',
       gate: {
@@ -234,6 +240,7 @@ const ACCEPTANCE_WORKFLOW_PASSPORT: WorkflowPassportProjection = {
       present_artifacts: [{ kind: 'evidence_pack' }],
       object_ids: ['evidence_pack:acceptance'],
       event_types: ['evidence.pack.created'],
+      ...EMPTY_WORKFLOW_STAGE_RUNTIME_FACTS,
       next_actions: ['Record qrels_status before making retrieval-quality claims.'],
       updated_at: '2026-06-21T04:01:00.000Z',
       gate: {
@@ -255,6 +262,7 @@ const ACCEPTANCE_WORKFLOW_PASSPORT: WorkflowPassportProjection = {
       present_artifacts: [],
       object_ids: [],
       event_types: ['approval.required'],
+      ...EMPTY_WORKFLOW_STAGE_RUNTIME_FACTS,
       next_actions: ['Resolve unsupported citation anchors before export.'],
       updated_at: '2026-06-21T04:02:00.000Z',
       gate: {

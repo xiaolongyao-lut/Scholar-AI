@@ -446,7 +446,11 @@ async def test_workflow_passport_rebuilds_from_persisted_runtime_state(tmp_path:
                 "content_digest": "sha256:persisted-passport",
             },
             "processing_mode": "fast_text",
-            "cache": {"policy": "use", "content_digest": "sha256:persisted-passport"},
+            "cache": {
+                "policy": "use",
+                "content_digest": "sha256:persisted-passport",
+                "decision": "hit",
+            },
             "output_targets": ["chunks", "locators", "text_sidecar"],
         },
         status="completed",
@@ -476,6 +480,15 @@ async def test_workflow_passport_rebuilds_from_persisted_runtime_state(tmp_path:
         export_manifest={"format": "docx", "filename": "persisted.docx"},
         change_log=[{"stage": "export", "summary": "ready"}],
     )
+    preflight = runtime.build_action_preflight(
+        action_id="writing.export_project",
+        required_claim_id="export_readiness",
+        session_id=session.session_id,
+        job_id=writing_job.job_id,
+        project_id="project-persisted-passport",
+        require_ready=False,
+        persist_refresh_receipt=True,
+    )
 
     loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
     passport = loaded_runtime.build_workflow_passport(project_id="project-persisted-passport", limit=50)
@@ -488,6 +501,25 @@ async def test_workflow_passport_rebuilds_from_persisted_runtime_state(tmp_path:
     assert stage_by_id["draft"]["gate"]["status"] == "pass"
     assert stage_by_id["citation_review"]["gate"]["status"] == "pass"
     assert stage_by_id["export"]["gate"]["status"] == "pass"
+    ingest_repro = stage_by_id["material_ingest"]["reproducibility"]
+    assert ingest_repro["read_only"] is True
+    assert ingest_repro["parameter_digest_count"] == 1
+    assert ingest_repro["cache_key_count"] == 1
+    assert ingest_repro["cache_refs"][0]["decision"] == "hit"
+    assert ingest_repro["cache_refs"][0]["parameter_digest"].startswith("sha256:")
+    assert stage_by_id["material_read"]["diagnostics"]["artifact_count"] >= 2
+    assert {
+        item["output_target"]
+        for item in stage_by_id["material_read"]["reproducibility"]["artifact_refs"]
+        if "output_target" in item
+    } >= {"chunks", "locators"}
+    export_repro = stage_by_id["export"]["reproducibility"]
+    assert export_repro["preflight_receipts"][0]["ref_id"] == preflight["refresh_receipt_id"]
+    assert "workflow_passport" in export_repro["projection_digest_keys"]
+    assert any(
+        probe["endpoint"] == f"/runtime/job/{writing_job.job_id}/workflow-replay-lineage"
+        for probe in export_repro["replay_probe_refs"]
+    )
     assert passport["provenance"]["object_count"] >= 2
 
 
