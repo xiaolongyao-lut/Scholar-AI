@@ -1303,6 +1303,46 @@ describe('AgentWorkspace', () => {
           ),
         },
         {
+          signal_id: 'locator:runtime_payload:invalid-bbox',
+          category: 'locator',
+          status: 'warn',
+          severity: 'warn',
+          message: 'Evidence refs include invalid bbox locators and need repair before strong claims.',
+          evidence: [{ ref_type: 'locator_coverage', ref_id: 'runtime_payload:invalid-bbox' }],
+          next_actions: ['Repair invalid bbox locators before relying on layout-specific evidence claims.'],
+          metadata: {
+            coverage_state: 'page_located',
+            risk_level: 'warn',
+            total_refs: 1,
+            project_ref_count: 1,
+            bbox_locator_count: 0,
+            invalid_bbox_count: 1,
+            sample_invalid_bbox_ref_ids: ['chunk:invalid-bbox'],
+            bbox: [-25, 0, 10, 10],
+            source_path: 'C:\\Users\\Alice\\private\\paper.pdf',
+          },
+          drilldown: integrityDrilldownFixture(
+            'locator_coverage',
+            {
+              schema_version: 'scholar-ai-evidence-locator-coverage/v1',
+              coverage_state: 'page_located',
+              risk_level: 'warn',
+              total_refs: 1,
+              project_ref_count: 1,
+              page_locator_count: 1,
+              bbox_locator_count: 0,
+              invalid_bbox_count: 1,
+              sample_invalid_bbox_ref_ids: ['chunk:invalid-bbox'],
+              bbox: [-25, 0, 10, 10],
+              source_path: 'C:\\Users\\Alice\\private\\paper.pdf',
+            },
+            {
+              status: 'unresolved',
+              evidenceRefs: [{ ref_type: 'locator_coverage', ref_id: 'runtime_payload:invalid-bbox' }],
+            },
+          ),
+        },
+        {
           signal_id: 'behavior_eval:unsafe-handoff-claim',
           category: 'behavior_eval',
           status: 'block',
@@ -1341,9 +1381,9 @@ describe('AgentWorkspace', () => {
         },
       ],
       summary: {
-        signal_count: 4,
+        signal_count: 5,
         status_counts: { block: 3, unresolved: 1 },
-        severity_counts: { block: 3, note: 1 },
+        severity_counts: { block: 3, warn: 1, note: 1 },
         unresolved_is_pass: false,
         research_action_count: 2,
         research_action_refs: [
@@ -1994,6 +2034,20 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('workflow_passport_stage:citation_review')).toBeInTheDocument();
     expect(screen.getByText('workflow_replay_probe:workflow_passport_stage:replay:1')).toBeInTheDocument();
     expect(screen.getByText('Open the linked integrity signal before export.')).toBeInTheDocument();
+    const locatorQualityRegion = screen.getByRole('region', { name: 'Locator quality repair signals' });
+    expect(within(locatorQualityRegion).getByText('Locator Quality Repair')).toBeInTheDocument();
+    expect(within(locatorQualityRegion).getByText('locator risks 1')).toBeInTheDocument();
+    expect(within(locatorQualityRegion).getByText('invalid bbox 1')).toBeInTheDocument();
+    expect(within(locatorQualityRegion).getByText('bbox locators 0')).toBeInTheDocument();
+    expect(within(locatorQualityRegion).getByText('coverage page_located')).toBeInTheDocument();
+    expect(within(locatorQualityRegion).getByText('chunk:invalid-bbox')).toBeInTheDocument();
+    expect(within(locatorQualityRegion).getByText('Repair invalid bbox locators before relying on layout-specific evidence claims.')).toBeInTheDocument();
+    fireEvent.click(within(locatorQualityRegion).getByRole('button', { name: 'Inspect locator signal locator:runtime_payload:invalid-bbox' }));
+    expect(screen.getByText('locator:runtime_payload:invalid-bbox')).toBeInTheDocument();
+    expect(screen.getByText('locator_coverage')).toBeInTheDocument();
+    expect(screen.queryByText('[-25,0,10,10]')).not.toBeInTheDocument();
+    expect(screen.queryByText('[-25, 0, 10, 10]')).not.toBeInTheDocument();
+    expect(screen.queryByText('C:\\Users\\Alice\\private\\paper.pdf')).not.toBeInTheDocument();
     expect(screen.getByText('structural pass')).toBeInTheDocument();
     expect(screen.getByText('read-only true · record not written')).toBeInTheDocument();
     expect(screen.getAllByText('artifacts 1').length).toBeGreaterThan(0);

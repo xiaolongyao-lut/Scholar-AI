@@ -624,6 +624,19 @@ interface IntegrityDrilldownDetails {
   blocksClaims: boolean;
 }
 
+interface LocatorQualitySignalSummary {
+  signalId: string;
+  message: string;
+  status: string;
+  severity: string;
+  coverageState: string;
+  riskLevel: string;
+  invalidBBoxCount: number;
+  bboxLocatorCount: number;
+  sampleInvalidBBoxRefIds: string[];
+  nextAction: string;
+}
+
 function readRefSummaries(value: unknown, maxItems: number): IntegrityRefSummary[] {
   if (!Array.isArray(value)) {
     return [];
@@ -636,6 +649,14 @@ function readRefSummaries(value: unknown, maxItems: number): IntegrityRefSummary
       refId: sanitizeInspectorText(readTextField(record, 'ref_id') || readTextField(record, 'id') || fallback),
     };
   });
+}
+
+function isPrivateOrRawLocatorFactKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase();
+  if (normalized === 'bbox' || normalized === 'bounding_box' || normalized === 'coordinates' || normalized === 'rect') {
+    return true;
+  }
+  return normalized.endsWith('_path') || normalized.endsWith('_filepath') || normalized.includes('source_path');
 }
 
 function integritySignalStageId(signal: EvidenceIntegritySignal): string {
@@ -658,11 +679,75 @@ function integritySignalsForStage(
   return signals.filter((signal) => integritySignalStageId(signal) === stage.stage_id);
 }
 
+function buildLocatorQualitySignalSummary(signal: EvidenceIntegritySignal): LocatorQualitySignalSummary | null {
+  const metadata = isRecord(signal.metadata) ? signal.metadata : {};
+  const drilldown = isRecord(signal.drilldown) ? signal.drilldown : {};
+  const checkedFacts = readRecordField(drilldown, 'checked_facts');
+  const invalidBBoxCount = Math.max(
+    0,
+    readNumberField(metadata, 'invalid_bbox_count'),
+    readNumberField(checkedFacts, 'invalid_bbox_count'),
+  );
+  const signalId = signal.signal_id.toLowerCase();
+  const category = signal.category.toLowerCase();
+  const hasLocatorQualityContext = (
+    invalidBBoxCount > 0
+    || category === 'locator'
+    || signalId.includes('invalid-bbox')
+    || signalId.includes('locator')
+  );
+  if (!hasLocatorQualityContext) {
+    return null;
+  }
+  const bboxLocatorCount = Math.max(
+    0,
+    readNumberField(metadata, 'bbox_locator_count'),
+    readNumberField(checkedFacts, 'bbox_locator_count'),
+  );
+  const sampleInvalidBBoxRefIds = [
+    ...readTextArray(metadata.sample_invalid_bbox_ref_ids, 4),
+    ...readTextArray(checkedFacts.sample_invalid_bbox_ref_ids, 4),
+  ].filter((item, index, items) => items.indexOf(item) === index).slice(0, 4);
+  return {
+    signalId: sanitizeInspectorText(signal.signal_id),
+    message: sanitizeInspectorText(signal.message),
+    status: signal.status,
+    severity: signal.severity,
+    coverageState: sanitizeInspectorText(
+      readTextField(metadata, 'coverage_state')
+        || readTextField(checkedFacts, 'coverage_state')
+        || 'unknown',
+    ),
+    riskLevel: sanitizeInspectorText(
+      readTextField(metadata, 'risk_level')
+        || readTextField(checkedFacts, 'risk_level')
+        || signal.severity
+        || signal.status
+        || 'unknown',
+    ),
+    invalidBBoxCount,
+    bboxLocatorCount,
+    sampleInvalidBBoxRefIds,
+    nextAction: sanitizeInspectorText(signal.next_actions[0] ?? 'Repair locator quality before relying on layout-specific evidence claims.'),
+  };
+}
+
+function buildLocatorQualitySignalSummaries(
+  signals: EvidenceIntegritySignal[],
+  maxItems: number,
+): LocatorQualitySignalSummary[] {
+  return signals
+    .map(buildLocatorQualitySignalSummary)
+    .filter((summary): summary is LocatorQualitySignalSummary => summary !== null)
+    .slice(0, maxItems);
+}
+
 function buildIntegrityDrilldownDetails(signal: EvidenceIntegritySignal): IntegrityDrilldownDetails {
   const drilldown = isRecord(signal.drilldown) ? signal.drilldown : {};
   const sourceRef = readRecordField(drilldown, 'source_ref');
   const checkedFacts = readRecordField(drilldown, 'checked_facts');
   const factItems = Object.entries(checkedFacts)
+    .filter(([key]) => !isPrivateOrRawLocatorFactKey(key))
     .slice(0, 8)
     .map(([key, value]) => ({
       key: sanitizeInspectorText(key),
@@ -1984,6 +2069,7 @@ export function ResearchWorkflowSpine({
   const activeSignal = integritySignals.find((signal) => signal.signal_id === activeSignalId) ?? firstSignal;
   const activeSignalDetails = activeSignal ? buildIntegrityDrilldownDetails(activeSignal) : null;
   const visibleSignals = integritySignals.slice(0, isDesktopAcceptance ? 2 : 4);
+  const locatorQualitySignals = buildLocatorQualitySignalSummaries(integritySignals, isDesktopAcceptance ? 2 : 4);
   const behaviorEvalSignals = integritySignals.filter(isBehaviorEvalSignal);
   const behaviorEvalBlockingSignals = behaviorEvalSignals.filter((signal) => signal.status === 'block' || signal.severity === 'block');
   const behaviorEvalUnresolvedSignals = behaviorEvalSignals.filter((signal) => signal.status === 'unresolved');
@@ -2470,6 +2556,75 @@ export function ResearchWorkflowSpine({
               {actionPreflight && preflightUnresolved ? <StatusPill tone="warning">needs gate proof</StatusPill> : null}
             </div>
           </article>
+
+          {locatorQualitySignals.length > 0 ? (
+            <article
+              className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3"
+              role="region"
+              aria-label="Locator quality repair signals"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <h3 className="truncate font-label text-xs font-semibold text-foreground">Locator Quality Repair</h3>
+                <StatusPill tone={locatorQualitySignals.some((signal) => signal.invalidBBoxCount > 0) ? 'warning' : 'neutral'}>
+                  locator risks {locatorQualitySignals.length}
+                </StatusPill>
+              </div>
+              <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
+                Invalid locator geometry is surfaced as bounded repair metadata before layout-specific evidence claims are trusted.
+              </p>
+              <div className="mt-2 grid gap-2">
+                {locatorQualitySignals.map((signal) => (
+                  <div
+                    key={signal.signalId}
+                    className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-lowest px-2.5 py-2"
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="break-words font-label text-[11px] font-medium text-foreground">
+                          signal {signal.signalId}
+                        </p>
+                        <p className="mt-1 break-words text-[11px] leading-4 text-foreground/55">
+                          {signal.message}
+                        </p>
+                      </div>
+                      <StatusPill tone={gateTone(signal.status, signal.severity)}>
+                        {gateStatusLabel(signal.status)}
+                      </StatusPill>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <StatusPill tone={signal.invalidBBoxCount > 0 ? 'warning' : 'neutral'}>
+                        invalid bbox {signal.invalidBBoxCount}
+                      </StatusPill>
+                      <StatusPill tone="neutral">bbox locators {signal.bboxLocatorCount}</StatusPill>
+                      <StatusPill tone="neutral">coverage {signal.coverageState}</StatusPill>
+                      <StatusPill tone={signal.riskLevel === 'block' ? 'danger' : signal.riskLevel === 'warn' ? 'warning' : 'neutral'}>
+                        risk {signal.riskLevel}
+                      </StatusPill>
+                    </div>
+                    {signal.sampleInvalidBBoxRefIds.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {signal.sampleInvalidBBoxRefIds.map((refId) => (
+                          <StatusPill key={`${signal.signalId}:${refId}`} tone="info">{refId}</StatusPill>
+                        ))}
+                      </div>
+                    ) : null}
+                    <p className="mt-2 break-words text-[11px] leading-4 text-foreground/55">
+                      {signal.nextAction}
+                    </p>
+                    <button
+                      type="button"
+                      aria-label={`Inspect locator signal ${signal.signalId}`}
+                      onClick={() => setActiveSignalId(signal.signalId)}
+                      className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md border border-outline-variant/45 bg-surface-low px-2 py-1 font-label text-[11px] leading-4 text-foreground/70 transition-colors hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+                    >
+                      <Search size={13} className="shrink-0" aria-hidden="true" />
+                      <span className="truncate">Inspect signal</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ) : null}
 
           <article
             className="min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3"
