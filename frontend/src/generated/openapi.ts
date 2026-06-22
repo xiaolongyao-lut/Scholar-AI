@@ -10455,7 +10455,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "locator" | "retrieval_quality" | "citation_verification" | "citation_overlap" | "writing_lint" | "export_readiness" | "workflow_stage" | "approval_boundary";
+            category: "locator" | "retrieval_quality" | "citation_verification" | "citation_overlap" | "writing_lint" | "export_readiness" | "behavior_eval" | "workflow_stage" | "approval_boundary";
             /** Drilldown */
             drilldown?: {
                 [key: string]: unknown;

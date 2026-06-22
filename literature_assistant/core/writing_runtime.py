@@ -125,6 +125,7 @@ _READINESS_CLAIM_DEFINITIONS: tuple[dict[str, Any], ...] = (
             "citation_overlap",
             "writing_lint",
             "export_readiness",
+            "behavior_eval",
             "workflow_stage",
             "approval_boundary",
         ),
@@ -141,6 +142,7 @@ _READINESS_CLAIM_DEFINITIONS: tuple[dict[str, Any], ...] = (
             "citation_overlap",
             "writing_lint",
             "export_readiness",
+            "behavior_eval",
             "workflow_stage",
             "approval_boundary",
         ),
@@ -1643,6 +1645,7 @@ def _blocking_boundary_local_probes(*, action_id: str, scope: dict[str, Any]) ->
     probes = [
         _handoff_resume_probe("Read Workflow Passport", "/runtime/workflow-passport", probe_params),
         _handoff_resume_probe("Read Evidence Integrity Gate", "/runtime/evidence-integrity-gate", probe_params),
+        _handoff_resume_probe("Read Behavior Eval Pack", "/runtime/behavior-eval-pack", {"include_cases": "true"}),
         _handoff_resume_probe("List workflow replay index", "/runtime/workflow-replay-index", probe_params),
     ]
     job_id = _safe_projection_string(scope.get("job_id"))
@@ -1705,6 +1708,7 @@ def _signal_linked_stage_id(signal: dict[str, Any], drilldown: dict[str, Any]) -
         "citation_overlap": "citation_review",
         "writing_lint": "draft",
         "export_readiness": "export",
+        "behavior_eval": "agent_handoff",
         "approval_boundary": "agent_handoff",
     }.get(category or "")
 
@@ -1751,6 +1755,12 @@ def _boundary_recovery_probe_rows(
         _handoff_resume_probe("Read Workflow Passport", "/runtime/workflow-passport", probe_params),
         _handoff_resume_probe("Read Evidence Integrity Gate", "/runtime/evidence-integrity-gate", probe_params),
     ]
+    if _safe_projection_string(signal.get("category")) == "behavior_eval":
+        _append_unique_mapping(
+            probes,
+            _handoff_resume_probe("Read Behavior Eval Pack", "/runtime/behavior-eval-pack", {"include_cases": "true"}),
+            max_items=max_items,
+        )
     for ref in list(drilldown.get("evidence_refs") or []) + list(drilldown.get("replay_refs") or []):
         if not isinstance(ref, dict):
             continue
@@ -1993,6 +2003,7 @@ def _workflow_blocking_action_boundary(
                 "runtime.workflow_readiness_claims",
                 "runtime.action_preflight",
                 "runtime.integrity_signal_drilldowns",
+                "runtime.behavior_eval_pack",
             ],
             "evidence_integrity_gate_schema_version": gate.get("schema_version"),
             "workflow_enforcement_schema_version": _WORKFLOW_ENFORCEMENT_SCHEMA_VERSION,
@@ -3273,6 +3284,8 @@ def _iter_runtime_metadata_dicts(jobs: list[WritingJob]) -> list[tuple[str, dict
             "academic_writing_lint",
             "lint_report",
             "export_manifest",
+            "behavior_eval_pack",
+            "behavior_eval",
         ):
             value = metadata.get(key)
             if isinstance(value, dict):
@@ -3485,6 +3498,22 @@ def _extract_export_payloads(source_id: str, payload: dict[str, Any]) -> list[tu
         if ("format" in item and "filename" in item) or (
             "citation_chain" in item or "review_findings" in item or "evidence_rows" in item
         ):
+            matches.append((source_id, item))
+    return matches[:16]
+
+
+def _extract_behavior_eval_payloads(source_id: str, payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Return observation-mode behavior-eval payloads discovered in runtime data."""
+
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for item in _collect_nested_dicts(payload):
+        if item.get("schema_version") != "scholar_ai_behavior_eval_pack_v1":
+            continue
+        if item.get("mode") != "observations":
+            continue
+        summary = item.get("summary")
+        results = item.get("results")
+        if isinstance(summary, dict) and isinstance(results, list):
             matches.append((source_id, item))
     return matches[:16]
 
@@ -3891,6 +3920,115 @@ def _export_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[st
                 format=payload.get("format"),
                 filename=payload.get("filename"),
             ),
+        ),
+    )
+
+
+def _behavior_eval_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert observation-mode behavior evals into blocking gate signals."""
+
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    behavior_status = str(summary.get("behavior_status") or "unresolved")
+    if behavior_status == "block":
+        status = "block"
+        severity = "block"
+        message = "Behavior Eval Pack found blocking MCP/agent workflow red flags."
+    elif behavior_status == "warn":
+        status = "warn"
+        severity = "warn"
+        message = "Behavior Eval Pack found warning-level MCP/agent workflow red flags."
+    elif behavior_status == "pass":
+        status = "pass"
+        severity = "note"
+        message = "Behavior Eval Pack observation run passed without red flags."
+    else:
+        status = "unresolved"
+        severity = "warn"
+        message = "Behavior Eval Pack observation run is unresolved."
+
+    results = payload.get("results") if isinstance(payload.get("results"), list) else []
+    findings: list[dict[str, Any]] = []
+    for result in results[:32]:
+        if not isinstance(result, dict):
+            continue
+        for finding in result.get("findings") or []:
+            if not isinstance(finding, dict):
+                continue
+            _append_unique_mapping(
+                findings,
+                _compact_projection_mapping(
+                    finding,
+                    allowed_keys=(
+                        "finding_id",
+                        "case_id",
+                        "category",
+                        "severity",
+                        "message",
+                    ),
+                ),
+                max_items=12,
+            )
+
+    blockers = payload.get("blockers") if isinstance(payload.get("blockers"), list) else []
+    warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
+    next_actions = [
+        str(action)
+        for action in list(payload.get("next_actions") or [])[:8]
+        if _safe_projection_string(action) is not None
+    ]
+    checked_facts = {
+        "mode": payload.get("mode"),
+        "structural_status": summary.get("structural_status"),
+        "behavior_status": behavior_status,
+        "observation_count": summary.get("observation_count"),
+        "red_flag_count": summary.get("red_flag_count"),
+        "block_count": summary.get("block_count"),
+        "warn_count": summary.get("warn_count"),
+        "unresolved_count": summary.get("unresolved_count"),
+        "finding_count": len(findings),
+        "record_written": bool((payload.get("run_record") or {}).get("path"))
+        if isinstance(payload.get("run_record"), dict)
+        else False,
+    }
+    evidence_refs = _bounded_signal_evidence(
+        "behavior_eval_pack",
+        source_id,
+        mode=payload.get("mode"),
+        behavior_status=behavior_status,
+        red_flag_count=summary.get("red_flag_count"),
+    )
+    return _integrity_signal(
+        signal_id=f"behavior_eval:{_digest_json_payload({'source_id': source_id, 'summary': summary})}",
+        category="behavior_eval",
+        status=status,
+        severity=severity,
+        message=message,
+        evidence=evidence_refs,
+        next_actions=next_actions or ["Review behavior-eval findings before making export, handoff, or external-action claims."],
+        metadata=_compact_projection_mapping(
+            {
+                "mode": payload.get("mode"),
+                "behavior_status": behavior_status,
+                "structural_status": summary.get("structural_status"),
+                "red_flag_count": summary.get("red_flag_count"),
+                "blocker_count": len(blockers),
+                "warning_count": len(warnings),
+            }
+        ),
+        drilldown=_integrity_payload_drilldown(
+            source_id=source_id,
+            source_kind="behavior_eval_pack",
+            status=status,
+            checked_facts=checked_facts,
+            evidence_refs=evidence_refs,
+            replay_refs=[
+                {
+                    "ref_type": "behavior_eval_pack",
+                    "ref_id": source_id,
+                    "finding_count": len(findings),
+                    "sample_findings": findings[:6],
+                }
+            ],
         ),
     )
 
@@ -6826,6 +6964,8 @@ class WritingRuntime:
                 signals.append(_lint_integrity_signal(lint_source_id, lint_payload))
             for export_source_id, export_payload in _extract_export_payloads(source_id, payload):
                 signals.append(_export_integrity_signal(export_source_id, export_payload))
+            for behavior_source_id, behavior_payload in _extract_behavior_eval_payloads(source_id, payload):
+                signals.append(_behavior_eval_integrity_signal(behavior_source_id, behavior_payload))
 
         for job in jobs:
             workflow_state = job.metadata.get(_WRITING_WORKFLOW_STATE_KEY)
@@ -6998,6 +7138,7 @@ class WritingRuntime:
                     "runtime.citation_verifications",
                     "runtime.academic_writing_lint",
                     "runtime.export_manifest",
+                    "runtime.behavior_eval_pack",
                 ],
                 "workflow_passport_schema_version": passport.get("schema_version"),
             },

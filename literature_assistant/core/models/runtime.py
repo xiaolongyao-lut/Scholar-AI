@@ -631,6 +631,7 @@ class EvidenceIntegritySignalPayload(BaseModel):
         "citation_overlap",
         "writing_lint",
         "export_readiness",
+        "behavior_eval",
         "workflow_stage",
         "approval_boundary",
     ]
