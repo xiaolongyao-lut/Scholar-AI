@@ -10903,6 +10903,8 @@ export interface components {
          *         material_locator_count: Project refs with material_id and chunk_id.
          *         page_locator_count: Project refs with a one-based source page.
          *         bbox_locator_count: Project refs with a valid bbox tied to a page.
+         *         invalid_bbox_count: Project refs carrying malformed, out-of-range, or
+         *             unsupported bbox metadata that was not exposed as a locator.
          *         missing_locator_count: Project refs missing the material/chunk locator.
          *         page_coverage_ratio: Page-locator coverage over project refs.
          *         bbox_coverage_ratio: Bbox-locator coverage over project refs.
@@ -10914,6 +10916,7 @@ export interface components {
          *         risk_level: Local diagnostic severity; it records risk but does not
          *             mutate or block workflows by itself.
          *         sample_figure_table_ids: Bounded figure/table candidate ids for review.
+         *         sample_invalid_bbox_ref_ids: Bounded examples needing bbox repair.
          *         sample_missing_ref_ids: Bounded examples for repair without leaking text.
          *         notes: Bounded reviewer/agent hints.
          */
@@ -10943,6 +10946,11 @@ export interface components {
              * @default 0
              */
             figure_table_locator_count: number;
+            /**
+             * Invalid Bbox Count
+             * @default 0
+             */
+            invalid_bbox_count: number;
             /**
              * Material Locator Count
              * @default 0
@@ -10983,6 +10991,8 @@ export interface components {
             risk_level: "none" | "warn" | "block";
             /** Sample Figure Table Ids */
             sample_figure_table_ids?: string[];
+            /** Sample Invalid Bbox Ref Ids */
+            sample_invalid_bbox_ref_ids?: string[];
             /** Sample Missing Ref Ids */
             sample_missing_ref_ids?: string[];
             /**
