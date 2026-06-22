@@ -242,6 +242,7 @@ htmlcov/
 !/tests/test_key_pool_priority.py
 !/tests/test_env_example_contract.py
 !/tests/test_agent_workspace_router.py
+!/tests/test_agent_workspace_mcp_contract.py
 !/tests/test_export_docx_contract.py
 /workspace_tests/benchmarks/results/
 /workspace_tests/diagnostics/
