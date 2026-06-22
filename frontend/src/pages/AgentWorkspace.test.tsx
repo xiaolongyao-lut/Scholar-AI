@@ -819,6 +819,12 @@ describe('AgentWorkspace', () => {
           method: 'GET',
           read_only: true,
         },
+        {
+          label: 'Read research action lifecycle',
+          endpoint: '/runtime/research-action-lifecycle',
+          method: 'GET',
+          read_only: true,
+        },
       ],
       next_safe_local_actions: ['Resolve blocker: Unsupported citation anchors block export readiness.'],
       forbidden_actions: [
@@ -981,6 +987,24 @@ describe('AgentWorkspace', () => {
           diagnostics: {},
           reproducibility: {
             cache_decision_record_count: 1,
+            research_action_refs: [
+              {
+                ref_type: 'research_action_lifecycle',
+                ref_id: 'wiki_candidate:job_agent_handoff_1',
+                action_id: 'agent.wiki_candidate',
+                action_type: 'wiki_candidate',
+                status: 'pending_approval',
+                stage_id: 'agent_handoff',
+                job_id: 'job_agent_handoff_1',
+                session_id: 'session_agent_handoff_1',
+                project_id: 'project-1',
+                requires_user_confirmation: true,
+                preflight_present: true,
+                latest_receipt_id: 'preflight_refresh:test123',
+                probe_endpoint: '/runtime/research-action-lifecycle',
+                read_only: true,
+              },
+            ],
             cache_decision_refs: [
               {
                 ref_type: 'material_processing_cache_decision',
@@ -1173,6 +1197,25 @@ describe('AgentWorkspace', () => {
         status_counts: { block: 3, unresolved: 1 },
         severity_counts: { block: 3, note: 1 },
         unresolved_is_pass: false,
+        research_action_count: 2,
+        research_action_refs: [
+          {
+            ref_type: 'research_action_lifecycle',
+            ref_id: 'agent_handoff:job_agent_handoff_1',
+            action_id: 'agent.handoff_card',
+            action_type: 'agent_handoff',
+            status: 'blocked',
+            stage_id: 'agent_handoff',
+            job_id: 'job_agent_handoff_1',
+            session_id: 'session_agent_handoff_1',
+            project_id: 'project-1',
+            requires_user_confirmation: false,
+            preflight_present: true,
+            latest_receipt_id: 'preflight_refresh:test123',
+            probe_endpoint: '/runtime/research-action-lifecycle',
+            read_only: true,
+          },
+        ],
       },
       blockers: [
         'Unsupported citation anchors block export readiness.',
@@ -1220,7 +1263,10 @@ describe('AgentWorkspace', () => {
         provenance: { derived_from: ['runtime.evidence_integrity_gate'] },
       },
       blocking_action_boundary: blockingBoundary,
-      provenance: { derived_from: ['runtime.workflow_passport'] },
+      provenance: {
+        derived_from: ['runtime.workflow_passport', 'runtime.research_action_lifecycle_refs'],
+        research_action_lifecycle_schema_version: 'scholar_ai_research_action_lifecycle_v1',
+      },
     });
     mockedGetResearchActionLifecycle.mockResolvedValue({
       schema_version: 'scholar_ai_research_action_lifecycle_v1',
@@ -1470,6 +1516,48 @@ describe('AgentWorkspace', () => {
         source_material_mutation: false,
         external_mutation: false,
       },
+      action_lifecycle_recovery: {
+        schema_version: 'scholar_ai_handoff_action_lifecycle_recovery_v1',
+        read_only: true,
+        action_ref_count: 1,
+        scoped_action_ref_count: 2,
+        blocked_action_count: 1,
+        pending_confirmation_count: 1,
+        missing_preflight_count: 0,
+        action_refs: [
+          {
+            ref_type: 'research_action_lifecycle',
+            ref_id: 'agent_handoff:job_agent_handoff_1',
+            action_id: 'agent.handoff_card',
+            action_type: 'agent_handoff',
+            status: 'blocked',
+            stage_id: 'agent_handoff',
+            job_id: 'job_agent_handoff_1',
+            session_id: 'session_agent_handoff_1',
+            project_id: 'project-1',
+            requires_user_confirmation: true,
+            preflight_present: true,
+            latest_receipt_id: 'preflight_refresh:test123',
+            probe_endpoint: '/runtime/research-action-lifecycle',
+            read_only: true,
+          },
+        ],
+        resume_probes: [
+          {
+            label: 'Read research action lifecycle',
+            endpoint: '/runtime/research-action-lifecycle',
+            read_only: true,
+          },
+        ],
+        forbidden_actions: [
+          'Do not execute approvals from the handoff action-lifecycle recovery bundle.',
+          'Do not import wiki candidates, upload externally, or mutate C:\\Users\\Alice\\private\\paper.pdf from this read-only projection.',
+        ],
+        provenance: {
+          derived_from: ['runtime.research_action_lifecycle_refs'],
+          research_action_lifecycle_schema_version: 'scholar_ai_research_action_lifecycle_v1',
+        },
+      },
       resource_refs: [
         { ref_id: 'material:1', kind: 'material' },
         { ref_id: 'C:\\Users\\Alice\\private\\paper.pdf', kind: 'source_path' },
@@ -1627,7 +1715,7 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('Replay Lineage')).toBeInTheDocument();
     expect(screen.getByText('Replay Index')).toBeInTheDocument();
     expect(screen.getByText('Behavior Eval Pack')).toBeInTheDocument();
-    expect(screen.getByText('Agent Handoff')).toBeInTheDocument();
+    expect(screen.getAllByText('Agent Handoff').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Evidence pack').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Export readiness').length).toBeGreaterThan(0);
     expect(screen.getByText('Agent handoff readiness')).toBeInTheDocument();
@@ -1642,6 +1730,29 @@ describe('AgentWorkspace', () => {
     expect(screen.getAllByText('require ready true').length).toBeGreaterThan(0);
     expect(screen.getAllByText('writing.export_project').length).toBeGreaterThan(0);
     expect(screen.getAllByText('receipt preflight_refresh:test123').length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(mockedGetAgentHandoffCard).toHaveBeenCalledWith('job_agent_handoff_1');
+      expect(mockedGetWorkflowReplayLineage).toHaveBeenCalledWith('job_agent_handoff_1', { limit: 12 });
+    });
+    const crosslinkRegion = screen.getByRole('region', { name: 'Research action crosslinks' });
+    expect(within(crosslinkRegion).getByText('Research Action Crosslinks')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('crosslinks 4')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('lifecycle read-only true')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('passport refs 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('gate refs 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('handoff refs 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('boundary probes 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getAllByText('runtime.research_action_lifecycle_refs').length).toBeGreaterThan(0);
+    expect(within(crosslinkRegion).getByText('wiki_candidate:job_agent_handoff_1 · wiki_candidate · pending_approval · agent_handoff · read-only true')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getAllByText('agent_handoff:job_agent_handoff_1 · agent_handoff · blocked · agent_handoff · read-only true').length).toBeGreaterThan(1);
+    expect(within(crosslinkRegion).getByText('Read research action lifecycle · read-only true')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('handoff action refs 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('scoped action refs 2')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('blocked actions 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('pending confirmations 1')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('missing preflight 0')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('Do not execute approvals from the handoff action-lifecycle recovery bundle.')).toBeInTheDocument();
+    expect(within(crosslinkRegion).getByText('Do not import wiki candidates, upload externally, or mutate [redacted-local-path] from this read-only projection.')).toBeInTheDocument();
     const lifecycleRegion = screen.getByRole('region', { name: 'Research action lifecycle' });
     expect(within(lifecycleRegion).getByText('Research Action Lifecycle')).toBeInTheDocument();
     expect(within(lifecycleRegion).getByText('2 actions · pending 2 · block 0 · unresolved 0 · completed 0')).toBeInTheDocument();
@@ -1761,10 +1872,6 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('Create a rollback checkpoint and re-check official or mature references before nontrivial edits.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/workflow-passport')).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/job/{job_id}/agent-handoff-card')).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(mockedGetAgentHandoffCard).toHaveBeenCalledWith('job_agent_handoff_1');
-      expect(mockedGetWorkflowReplayLineage).toHaveBeenCalledWith('job_agent_handoff_1', { limit: 12 });
-    });
     expect(mockedGetBehaviorEvalPack).toHaveBeenCalledWith({ includeCases: true });
     expect(mockedGetResearchActionLifecycle).toHaveBeenCalledWith({ limit: 50 });
     expect(await screen.findByText('in_progress · refs 2 · probes 3 · replay 2')).toBeInTheDocument();

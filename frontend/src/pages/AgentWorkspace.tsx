@@ -907,6 +907,122 @@ function lifecycleRefLabel(value: unknown, index: number): string {
   return id.startsWith(`${type}:`) ? id : `${type}:${id}`;
 }
 
+interface ResearchActionCrosslinkSummary {
+  passportRefs: string[];
+  gateRefs: string[];
+  handoffRefs: string[];
+  boundaryProbeLabels: string[];
+  provenanceRefs: string[];
+  handoffMetrics: string[];
+  handoffForbidden: string[];
+  readOnly: boolean;
+}
+
+function researchActionRefLabel(value: unknown, index: number): string {
+  const record = isRecord(value) ? value : {};
+  const actionType = sanitizeInspectorText(readTextField(record, 'action_type') || 'action');
+  const status = sanitizeInspectorText(readTextField(record, 'status') || 'unknown');
+  const stageId = sanitizeInspectorText(readTextField(record, 'stage_id') || 'stage unknown');
+  const refId = sanitizeInspectorText(
+    readTextField(record, 'ref_id')
+      || readTextField(record, 'action_id')
+      || readTextField(record, 'job_id')
+      || `research-action:${index + 1}`,
+  );
+  const readOnly = readOptionalBooleanField(record, 'read_only');
+  return `${refId} · ${actionType} · ${status} · ${stageId} · read-only ${readOnly === null ? 'unknown' : String(readOnly)}`;
+}
+
+function researchActionRefsFromStage(stage: WorkflowPassportStage): unknown[] {
+  const refs = stage.reproducibility.research_action_refs;
+  return Array.isArray(refs) ? refs : [];
+}
+
+function researchActionRefsFromGate(gate: EvidenceIntegrityGateProjection | null): unknown[] {
+  const refs = gate ? gate.summary.research_action_refs : null;
+  return Array.isArray(refs) ? refs : [];
+}
+
+function lifecycleProbeFromBoundary(probe: BlockingActionBoundaryProbe): boolean {
+  const label = [
+    probe.label,
+    probe.name,
+    probe.url,
+    readTextField(probe, 'endpoint'),
+  ].map((item) => String(item ?? '')).join(' ').toLowerCase();
+  return label.includes('research action lifecycle') || label.includes('/runtime/research-action-lifecycle');
+}
+
+function provenanceRefLabels(value: Record<string, unknown> | null | undefined): string[] {
+  if (!value || !Array.isArray(value.derived_from)) {
+    return [];
+  }
+  return value.derived_from
+    .filter((item): item is string => typeof item === 'string' && item.includes('research_action_lifecycle'))
+    .slice(0, 3)
+    .map(sanitizeInspectorText);
+}
+
+function buildResearchActionCrosslinkSummary({
+  stages,
+  integrityGate,
+  blockingBoundary,
+  handoffCard,
+}: {
+  stages: WorkflowPassportStage[];
+  integrityGate: EvidenceIntegrityGateProjection | null;
+  blockingBoundary: BlockingActionBoundaryProjection | null | undefined;
+  handoffCard: AgentHandoffCardProjection | null;
+}): ResearchActionCrosslinkSummary {
+  const passportRefs = stages
+    .flatMap(researchActionRefsFromStage)
+    .slice(0, 6)
+    .map(researchActionRefLabel);
+  const gateRefs = researchActionRefsFromGate(integrityGate)
+    .slice(0, 6)
+    .map(researchActionRefLabel);
+  const actionRecovery = handoffCard?.action_lifecycle_recovery;
+  const handoffRefs = (actionRecovery?.action_refs ?? [])
+    .slice(0, 6)
+    .map(researchActionRefLabel);
+  const boundaryProbeLabels = (blockingBoundary?.local_read_only_probes ?? [])
+    .filter(lifecycleProbeFromBoundary)
+    .slice(0, 3)
+    .map((probe, index) => lifecycleProbeLabel(probe, index));
+  const provenanceRefs = [
+    ...provenanceRefLabels(integrityGate?.provenance),
+    ...provenanceRefLabels(actionRecovery?.provenance),
+  ].slice(0, 4);
+  const handoffMetrics = actionRecovery
+    ? [
+      `handoff action refs ${actionRecovery.action_ref_count}`,
+      `scoped action refs ${actionRecovery.scoped_action_ref_count}`,
+      `blocked actions ${actionRecovery.blocked_action_count}`,
+      `pending confirmations ${actionRecovery.pending_confirmation_count}`,
+      `missing preflight ${actionRecovery.missing_preflight_count}`,
+    ]
+    : [];
+  const handoffForbidden = (actionRecovery?.forbidden_actions ?? [])
+    .slice(0, 3)
+    .map(sanitizeInspectorText);
+  return {
+    passportRefs,
+    gateRefs,
+    handoffRefs,
+    boundaryProbeLabels,
+    provenanceRefs,
+    handoffMetrics,
+    handoffForbidden,
+    readOnly: (
+      passportRefs.length > 0
+      || gateRefs.length > 0
+      || handoffRefs.length > 0
+      || boundaryProbeLabels.length > 0
+      || provenanceRefs.length > 0
+    ) && actionRecovery?.read_only !== false,
+  };
+}
+
 function handoffReplayRecoverySummary(card: AgentHandoffCardProjection | null): string {
   const recovery = card?.replay_recovery;
   if (!recovery) {
@@ -1862,6 +1978,18 @@ export function ResearchWorkflowSpine({
   const handoffRecoveryBundle = buildHandoffRecoveryBundle(handoffCard, stages);
   const cacheDecisionRefs = materialCacheDecisionRefs(stages);
   const visibleCacheDecisionRefs = cacheDecisionRefs.slice(0, isDesktopAcceptance ? 2 : 4);
+  const researchActionCrosslinks = buildResearchActionCrosslinkSummary({
+    stages,
+    integrityGate,
+    blockingBoundary,
+    handoffCard,
+  });
+  const crosslinkCount = (
+    researchActionCrosslinks.passportRefs.length
+    + researchActionCrosslinks.gateRefs.length
+    + researchActionCrosslinks.handoffRefs.length
+    + researchActionCrosslinks.boundaryProbeLabels.length
+  );
 
   return (
     <section
@@ -1924,6 +2052,71 @@ export function ResearchWorkflowSpine({
             <StatusPill tone="warning">confirmation required</StatusPill>
           ) : null}
         </div>
+      </div>
+
+      <div
+        className={cn(
+          'mb-2 min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2.5',
+          isDesktopAcceptance ? 'hidden' : '',
+        )}
+        role="region"
+        aria-label="Research action crosslinks"
+      >
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h3 className="truncate font-label text-xs font-semibold text-foreground">Research Action Crosslinks</h3>
+          <StatusPill tone={crosslinkCount > 0 ? 'info' : 'neutral'}>crosslinks {crosslinkCount}</StatusPill>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <StatusPill tone={researchActionCrosslinks.readOnly ? 'success' : 'neutral'}>
+            lifecycle read-only {researchActionCrosslinks.readOnly ? 'true' : 'unknown'}
+          </StatusPill>
+          <StatusPill tone="neutral">passport refs {researchActionCrosslinks.passportRefs.length}</StatusPill>
+          <StatusPill tone="neutral">gate refs {researchActionCrosslinks.gateRefs.length}</StatusPill>
+          <StatusPill tone="neutral">handoff refs {researchActionCrosslinks.handoffRefs.length}</StatusPill>
+          <StatusPill tone={researchActionCrosslinks.boundaryProbeLabels.length > 0 ? 'info' : 'neutral'}>
+            boundary probes {researchActionCrosslinks.boundaryProbeLabels.length}
+          </StatusPill>
+          {researchActionCrosslinks.provenanceRefs.map((ref, index) => (
+            <StatusPill key={`lifecycle-provenance:${index}:${ref}`} tone="info">{ref}</StatusPill>
+          ))}
+        </div>
+        {crosslinkCount > 0 ? (
+          <div className="mt-2 grid gap-2 lg:grid-cols-3">
+            <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-lowest px-2 py-2">
+              <h4 className="font-label text-[11px] font-semibold text-foreground/45">Passport</h4>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {researchActionCrosslinks.passportRefs.length === 0 ? (
+                  <StatusPill tone="neutral">refs pending</StatusPill>
+                ) : researchActionCrosslinks.passportRefs.map((ref, index) => (
+                  <StatusPill key={`passport-action-ref:${index}:${ref}`} tone="info">{ref}</StatusPill>
+                ))}
+              </div>
+            </div>
+            <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-lowest px-2 py-2">
+              <h4 className="font-label text-[11px] font-semibold text-foreground/45">Integrity Gate / Boundary</h4>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {[...researchActionCrosslinks.gateRefs, ...researchActionCrosslinks.boundaryProbeLabels].length === 0 ? (
+                  <StatusPill tone="neutral">refs pending</StatusPill>
+                ) : [...researchActionCrosslinks.gateRefs, ...researchActionCrosslinks.boundaryProbeLabels].map((ref, index) => (
+                  <StatusPill key={`gate-action-ref:${index}:${ref}`} tone="neutral">{ref}</StatusPill>
+                ))}
+              </div>
+            </div>
+            <div className="min-w-0 rounded-md border border-outline-variant/25 bg-surface-lowest px-2 py-2">
+              <h4 className="font-label text-[11px] font-semibold text-foreground/45">Agent Handoff</h4>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {[...researchActionCrosslinks.handoffMetrics, ...researchActionCrosslinks.handoffRefs].length === 0 ? (
+                  <StatusPill tone="neutral">refs pending</StatusPill>
+                ) : [...researchActionCrosslinks.handoffMetrics, ...researchActionCrosslinks.handoffRefs].map((ref, index) => (
+                  <StatusPill key={`handoff-action-ref:${index}:${ref}`} tone="info">{ref}</StatusPill>
+                ))}
+                {researchActionCrosslinks.handoffForbidden.map((item, index) => (
+                  <StatusPill key={`handoff-action-forbidden:${index}:${item}`} tone="warning">{item}</StatusPill>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className={cn(

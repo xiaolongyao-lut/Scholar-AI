@@ -517,6 +517,20 @@ export interface AgentHandoffReplayRecoveryProjection {
   external_mutation: boolean;
 }
 
+export interface AgentHandoffActionLifecycleRecoveryProjection {
+  schema_version: 'scholar_ai_handoff_action_lifecycle_recovery_v1';
+  read_only: boolean;
+  action_ref_count: number;
+  scoped_action_ref_count: number;
+  blocked_action_count: number;
+  pending_confirmation_count: number;
+  missing_preflight_count: number;
+  action_refs: Record<string, unknown>[];
+  resume_probes: Record<string, unknown>[];
+  forbidden_actions: string[];
+  provenance: Record<string, unknown>;
+}
+
 export interface WorkflowActionPreflightProjection {
   schema_version: 'scholar_ai_action_preflight_v1';
   generated_at: string;
@@ -570,6 +584,7 @@ export interface AgentHandoffCardProjection {
   unresolved: string[];
   readiness_claims?: WorkflowReadinessClaimsProjection;
   action_preflight?: WorkflowActionPreflightProjection;
+  action_lifecycle_recovery?: AgentHandoffActionLifecycleRecoveryProjection;
   replay_recovery?: AgentHandoffReplayRecoveryProjection;
   resource_refs: Record<string, unknown>[];
   artifacts: Record<string, unknown>[];
