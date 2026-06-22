@@ -1467,6 +1467,72 @@ def test_runtime_workflow_replay_index_route_discovers_receipts_without_job_id(m
     assert missing_response.status_code == 404
 
 
+def test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns(monkeypatch) -> None:
+    """Agent handoff cards should carry blocking-boundary drilldowns through REST."""
+
+    runtime = WritingRuntime(autosave=False)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-handoff-drilldown"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="handoff route drilldown",
+        metadata={
+            "agent_bridge": True,
+            "agent_request_id": "agentreq-handoff-drilldown",
+            "project_id": "project-handoff-drilldown",
+        },
+    )
+    approval = runtime.request_approval(
+        job_id=job.job_id,
+        session_id=session.session_id,
+        reason="Confirm handoff route drilldown.",
+        metadata={"project_id": "project-handoff-drilldown"},
+    )
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    response = client.get(f"/runtime/job/{job.job_id}/agent-handoff-card")
+
+    assert response.status_code == 200
+    card = response.json()
+    assert card["schema_version"] == "scholar_ai_agent_handoff_card_v1"
+    assert card["action_preflight"]["action_id"] == "agent.handoff_card"
+    boundary = card["action_preflight"]["blocking_action_boundary"]
+    assert boundary["schema_version"] == "scholar_ai_blocking_action_boundary_v1"
+    assert boundary["status"] == "blocked"
+    assert boundary["can_proceed"] is False
+    assert boundary["recovery_drilldowns"]
+    handoff_drilldown = next(
+        item
+        for item in boundary["recovery_drilldowns"]
+        if item["signal_id"] == "workflow_stage:agent_handoff"
+    )
+    assert handoff_drilldown["linked_stage_id"] == "agent_handoff"
+    assert handoff_drilldown["checked_facts"]["requires_user_confirmation"] is True
+    assert any(
+        ref.get("ref_type") == "workflow_passport_stage"
+        for ref in handoff_drilldown["recovery_refs"]
+    )
+    assert any(
+        ref.get("ref_type") == "research_object" and ref.get("ref_id") == f"approval_gate:{approval.approval_id}"
+        for ref in handoff_drilldown["evidence_refs"]
+    )
+    assert any(
+        probe.get("endpoint") == "/runtime/evidence-integrity-gate" and probe.get("read_only") is True
+        for probe in handoff_drilldown["local_read_only_probes"]
+    )
+    assert handoff_drilldown["raw_path_exposed"] is False
+    assert card["replay_recovery"]["read_only"] is True
+
+    missing_response = client.get("/runtime/job/job_missing/agent-handoff-card")
+    assert missing_response.status_code == 404
+
+
 @pytest.mark.persistence_smoke
 def test_runtime_router_rejects_invalid_session_mode(monkeypatch, tmp_path) -> None:
     """The runtime router should reject invalid session modes."""

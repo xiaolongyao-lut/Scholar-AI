@@ -1129,6 +1129,51 @@ def test_agent_handoff_card_reads_runtime_card_by_request_id(
             "schema_version": "scholar_ai_agent_handoff_card_v1",
             "request_id": "agentreq_1",
             "job_id": "job_agent_1",
+            "action_preflight": {
+                "schema_version": "scholar_ai_action_preflight_v1",
+                "action_id": "agent.handoff_card",
+                "required_claim_id": "handoff_readiness",
+                "blocking_action_boundary": {
+                    "schema_version": "scholar_ai_blocking_action_boundary_v1",
+                    "action_id": "agent.handoff_card",
+                    "required_claim_id": "handoff_readiness",
+                    "status": "blocked",
+                    "can_proceed": False,
+                    "recovery_drilldowns": [
+                        {
+                            "signal_id": "workflow_stage:agent_handoff",
+                            "category": "workflow_stage",
+                            "status": "block",
+                            "linked_stage_id": "agent_handoff",
+                            "source_ref": {"source_kind": "workflow_passport_stage"},
+                            "checked_facts": {"requires_user_confirmation": True},
+                            "evidence_refs": [
+                                {"ref_type": "approval_gate", "ref_id": "approval:agent"}
+                            ],
+                            "replay_refs": [
+                                {
+                                    "ref_type": "preflight_refresh_receipt",
+                                    "ref_id": "preflight_refresh:agent",
+                                }
+                            ],
+                            "recovery_refs": [
+                                {
+                                    "ref_type": "workflow_passport_stage",
+                                    "ref_id": "agent_handoff",
+                                }
+                            ],
+                            "local_read_only_probes": [
+                                {"endpoint": "/runtime/evidence-integrity-gate", "read_only": True}
+                            ],
+                            "next_safe_local_actions": ["Review handoff readiness before retry."],
+                            "requires_human_review": True,
+                            "blocks_claims": True,
+                            "read_only": True,
+                            "raw_path_exposed": False,
+                        }
+                    ],
+                },
+            },
             "replay_recovery": {
                 "schema_version": "scholar_ai_agent_handoff_replay_recovery_v1",
                 "index": {"index_is_read_only": True, "requires_exact_job_id": False},
@@ -1144,6 +1189,14 @@ def test_agent_handoff_card_reads_runtime_card_by_request_id(
 
     assert result["is_error"] is False
     assert result["data"]["job_id"] == "job_agent_1"
+    boundary = result["data"]["action_preflight"]["blocking_action_boundary"]
+    drilldown = boundary["recovery_drilldowns"][0]
+    assert boundary["schema_version"] == "scholar_ai_blocking_action_boundary_v1"
+    assert drilldown["signal_id"] == "workflow_stage:agent_handoff"
+    assert drilldown["linked_stage_id"] == "agent_handoff"
+    assert drilldown["recovery_refs"][0]["ref_type"] == "workflow_passport_stage"
+    assert drilldown["local_read_only_probes"][0]["read_only"] is True
+    assert drilldown["raw_path_exposed"] is False
     assert result["data"]["replay_recovery"]["read_only"] is True
     assert result["data"]["replay_recovery"]["highest_priority_attempt"]["job_id"] == "job_agent_1"
     assert backend.calls[-2] == ("json", "/api/agent-bridge/request/agentreq_1", None)
@@ -1332,6 +1385,46 @@ def test_evidence_integrity_gate_reads_runtime_projection(
             "status": "unresolved",
             "summary": {"unresolved_is_pass": False},
             "signals": [],
+            "blocking_action_boundary": {
+                "schema_version": "scholar_ai_blocking_action_boundary_v1",
+                "action_id": "writing.export_project",
+                "required_claim_id": "export_readiness",
+                "status": "blocked",
+                "can_proceed": False,
+                "recovery_drilldowns": [
+                    {
+                        "signal_id": "citation_verification:unsupported:1",
+                        "category": "citation_verification",
+                        "status": "block",
+                        "linked_stage_id": "citation_review",
+                        "source_ref": {"source_kind": "citation_verification"},
+                        "checked_facts": {"citation_id": "cite:unsupported"},
+                        "evidence_refs": [
+                            {"ref_type": "citation_verification", "ref_id": "cite:unsupported"}
+                        ],
+                        "replay_refs": [
+                            {
+                                "ref_type": "preflight_refresh_receipt",
+                                "ref_id": "preflight_refresh:export",
+                            }
+                        ],
+                        "recovery_refs": [
+                            {
+                                "ref_type": "evidence_integrity_signal",
+                                "ref_id": "citation_verification:unsupported:1",
+                            }
+                        ],
+                        "local_read_only_probes": [
+                            {"endpoint": "/runtime/evidence-integrity-gate", "read_only": True}
+                        ],
+                        "next_safe_local_actions": ["Verify citation support before export."],
+                        "requires_human_review": False,
+                        "blocks_claims": True,
+                        "read_only": True,
+                        "raw_path_exposed": False,
+                    }
+                ],
+            },
         },
     )
 
@@ -1344,6 +1437,14 @@ def test_evidence_integrity_gate_reads_runtime_projection(
 
     assert result["is_error"] is False
     assert result["data"]["status"] == "unresolved"
+    boundary = result["data"]["blocking_action_boundary"]
+    drilldown = boundary["recovery_drilldowns"][0]
+    assert boundary["schema_version"] == "scholar_ai_blocking_action_boundary_v1"
+    assert drilldown["signal_id"] == "citation_verification:unsupported:1"
+    assert drilldown["linked_stage_id"] == "citation_review"
+    assert drilldown["checked_facts"]["citation_id"] == "cite:unsupported"
+    assert drilldown["local_read_only_probes"][0]["read_only"] is True
+    assert drilldown["raw_path_exposed"] is False
     assert backend.calls[-1] == (
         "json",
         "/runtime/evidence-integrity-gate",
