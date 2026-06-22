@@ -9,6 +9,7 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "test:e2e": "npx playwright test",
+    "test:e2e:agent-workspace": "npx playwright test --config playwright.agent-workspace.config.ts",
     "test:all": "vitest run && npx playwright test",
     "generate:openapi:schema": "..\\.venv-1\\Scripts\\python.exe ..\\scripts\\export_openapi_schema.py --output openapi\\modular-pipeline-openapi.json",
     "generate:openapi:types": "openapi-typescript ./openapi/modular-pipeline-openapi.json -o ./src/generated/openapi.ts",
