@@ -1435,6 +1435,104 @@ async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path
     assert card_artifacts[-1].content["request_id"] == "agentreq_persisted"
 
 
+def test_research_action_lifecycle_crosslinks_survive_runtime_reload(tmp_path: Path) -> None:
+    """Lifecycle refs should remain recoverable from persisted runtime projections."""
+
+    db_path = tmp_path / "research_action_lifecycle_crosslinks.sqlite3"
+    runtime = WritingRuntime(database_path=db_path, autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-persisted-lifecycle"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="persist action lifecycle crosslinks",
+        metadata={
+            "agent_bridge": True,
+            "agent_request_id": "agentreq-persisted-lifecycle",
+            "project_id": "project-persisted-lifecycle",
+            "output_targets": {"wiki_candidate": True, "graph_candidate": True},
+        },
+    )
+    runtime.request_approval(
+        job_id=job.job_id,
+        session_id=session.session_id,
+        reason="Confirm candidates before any write.",
+        metadata={"project_id": "project-persisted-lifecycle"},
+    )
+    runtime.build_action_preflight(
+        action_id="agent.handoff_card",
+        required_claim_id="handoff_readiness",
+        session_id=session.session_id,
+        job_id=job.job_id,
+        project_id="project-persisted-lifecycle",
+        require_ready=False,
+        persist_refresh_receipt=True,
+    )
+
+    loaded_runtime = WritingRuntime(database_path=db_path, autosave=True)
+    job_count_before = len(loaded_runtime._jobs)
+    artifact_count_before = sum(len(items) for items in loaded_runtime._artifacts.values())
+
+    lifecycle = loaded_runtime.build_research_action_lifecycle(
+        project_id="project-persisted-lifecycle",
+        limit=20,
+    )
+    passport = loaded_runtime.build_workflow_passport(
+        project_id="project-persisted-lifecycle",
+        limit=50,
+    )
+    gate = loaded_runtime.build_evidence_integrity_gate(
+        project_id="project-persisted-lifecycle",
+        limit=50,
+    )
+    card = loaded_runtime.build_agent_handoff_card(job.job_id)
+
+    action_by_type = {item["action_type"]: item for item in lifecycle["actions"]}
+    assert {"wiki_candidate", "graph_patch", "agent_handoff", "approval_gate"} <= set(action_by_type)
+    assert lifecycle["summary"]["read_only"] is True
+    assert lifecycle["summary"]["requires_user_confirmation"] is True
+    assert action_by_type["agent_handoff"]["preflight"]["present"] is True
+    assert action_by_type["agent_handoff"]["recovery"]["resume_probes"][0]["endpoint"] == (
+        "/runtime/job/" + job.job_id + "/snapshot"
+    )
+    assert any(
+        probe["endpoint"] == "/runtime/research-action-lifecycle" and probe["read_only"] is True
+        for probe in action_by_type["agent_handoff"]["recovery"]["resume_probes"]
+    )
+
+    agent_stage = next(stage for stage in passport["stages"] if stage["stage_id"] == "agent_handoff")
+    passport_refs = agent_stage["reproducibility"]["research_action_refs"]
+    assert any(ref["action_type"] == "wiki_candidate" for ref in passport_refs)
+    assert any(ref["action_type"] == "agent_handoff" for ref in passport_refs)
+    assert all(ref["probe_endpoint"] == "/runtime/research-action-lifecycle" for ref in passport_refs)
+    assert all(ref["read_only"] is True for ref in passport_refs)
+
+    assert gate["summary"]["research_action_count"] >= 1
+    assert any(ref["action_type"] == "agent_handoff" for ref in gate["summary"]["research_action_refs"])
+    assert "runtime.research_action_lifecycle_refs" in gate["provenance"]["derived_from"]
+    boundary = gate["blocking_action_boundary"]
+    assert "runtime.research_action_lifecycle_refs" in boundary["provenance"]["derived_from"]
+    assert boundary["provenance"]["research_action_lifecycle_schema_version"] == (
+        "scholar_ai_research_action_lifecycle_v1"
+    )
+    assert any(
+        probe["endpoint"] == "/runtime/research-action-lifecycle" and probe["read_only"] is True
+        for probe in boundary["local_read_only_probes"]
+    )
+
+    recovery = card["action_lifecycle_recovery"]
+    assert recovery["schema_version"] == "scholar_ai_handoff_action_lifecycle_recovery_v1"
+    assert recovery["read_only"] is True
+    assert recovery["pending_confirmation_count"] >= 1
+    assert any(ref["action_type"] == "agent_handoff" for ref in recovery["action_refs"])
+    assert recovery["resume_probes"][0]["endpoint"] == "/runtime/research-action-lifecycle"
+    assert "runtime.research_action_lifecycle_refs" in card["provenance"]["derived_from"]
+    assert len(loaded_runtime._jobs) == job_count_before
+    assert sum(len(items) for items in loaded_runtime._artifacts.values()) == artifact_count_before
+
+
 @pytest.mark.asyncio
 async def test_agent_bridge_result_and_failure_persist_agent_handoff_cards(monkeypatch: pytest.MonkeyPatch) -> None:
     """Terminal agent bridge writes should leave recoverable handoff cards."""

@@ -1404,7 +1404,23 @@ def test_workflow_passport_reads_runtime_projection(
         {
             "schema_version": "scholar_ai_workflow_passport_v1",
             "scope": {"project_id": "project-1"},
-            "stages": [],
+            "stages": [
+                {
+                    "stage_id": "agent_handoff",
+                    "diagnostics": {"research_action_count": 1},
+                    "reproducibility": {
+                        "research_action_refs": [
+                            {
+                                "ref_type": "research_action_lifecycle",
+                                "action_type": "agent_handoff",
+                                "status": "pending_approval",
+                                "probe_endpoint": "/runtime/research-action-lifecycle",
+                                "read_only": True,
+                            }
+                        ]
+                    },
+                }
+            ],
             "gate_summary": {"blocking_stage_ids": []},
         },
     )
@@ -1413,6 +1429,10 @@ def test_workflow_passport_reads_runtime_projection(
 
     assert result["is_error"] is False
     assert result["data"]["schema_version"] == "scholar_ai_workflow_passport_v1"
+    action_ref = result["data"]["stages"][0]["reproducibility"]["research_action_refs"][0]
+    assert action_ref["ref_type"] == "research_action_lifecycle"
+    assert action_ref["probe_endpoint"] == "/runtime/research-action-lifecycle"
+    assert action_ref["read_only"] is True
     assert backend.calls[-1] == (
         "json",
         "/runtime/workflow-passport",
@@ -1431,7 +1451,18 @@ def test_evidence_integrity_gate_reads_runtime_projection(
         {
             "schema_version": "scholar_ai_evidence_integrity_gate_v1",
             "status": "unresolved",
-            "summary": {"unresolved_is_pass": False},
+            "summary": {
+                "unresolved_is_pass": False,
+                "research_action_count": 1,
+                "research_action_refs": [
+                    {
+                        "ref_type": "research_action_lifecycle",
+                        "action_type": "agent_handoff",
+                        "probe_endpoint": "/runtime/research-action-lifecycle",
+                        "read_only": True,
+                    }
+                ],
+            },
             "signals": [],
             "blocking_action_boundary": {
                 "schema_version": "scholar_ai_blocking_action_boundary_v1",
@@ -1472,6 +1503,20 @@ def test_evidence_integrity_gate_reads_runtime_projection(
                         "raw_path_exposed": False,
                     }
                 ],
+                "provenance": {
+                    "derived_from": [
+                        "runtime.evidence_integrity_gate",
+                        "runtime.research_action_lifecycle_refs",
+                    ],
+                    "research_action_lifecycle_schema_version": "scholar_ai_research_action_lifecycle_v1",
+                },
+            },
+            "provenance": {
+                "derived_from": [
+                    "runtime.workflow_passport",
+                    "runtime.research_action_lifecycle_refs",
+                ],
+                "research_action_lifecycle_schema_version": "scholar_ai_research_action_lifecycle_v1",
             },
         },
     )
@@ -1493,6 +1538,11 @@ def test_evidence_integrity_gate_reads_runtime_projection(
     assert drilldown["checked_facts"]["citation_id"] == "cite:unsupported"
     assert drilldown["local_read_only_probes"][0]["read_only"] is True
     assert drilldown["raw_path_exposed"] is False
+    assert result["data"]["summary"]["research_action_refs"][0]["read_only"] is True
+    assert "runtime.research_action_lifecycle_refs" in boundary["provenance"]["derived_from"]
+    assert boundary["provenance"]["research_action_lifecycle_schema_version"] == (
+        "scholar_ai_research_action_lifecycle_v1"
+    )
     assert backend.calls[-1] == (
         "json",
         "/runtime/evidence-integrity-gate",
