@@ -1582,6 +1582,22 @@ def test_agent_workspace_status_reads_recovery_state(
                         "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
                     ],
                 },
+                "goal_state": {
+                    "available": True,
+                    "path": "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
+                    "updated_at": "2026-06-22T21:50:27+08:00",
+                    "checkpoint_id": "20260622-214730-n41-goal-state-record-update",
+                    "requirement_count": 49,
+                    "proved_count": 47,
+                    "incomplete_count": 1,
+                    "out_of_scope_count": 1,
+                    "latest_requirement_id": "N41-goal-state-workspace-visibility",
+                    "next_authorized_local_actions": [
+                        "Create a rollback checkpoint and search mature references before edits."
+                    ],
+                    "stop_boundaries": ["No push, tag, release, deploy, or external upload."],
+                    "error": None,
+                },
                 "artifact_root": {
                     "label": "agent_mcp_workflows",
                     "path": "workspace_artifacts/agent_mcp_workflows",
@@ -1655,6 +1671,11 @@ def test_agent_workspace_status_reads_recovery_state(
         "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
     ]
     assert state["artifact_root"]["file_count"] == 12
+    assert state["goal_state"]["available"] is True
+    assert state["goal_state"]["checkpoint_id"] == "20260622-214730-n41-goal-state-record-update"
+    assert state["goal_state"]["requirement_count"] == 49
+    assert state["goal_state"]["incomplete_count"] == 1
+    assert state["goal_state"]["latest_requirement_id"] == "N41-goal-state-workspace-visibility"
     assert state["recovery_probes"][0]["route"] == "/runtime/research-action-lifecycle"
     assert state["recovery_probes"][0]["read_only"] is True
     handoff_probe = state["recovery_probes"][1]

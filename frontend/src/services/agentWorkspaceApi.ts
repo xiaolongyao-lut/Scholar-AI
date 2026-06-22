@@ -59,6 +59,21 @@ export interface AgentWorkspaceRecoveryProbe {
   mcp_tool: string | null;
 }
 
+export interface AgentWorkspaceGoalState {
+  available: boolean;
+  path: string | null;
+  updated_at: string | null;
+  checkpoint_id: string | null;
+  requirement_count: number;
+  proved_count: number;
+  incomplete_count: number;
+  out_of_scope_count: number;
+  latest_requirement_id: string | null;
+  next_authorized_local_actions: string[];
+  stop_boundaries: string[];
+  error: string | null;
+}
+
 export interface AgentWorkspaceState {
   schema_version: 'scholar_ai_agent_workspace_state_v1';
   generated_at: string;
@@ -68,6 +83,7 @@ export interface AgentWorkspaceState {
   runtime_state_root: AgentWorkspaceDirectoryState;
   output_root: AgentWorkspaceDirectoryState;
   git: AgentWorkspaceGitState;
+  goal_state: AgentWorkspaceGoalState;
   recovery_probes: AgentWorkspaceRecoveryProbe[];
   boundaries: string[];
   next_safe_local_actions: string[];

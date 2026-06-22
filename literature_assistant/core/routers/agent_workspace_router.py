@@ -25,6 +25,8 @@ MAX_PREVIEW_CHARS = 12000
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_DIRECTORY_STATE_FILES = 1000
 MAX_STATE_PATHS = 8
+MAX_GOAL_STATE_ACTIONS = 3
+MAX_GOAL_STATE_BOUNDARIES = 3
 GIT_STATUS_TIMEOUT_SECONDS = 2.0
 
 
@@ -103,6 +105,38 @@ class AgentWorkspaceRecoveryProbe(BaseModel):
     mcp_tool: str | None = Field(default=None, max_length=120)
 
 
+class AgentWorkspaceGoalState(BaseModel):
+    """Bounded longrun goal-state summary for recovery decisions.
+
+    Args:
+        available: Whether a local goal-state JSON record was found and parsed.
+        path: Repository-relative or redacted label for the selected record.
+        updated_at: Timestamp from the selected goal-state record.
+        checkpoint_id: Rollback checkpoint id, without local checkpoint path.
+        requirement_count: Number of requirement-to-evidence rows.
+        proved_count: Number of rows currently proved.
+        incomplete_count: Number of incomplete rows.
+        out_of_scope_count: Number of rows explicitly outside current scope.
+        latest_requirement_id: Last requirement id in the matrix.
+        next_authorized_local_actions: Bounded action labels from the record.
+        stop_boundaries: Bounded stop-boundary labels from the record.
+        error: Redacted parse/read error when unavailable.
+    """
+
+    available: bool
+    path: str | None = Field(default=None, max_length=240)
+    updated_at: str | None = Field(default=None, max_length=80)
+    checkpoint_id: str | None = Field(default=None, max_length=120)
+    requirement_count: int = Field(default=0, ge=0)
+    proved_count: int = Field(default=0, ge=0)
+    incomplete_count: int = Field(default=0, ge=0)
+    out_of_scope_count: int = Field(default=0, ge=0)
+    latest_requirement_id: str | None = Field(default=None, max_length=160)
+    next_authorized_local_actions: list[str] = Field(default_factory=list)
+    stop_boundaries: list[str] = Field(default_factory=list)
+    error: str | None = Field(default=None, max_length=240)
+
+
 class AgentWorkspaceState(BaseModel):
     """Machine-readable local workspace state for resumable agents."""
 
@@ -114,6 +148,7 @@ class AgentWorkspaceState(BaseModel):
     runtime_state_root: AgentWorkspaceDirectoryState
     output_root: AgentWorkspaceDirectoryState
     git: AgentWorkspaceGitState
+    goal_state: AgentWorkspaceGoalState
     recovery_probes: list[AgentWorkspaceRecoveryProbe] = Field(default_factory=list)
     boundaries: list[str] = Field(default_factory=list)
     next_safe_local_actions: list[str] = Field(default_factory=list)
@@ -495,6 +530,81 @@ def _read_git_workspace_state() -> AgentWorkspaceGitState:
     return _parse_git_porcelain(completed.stdout)
 
 
+def _latest_goal_state_file() -> Path | None:
+    """Return the newest longrun goal-state JSON file under docs/plans."""
+
+    plans_root = (REPO_ROOT / "docs" / "plans").resolve()
+    if not plans_root.exists() or not plans_root.is_dir():
+        return None
+    files = [path for path in plans_root.glob("longrun-goal-state-*.json") if path.is_file()]
+    if not files:
+        return None
+    return max(files, key=lambda item: (item.stat().st_mtime, item.name))
+
+
+def _safe_text_list(value: Any, limit: int) -> list[str]:
+    """Return a bounded list of redacted display strings."""
+
+    if limit <= 0 or not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        text = _redact_text(item).strip()
+        if text:
+            out.append(text[:240])
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _load_goal_state_summary() -> AgentWorkspaceGoalState:
+    """Load a bounded local goal-state summary without exposing full records."""
+
+    path = _latest_goal_state_file()
+    if path is None:
+        return AgentWorkspaceGoalState(available=False, error="no longrun goal-state record found")
+    path_label = _workspace_state_path(path)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return AgentWorkspaceGoalState(available=False, path=path_label, error=_redact_text(str(exc))[:240])
+    if not isinstance(payload, dict):
+        return AgentWorkspaceGoalState(available=False, path=path_label, error="goal-state record is not an object")
+
+    raw_requirements = payload.get("requirements")
+    requirements = raw_requirements if isinstance(raw_requirements, list) else []
+    statuses: dict[str, int] = {}
+    latest_requirement_id: str | None = None
+    for row in requirements:
+        if not isinstance(row, dict):
+            continue
+        status = row.get("status")
+        if isinstance(status, str):
+            statuses[status] = statuses.get(status, 0) + 1
+        row_id = row.get("id")
+        if isinstance(row_id, str) and row_id.strip():
+            latest_requirement_id = _redact_text(row_id.strip())[:160]
+
+    rollback = payload.get("rollback")
+    checkpoint_id = rollback.get("checkpoint_id") if isinstance(rollback, dict) else None
+    updated_at = payload.get("updated_at")
+    return AgentWorkspaceGoalState(
+        available=True,
+        path=path_label,
+        updated_at=_redact_text(updated_at)[:80] if isinstance(updated_at, str) and updated_at.strip() else None,
+        checkpoint_id=_redact_text(checkpoint_id)[:120] if isinstance(checkpoint_id, str) and checkpoint_id.strip() else None,
+        requirement_count=len(requirements),
+        proved_count=statuses.get("proved", 0),
+        incomplete_count=statuses.get("incomplete", 0),
+        out_of_scope_count=statuses.get("out_of_scope", 0),
+        latest_requirement_id=latest_requirement_id,
+        next_authorized_local_actions=_safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
+        stop_boundaries=_safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
+    )
+
+
 def _workspace_recovery_probe(
     label: str,
     route: str,
@@ -558,6 +668,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
     runtime_state = _count_directory_state("runtime_state", WORKSPACE_RUNTIME_STATE_ROOT)
     output_state = _count_directory_state("generated_output", WORKSPACE_OUTPUT_ROOT)
     git_state = _read_git_workspace_state()
+    goal_state = _load_goal_state_summary()
     boundaries = [
         "Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.",
         "Do not mutate Zotero databases or github/ reference repositories from Agent Workspace state.",
@@ -575,6 +686,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
         runtime_state_root=runtime_state,
         output_root=output_state,
         git=git_state,
+        goal_state=goal_state,
         recovery_probes=[
             _workspace_recovery_probe(
                 "Workflow Passport",

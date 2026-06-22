@@ -1629,6 +1629,118 @@
         "title": "AgentWorkspaceGitState",
         "type": "object"
       },
+      "AgentWorkspaceGoalState": {
+        "description": "Bounded longrun goal-state summary for recovery decisions.\n\nArgs:\n    available: Whether a local goal-state JSON record was found and parsed.\n    path: Repository-relative or redacted label for the selected record.\n    updated_at: Timestamp from the selected goal-state record.\n    checkpoint_id: Rollback checkpoint id, without local checkpoint path.\n    requirement_count: Number of requirement-to-evidence rows.\n    proved_count: Number of rows currently proved.\n    incomplete_count: Number of incomplete rows.\n    out_of_scope_count: Number of rows explicitly outside current scope.\n    latest_requirement_id: Last requirement id in the matrix.\n    next_authorized_local_actions: Bounded action labels from the record.\n    stop_boundaries: Bounded stop-boundary labels from the record.\n    error: Redacted parse/read error when unavailable.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "incomplete_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Incomplete Count",
+            "type": "integer"
+          },
+          "latest_requirement_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Requirement Id"
+          },
+          "next_authorized_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Authorized Local Actions",
+            "type": "array"
+          },
+          "out_of_scope_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Out Of Scope Count",
+            "type": "integer"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "proved_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Proved Count",
+            "type": "integer"
+          },
+          "requirement_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Requirement Count",
+            "type": "integer"
+          },
+          "stop_boundaries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stop Boundaries",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "AgentWorkspaceGoalState",
+        "type": "object"
+      },
       "AgentWorkspaceRecoveryProbe": {
         "description": "One read-only recovery endpoint a resumed agent can inspect.\n\nArgs:\n    label: Stable display label for the recovery surface.\n    route: Local route or route pattern. Placeholder routes require an\n        identifier supplied from visible runtime state.\n    read_only: Whether this probe is diagnostic only.\n    requires_identifier: Whether the route pattern needs a job/request id.\n    identifier_hint: Identifier name expected by the route pattern.\n    purpose: Why this probe should be read before mutating workflow state.\n    mcp_tool: Optional MCP tool exposing the same read-only projection.",
         "properties": {
@@ -1713,6 +1825,9 @@
           "git": {
             "$ref": "#/components/schemas/AgentWorkspaceGitState"
           },
+          "goal_state": {
+            "$ref": "#/components/schemas/AgentWorkspaceGoalState"
+          },
           "next_safe_local_actions": {
             "items": {
               "type": "string"
@@ -1754,7 +1869,8 @@
           "artifact_root",
           "runtime_state_root",
           "output_root",
-          "git"
+          "git",
+          "goal_state"
         ],
         "title": "AgentWorkspaceState",
         "type": "object"

@@ -7420,6 +7420,62 @@ export interface components {
             untracked_count: number;
         };
         /**
+         * AgentWorkspaceGoalState
+         * @description Bounded longrun goal-state summary for recovery decisions.
+         *
+         *     Args:
+         *         available: Whether a local goal-state JSON record was found and parsed.
+         *         path: Repository-relative or redacted label for the selected record.
+         *         updated_at: Timestamp from the selected goal-state record.
+         *         checkpoint_id: Rollback checkpoint id, without local checkpoint path.
+         *         requirement_count: Number of requirement-to-evidence rows.
+         *         proved_count: Number of rows currently proved.
+         *         incomplete_count: Number of incomplete rows.
+         *         out_of_scope_count: Number of rows explicitly outside current scope.
+         *         latest_requirement_id: Last requirement id in the matrix.
+         *         next_authorized_local_actions: Bounded action labels from the record.
+         *         stop_boundaries: Bounded stop-boundary labels from the record.
+         *         error: Redacted parse/read error when unavailable.
+         */
+        AgentWorkspaceGoalState: {
+            /** Available */
+            available: boolean;
+            /** Checkpoint Id */
+            checkpoint_id?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Incomplete Count
+             * @default 0
+             */
+            incomplete_count: number;
+            /** Latest Requirement Id */
+            latest_requirement_id?: string | null;
+            /** Next Authorized Local Actions */
+            next_authorized_local_actions?: string[];
+            /**
+             * Out Of Scope Count
+             * @default 0
+             */
+            out_of_scope_count: number;
+            /** Path */
+            path?: string | null;
+            /**
+             * Proved Count
+             * @default 0
+             */
+            proved_count: number;
+            /**
+             * Requirement Count
+             * @default 0
+             */
+            requirement_count: number;
+            /** Stop Boundaries */
+            stop_boundaries?: string[];
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
          * AgentWorkspaceRecoveryProbe
          * @description One read-only recovery endpoint a resumed agent can inspect.
          *
@@ -7466,6 +7522,7 @@ export interface components {
             /** Generated At */
             generated_at: string;
             git: components["schemas"]["AgentWorkspaceGitState"];
+            goal_state: components["schemas"]["AgentWorkspaceGoalState"];
             /** Next Safe Local Actions */
             next_safe_local_actions?: string[];
             output_root: components["schemas"]["AgentWorkspaceDirectoryState"];

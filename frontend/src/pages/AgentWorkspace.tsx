@@ -1428,6 +1428,15 @@ function workspaceProbeLabel(value: AgentWorkspaceRecoveryProbe, index: number):
   return `${label} · read-only ${readOnly}${identifier}${mcpTool}`;
 }
 
+function workspaceGoalStateSummary(state: AgentWorkspaceStatus['workspace_state']): string {
+  const goal = state.goal_state;
+  if (!goal.available) {
+    return `goal-state unavailable${goal.error ? ` · ${sanitizeInspectorText(goal.error)}` : ''}`;
+  }
+  const latest = goal.latest_requirement_id ? ` · latest ${sanitizeInspectorText(goal.latest_requirement_id)}` : '';
+  return `goal-state ${goal.requirement_count} rows · proved ${goal.proved_count} · incomplete ${goal.incomplete_count} · out-of-scope ${goal.out_of_scope_count}${latest}`;
+}
+
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
   const recommendation = healthCheck?.recommendations?.find((item) => actionMessage(item));
   return actionMessage(recommendation)
@@ -3003,6 +3012,22 @@ function WorkspaceStatePanel({
                 {item}
               </p>
             ))}
+          </div>
+          <div className="mt-3 min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-1.5">
+            <p className="break-words text-[11px] leading-4 text-foreground/60">
+              {workspaceGoalStateSummary(state)}
+            </p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              <StatusPill tone={state.goal_state.available ? 'success' : 'warning'}>
+                goal-state {state.goal_state.available ? 'visible' : 'missing'}
+              </StatusPill>
+              {state.goal_state.checkpoint_id ? (
+                <StatusPill tone="neutral">checkpoint {sanitizeInspectorText(state.goal_state.checkpoint_id)}</StatusPill>
+              ) : null}
+              {state.goal_state.path ? (
+                <StatusPill tone="neutral">{sanitizeInspectorText(state.goal_state.path)}</StatusPill>
+              ) : null}
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {dirtyPaths.length === 0 ? (

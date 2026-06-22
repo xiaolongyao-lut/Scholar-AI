@@ -62,6 +62,25 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
             dirty_paths=["literature_assistant/core/routers/agent_workspace_router.py", "docs/plans"],
         ),
     )
+    monkeypatch.setattr(
+        agent_workspace_router,
+        "_load_goal_state_summary",
+        lambda: agent_workspace_router.AgentWorkspaceGoalState(
+            available=True,
+            path="docs/plans/longrun-goal-state-local.json",
+            updated_at="2026-06-22T21:50:27+08:00",
+            checkpoint_id="20260622-214730-n41-goal-state-record-update",
+            requirement_count=49,
+            proved_count=47,
+            incomplete_count=1,
+            out_of_scope_count=1,
+            latest_requirement_id="N41-goal-state-workspace-visibility",
+            next_authorized_local_actions=[
+                "Create a rollback checkpoint and search mature references before the next slice."
+            ],
+            stop_boundaries=["No push, tag, release, deploy, or external upload."],
+        ),
+    )
     monkeypatch.setenv("LITASSIST_API_CAPABILITY_AUTH", "1")
     client = TestClient(server.app)
 
@@ -89,6 +108,15 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert payload["workspace_state"]["artifact_root"]["truncated"] is False
     assert payload["workspace_state"]["runtime_state_root"]["exists"] is True
     assert payload["workspace_state"]["output_root"]["exists"] is True
+    goal_state = payload["workspace_state"]["goal_state"]
+    assert goal_state["available"] is True
+    assert goal_state["path"] == "docs/plans/longrun-goal-state-local.json"
+    assert goal_state["checkpoint_id"] == "20260622-214730-n41-goal-state-record-update"
+    assert goal_state["requirement_count"] == 49
+    assert goal_state["proved_count"] == 47
+    assert goal_state["incomplete_count"] == 1
+    assert goal_state["out_of_scope_count"] == 1
+    assert goal_state["latest_requirement_id"] == "N41-goal-state-workspace-visibility"
     probes = payload["workspace_state"]["recovery_probes"]
     assert [probe["label"] for probe in probes] == [
         "Workflow Passport",
@@ -110,6 +138,68 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     serialized = json.dumps(payload, ensure_ascii=False)
     assert "sk-ant-api" not in serialized
     assert "Authorization: Bearer" not in serialized
+
+
+def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> None:
+    plans_root = tmp_path / "docs" / "plans"
+    plans_root.mkdir(parents=True)
+    goal_path = plans_root / "longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    goal_path.write_text(
+        json.dumps(
+            {
+                "updated_at": "2026-06-22T21:36:00+08:00",
+                "current_objective": "sensitive full local objective should not be returned",
+                "rollback": {
+                    "checkpoint_id": "20260622-213822-n41-goal-state-workspace-visibility",
+                    "checkpoint_path": "C:/Users/xiao/.codex/rollback-checkpoints/private",
+                    "restore_command": "restore C:/Users/xiao/private",
+                },
+                "requirements": [
+                    {"id": "N39", "status": "proved"},
+                    {"id": "N40", "status": "proved"},
+                    {"id": "B01", "status": "incomplete"},
+                    {"id": "D01", "status": "out_of_scope"},
+                ],
+                "next_authorized_local_actions": [
+                    "Create rollback checkpoint.",
+                    "Search mature references.",
+                    "Run focused tests.",
+                    "This fourth action is intentionally omitted.",
+                ],
+                "stop_boundary": [
+                    "No push.",
+                    "No upload.",
+                    "No Zotero DB mutation.",
+                    "This fourth boundary is intentionally omitted.",
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(agent_workspace_router, "REPO_ROOT", tmp_path)
+
+    summary = agent_workspace_router._load_goal_state_summary()
+
+    assert summary.available is True
+    assert summary.path == "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    assert summary.updated_at == "2026-06-22T21:36:00+08:00"
+    assert summary.checkpoint_id == "20260622-213822-n41-goal-state-workspace-visibility"
+    assert summary.requirement_count == 4
+    assert summary.proved_count == 2
+    assert summary.incomplete_count == 1
+    assert summary.out_of_scope_count == 1
+    assert summary.latest_requirement_id == "D01"
+    assert summary.next_authorized_local_actions == [
+        "Create rollback checkpoint.",
+        "Search mature references.",
+        "Run focused tests.",
+    ]
+    assert summary.stop_boundaries == ["No push.", "No upload.", "No Zotero DB mutation."]
+    serialized = summary.model_dump_json()
+    assert "current_objective" not in serialized
+    assert "restore_command" not in serialized
+    assert "C:/Users/xiao" not in serialized
 
 
 def test_directory_state_is_path_safe_and_bounded(tmp_path, monkeypatch) -> None:

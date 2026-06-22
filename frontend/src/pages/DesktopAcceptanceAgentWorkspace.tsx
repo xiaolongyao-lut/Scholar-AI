@@ -87,6 +87,22 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     dirty_paths: [],
     error: null,
   },
+  goal_state: {
+    available: true,
+    path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
+    updated_at: '2026-06-22T21:50:27+08:00',
+    checkpoint_id: '20260622-214730-n41-goal-state-record-update',
+    requirement_count: 49,
+    proved_count: 47,
+    incomplete_count: 1,
+    out_of_scope_count: 1,
+    latest_requirement_id: 'N41-goal-state-workspace-visibility',
+    next_authorized_local_actions: [
+      'Create a rollback checkpoint and search mature references before nontrivial edits.',
+    ],
+    stop_boundaries: ['No push, tag, release, deploy, or external upload.'],
+    error: null,
+  },
   recovery_probes: [
     {
       label: 'Workflow Passport',
