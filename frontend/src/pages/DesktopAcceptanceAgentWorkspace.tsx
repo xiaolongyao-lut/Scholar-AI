@@ -109,6 +109,20 @@ const ACCEPTANCE_WORKSPACE_STATE = {
       out_of_scope: 1,
       latest_id: 'N48-post-n47-requirement-evidence-closeout',
     },
+    open_requirements: [
+      {
+        id: 'B01-computer-use-accessibility-tree',
+        status: 'incomplete',
+        requirement: 'Computer Use accessibility-tree acceptance waits for sandboxPolicy tool repair.',
+        residual_risk: 'Do not retry native accessibility-tree acceptance until the tool error is fixed.',
+      },
+      {
+        id: 'D01-import-to-wiki-write',
+        status: 'out_of_scope',
+        requirement: 'import-to-wiki writes remain deferred unless explicitly reauthorized.',
+        residual_risk: 'Write-path safety and approval tests must be a separate local slice.',
+      },
+    ],
     completion_claim: {
       this_slice: 'N49 aligned the source desktop Agent Workspace acceptance fixture with N48 recovery state.',
       full_goal: 'The full Scholar AI research workflow spine goal remains active, not complete.',

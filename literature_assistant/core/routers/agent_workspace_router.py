@@ -28,8 +28,18 @@ MAX_DIRECTORY_STATE_FILES = 1000
 MAX_STATE_PATHS = 8
 MAX_GOAL_STATE_ACTIONS = 3
 MAX_GOAL_STATE_BOUNDARIES = 3
+MAX_GOAL_STATE_OPEN_REQUIREMENTS = 5
 MAX_GOAL_COMPLETION_CHARS = 240
 GIT_STATUS_TIMEOUT_SECONDS = 2.0
+OPEN_REQUIREMENT_STATUSES = frozenset(
+    {
+        "contradicted",
+        "incomplete",
+        "weak_indirect_evidence",
+        "missing_evidence",
+        "out_of_scope",
+    }
+)
 
 
 class AgentWorkspaceArtifact(BaseModel):
@@ -138,6 +148,22 @@ class AgentWorkspaceGoalRequirementStatus(BaseModel):
     latest_id: str | None = Field(default=None, max_length=160)
 
 
+class AgentWorkspaceGoalOpenRequirement(BaseModel):
+    """Bounded unresolved requirement row for recovery decisions.
+
+    Args:
+        id: Requirement matrix id.
+        status: Current requirement-to-evidence state.
+        requirement: Short redacted requirement text.
+        residual_risk: Short redacted residual risk or blocker note.
+    """
+
+    id: str = Field(min_length=1, max_length=160)
+    status: str = Field(min_length=1, max_length=80)
+    requirement: str | None = Field(default=None, max_length=240)
+    residual_risk: str | None = Field(default=None, max_length=240)
+
+
 class AgentWorkspaceGoalState(BaseModel):
     """Bounded longrun goal-state summary for recovery decisions.
 
@@ -152,6 +178,7 @@ class AgentWorkspaceGoalState(BaseModel):
         out_of_scope_count: Number of rows explicitly outside current scope.
         latest_requirement_id: Last requirement id in the matrix.
         requirement_status: Compact requirement-to-evidence status summary.
+        open_requirements: Bounded non-proved requirement rows for recovery.
         completion_claim: Bounded slice/full-goal completion summary.
         next_authorized_local_actions: Bounded action labels from the record.
         stop_boundaries: Bounded stop-boundary labels from the record.
@@ -168,6 +195,7 @@ class AgentWorkspaceGoalState(BaseModel):
     out_of_scope_count: int = Field(default=0, ge=0)
     latest_requirement_id: str | None = Field(default=None, max_length=160)
     requirement_status: AgentWorkspaceGoalRequirementStatus = Field(default_factory=AgentWorkspaceGoalRequirementStatus)
+    open_requirements: list[AgentWorkspaceGoalOpenRequirement] = Field(default_factory=list)
     completion_claim: AgentWorkspaceGoalCompletionClaim = Field(default_factory=AgentWorkspaceGoalCompletionClaim)
     next_authorized_local_actions: list[str] = Field(default_factory=list)
     stop_boundaries: list[str] = Field(default_factory=list)
@@ -613,6 +641,35 @@ def _safe_goal_completion_claim(value: Any) -> AgentWorkspaceGoalCompletionClaim
     )
 
 
+def _safe_goal_open_requirement(row: dict[str, Any]) -> AgentWorkspaceGoalOpenRequirement | None:
+    """Return one bounded open requirement row when it is safe to expose."""
+
+    row_id = row.get("id")
+    status = row.get("status")
+    if not isinstance(row_id, str) or not row_id.strip():
+        return None
+    if not isinstance(status, str) or status not in OPEN_REQUIREMENT_STATUSES:
+        return None
+    requirement = row.get("requirement")
+    residual_risk = row.get("residual_risk")
+    requirement_text = (
+        _redact_text(requirement).strip()[:240]
+        if isinstance(requirement, str) and requirement.strip()
+        else None
+    )
+    residual_risk_text = (
+        _redact_text(residual_risk).strip()[:240]
+        if isinstance(residual_risk, str) and residual_risk.strip()
+        else None
+    )
+    return AgentWorkspaceGoalOpenRequirement(
+        id=_redact_text(row_id.strip())[:160],
+        status=status,
+        requirement=requirement_text,
+        residual_risk=residual_risk_text,
+    )
+
+
 def _load_goal_state_summary() -> AgentWorkspaceGoalState:
     """Load a bounded local goal-state summary without exposing full records."""
 
@@ -631,12 +688,17 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
     requirements = raw_requirements if isinstance(raw_requirements, list) else []
     statuses: dict[str, int] = {}
     latest_requirement_id: str | None = None
+    open_requirements: list[AgentWorkspaceGoalOpenRequirement] = []
     for row in requirements:
         if not isinstance(row, dict):
             continue
         status = row.get("status")
         if isinstance(status, str):
             statuses[status] = statuses.get(status, 0) + 1
+        if len(open_requirements) < MAX_GOAL_STATE_OPEN_REQUIREMENTS:
+            open_requirement = _safe_goal_open_requirement(row)
+            if open_requirement is not None:
+                open_requirements.append(open_requirement)
         row_id = row.get("id")
         if isinstance(row_id, str) and row_id.strip():
             latest_requirement_id = _redact_text(row_id.strip())[:160]
@@ -661,6 +723,7 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
             out_of_scope=statuses.get("out_of_scope", 0),
             latest_id=latest_requirement_id,
         ),
+        open_requirements=open_requirements,
         completion_claim=_safe_goal_completion_claim(payload.get("completion_claim")),
         next_authorized_local_actions=_safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
         stop_boundaries=_safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),

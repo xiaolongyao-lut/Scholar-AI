@@ -82,6 +82,14 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
                 out_of_scope=1,
                 latest_id="N41-goal-state-workspace-visibility",
             ),
+            open_requirements=[
+                agent_workspace_router.AgentWorkspaceGoalOpenRequirement(
+                    id="B01-computer-use-accessibility-tree",
+                    status="incomplete",
+                    requirement="Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
+                    residual_risk="Retry only after the external tool error is fixed.",
+                )
+            ],
             completion_claim=agent_workspace_router.AgentWorkspaceGoalCompletionClaim(
                 this_slice="N41 made goal-state recovery visible.",
                 full_goal="The full Scholar AI workflow spine remains active, not complete.",
@@ -135,6 +143,14 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "out_of_scope": 1,
         "latest_id": "N41-goal-state-workspace-visibility",
     }
+    assert goal_state["open_requirements"] == [
+        {
+            "id": "B01-computer-use-accessibility-tree",
+            "status": "incomplete",
+            "requirement": "Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
+            "residual_risk": "Retry only after the external tool error is fixed.",
+        }
+    ]
     assert goal_state["completion_claim"]["this_slice"] == "N41 made goal-state recovery visible."
     assert goal_state["completion_claim"]["full_goal"] == "The full Scholar AI workflow spine remains active, not complete."
     probes = payload["workspace_state"]["recovery_probes"]
@@ -177,8 +193,42 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                 "requirements": [
                     {"id": "N39", "status": "proved"},
                     {"id": "N40", "status": "proved"},
-                    {"id": "B01", "status": "incomplete"},
-                    {"id": "D01", "status": "out_of_scope"},
+                    {
+                        "id": "B01",
+                        "status": "incomplete",
+                        "requirement": "Computer Use accessibility-tree acceptance blocked at C:/Users/xiao/private/app",
+                        "residual_risk": "Retry only after sandboxPolicy is fixed.",
+                    },
+                    {
+                        "id": "D01",
+                        "status": "out_of_scope",
+                        "requirement": "import-to-wiki writes remain deferred unless reauthorized.",
+                        "residual_risk": "Future write-path safety tests need C:/Users/xiao/private/data redaction.",
+                    },
+                    {
+                        "id": "M01",
+                        "status": "missing_evidence",
+                        "requirement": "missing evidence " + "x" * 300,
+                        "residual_risk": "risk " + "y" * 300,
+                    },
+                    {
+                        "id": "W01",
+                        "status": "weak_indirect_evidence",
+                        "requirement": "weak row",
+                        "residual_risk": "weak risk",
+                    },
+                    {
+                        "id": "C01",
+                        "status": "contradicted",
+                        "requirement": "contradicted row",
+                        "residual_risk": "contradicted risk",
+                    },
+                    {
+                        "id": "C02",
+                        "status": "contradicted",
+                        "requirement": "sixth open row is intentionally omitted",
+                        "residual_risk": "sixth risk is intentionally omitted",
+                    },
                 ],
                 "completion_claim": {
                     "this_slice": "N41 exposed bounded recovery state to Agent Workspace. "
@@ -210,16 +260,27 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert summary.path == "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
     assert summary.updated_at == "2026-06-22T21:36:00+08:00"
     assert summary.checkpoint_id == "20260622-213822-n41-goal-state-workspace-visibility"
-    assert summary.requirement_count == 4
+    assert summary.requirement_count == 8
     assert summary.proved_count == 2
     assert summary.incomplete_count == 1
     assert summary.out_of_scope_count == 1
-    assert summary.latest_requirement_id == "D01"
-    assert summary.requirement_status.total == 4
+    assert summary.latest_requirement_id == "C02"
+    assert summary.requirement_status.total == 8
     assert summary.requirement_status.proved == 2
     assert summary.requirement_status.incomplete == 1
     assert summary.requirement_status.out_of_scope == 1
-    assert summary.requirement_status.latest_id == "D01"
+    assert summary.requirement_status.latest_id == "C02"
+    assert [item.id for item in summary.open_requirements] == ["B01", "D01", "M01", "W01", "C01"]
+    assert summary.open_requirements[0].requirement == (
+        "Computer Use accessibility-tree acceptance blocked at [redacted-local-path]"
+    )
+    assert summary.open_requirements[1].residual_risk == (
+        "Future write-path safety tests need [redacted-local-path] redaction."
+    )
+    assert summary.open_requirements[2].requirement is not None
+    assert len(summary.open_requirements[2].requirement) == 240
+    assert summary.open_requirements[2].residual_risk is not None
+    assert len(summary.open_requirements[2].residual_risk) == 240
     assert summary.completion_claim.this_slice is not None
     assert len(summary.completion_claim.this_slice) == agent_workspace_router.MAX_GOAL_COMPLETION_CHARS
     assert summary.completion_claim.this_slice.startswith("N41 exposed bounded recovery state")
@@ -234,6 +295,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert "current_objective" not in serialized
     assert "restore_command" not in serialized
     assert "C:/Users/xiao" not in serialized
+    assert "sixth open row" not in serialized
 
 
 def test_directory_state_is_path_safe_and_bounded(tmp_path, monkeypatch) -> None:

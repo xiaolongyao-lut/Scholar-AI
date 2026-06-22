@@ -1660,6 +1660,53 @@
         "title": "AgentWorkspaceGoalCompletionClaim",
         "type": "object"
       },
+      "AgentWorkspaceGoalOpenRequirement": {
+        "description": "Bounded unresolved requirement row for recovery decisions.\n\nArgs:\n    id: Requirement matrix id.\n    status: Current requirement-to-evidence state.\n    requirement: Short redacted requirement text.\n    residual_risk: Short redacted residual risk or blocker note.",
+        "properties": {
+          "id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "requirement": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirement"
+          },
+          "residual_risk": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residual Risk"
+          },
+          "status": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "AgentWorkspaceGoalOpenRequirement",
+        "type": "object"
+      },
       "AgentWorkspaceGoalRequirementStatus": {
         "description": "Bounded requirement-to-evidence status summary for resume decisions.\n\nArgs:\n    total: Number of requirement rows in the selected goal-state record.\n    proved: Rows backed by concrete implementation, command, artifact, or\n        runtime evidence.\n    incomplete: Rows that still need stronger local evidence or tooling.\n    out_of_scope: Rows explicitly excluded by the current user boundary.\n    latest_id: Last row id in the requirement matrix.",
         "properties": {
@@ -1704,7 +1751,7 @@
         "type": "object"
       },
       "AgentWorkspaceGoalState": {
-        "description": "Bounded longrun goal-state summary for recovery decisions.\n\nArgs:\n    available: Whether a local goal-state JSON record was found and parsed.\n    path: Repository-relative or redacted label for the selected record.\n    updated_at: Timestamp from the selected goal-state record.\n    checkpoint_id: Rollback checkpoint id, without local checkpoint path.\n    requirement_count: Number of requirement-to-evidence rows.\n    proved_count: Number of rows currently proved.\n    incomplete_count: Number of incomplete rows.\n    out_of_scope_count: Number of rows explicitly outside current scope.\n    latest_requirement_id: Last requirement id in the matrix.\n    requirement_status: Compact requirement-to-evidence status summary.\n    completion_claim: Bounded slice/full-goal completion summary.\n    next_authorized_local_actions: Bounded action labels from the record.\n    stop_boundaries: Bounded stop-boundary labels from the record.\n    error: Redacted parse/read error when unavailable.",
+        "description": "Bounded longrun goal-state summary for recovery decisions.\n\nArgs:\n    available: Whether a local goal-state JSON record was found and parsed.\n    path: Repository-relative or redacted label for the selected record.\n    updated_at: Timestamp from the selected goal-state record.\n    checkpoint_id: Rollback checkpoint id, without local checkpoint path.\n    requirement_count: Number of requirement-to-evidence rows.\n    proved_count: Number of rows currently proved.\n    incomplete_count: Number of incomplete rows.\n    out_of_scope_count: Number of rows explicitly outside current scope.\n    latest_requirement_id: Last requirement id in the matrix.\n    requirement_status: Compact requirement-to-evidence status summary.\n    open_requirements: Bounded non-proved requirement rows for recovery.\n    completion_claim: Bounded slice/full-goal completion summary.\n    next_authorized_local_actions: Bounded action labels from the record.\n    stop_boundaries: Bounded stop-boundary labels from the record.\n    error: Redacted parse/read error when unavailable.",
         "properties": {
           "available": {
             "title": "Available",
@@ -1760,6 +1807,13 @@
               "type": "string"
             },
             "title": "Next Authorized Local Actions",
+            "type": "array"
+          },
+          "open_requirements": {
+            "items": {
+              "$ref": "#/components/schemas/AgentWorkspaceGoalOpenRequirement"
+            },
+            "title": "Open Requirements",
             "type": "array"
           },
           "out_of_scope_count": {

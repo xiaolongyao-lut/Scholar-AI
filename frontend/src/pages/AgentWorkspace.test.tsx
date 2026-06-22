@@ -117,6 +117,14 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         out_of_scope: 1,
         latest_id: 'N41-goal-state-workspace-visibility',
       },
+      open_requirements: [
+        {
+          id: 'B01-computer-use-accessibility-tree',
+          status: 'incomplete',
+          requirement: 'Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.',
+          residual_risk: 'Retry only after the external tool error is fixed.',
+        },
+      ],
       completion_claim: {
         this_slice: 'N41 made goal-state recovery visible.',
         full_goal: 'The full Scholar AI workflow spine remains active, not complete.',
@@ -1872,6 +1880,9 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('goal-state 49 rows · proved 47 · incomplete 1 · out-of-scope 1 · latest N41-goal-state-workspace-visibility')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal-state visible')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('requirement status visible')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('open requirements 1')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Open Requirements')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('B01-computer-use-accessibility-tree · incomplete · Computer Use accessibility-tree acceptance is blocked by sandboxPolicy. · risk Retry only after the external tool error is fixed.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal status visible')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('slice completion N41 made goal-state recovery visible.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal The full Scholar AI workflow spine remains active, not complete.')).toBeInTheDocument();

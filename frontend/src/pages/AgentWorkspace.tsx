@@ -1570,6 +1570,16 @@ function workspaceGoalCompletionClaimSummary(goal: AgentWorkspaceStatus['workspa
   };
 }
 
+function workspaceGoalOpenRequirementLabel(
+  item: NonNullable<AgentWorkspaceStatus['workspace_state']['goal_state']['open_requirements']>[number],
+): string {
+  const id = sanitizeInspectorText(item.id);
+  const status = sanitizeInspectorText(item.status);
+  const requirement = item.requirement ? ` · ${sanitizeInspectorText(item.requirement)}` : '';
+  const residualRisk = item.residual_risk ? ` · risk ${sanitizeInspectorText(item.residual_risk)}` : '';
+  return `${id} · ${status}${requirement}${residualRisk}`;
+}
+
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
   const recommendation = healthCheck?.recommendations?.find((item) => actionMessage(item));
   return actionMessage(recommendation)
@@ -3161,6 +3171,7 @@ export function WorkspaceStatePanel({
   const boundaries = state.boundaries.slice(0, 3).map(sanitizeInspectorText);
   const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
+  const openRequirements = (state.goal_state.open_requirements ?? []).slice(0, 5);
   return (
     <section
       aria-label="Workspace state visibility"
@@ -3237,6 +3248,9 @@ export function WorkspaceStatePanel({
                   requirement status visible
                 </StatusPill>
               ) : null}
+              {openRequirements.length > 0 ? (
+                <StatusPill tone="warning">open requirements {openRequirements.length}</StatusPill>
+              ) : null}
               {goalCompletionClaim.fullGoal ? (
                 <StatusPill tone={goalCompletionClaim.fullGoal.toLowerCase().includes('not complete') ? 'warning' : 'info'}>
                   full goal status visible
@@ -3261,6 +3275,19 @@ export function WorkspaceStatePanel({
                     full goal {goalCompletionClaim.fullGoal}
                   </p>
                 ) : null}
+              </div>
+            ) : null}
+            {openRequirements.length > 0 ? (
+              <div className="mt-2 grid gap-1.5">
+                <h4 className="font-label text-[11px] font-semibold text-foreground/45">Open Requirements</h4>
+                {openRequirements.map((item) => {
+                  const label = workspaceGoalOpenRequirementLabel(item);
+                  return (
+                    <p key={`${item.id}-${item.status}`} className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                      {label}
+                    </p>
+                  );
+                })}
               </div>
             ) : null}
           </div>

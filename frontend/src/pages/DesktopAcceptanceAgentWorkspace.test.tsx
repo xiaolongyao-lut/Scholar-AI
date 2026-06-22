@@ -27,6 +27,9 @@ describe('DesktopAcceptanceAgentWorkspace', () => {
     expect(within(workspaceStateRegion).getAllByText('docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json').length).toBeGreaterThan(1);
     expect(within(workspaceStateRegion).getByText('goal-state 56 rows · proved 54 · incomplete 1 · out-of-scope 1 · latest N48-post-n47-requirement-evidence-closeout')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('requirement status visible')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('open requirements 2')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('B01-computer-use-accessibility-tree · incomplete · Computer Use accessibility-tree acceptance waits for sandboxPolicy tool repair. · risk Do not retry native accessibility-tree acceptance until the tool error is fixed.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('D01-import-to-wiki-write · out_of_scope · import-to-wiki writes remain deferred unless explicitly reauthorized. · risk Write-path safety and approval tests must be a separate local slice.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal status visible')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('slice completion N49 aligned the source desktop Agent Workspace acceptance fixture with N48 recovery state.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal The full Scholar AI research workflow spine goal remains active, not complete.')).toBeInTheDocument();

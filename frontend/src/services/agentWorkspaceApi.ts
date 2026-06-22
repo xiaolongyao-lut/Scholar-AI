@@ -67,6 +67,13 @@ export interface AgentWorkspaceGoalRequirementStatus {
   latest_id: string | null;
 }
 
+export interface AgentWorkspaceGoalOpenRequirement {
+  id: string;
+  status: string;
+  requirement: string | null;
+  residual_risk: string | null;
+}
+
 export interface AgentWorkspaceGoalState {
   available: boolean;
   path: string | null;
@@ -78,6 +85,7 @@ export interface AgentWorkspaceGoalState {
   out_of_scope_count: number;
   latest_requirement_id: string | null;
   requirement_status: AgentWorkspaceGoalRequirementStatus;
+  open_requirements?: AgentWorkspaceGoalOpenRequirement[];
   completion_claim: {
     this_slice: string | null;
     full_goal: string | null;

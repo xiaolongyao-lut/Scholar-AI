@@ -1622,6 +1622,14 @@ def test_agent_workspace_status_reads_recovery_state(
                         "out_of_scope": 1,
                         "latest_id": "N41-goal-state-workspace-visibility",
                     },
+                    "open_requirements": [
+                        {
+                            "id": "B01-computer-use-accessibility-tree",
+                            "status": "incomplete",
+                            "requirement": "Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
+                            "residual_risk": "Retry only after the external tool error is fixed.",
+                        }
+                    ],
                     "completion_claim": {
                         "this_slice": "N41 made goal-state recovery visible.",
                         "full_goal": "The full Scholar AI workflow spine remains active, not complete.",
@@ -1715,6 +1723,14 @@ def test_agent_workspace_status_reads_recovery_state(
     assert state["goal_state"]["requirement_status"]["incomplete"] == 1
     assert state["goal_state"]["requirement_status"]["out_of_scope"] == 1
     assert state["goal_state"]["requirement_status"]["latest_id"] == "N41-goal-state-workspace-visibility"
+    assert state["goal_state"]["open_requirements"] == [
+        {
+            "id": "B01-computer-use-accessibility-tree",
+            "status": "incomplete",
+            "requirement": "Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
+            "residual_risk": "Retry only after the external tool error is fixed.",
+        }
+    ]
     assert state["goal_state"]["completion_claim"]["this_slice"] == "N41 made goal-state recovery visible."
     assert state["goal_state"]["completion_claim"]["full_goal"] == "The full Scholar AI workflow spine remains active, not complete."
     assert state["recovery_probes"][0]["route"] == "/runtime/research-action-lifecycle"

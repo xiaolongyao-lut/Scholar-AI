@@ -7434,6 +7434,26 @@ export interface components {
             this_slice?: string | null;
         };
         /**
+         * AgentWorkspaceGoalOpenRequirement
+         * @description Bounded unresolved requirement row for recovery decisions.
+         *
+         *     Args:
+         *         id: Requirement matrix id.
+         *         status: Current requirement-to-evidence state.
+         *         requirement: Short redacted requirement text.
+         *         residual_risk: Short redacted residual risk or blocker note.
+         */
+        AgentWorkspaceGoalOpenRequirement: {
+            /** Id */
+            id: string;
+            /** Requirement */
+            requirement?: string | null;
+            /** Residual Risk */
+            residual_risk?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
          * AgentWorkspaceGoalRequirementStatus
          * @description Bounded requirement-to-evidence status summary for resume decisions.
          *
@@ -7484,6 +7504,7 @@ export interface components {
          *         out_of_scope_count: Number of rows explicitly outside current scope.
          *         latest_requirement_id: Last requirement id in the matrix.
          *         requirement_status: Compact requirement-to-evidence status summary.
+         *         open_requirements: Bounded non-proved requirement rows for recovery.
          *         completion_claim: Bounded slice/full-goal completion summary.
          *         next_authorized_local_actions: Bounded action labels from the record.
          *         stop_boundaries: Bounded stop-boundary labels from the record.
@@ -7506,6 +7527,8 @@ export interface components {
             latest_requirement_id?: string | null;
             /** Next Authorized Local Actions */
             next_authorized_local_actions?: string[];
+            /** Open Requirements */
+            open_requirements?: components["schemas"]["AgentWorkspaceGoalOpenRequirement"][];
             /**
              * Out Of Scope Count
              * @default 0
