@@ -514,7 +514,25 @@ function handoffSummary(card: AgentHandoffCardProjection | null): string {
   if (!card) {
     return 'handoff card 未读取';
   }
-  return `${card.status} · refs ${card.resource_refs.length} · probes ${card.resume_probes.length}`;
+  const recovery = card.replay_recovery;
+  const index = isRecord(recovery?.index) ? recovery.index : {};
+  const matchingJobs = readNumberField(index, 'matching_job_count');
+  return `${card.status} · refs ${card.resource_refs.length} · probes ${card.resume_probes.length} · replay ${matchingJobs}`;
+}
+
+function handoffReplayRecoverySummary(card: AgentHandoffCardProjection | null): string {
+  const recovery = card?.replay_recovery;
+  if (!recovery) {
+    return 'handoff replay recovery 未读取';
+  }
+  const currentReceipt = isRecord(recovery.current_receipt) ? recovery.current_receipt : {};
+  const highest = isRecord(recovery.highest_priority_attempt) ? recovery.highest_priority_attempt : {};
+  const index = isRecord(recovery.index) ? recovery.index : {};
+  const receiptId = readTextField(currentReceipt, 'receipt_id') || 'receipt unknown';
+  const jobId = readTextField(highest, 'job_id') || 'job unknown';
+  const latestStatus = readTextField(highest, 'latest_status') || readTextField(currentReceipt, 'status') || 'unknown';
+  const matchingJobs = readNumberField(index, 'matching_job_count');
+  return `${receiptId} · ${jobId} ${latestStatus} · index ${matchingJobs} · read-only ${recovery.read_only ? 'true' : 'false'}`;
 }
 
 function isWorkflowReadinessClaimsProjection(value: unknown): value is WorkflowReadinessClaimsProjection {
@@ -1327,11 +1345,15 @@ export function ResearchWorkflowSpine({
             <p className="mt-2 break-words text-xs leading-5 text-foreground/60">
               {handoffCard?.blockers[0]
                 || handoffCard?.unresolved[0]
+                || (handoffCard?.replay_recovery ? handoffReplayRecoverySummary(handoffCard) : '')
                 || (handoffCard ? 'Handoff card 已生成，当前状态与完整性门禁待复核。' : '')
                 || 'Handoff card 暂无可显示记录。'}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <StatusPill tone="neutral">{handoffSummary(handoffCard)}</StatusPill>
+              <StatusPill tone={handoffCard?.replay_recovery?.recovery_required ? 'warning' : handoffCard?.replay_recovery ? 'info' : 'neutral'}>
+                {handoffReplayRecoverySummary(handoffCard)}
+              </StatusPill>
               <StatusPill tone={actionPreflight?.refresh_receipt ? 'info' : 'neutral'}>
                 {preflightReceiptSummary(actionPreflight)}
               </StatusPill>

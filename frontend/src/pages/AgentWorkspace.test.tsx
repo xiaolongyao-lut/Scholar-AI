@@ -677,6 +677,47 @@ describe('AgentWorkspace', () => {
         },
         provenance: { derived_from: ['runtime.agent_handoff_card'] },
       },
+      replay_recovery: {
+        schema_version: 'scholar_ai_agent_handoff_replay_recovery_v1',
+        current_receipt: {
+          receipt_id: 'preflight_refresh:test123',
+          status: 'blocked',
+          can_proceed: false,
+          refresh_required: false,
+        },
+        lineage: {
+          schema_version: 'scholar_ai_workflow_replay_lineage_v1',
+          receipt_count: 2,
+          latest_receipt_id: 'preflight_refresh:test123',
+          latest_status: 'blocked',
+          latest_blocker_count: 1,
+          latest_unresolved_count: 1,
+          lineage_is_read_only: true,
+        },
+        index: {
+          schema_version: 'scholar_ai_workflow_replay_index_v1',
+          matching_job_count: 2,
+          returned_count: 2,
+          blocked_job_count: 1,
+          unresolved_job_count: 1,
+          stale_job_count: 0,
+          index_is_read_only: true,
+          requires_exact_job_id: false,
+        },
+        highest_priority_attempt: {
+          job_id: 'job_agent_handoff_1',
+          latest_status: 'blocked',
+          latest_required_claim_id: 'handoff_readiness',
+          latest_receipt_id: 'preflight_refresh:test123',
+          recovery_priority: 160,
+          read_only: true,
+        },
+        resume_probes: [{ label: 'Read workflow replay lineage', read_only: true }],
+        recovery_required: true,
+        read_only: true,
+        source_material_mutation: false,
+        external_mutation: false,
+      },
       resource_refs: [{ ref_id: 'material:1', kind: 'material' }],
       artifacts: [],
       resume_probes: [{ label: 'Read workflow passport' }, { label: 'Read evidence integrity gate' }],
@@ -846,7 +887,8 @@ describe('AgentWorkspace', () => {
       expect(mockedGetAgentHandoffCard).toHaveBeenCalledWith('job_agent_handoff_1');
       expect(mockedGetWorkflowReplayLineage).toHaveBeenCalledWith('job_agent_handoff_1', { limit: 12 });
     });
-    expect(await screen.findByText('in_progress · refs 1 · probes 2')).toBeInTheDocument();
+    expect(await screen.findByText('in_progress · refs 1 · probes 2 · replay 2')).toBeInTheDocument();
+    expect(screen.getByText('preflight_refresh:test123 · job_agent_handoff_1 blocked · index 2 · read-only true')).toBeInTheDocument();
     expect(screen.queryByText(/\/runtime\/workflow-passport/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^integrity 通过$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Export readiness ready$/)).not.toBeInTheDocument();

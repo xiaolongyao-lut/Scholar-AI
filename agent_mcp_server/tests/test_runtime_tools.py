@@ -1129,6 +1129,13 @@ def test_agent_handoff_card_reads_runtime_card_by_request_id(
             "schema_version": "scholar_ai_agent_handoff_card_v1",
             "request_id": "agentreq_1",
             "job_id": "job_agent_1",
+            "replay_recovery": {
+                "schema_version": "scholar_ai_agent_handoff_replay_recovery_v1",
+                "index": {"index_is_read_only": True, "requires_exact_job_id": False},
+                "highest_priority_attempt": {"job_id": "job_agent_1", "latest_status": "blocked"},
+                "resume_probes": [{"endpoint": "/runtime/workflow-replay-index", "read_only": True}],
+                "read_only": True,
+            },
             "resume_probes": [{"endpoint": "/runtime/job/job_agent_1/snapshot"}],
         },
     )
@@ -1137,6 +1144,8 @@ def test_agent_handoff_card_reads_runtime_card_by_request_id(
 
     assert result["is_error"] is False
     assert result["data"]["job_id"] == "job_agent_1"
+    assert result["data"]["replay_recovery"]["read_only"] is True
+    assert result["data"]["replay_recovery"]["highest_priority_attempt"]["job_id"] == "job_agent_1"
     assert backend.calls[-2] == ("json", "/api/agent-bridge/request/agentreq_1", None)
     assert backend.calls[-1] == ("json", "/runtime/job/job_agent_1/agent-handoff-card", None)
 

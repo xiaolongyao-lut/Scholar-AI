@@ -1908,6 +1908,387 @@ def _workflow_replay_index_row(
     }
 
 
+def _agent_handoff_replay_recovery(
+    *,
+    lineage: dict[str, Any],
+    replay_index: dict[str, Any],
+    refresh_receipt: dict[str, Any],
+) -> dict[str, Any]:
+    """Return bounded replay context for a recoverable agent handoff card.
+
+    Args:
+        lineage: Per-job replay lineage built from persisted refresh receipts.
+        replay_index: Cross-job replay index scoped to the handoff project/session.
+        refresh_receipt: Current handoff-card refresh receipt.
+
+    Returns:
+        Compact read-only recovery context. The payload intentionally carries
+        refs and counts, not full workflow projections, so handoff cards remain
+        safe for MCP and Agent Workspace display.
+    """
+
+    if not isinstance(lineage, dict):
+        raise ValueError("lineage must be an object")
+    if not isinstance(replay_index, dict):
+        raise ValueError("replay_index must be an object")
+    if not isinstance(refresh_receipt, dict):
+        raise ValueError("refresh_receipt must be an object")
+
+    summary = replay_index.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    lineage_summary = lineage.get("summary")
+    if not isinstance(lineage_summary, dict):
+        lineage_summary = {}
+    latest = lineage.get("latest")
+    if not isinstance(latest, dict):
+        latest = {}
+    index_items = replay_index.get("items")
+    if not isinstance(index_items, list):
+        index_items = []
+    highest_priority = next((item for item in index_items if isinstance(item, dict)), None)
+
+    def _count(value: Any) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return 0
+        return max(0, parsed)
+
+    replay_probes: list[dict[str, Any]] = []
+    for source in (lineage.get("resume_probes"), replay_index.get("resume_probes")):
+        if not isinstance(source, list):
+            continue
+        for probe in source:
+            if isinstance(probe, dict):
+                _append_unique_mapping(replay_probes, _compact_projection_mapping(probe), max_items=12)
+
+    blocker_count = _count(lineage_summary.get("latest_blocker_count"))
+    unresolved_count = _count(lineage_summary.get("latest_unresolved_count"))
+    blocked_job_count = _count(summary.get("blocked_job_count"))
+    unresolved_job_count = _count(summary.get("unresolved_job_count"))
+    recovery_required = (
+        bool(blocker_count)
+        or bool(unresolved_count)
+        or bool(blocked_job_count)
+        or bool(unresolved_job_count)
+        or bool(latest.get("refresh_required"))
+        or bool(refresh_receipt.get("refresh_required"))
+    )
+    return {
+        "schema_version": "scholar_ai_agent_handoff_replay_recovery_v1",
+        "current_receipt": {
+            "receipt_id": _safe_projection_string(refresh_receipt.get("receipt_id")),
+            "status": _safe_projection_string(refresh_receipt.get("status")) or "unresolved",
+            "can_proceed": bool(refresh_receipt.get("can_proceed")),
+            "refresh_required": bool(refresh_receipt.get("refresh_required")),
+        },
+        "lineage": {
+            "schema_version": lineage.get("schema_version"),
+            "receipt_count": _count(lineage.get("receipt_count")),
+            "latest_receipt_id": lineage.get("latest_receipt_id"),
+            "latest_status": _safe_projection_string(latest.get("status")) or lineage_summary.get("latest_status"),
+            "latest_blocker_count": blocker_count,
+            "latest_unresolved_count": unresolved_count,
+            "lineage_is_read_only": bool(lineage_summary.get("lineage_is_read_only", True)),
+        },
+        "index": {
+            "schema_version": replay_index.get("schema_version"),
+            "matching_job_count": _count(replay_index.get("matching_job_count")),
+            "returned_count": _count(replay_index.get("returned_count")),
+            "blocked_job_count": blocked_job_count,
+            "unresolved_job_count": unresolved_job_count,
+            "stale_job_count": _count(summary.get("stale_job_count")),
+            "index_is_read_only": bool(summary.get("index_is_read_only", True)),
+            "requires_exact_job_id": bool(summary.get("requires_exact_job_id", False)),
+        },
+        "highest_priority_attempt": _compact_projection_mapping(
+            highest_priority,
+            allowed_keys=(
+                "job_id",
+                "session_id",
+                "project_id",
+                "latest_status",
+                "latest_action_id",
+                "latest_required_claim_id",
+                "latest_receipt_id",
+                "latest_blocker_count",
+                "latest_unresolved_count",
+                "latest_refresh_required",
+                "recovery_priority",
+                "read_only",
+            ),
+        )
+        if highest_priority
+        else {},
+        "resume_probes": replay_probes[:12],
+        "recovery_required": recovery_required,
+        "read_only": True,
+        "source_material_mutation": False,
+        "external_mutation": False,
+    }
+
+
+def _agent_handoff_current_replay_lineage(
+    *,
+    job: WritingJob,
+    artifacts: list[WritingArtifact],
+    refresh_receipt: dict[str, Any],
+    project_id: str | None,
+    limit: int = 12,
+) -> dict[str, Any]:
+    """Build a replay-lineage projection that includes the current handoff receipt."""
+
+    if limit < 1 or limit > 50:
+        raise ValueError("limit must be between 1 and 50")
+    receipts, receipt_counts = _collect_job_preflight_receipts(job, artifacts)
+    receipt_id = _safe_projection_string(refresh_receipt.get("receipt_id"))
+    if receipt_id is not None and all(receipt.get("receipt_id") != receipt_id for receipt in receipts):
+        receipts.append(dict(_json_safe_copy(refresh_receipt)))
+    receipts.sort(key=_receipt_timestamp_key)
+    latest = receipts[-1] if receipts else None
+    previous = receipts[-2] if len(receipts) > 1 else None
+    latest_row = _compact_refresh_receipt_row(latest, ordinal=len(receipts)) if latest is not None else None
+    previous_row = _compact_refresh_receipt_row(previous, ordinal=len(receipts) - 1) if previous is not None else None
+    bounded_receipts = receipts[-limit:]
+    items = [
+        _compact_refresh_receipt_row(receipt, ordinal=(len(receipts) - len(bounded_receipts) + index + 1))
+        for index, receipt in enumerate(bounded_receipts)
+    ]
+    blockers: list[str] = []
+    unresolved: list[str] = []
+    if latest is not None:
+        latest_counts = _receipt_validation_counts(latest)
+        latest_status = _safe_projection_string(latest.get("status")) or "unresolved"
+        if latest_status == "blocked" or latest_counts["blocker_count"] > 0:
+            _append_unique_text(
+                blockers,
+                f"Latest replay receipt reports {latest_counts['blocker_count']} blocking checks.",
+                max_items=8,
+            )
+        if latest_status in {"unresolved", "stale"} or latest_counts["unresolved_count"] > 0:
+            _append_unique_text(
+                unresolved,
+                f"Latest replay receipt reports {latest_counts['unresolved_count']} unresolved checks.",
+                max_items=8,
+            )
+        if bool(latest.get("refresh_required")):
+            _append_unique_text(
+                unresolved,
+                "Latest replay still requires a Workflow Passport and Evidence Integrity Gate refresh.",
+                max_items=8,
+            )
+    resume_probes = [
+        _handoff_resume_probe("Read runtime job", f"/runtime/job/{job.job_id}"),
+        _handoff_resume_probe("Read runtime snapshot", f"/runtime/job/{job.job_id}/snapshot"),
+        _handoff_resume_probe("Read workflow replay lineage", f"/runtime/job/{job.job_id}/workflow-replay-lineage"),
+    ]
+    if latest_row and latest_row.get("receipt_id"):
+        resume_probes.append(
+            _handoff_resume_probe(
+                "Read latest workflow refresh receipt",
+                f"/runtime/job/{job.job_id}/preflight-refresh-receipt",
+                {"receipt_id": str(latest_row["receipt_id"])},
+            )
+        )
+    return dict(_json_safe_copy({
+        "schema_version": _WORKFLOW_REPLAY_LINEAGE_SCHEMA_VERSION,
+        "generated_at": utc_now_iso_z(),
+        "job_id": job.job_id,
+        "session_id": job.session_id,
+        "project_id": project_id,
+        "scope": {
+            "session_id": job.session_id,
+            "job_id": job.job_id,
+            "project_id": project_id,
+        },
+        "receipt_count": len(receipts),
+        "returned_count": len(items),
+        "latest_receipt_id": latest_row.get("receipt_id") if latest_row else None,
+        "latest": latest_row or {},
+        "previous": previous_row or {},
+        "items": items,
+        "comparison": _receipt_delta(latest, previous) if latest is not None else {},
+        "blockers": blockers[:8],
+        "unresolved": unresolved[:8],
+        "resume_probes": resume_probes[:8],
+        "summary": {
+            "has_receipts": bool(receipts),
+            "latest_status": latest_row.get("status") if latest_row else None,
+            "latest_can_proceed": latest_row.get("can_proceed") if latest_row else None,
+            "latest_refresh_required": latest_row.get("refresh_required") if latest_row else None,
+            "latest_blocker_count": latest_row.get("blocker_count") if latest_row else 0,
+            "latest_unresolved_count": latest_row.get("unresolved_count") if latest_row else 0,
+            "metadata_receipt_count": receipt_counts["metadata_receipt_count"],
+            "artifact_receipt_count": receipt_counts["artifact_receipt_count"],
+            "includes_current_handoff_receipt": receipt_id is not None,
+            "lineage_is_read_only": True,
+        },
+        "provenance": {
+            "derived_from": [
+                "runtime.job_metadata.latest_preflight_refresh_receipt",
+                "runtime.job_metadata.preflight_refresh_receipts",
+                "runtime.artifacts.preflight_refresh_receipt",
+                "runtime.agent_handoff_card.current_refresh_receipt",
+            ],
+            "source_material_mutation": False,
+            "external_mutation": False,
+        },
+    }))
+
+
+def _agent_handoff_current_replay_index(
+    *,
+    jobs: list[WritingJob],
+    sessions_by_id: dict[str, WritingSession],
+    artifacts_by_job: dict[str, list[WritingArtifact]],
+    current_job: WritingJob,
+    current_receipt: dict[str, Any],
+    session_id: str,
+    project_id: str | None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Build a scoped replay index that includes the current handoff receipt."""
+
+    if limit < 1 or limit > 50:
+        raise ValueError("limit must be between 1 and 50")
+    rows: list[dict[str, Any]] = []
+    total_jobs_scanned = 0
+    total_receipts_seen = 0
+    status_counts: dict[str, int] = {}
+    blockers: list[str] = []
+    unresolved: list[str] = []
+    project_ids: set[str] = set()
+    session_ids: set[str] = set()
+
+    current_receipt_id = _safe_projection_string(current_receipt.get("receipt_id"))
+    for job in jobs:
+        if job.session_id != session_id:
+            continue
+        session = sessions_by_id.get(job.session_id)
+        job_project_id = _project_id_for_job(job, session)
+        if project_id is not None and job_project_id != project_id:
+            continue
+        total_jobs_scanned += 1
+        receipts, receipt_counts = _collect_job_preflight_receipts(job, artifacts_by_job.get(job.job_id, []))
+        if job.job_id == current_job.job_id and current_receipt_id is not None:
+            if all(receipt.get("receipt_id") != current_receipt_id for receipt in receipts):
+                receipts.append(dict(_json_safe_copy(current_receipt)))
+        receipts.sort(key=_receipt_timestamp_key)
+        if not receipts:
+            continue
+        total_receipts_seen += len(receipts)
+        row = _workflow_replay_index_row(
+            job=job,
+            session=session,
+            project_id=job_project_id,
+            receipts=receipts,
+            receipt_counts=receipt_counts,
+            ordinal=0,
+        )
+        rows.append(row)
+        latest_status = str(row.get("latest_status") or "unresolved")
+        status_counts[latest_status] = status_counts.get(latest_status, 0) + 1
+        session_ids.add(job.session_id)
+        if job_project_id:
+            project_ids.add(job_project_id)
+        if row["latest_status"] == "blocked" or row["latest_blocker_count"] > 0:
+            _append_unique_text(
+                blockers,
+                f"Job {job.job_id} latest replay receipt reports {row['latest_blocker_count']} blocking checks.",
+                max_items=12,
+            )
+        if row["latest_status"] in {"unresolved", "stale"} or row["latest_unresolved_count"] > 0:
+            _append_unique_text(
+                unresolved,
+                f"Job {job.job_id} latest replay receipt reports {row['latest_unresolved_count']} unresolved checks.",
+                max_items=12,
+            )
+        if row["latest_refresh_required"]:
+            _append_unique_text(
+                unresolved,
+                f"Job {job.job_id} still requires refreshed workflow projections before retry.",
+                max_items=12,
+            )
+
+    rows.sort(
+        key=lambda row: (
+            int(row.get("recovery_priority") or 0),
+            str(row.get("latest_generated_at") or ""),
+            str(row.get("job_id") or ""),
+        ),
+        reverse=True,
+    )
+    bounded_rows = [{**row, "ordinal": index + 1} for index, row in enumerate(rows[:limit])]
+    resume_probes = [
+        _handoff_resume_probe("List workflow replay index", "/runtime/workflow-replay-index"),
+        _handoff_resume_probe(
+            "List session-scoped workflow replay index",
+            "/runtime/workflow-replay-index",
+            {"session_id": session_id},
+        ),
+    ]
+    if project_id:
+        resume_probes.append(
+            _handoff_resume_probe(
+                "List project-scoped workflow replay index",
+                "/runtime/workflow-replay-index",
+                {"project_id": project_id},
+            )
+        )
+    if bounded_rows:
+        resume_probes.append(
+            _handoff_resume_probe(
+                "Read highest-priority replay lineage",
+                f"/runtime/job/{bounded_rows[0]['job_id']}/workflow-replay-lineage",
+            )
+        )
+    return dict(_json_safe_copy({
+        "schema_version": _WORKFLOW_REPLAY_INDEX_SCHEMA_VERSION,
+        "generated_at": utc_now_iso_z(),
+        "scope": {
+            "session_id": session_id,
+            "project_id": project_id,
+            "status": None,
+            "action_id": None,
+            "limit": limit,
+        },
+        "total_jobs_scanned": total_jobs_scanned,
+        "total_receipts_seen": total_receipts_seen,
+        "matching_job_count": len(rows),
+        "returned_count": len(bounded_rows),
+        "items": bounded_rows,
+        "blockers": blockers[:12],
+        "unresolved": unresolved[:12],
+        "resume_probes": resume_probes[:10],
+        "summary": {
+            "has_replay_evidence": bool(rows),
+            "blocked_job_count": status_counts.get("blocked", 0),
+            "unresolved_job_count": status_counts.get("unresolved", 0),
+            "stale_job_count": status_counts.get("stale", 0),
+            "ready_job_count": status_counts.get("ready", 0),
+            "status_counts": status_counts,
+            "project_ids": sorted(project_ids)[:24],
+            "session_ids": sorted(session_ids)[:24],
+            "filtered_out_count": 0,
+            "includes_current_handoff_receipt": current_receipt_id is not None,
+            "index_is_read_only": True,
+            "requires_exact_job_id": False,
+        },
+        "provenance": {
+            "derived_from": [
+                "runtime.jobs",
+                "runtime.job_metadata.latest_preflight_refresh_receipt",
+                "runtime.job_metadata.preflight_refresh_receipts",
+                "runtime.artifacts.preflight_refresh_receipt",
+                "runtime.agent_handoff_card.current_refresh_receipt",
+            ],
+            "source_material_mutation": False,
+            "external_mutation": False,
+        },
+    }))
+
+
 def _iter_runtime_metadata_dicts(jobs: list[WritingJob]) -> list[tuple[str, dict[str, Any]]]:
     """Return metadata-bearing objects attached to selected runtime jobs."""
 
@@ -5600,8 +5981,41 @@ class WritingRuntime:
         for message in action_preflight.get("unresolved") or []:
             _append_unique_text(unresolved, message, max_items=16)
         _append_unique_mapping(completed_evidence, receipt_ref, max_items=24)
+        job_artifacts = self.get_job_artifacts(job.job_id)
+        scoped_jobs = [
+            candidate
+            for candidate in self._jobs.values()
+            if candidate.session_id == job.session_id
+            and (project_id is None or _project_id_for_job(candidate, self.get_session(candidate.session_id)) == project_id)
+        ]
+        scoped_artifacts_by_job = {
+            candidate.job_id: (job_artifacts if candidate.job_id == job.job_id else self.get_job_artifacts(candidate.job_id))
+            for candidate in scoped_jobs
+        }
+        replay_lineage = _agent_handoff_current_replay_lineage(
+            job=job,
+            artifacts=job_artifacts,
+            refresh_receipt=refresh_receipt,
+            project_id=project_id,
+            limit=12,
+        )
+        replay_index = _agent_handoff_current_replay_index(
+            jobs=scoped_jobs,
+            sessions_by_id=dict(self._sessions),
+            artifacts_by_job=scoped_artifacts_by_job,
+            current_job=job,
+            current_receipt=refresh_receipt,
+            session_id=job.session_id,
+            project_id=project_id,
+            limit=10,
+        )
+        replay_recovery = _agent_handoff_replay_recovery(
+            lineage=replay_lineage,
+            replay_index=replay_index,
+            refresh_receipt=refresh_receipt,
+        )
 
-        artifacts = _bounded_handoff_artifacts(self.get_job_artifacts(job.job_id))
+        artifacts = _bounded_handoff_artifacts(job_artifacts)
         resource_refs = _bounded_handoff_refs(metadata.get("resource_refs"), max_items=50)
         resume_probe_params = {
             "session_id": job.session_id,
@@ -5619,6 +6033,12 @@ class WritingRuntime:
             _handoff_resume_probe("Read workflow passport", "/runtime/workflow-passport", resume_probe_params),
             _handoff_resume_probe("Read evidence integrity gate", "/runtime/evidence-integrity-gate", resume_probe_params),
             _handoff_resume_probe("Read job artifacts", f"/runtime/job/{job.job_id}/artifacts"),
+            _handoff_resume_probe("Read workflow replay lineage", f"/runtime/job/{job.job_id}/workflow-replay-lineage"),
+            _handoff_resume_probe("List scoped workflow replay index", "/runtime/workflow-replay-index", {
+                "session_id": job.session_id,
+                "project_id": project_id,
+                "limit": 10,
+            }),
         ]
         if refresh_receipt.get("receipt_id"):
             resume_probes.append(
@@ -5628,6 +6048,9 @@ class WritingRuntime:
                     {"receipt_id": refresh_receipt["receipt_id"]},
                 )
             )
+        for replay_probe in replay_recovery.get("resume_probes") or []:
+            if isinstance(replay_probe, dict):
+                _append_unique_mapping(resume_probes, replay_probe, max_items=16)
         forbidden_actions = [
             "Do not push, tag, release, publish, deploy, or upload external artifacts without explicit user authorization.",
             "Do not create Codex skills, Feishu/Lark integrations, or standalone installer/package surfaces from this handoff.",
@@ -5643,9 +6066,17 @@ class WritingRuntime:
             "Resume Scholar AI / 文献助手 MCP-first local work from this handoff card.",
             f"Request id: {request_id or 'unknown'}; runtime job id: {job.job_id}; status: {status}.",
             f"Current stage: {current_stage_label}.",
-            "Before any mutating action, run the read-only resume probes listed in this card and re-check git status plus rollback discipline.",
+            "Before any mutating action, run the read-only replay lineage, replay index, workflow passport, and integrity-gate probes listed in this card; then re-check git status plus rollback discipline.",
             "Keep unresolved evidence/integrity checks visible; only proceed with local code, docs, tests, and runtime artifacts inside the authorized boundaries.",
         ]
+        highest_priority = replay_recovery.get("highest_priority_attempt")
+        if isinstance(highest_priority, dict) and highest_priority.get("job_id"):
+            resume_prompt_lines.append(
+                "Replay recovery: "
+                f"highest-priority job {highest_priority.get('job_id')} "
+                f"({highest_priority.get('latest_status', 'unknown')}) "
+                f"for {highest_priority.get('latest_required_claim_id', 'unknown')}."
+            )
         if blockers:
             resume_prompt_lines.append("Blocking risks: " + "; ".join(blockers[:3]))
         if unresolved:
@@ -5667,6 +6098,7 @@ class WritingRuntime:
             "unresolved": unresolved[:16],
             "readiness_claims": readiness_claims,
             "action_preflight": action_preflight,
+            "replay_recovery": replay_recovery,
             "resource_refs": resource_refs[:50],
             "artifacts": artifacts[:24],
             "resume_probes": resume_probes[:16],
@@ -5677,18 +6109,23 @@ class WritingRuntime:
                     "runtime.job_metadata",
                     "runtime.artifacts",
                     "runtime.workflow_passport",
-                "runtime.evidence_integrity_gate",
-                "runtime.action_preflight",
-                "runtime.preflight_refresh_receipt",
-            ],
-            "workflow_passport_schema_version": passport.get("schema_version"),
-            "evidence_integrity_gate_schema_version": gate.get("schema_version"),
-            "action_preflight_schema_version": action_preflight.get("schema_version"),
-            "preflight_refresh_receipt_schema_version": refresh_receipt.get("schema_version"),
-            "preflight_refresh_receipt_id": refresh_receipt.get("receipt_id"),
-            "artifact_count": len(artifacts),
-            "resource_ref_count": len(resource_refs),
-        },
+                    "runtime.evidence_integrity_gate",
+                    "runtime.action_preflight",
+                    "runtime.preflight_refresh_receipt",
+                    "runtime.workflow_replay_lineage",
+                    "runtime.workflow_replay_index",
+                ],
+                "workflow_passport_schema_version": passport.get("schema_version"),
+                "evidence_integrity_gate_schema_version": gate.get("schema_version"),
+                "action_preflight_schema_version": action_preflight.get("schema_version"),
+                "preflight_refresh_receipt_schema_version": refresh_receipt.get("schema_version"),
+                "workflow_replay_lineage_schema_version": replay_lineage.get("schema_version"),
+                "workflow_replay_index_schema_version": replay_index.get("schema_version"),
+                "preflight_refresh_receipt_id": refresh_receipt.get("receipt_id"),
+                "artifact_count": len(artifacts),
+                "resource_ref_count": len(resource_refs),
+                "replay_recovery_read_only": True,
+            },
         }
         if persist:
             return self.persist_agent_handoff_card(job.job_id, card)

@@ -798,7 +798,7 @@
         "type": "object"
       },
       "AgentHandoffCardPayload": {
-        "description": "Recoverable handoff card for one runtime-visible agent request.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this card.\n    request_id: Agent bridge request id when present.\n    job_id: Runtime job id that owns the handoff card.\n    session_id: Runtime session id used for resume probes.\n    project_id: Optional project id recovered from job/session metadata.\n    status: Terminal or current job lifecycle state.\n    current_stage_id: Workflow passport stage that should be inspected next.\n    completed_evidence: Bounded refs to completed runtime evidence.\n    blockers: Block-level integrity or lifecycle messages.\n    unresolved: Review/offline checks that must remain visible.\n    resource_refs: Bounded resource refs supplied to the delegated agent.\n    artifacts: Bounded artifacts attached to the runtime job.\n    resume_probes: Read-only calls a new agent should run before mutating.\n    forbidden_actions: Actions that remain outside the local handoff boundary.\n    resume_prompt: Compact instruction block for the next agent session.\n    provenance: Runtime sources used to derive the card.",
+        "description": "Recoverable handoff card for one runtime-visible agent request.\n\nArgs:\n    schema_version: Versioned additive API contract.\n    generated_at: UTC generation time for this card.\n    request_id: Agent bridge request id when present.\n    job_id: Runtime job id that owns the handoff card.\n    session_id: Runtime session id used for resume probes.\n    project_id: Optional project id recovered from job/session metadata.\n    status: Terminal or current job lifecycle state.\n    current_stage_id: Workflow passport stage that should be inspected next.\n    completed_evidence: Bounded refs to completed runtime evidence.\n    blockers: Block-level integrity or lifecycle messages.\n    unresolved: Review/offline checks that must remain visible.\n    readiness_claims: Gate-derived handoff/export readiness state.\n    action_preflight: Read-only command preflight and refresh receipt used\n        to decide whether the handoff can be trusted.\n    replay_recovery: Compact replay-index and lineage context a resumed\n        agent should inspect before mutating local state.\n    resource_refs: Bounded resource refs supplied to the delegated agent.\n    artifacts: Bounded artifacts attached to the runtime job.\n    resume_probes: Read-only calls a new agent should run before mutating.\n    forbidden_actions: Actions that remain outside the local handoff boundary.\n    resume_prompt: Compact instruction block for the next agent session.\n    provenance: Runtime sources used to derive the card.",
         "properties": {
           "action_preflight": {
             "additionalProperties": true,
@@ -905,6 +905,11 @@
           "readiness_claims": {
             "additionalProperties": true,
             "title": "Readiness Claims",
+            "type": "object"
+          },
+          "replay_recovery": {
+            "additionalProperties": true,
+            "title": "Replay Recovery",
             "type": "object"
           },
           "request_id": {

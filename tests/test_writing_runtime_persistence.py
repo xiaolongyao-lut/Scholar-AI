@@ -1092,6 +1092,15 @@ async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path
     assert card["request_id"] == "agentreq_persisted"
     assert card["action_preflight"]["refresh_receipt"]["schema_version"] == "scholar_ai_preflight_refresh_receipt_v1"
     assert card["action_preflight"]["refresh_receipt_id"] == card["action_preflight"]["refresh_receipt"]["receipt_id"]
+    assert card["replay_recovery"]["schema_version"] == "scholar_ai_agent_handoff_replay_recovery_v1"
+    assert card["replay_recovery"]["current_receipt"]["receipt_id"] == card["action_preflight"]["refresh_receipt_id"]
+    assert card["replay_recovery"]["lineage"]["latest_receipt_id"] == card["action_preflight"]["refresh_receipt_id"]
+    assert card["replay_recovery"]["lineage"]["lineage_is_read_only"] is True
+    assert card["replay_recovery"]["index"]["index_is_read_only"] is True
+    assert card["replay_recovery"]["index"]["requires_exact_job_id"] is False
+    assert card["replay_recovery"]["highest_priority_attempt"]["job_id"] == job.job_id
+    assert all(probe["read_only"] is True for probe in card["replay_recovery"]["resume_probes"])
+    assert "Replay recovery: highest-priority job" in card["resume_prompt"]
     assert any(
         item.get("ref_type") == "preflight_refresh_receipt"
         for item in card["completed_evidence"]
@@ -1102,7 +1111,10 @@ async def test_agent_handoff_card_persists_resume_metadata_and_artifact(tmp_path
     loaded_card = loaded_job.metadata["agent_handoff_card"]
     assert loaded_card["schema_version"] == "scholar_ai_agent_handoff_card_v1"
     assert loaded_card["resource_refs"][0]["ref_id"] == "material:handoff"
+    assert loaded_card["replay_recovery"]["current_receipt"]["receipt_id"] == loaded_card["action_preflight"]["refresh_receipt_id"]
     assert any(probe["endpoint"] == "/runtime/workflow-passport" for probe in loaded_card["resume_probes"])
+    assert any(probe["endpoint"] == f"/runtime/job/{job.job_id}/workflow-replay-lineage" for probe in loaded_card["resume_probes"])
+    assert any(probe["endpoint"] == "/runtime/workflow-replay-index" for probe in loaded_card["resume_probes"])
     receipt_probe = next(
         probe
         for probe in loaded_card["resume_probes"]

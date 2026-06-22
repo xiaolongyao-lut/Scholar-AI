@@ -6966,6 +6966,11 @@ export interface components {
          *         completed_evidence: Bounded refs to completed runtime evidence.
          *         blockers: Block-level integrity or lifecycle messages.
          *         unresolved: Review/offline checks that must remain visible.
+         *         readiness_claims: Gate-derived handoff/export readiness state.
+         *         action_preflight: Read-only command preflight and refresh receipt used
+         *             to decide whether the handoff can be trusted.
+         *         replay_recovery: Compact replay-index and lineage context a resumed
+         *             agent should inspect before mutating local state.
          *         resource_refs: Bounded resource refs supplied to the delegated agent.
          *         artifacts: Bounded artifacts attached to the runtime job.
          *         resume_probes: Read-only calls a new agent should run before mutating.
@@ -7008,6 +7013,10 @@ export interface components {
             };
             /** Readiness Claims */
             readiness_claims?: {
+                [key: string]: unknown;
+            };
+            /** Replay Recovery */
+            replay_recovery?: {
                 [key: string]: unknown;
             };
             /** Request Id */

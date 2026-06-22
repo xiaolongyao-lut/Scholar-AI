@@ -806,6 +806,11 @@ class AgentHandoffCardPayload(BaseModel):
         completed_evidence: Bounded refs to completed runtime evidence.
         blockers: Block-level integrity or lifecycle messages.
         unresolved: Review/offline checks that must remain visible.
+        readiness_claims: Gate-derived handoff/export readiness state.
+        action_preflight: Read-only command preflight and refresh receipt used
+            to decide whether the handoff can be trusted.
+        replay_recovery: Compact replay-index and lineage context a resumed
+            agent should inspect before mutating local state.
         resource_refs: Bounded resource refs supplied to the delegated agent.
         artifacts: Bounded artifacts attached to the runtime job.
         resume_probes: Read-only calls a new agent should run before mutating.
@@ -831,6 +836,7 @@ class AgentHandoffCardPayload(BaseModel):
     unresolved: List[str] = Field(default_factory=list, max_length=16)
     readiness_claims: Dict[str, Any] = Field(default_factory=dict)
     action_preflight: Dict[str, Any] = Field(default_factory=dict)
+    replay_recovery: Dict[str, Any] = Field(default_factory=dict)
     resource_refs: List[Dict[str, Any]] = Field(default_factory=list, max_length=50)
     artifacts: List[Dict[str, Any]] = Field(default_factory=list, max_length=24)
     resume_probes: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
