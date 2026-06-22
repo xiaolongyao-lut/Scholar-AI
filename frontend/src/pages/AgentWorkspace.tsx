@@ -3129,7 +3129,7 @@ export function ReadinessPanel({
   );
 }
 
-function WorkspaceStatePanel({
+export function WorkspaceStatePanel({
   workspaceStatus,
 }: {
   workspaceStatus: AgentWorkspaceStatus | null;

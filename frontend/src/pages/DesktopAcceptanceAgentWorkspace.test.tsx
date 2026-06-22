@@ -18,6 +18,8 @@ describe('DesktopAcceptanceAgentWorkspace', () => {
     expect(screen.getByText('Scan the project source folder so retrieval and evidence packs can read chunks.')).toBeInTheDocument();
     expect(screen.getByText('Provide a Zotero data directory containing zotero.sqlite, then rerun the health check.')).toBeInTheDocument();
     expect(screen.getByText('打开任务详情检查待补充哨兵和 evidence refs。')).toBeInTheDocument();
+    expect(screen.getByText('goal-state 52 rows · proved 50 · incomplete 1 · out-of-scope 1 · latest N44-track-desktop-acceptance-lifecycle-test')).toBeInTheDocument();
+    expect(screen.getByText('checkpoint 20260622-231241-n44-post-commit-goal-state-closeout')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '研究流程主干' })).toHaveAttribute('data-density', 'desktop-acceptance');
     expect(screen.getByRole('heading', { name: '研究流程' })).toBeInTheDocument();
     expect(screen.getByText('Workflow Passport')).toBeInTheDocument();

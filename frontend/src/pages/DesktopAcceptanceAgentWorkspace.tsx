@@ -1,7 +1,7 @@
 import { TerminalSquare } from 'lucide-react';
 
 import { PageHeader } from '@/components/common/PageHeader';
-import { ReadinessPanel, ResearchWorkflowSpine } from './AgentWorkspace';
+import { ReadinessPanel, ResearchWorkflowSpine, WorkspaceStatePanel } from './AgentWorkspace';
 import type {
   AgentHandoffCardProjection,
   AgentBridgeStatus,
@@ -91,13 +91,13 @@ const ACCEPTANCE_WORKSPACE_STATE = {
   goal_state: {
     available: true,
     path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
-    updated_at: '2026-06-22T22:48:05+08:00',
-    checkpoint_id: '20260622-224632-n43-goal-state-record-update',
-    requirement_count: 51,
-    proved_count: 49,
+    updated_at: '2026-06-22T23:13:51+08:00',
+    checkpoint_id: '20260622-231241-n44-post-commit-goal-state-closeout',
+    requirement_count: 52,
+    proved_count: 50,
     incomplete_count: 1,
     out_of_scope_count: 1,
-    latest_requirement_id: 'N43-desktop-acceptance-lifecycle-crosslinks',
+    latest_requirement_id: 'N44-track-desktop-acceptance-lifecycle-test',
     next_authorized_local_actions: [
       'Create a rollback checkpoint and search mature references before nontrivial edits.',
     ],
@@ -880,6 +880,7 @@ export function DesktopAcceptanceAgentWorkspace() {
           auditRecords={ACCEPTANCE_WORKSPACE_STATUS.audit_records}
           density="desktop-acceptance"
         />
+        <WorkspaceStatePanel workspaceStatus={ACCEPTANCE_WORKSPACE_STATUS} />
         <ResearchWorkflowSpine
           loading={false}
           passport={ACCEPTANCE_WORKFLOW_PASSPORT}
