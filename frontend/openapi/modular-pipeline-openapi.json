@@ -8093,7 +8093,7 @@
         "type": "object"
       },
       "EvidenceIntegritySignalPayload": {
-        "description": "One reproducible integrity check signal for evidence-bound workflows.\n\nArgs:\n    signal_id: Stable signal id scoped by category and runtime source.\n    category: Research-integrity area checked by the signal.\n    status: Gate state; unresolved/offline checks must not be counted as pass.\n    severity: UI/MCP severity used for blocking and review ordering.\n    message: Bounded explanation of what the signal means.\n    evidence: Bounded runtime refs or diagnostic excerpts, never full source text.\n    next_actions: Local repair or review actions for this signal.\n    metadata: JSON-safe counters and provenance details for repeatability.",
+        "description": "One reproducible integrity check signal for evidence-bound workflows.\n\nArgs:\n    signal_id: Stable signal id scoped by category and runtime source.\n    category: Research-integrity area checked by the signal.\n    status: Gate state; unresolved/offline checks must not be counted as pass.\n    severity: UI/MCP severity used for blocking and review ordering.\n    message: Bounded explanation of what the signal means.\n    evidence: Bounded runtime refs or diagnostic excerpts, never full source text.\n    next_actions: Local repair or review actions for this signal.\n    metadata: JSON-safe counters and provenance details for repeatability.\n    drilldown: Bounded checked facts and replay refs explaining this signal.",
         "properties": {
           "category": {
             "enum": [
@@ -8108,6 +8108,11 @@
             ],
             "title": "Category",
             "type": "string"
+          },
+          "drilldown": {
+            "additionalProperties": true,
+            "title": "Drilldown",
+            "type": "object"
           },
           "evidence": {
             "items": {

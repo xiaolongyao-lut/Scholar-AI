@@ -913,6 +913,18 @@ def _passport_gate_for_stage(stage: dict[str, Any], row: dict[str, Any]) -> dict
     blockers = list(row.get("blockers", []))[:12]
     unresolved = list(row.get("unresolved", []))[:12]
     requires_user_confirmation = bool(row.get("requires_user_confirmation"))
+    diagnostics = row.get("diagnostics") if isinstance(row.get("diagnostics"), dict) else {}
+    preflight_receipt_count = int(diagnostics.get("preflight_receipt_count") or 0)
+    preflight_blocker_count = int(diagnostics.get("blocker_count") or 0)
+    preflight_unresolved_count = int(diagnostics.get("unresolved_count") or 0)
+    if preflight_blocker_count > 0:
+        blockers.append(
+            f"{preflight_blocker_count} preflight blocker(s) remain in the latest gate refresh receipt."
+        )
+    if preflight_receipt_count > 0 and preflight_unresolved_count > 0:
+        unresolved.append(
+            f"{preflight_unresolved_count} preflight unresolved check(s) remain in the latest gate refresh receipt."
+        )
     status = str(row.get("status") or "not_started")
     if requires_user_confirmation:
         gate_status = "block"
@@ -1250,6 +1262,7 @@ def _integrity_signal(
     evidence: list[dict[str, Any]] | None = None,
     next_actions: list[str] | None = None,
     metadata: dict[str, Any] | None = None,
+    drilldown: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return one bounded evidence-integrity signal."""
 
@@ -1264,7 +1277,90 @@ def _integrity_signal(
         "evidence": list(evidence or [])[:16],
         "next_actions": list(next_actions or [])[:8],
         "metadata": dict(_json_safe_copy(metadata or {})),
+        "drilldown": dict(_json_safe_copy(drilldown or {})),
     }
+
+
+def _integrity_source_ref(source_id: str, *, source_kind: str) -> dict[str, Any]:
+    """Return a bounded, path-safe source reference for drilldown payloads."""
+
+    normalized = _require_non_empty_string(source_id, field_name="source_id", max_length=240)
+    return {
+        "source_id": normalized,
+        "source_kind": _require_non_empty_string(source_kind, field_name="source_kind", max_length=80),
+        "source_digest": _digest_json_payload(normalized),
+        "raw_path_exposed": False,
+    }
+
+
+def _integrity_payload_drilldown(
+    *,
+    source_id: str,
+    source_kind: str,
+    status: str,
+    checked_facts: dict[str, Any],
+    evidence_refs: list[dict[str, Any]] | None = None,
+    replay_refs: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Return repeatable facts that explain one integrity signal without raw paths."""
+
+    facts = _compact_projection_mapping(checked_facts)
+    return {
+        "schema_version": "scholar_ai_integrity_signal_drilldown_v1",
+        "status": status,
+        "source_ref": _integrity_source_ref(source_id, source_kind=source_kind),
+        "checked_facts": facts,
+        "evidence_refs": list(evidence_refs or [])[:12],
+        "replay_refs": list(replay_refs or [])[:8],
+        "requires_human_review": status == "unresolved",
+        "blocks_claims": status == "block",
+    }
+
+
+def _workflow_stage_drilldown(stage: dict[str, Any], gate: dict[str, Any]) -> dict[str, Any]:
+    """Return stage-level facts from the workflow passport for gate explainability."""
+
+    stage_id = _safe_projection_string(stage.get("stage_id")) or "unknown"
+    diagnostics = stage.get("diagnostics") if isinstance(stage.get("diagnostics"), dict) else {}
+    reproducibility = stage.get("reproducibility") if isinstance(stage.get("reproducibility"), dict) else {}
+    evidence_refs = list(gate.get("evidence") or [])[:12]
+    replay_refs: list[dict[str, Any]] = []
+    for key in ("preflight_receipts", "replay_probe_refs", "locator_refs", "qrels_refs"):
+        values = reproducibility.get(key)
+        if not isinstance(values, list):
+            continue
+        for item in values[:6]:
+            if isinstance(item, dict):
+                _append_unique_mapping(replay_refs, item, max_items=8)
+    checked_facts = {
+        "stage_id": stage_id,
+        "stage_status": stage.get("status"),
+        "gate_status": gate.get("status"),
+        "gate_severity": gate.get("severity"),
+        "required_artifact_count": len(stage.get("required_artifacts") or []),
+        "present_artifact_count": len(stage.get("present_artifacts") or []),
+        "object_count": len(stage.get("object_ids") or []),
+        "event_type_count": len(stage.get("event_types") or []),
+        "artifact_count": diagnostics.get("artifact_count"),
+        "task_count": diagnostics.get("task_count"),
+        "locator_coverage_count": diagnostics.get("locator_coverage_count"),
+        "qrels_status_count": diagnostics.get("qrels_status_count"),
+        "preflight_receipt_count": diagnostics.get("preflight_receipt_count"),
+        "unresolved_count": diagnostics.get("unresolved_count"),
+        "blocker_count": diagnostics.get("blocker_count"),
+        "parameter_digest_count": reproducibility.get("parameter_digest_count"),
+        "cache_key_count": reproducibility.get("cache_key_count"),
+        "projection_digest_keys": reproducibility.get("projection_digest_keys"),
+        "requires_user_confirmation": gate.get("requires_user_confirmation"),
+    }
+    return _integrity_payload_drilldown(
+        source_id=f"workflow_passport:{stage_id}",
+        source_kind="workflow_passport_stage",
+        status=str(gate.get("status") or "unresolved"),
+        checked_facts=checked_facts,
+        evidence_refs=evidence_refs,
+        replay_refs=replay_refs,
+    )
 
 
 def _integrity_status_rank(status: str) -> int:
@@ -2878,6 +2974,35 @@ def _locator_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[s
                 "notes",
             ),
         ),
+        drilldown=_integrity_payload_drilldown(
+            source_id=source_id,
+            source_kind="locator_coverage",
+            status=status,
+            checked_facts=_compact_projection_mapping(
+                payload,
+                allowed_keys=(
+                    "schema_version",
+                    "coverage_state",
+                    "risk_level",
+                    "total_refs",
+                    "project_ref_count",
+                    "material_locator_count",
+                    "page_locator_count",
+                    "bbox_locator_count",
+                    "bbox_unit_counts",
+                    "source_label_coverage_ratio",
+                    "figure_table_locator_count",
+                    "missing_locator_count",
+                    "sample_missing_ref_ids",
+                ),
+            ),
+            evidence_refs=_bounded_signal_evidence(
+                "locator_coverage",
+                source_id,
+                coverage_state=coverage_state,
+                risk_level=risk_level,
+            ),
+        ),
     )
 
 
@@ -2925,6 +3050,30 @@ def _qrels_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str
                 "notes",
             ),
         ),
+        drilldown=_integrity_payload_drilldown(
+            source_id=source_id,
+            source_kind="qrels_status",
+            status=status,
+            checked_facts=_compact_projection_mapping(
+                payload,
+                allowed_keys=(
+                    "schema_version",
+                    "status",
+                    "candidate_qrels_count",
+                    "reviewed_qrels_count",
+                    "canonical_qrels_count",
+                    "semantic_quality_claim_allowed",
+                    "quality_claim",
+                    "notes",
+                ),
+            ),
+            evidence_refs=_bounded_signal_evidence(
+                "qrels_status",
+                source_id,
+                qrels_status=status_value,
+                quality_claim=payload.get("quality_claim"),
+            ),
+        ),
     )
 
 
@@ -2963,6 +3112,29 @@ def _citation_verification_integrity_signal(source_id: str, payload: dict[str, A
         metadata=_compact_projection_mapping(
             payload,
             allowed_keys=("verification_id", "citation_id", "status", "rationale", "source_kind", "source_labels"),
+        ),
+        drilldown=_integrity_payload_drilldown(
+            source_id=source_id,
+            source_kind="citation_verification",
+            status=status,
+            checked_facts=_compact_projection_mapping(
+                payload,
+                allowed_keys=(
+                    "verification_id",
+                    "citation_id",
+                    "status",
+                    "rationale",
+                    "source_kind",
+                    "source_labels",
+                    "source_anchor",
+                ),
+            ),
+            evidence_refs=_bounded_signal_evidence(
+                "citation_verification",
+                payload.get("verification_id") or citation_id,
+                citation_id=citation_id,
+                source_kind=payload.get("source_kind"),
+            ),
         ),
     )
 
@@ -3007,6 +3179,23 @@ def _citation_overlap_integrity_signal(source_id: str, payload: dict[str, Any]) 
                 "overlap_score": round(overlap_score, 4),
             },
             allowed_keys=("anchor_id", "material_id", "chunk_id", "overlap_score", "overlapping_anchors", "recommendation"),
+        ),
+        drilldown=_integrity_payload_drilldown(
+            source_id=source_id,
+            source_kind="citation_overlap",
+            status=status,
+            checked_facts=_compact_projection_mapping(
+                {
+                    **payload,
+                    "overlap_score": round(overlap_score, 4),
+                },
+                allowed_keys=("anchor_id", "material_id", "chunk_id", "overlap_score", "overlapping_anchors", "recommendation"),
+            ),
+            evidence_refs=_bounded_signal_evidence(
+                "citation_overlap",
+                anchor_id,
+                overlap_score=round(overlap_score, 4),
+            ),
         ),
     )
 
@@ -3057,6 +3246,22 @@ def _lint_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str,
             "issue_severities": sorted(set(filter(None, issue_severities))),
             **_compact_projection_mapping(payload, allowed_keys=("score", "quality_gate", "recommendations")),
         },
+        drilldown=_integrity_payload_drilldown(
+            source_id=source_id,
+            source_kind="academic_writing_lint",
+            status=status,
+            checked_facts={
+                "passed": passed,
+                "issue_count": len(issues),
+                "issue_severities": sorted(set(filter(None, issue_severities))),
+                **_compact_projection_mapping(payload, allowed_keys=("score", "quality_gate", "recommendations")),
+            },
+            evidence_refs=_bounded_signal_evidence(
+                "academic_writing_lint",
+                source_id,
+                issue_count=len(issues),
+            ),
+        ),
     )
 
 
@@ -3103,6 +3308,24 @@ def _export_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[st
             "citation_chain_count": len(citation_chain),
             **_compact_projection_mapping(payload, allowed_keys=("format", "filename", "media_type")),
         },
+        drilldown=_integrity_payload_drilldown(
+            source_id=source_id,
+            source_kind="export_manifest",
+            status=status,
+            checked_facts={
+                "review_finding_count": len(review_findings),
+                "blocking_finding_count": len(blocking_findings),
+                "citation_chain_count": len(citation_chain),
+                "has_evidence_rows": bool(payload.get("evidence_rows")),
+                **_compact_projection_mapping(payload, allowed_keys=("format", "filename", "media_type")),
+            },
+            evidence_refs=_bounded_signal_evidence(
+                "export_manifest",
+                source_id,
+                format=payload.get("format"),
+                filename=payload.get("filename"),
+            ),
+        ),
     )
 
 
@@ -6002,6 +6225,7 @@ class WritingRuntime:
                         "stage_status": stage.get("status"),
                         "required_artifacts": list(stage.get("required_artifacts") or []),
                     },
+                    drilldown=_workflow_stage_drilldown(stage, gate),
                 )
             )
 
@@ -6049,6 +6273,21 @@ class WritingRuntime:
                             "Rebuild evidence pack or search refs so locator_coverage is recorded."
                         ],
                         metadata={"evidence_ref_count": len(evidence_refs)},
+                        drilldown=_integrity_payload_drilldown(
+                            source_id=job.job_id,
+                            source_kind="workflow_state_missing_locator_coverage",
+                            status="unresolved",
+                            checked_facts={
+                                "runtime_job_id": job.job_id,
+                                "evidence_ref_count": len(evidence_refs),
+                                "locator_signal_count": locator_signal_count,
+                            },
+                            evidence_refs=_bounded_signal_evidence(
+                                "runtime_job",
+                                job.job_id,
+                                evidence_ref_count=len(evidence_refs),
+                            ),
+                        ),
                     )
                 )
             citation_bank = workflow_state.get("citation_bank")
@@ -6069,6 +6308,21 @@ class WritingRuntime:
                             "Run citation source verification before marking citations as verified."
                         ],
                         metadata={"citation_count": len(citation_bank)},
+                        drilldown=_integrity_payload_drilldown(
+                            source_id=job.job_id,
+                            source_kind="workflow_state_missing_citation_verifications",
+                            status="unresolved",
+                            checked_facts={
+                                "runtime_job_id": job.job_id,
+                                "citation_count": len(citation_bank),
+                                "citation_signal_count": citation_signal_count,
+                            },
+                            evidence_refs=_bounded_signal_evidence(
+                                "runtime_job",
+                                job.job_id,
+                                citation_count=len(citation_bank),
+                            ),
+                        ),
                     )
                 )
             if qrels_signal_count == 0 and isinstance(evidence_refs, list) and evidence_refs:
@@ -6088,6 +6342,21 @@ class WritingRuntime:
                             "Record qrels_status before making retrieval-quality claims."
                         ],
                         metadata={"evidence_ref_count": len(evidence_refs)},
+                        drilldown=_integrity_payload_drilldown(
+                            source_id=job.job_id,
+                            source_kind="workflow_state_missing_qrels_status",
+                            status="unresolved",
+                            checked_facts={
+                                "runtime_job_id": job.job_id,
+                                "evidence_ref_count": len(evidence_refs),
+                                "qrels_signal_count": qrels_signal_count,
+                            },
+                            evidence_refs=_bounded_signal_evidence(
+                                "runtime_job",
+                                job.job_id,
+                                evidence_ref_count=len(evidence_refs),
+                            ),
+                        ),
                     )
                 )
 

@@ -104,6 +104,7 @@ export interface EvidenceIntegritySignal {
   evidence: Record<string, unknown>[];
   next_actions: string[];
   metadata: Record<string, unknown>;
+  drilldown?: Record<string, unknown>;
 }
 
 export type WorkflowReadinessClaimStatus = 'ready' | 'warning' | 'unresolved' | 'blocked';

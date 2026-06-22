@@ -10274,6 +10274,7 @@ export interface components {
          *         evidence: Bounded runtime refs or diagnostic excerpts, never full source text.
          *         next_actions: Local repair or review actions for this signal.
          *         metadata: JSON-safe counters and provenance details for repeatability.
+         *         drilldown: Bounded checked facts and replay refs explaining this signal.
          */
         EvidenceIntegritySignalPayload: {
             /**
@@ -10281,6 +10282,10 @@ export interface components {
              * @enum {string}
              */
             category: "locator" | "retrieval_quality" | "citation_verification" | "citation_overlap" | "writing_lint" | "export_readiness" | "workflow_stage" | "approval_boundary";
+            /** Drilldown */
+            drilldown?: {
+                [key: string]: unknown;
+            };
             /** Evidence */
             evidence?: {
                 [key: string]: unknown;

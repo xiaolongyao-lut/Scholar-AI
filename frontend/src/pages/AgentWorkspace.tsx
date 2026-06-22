@@ -37,6 +37,7 @@ import {
   type AgentBridgeStatus,
   type BehaviorEvalPackProjection,
   type EvidenceIntegrityGateProjection,
+  type EvidenceIntegritySignal,
   type WorkflowActionPreflightProjection,
   type RuntimeJobsStatus,
   type WorkflowReadinessClaimsProjection,
@@ -457,7 +458,10 @@ function preflightFreshnessLabel(preflight: WorkflowActionPreflightProjection | 
   return `freshness ${freshness.status}`;
 }
 
-function readRecordField(record: Record<string, unknown>, key: string): Record<string, unknown> {
+function readRecordField(record: Record<string, unknown> | null | undefined, key: string): Record<string, unknown> {
+  if (!isRecord(record)) {
+    return {};
+  }
   const value = record[key];
   return isRecord(value) ? value : {};
 }
@@ -498,6 +502,34 @@ function summarizeGateCounts(value: Record<string, unknown>): string {
   const source = Object.keys(statusCounts).length > 0 ? statusCounts : gateCounts;
   const summary = summarizeStatusCounts(source);
   return summary || 'no signals';
+}
+
+function integritySignalDrilldownSummary(signal: EvidenceIntegritySignal | null): {
+  source: string;
+  factCount: number;
+  evidenceCount: number;
+  replayCount: number;
+  requiresHumanReview: boolean;
+  blocksClaims: boolean;
+} | null {
+  if (!signal) {
+    return null;
+  }
+  const drilldown = isRecord(signal.drilldown) ? signal.drilldown : {};
+  const sourceRef = readRecordField(drilldown, 'source_ref');
+  const checkedFacts = readRecordField(drilldown, 'checked_facts');
+  const evidenceRefs = drilldown.evidence_refs;
+  const replayRefs = drilldown.replay_refs;
+  const sourceKind = readTextField(sourceRef, 'source_kind');
+  const sourceDigest = readTextField(sourceRef, 'source_digest');
+  return {
+    source: sourceKind || sourceDigest || 'source pending',
+    factCount: Object.keys(checkedFacts).length,
+    evidenceCount: Array.isArray(evidenceRefs) ? evidenceRefs.length : 0,
+    replayCount: Array.isArray(replayRefs) ? replayRefs.length : 0,
+    requiresHumanReview: drilldown.requires_human_review === true,
+    blocksClaims: drilldown.blocks_claims === true,
+  };
 }
 
 function workflowGateSummary(passport: WorkflowPassportProjection | null): string {
@@ -1151,6 +1183,7 @@ export function ResearchWorkflowSpine({
   const unresolvedCount = integrityGate?.unresolved.length ?? readNumberField(statusCounts, 'unresolved');
   const blockerCount = integrityGate?.blockers.length ?? readNumberField(statusCounts, 'block');
   const firstSignal = integrityGate?.signals[0] ?? null;
+  const firstSignalDrilldown = integritySignalDrilldownSummary(firstSignal);
   const handoffBlocked = (handoffCard?.blockers.length ?? 0) > 0;
   const handoffUnresolved = (handoffCard?.unresolved.length ?? 0) > 0;
   const readinessClaims = workflowReadinessClaims(integrityGate, handoffCard);
@@ -1277,6 +1310,12 @@ export function ResearchWorkflowSpine({
               <StatusPill tone={blockerCount > 0 ? 'danger' : 'neutral'}>block {blockerCount}</StatusPill>
               <StatusPill tone={unresolvedCount > 0 ? 'warning' : 'neutral'}>unresolved {unresolvedCount}</StatusPill>
               <StatusPill tone="neutral">{integrityGate ? summarizeGateCounts(integrityGate.summary) : 'no signals'}</StatusPill>
+              {firstSignalDrilldown ? <StatusPill tone="info">{firstSignalDrilldown.source}</StatusPill> : null}
+              {firstSignalDrilldown ? <StatusPill tone="neutral">facts {firstSignalDrilldown.factCount}</StatusPill> : null}
+              {firstSignalDrilldown ? <StatusPill tone="neutral">refs {firstSignalDrilldown.evidenceCount}</StatusPill> : null}
+              {firstSignalDrilldown && firstSignalDrilldown.replayCount > 0 ? <StatusPill tone="info">replay {firstSignalDrilldown.replayCount}</StatusPill> : null}
+              {firstSignalDrilldown?.requiresHumanReview ? <StatusPill tone="warning">human review</StatusPill> : null}
+              {firstSignalDrilldown?.blocksClaims ? <StatusPill tone="danger">blocks claims</StatusPill> : null}
             </div>
           </article>
 

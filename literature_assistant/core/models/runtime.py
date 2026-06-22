@@ -531,6 +531,7 @@ class EvidenceIntegritySignalPayload(BaseModel):
         evidence: Bounded runtime refs or diagnostic excerpts, never full source text.
         next_actions: Local repair or review actions for this signal.
         metadata: JSON-safe counters and provenance details for repeatability.
+        drilldown: Bounded checked facts and replay refs explaining this signal.
     """
 
     signal_id: str = Field(min_length=1, max_length=200)
@@ -550,6 +551,7 @@ class EvidenceIntegritySignalPayload(BaseModel):
     evidence: List[Dict[str, Any]] = Field(default_factory=list, max_length=16)
     next_actions: List[str] = Field(default_factory=list, max_length=8)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    drilldown: Dict[str, Any] = Field(default_factory=dict)
 
 
 class EvidenceIntegrityGatePayload(BaseModel):

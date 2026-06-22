@@ -23,6 +23,28 @@ const EMPTY_WORKFLOW_STAGE_RUNTIME_FACTS = {
   reproducibility: {},
 };
 
+function integrityDrilldownFixture(
+  sourceKind: string,
+  checkedFacts: Record<string, unknown>,
+  status: 'unresolved' | 'block',
+): Record<string, unknown> {
+  return {
+    schema_version: 'scholar_ai_integrity_signal_drilldown_v1',
+    status,
+    source_ref: {
+      source_id: `${sourceKind}:desktop-acceptance`,
+      source_kind: sourceKind,
+      source_digest: `sha256:${sourceKind}`,
+      raw_path_exposed: false,
+    },
+    checked_facts: checkedFacts,
+    evidence_refs: [{ ref_type: sourceKind, ref_id: `${sourceKind}:desktop-acceptance` }],
+    replay_refs: [],
+    requires_human_review: status === 'unresolved',
+    blocks_claims: status === 'block',
+  };
+}
+
 const ACCEPTANCE_WORKSPACE_STATUS: AgentWorkspaceStatus = {
   artifact_root: 'workspace_artifacts/agent_mcp_workflows',
   artifact_count: 2,
@@ -294,6 +316,11 @@ const ACCEPTANCE_INTEGRITY_GATE: EvidenceIntegrityGateProjection = {
       evidence: [{ ref_type: 'runtime_job', ref_id: 'job_export_acceptance' }],
       next_actions: ['Run citation verification and attach locator evidence.'],
       metadata: { unsupported_count: 1 },
+      drilldown: integrityDrilldownFixture(
+        'citation_verification',
+        { unsupported_count: 1, citation_id: 'cite:acceptance' },
+        'block',
+      ),
     },
     {
       signal_id: 'retrieval_quality:missing_qrels_status:acceptance',
@@ -304,6 +331,11 @@ const ACCEPTANCE_INTEGRITY_GATE: EvidenceIntegrityGateProjection = {
       evidence: [{ ref_type: 'runtime_job', ref_id: 'job_single_paper_acceptance' }],
       next_actions: ['Record qrels_status before making retrieval-quality claims.'],
       metadata: { evidence_ref_count: 2 },
+      drilldown: integrityDrilldownFixture(
+        'qrels_status',
+        { evidence_ref_count: 2, qrels_status: 'missing' },
+        'unresolved',
+      ),
     },
   ],
   summary: {

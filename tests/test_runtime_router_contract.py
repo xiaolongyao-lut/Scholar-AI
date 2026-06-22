@@ -1047,7 +1047,7 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
     assert evidence_reproducibility["qrels_refs"][0]["semantic_quality_claim_allowed"] is True
     assert stage_by_id["draft"]["gate"]["status"] == "pass"
     assert stage_by_id["citation_review"]["gate"]["status"] == "pass"
-    assert stage_by_id["export"]["gate"]["status"] == "pass"
+    assert stage_by_id["export"]["gate"]["status"] == "unresolved"
     export_reproducibility = stage_by_id["export"]["reproducibility"]
     assert export_reproducibility["preflight_receipts"][0]["ref_id"] == preflight["refresh_receipt_id"]
     assert "workflow_passport" in export_reproducibility["projection_digest_keys"]
@@ -1064,6 +1064,40 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
     serialized = str(passport)
     assert "C:\\Users\\xiao\\private" not in serialized
     assert "workspace_artifacts/private" not in serialized
+
+    gate_response = client.get("/runtime/evidence-integrity-gate", params={"project_id": "project-passport"})
+    assert gate_response.status_code == 200
+    gate = gate_response.json()
+    stage_signal = next(
+        signal
+        for signal in gate["signals"]
+        if signal["signal_id"] == "workflow_stage:agent_handoff"
+    )
+    assert stage_signal["status"] == "block"
+    assert stage_signal["drilldown"]["source_ref"]["source_kind"] == "workflow_passport_stage"
+    assert stage_signal["drilldown"]["checked_facts"]["stage_id"] == "agent_handoff"
+    assert stage_signal["drilldown"]["checked_facts"]["requires_user_confirmation"] is True
+    assert stage_signal["drilldown"]["blocks_claims"] is True
+    assert any(
+        str(ref.get("ref_id", "")).startswith("approval_gate:")
+        for ref in stage_signal["drilldown"]["evidence_refs"]
+    )
+    export_signal = next(
+        signal
+        for signal in gate["signals"]
+        if signal["signal_id"] == "workflow_stage:export"
+    )
+    assert export_signal["status"] == "unresolved"
+    assert export_signal["drilldown"]["checked_facts"]["preflight_receipt_count"] == 1
+    assert export_signal["drilldown"]["checked_facts"]["unresolved_count"] >= 1
+    assert "workflow_passport" in export_signal["drilldown"]["checked_facts"]["projection_digest_keys"]
+    assert any(
+        ref.get("ref_type") == "preflight_refresh_receipt"
+        for ref in export_signal["drilldown"]["replay_refs"]
+    )
+    serialized_gate = str(gate)
+    assert "C:\\Users\\xiao\\private" not in serialized_gate
+    assert "workspace_artifacts/private" not in serialized_gate
 
 
 @pytest.mark.persistence_smoke
@@ -1159,10 +1193,32 @@ def test_runtime_evidence_integrity_gate_route_keeps_unresolved_separate(monkeyp
         signal["category"] == "citation_verification" and signal["status"] == "unresolved"
         for signal in gate["signals"]
     )
+    citation_signal = next(
+        signal
+        for signal in gate["signals"]
+        if signal["category"] == "citation_verification" and signal["status"] == "unresolved"
+    )
+    assert citation_signal["drilldown"]["schema_version"] == "scholar_ai_integrity_signal_drilldown_v1"
+    assert citation_signal["drilldown"]["source_ref"]["source_kind"] == "citation_verification"
+    assert citation_signal["drilldown"]["checked_facts"]["citation_id"] == "cite:route"
+    assert citation_signal["drilldown"]["requires_human_review"] is True
     assert any(
         signal["category"] == "retrieval_quality" and signal["status"] == "unresolved"
         for signal in gate["signals"]
     )
+    qrels_signal = next(
+        signal
+        for signal in gate["signals"]
+        if signal["category"] == "retrieval_quality" and signal["status"] == "unresolved"
+    )
+    assert qrels_signal["drilldown"]["checked_facts"]["quality_claim"] == "no_qrels_available"
+    export_signal = next(
+        signal
+        for signal in gate["signals"]
+        if signal["category"] == "export_readiness" and signal["status"] == "unresolved"
+    )
+    assert export_signal["drilldown"]["source_ref"]["source_kind"] == "export_manifest"
+    assert export_signal["drilldown"]["checked_facts"]["has_evidence_rows"] is False
     assert not gate["blockers"]
     assert gate["unresolved"]
 

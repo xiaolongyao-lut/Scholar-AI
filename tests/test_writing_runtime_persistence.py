@@ -500,7 +500,7 @@ async def test_workflow_passport_rebuilds_from_persisted_runtime_state(tmp_path:
     assert stage_by_id["material_ingest"]["gate"]["status"] == "pass"
     assert stage_by_id["draft"]["gate"]["status"] == "pass"
     assert stage_by_id["citation_review"]["gate"]["status"] == "pass"
-    assert stage_by_id["export"]["gate"]["status"] == "pass"
+    assert stage_by_id["export"]["gate"]["status"] == "unresolved"
     ingest_repro = stage_by_id["material_ingest"]["reproducibility"]
     assert ingest_repro["read_only"] is True
     assert ingest_repro["parameter_digest_count"] == 1
@@ -519,6 +519,23 @@ async def test_workflow_passport_rebuilds_from_persisted_runtime_state(tmp_path:
     assert any(
         probe["endpoint"] == f"/runtime/job/{writing_job.job_id}/workflow-replay-lineage"
         for probe in export_repro["replay_probe_refs"]
+    )
+    export_gate = stage_by_id["export"]["gate"]
+    assert any("preflight unresolved check" in item for item in export_gate["unresolved"])
+    gate = loaded_runtime.build_evidence_integrity_gate(project_id="project-persisted-passport")
+    export_signal = next(
+        signal
+        for signal in gate["signals"]
+        if signal["signal_id"] == "workflow_stage:export"
+    )
+    assert export_signal["status"] == "unresolved"
+    assert export_signal["drilldown"]["source_ref"]["source_kind"] == "workflow_passport_stage"
+    assert export_signal["drilldown"]["checked_facts"]["stage_id"] == "export"
+    assert export_signal["drilldown"]["checked_facts"]["preflight_receipt_count"] == 1
+    assert export_signal["drilldown"]["checked_facts"]["unresolved_count"] >= 1
+    assert any(
+        ref.get("ref_type") == "preflight_refresh_receipt"
+        for ref in export_signal["drilldown"]["replay_refs"]
     )
     assert passport["provenance"]["object_count"] >= 2
 
@@ -664,22 +681,61 @@ async def test_evidence_integrity_gate_blocks_unsupported_and_keeps_unresolved_v
         signal["category"] == "locator" and signal["status"] == "block"
         for signal in signals.values()
     )
+    locator_signal = next(
+        signal
+        for signal in signals.values()
+        if signal["category"] == "locator" and signal["status"] == "block"
+    )
+    locator_drilldown = locator_signal["drilldown"]
+    assert locator_drilldown["schema_version"] == "scholar_ai_integrity_signal_drilldown_v1"
+    assert locator_drilldown["source_ref"]["source_kind"] == "locator_coverage"
+    assert locator_drilldown["source_ref"]["source_digest"].startswith("sha256:")
+    assert locator_drilldown["source_ref"]["raw_path_exposed"] is False
+    assert locator_drilldown["checked_facts"]["missing_locator_count"] == 1
+    assert locator_drilldown["checked_facts"]["coverage_state"] == "missing"
+    assert locator_drilldown["evidence_refs"][0]["ref_type"] == "locator_coverage"
+    assert locator_drilldown["blocks_claims"] is True
     assert any(
         signal["category"] == "citation_verification" and signal["status"] == "block"
         for signal in signals.values()
     )
+    citation_block = next(
+        signal
+        for signal in signals.values()
+        if signal["category"] == "citation_verification" and signal["status"] == "block"
+    )
+    assert citation_block["drilldown"]["checked_facts"]["citation_id"] == "cite:unsupported"
+    assert citation_block["drilldown"]["blocks_claims"] is True
     assert any(
         signal["category"] == "citation_verification" and signal["status"] == "unresolved"
         for signal in signals.values()
     )
+    citation_unresolved = next(
+        signal
+        for signal in signals.values()
+        if signal["category"] == "citation_verification" and signal["status"] == "unresolved"
+    )
+    assert citation_unresolved["drilldown"]["requires_human_review"] is True
     assert any(
         signal["category"] == "retrieval_quality" and signal["status"] == "unresolved"
         for signal in signals.values()
     )
+    retrieval_signal = next(
+        signal
+        for signal in signals.values()
+        if signal["category"] == "retrieval_quality" and signal["status"] == "unresolved"
+    )
+    assert retrieval_signal["drilldown"]["checked_facts"]["semantic_quality_claim_allowed"] is False
     assert any(
         signal["category"] == "writing_lint" and signal["status"] == "block"
         for signal in signals.values()
     )
+    lint_signal = next(
+        signal
+        for signal in signals.values()
+        if signal["category"] == "writing_lint" and signal["status"] == "block"
+    )
+    assert lint_signal["drilldown"]["checked_facts"]["issue_count"] == 1
     assert gate["summary"]["status_counts"]["block"] >= 3
     assert gate["summary"]["status_counts"]["unresolved"] >= 2
     assert gate["blockers"]
@@ -693,6 +749,9 @@ async def test_evidence_integrity_gate_blocks_unsupported_and_keeps_unresolved_v
     assert export_claim["status"] == "blocked"
     assert export_claim["blockers"]
     assert gate["enforcement"]["summary"]["unresolved_is_ready"] is False
+    serialized = str(gate)
+    assert "C:\\Users\\xiao\\private" not in serialized
+    assert "workspace_artifacts/private" not in serialized
 
 
 @pytest.mark.persistence_smoke

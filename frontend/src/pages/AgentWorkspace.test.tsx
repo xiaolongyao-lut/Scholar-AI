@@ -53,6 +53,35 @@ const emptyWorkflowStageRuntimeFacts = {
   reproducibility: {},
 };
 
+function integrityDrilldownFixture(
+  sourceKind: string,
+  checkedFacts: Record<string, unknown>,
+  options: { status?: 'pass' | 'warn' | 'unresolved' | 'block'; evidenceCount?: number; replayCount?: number } = {},
+): Record<string, unknown> {
+  const status = options.status ?? 'unresolved';
+  return {
+    schema_version: 'scholar_ai_integrity_signal_drilldown_v1',
+    status,
+    source_ref: {
+      source_id: `${sourceKind}:fixture`,
+      source_kind: sourceKind,
+      source_digest: `sha256:${sourceKind}`,
+      raw_path_exposed: false,
+    },
+    checked_facts: checkedFacts,
+    evidence_refs: Array.from({ length: options.evidenceCount ?? 1 }, (_, index) => ({
+      ref_type: sourceKind,
+      ref_id: `${sourceKind}:${index + 1}`,
+    })),
+    replay_refs: Array.from({ length: options.replayCount ?? 0 }, (_, index) => ({
+      ref_type: 'workflow_replay_probe',
+      ref_id: `${sourceKind}:replay:${index + 1}`,
+    })),
+    requires_human_review: status === 'unresolved',
+    blocks_claims: status === 'block',
+  };
+}
+
 describe('AgentWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -163,6 +192,11 @@ describe('AgentWorkspace', () => {
           evidence: [],
           next_actions: ['Complete material ingest evidence.'],
           metadata: {},
+          drilldown: integrityDrilldownFixture(
+            'workflow_passport_stage',
+            { stage_id: 'material_ingest', gate_status: 'unresolved' },
+            { status: 'unresolved', evidenceCount: 0 },
+          ),
         },
       ],
       summary: {
@@ -614,6 +648,11 @@ describe('AgentWorkspace', () => {
           evidence: [{ ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' }],
           next_actions: ['Run citation verification and attach locator evidence.'],
           metadata: { unsupported_count: 1 },
+          drilldown: integrityDrilldownFixture(
+            'citation_verification',
+            { unsupported_count: 1, citation_id: 'cite:unsupported' },
+            { status: 'block' },
+          ),
         },
         {
           signal_id: 'retrieval_quality:missing_qrels_status:1',
@@ -624,6 +663,11 @@ describe('AgentWorkspace', () => {
           evidence: [{ ref_type: 'runtime_job', ref_id: 'job_agent_handoff_1' }],
           next_actions: ['Record qrels_status before making retrieval-quality claims.'],
           metadata: { evidence_ref_count: 2 },
+          drilldown: integrityDrilldownFixture(
+            'qrels_status',
+            { evidence_ref_count: 2, qrels_status: 'missing' },
+            { status: 'unresolved', replayCount: 1 },
+          ),
         },
       ],
       summary: {
