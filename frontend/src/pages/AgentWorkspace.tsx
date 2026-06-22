@@ -2057,7 +2057,7 @@ export function ResearchWorkflowSpine({
       <div
         className={cn(
           'mb-2 min-w-0 rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2.5',
-          isDesktopAcceptance ? 'hidden' : '',
+          isDesktopAcceptance ? 'px-2 py-2' : '',
         )}
         role="region"
         aria-label="Research action crosslinks"
