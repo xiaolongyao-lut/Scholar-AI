@@ -1241,6 +1241,97 @@ def test_runtime_evidence_integrity_gate_route_keeps_unresolved_separate(monkeyp
     assert missing_response.status_code == 404
 
 
+@pytest.mark.persistence_smoke
+def test_runtime_evidence_integrity_gate_route_exposes_invalid_bbox_drilldown(monkeypatch) -> None:
+    """Invalid bbox locator diagnostics should be repairable without leaking raw coordinates."""
+
+    runtime = WritingRuntime()
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        user_id="integrity-invalid-bbox-user",
+        metadata={"project_id": "project-integrity-invalid-bbox"},
+    )
+    writing_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.ARTIFACT_EXPORT,
+        input_text="route export with invalid bbox",
+        metadata={
+            "project_id": "project-integrity-invalid-bbox",
+            "export_artifact_id": "export-invalid-bbox",
+        },
+    )
+    runtime.update_writing_workflow_state(
+        writing_job.job_id,
+        phase="export_ready",
+        intake={"project_id": "project-integrity-invalid-bbox"},
+        evidence_refs=[{"ref_id": "chunk:invalid-bbox"}],
+        citation_bank=[],
+        lint_report={"passed": True, "issues": []},
+        export_manifest={"format": "docx", "filename": "invalid-bbox.docx"},
+        change_log=[{"stage": "export"}],
+    )
+    runtime.add_job_artifact(
+        writing_job.job_id,
+        artifact_type=ArtifactType.METADATA,
+        content={
+            "kind": "route_integrity",
+            "retrieval_diagnostics": {
+                "locator_coverage": {
+                    "schema_version": "scholar-ai-evidence-locator-coverage/v1",
+                    "total_refs": 1,
+                    "project_ref_count": 1,
+                    "non_project_ref_count": 0,
+                    "material_locator_count": 1,
+                    "page_locator_count": 1,
+                    "bbox_locator_count": 0,
+                    "missing_locator_count": 0,
+                    "invalid_bbox_count": 1,
+                    "page_coverage_ratio": 1.0,
+                    "bbox_coverage_ratio": 0.0,
+                    "coverage_state": "page_located",
+                    "risk_level": "warn",
+                    "sample_missing_ref_ids": [],
+                    "sample_invalid_bbox_ref_ids": ["chunk:invalid-bbox"],
+                    "bbox": [-25, 0, 10, 10],
+                    "notes": ["One ref has an invalid bbox and needs locator repair."],
+                },
+            },
+        },
+        created_by="pytest",
+        metadata={"project_id": "project-integrity-invalid-bbox"},
+    )
+
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    app = FastAPI()
+    app.include_router(runtime_router_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/runtime/evidence-integrity-gate",
+        params={"project_id": "project-integrity-invalid-bbox"},
+    )
+
+    assert response.status_code == 200
+    gate = response.json()
+    locator_signal = next(
+        signal
+        for signal in gate["signals"]
+        if signal["category"] == "locator"
+    )
+    checked_facts = locator_signal["drilldown"]["checked_facts"]
+    assert locator_signal["status"] == "warn"
+    assert locator_signal["metadata"]["invalid_bbox_count"] == 1
+    assert locator_signal["metadata"]["sample_invalid_bbox_ref_ids"] == ["chunk:invalid-bbox"]
+    assert checked_facts["invalid_bbox_count"] == 1
+    assert checked_facts["sample_invalid_bbox_ref_ids"] == ["chunk:invalid-bbox"]
+    assert "bbox" not in locator_signal["metadata"]
+    assert "bbox" not in checked_facts
+    assert any("invalid bbox" in item.lower() for item in locator_signal["next_actions"])
+    serialized_gate = str(gate)
+    assert "[-25, 0, 10, 10]" not in serialized_gate
+    assert "C:\\Users\\xiao\\private" not in serialized_gate
+
+
 def test_runtime_behavior_eval_pack_route_exposes_read_only_canary_projection(tmp_path, monkeypatch) -> None:
     """Behavior eval route should expose deterministic red flags without persisting run records."""
 

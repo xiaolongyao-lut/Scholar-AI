@@ -4103,7 +4103,11 @@ def _locator_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[s
     elif risk_level == "warn":
         status = "warn"
         severity = "warn"
-        message = "Evidence refs are only partially layout-located and need review before strong claims."
+        invalid_bbox_count = int(payload.get("invalid_bbox_count") or 0)
+        if invalid_bbox_count > 0:
+            message = "Evidence refs include invalid bbox locators and need repair before strong claims."
+        else:
+            message = "Evidence refs are only partially layout-located and need review before strong claims."
     elif project_ref_count == 0 and coverage_state == "no_refs":
         status = "not_applicable"
         severity = "note"
@@ -4125,8 +4129,10 @@ def _locator_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[s
             risk_level=risk_level,
         ),
         next_actions=[
-            "Rebuild evidence refs with page and bbox locators before export or agent handoff."
-        ] if status == "block" else [],
+            "Rebuild evidence refs with valid page and bbox locators before export or agent handoff."
+        ] if status == "block" else [
+            "Repair invalid bbox locators before relying on layout-specific evidence claims."
+        ] if int(payload.get("invalid_bbox_count") or 0) > 0 else [],
         metadata=_compact_projection_mapping(
             payload,
             allowed_keys=(
@@ -4137,7 +4143,9 @@ def _locator_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[s
                 "page_coverage_ratio",
                 "bbox_coverage_ratio",
                 "missing_locator_count",
+                "invalid_bbox_count",
                 "sample_missing_ref_ids",
+                "sample_invalid_bbox_ref_ids",
                 "notes",
             ),
         ),
@@ -4160,7 +4168,9 @@ def _locator_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[s
                     "source_label_coverage_ratio",
                     "figure_table_locator_count",
                     "missing_locator_count",
+                    "invalid_bbox_count",
                     "sample_missing_ref_ids",
+                    "sample_invalid_bbox_ref_ids",
                 ),
             ),
             evidence_refs=_bounded_signal_evidence(
