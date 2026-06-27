@@ -89,6 +89,8 @@ export interface AgentWorkspaceGoalLifecycleRollup {
   status: string | null;
   is_goal_complete: boolean | null;
   can_mark_goal_complete: boolean | null;
+  requirements_total: number | null;
+  requirement_status_counts: Record<string, number>;
   requirements_all_proved: boolean | null;
   requirements_all_proved_or_out_of_scope: boolean | null;
   latest_requirement_id: string | null;

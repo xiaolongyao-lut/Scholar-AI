@@ -2679,6 +2679,8 @@ def test_agent_workspace_status_reads_recovery_state(
                         "status": "active_requirements_proved_pending_authorized_gates",
                         "is_goal_complete": False,
                         "can_mark_goal_complete": False,
+                        "requirements_total": 125,
+                        "requirement_status_counts": {"proved": 125},
                         "requirements_all_proved": True,
                         "requirements_all_proved_or_out_of_scope": True,
                         "latest_requirement_id": "N173-goal-lifecycle-rollup",
@@ -2986,6 +2988,8 @@ def test_agent_workspace_status_reads_recovery_state(
     assert lifecycle_rollup["status"] == "active_requirements_proved_pending_authorized_gates"
     assert lifecycle_rollup["is_goal_complete"] is False
     assert lifecycle_rollup["can_mark_goal_complete"] is False
+    assert lifecycle_rollup["requirements_total"] == 125
+    assert lifecycle_rollup["requirement_status_counts"] == {"proved": 125}
     assert lifecycle_rollup["completion_blockers"][0]["id"] == "actual_loading_gate_live_model_proof"
     assert lifecycle_rollup["completion_blockers"][0]["evidence"] == (
         "N289 recovery projection evidence confirms deterministic visibility only."

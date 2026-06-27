@@ -143,6 +143,10 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         status: 'active_requirements_proved_pending_authorized_gates',
         is_goal_complete: false,
         can_mark_goal_complete: false,
+        requirements_total: 125,
+        requirement_status_counts: {
+          proved: 125,
+        },
         requirements_all_proved: true,
         requirements_all_proved_or_out_of_scope: true,
         latest_requirement_id: 'N173-goal-lifecycle-rollup',
@@ -2738,6 +2742,11 @@ describe('AgentWorkspace', () => {
     expect(
       within(workspaceStateRegion).getByText(
         'lifecycle record updated 2026-06-25T23:59:30+08:00 · latest requirement N173-goal-lifecycle-rollup · latest slice N173-goal-lifecycle-rollup',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
+        'lifecycle counts total 125 · status proved 125',
       ),
     ).toBeInTheDocument();
     expect(

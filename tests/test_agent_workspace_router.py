@@ -715,6 +715,12 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     "status": "active_requirements_proved_pending_authorized_gates",
                     "is_goal_complete": False,
                     "can_mark_goal_complete": False,
+                    "requirements_total": 8,
+                    "requirement_status_counts": {
+                        "proved": 2,
+                        "incomplete": 1,
+                        "out_of_scope": 1,
+                    },
                     "requirements_all_proved": True,
                     "requirements_all_proved_or_out_of_scope": True,
                     "latest_requirement_id": "N173-goal-lifecycle-rollup",
@@ -868,6 +874,12 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert summary.lifecycle_rollup.status == "active_requirements_proved_pending_authorized_gates"
     assert summary.lifecycle_rollup.is_goal_complete is False
     assert summary.lifecycle_rollup.can_mark_goal_complete is False
+    assert summary.lifecycle_rollup.requirements_total == 8
+    assert summary.lifecycle_rollup.requirement_status_counts == {
+        "proved": 2,
+        "incomplete": 1,
+        "out_of_scope": 1,
+    }
     assert summary.lifecycle_rollup.requirements_all_proved is True
     assert summary.lifecycle_rollup.requirements_all_proved_or_out_of_scope is True
     assert summary.lifecycle_rollup.latest_requirement_id == "N173-goal-lifecycle-rollup"

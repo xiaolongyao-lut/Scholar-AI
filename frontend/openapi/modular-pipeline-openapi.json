@@ -2140,7 +2140,7 @@
         "type": "object"
       },
       "AgentWorkspaceGoalLifecycleRollup": {
-        "description": "Machine-readable longrun goal lifecycle summary for recovery decisions.\n\nArgs:\n    schema_version: Source rollup schema identifier.\n    updated_at: Timestamp from the rollup.\n    status: Goal-level lifecycle status, distinct from requirement rows.\n    is_goal_complete: Whether the longrun goal itself is complete.\n    can_mark_goal_complete: Whether a resumed agent may mark it complete.\n    requirements_all_proved: Whether all rows are currently proved.\n    requirements_all_proved_or_out_of_scope: Whether every row is proved or\n        explicitly outside scope.\n    latest_requirement_id: Latest requirement row id recorded by the rollup.\n    latest_slice_id: Latest slice id recorded by the rollup.\n    completion_blockers: Bounded unresolved goal-level blockers.\n    machine_readable_completion_rule: Compact rule for completion claims.\n    why_not_complete: Bounded explanation list when the goal remains active.",
+        "description": "Machine-readable longrun goal lifecycle summary for recovery decisions.\n\nArgs:\n    schema_version: Source rollup schema identifier.\n    updated_at: Timestamp from the rollup.\n    status: Goal-level lifecycle status, distinct from requirement rows.\n    is_goal_complete: Whether the longrun goal itself is complete.\n    can_mark_goal_complete: Whether a resumed agent may mark it complete.\n    requirements_total: Total requirement rows recorded by the rollup.\n    requirement_status_counts: Bounded requirement row counts by status.\n    requirements_all_proved: Whether all rows are currently proved.\n    requirements_all_proved_or_out_of_scope: Whether every row is proved or\n        explicitly outside scope.\n    latest_requirement_id: Latest requirement row id recorded by the rollup.\n    latest_slice_id: Latest slice id recorded by the rollup.\n    completion_blockers: Bounded unresolved goal-level blockers.\n    machine_readable_completion_rule: Compact rule for completion claims.\n    why_not_complete: Bounded explanation list when the goal remains active.",
         "properties": {
           "can_mark_goal_complete": {
             "anyOf": [
@@ -2207,6 +2207,13 @@
             ],
             "title": "Machine Readable Completion Rule"
           },
+          "requirement_status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Requirement Status Counts",
+            "type": "object"
+          },
           "requirements_all_proved": {
             "anyOf": [
               {
@@ -2228,6 +2235,18 @@
               }
             ],
             "title": "Requirements All Proved Or Out Of Scope"
+          },
+          "requirements_total": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirements Total"
           },
           "schema_version": {
             "anyOf": [

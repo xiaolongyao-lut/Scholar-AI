@@ -452,6 +452,8 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     assert summary.completion_claim.can_mark_goal_complete is completion_claim.get("can_mark_goal_complete")
     assert summary.lifecycle_rollup.can_mark_goal_complete is rollup.get("can_mark_goal_complete")
     assert summary.completion_claim.can_mark_goal_complete is summary.lifecycle_rollup.can_mark_goal_complete
+    assert summary.lifecycle_rollup.requirements_total == rollup.get("requirements_total")
+    assert summary.lifecycle_rollup.requirement_status_counts == rollup.get("requirement_status_counts")
     assert summary.completion_claim.full_goal == completion_claim.get("full_goal")
     next_actions = payload.get("next_authorized_local_actions")
     assert isinstance(next_actions, list) and next_actions

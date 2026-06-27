@@ -72,6 +72,9 @@ import type { WikiReviewItemModel, WikiReviewListModel } from '@/types/wiki';
 type WorkspaceTab = 'agents' | 'artifacts' | 'audit';
 
 type AgentWorkspaceOpenRequirement = NonNullable<AgentWorkspaceStatus['workspace_state']['goal_state']['open_requirements']>[number];
+type AgentWorkspaceGoalLifecycleRollup = NonNullable<
+  AgentWorkspaceStatus['workspace_state']['goal_state']['lifecycle_rollup']
+>;
 type AgentWorkspaceGoalLifecycleBlocker = NonNullable<
   AgentWorkspaceStatus['workspace_state']['goal_state']['lifecycle_rollup']
 >['completion_blockers'][number];
@@ -1836,6 +1839,17 @@ function workspaceGoalLifecycleBlockerLabel(
   const status = blocker.status ? ` · ${sanitizeInspectorText(blocker.status)}` : '';
   const surface = blocker.requirement_surface ? ` · ${sanitizeInspectorText(blocker.requirement_surface)}` : '';
   return `${sanitizeInspectorText(blocker.id)}${status}${surface}`;
+}
+
+function workspaceGoalLifecycleCountsLabel(
+  lifecycle: AgentWorkspaceGoalLifecycleRollup,
+): string {
+  const total = lifecycle.requirements_total ?? 'unknown';
+  const statusCounts = Object.entries(lifecycle.requirement_status_counts)
+    .slice(0, 4)
+    .map(([status, count]) => `${sanitizeInspectorText(status)} ${count}`)
+    .join(' · ');
+  return `lifecycle counts total ${total}${statusCounts ? ` · status ${statusCounts}` : ''}`;
 }
 
 function workspaceDesktopSmokeSummary(state: AgentWorkspaceStatus['workspace_state']): string {
@@ -3857,6 +3871,13 @@ export function WorkspaceStatePanel({
                 {goalLifecycle && hasLifecycleRecordDetails ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
                     lifecycle record updated {sanitizeInspectorText(goalLifecycle.updated_at ?? 'unknown')} · latest requirement {sanitizeInspectorText(goalLifecycle.latest_requirement_id ?? 'unknown')} · latest slice {sanitizeInspectorText(goalLifecycle.latest_slice_id ?? 'unknown')}
+                  </p>
+                ) : null}
+                {goalLifecycle &&
+                (goalLifecycle.requirements_total !== null ||
+                  Object.keys(goalLifecycle.requirement_status_counts).length > 0) ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    {workspaceGoalLifecycleCountsLabel(goalLifecycle)}
                   </p>
                 ) : null}
                 {goalLifecycle?.completion_blockers?.length ? (

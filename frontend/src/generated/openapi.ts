@@ -8085,6 +8085,8 @@ export interface components {
          *         status: Goal-level lifecycle status, distinct from requirement rows.
          *         is_goal_complete: Whether the longrun goal itself is complete.
          *         can_mark_goal_complete: Whether a resumed agent may mark it complete.
+         *         requirements_total: Total requirement rows recorded by the rollup.
+         *         requirement_status_counts: Bounded requirement row counts by status.
          *         requirements_all_proved: Whether all rows are currently proved.
          *         requirements_all_proved_or_out_of_scope: Whether every row is proved or
          *             explicitly outside scope.
@@ -8107,10 +8109,16 @@ export interface components {
             latest_slice_id?: string | null;
             /** Machine Readable Completion Rule */
             machine_readable_completion_rule?: string | null;
+            /** Requirement Status Counts */
+            requirement_status_counts?: {
+                [key: string]: number;
+            };
             /** Requirements All Proved */
             requirements_all_proved?: boolean | null;
             /** Requirements All Proved Or Out Of Scope */
             requirements_all_proved_or_out_of_scope?: boolean | null;
+            /** Requirements Total */
+            requirements_total?: number | null;
             /** Schema Version */
             schema_version?: string | null;
             /** Status */

@@ -43,6 +43,7 @@ MAX_GOAL_STATE_MATURE_REFERENCES = 4
 MAX_GOAL_STATE_CHANGED_FILES = 8
 MAX_GOAL_STATE_VERIFICATION_COMMANDS = 6
 MAX_GOAL_LIFECYCLE_BLOCKERS = 5
+MAX_GOAL_LIFECYCLE_STATUS_COUNTS = 8
 MAX_GOAL_COMPLETION_CHARS = 240
 MAX_GOAL_REQUIREMENT_EVIDENCE = 8
 MAX_GOAL_REQUIREMENT_TEXT_CHARS = 480
@@ -223,6 +224,8 @@ class AgentWorkspaceGoalLifecycleRollup(BaseModel):
         status: Goal-level lifecycle status, distinct from requirement rows.
         is_goal_complete: Whether the longrun goal itself is complete.
         can_mark_goal_complete: Whether a resumed agent may mark it complete.
+        requirements_total: Total requirement rows recorded by the rollup.
+        requirement_status_counts: Bounded requirement row counts by status.
         requirements_all_proved: Whether all rows are currently proved.
         requirements_all_proved_or_out_of_scope: Whether every row is proved or
             explicitly outside scope.
@@ -238,6 +241,8 @@ class AgentWorkspaceGoalLifecycleRollup(BaseModel):
     status: str | None = Field(default=None, max_length=160)
     is_goal_complete: bool | None = None
     can_mark_goal_complete: bool | None = None
+    requirements_total: int | None = Field(default=None, ge=0)
+    requirement_status_counts: dict[str, int] = Field(default_factory=dict)
     requirements_all_proved: bool | None = None
     requirements_all_proved_or_out_of_scope: bool | None = None
     latest_requirement_id: str | None = Field(default=None, max_length=160)
@@ -1386,6 +1391,21 @@ def _safe_goal_lifecycle_blocker(value: Any) -> AgentWorkspaceGoalLifecycleBlock
     )
 
 
+def _safe_goal_lifecycle_status_counts(value: Any) -> dict[str, int]:
+    """Return bounded non-negative lifecycle status counts from arbitrary JSON."""
+
+    if not isinstance(value, dict):
+        return {}
+    counts: dict[str, int] = {}
+    for key, count in value.items():
+        if len(counts) >= MAX_GOAL_LIFECYCLE_STATUS_COUNTS:
+            break
+        if not isinstance(key, str) or not key.strip() or not isinstance(count, int) or count < 0:
+            continue
+        counts[_redact_text(key.strip())[:80]] = count
+    return counts
+
+
 def _safe_goal_lifecycle_rollup(value: Any) -> AgentWorkspaceGoalLifecycleRollup:
     """Return a bounded lifecycle rollup from arbitrary goal-state data."""
 
@@ -1408,6 +1428,10 @@ def _safe_goal_lifecycle_rollup(value: Any) -> AgentWorkspaceGoalLifecycleRollup
         can_mark_goal_complete=value.get("can_mark_goal_complete")
         if isinstance(value.get("can_mark_goal_complete"), bool)
         else None,
+        requirements_total=value.get("requirements_total")
+        if isinstance(value.get("requirements_total"), int) and value.get("requirements_total") >= 0
+        else None,
+        requirement_status_counts=_safe_goal_lifecycle_status_counts(value.get("requirement_status_counts")),
         requirements_all_proved=value.get("requirements_all_proved")
         if isinstance(value.get("requirements_all_proved"), bool)
         else None,
