@@ -426,3 +426,33 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         assert "complete" not in full_goal.lower() or full_goal.startswith("not_complete")
         assert isinstance(why_not_complete, str) and why_not_complete.strip()
         assert isinstance(rollup.get("why_not_complete"), str) and rollup.get("why_not_complete").strip()
+
+
+def test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim() -> None:
+    """Agent Workspace recovery projection must expose the real goal completion gate."""
+
+    from literature_assistant.core.routers import agent_workspace_router
+
+    payload = _read_json_object(REPO_ROOT / WORKFLOW_SPINE_GOAL_STATE)
+    completion_claim = payload.get("completion_claim")
+    assert isinstance(completion_claim, dict)
+    rollup = payload.get("goal_lifecycle_rollup")
+    assert isinstance(rollup, dict)
+
+    summary = agent_workspace_router._load_goal_state_summary()
+
+    assert summary.available is True
+    assert summary.path == WORKFLOW_SPINE_GOAL_STATE
+    assert summary.requirement_count == len(payload.get("requirements", []))
+    assert summary.latest_requirement_id == rollup.get("latest_requirement_id")
+    assert summary.completion_claim.can_mark_goal_complete is completion_claim.get("can_mark_goal_complete")
+    assert summary.lifecycle_rollup.can_mark_goal_complete is rollup.get("can_mark_goal_complete")
+    assert summary.completion_claim.can_mark_goal_complete is summary.lifecycle_rollup.can_mark_goal_complete
+    assert summary.completion_claim.full_goal == completion_claim.get("full_goal")
+    why_not_complete = completion_claim.get("why_not_complete")
+    assert isinstance(why_not_complete, str) and why_not_complete.strip()
+    assert summary.completion_claim.why_not_complete is not None
+    assert why_not_complete.startswith(summary.completion_claim.why_not_complete[:120])
+    if summary.completion_claim.can_mark_goal_complete is False:
+        assert summary.completion_claim.why_not_complete
+        assert summary.lifecycle_rollup.completion_blockers
