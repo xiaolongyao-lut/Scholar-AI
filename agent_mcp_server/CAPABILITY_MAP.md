@@ -63,6 +63,22 @@ literature.knowledge_runtime_conformance # KRT 原始一致性面，含 actual_l
 
 这些字段只证明恢复可见性和门禁状态；不等于 live provider/model actual-loading proof。只有 provider preflight 已证明且用户显式授权后，才可运行 live context-receipt smoke。
 
+## Goal lifecycle completion gate 恢复核对
+
+当 `requirements_all_proved=true` 但长目标仍未完成时，先读 goal lifecycle rollup，不要只看 requirement 行状态：
+
+```text
+literature.agent_workspace_status        # goal_state.lifecycle_rollup / completion_claim
+literature.agent_workspace_requirement   # 单条 requirement-to-evidence drilldown
+```
+
+核对重点：
+
+- `goal_state.lifecycle_rollup.can_mark_goal_complete` 必须为 `true` 且 `completion_blockers` 为空，才能进入目标完成审计。
+- `completion_blockers[].missing_evidence` / `current_boundary` / `evidence` 用来区分“需求行已证明”和“目标级授权门禁仍缺证据”。
+- `goal_state.completion_claim.full_goal` 仍可能是 `not_complete_pending_authorized_actual_loading_provider_proof`；这时不能把全绿 requirement 矩阵当成 `update_goal complete` 证据。
+- `literature.agent_workspace_requirement` 只读单行证据，不执行 provider smoke、OCR、replay/write repair，也不替代 goal-level completion audit。
+
 ## KRT deterministic source-to-context proof
 
 不用 live provider 时，按这个只读链路核对知识是否进入有界上下文：

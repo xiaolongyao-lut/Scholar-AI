@@ -191,6 +191,14 @@ def test_capability_map_covers_registered_tools_and_is_source_readable() -> None
     assert "knowledge_actual_loading_gate.recovery_state" in text
     assert "literature.knowledge_runtime_conformance # KRT 原始一致性面" in text
     assert "不等于 live provider/model actual-loading proof" in text
+    assert "## Goal lifecycle completion gate 恢复核对" in text
+    assert "requirements_all_proved=true" in text
+    assert "literature.agent_workspace_status        # goal_state.lifecycle_rollup / completion_claim" in text
+    assert "literature.agent_workspace_requirement   # 单条 requirement-to-evidence drilldown" in text
+    assert "goal_state.lifecycle_rollup.can_mark_goal_complete" in text
+    assert "completion_blockers[].missing_evidence" in text
+    assert "not_complete_pending_authorized_actual_loading_provider_proof" in text
+    assert "不能把全绿 requirement 矩阵当成 `update_goal complete` 证据" in text
     assert "## 结果信封与截断边界" in text
     assert "agent_mcp_server/src/lit_assistant_mcp/result.py::safe_result" in text
     assert "is_error` / `error_code` / `message` / `data` / `truncated" in text
