@@ -2317,16 +2317,20 @@ def _actual_loading_recovery_state(
             blocked_by.append("provider_preflight:endpoint_mismatch")
         if not blocked_by:
             blocked_by = list(gate.missing[:8])
-        if not gate.artifact_exists and not provider_ready:
+        if not provider_ready and not gate.artifact_exists:
             state = "blocked_provider_preflight_and_missing_live_smoke"
+        elif not provider_ready and not gate.artifact_schema_valid:
+            state = "blocked_provider_preflight_and_invalid_live_smoke_artifact"
+        elif not provider_ready and not gate.artifact_contract_valid:
+            state = "blocked_provider_preflight_and_incomplete_live_smoke_contract"
+        elif not provider_ready:
+            state = "blocked_provider_preflight"
         elif not gate.artifact_exists:
             state = "blocked_missing_live_smoke"
         elif not gate.artifact_schema_valid:
             state = "blocked_invalid_live_smoke_artifact"
         elif not gate.artifact_contract_valid:
             state = "blocked_incomplete_live_smoke_contract"
-        elif not provider_ready:
-            state = "blocked_provider_preflight"
         elif gate.missing:
             state = "blocked_provider_endpoint_match"
         else:

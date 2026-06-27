@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T15:54:54+08:00",
+  "updated_at": "2026-06-27T16:04:38+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,11 +100,11 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "manual-20260627_154635-n241-ocr-provider-proof",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_154635-n241-ocr-provider-proof",
+    "latest_checkpoint_id": "manual-20260627_160219-n242-krt-recovery-state-priority",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_160219-n242-krt-recovery-state-priority",
     "latest_goal_state_checkpoint_id": "manual-20260627_154635-n241-ocr-provider-proof",
     "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_154635-n241-ocr-provider-proof",
-    "latest_checkpoint_caveat": "Targeted rollback snapshot for N241 OCR execution blocked receipt, router/test/OpenAPI changes, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_caveat": "Targeted rollback snapshot for N242 KRT recovery-state priority, tests, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
     {
@@ -6821,6 +6821,35 @@
         }
       ],
       "residual_risk": "This proves blocked execution is recoverable and auditable, not that RapidOCR executed. The current .venv-1 has no rapidocr or rapidocr_onnxruntime module, LITASSIST_RAPIDOCR_PYTHON is unset, and remote OCR still requires explicit consent plus credentials; the goal-level completion blockers remain."
+    },
+    {
+      "id": "N242-krt-recovery-state-priority",
+      "requirement": "Knowledge Runtime actual-loading recovery state must make provider preflight blockers visible ahead of live-smoke artifact contract defects, so Agent Workspace, MCP handoff, and resumed agents do not treat auth_required provider state as merely an artifact rerun problem.",
+      "source": "Current KRT blocker revalidation after N241: /api/knowledge/runtime-conformance returned status=blocked verdict=http_error with provider_preflight.status=blocked/latest_status=auth_required but recovery.state emphasized incomplete live-smoke contract.",
+      "status": "proved",
+      "evidence": [
+        {
+          "file": "literature_assistant/core/routers/knowledge_router.py",
+          "proof": "_actual_loading_recovery_state now prioritizes provider_preflight blockers when the provider is not ready, while preserving artifact-specific blocked_by entries such as live_smoke_artifact:contract_incomplete."
+        },
+        {
+          "file": "tests/test_knowledge_router.py",
+          "proof": "test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact asserts the combined state blocked_provider_preflight_and_incomplete_live_smoke_contract and exact blocked_by list for auth_required plus contract-incomplete artifact."
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact -q -> 1 passed"
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_summary_counts_actual_loading_gate -q -> 5 passed"
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -k \"knowledge_runtime_conformance or agent_workspace_status or agent_workspace_requirement\" -q -> 3 passed, 102 deselected"
+        },
+        {
+          "command": "TestClient GET /api/knowledge/runtime-conformance with local capability header -> 200; actual_loading_gate.status=blocked; verdict=http_error; provider_preflight.status=blocked/latest_status=auth_required; recovery.state=blocked_provider_preflight_and_incomplete_live_smoke_contract; blocked_by=[provider_preflight:blocked:auth_required, live_smoke_artifact:contract_incomplete]."
+        }
+      ],
+      "residual_risk": "This fixes recovery-state priority only. Live Knowledge Runtime actual-loading still requires corrected provider credentials and explicit live-provider authorization to produce a matching ok context-receipt artifact; real RapidOCR and remote OCR execution blockers remain unchanged."
     }
   ],
   "changed_files_for_this_slice": [
@@ -10779,12 +10808,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": {
-    "id": "N241-ocr-execution-blocked-receipt",
-    "key": "n241_ocr_execution_blocked_receipt_slice",
-    "updated_at": "2026-06-27T15:54:54+08:00",
-    "status": "proved"
-  },
+  "latest_slice": "N242-krt-recovery-state-priority",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -12548,25 +12572,25 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T15:54:54+08:00",
+    "updated_at": "2026-06-27T16:04:38+08:00",
     "status": "requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 242,
+    "requirements_total": 243,
     "requirement_status_counts": {
-      "proved": 242
+      "proved": 243
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N241-ocr-execution-blocked-receipt",
-    "latest_slice_id": "N241-ocr-execution-blocked-receipt",
+    "latest_requirement_id": "N242-krt-recovery-state-priority",
+    "latest_slice_id": "N242-krt-recovery-state-priority",
     "completion_blockers": [
       "actual_loading_gate_live_model_proof_auth_required_current_provider",
       "real_rapidocr_runtime_execution_or_explicit_out_of_scope",
       "remote_ocr_real_execution_requires_explicit_consent_and_credentials_or_out_of_scope"
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N241 makes OCR execution blockers recoverable as typed 409 receipts, but it does not execute RapidOCR because the active runtime has no rapidocr/rapidocr_onnxruntime module or configured LITASSIST_RAPIDOCR_PYTHON; remote OCR still requires explicit consent and credentials, and live KRT model-context proof remains provider/auth gated."
+    "why_not_complete": "N242 makes KRT actual-loading recovery state prioritize provider_preflight auth blockers when live-smoke artifacts are also incomplete, but it does not clear the live model-context proof gate. Corrected provider credentials plus explicit live-provider authorization are still required; real RapidOCR runtime execution and remote OCR consent/credentials also remain completion blockers."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -16559,5 +16583,46 @@
       }
     },
     "residual_risk": "This proves blocked execution is recoverable and auditable, not that RapidOCR executed. The current .venv-1 has no rapidocr or rapidocr_onnxruntime module, LITASSIST_RAPIDOCR_PYTHON is unset, and remote OCR still requires explicit consent plus credentials; the goal-level completion blockers remain."
+  },
+  "n242_krt_recovery_state_priority_slice": {
+    "status": "done",
+    "updated_at": "2026-06-27T16:04:38+08:00",
+    "rollback_checkpoint": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_160219-n242-krt-recovery-state-priority",
+    "changed_files": [
+      "literature_assistant/core/routers/knowledge_router.py",
+      "tests/test_knowledge_router.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact -q -> 1 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_summary_counts_actual_loading_gate -q -> 5 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -k \"knowledge_runtime_conformance or agent_workspace_status or agent_workspace_requirement\" -q -> 3 passed, 102 deselected",
+      "TestClient GET /api/knowledge/runtime-conformance with local capability header -> 200; recovery.state=blocked_provider_preflight_and_incomplete_live_smoke_contract; blocked_by preserves provider_preflight:blocked:auth_required and live_smoke_artifact:contract_incomplete."
+    ],
+    "mature_references_checked": {
+      "topic": "N242 KRT actual-loading recovery-state priority",
+      "source": "W3C PROV Overview; Google SRE Monitoring Distributed Systems",
+      "url": "https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "HTTP 200 for both references checked locally",
+      "checked_at": "2026-06-27T16:04:38+08:00",
+      "use_in_slice": "Used to keep provider-preflight and live-smoke artifact states as separate observable provenance/condition facts. No external code copied."
+    },
+    "current_runtime_observation": {
+      "route": "/api/knowledge/runtime-conformance",
+      "local_capability_header_required": true,
+      "status_code": 200,
+      "gate_status": "blocked",
+      "verdict": "http_error",
+      "provider_preflight_status": "blocked",
+      "provider_preflight_latest_status": "auth_required",
+      "recovery_state": "blocked_provider_preflight_and_incomplete_live_smoke_contract",
+      "blocked_by": [
+        "provider_preflight:blocked:auth_required",
+        "live_smoke_artifact:contract_incomplete"
+      ],
+      "live_provider_call_performed": false
+    },
+    "decision": "Prioritize provider_preflight blockers in recovery.state whenever provider readiness is not proved, while preserving live-smoke artifact details in blocked_by and validation_errors.",
+    "residual_risk": "Live Knowledge Runtime actual-loading remains blocked until provider preflight is proved and an explicitly authorized matching live context-receipt smoke artifact is ok. RapidOCR real execution and remote OCR real execution remain separate runtime/authorization blockers."
   }
 }

@@ -1450,6 +1450,12 @@ def test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_arti
     assert "After the user corrects provider credentials/config, rerun provider tool-capability preflight." in (
         gate["next_safe_local_actions"]
     )
+    recovery = gate["recovery"]
+    assert recovery["state"] == "blocked_provider_preflight_and_incomplete_live_smoke_contract"
+    assert recovery["blocked_by"] == [
+        "provider_preflight:blocked:auth_required",
+        "live_smoke_artifact:contract_incomplete",
+    ]
 
 
 def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs(
