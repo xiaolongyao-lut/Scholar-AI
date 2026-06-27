@@ -186,6 +186,11 @@ def test_capability_map_covers_registered_tools_and_is_source_readable() -> None
     text = capability_map.read_text(encoding="utf-8")
 
     assert "## 完整工具名索引" in text
+    assert "## KRT actual-loading gate 恢复核对" in text
+    assert "literature.agent_workspace_status       # 工作区恢复面" in text
+    assert "knowledge_actual_loading_gate.recovery_state" in text
+    assert "literature.knowledge_runtime_conformance # KRT 原始一致性面" in text
+    assert "不等于 live provider/model actual-loading proof" in text
     missing = sorted(name for name in tool_names if name not in text)
     assert not missing
 

@@ -36,6 +36,23 @@ literature.list_projects        # 拿 project_id（GET /resources/projects）
 | 读源码 | `source.inspect_routes` → `source.read_symbols` → `source.read_file` → `source.find_references` |
 | agent 协作交接 | `agent_request_create` → `agent_progress` → `agent_result` / `agent_fail` → `agent_handoff_card` |
 
+## KRT actual-loading gate 恢复核对
+
+恢复长目标或接手 Knowledge Runtime Pipeline 时，先读：
+
+```text
+literature.agent_workspace_status       # 工作区恢复面，含 knowledge_actual_loading_gate
+literature.knowledge_runtime_conformance # KRT 原始一致性面，含 actual_loading_gate
+```
+
+核对重点：
+
+- `knowledge_actual_loading_gate.recovery_state` / `provider_preflight_status` / `provider_latest_status`
+- `missing` / `next_safe_local_actions` / `claim_boundary`
+- `goal_state.lifecycle_rollup.can_mark_goal_complete`
+
+这些字段只证明恢复可见性和门禁状态；不等于 live provider/model actual-loading proof。只有 provider preflight 已证明且用户显式授权后，才可运行 live context-receipt smoke。
+
 ---
 
 ## 分组工具清单
