@@ -2725,6 +2725,13 @@ def test_agent_workspace_status_reads_recovery_state(
                             "use_in_slice": "Keep recovery state on the typed status response.",
                         }
                     ],
+                    "changed_files_for_this_slice": [
+                        "literature_assistant/core/routers/agent_workspace_router.py",
+                        "tests/test_agent_workspace_router.py",
+                    ],
+                    "verification_commands": [
+                        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> passed",
+                    ],
                     "error": None,
                 },
                 "artifact_root": {
@@ -2967,6 +2974,13 @@ def test_agent_workspace_status_reads_recovery_state(
     ]
     assert state["goal_state"]["mature_references_checked"][0]["topic"] == "N112 recovery state response model"
     assert state["goal_state"]["mature_references_checked"][0]["source"] == "FastAPI response-model documentation"
+    assert state["goal_state"]["changed_files_for_this_slice"] == [
+        "literature_assistant/core/routers/agent_workspace_router.py",
+        "tests/test_agent_workspace_router.py",
+    ]
+    assert state["goal_state"]["verification_commands"] == [
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> passed"
+    ]
     lifecycle_rollup = state["goal_state"]["lifecycle_rollup"]
     assert lifecycle_rollup["status"] == "active_requirements_proved_pending_authorized_gates"
     assert lifecycle_rollup["is_goal_complete"] is False

@@ -154,6 +154,8 @@ export interface AgentWorkspaceGoalState {
   stop_boundaries: string[];
   authoritative_records: string[];
   mature_references_checked: AgentWorkspaceGoalMatureReference[];
+  changed_files_for_this_slice: string[];
+  verification_commands: string[];
   error: string | null;
 }
 

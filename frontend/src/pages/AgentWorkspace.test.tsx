@@ -188,6 +188,13 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
           use_in_slice: 'Keep recovery state on the typed status response.',
         },
       ],
+      changed_files_for_this_slice: [
+        'literature_assistant/core/routers/agent_workspace_router.py',
+        'tests/test_agent_workspace_router.py',
+      ],
+      verification_commands: [
+        '.\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> passed at C:\\Users\\Alice\\private',
+      ],
       error: null,
     },
     desktop_smoke: {
@@ -2875,6 +2882,16 @@ describe('AgentWorkspace', () => {
     expect(
       within(workspaceStateRegion).getByText(
         'mature reference 1 FastAPI response-model documentation · N112 recovery state response model at [redacted-local-path] · HEAD checked 200 · checked 2026-06-24T17:55:00+08:00 · use Keep recovery state on the typed status response.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
+        'changed file 1 literature_assistant/core/routers/agent_workspace_router.py',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
+        'verification 1 .\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> passed at [redacted-local-path]',
       ),
     ).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('lifecycle blockers 1 · can complete false')).toBeInTheDocument();

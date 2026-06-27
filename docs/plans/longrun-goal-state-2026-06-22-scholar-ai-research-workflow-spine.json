@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T06:15:03+08:00",
+  "updated_at": "2026-06-28T06:35:36+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,44 +100,44 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260628-061936-n288-mature-references-visibility-precommit",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-061936-n288-mature-references-visibility-precommit",
-    "latest_goal_state_checkpoint_id": "20260628-061936-n288-mature-references-visibility-precommit",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-061936-n288-mature-references-visibility-precommit",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N288 Agent Workspace goal-state mature-reference projection contract; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260628-063536-n289-verification-evidence-visibility-precommit",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-063536-n289-verification-evidence-visibility-precommit",
+    "latest_goal_state_checkpoint_id": "20260628-063536-n289-verification-evidence-visibility-precommit",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-063536-n289-verification-evidence-visibility-precommit",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N289 Agent Workspace changed-file and verification evidence projection contract; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
     {
-      "topic": "N288 Agent Workspace goal-state mature-reference response model",
+      "topic": "N289 Agent Workspace goal-state changed-file and verification response model",
       "source": "FastAPI response-model documentation",
       "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
       "status": "HEAD checked 200 on 2026-06-28 before implementation",
-      "checked_at": "2026-06-28T06:15:03+08:00",
-      "use_in_slice": "Used to keep mature_references_checked on the existing typed Agent Workspace status response instead of adding a parallel recovery endpoint."
+      "checked_at": "2026-06-28T06:35:36+08:00",
+      "use_in_slice": "Used to keep changed_files_for_this_slice and verification_commands on the existing typed Agent Workspace status response instead of adding a parallel recovery endpoint."
     },
     {
-      "topic": "N288 bounded Pydantic mature-reference fields",
+      "topic": "N289 bounded Pydantic list fields",
       "source": "Pydantic fields documentation",
       "url": "https://docs.pydantic.dev/latest/concepts/fields/",
       "status": "HEAD checked 200 on 2026-06-28 before implementation",
-      "checked_at": "2026-06-28T06:15:03+08:00",
-      "use_in_slice": "Used to bound nullable topic/source/url/status/checked_at/use_in_slice fields and keep historical goal-state records compatible."
+      "checked_at": "2026-06-28T06:35:36+08:00",
+      "use_in_slice": "Used to keep changed-file and verification-command recovery projections bounded, defaulted, redacted, and compatible with historical goal-state records."
     },
     {
-      "topic": "N288 visible Agent Workspace recovery assertions",
+      "topic": "N289 visible Agent Workspace recovery evidence assertions",
       "source": "React Testing Library introduction",
       "url": "https://testing-library.com/docs/react-testing-library/intro/",
       "status": "HEAD checked 200 on 2026-06-28 before implementation",
-      "checked_at": "2026-06-28T06:15:03+08:00",
-      "use_in_slice": "Used to assert mature-reference recovery text in the rendered Workspace State panel rather than private component state."
+      "checked_at": "2026-06-28T06:35:36+08:00",
+      "use_in_slice": "Used to assert changed-file and verification-command recovery rows in the rendered Workspace State panel rather than private component state."
     },
     {
-      "topic": "N288 generated OpenAPI TypeScript contract",
+      "topic": "N289 generated OpenAPI TypeScript contract",
       "source": "openapi-typescript introduction",
       "url": "https://openapi-ts.dev/introduction",
       "status": "HEAD checked 200 on 2026-06-28 before implementation",
-      "checked_at": "2026-06-28T06:15:03+08:00",
-      "use_in_slice": "Used to regenerate typed frontend OpenAPI contracts from the FastAPI schema after the response-model change."
+      "checked_at": "2026-06-28T06:35:36+08:00",
+      "use_in_slice": "Used to regenerate typed frontend OpenAPI contracts from the FastAPI schema after the changed-file and verification-command response-model change."
     },
     {
       "topic": "N285 Agent Workspace goal-state boundary response model",
@@ -8392,6 +8392,25 @@
         ".\\.venv-1\\Scripts\\python.exe -m compileall -q literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py agent_mcp_server\\tests\\test_runtime_tools.py -> passed before this goal-state record update."
       ],
       "residual_risk": "This proves deterministic local mature-reference recovery visibility only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
+    },
+    {
+      "id": "N289-goal-state-verification-evidence-projection",
+      "status": "proved",
+      "requirement": "Agent Workspace REST, MCP, generated OpenAPI, UI, and CI recovery surfaces must expose the latest bounded changed_files_for_this_slice and verification_commands records from the longrun goal-state so resumed agents can see the current slice's touched files and verification evidence without exposing local rollback paths or full plan history.",
+      "evidence": [
+        "literature_assistant/core/routers/agent_workspace_router.py adds MAX_GOAL_STATE_CHANGED_FILES, MAX_GOAL_STATE_VERIFICATION_COMMANDS, changed_files_for_this_slice, and verification_commands to the bounded AgentWorkspaceGoalState projection.",
+        "tests/test_agent_workspace_router.py proves status passthrough, local-path redaction, changed-file limit, verification-command limit, and serialized omission of overflow entries.",
+        "tests/test_ci_visibility_contract.py proves the real longrun goal-state changed_files_for_this_slice and verification_commands lists project through agent_workspace_router._load_goal_state_summary() while rollback paths and restore commands remain absent.",
+        "agent_mcp_server/tests/test_runtime_tools.py proves literature.agent_workspace_status passes changed_files_for_this_slice and verification_commands through to external MCP callers.",
+        "frontend/src/services/agentWorkspaceApi.ts, frontend/openapi/modular-pipeline-openapi.json, and frontend/src/generated/openapi.ts expose the new recovery-evidence fields in hand-written and generated contracts.",
+        "frontend/src/pages/AgentWorkspace.tsx renders bounded changed-file and verification rows in Workspace State, frontend/src/pages/AgentWorkspace.test.tsx asserts visible text plus local-path redaction, and frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx keeps the desktop acceptance fixture type-safe.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_goal_state_summary_is_bounded_and_path_safe tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 4 passed after N289 record sync.",
+        "npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed after N289 record sync.",
+        "npm exec tsc -- --noEmit -> passed after N289 record sync.",
+        ".\\.venv-1\\Scripts\\python.exe -m compileall -q literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py agent_mcp_server\\tests\\test_runtime_tools.py -> passed after N289 record sync.",
+        ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json > $null -> passed after N289 record sync."
+      ],
+      "residual_risk": "This proves deterministic local changed-file and verification-command recovery visibility only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
@@ -8408,15 +8427,14 @@
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N288 continuation.",
-    "git status --short --branch -> main...origin/main [ahead 117] with existing N288 router/test edits only at recovery start.",
-    "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-060300-n288-mature-references-visibility-preedit before expanding N288 to frontend/MCP/goal-state visibility files.",
-    "Official/mature references checked before implementation: FastAPI response-model 200, Pydantic fields 200, React Testing Library intro 200, openapi-typescript introduction 200.",
-    "npm run generate:openapi -> passed.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_goal_state_summary_is_bounded_and_path_safe tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 4 passed before this goal-state record update.",
-    "npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed before this goal-state record update.",
-    "npm exec tsc -- --noEmit -> passed before this goal-state record update.",
-    ".\\.venv-1\\Scripts\\python.exe -m compileall -q literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py agent_mcp_server\\tests\\test_runtime_tools.py -> passed before this goal-state record update."
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N289 continuation.",
+    "git status --short --branch -> main...origin/main [ahead 118] with N289 Agent Workspace recovery visibility edits only at recovery start.",
+    "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-063536-n289-verification-evidence-visibility-precommit before synchronizing N289 goal-state.",
+    "Official/mature references checked before record sync: FastAPI response-model 200, Pydantic fields 200, React Testing Library intro 200, openapi-typescript introduction 200, SRE monitoring 200.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json > $null -> passed after N289 record sync.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_goal_state_summary_is_bounded_and_path_safe tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 4 passed after N289 record sync.",
+    "npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed after N289 record sync.",
+    "npm exec tsc -- --noEmit -> passed; npm run build -> passed; compileall focused Agent Workspace files -> passed."
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
@@ -8430,10 +8448,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-  "this_slice": "N288 exposes the latest mature/official reference records through Agent Workspace, MCP status, generated OpenAPI, UI, and real-state CI projection checks without exposing full plan history or local rollback paths.",
+  "this_slice": "N289 exposes latest changed-file and verification-command recovery evidence through Agent Workspace, MCP status, generated OpenAPI, UI, and real-state CI projection checks without exposing local rollback paths or full plan history.",
   "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
   "can_mark_goal_complete": false,
-  "why_not_complete": "N288 proves deterministic mature-reference visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+  "why_not_complete": "N289 proves deterministic changed-file and verification-command recovery visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
 },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12358,7 +12376,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N288-goal-state-mature-references-projection",
+  "latest_slice": "N289-goal-state-verification-evidence-projection",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -14122,30 +14140,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T06:15:03+08:00",
+    "updated_at": "2026-06-28T06:35:36+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 289,
+    "requirements_total": 290,
     "requirement_status_counts": {
-      "proved": 289
+      "proved": 290
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N288-goal-state-mature-references-projection",
-    "latest_slice_id": "N288-goal-state-mature-references-projection",
+    "latest_requirement_id": "N289-goal-state-verification-evidence-projection",
+    "latest_slice_id": "N289-goal-state-verification-evidence-projection",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N288 proves deterministic mature-reference recovery visibility only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N288 CI visibility tests prove the real goal-state mature_references_checked records project through Agent Workspace while preserving the live-proof authorization boundary."
+        "current_boundary": "N289 proves deterministic changed-file and verification-command recovery visibility only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N289 CI visibility tests prove the real goal-state changed_files_for_this_slice and verification_commands records project through Agent Workspace while preserving the live-proof authorization boundary."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N288 proves deterministic mature-reference visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N289 proves deterministic changed-file and verification-command recovery visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -20773,5 +20791,82 @@
     "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
   ],
   "updated_at": "2026-06-28T06:24:00+08:00"
+},
+  "n289_goal_state_verification_evidence_projection_slice": {
+  "id": "N289-goal-state-verification-evidence-projection",
+  "status": "proved",
+  "summary": "N289 exposes the latest changed-file and verification-command recovery evidence through Agent Workspace, MCP status, generated OpenAPI, UI, and real-state CI projection checks without exposing full plan history or local rollback paths.",
+  "rollback_checkpoint_id": "20260628-063536-n289-verification-evidence-visibility-precommit",
+  "rollback_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-063536-n289-verification-evidence-visibility-precommit",
+  "mature_references_checked": [
+    {
+      "topic": "N289 Agent Workspace goal-state changed-file and verification response model",
+      "source": "FastAPI response-model documentation",
+      "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
+      "status": "HEAD checked 200 on 2026-06-28 before goal-state sync",
+      "checked_at": "2026-06-28T06:35:36+08:00",
+      "use_in_slice": "Used to keep changed_files_for_this_slice and verification_commands on the existing typed Agent Workspace status response instead of adding a parallel recovery endpoint."
+    },
+    {
+      "topic": "N289 bounded Pydantic list fields",
+      "source": "Pydantic fields documentation",
+      "url": "https://docs.pydantic.dev/latest/concepts/fields/",
+      "status": "HEAD checked 200 on 2026-06-28 before goal-state sync",
+      "checked_at": "2026-06-28T06:35:36+08:00",
+      "use_in_slice": "Used to keep changed-file and verification-command recovery projections bounded, defaulted, redacted, and compatible with historical goal-state records."
+    },
+    {
+      "topic": "N289 visible Agent Workspace recovery evidence assertions",
+      "source": "React Testing Library introduction",
+      "url": "https://testing-library.com/docs/react-testing-library/intro/",
+      "status": "HEAD checked 200 on 2026-06-28 before goal-state sync",
+      "checked_at": "2026-06-28T06:35:36+08:00",
+      "use_in_slice": "Used to assert changed-file and verification-command recovery rows in the rendered Workspace State panel rather than private component state."
+    },
+    {
+      "topic": "N289 generated OpenAPI TypeScript contract",
+      "source": "openapi-typescript introduction",
+      "url": "https://openapi-ts.dev/introduction",
+      "status": "HEAD checked 200 on 2026-06-28 before goal-state sync",
+      "checked_at": "2026-06-28T06:35:36+08:00",
+      "use_in_slice": "Used to regenerate typed frontend OpenAPI contracts from the FastAPI schema after the changed-file and verification-command response-model change."
+    },
+    {
+      "topic": "N289 observable verification-evidence drift",
+      "source": "Google SRE monitoring distributed systems chapter",
+      "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "HEAD checked 200 on 2026-06-28 before goal-state sync",
+      "checked_at": "2026-06-28T06:35:36+08:00",
+      "use_in_slice": "Used to treat drift between authoritative verification evidence and visible recovery state as observable state drift that CI should catch."
+    }
+  ],
+  "changed_files": [
+    "literature_assistant/core/routers/agent_workspace_router.py",
+    "tests/test_agent_workspace_router.py",
+    "tests/test_ci_visibility_contract.py",
+    "agent_mcp_server/tests/test_runtime_tools.py",
+    "frontend/src/services/agentWorkspaceApi.ts",
+    "frontend/openapi/modular-pipeline-openapi.json",
+    "frontend/src/generated/openapi.ts",
+    "frontend/src/pages/AgentWorkspace.tsx",
+    "frontend/src/pages/AgentWorkspace.test.tsx",
+    "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+    "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+  ],
+  "verification": [
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json > $null -> passed after N289 record sync.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_goal_state_summary_is_bounded_and_path_safe tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 4 passed after N289 record sync.",
+    "npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed after N289 record sync.",
+    "npm exec tsc -- --noEmit -> passed after N289 record sync.",
+    ".\\.venv-1\\Scripts\\python.exe -m compileall -q literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py agent_mcp_server\\tests\\test_runtime_tools.py -> passed after N289 record sync.",
+    "npm run build -> passed after N289 record sync."
+  ],
+  "residual_risk": "This proves deterministic local changed-file and verification-command recovery visibility only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
+  "next_actions": [
+    "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
+    "Continue only with deterministic local recovery/proof hardening unless provider preflight and explicit live-smoke authorization are present.",
+    "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
+  ],
+  "updated_at": "2026-06-28T06:35:36+08:00"
 }
 }

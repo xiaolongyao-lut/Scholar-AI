@@ -264,6 +264,13 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
                     use_in_slice="Keep the recovery state on the typed status response.",
                 )
             ],
+            changed_files_for_this_slice=[
+                "literature_assistant/core/routers/agent_workspace_router.py",
+                "tests/test_agent_workspace_router.py",
+            ],
+            verification_commands=[
+                ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> passed",
+            ],
         ),
     )
     monkeypatch.setattr(
@@ -486,6 +493,13 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     )
     assert goal_state["mature_references_checked"][0]["topic"] == "N112 recovery state response model"
     assert goal_state["mature_references_checked"][0]["source"] == "FastAPI response-model documentation"
+    assert goal_state["changed_files_for_this_slice"] == [
+        "literature_assistant/core/routers/agent_workspace_router.py",
+        "tests/test_agent_workspace_router.py",
+    ]
+    assert goal_state["verification_commands"] == [
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> passed"
+    ]
     assert goal_state["requirement_count"] == 125
     assert goal_state["proved_count"] == 125
     assert goal_state["incomplete_count"] == 0
@@ -786,6 +800,26 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                         "source": "Reference five",
                     },
                 ],
+                "changed_files_for_this_slice": [
+                    "literature_assistant/core/routers/agent_workspace_router.py",
+                    "tests/test_agent_workspace_router.py",
+                    "tests/test_ci_visibility_contract.py",
+                    "agent_mcp_server/tests/test_runtime_tools.py",
+                    "frontend/src/services/agentWorkspaceApi.ts",
+                    "frontend/src/pages/AgentWorkspace.tsx",
+                    "frontend/src/pages/AgentWorkspace.test.tsx",
+                    "C:/Users/xiao/private/local-only-output.json",
+                    "ninth-file-intentionally-omitted.py",
+                ],
+                "verification_commands": [
+                    "Read AI_WORKSPACE_GUIDE.md before implementation.",
+                    "git status --short --branch -> clean at C:/Users/xiao/private",
+                    "HEAD FastAPI response-model -> 200",
+                    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> passed",
+                    "npm run test -- AgentWorkspace.test.tsx --run -> passed",
+                    "npm exec tsc -- --noEmit -> passed",
+                    "seventh command intentionally omitted",
+                ],
             },
             ensure_ascii=False,
         ),
@@ -879,11 +913,31 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert summary.mature_references_checked[0].checked_at == "2026-06-22T21:36:00+08:00"
     assert summary.mature_references_checked[0].use_in_slice == "Keep recovery projection bounded and typed."
     assert summary.mature_references_checked[-1].topic == "N41 observability"
+    assert summary.changed_files_for_this_slice == [
+        "literature_assistant/core/routers/agent_workspace_router.py",
+        "tests/test_agent_workspace_router.py",
+        "tests/test_ci_visibility_contract.py",
+        "agent_mcp_server/tests/test_runtime_tools.py",
+        "frontend/src/services/agentWorkspaceApi.ts",
+        "frontend/src/pages/AgentWorkspace.tsx",
+        "frontend/src/pages/AgentWorkspace.test.tsx",
+        "[redacted-local-path]",
+    ]
+    assert summary.verification_commands == [
+        "Read AI_WORKSPACE_GUIDE.md before implementation.",
+        "git status --short --branch -> clean at [redacted-local-path]",
+        "HEAD FastAPI response-model -> 200",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> passed",
+        "npm run test -- AgentWorkspace.test.tsx --run -> passed",
+        "npm exec tsc -- --noEmit -> passed",
+    ]
     serialized = summary.model_dump_json()
     assert "current_objective" not in serialized
     assert "restore_command" not in serialized
     assert "C:/Users/xiao" not in serialized
     assert "fifth reference" not in serialized
+    assert "ninth-file-intentionally-omitted" not in serialized
+    assert "seventh command" not in serialized
     assert "sixth open row" not in serialized
     assert "Fourth reason is intentionally omitted." not in serialized
 

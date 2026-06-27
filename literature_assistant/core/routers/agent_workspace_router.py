@@ -40,6 +40,8 @@ MAX_GOAL_STATE_BOUNDARIES = 4
 MAX_GOAL_STATE_OPEN_REQUIREMENTS = 5
 MAX_GOAL_STATE_AUTH_RECORDS = 8
 MAX_GOAL_STATE_MATURE_REFERENCES = 4
+MAX_GOAL_STATE_CHANGED_FILES = 8
+MAX_GOAL_STATE_VERIFICATION_COMMANDS = 6
 MAX_GOAL_LIFECYCLE_BLOCKERS = 5
 MAX_GOAL_COMPLETION_CHARS = 240
 MAX_GOAL_REQUIREMENT_EVIDENCE = 8
@@ -337,6 +339,8 @@ class AgentWorkspaceGoalState(BaseModel):
         stop_boundaries: Bounded stop-boundary labels from the record.
         authoritative_records: Bounded record labels a resumed agent should read first.
         mature_references_checked: Bounded reference records used for latest slices.
+        changed_files_for_this_slice: Bounded changed-file labels from the latest slice.
+        verification_commands: Bounded verification evidence commands from the latest slice.
         error: Redacted parse/read error when unavailable.
     """
 
@@ -358,6 +362,8 @@ class AgentWorkspaceGoalState(BaseModel):
     stop_boundaries: list[str] = Field(default_factory=list)
     authoritative_records: list[str] = Field(default_factory=list)
     mature_references_checked: list[AgentWorkspaceGoalMatureReference] = Field(default_factory=list)
+    changed_files_for_this_slice: list[str] = Field(default_factory=list)
+    verification_commands: list[str] = Field(default_factory=list)
     error: str | None = Field(default=None, max_length=240)
 
 
@@ -1609,6 +1615,14 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
         stop_boundaries=_safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
         authoritative_records=_safe_text_list(payload.get("authoritative_records"), MAX_GOAL_STATE_AUTH_RECORDS),
         mature_references_checked=_safe_goal_mature_references(payload.get("mature_references_checked")),
+        changed_files_for_this_slice=_safe_text_list(
+            payload.get("changed_files_for_this_slice"),
+            MAX_GOAL_STATE_CHANGED_FILES,
+        ),
+        verification_commands=_safe_text_list(
+            payload.get("verification_commands"),
+            MAX_GOAL_STATE_VERIFICATION_COMMANDS,
+        ),
     )
 
 

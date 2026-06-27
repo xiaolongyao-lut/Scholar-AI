@@ -8304,6 +8304,8 @@ export interface components {
          *         stop_boundaries: Bounded stop-boundary labels from the record.
          *         authoritative_records: Bounded record labels a resumed agent should read first.
          *         mature_references_checked: Bounded reference records used for latest slices.
+         *         changed_files_for_this_slice: Bounded changed-file labels from the latest slice.
+         *         verification_commands: Bounded verification evidence commands from the latest slice.
          *         error: Redacted parse/read error when unavailable.
          */
         AgentWorkspaceGoalState: {
@@ -8311,6 +8313,8 @@ export interface components {
             authoritative_records?: string[];
             /** Available */
             available: boolean;
+            /** Changed Files For This Slice */
+            changed_files_for_this_slice?: string[];
             /** Checkpoint Id */
             checkpoint_id?: string | null;
             completion_claim?: components["schemas"]["AgentWorkspaceGoalCompletionClaim"];
@@ -8354,6 +8358,8 @@ export interface components {
             stop_boundaries?: string[];
             /** Updated At */
             updated_at?: string | null;
+            /** Verification Commands */
+            verification_commands?: string[];
         };
         /**
          * AgentWorkspaceKnowledgeActualLoadingGateState

@@ -3696,6 +3696,8 @@ export function WorkspaceStatePanel({
   const goalStopBoundaries = state.goal_state.stop_boundaries.slice(0, 4).map(sanitizeInspectorText);
   const goalAuthoritativeRecords = (state.goal_state.authoritative_records ?? []).slice(0, 8).map(sanitizeInspectorText);
   const goalMatureReferences = (state.goal_state.mature_references_checked ?? []).slice(0, 4);
+  const goalChangedFiles = (state.goal_state.changed_files_for_this_slice ?? []).slice(0, 8).map(sanitizeInspectorText);
+  const goalVerificationCommands = (state.goal_state.verification_commands ?? []).slice(0, 6).map(sanitizeInspectorText);
   const goalLifecycle = state.goal_state.lifecycle_rollup ?? null;
   const firstLifecycleBlocker = goalLifecycle?.completion_blockers[0] ?? null;
   const hasLifecycleRecordDetails = Boolean(
@@ -3823,6 +3825,8 @@ export function WorkspaceStatePanel({
             goalRollbackCaveat ||
             goalAuthoritativeRecords.length > 0 ||
             goalMatureReferences.length > 0 ||
+            goalChangedFiles.length > 0 ||
+            goalVerificationCommands.length > 0 ||
             goalLifecycle?.completion_blockers?.length ? (
               <div className="mt-2 grid gap-1.5">
                 {goalCompletionClaim.thisSlice ? (
@@ -3928,6 +3932,24 @@ export function WorkspaceStatePanel({
                         </p>
                       );
                     })}
+                  </div>
+                ) : null}
+                {goalChangedFiles.length > 0 ? (
+                  <div className="grid gap-1 rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    {goalChangedFiles.map((file, index) => (
+                      <p key={`${file}-${index}`} className="break-words">
+                        changed file {index + 1} {file}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                {goalVerificationCommands.length > 0 ? (
+                  <div className="grid gap-1 rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    {goalVerificationCommands.map((command, index) => (
+                      <p key={`${command}-${index}`} className="break-words">
+                        verification {index + 1} {command}
+                      </p>
+                    ))}
                   </div>
                 ) : null}
               </div>

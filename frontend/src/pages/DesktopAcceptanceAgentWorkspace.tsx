@@ -145,6 +145,13 @@ const ACCEPTANCE_WORKSPACE_STATE = {
         use_in_slice: 'Assert visible recovery state instead of component internals.',
       },
     ],
+    changed_files_for_this_slice: [
+      'frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx',
+      'frontend/src/pages/AgentWorkspace.tsx',
+    ],
+    verification_commands: [
+      'npm run test -- AgentWorkspace.test.tsx --run -> passed',
+    ],
     error: null,
   },
   desktop_smoke: {

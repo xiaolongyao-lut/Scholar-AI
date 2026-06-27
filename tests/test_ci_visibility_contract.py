@@ -493,6 +493,22 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     assert summary.mature_references_checked[0].source == expected_mature_references[0].get("source")
     assert summary.mature_references_checked[0].topic == expected_mature_references[0].get("topic")
     assert summary.mature_references_checked[0].status == expected_mature_references[0].get("status")
+    changed_files = payload.get("changed_files_for_this_slice")
+    assert isinstance(changed_files, list) and changed_files
+    expected_changed_files = [
+        agent_workspace_router._redact_text(item).strip()[:240]
+        for item in changed_files
+        if isinstance(item, str) and item.strip()
+    ][: agent_workspace_router.MAX_GOAL_STATE_CHANGED_FILES]
+    assert summary.changed_files_for_this_slice == expected_changed_files
+    verification_commands = payload.get("verification_commands")
+    assert isinstance(verification_commands, list) and verification_commands
+    expected_verification_commands = [
+        agent_workspace_router._redact_text(item).strip()[:240]
+        for item in verification_commands
+        if isinstance(item, str) and item.strip()
+    ][: agent_workspace_router.MAX_GOAL_STATE_VERIFICATION_COMMANDS]
+    assert summary.verification_commands == expected_verification_commands
     serialized_goal_state = summary.model_dump_json()
     assert "rollback-checkpoints" not in serialized_goal_state
     assert "Restore-Item" not in serialized_goal_state
