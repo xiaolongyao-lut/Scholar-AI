@@ -81,6 +81,25 @@ export interface KnowledgeRuntimeActualLoadingGate {
   required_checks: string[];
   claim_boundary: string;
   provider_preflight: KnowledgeRuntimeProviderPreflight;
+  recovery: KnowledgeRuntimeActualLoadingRecovery;
+}
+
+export interface KnowledgeRuntimeRecoveryRef {
+  ref_type: string;
+  ref: string;
+  status: string;
+  required_before_completion: boolean;
+  requires_authorization: boolean;
+}
+
+export interface KnowledgeRuntimeActualLoadingRecovery {
+  schema_version: string;
+  read_only: boolean;
+  state: string;
+  blocked_by: string[];
+  recovery_refs: KnowledgeRuntimeRecoveryRef[];
+  provider_ready_for_authorized_live_smoke: boolean;
+  completion_requires_authorized_live_smoke: boolean;
 }
 
 export interface KnowledgeRuntimeProviderPreflightRecord {
@@ -185,6 +204,13 @@ function readStringArray(value: unknown, field: string): string[] {
     throw new Error(`Invalid Knowledge Packages response: ${field} must be a string array`);
   }
   return [...value];
+}
+
+function readOptionalStringArray(value: unknown, field: string): string[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return readStringArray(value, field);
 }
 
 function readStatus(value: unknown): KnowledgePackageStatus {
@@ -385,7 +411,66 @@ export function parseKnowledgeRuntimeActualLoadingGate(value: unknown): Knowledg
     required_checks: readStringArray(value.required_checks, 'actual_loading_gate.required_checks'),
     claim_boundary: readPossiblyEmptyString(value.claim_boundary, 'actual_loading_gate.claim_boundary'),
     provider_preflight: parseKnowledgeRuntimeProviderPreflight(value.provider_preflight),
+    recovery: parseKnowledgeRuntimeActualLoadingRecovery(value.recovery),
   } satisfies KnowledgeRuntimeActualLoadingGate;
+}
+
+export function parseKnowledgeRuntimeRecoveryRef(value: unknown): KnowledgeRuntimeRecoveryRef {
+  if (!isRecord(value)) {
+    throw new Error('Invalid Knowledge Runtime response: actual_loading_gate.recovery.recovery_refs[] must be an object');
+  }
+  return {
+    ref_type: readString(value.ref_type, 'actual_loading_gate.recovery.recovery_refs[].ref_type'),
+    ref: readString(value.ref, 'actual_loading_gate.recovery.recovery_refs[].ref'),
+    status: readPossiblyEmptyString(value.status, 'actual_loading_gate.recovery.recovery_refs[].status'),
+    required_before_completion: readOptionalBoolean(
+      value.required_before_completion,
+      'actual_loading_gate.recovery.recovery_refs[].required_before_completion',
+      true,
+    ),
+    requires_authorization: readOptionalBoolean(
+      value.requires_authorization,
+      'actual_loading_gate.recovery.recovery_refs[].requires_authorization',
+      false,
+    ),
+  } satisfies KnowledgeRuntimeRecoveryRef;
+}
+
+export function parseKnowledgeRuntimeActualLoadingRecovery(
+  value: unknown,
+): KnowledgeRuntimeActualLoadingRecovery {
+  if (value === undefined || value === null) {
+    return {
+      schema_version: 'scholar-ai-knowledge-runtime-recovery/v1',
+      read_only: true,
+      state: 'unavailable',
+      blocked_by: [],
+      recovery_refs: [],
+      provider_ready_for_authorized_live_smoke: false,
+      completion_requires_authorized_live_smoke: true,
+    } satisfies KnowledgeRuntimeActualLoadingRecovery;
+  }
+  if (!isRecord(value)) {
+    throw new Error('Invalid Knowledge Runtime response: actual_loading_gate.recovery must be an object');
+  }
+  if (!Array.isArray(value.recovery_refs)) {
+    throw new Error('Invalid Knowledge Runtime response: actual_loading_gate.recovery.recovery_refs must be an array');
+  }
+  return {
+    schema_version: readString(value.schema_version, 'actual_loading_gate.recovery.schema_version'),
+    read_only: readBoolean(value.read_only, 'actual_loading_gate.recovery.read_only'),
+    state: readString(value.state, 'actual_loading_gate.recovery.state'),
+    blocked_by: readOptionalStringArray(value.blocked_by, 'actual_loading_gate.recovery.blocked_by'),
+    recovery_refs: value.recovery_refs.map(parseKnowledgeRuntimeRecoveryRef),
+    provider_ready_for_authorized_live_smoke: readBoolean(
+      value.provider_ready_for_authorized_live_smoke,
+      'actual_loading_gate.recovery.provider_ready_for_authorized_live_smoke',
+    ),
+    completion_requires_authorized_live_smoke: readBoolean(
+      value.completion_requires_authorized_live_smoke,
+      'actual_loading_gate.recovery.completion_requires_authorized_live_smoke',
+    ),
+  } satisfies KnowledgeRuntimeActualLoadingRecovery;
 }
 
 export function parseKnowledgeRuntimeProviderPreflightRecord(

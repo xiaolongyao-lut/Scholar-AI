@@ -13417,6 +13417,7 @@ export interface components {
             /** Next Safe Local Actions */
             next_safe_local_actions?: string[];
             provider_preflight: components["schemas"]["KnowledgeRuntimeProviderPreflightResponse"];
+            recovery?: components["schemas"]["KnowledgeRuntimeActualLoadingRecoveryResponse"];
             /** Required Checks */
             required_checks?: string[];
             /**
@@ -13428,6 +13429,38 @@ export interface components {
             validation_errors?: string[];
             /** Verdict */
             verdict: string;
+        };
+        /**
+         * KnowledgeRuntimeActualLoadingRecoveryResponse
+         * @description Machine-readable recovery state for the live actual-loading gate.
+         */
+        KnowledgeRuntimeActualLoadingRecoveryResponse: {
+            /** Blocked By */
+            blocked_by?: string[];
+            /**
+             * Completion Requires Authorized Live Smoke
+             * @default true
+             */
+            completion_requires_authorized_live_smoke: boolean;
+            /**
+             * Provider Ready For Authorized Live Smoke
+             * @default false
+             */
+            provider_ready_for_authorized_live_smoke: boolean;
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /** Recovery Refs */
+            recovery_refs?: components["schemas"]["KnowledgeRuntimeRecoveryRefResponse"][];
+            /**
+             * Schema Version
+             * @default scholar-ai-knowledge-runtime-recovery/v1
+             */
+            schema_version: string;
+            /** State */
+            state: string;
         };
         /**
          * KnowledgeRuntimeConformanceItemResponse
@@ -13627,6 +13660,34 @@ export interface components {
             status: "proved" | "pending" | "blocked" | "not_applicable";
             /** Validation Errors */
             validation_errors?: string[];
+        };
+        /**
+         * KnowledgeRuntimeRecoveryRefResponse
+         * @description One recovery reference for a blocked Knowledge Runtime loading gate.
+         */
+        KnowledgeRuntimeRecoveryRefResponse: {
+            /** Ref */
+            ref: string;
+            /**
+             * Ref Type
+             * @enum {string}
+             */
+            ref_type: "conformance_endpoint" | "provider_preflight_artifact" | "live_smoke_artifact" | "live_smoke_harness";
+            /**
+             * Required Before Completion
+             * @default true
+             */
+            required_before_completion: boolean;
+            /**
+             * Requires Authorization
+             * @default false
+             */
+            requires_authorization: boolean;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
         };
         /**
          * KnowledgeRuntimeTestEvidenceResponse
@@ -14833,6 +14894,8 @@ export interface components {
             engine_type: "local" | "remote";
             /** Name */
             name: string;
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
             /** Readiness Blockers */
             readiness_blockers?: string[];
             /**
@@ -14982,6 +15045,8 @@ export interface components {
             engine: string;
             /** Latency Ms */
             latency_ms?: number | null;
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
             /** Ok */
             ok: boolean;
             /** Readiness Blockers */
@@ -15008,6 +15073,8 @@ export interface components {
             };
             /** Language */
             language: string;
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
             /**
              * Policy
              * @enum {string}

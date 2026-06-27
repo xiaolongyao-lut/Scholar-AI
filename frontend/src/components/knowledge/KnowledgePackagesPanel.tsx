@@ -248,6 +248,33 @@ function ActualLoadingGatePanel({
           ) : null}
           <div className="mt-3 rounded-md border border-current/20 bg-white/35 px-2.5 py-2 dark:bg-black/10">
             <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold">Recovery state</span>
+              <span className="rounded border border-current/25 px-1.5 py-0.5 text-[10px]">
+                {gate.recovery.state}
+              </span>
+              <span className="font-mono text-[10px] opacity-70">read_only={String(gate.recovery.read_only)}</span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] opacity-75">
+              <span>blocked_by={gate.recovery.blocked_by.length}</span>
+              <span>provider_ready={String(gate.recovery.provider_ready_for_authorized_live_smoke)}</span>
+              <span>live_smoke_required={String(gate.recovery.completion_requires_authorized_live_smoke)}</span>
+              <span>refs={gate.recovery.recovery_refs.length}</span>
+            </div>
+            {gate.recovery.blocked_by.length > 0 ? (
+              <div className="mt-1 break-words opacity-80">{gate.recovery.blocked_by.join('；')}</div>
+            ) : null}
+            {gate.recovery.recovery_refs.length > 0 ? (
+              <div className="mt-1 space-y-1">
+                {gate.recovery.recovery_refs.slice(0, 3).map((ref) => (
+                  <div key={`${ref.ref_type}:${ref.ref}`} className="break-all font-mono text-[10px] opacity-75">
+                    {ref.ref_type} · {ref.status || 'unknown'} · auth={String(ref.requires_authorization)}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="mt-3 rounded-md border border-current/20 bg-white/35 px-2.5 py-2 dark:bg-black/10">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold">Provider preflight</span>
               <span className="rounded border border-current/25 px-1.5 py-0.5 text-[10px]">
                 {formatConformanceStatus(gate.provider_preflight.status)}

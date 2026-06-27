@@ -14010,6 +14010,9 @@
           "provider_preflight": {
             "$ref": "#/components/schemas/KnowledgeRuntimeProviderPreflightResponse"
           },
+          "recovery": {
+            "$ref": "#/components/schemas/KnowledgeRuntimeActualLoadingRecoveryResponse"
+          },
           "required_checks": {
             "items": {
               "type": "string"
@@ -14052,6 +14055,59 @@
           "provider_preflight"
         ],
         "title": "KnowledgeRuntimeActualLoadingGateResponse",
+        "type": "object"
+      },
+      "KnowledgeRuntimeActualLoadingRecoveryResponse": {
+        "description": "Machine-readable recovery state for the live actual-loading gate.",
+        "properties": {
+          "blocked_by": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Blocked By",
+            "type": "array"
+          },
+          "completion_requires_authorized_live_smoke": {
+            "default": true,
+            "title": "Completion Requires Authorized Live Smoke",
+            "type": "boolean"
+          },
+          "provider_ready_for_authorized_live_smoke": {
+            "default": false,
+            "title": "Provider Ready For Authorized Live Smoke",
+            "type": "boolean"
+          },
+          "read_only": {
+            "default": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "recovery_refs": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRuntimeRecoveryRefResponse"
+            },
+            "maxItems": 8,
+            "title": "Recovery Refs",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": "scholar-ai-knowledge-runtime-recovery/v1",
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "KnowledgeRuntimeActualLoadingRecoveryResponse",
         "type": "object"
       },
       "KnowledgeRuntimeConformanceItemResponse": {
@@ -14463,6 +14519,49 @@
           "record_count"
         ],
         "title": "KnowledgeRuntimeProviderPreflightResponse",
+        "type": "object"
+      },
+      "KnowledgeRuntimeRecoveryRefResponse": {
+        "description": "One recovery reference for a blocked Knowledge Runtime loading gate.",
+        "properties": {
+          "ref": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          },
+          "ref_type": {
+            "enum": [
+              "conformance_endpoint",
+              "provider_preflight_artifact",
+              "live_smoke_artifact",
+              "live_smoke_harness"
+            ],
+            "title": "Ref Type",
+            "type": "string"
+          },
+          "required_before_completion": {
+            "default": true,
+            "title": "Required Before Completion",
+            "type": "boolean"
+          },
+          "requires_authorization": {
+            "default": false,
+            "title": "Requires Authorization",
+            "type": "boolean"
+          },
+          "status": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref_type",
+          "ref"
+        ],
+        "title": "KnowledgeRuntimeRecoveryRefResponse",
         "type": "object"
       },
       "KnowledgeRuntimeTestEvidenceResponse": {
@@ -17132,6 +17231,13 @@
             "title": "Name",
             "type": "string"
           },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
           "readiness_blockers": {
             "items": {
               "type": "string"
@@ -17428,6 +17534,13 @@
             ],
             "title": "Latency Ms"
           },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
           "ok": {
             "title": "Ok",
             "type": "boolean"
@@ -17490,6 +17603,13 @@
           "language": {
             "title": "Language",
             "type": "string"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
           },
           "policy": {
             "enum": [

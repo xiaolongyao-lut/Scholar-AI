@@ -1076,6 +1076,37 @@ const ACCEPTANCE_KNOWLEDGE_RUNTIME: KnowledgeRuntimeConformanceResponse = {
       validation_errors: [],
       claim_boundary: 'Provider preflight has not proven forced tool calls.',
     },
+    recovery: {
+      schema_version: 'scholar-ai-knowledge-runtime-recovery/v1',
+      read_only: true,
+      state: 'blocked_provider_preflight_and_missing_live_smoke',
+      blocked_by: ['provider_preflight:blocked:auth_required', 'live_smoke:missing_artifact'],
+      recovery_refs: [
+        {
+          ref_type: 'conformance_endpoint',
+          ref: '/api/knowledge/runtime-conformance',
+          status: 'blocked',
+          required_before_completion: true,
+          requires_authorization: false,
+        },
+        {
+          ref_type: 'provider_preflight_artifact',
+          ref: 'workspace_artifacts/runtime_state/provider-capabilities.json',
+          status: 'blocked',
+          required_before_completion: true,
+          requires_authorization: false,
+        },
+        {
+          ref_type: 'live_smoke_harness',
+          ref: 'workspace_tests/evaluation_scripts/live_api_chat_knowledge_context_receipt_smoke.py',
+          status: 'authorization_required',
+          required_before_completion: true,
+          requires_authorization: true,
+        },
+      ],
+      provider_ready_for_authorized_live_smoke: false,
+      completion_requires_authorized_live_smoke: true,
+    },
   },
   packages: [
     {

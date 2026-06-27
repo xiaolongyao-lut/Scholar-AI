@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T15:27:13+08:00",
+  "updated_at": "2026-06-27T15:43:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "manual-20260627_151948-n239-krt-recovery-audit",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_151948-n239-krt-recovery-audit",
-    "latest_goal_state_checkpoint_id": "manual-20260627_151948-n239-krt-recovery-audit",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_151948-n239-krt-recovery-audit",
-    "latest_checkpoint_caveat": "Targeted rollback snapshot for N239 KRT actual-loading recovery audit schema, tests, MCP test fixture, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "manual-20260627_153151-n240-agent-workspace-krt-visibility",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_153151-n240-agent-workspace-krt-visibility",
+    "latest_goal_state_checkpoint_id": "manual-20260627_153151-n240-agent-workspace-krt-visibility",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_153151-n240-agent-workspace-krt-visibility",
+    "latest_checkpoint_caveat": "Targeted rollback snapshot for N240 Agent Workspace / Knowledge Package KRT recovery visibility, frontend parser/tests, generated OpenAPI artifacts, desktop acceptance fixture, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N240 Agent Workspace KRT recovery visibility",
+      "source": "W3C PROV Overview; Kubernetes API conventions; RFC 7807 Problem Details",
+      "url": "https://www.w3.org/TR/prov-overview/ ; https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md ; https://www.rfc-editor.org/rfc/rfc7807",
+      "status": "HTTP 200 for all three references",
+      "checked_at": "2026-06-27T15:43:00+08:00",
+      "use_in_slice": "Used to keep recovery state as typed provenance/status data on existing read-only Agent Workspace and Knowledge Runtime surfaces. No external code copied."
+    },
     {
       "topic": "N239 Knowledge Runtime actual-loading recovery audit",
       "source": "W3C PROV Overview; RO-Crate 1.1 Introduction; JSON Schema examples",
@@ -6711,27 +6719,80 @@
         "Isolated router TestClient GET /api/knowledge/runtime-conformance -> status 200, recovery.state=blocked_incomplete_live_smoke_contract, blocked_by includes provider_preflight:blocked:auth_required and live_smoke_artifact:contract_incomplete"
       ],
       "residual_risk": "Recovery state visibility is proved locally, but live Knowledge Runtime actual-loading remains blocked by provider auth/current live-smoke artifact contract state until configured credentials and explicit live-provider authorization produce a valid matching smoke artifact."
+    },
+    {
+      "id": "N240-agent-workspace-krt-recovery-visibility",
+      "requirement": "Agent Workspace and Knowledge Package frontend surfaces must consume and display Knowledge Runtime actual_loading_gate.recovery so a resumed agent can see the live-loading blocker state, read-only recovery refs, provider readiness, and authorized live-smoke boundary without parsing action strings.",
+      "source": "N240 local Agent Workspace KRT recovery visibility slice after N239 backend/MCP recovery contract.",
+      "status": "proved",
+      "evidence": [
+        {
+          "file": "frontend/src/services/knowledgeApi.ts",
+          "proof": "Typed parser now preserves actual_loading_gate.recovery, recovery_refs, blocked_by, read_only, provider readiness, and live-smoke completion boundary; missing recovery falls back to read-only unavailable for older payloads."
+        },
+        {
+          "file": "frontend/src/pages/AgentWorkspace.tsx",
+          "proof": "Existing Knowledge Runtime conformance region now renders recovery state, read-only flag, blocker count, provider readiness, live-smoke requirement, blocked_by entries, and bounded recovery refs."
+        },
+        {
+          "file": "frontend/src/components/knowledge/KnowledgePackagesPanel.tsx",
+          "proof": "Existing Live 模型门禁 panel now renders recovery state, blocked_by count, provider readiness, live-smoke requirement, and bounded refs."
+        },
+        {
+          "file": "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+          "proof": "Desktop acceptance fixture updated to the same recovery payload shape used by Agent Workspace."
+        },
+        {
+          "file": "frontend/openapi/modular-pipeline-openapi.json",
+          "proof": "OpenAPI artifact regenerated from backend schema and includes KnowledgeRuntimeActualLoadingRecoveryResponse / KnowledgeRuntimeRecoveryRefResponse."
+        },
+        {
+          "file": "frontend/src/generated/openapi.ts",
+          "proof": "Generated frontend OpenAPI types include the recovery schema exposed by the backend."
+        },
+        {
+          "command": "frontend: npm run test -- --run src/services/knowledgeApi.test.tsx src/pages/AgentWorkspace.test.tsx src/components/knowledge/KnowledgePackagesPanel.test.tsx -> 3 files passed, 14 tests passed"
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 52 passed"
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -q -> 105 passed"
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed"
+        },
+        {
+          "command": "frontend: npm run build -> tsc and vite build passed"
+        }
+      ],
+      "residual_risk": "Frontend visibility is proved locally, but live Knowledge Runtime actual-loading remains blocked until provider preflight and an explicitly authorized matching live context-receipt smoke are proved; this slice does not run live provider calls."
     }
   ],
   "changed_files_for_this_slice": [
-    "literature_assistant/core/routers/knowledge_router.py",
-    "tests/test_knowledge_router.py",
-    "agent_mcp_server/tests/test_runtime_tools.py",
+    "frontend/src/services/knowledgeApi.ts",
+    "frontend/src/services/knowledgeApi.test.tsx",
+    "frontend/src/pages/AgentWorkspace.tsx",
+    "frontend/src/pages/AgentWorkspace.test.tsx",
+    "frontend/src/components/knowledge/KnowledgePackagesPanel.tsx",
+    "frontend/src/components/knowledge/KnowledgePackagesPanel.test.tsx",
+    "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+    "frontend/openapi/modular-pipeline-openapi.json",
+    "frontend/src/generated/openapi.ts",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
+    "frontend: npm run test -- --run src/services/knowledgeApi.test.tsx src/pages/AgentWorkspace.test.tsx src/components/knowledge/KnowledgePackagesPanel.test.tsx -> 3 files passed, 14 tests passed",
     ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 52 passed",
     ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -q -> 105 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m compileall -q literature_assistant agent_mcp_server\\src tests\\test_knowledge_router.py agent_mcp_server\\tests\\test_runtime_tools.py -> passed",
-    "TestClient full app GET /api/knowledge/runtime-conformance without X-LitAssist-Capability -> 403 capability guard, recorded as expected local API boundary",
-    "Isolated router TestClient GET /api/knowledge/runtime-conformance -> status 200, recovery.state=blocked_incomplete_live_smoke_contract, blocked_by includes provider_preflight:blocked:auth_required and live_smoke_artifact:contract_incomplete"
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed",
+    "frontend: npm run build -> tsc and vite build passed"
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
-    "Use actual_loading_gate.recovery from /api/knowledge/runtime-conformance or literature.knowledge_runtime_conformance before retrying any KRT live proof; do not parse next_safe_local_actions strings as the primary state.",
+    "Continue Knowledge Runtime Pipeline proof by using actual_loading_gate.recovery from /api/knowledge/runtime-conformance or literature.knowledge_runtime_conformance before retrying any live proof; do not parse next_safe_local_actions strings as the primary state.",
     "If provider credentials are corrected by the user, rerun provider tool-capability preflight before any live KRT context-receipt smoke.",
-    "If a RapidOCR runtime is already installed/configured, run the existing explicit OCR execution probe with confirm_execution=true on a small local image; otherwise keep RapidOCR as dependency_missing instead of installing runtime without authorization.",
-    "Do not run remote OCR real execution unless the user explicitly authorizes a configured provider, credentials, and safe test image upload.",
+    "Continue OCR/local processing proof only with installed/configured local runtimes or explicit remote-provider consent; keep RapidOCR/remote OCR as blocked or dependency_missing otherwise.",
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false."
   ],
   "stop_boundary": [
@@ -6740,7 +6801,10 @@
     "Do not run live provider/model or real OCR provider smokes without explicit authorization and credential-safe logging.",
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
-  "completion_claim": "not_complete: all current requirement rows are proved, but explicit authorized gates remain in goal_lifecycle_rollup.completion_blockers.",
+  "completion_claim": {
+    "this_slice": "N240 exposed Knowledge Runtime actual-loading recovery state in existing Agent Workspace and Knowledge Package frontend surfaces, with parser, UI, OpenAPI, frontend, backend, and MCP verification.",
+    "full_goal": "The full Scholar AI workflow spine remains active, not complete: live KRT model-loading proof and unresolved OCR real-runtime gates are still blocked by authorization/runtime boundaries."
+  },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
     "status": "proved",
@@ -10665,9 +10729,9 @@
     ]
   },
   "latest_slice": {
-    "id": "N238-ocr-readiness-recovery-actions",
-    "key": "n238_ocr_readiness_recovery_actions_slice",
-    "updated_at": "2026-06-27T15:18:00+08:00",
+    "id": "N240-agent-workspace-krt-recovery-visibility",
+    "key": "n240_agent_workspace_krt_recovery_visibility_slice",
+    "updated_at": "2026-06-27T15:43:00+08:00",
     "status": "proved"
   },
   "n151_ocr_health_mcp_visibility_slice": {
@@ -12433,25 +12497,25 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T15:27:13+08:00",
+    "updated_at": "2026-06-27T15:43:00+08:00",
     "status": "requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 240,
+    "requirements_total": 241,
     "requirement_status_counts": {
-      "proved": 240
+      "proved": 241
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N239-krt-actual-loading-recovery-audit",
-    "latest_slice_id": "N239-krt-actual-loading-recovery-audit",
+    "latest_requirement_id": "N240-agent-workspace-krt-recovery-visibility",
+    "latest_slice_id": "N240-agent-workspace-krt-recovery-visibility",
     "completion_blockers": [
       "actual_loading_gate_live_model_proof_auth_required_current_provider",
       "real_rapidocr_runtime_execution_or_explicit_out_of_scope",
       "remote_ocr_real_execution_requires_explicit_consent_and_credentials_or_out_of_scope"
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N239 makes KRT actual-loading recovery state machine-readable and MCP-visible, but live provider proof remains blocked by current provider auth/live-smoke artifact state; RapidOCR and remote OCR gates also remain unresolved unless executed with configured runtime/credentials or explicitly marked out of scope."
+    "why_not_complete": "N240 makes KRT actual-loading recovery visible in Agent Workspace and Knowledge Package UI, but live provider proof remains blocked by current provider auth/live-smoke authorization state; RapidOCR and remote OCR gates also remain unresolved unless executed with configured runtime/credentials or explicitly marked out of scope."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -16338,5 +16402,52 @@
       "provider_ready_for_authorized_live_smoke": false
     },
     "residual_risk": "Recovery state visibility is proved locally, but live Knowledge Runtime actual-loading remains blocked by provider auth/current live-smoke artifact contract state until configured credentials and explicit live-provider authorization produce a valid matching smoke artifact."
+  },
+  "n240_agent_workspace_krt_recovery_visibility_slice": {
+    "status": "done",
+    "updated_at": "2026-06-27T15:43:00+08:00",
+    "rollback_checkpoint": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_153151-n240-agent-workspace-krt-visibility",
+    "changed_files": [
+      "frontend/src/services/knowledgeApi.ts",
+      "frontend/src/services/knowledgeApi.test.tsx",
+      "frontend/src/pages/AgentWorkspace.tsx",
+      "frontend/src/pages/AgentWorkspace.test.tsx",
+      "frontend/src/components/knowledge/KnowledgePackagesPanel.tsx",
+      "frontend/src/components/knowledge/KnowledgePackagesPanel.test.tsx",
+      "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+      "frontend/openapi/modular-pipeline-openapi.json",
+      "frontend/src/generated/openapi.ts",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "frontend: npm run test -- --run src/services/knowledgeApi.test.tsx src/pages/AgentWorkspace.test.tsx src/components/knowledge/KnowledgePackagesPanel.test.tsx -> 3 files passed, 14 tests passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 52 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -q -> 105 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed",
+      "frontend: npm run build -> tsc and vite build passed"
+    ],
+    "mature_references_checked": {
+      "topic": "N240 Agent Workspace KRT recovery visibility",
+      "source": "W3C PROV Overview; Kubernetes API conventions; RFC 7807 Problem Details",
+      "url": "https://www.w3.org/TR/prov-overview/ ; https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md ; https://www.rfc-editor.org/rfc/rfc7807",
+      "status": "HTTP 200 for all three references",
+      "checked_at": "2026-06-27T15:43:00+08:00",
+      "use_in_slice": "Used to keep recovery state as typed provenance/status data on existing read-only Agent Workspace and Knowledge Runtime surfaces. No external code copied."
+    },
+    "current_runtime_observation": {
+      "surface": "Agent Workspace / Knowledge Packages frontend",
+      "source_contract": "/api/knowledge/runtime-conformance actual_loading_gate.recovery",
+      "visible_recovery_fields": [
+        "recovery.state",
+        "recovery.read_only",
+        "recovery.blocked_by",
+        "recovery.recovery_refs",
+        "recovery.provider_ready_for_authorized_live_smoke",
+        "recovery.completion_requires_authorized_live_smoke"
+      ],
+      "read_only": true,
+      "no_new_endpoint": true
+    },
+    "residual_risk": "Frontend visibility is proved locally, but live Knowledge Runtime actual-loading remains blocked until provider preflight and an explicitly authorized matching live context-receipt smoke are proved; this slice does not run live provider calls."
   }
 }

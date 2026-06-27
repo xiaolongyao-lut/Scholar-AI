@@ -150,6 +150,30 @@ vi.mock('@/services/knowledgeApi', () => ({
         validation_errors: [],
         claim_boundary: 'Provider preflight has not proven forced tool calls.',
       },
+      recovery: {
+        schema_version: 'scholar-ai-knowledge-runtime-recovery/v1',
+        read_only: true,
+        state: 'blocked_provider_preflight_and_missing_live_smoke',
+        blocked_by: ['provider_preflight:blocked:auth_required', 'live_smoke:missing_artifact'],
+        recovery_refs: [
+          {
+            ref_type: 'conformance_endpoint',
+            ref: '/api/knowledge/runtime-conformance',
+            status: 'blocked',
+            required_before_completion: true,
+            requires_authorization: false,
+          },
+          {
+            ref_type: 'live_smoke_harness',
+            ref: 'workspace_tests/evaluation_scripts/live_api_chat_knowledge_context_receipt_smoke.py',
+            status: 'authorization_required',
+            required_before_completion: true,
+            requires_authorization: true,
+          },
+        ],
+        provider_ready_for_authorized_live_smoke: false,
+        completion_requires_authorized_live_smoke: true,
+      },
     },
     packages: [
       {
@@ -278,6 +302,13 @@ describe('KnowledgePackagesPanel', () => {
     expect(screen.getByText('exists=false')).toBeInTheDocument();
     expect(screen.getByText('schema=false')).toBeInTheDocument();
     expect(screen.getByText('contract=false')).toBeInTheDocument();
+    expect(screen.getByText('Recovery state')).toBeInTheDocument();
+    expect(screen.getByText('blocked_provider_preflight_and_missing_live_smoke')).toBeInTheDocument();
+    expect(screen.getByText('read_only=true')).toBeInTheDocument();
+    expect(screen.getByText('blocked_by=2')).toBeInTheDocument();
+    expect(screen.getByText('provider_ready=false')).toBeInTheDocument();
+    expect(screen.getByText('live_smoke_required=true')).toBeInTheDocument();
+    expect(screen.getByText('live_smoke_harness · authorization_required · auth=true')).toBeInTheDocument();
     expect(screen.getByText('Provider preflight')).toBeInTheDocument();
     expect(screen.getByText('auth_required')).toBeInTheDocument();
     expect(screen.getByText('records=1')).toBeInTheDocument();

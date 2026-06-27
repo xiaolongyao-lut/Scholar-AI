@@ -294,6 +294,30 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
           validation_errors: [],
           claim_boundary: 'Provider preflight has not proven forced tool calls.',
         },
+        recovery: {
+          schema_version: 'scholar-ai-knowledge-runtime-recovery/v1',
+          read_only: true,
+          state: 'blocked_provider_preflight_and_missing_live_smoke',
+          blocked_by: ['provider_preflight:blocked:auth_required', 'live_smoke:missing_artifact'],
+          recovery_refs: [
+            {
+              ref_type: 'conformance_endpoint',
+              ref: '/api/knowledge/runtime-conformance',
+              status: 'blocked',
+              required_before_completion: true,
+              requires_authorization: false,
+            },
+            {
+              ref_type: 'live_smoke_harness',
+              ref: 'workspace_tests/evaluation_scripts/live_api_chat_knowledge_context_receipt_smoke.py',
+              status: 'authorization_required',
+              required_before_completion: true,
+              requires_authorization: true,
+            },
+          ],
+          provider_ready_for_authorized_live_smoke: false,
+          completion_requires_authorized_live_smoke: true,
+        },
       },
       packages: [
         {
@@ -360,6 +384,9 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
     expect(parsed.actual_loading_gate.provider_preflight.status).toBe('blocked');
     expect(parsed.actual_loading_gate.provider_preflight.latest_status).toBe('auth_required');
     expect(parsed.actual_loading_gate.provider_preflight.records[0].base_url_host).toBe('free.hanhanapi.top');
+    expect(parsed.actual_loading_gate.recovery.state).toBe('blocked_provider_preflight_and_missing_live_smoke');
+    expect(parsed.actual_loading_gate.recovery.blocked_by).toContain('live_smoke:missing_artifact');
+    expect(parsed.actual_loading_gate.recovery.recovery_refs[1].requires_authorization).toBe(true);
     expect(parsed.packages[0].overall_status).toBe('blocked');
     expect(parsed.packages[0].manifest.empty_runtime).toBe(true);
     expect(parsed.packages[0].runtime_consumers[0].consumer).toBe(
@@ -423,6 +450,15 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
             missing: ['provider tool-call capability preflight record'],
             validation_errors: [],
             claim_boundary: '',
+          },
+          recovery: {
+            schema_version: 'scholar-ai-knowledge-runtime-recovery/v1',
+            read_only: true,
+            state: 'blocked_provider_preflight_and_missing_live_smoke',
+            blocked_by: ['provider_preflight:pending:unknown'],
+            recovery_refs: [],
+            provider_ready_for_authorized_live_smoke: false,
+            completion_requires_authorized_live_smoke: true,
           },
         },
         packages: [
@@ -502,6 +538,15 @@ describe('knowledgeApi.getKnowledgeRuntimeConformance', () => {
             missing: ['provider tool-call capability preflight record'],
             validation_errors: [],
             claim_boundary: '',
+          },
+          recovery: {
+            schema_version: 'scholar-ai-knowledge-runtime-recovery/v1',
+            read_only: true,
+            state: 'blocked_provider_preflight_and_missing_live_smoke',
+            blocked_by: ['provider_preflight:pending:unknown'],
+            recovery_refs: [],
+            provider_ready_for_authorized_live_smoke: false,
+            completion_requires_authorized_live_smoke: true,
           },
         },
         packages: [],

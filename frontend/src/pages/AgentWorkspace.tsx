@@ -571,6 +571,22 @@ function actualLoadingGateSummary(gate: KnowledgeRuntimeActualLoadingGate): stri
   return `${sanitizeInspectorText(gate.verdict)} · evidence ${gate.evidence.length} · missing ${gate.missing.length} · errors ${gate.validation_errors.length} · checks ${gate.required_checks.length}`;
 }
 
+function actualLoadingRecoveryTone(gate: KnowledgeRuntimeActualLoadingGate): StatusTone {
+  if (gate.recovery.blocked_by.length > 0) {
+    return 'danger';
+  }
+  if (gate.recovery.completion_requires_authorized_live_smoke) {
+    return 'warning';
+  }
+  return gate.recovery.provider_ready_for_authorized_live_smoke ? 'success' : 'neutral';
+}
+
+function actualLoadingRecoveryRefLabel(ref: KnowledgeRuntimeActualLoadingGate['recovery']['recovery_refs'][number]): string {
+  const status = sanitizeInspectorText(ref.status || 'unknown');
+  const auth = ref.requires_authorization ? ' · auth' : '';
+  return `${sanitizeInspectorText(ref.ref_type)} ${status}${auth}`;
+}
+
 function packageEvidenceSummary(pkg: KnowledgeRuntimeConformancePackage): string {
   const flags = [
     pkg.test_evidence.focused_test_exists ? 'focused-test' : '',
@@ -3946,6 +3962,21 @@ export function WorkspaceStatePanel({
                         <StatusPill tone={actualLoadingGate.required_checks.length > 0 ? 'info' : 'warning'}>
                           required checks {actualLoadingGate.required_checks.length}
                         </StatusPill>
+                        <StatusPill tone={actualLoadingRecoveryTone(actualLoadingGate)}>
+                          recovery {sanitizeInspectorText(actualLoadingGate.recovery.state)}
+                        </StatusPill>
+                        <StatusPill tone={actualLoadingGate.recovery.read_only ? 'info' : 'warning'}>
+                          recovery read-only {String(actualLoadingGate.recovery.read_only)}
+                        </StatusPill>
+                        <StatusPill tone={actualLoadingGate.recovery.blocked_by.length > 0 ? 'danger' : 'success'}>
+                          blocked by {actualLoadingGate.recovery.blocked_by.length}
+                        </StatusPill>
+                        <StatusPill tone={actualLoadingGate.recovery.provider_ready_for_authorized_live_smoke ? 'success' : 'warning'}>
+                          provider ready {String(actualLoadingGate.recovery.provider_ready_for_authorized_live_smoke)}
+                        </StatusPill>
+                        <StatusPill tone={actualLoadingGate.recovery.completion_requires_authorized_live_smoke ? 'warning' : 'success'}>
+                          live smoke {actualLoadingGate.recovery.completion_requires_authorized_live_smoke ? 'required' : 'proved'}
+                        </StatusPill>
                       </div>
                       <p className="mt-1 break-words text-[11px] leading-4 text-foreground/55">
                         {sanitizeInspectorText(actualLoadingGate.claim_boundary || 'Live QA/model loading requires an authorized smoke artifact.')}
@@ -3970,6 +4001,16 @@ export function WorkspaceStatePanel({
                         {actualLoadingGate.required_checks.slice(0, 3).map((item) => (
                           <StatusPill key={`actual-loading-required:${item}`} tone="neutral">
                             check {sanitizeInspectorText(item)}
+                          </StatusPill>
+                        ))}
+                        {actualLoadingGate.recovery.blocked_by.slice(0, 3).map((item) => (
+                          <StatusPill key={`actual-loading-recovery-blocker:${item}`} tone="danger">
+                            recovery blocker {sanitizeInspectorText(item)}
+                          </StatusPill>
+                        ))}
+                        {actualLoadingGate.recovery.recovery_refs.slice(0, 3).map((item) => (
+                          <StatusPill key={`actual-loading-recovery-ref:${item.ref_type}:${item.ref}`} tone={item.requires_authorization ? 'warning' : 'info'}>
+                            recovery ref {actualLoadingRecoveryRefLabel(item)}
                           </StatusPill>
                         ))}
                       </div>
