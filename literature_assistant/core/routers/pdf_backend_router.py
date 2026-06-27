@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from pdf_backends import (
@@ -168,6 +169,27 @@ class OcrExecutionProbeResponse(BaseModel):
     duration_ms: int
 
 
+class OcrExecutionBlockedResponse(BaseModel):
+    """Bounded proof that OCR execution was blocked before provider work."""
+
+    schema_version: Literal["scholar-ai-ocr-execution-blocked/v1"] = (
+        "scholar-ai-ocr-execution-blocked/v1"
+    )
+    confirmed: Literal[False] = False
+    status: Literal["blocked"] = "blocked"
+    engine: str
+    engine_type: Literal["local", "remote"]
+    requires_network: bool
+    language: str
+    input_kind: Literal["image_base64", "image_path"]
+    input_bytes: int
+    input_sha256: str
+    reason: str
+    readiness_status: OcrReadinessStatus
+    readiness_blockers: list[str] = Field(default_factory=list)
+    next_safe_local_actions: list[str] = Field(default_factory=list)
+
+
 def _sha256_hex(data: bytes) -> str:
     """Return a stable SHA-256 hex digest for evidence receipts."""
 
@@ -301,6 +323,43 @@ def _ocr_health_response_payload(engine: OcrEngine, health: Any) -> dict[str, An
     return payload
 
 
+def _ocr_execution_blocked_payload(
+    *,
+    engine: OcrEngine,
+    language: str,
+    input_kind: Literal["image_base64", "image_path"],
+    image_bytes: bytes,
+    reason: str,
+) -> dict[str, Any]:
+    """Return a non-secret blocked execution receipt for recovery agents."""
+
+    if not reason.strip():
+        raise ValueError("reason must be non-empty")
+    readiness_status = engine.readiness_status()
+    readiness_blockers = list(engine.readiness_blockers())
+    return OcrExecutionBlockedResponse(
+        engine=engine.name,
+        engine_type=engine.engine_type,
+        requires_network=engine.requires_network,
+        language=language,
+        input_kind=input_kind,
+        input_bytes=len(image_bytes),
+        input_sha256=_sha256_hex(image_bytes),
+        reason=reason,
+        readiness_status=readiness_status,
+        readiness_blockers=readiness_blockers,
+        next_safe_local_actions=list(
+            ocr_engine_next_safe_local_actions(
+                engine_name=engine.name,
+                engine_type=engine.engine_type,
+                requires_network=engine.requires_network,
+                readiness_status=readiness_status,
+                readiness_blockers=readiness_blockers,
+            )
+        ),
+    ).model_dump()
+
+
 def _resolve_active_backend() -> tuple[str, str]:
     """Return the active core backend and why it was selected."""
     raw_env = os.environ.get(ENV_VAR)
@@ -400,8 +459,19 @@ def check_ocr_engine_health(request: OcrHealthRequest) -> OcrHealthResponse:
     return OcrHealthResponse(**_ocr_health_response_payload(engine, health))
 
 
-@router.post("/ocr-execution-probe", response_model=OcrExecutionProbeResponse)
-def run_ocr_execution_probe(request: OcrExecutionProbeRequest) -> OcrExecutionProbeResponse:
+@router.post(
+    "/ocr-execution-probe",
+    response_model=OcrExecutionProbeResponse,
+    responses={
+        409: {
+            "model": OcrExecutionBlockedResponse,
+            "description": "OCR execution was blocked before provider work.",
+        }
+    },
+)
+def run_ocr_execution_probe(
+    request: OcrExecutionProbeRequest,
+) -> OcrExecutionProbeResponse | JSONResponse:
     """Run one explicit OCR execution probe and return bounded proof only."""
 
     started = time.perf_counter()
@@ -417,7 +487,16 @@ def run_ocr_execution_probe(request: OcrExecutionProbeRequest) -> OcrExecutionPr
         engine = _resolve_probe_engine(request)
         unavailable = engine.unavailable_reason()
         if unavailable is not None:
-            raise HTTPException(status_code=409, detail=unavailable)
+            return JSONResponse(
+                status_code=409,
+                content=_ocr_execution_blocked_payload(
+                    engine=engine,
+                    language=language,
+                    input_kind=input_kind,
+                    image_bytes=image_bytes,
+                    reason=unavailable,
+                ),
+            )
         text = engine.ocr_image(image_input, language=language)
     except HTTPException:
         raise

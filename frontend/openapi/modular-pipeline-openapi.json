@@ -17345,6 +17345,108 @@
         "title": "OcrEngineSelectionResponse",
         "type": "object"
       },
+      "OcrExecutionBlockedResponse": {
+        "description": "Bounded proof that OCR execution was blocked before provider work.",
+        "properties": {
+          "confirmed": {
+            "const": false,
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "engine_type": {
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Engine Type",
+            "type": "string"
+          },
+          "input_bytes": {
+            "title": "Input Bytes",
+            "type": "integer"
+          },
+          "input_kind": {
+            "enum": [
+              "image_base64",
+              "image_path"
+            ],
+            "title": "Input Kind",
+            "type": "string"
+          },
+          "input_sha256": {
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "readiness_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Readiness Blockers",
+            "type": "array"
+          },
+          "readiness_status": {
+            "enum": [
+              "ready",
+              "dependency_missing",
+              "configuration_required",
+              "adapter_not_wired",
+              "platform_unsupported",
+              "unavailable"
+            ],
+            "title": "Readiness Status",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "requires_network": {
+            "title": "Requires Network",
+            "type": "boolean"
+          },
+          "schema_version": {
+            "const": "scholar-ai-ocr-execution-blocked/v1",
+            "default": "scholar-ai-ocr-execution-blocked/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "const": "blocked",
+            "default": "blocked",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine",
+          "engine_type",
+          "requires_network",
+          "language",
+          "input_kind",
+          "input_bytes",
+          "input_sha256",
+          "reason",
+          "readiness_status"
+        ],
+        "title": "OcrExecutionBlockedResponse",
+        "type": "object"
+      },
       "OcrExecutionProbeRequest": {
         "description": "Request body for an explicit OCR execution proof.\n\nArgs:\n    confirm_execution: Must be true because OCR may run local heavy\n        runtimes or upload page images for remote engines.\n    image_base64: Optional PNG/JPEG/etc. payload encoded as base64.\n    image_path: Optional local image path under allowed workspace roots.\n    engine: Optional engine id. Omitted means use resolved runtime policy.\n    engine_config: Engine-specific options; secrets never return.\n    language: OCR language tag forwarded to the selected engine.\n    preview_chars: Maximum OCR text preview characters returned.",
         "properties": {
@@ -36182,6 +36284,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrExecutionBlockedResponse"
+                }
+              }
+            },
+            "description": "OCR execution was blocked before provider work."
           },
           "422": {
             "content": {

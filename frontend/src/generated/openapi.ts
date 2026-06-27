@@ -14944,6 +14944,61 @@ export interface components {
             status: components["schemas"]["OcrStatusResponse"];
         };
         /**
+         * OcrExecutionBlockedResponse
+         * @description Bounded proof that OCR execution was blocked before provider work.
+         */
+        OcrExecutionBlockedResponse: {
+            /**
+             * Confirmed
+             * @default false
+             * @constant
+             */
+            confirmed: false;
+            /** Engine */
+            engine: string;
+            /**
+             * Engine Type
+             * @enum {string}
+             */
+            engine_type: "local" | "remote";
+            /** Input Bytes */
+            input_bytes: number;
+            /**
+             * Input Kind
+             * @enum {string}
+             */
+            input_kind: "image_base64" | "image_path";
+            /** Input Sha256 */
+            input_sha256: string;
+            /** Language */
+            language: string;
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            /** Readiness Blockers */
+            readiness_blockers?: string[];
+            /**
+             * Readiness Status
+             * @enum {string}
+             */
+            readiness_status: "ready" | "dependency_missing" | "configuration_required" | "adapter_not_wired" | "platform_unsupported" | "unavailable";
+            /** Reason */
+            reason: string;
+            /** Requires Network */
+            requires_network: boolean;
+            /**
+             * Schema Version
+             * @default scholar-ai-ocr-execution-blocked/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-ocr-execution-blocked/v1";
+            /**
+             * Status
+             * @default blocked
+             * @constant
+             */
+            status: "blocked";
+        };
+        /**
          * OcrExecutionProbeRequest
          * @description Request body for an explicit OCR execution proof.
          *
@@ -25441,6 +25496,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OcrExecutionProbeResponse"];
+                };
+            };
+            /** @description OCR execution was blocked before provider work. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrExecutionBlockedResponse"];
                 };
             };
             /** @description Validation Error */

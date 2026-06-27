@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T15:43:00+08:00",
+  "updated_at": "2026-06-27T15:54:54+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "manual-20260627_153151-n240-agent-workspace-krt-visibility",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_153151-n240-agent-workspace-krt-visibility",
-    "latest_goal_state_checkpoint_id": "manual-20260627_153151-n240-agent-workspace-krt-visibility",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_153151-n240-agent-workspace-krt-visibility",
-    "latest_checkpoint_caveat": "Targeted rollback snapshot for N240 Agent Workspace / Knowledge Package KRT recovery visibility, frontend parser/tests, generated OpenAPI artifacts, desktop acceptance fixture, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "manual-20260627_154635-n241-ocr-provider-proof",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_154635-n241-ocr-provider-proof",
+    "latest_goal_state_checkpoint_id": "manual-20260627_154635-n241-ocr-provider-proof",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_154635-n241-ocr-provider-proof",
+    "latest_checkpoint_caveat": "Targeted rollback snapshot for N241 OCR execution blocked receipt, router/test/OpenAPI changes, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N241 OCR execution blocked receipt and optional runtime boundary",
+      "source": "FastAPI additional responses; RapidOCR install docs; Python importlib.util.find_spec; W3C PROV Overview",
+      "url": "https://fastapi.tiangolo.com/advanced/additional-responses/ ; https://rapidai.github.io/RapidOCRDocs/main/install_usage/rapidocr/install/ ; https://docs.python.org/3/library/importlib.html#importlib.util.find_spec ; https://www.w3.org/TR/prov-overview/",
+      "status": "HTTP 200 for all four references checked locally",
+      "checked_at": "2026-06-27T15:54:54+08:00",
+      "use_in_slice": "Used to expose blocked OCR execution as a typed FastAPI 409 response while preserving optional RapidOCR as an external/local runtime dependency. No OCR package, model, cache, external upload, or third-party implementation code was installed or copied."
+    },
     {
       "topic": "N240 Agent Workspace KRT recovery visibility",
       "source": "W3C PROV Overview; Kubernetes API conventions; RFC 7807 Problem Details",
@@ -6767,32 +6775,75 @@
         }
       ],
       "residual_risk": "Frontend visibility is proved locally, but live Knowledge Runtime actual-loading remains blocked until provider preflight and an explicitly authorized matching live context-receipt smoke are proved; this slice does not run live provider calls."
+    },
+    {
+      "id": "N241-ocr-execution-blocked-receipt",
+      "requirement": "OCR execution probes must return a bounded, machine-readable blocked receipt when provider readiness or upload-consent gates prevent execution, so resumed agents can recover engine, readiness_status, blockers, safe next actions, and input hash without treating missing RapidOCR or remote consent as successful OCR execution.",
+      "source": "Current OCR/local processing goal plus N240 next actions: continue OCR proof only with installed/configured local runtimes or explicit remote-provider consent; keep RapidOCR/remote OCR blocked or dependency_missing otherwise.",
+      "status": "proved",
+      "evidence": [
+        {
+          "file": "literature_assistant/core/routers/pdf_backend_router.py",
+          "proof": "Adds OcrExecutionBlockedResponse and documents it as the 409 response for /api/pdf-backend/ocr-execution-probe; unavailable engines now return schema_version=scholar-ai-ocr-execution-blocked/v1 with engine metadata, readiness_status, readiness_blockers, next_safe_local_actions, input bytes, and input hash before provider work runs."
+        },
+        {
+          "file": "tests/test_pdf_backend_router.py",
+          "proof": "Covers remote_api without allow_remote_upload consent and rapidocr without installed runtime; full-app TestClient route also asserts 409 blocked receipt is returned directly instead of a generic trace_id error envelope."
+        },
+        {
+          "file": "frontend/openapi/modular-pipeline-openapi.json",
+          "proof": "Regenerated OpenAPI schema includes OcrExecutionBlockedResponse and the 409 response contract for /api/pdf-backend/ocr-execution-probe."
+        },
+        {
+          "file": "frontend/src/generated/openapi.ts",
+          "proof": "Generated TypeScript OpenAPI types include OcrExecutionBlockedResponse and the 409 operation response."
+        },
+        {
+          "command": "TestClient live contract probe -> rapidocr health 200 dependency_missing; rapidocr execution 409 scholar-ai-ocr-execution-blocked/v1; remote_api execution 409 scholar-ai-ocr-execution-blocked/v1."
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_remote_without_upload_consent tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_rapidocr_with_recovery_receipt tests\\test_pdf_backend_router.py::test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability -q -> 3 passed"
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_missing_exposes_readiness_blocker tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_execution_uses_subprocess_receipt agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_execution_probe_posts_explicit_execution_payload -q -> 3 passed"
+        },
+        {
+          "command": "npm run generate:openapi from frontend/ -> schema and TypeScript OpenAPI generation passed"
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py tests\\test_ocr_engine_registry.py -q -> 46 passed"
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -k \"ocr_status or ocr_engines or ocr_health or ocr_execution_probe\" -q -> 6 passed, 99 deselected"
+        },
+        {
+          "command": "frontend: npm run build -> tsc and vite build passed"
+        }
+      ],
+      "residual_risk": "This proves blocked execution is recoverable and auditable, not that RapidOCR executed. The current .venv-1 has no rapidocr or rapidocr_onnxruntime module, LITASSIST_RAPIDOCR_PYTHON is unset, and remote OCR still requires explicit consent plus credentials; the goal-level completion blockers remain."
     }
   ],
   "changed_files_for_this_slice": [
-    "frontend/src/services/knowledgeApi.ts",
-    "frontend/src/services/knowledgeApi.test.tsx",
-    "frontend/src/pages/AgentWorkspace.tsx",
-    "frontend/src/pages/AgentWorkspace.test.tsx",
-    "frontend/src/components/knowledge/KnowledgePackagesPanel.tsx",
-    "frontend/src/components/knowledge/KnowledgePackagesPanel.test.tsx",
-    "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+    "literature_assistant/core/routers/pdf_backend_router.py",
+    "tests/test_pdf_backend_router.py",
     "frontend/openapi/modular-pipeline-openapi.json",
     "frontend/src/generated/openapi.ts",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "frontend: npm run test -- --run src/services/knowledgeApi.test.tsx src/pages/AgentWorkspace.test.tsx src/components/knowledge/KnowledgePackagesPanel.test.tsx -> 3 files passed, 14 tests passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 52 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -q -> 105 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed",
-    "frontend: npm run build -> tsc and vite build passed"
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_remote_without_upload_consent tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_rapidocr_with_recovery_receipt tests\\test_pdf_backend_router.py::test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability -q -> 3 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_missing_exposes_readiness_blocker tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_execution_uses_subprocess_receipt agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_execution_probe_posts_explicit_execution_payload -q -> 3 passed",
+    "npm run generate:openapi from frontend/ -> schema and TypeScript OpenAPI generation passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py tests\\test_ocr_engine_registry.py -q -> 46 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -k \"ocr_status or ocr_engines or ocr_health or ocr_execution_probe\" -q -> 6 passed, 99 deselected",
+    "frontend: npm run build -> tsc and vite build passed",
+    "TestClient live contract probe -> rapidocr health 200 dependency_missing; rapidocr execution 409 scholar-ai-ocr-execution-blocked/v1; remote_api execution 409 scholar-ai-ocr-execution-blocked/v1 without uploading content externally"
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
     "Continue Knowledge Runtime Pipeline proof by using actual_loading_gate.recovery from /api/knowledge/runtime-conformance or literature.knowledge_runtime_conformance before retrying any live proof; do not parse next_safe_local_actions strings as the primary state.",
     "If provider credentials are corrected by the user, rerun provider tool-capability preflight before any live KRT context-receipt smoke.",
-    "Continue OCR/local processing proof only with installed/configured local runtimes or explicit remote-provider consent; keep RapidOCR/remote OCR as blocked or dependency_missing otherwise.",
+    "Continue OCR/local processing proof only with installed/configured local runtimes or explicit remote-provider consent; current RapidOCR evidence is dependency_missing plus structured blocked receipt, not real OCR execution.",
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false."
   ],
   "stop_boundary": [
@@ -6802,7 +6853,7 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N240 exposed Knowledge Runtime actual-loading recovery state in existing Agent Workspace and Knowledge Package frontend surfaces, with parser, UI, OpenAPI, frontend, backend, and MCP verification.",
+    "this_slice": "N241 makes OCR execution-gate failures recoverable by returning a structured blocked receipt for missing RapidOCR runtime and remote upload-consent gates, with OpenAPI and focused tests.",
     "full_goal": "The full Scholar AI workflow spine remains active, not complete: live KRT model-loading proof and unresolved OCR real-runtime gates are still blocked by authorization/runtime boundaries."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
@@ -10729,9 +10780,9 @@
     ]
   },
   "latest_slice": {
-    "id": "N240-agent-workspace-krt-recovery-visibility",
-    "key": "n240_agent_workspace_krt_recovery_visibility_slice",
-    "updated_at": "2026-06-27T15:43:00+08:00",
+    "id": "N241-ocr-execution-blocked-receipt",
+    "key": "n241_ocr_execution_blocked_receipt_slice",
+    "updated_at": "2026-06-27T15:54:54+08:00",
     "status": "proved"
   },
   "n151_ocr_health_mcp_visibility_slice": {
@@ -12497,25 +12548,25 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T15:43:00+08:00",
+    "updated_at": "2026-06-27T15:54:54+08:00",
     "status": "requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 241,
+    "requirements_total": 242,
     "requirement_status_counts": {
-      "proved": 241
+      "proved": 242
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N240-agent-workspace-krt-recovery-visibility",
-    "latest_slice_id": "N240-agent-workspace-krt-recovery-visibility",
+    "latest_requirement_id": "N241-ocr-execution-blocked-receipt",
+    "latest_slice_id": "N241-ocr-execution-blocked-receipt",
     "completion_blockers": [
       "actual_loading_gate_live_model_proof_auth_required_current_provider",
       "real_rapidocr_runtime_execution_or_explicit_out_of_scope",
       "remote_ocr_real_execution_requires_explicit_consent_and_credentials_or_out_of_scope"
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N240 makes KRT actual-loading recovery visible in Agent Workspace and Knowledge Package UI, but live provider proof remains blocked by current provider auth/live-smoke authorization state; RapidOCR and remote OCR gates also remain unresolved unless executed with configured runtime/credentials or explicitly marked out of scope."
+    "why_not_complete": "N241 makes OCR execution blockers recoverable as typed 409 receipts, but it does not execute RapidOCR because the active runtime has no rapidocr/rapidocr_onnxruntime module or configured LITASSIST_RAPIDOCR_PYTHON; remote OCR still requires explicit consent and credentials, and live KRT model-context proof remains provider/auth gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -16449,5 +16500,64 @@
       "no_new_endpoint": true
     },
     "residual_risk": "Frontend visibility is proved locally, but live Knowledge Runtime actual-loading remains blocked until provider preflight and an explicitly authorized matching live context-receipt smoke are proved; this slice does not run live provider calls."
+  },
+  "n241_ocr_execution_blocked_receipt_slice": {
+    "status": "done",
+    "updated_at": "2026-06-27T15:54:54+08:00",
+    "rollback_checkpoint": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_154635-n241-ocr-provider-proof",
+    "changed_files": [
+      "literature_assistant/core/routers/pdf_backend_router.py",
+      "tests/test_pdf_backend_router.py",
+      "frontend/openapi/modular-pipeline-openapi.json",
+      "frontend/src/generated/openapi.ts",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_remote_without_upload_consent tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_rapidocr_with_recovery_receipt tests\\test_pdf_backend_router.py::test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability -q -> 3 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_missing_exposes_readiness_blocker tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_execution_uses_subprocess_receipt agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_execution_probe_posts_explicit_execution_payload -q -> 3 passed",
+      "npm run generate:openapi from frontend/ -> schema and TypeScript OpenAPI generation passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py tests\\test_ocr_engine_registry.py -q -> 46 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -k \"ocr_status or ocr_engines or ocr_health or ocr_execution_probe\" -q -> 6 passed, 99 deselected",
+      "frontend: npm run build -> tsc and vite build passed",
+      "TestClient live contract probe -> rapidocr health 200 dependency_missing; rapidocr execution 409 scholar-ai-ocr-execution-blocked/v1; remote_api execution 409 scholar-ai-ocr-execution-blocked/v1 without uploading content externally"
+    ],
+    "mature_references_checked": {
+      "topic": "N241 OCR execution blocked receipt and optional runtime boundary",
+      "source": "FastAPI additional responses; RapidOCR install docs; Python importlib.util.find_spec; W3C PROV Overview",
+      "url": "https://fastapi.tiangolo.com/advanced/additional-responses/ ; https://rapidai.github.io/RapidOCRDocs/main/install_usage/rapidocr/install/ ; https://docs.python.org/3/library/importlib.html#importlib.util.find_spec ; https://www.w3.org/TR/prov-overview/",
+      "status": "HTTP 200 for all four references checked locally",
+      "checked_at": "2026-06-27T15:54:54+08:00",
+      "use_in_slice": "Used to expose blocked OCR execution as a typed FastAPI 409 response while preserving optional RapidOCR as an external/local runtime dependency. No OCR package, model, cache, external upload, or third-party implementation code was installed or copied."
+    },
+    "current_runtime_observation": {
+      "surface": "/api/pdf-backend/ocr-health and /api/pdf-backend/ocr-execution-probe",
+      "rapidocr_health": {
+        "status_code": 200,
+        "readiness_status": "dependency_missing",
+        "readiness_blockers": [
+          "rapidocr or rapidocr_onnxruntime is not installed"
+        ],
+        "next_safe_local_actions": [
+          "Install or point to a local RapidOCR Python runtime, then set python_executable or LITASSIST_RAPIDOCR_PYTHON and rerun literature.ocr_health."
+        ]
+      },
+      "rapidocr_execution": {
+        "status_code": 409,
+        "schema_version": "scholar-ai-ocr-execution-blocked/v1",
+        "status": "blocked",
+        "readiness_status": "dependency_missing",
+        "requires_network": false,
+        "input_sha256": "551b8c56c94367ff94e86d337b982c4541f3c7cb62662b1faad94048d38cff4a"
+      },
+      "remote_api_execution": {
+        "status_code": 409,
+        "schema_version": "scholar-ai-ocr-execution-blocked/v1",
+        "status": "blocked",
+        "readiness_status": "configuration_required",
+        "requires_network": true,
+        "remote_upload_performed": false
+      }
+    },
+    "residual_risk": "This proves blocked execution is recoverable and auditable, not that RapidOCR executed. The current .venv-1 has no rapidocr or rapidocr_onnxruntime module, LITASSIST_RAPIDOCR_PYTHON is unset, and remote OCR still requires explicit consent plus credentials; the goal-level completion blockers remain."
   }
 }

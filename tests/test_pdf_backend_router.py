@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -316,21 +317,58 @@ def test_ocr_execution_probe_accepts_bounded_temp_image_path(tmp_path: Path) -> 
 def test_ocr_execution_probe_blocks_remote_without_upload_consent() -> None:
     image_bytes = b"remote-image"
 
-    with pytest.raises(HTTPException) as exc_info:
-        run_ocr_execution_probe(
-            OcrExecutionProbeRequest(
-                confirm_execution=True,
-                engine="remote_api",
-                engine_config={
-                    "api_key": "secret-value",
-                    "base_url": "https://ocr.example.test",
-                },
-                image_base64=base64.b64encode(image_bytes).decode("ascii"),
-            )
+    response = run_ocr_execution_probe(
+        OcrExecutionProbeRequest(
+            confirm_execution=True,
+            engine="remote_api",
+            engine_config={
+                "api_key": "secret-value",
+                "base_url": "https://ocr.example.test",
+            },
+            image_base64=base64.b64encode(image_bytes).decode("ascii"),
         )
+    )
 
-    assert exc_info.value.status_code == 409
-    assert exc_info.value.detail == "remote OCR requires explicit allow_remote_upload=true consent"
+    assert response.status_code == 409
+    payload = json.loads(response.body)
+    assert payload["schema_version"] == "scholar-ai-ocr-execution-blocked/v1"
+    assert payload["confirmed"] is False
+    assert payload["status"] == "blocked"
+    assert payload["engine"] == "remote_api"
+    assert payload["requires_network"] is True
+    assert payload["input_sha256"] == hashlib.sha256(image_bytes).hexdigest()
+    assert payload["reason"] == "remote OCR requires explicit allow_remote_upload=true consent"
+    assert payload["readiness_status"] == "configuration_required"
+    assert payload["readiness_blockers"] == [
+        "remote OCR requires explicit allow_remote_upload=true consent"
+    ]
+    assert any("allow_remote_upload" in action for action in payload["next_safe_local_actions"])
+
+
+def test_ocr_execution_probe_blocks_rapidocr_with_recovery_receipt() -> None:
+    image_bytes = b"rapid-image"
+
+    response = run_ocr_execution_probe(
+        OcrExecutionProbeRequest(
+            confirm_execution=True,
+            engine="rapidocr",
+            image_base64=base64.b64encode(image_bytes).decode("ascii"),
+        )
+    )
+
+    assert response.status_code == 409
+    payload = json.loads(response.body)
+    assert payload["schema_version"] == "scholar-ai-ocr-execution-blocked/v1"
+    assert payload["engine"] == "rapidocr"
+    assert payload["engine_type"] == "local"
+    assert payload["requires_network"] is False
+    assert payload["input_kind"] == "image_base64"
+    assert payload["input_bytes"] == len(image_bytes)
+    assert payload["input_sha256"] == hashlib.sha256(image_bytes).hexdigest()
+    assert payload["reason"] == "rapidocr or rapidocr_onnxruntime is not installed"
+    assert payload["readiness_status"] == "dependency_missing"
+    assert payload["readiness_blockers"] == ["rapidocr or rapidocr_onnxruntime is not installed"]
+    assert any("LITASSIST_RAPIDOCR_PYTHON" in action for action in payload["next_safe_local_actions"])
 
 
 def test_ocr_execution_probe_runs_configured_external_paddleocr_python(
@@ -473,6 +511,15 @@ def test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability(
         },
         headers=headers,
     )
+    blocked = client.post(
+        "/api/pdf-backend/ocr-execution-probe",
+        json={
+            "confirm_execution": True,
+            "engine": "rapidocr",
+            "image_base64": base64.b64encode(b"rapid-route-image").decode("ascii"),
+        },
+        headers=headers,
+    )
 
     assert status.status_code == 200
     status_payload = status.json()
@@ -498,3 +545,7 @@ def test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability(
     assert execution.json()["schema_version"] == "scholar-ai-ocr-execution-probe/v1"
     assert execution.json()["engine"] == "mock_local"
     assert execution.json()["input_sha256"] == hashlib.sha256(b"route-image").hexdigest()
+    assert blocked.status_code == 409
+    assert blocked.json()["schema_version"] == "scholar-ai-ocr-execution-blocked/v1"
+    assert blocked.json()["readiness_status"] == "dependency_missing"
+    assert "trace_id" not in blocked.json()
