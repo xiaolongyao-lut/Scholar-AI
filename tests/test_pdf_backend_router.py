@@ -150,6 +150,7 @@ def test_ocr_status_defaults_to_auto_without_requiring_engine(
     assert payload.configured_engine is None
     assert payload.language == "en"
     assert isinstance(payload.available_engines, list)
+    assert payload.next_safe_local_actions
 
 
 def test_ocr_engines_endpoint_lists_builtin_engines() -> None:
@@ -163,6 +164,7 @@ def test_ocr_engines_endpoint_lists_builtin_engines() -> None:
     assert remote.readiness_blockers == [
         "remote OCR requires explicit api_key and base_url configuration"
     ]
+    assert any("api_key" in action for action in remote.next_safe_local_actions)
 
 
 def test_ocr_engine_selection_writes_local_runtime_config(
@@ -198,6 +200,7 @@ def test_ocr_engine_selection_writes_local_runtime_config(
     assert remote.readiness_blockers == [
         "remote OCR requires explicit allow_remote_upload=true consent"
     ]
+    assert any("allow_remote_upload" in action for action in remote.next_safe_local_actions)
     assert config_path.exists()
 
 
@@ -246,6 +249,7 @@ def test_ocr_health_returns_unavailable_without_uploading_content() -> None:
     assert payload.readiness_blockers == [
         "remote OCR requires explicit api_key and base_url configuration"
     ]
+    assert any("api_key" in action for action in payload.next_safe_local_actions)
 
 
 def test_ocr_execution_probe_requires_explicit_confirm() -> None:
@@ -474,8 +478,10 @@ def test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability(
     status_payload = status.json()
     status_engines = {item["name"]: item for item in status_payload["available_engines"]}
     assert status_payload["policy"] == "auto"
+    assert "next_safe_local_actions" in status_payload
     assert status_engines["mock_local"]["readiness_status"] == "ready"
     assert status_engines["remote_api"]["readiness_status"] == "configuration_required"
+    assert "next_safe_local_actions" in status_engines["remote_api"]
     assert engines.status_code == 200
     assert {item["name"] for item in engines.json()} >= {
         "paddleocr_gpu",
@@ -487,6 +493,7 @@ def test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability(
     assert health.status_code == 200
     assert health.json()["engine"] == "remote_api"
     assert health.json()["readiness_status"] == "configuration_required"
+    assert "next_safe_local_actions" in health.json()
     assert execution.status_code == 200
     assert execution.json()["schema_version"] == "scholar-ai-ocr-execution-probe/v1"
     assert execution.json()["engine"] == "mock_local"

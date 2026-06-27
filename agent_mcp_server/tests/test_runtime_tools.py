@@ -459,6 +459,9 @@ def test_ocr_status_uses_read_only_pdf_backend_endpoint(
             "engine_config": {},
             "available_engines": [],
             "warning": "OCR policy is auto but no available OCR engine was found",
+            "next_safe_local_actions": [
+                "Inspect literature.ocr_engines for readiness_blockers and choose a ready local engine or configure one explicitly."
+            ],
         },
     )
 
@@ -467,6 +470,7 @@ def test_ocr_status_uses_read_only_pdf_backend_endpoint(
     assert result["is_error"] is False
     assert result["data"]["policy"] == "auto"
     assert result["data"]["engine_config"] == {}
+    assert result["data"]["next_safe_local_actions"][0].startswith("Inspect literature.ocr_engines")
     assert backend.calls[-1] == (
         "json",
         "/api/pdf-backend/ocr-status",
@@ -492,6 +496,9 @@ def test_ocr_engines_uses_read_only_pdf_backend_endpoint(
                 "unavailable_reason": "rapidocr is not installed",
                 "readiness_status": "dependency_missing",
                 "readiness_blockers": ["rapidocr is not installed"],
+                "next_safe_local_actions": [
+                    "Install or point to a local RapidOCR Python runtime, then rerun literature.ocr_health."
+                ],
             }
         ],
     )
@@ -501,6 +508,7 @@ def test_ocr_engines_uses_read_only_pdf_backend_endpoint(
     assert result["is_error"] is False
     assert result["data"][0]["name"] == "rapidocr"
     assert result["data"][0]["readiness_status"] == "dependency_missing"
+    assert "RapidOCR" in result["data"][0]["next_safe_local_actions"][0]
     assert backend.calls[-1] == (
         "json",
         "/api/pdf-backend/ocr-engines",
@@ -525,6 +533,9 @@ def test_ocr_health_posts_bounded_readiness_probe_payload(
             "readiness_blockers": [
                 "remote OCR requires explicit api_key and base_url configuration"
             ],
+            "next_safe_local_actions": [
+                "Configure remote_api with local api_key and base_url references; rerun literature.ocr_health."
+            ],
         },
     )
 
@@ -536,6 +547,7 @@ def test_ocr_health_posts_bounded_readiness_probe_payload(
     assert result["is_error"] is False
     assert result["data"]["engine"] == "remote_api"
     assert result["data"]["readiness_status"] == "configuration_required"
+    assert "api_key" in result["data"]["next_safe_local_actions"][0]
     assert backend.calls[-1] == (
         "post_json",
         "/api/pdf-backend/ocr-health",

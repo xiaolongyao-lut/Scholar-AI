@@ -150,6 +150,127 @@ def _engine_readiness_blockers(
     return () if unavailable_reason is None else (unavailable_reason,)
 
 
+def _ocr_engine_next_safe_local_actions(
+    *,
+    engine_name: str,
+    engine_type: str,
+    requires_network: bool,
+    readiness_status: OcrReadinessStatus,
+    readiness_blockers: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Return bounded recovery/proof actions for one OCR readiness state."""
+
+    if not isinstance(engine_name, str) or not engine_name.strip():
+        raise ValueError("engine_name must be non-empty")
+
+    name = engine_name.strip().lower()
+    if readiness_status == "ready":
+        if requires_network or engine_type == "remote":
+            return (
+                "Run literature.ocr_execution_probe only with confirm_execution=true, "
+                "a bounded image, and explicit remote upload consent.",
+            )
+        return (
+            "Run literature.ocr_execution_probe with confirm_execution=true on a "
+            "small local image to prove OCR execution.",
+        )
+
+    if readiness_status == "dependency_missing":
+        if name == "paddleocr_gpu":
+            return (
+                "Install or point to a local PaddleOCR Python runtime, then set "
+                "python_executable or LITASSIST_PADDLEOCR_PYTHON and rerun literature.ocr_health.",
+            )
+        if name == "rapidocr":
+            return (
+                "Install or point to a local RapidOCR Python runtime, then set "
+                "python_executable or LITASSIST_RAPIDOCR_PYTHON and rerun literature.ocr_health.",
+            )
+        if name == "windows":
+            return (
+                "Verify Windows PowerShell and Windows.Media.Ocr are available, "
+                "then rerun literature.ocr_health for the windows engine.",
+            )
+        return ("Install the missing local OCR dependency and rerun literature.ocr_health.",)
+
+    if readiness_status == "configuration_required":
+        if name == "remote_api":
+            return (
+                "Configure remote_api with local api_key and base_url references; "
+                "set allow_remote_upload=true only after explicit upload consent.",
+                "Rerun literature.ocr_health before any literature.ocr_execution_probe call.",
+            )
+        return (
+            "Update the local OCR runtime config for this engine and rerun literature.ocr_health.",
+        )
+
+    if readiness_status == "adapter_not_wired":
+        return (
+            "Keep OCR policy on auto/none or choose another ready engine until "
+            "this adapter has a wired execution path and tests.",
+        )
+
+    if readiness_status == "platform_unsupported":
+        return (
+            "Choose a supported local OCR engine for this platform, or rerun this engine on a supported host.",
+        )
+
+    blocker = readiness_blockers[0] if readiness_blockers else "the readiness blocker"
+    return (f"Resolve {blocker} and rerun literature.ocr_health.",)
+
+
+def _ocr_runtime_next_safe_local_actions(
+    *,
+    config: OcrRuntimeConfig,
+    selected_engine_name: str | None,
+    warning: str | None,
+) -> tuple[str, ...]:
+    """Return bounded runtime-level OCR recovery/proof actions."""
+
+    if selected_engine_name:
+        return (
+            "Run literature.ocr_health for the selected engine before OCR execution.",
+            "Run literature.ocr_execution_probe with confirm_execution=true on a "
+            "small bounded image to prove execution.",
+        )
+    if config.policy == "none":
+        return (
+            "Set LITASSIST_OCR_POLICY=auto or select a configured engine before ingesting scanned PDFs.",
+        )
+    if config.policy == "engine" and config.engine:
+        return (
+            f"Inspect literature.ocr_engines for {config.engine} readiness_blockers "
+            "and rerun literature.ocr_health after local config changes.",
+        )
+    if warning:
+        return (
+            "Inspect literature.ocr_engines for readiness_blockers and choose a "
+            "ready local engine or configure one explicitly.",
+            "Do not run literature.ocr_execution_probe until an engine is selected "
+            "and confirm_execution=true is intentional.",
+        )
+    return ("Inspect literature.ocr_engines before running OCR execution probes.",)
+
+
+def ocr_engine_next_safe_local_actions(
+    *,
+    engine_name: str,
+    engine_type: str,
+    requires_network: bool,
+    readiness_status: OcrReadinessStatus,
+    readiness_blockers: tuple[str, ...] | list[str],
+) -> tuple[str, ...]:
+    """Return bounded recovery/proof actions for OCR API payloads."""
+
+    return _ocr_engine_next_safe_local_actions(
+        engine_name=engine_name,
+        engine_type=engine_type,
+        requires_network=requires_network,
+        readiness_status=readiness_status,
+        readiness_blockers=tuple(readiness_blockers),
+    )
+
+
 def register_ocr_engine(
     name: str,
     factory: Callable[[Mapping[str, Any]], OcrEngine],
@@ -324,6 +445,13 @@ def list_ocr_engine_info(
             available=available,
             unavailable_reason=unavailable_reason,
         )
+        next_safe_local_actions = _ocr_engine_next_safe_local_actions(
+            engine_name=engine.name,
+            engine_type=engine.engine_type,
+            requires_network=engine.requires_network,
+            readiness_status=readiness_status,
+            readiness_blockers=readiness_blockers,
+        )
         items.append(
             OcrEngineInfo(
                 name=engine.name,
@@ -334,6 +462,7 @@ def list_ocr_engine_info(
                 unavailable_reason=unavailable_reason,
                 readiness_status=readiness_status,
                 readiness_blockers=readiness_blockers,
+                next_safe_local_actions=next_safe_local_actions,
             )
         )
     return items
@@ -381,10 +510,11 @@ def public_ocr_status(
 
     config = runtime_config or resolve_ocr_runtime_config()
     selected, warning = select_ocr_engine(config)
+    selected_engine_name = selected.name if selected is not None else None
     return {
         "policy": config.policy,
         "configured_engine": config.engine,
-        "selected_engine": selected.name if selected is not None else None,
+        "selected_engine": selected_engine_name,
         "language": config.language,
         "source": config.source,
         "engine_config": _redact_config(config.engine_config),
@@ -392,4 +522,11 @@ def public_ocr_status(
             item.as_dict() for item in list_ocr_engine_info(engine_config=config.engine_config)
         ],
         "warning": warning,
+        "next_safe_local_actions": list(
+            _ocr_runtime_next_safe_local_actions(
+                config=config,
+                selected_engine_name=selected_engine_name,
+                warning=warning,
+            )
+        ),
     }

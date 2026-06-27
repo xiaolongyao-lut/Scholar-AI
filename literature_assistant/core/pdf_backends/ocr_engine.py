@@ -30,6 +30,8 @@ class OcrEngineHealth:
         engine: Stable engine id.
         readiness_status: Machine-readable local readiness state.
         readiness_blockers: Bounded non-secret blockers for unavailable engines.
+        next_safe_local_actions: Bounded recovery/proof actions safe to run
+            locally without uploading documents or changing credentials.
     """
 
     ok: bool
@@ -38,6 +40,7 @@ class OcrEngineHealth:
     latency_ms: float | None = None
     readiness_status: OcrReadinessStatus = "ready"
     readiness_blockers: tuple[str, ...] = field(default_factory=tuple)
+    next_safe_local_actions: tuple[str, ...] = field(default_factory=tuple)
 
     def as_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable health payload."""
@@ -49,6 +52,7 @@ class OcrEngineHealth:
             "latency_ms": self.latency_ms,
             "readiness_status": self.readiness_status,
             "readiness_blockers": list(self.readiness_blockers),
+            "next_safe_local_actions": list(self.next_safe_local_actions),
         }
 
 
@@ -65,6 +69,8 @@ class OcrEngineInfo:
         unavailable_reason: Bounded reason when ``available`` is false.
         readiness_status: Machine-readable local readiness state.
         readiness_blockers: Bounded non-secret blockers for unavailable engines.
+        next_safe_local_actions: Bounded recovery/proof actions safe to run
+            locally without uploading documents or changing credentials.
     """
 
     name: str
@@ -75,6 +81,7 @@ class OcrEngineInfo:
     unavailable_reason: str | None = None
     readiness_status: OcrReadinessStatus = "ready"
     readiness_blockers: tuple[str, ...] = field(default_factory=tuple)
+    next_safe_local_actions: tuple[str, ...] = field(default_factory=tuple)
 
     def as_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable metadata payload."""
@@ -88,6 +95,7 @@ class OcrEngineInfo:
             "unavailable_reason": self.unavailable_reason,
             "readiness_status": self.readiness_status,
             "readiness_blockers": list(self.readiness_blockers),
+            "next_safe_local_actions": list(self.next_safe_local_actions),
         }
 
 

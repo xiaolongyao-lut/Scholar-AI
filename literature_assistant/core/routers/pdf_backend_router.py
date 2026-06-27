@@ -10,7 +10,7 @@ import hashlib
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -22,6 +22,7 @@ from pdf_backends import (
     OcrReadinessStatus,
     build_ocr_engine,
     list_ocr_engine_info,
+    ocr_engine_next_safe_local_actions,
     public_ocr_status,
     resolve_ocr_runtime_config,
     select_ocr_engine,
@@ -42,6 +43,7 @@ _OCR_PROBE_IMAGE_SUFFIXES = {
     ".tiff",
     ".webp",
 }
+_OCR_READINESS_STATUS_VALUES = set(OcrReadinessStatus.__args__)
 
 
 class PDFBackendStatus(BaseModel):
@@ -72,6 +74,7 @@ class OcrEnginePublicInfo(BaseModel):
     unavailable_reason: str | None = None
     readiness_status: OcrReadinessStatus = "ready"
     readiness_blockers: list[str] = Field(default_factory=list)
+    next_safe_local_actions: list[str] = Field(default_factory=list)
 
 
 class OcrStatusResponse(BaseModel):
@@ -85,6 +88,7 @@ class OcrStatusResponse(BaseModel):
     engine_config: dict[str, Any] = Field(default_factory=dict)
     available_engines: list[OcrEnginePublicInfo] = Field(default_factory=list)
     warning: str | None = None
+    next_safe_local_actions: list[str] = Field(default_factory=list)
 
 
 class OcrEngineSelectionRequest(BaseModel):
@@ -120,6 +124,7 @@ class OcrHealthResponse(BaseModel):
     latency_ms: float | None = None
     readiness_status: OcrReadinessStatus = "ready"
     readiness_blockers: list[str] = Field(default_factory=list)
+    next_safe_local_actions: list[str] = Field(default_factory=list)
 
 
 class OcrExecutionProbeRequest(BaseModel):
@@ -271,6 +276,31 @@ def _resolve_probe_engine(request: OcrExecutionProbeRequest) -> OcrEngine:
     return engine
 
 
+def _ocr_health_response_payload(engine: OcrEngine, health: Any) -> dict[str, Any]:
+    """Return health payload with bounded recovery actions attached."""
+
+    payload = dict(health.as_dict())
+    actions = payload.get("next_safe_local_actions")
+    if isinstance(actions, list) and actions:
+        return payload
+    blockers = payload.get("readiness_blockers")
+    raw_readiness_status = str(payload.get("readiness_status") or "unavailable")
+    readiness_status = cast(
+        OcrReadinessStatus,
+        raw_readiness_status if raw_readiness_status in _OCR_READINESS_STATUS_VALUES else "unavailable",
+    )
+    payload["next_safe_local_actions"] = list(
+        ocr_engine_next_safe_local_actions(
+            engine_name=engine.name,
+            engine_type=engine.engine_type,
+            requires_network=engine.requires_network,
+            readiness_status=readiness_status,
+            readiness_blockers=blockers if isinstance(blockers, list) else [],
+        )
+    )
+    return payload
+
+
 def _resolve_active_backend() -> tuple[str, str]:
     """Return the active core backend and why it was selected."""
     raw_env = os.environ.get(ENV_VAR)
@@ -367,7 +397,7 @@ def check_ocr_engine_health(request: OcrHealthRequest) -> OcrHealthResponse:
         health = engine.health_check()
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return OcrHealthResponse(**health.as_dict())
+    return OcrHealthResponse(**_ocr_health_response_payload(engine, health))
 
 
 @router.post("/ocr-execution-probe", response_model=OcrExecutionProbeResponse)

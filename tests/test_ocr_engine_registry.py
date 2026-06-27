@@ -122,12 +122,17 @@ def test_builtin_heavy_and_remote_engines_report_readiness_without_secret_leakag
     blockers_by_name = {
         item["name"]: item["readiness_blockers"] for item in status["available_engines"]
     }
+    actions_by_name = {
+        item["name"]: item["next_safe_local_actions"] for item in status["available_engines"]
+    }
 
     if status["selected_engine"] is None:
         assert status["warning"] == "OCR policy is auto but no available OCR engine was found"
+        assert status["next_safe_local_actions"]
     else:
         assert status["selected_engine"] == "windows"
         assert status["warning"] is None
+        assert any("ocr_health" in action for action in status["next_safe_local_actions"])
     assert unavailable_by_name["remote_api"] == (
         "remote OCR requires explicit api_key and base_url configuration"
     )
@@ -135,6 +140,7 @@ def test_builtin_heavy_and_remote_engines_report_readiness_without_secret_leakag
     assert blockers_by_name["remote_api"] == [
         "remote OCR requires explicit api_key and base_url configuration"
     ]
+    assert any("api_key" in action for action in actions_by_name["remote_api"])
     assert readiness_by_name["paddleocr_gpu"] in {"dependency_missing", "adapter_not_wired"}
     assert readiness_by_name["rapidocr"] in {"dependency_missing", "adapter_not_wired"}
     assert readiness_by_name["windows"] in {
